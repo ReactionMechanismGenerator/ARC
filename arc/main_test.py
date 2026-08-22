@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from unittest import mock
+import unittest.mock
 
 from arc.common import ARC_PATH, get_logger
 from arc.exceptions import InputError
@@ -123,7 +123,8 @@ class TestARC(unittest.TestCase):
                                        'opt': True,
                                        'orbitals': False,
                                        'rotors': False,
-                                       'sp': True},
+                                       'sp': True,
+                                       'stability': False},
                          'max_job_time': 120,
                          'opt_level': {'basis': '6-311+g(3df,2p)',
                                        'method': 'b3lyp',
@@ -203,7 +204,8 @@ class TestARC(unittest.TestCase):
                         }
         arc1 = ARC(**restart_dict)
         job_type_expected = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
-                             'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False}
+                             'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False,
+                             'stability': False}
         self.assertEqual(arc1.job_types, job_type_expected)
 
     def test_check_project_name(self):
@@ -563,12 +565,12 @@ class TestCheckFileCleanup(unittest.TestCase):
         self.project_directory = os.path.join(tempfile.mkdtemp(), self.project)
         # Pin the server definition so that neither a user settings file nor a missing 'server2'
         # entry can change the remote path this test builds and cleans.
-        for patch in [mock.patch.dict('arc.job.adapter.servers', {self.server: self.server_settings}),
-                      mock.patch.dict('arc.job.ssh.servers', {self.server: self.server_settings}),
-                      mock.patch.object(SSHClient, 'connect', lambda ssh_client: None),
-                      mock.patch.object(SSHClient, '_send_command_to_server',
-                                        lambda ssh_client, command, remote_path='':
-                                        self.send_command_to_fake_server(command, remote_path))]:
+        for patch in [unittest.mock.patch.dict('arc.job.adapter.servers', {self.server: self.server_settings}),
+                      unittest.mock.patch.dict('arc.job.ssh.servers', {self.server: self.server_settings}),
+                      unittest.mock.patch.object(SSHClient, 'connect', lambda ssh_client: None),
+                      unittest.mock.patch.object(SSHClient, '_send_command_to_server',
+                                                 lambda ssh_client, command, remote_path='':
+                                                 self.send_command_to_fake_server(command, remote_path))]:
             patch.start()
             self.addCleanup(patch.stop)
 

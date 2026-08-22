@@ -753,7 +753,10 @@ class ARC(object):
         for label, output in self.output.items():
             if output['convergence']:
                 status_dict[label] = True
-                logger.info(f'Species {label} converged successfully\n')
+                logger.info(f'Species {label} converged successfully')
+                if output.get('wavefunction_stability'):
+                    logger.info(f'  Wavefunction stability: {output["wavefunction_stability"]}')
+                logger.info('\n')
             elif not label.startswith('IRC_'):
                 status_dict[label] = False
                 job_type_status = {key: val for key, val in self.output[label]['job_types'].items()

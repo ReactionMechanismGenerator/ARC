@@ -136,6 +136,7 @@ class JobTypeEnum(str, Enum):
     scan = 'scan'
     directed_scan = 'directed_scan'
     sp = 'sp'
+    stability = 'stability'
     tsg = 'tsg'  # TS search (TS guess)
 
 
@@ -152,7 +153,17 @@ class JobExecutionTypeEnum(str, Enum):
 class JobAdapter(ABC):
     """
     An abstract class for job adapters.
+
+    ``check_file_name`` is the name of the file the ESS writes its converged orbitals to, the
+    name that file is downloaded under and the name ``local_path_to_check_file`` points at.
+    ``guess_file_name`` is the name a previous job's orbitals are uploaded under to serve as
+    this job's initial guess; the two are equal for an ESS that reads and writes one file, as
+    Gaussian does with its checkfile. A subclass whose ESS names these files differently
+    overrides them, as ``OrcaAdapter`` does.
     """
+
+    check_file_name = 'check.chk'
+    guess_file_name = 'check.chk'
 
     @abstractmethod
     def write_input_file(self) -> None:
@@ -337,6 +348,34 @@ class JobAdapter(ABC):
         with open(os.path.join(self.local_path, submit_filenames[servers[self.server]['cluster_soft']]), 'w') as f:
             f.write(submit_script)
 
+    def readable_checkfile(self, checkfile: str | None) -> str | None:
+        """
+        Report the checkfile this adapter may read as an initial guess, or ``None`` for a foreign one.
+
+        ``Scheduler`` hands every job the checkfile its species holds, whichever ESS wrote it, so a
+        species optimized in one ESS reaches an adapter of another carrying orbitals that adapter
+        cannot read: an ORCA ``input.gbw`` uploaded to Gaussian as ``check.chk`` and read with
+        ``guess=read`` is not a Gaussian checkpoint file. Each ESS names its orbitals file, so the
+        base name identifies the ESS that wrote it: a checkfile whose base name is neither this
+        adapter's ``check_file_name`` nor the ``<prefix>_<check_file_name>`` form ARC itself writes
+        when it keeps a directed rotor's orbitals aside is refused here and logged, and the job runs
+        from its own initial guess.
+
+        Args:
+            checkfile (str, optional): The path of the checkfile offered to this job.
+
+        Returns: str | None
+            The checkfile path when this adapter's ESS wrote it, else ``None``.
+        """
+        if checkfile is None:
+            return None
+        base_name = os.path.basename(checkfile)
+        if base_name == self.check_file_name or base_name.endswith(f'_{self.check_file_name}'):
+            return checkfile
+        logger.info(f'Not reading {checkfile} as an initial guess for a {self.job_adapter} job: '
+                    f'{self.job_adapter} reads a {self.check_file_name} file.')
+        return None
+
     def set_file_paths(self):
         """
         Set local and remote job file paths.
@@ -349,7 +388,7 @@ class JobAdapter(ABC):
         self.local_path_to_output_file = os.path.join(self.local_path, settings['output_filenames'][self.job_adapter]) \
             if self.job_adapter in settings['output_filenames'] else 'output.out'
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
-        self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
+        self.local_path_to_check_file = os.path.join(self.local_path, self.check_file_name)
         self.local_path_to_hess_file = os.path.join(self.local_path, 'input.hess')
         self.local_path_to_xyz = None
 
@@ -390,9 +429,10 @@ class JobAdapter(ABC):
             else:
                 # running locally, just copy the check file, if exists, to the job folder
                 for up_file in self.files_to_upload:
-                    if up_file['file_name'] == 'check.chk':
+                    if up_file['file_name'] in [self.check_file_name, self.guess_file_name]:
                         try:
-                            shutil.copyfile(src=up_file['local'], dst=os.path.join(self.local_path, 'check.chk'))
+                            shutil.copyfile(src=up_file['local'],
+                                            dst=os.path.join(self.local_path, up_file['file_name']))
                         except shutil.SameFileError:
                             pass
             self.initial_time = datetime.datetime.now()
@@ -620,6 +660,11 @@ class JobAdapter(ABC):
     def as_dict(self) -> dict:
         """
         A helper function for dumping this object as a dictionary, used for saving in the restart file.
+
+        ``restricted_used``, the SCF reference this job's input declared, is included when the job
+        composed an input file. It is the one entry that cannot be recomputed on restore: rebuilding
+        the adapter re-composes the input from the species' current state, so a job queued before a
+        reference decision changed would otherwise come back describing a reference it never ran.
         """
         job_dict = dict()
         job_dict['job_adapter'] = self.job_adapter
@@ -664,6 +709,9 @@ class JobAdapter(ABC):
             job_dict['server'] = self.server
         if isinstance(self.server_nodes, dict) and self.server_nodes:
             job_dict['server_nodes'] = self.server_nodes
+        restricted_used = getattr(self, 'restricted_used', None)
+        if isinstance(restricted_used, (bool, list)):
+            job_dict['restricted_used'] = restricted_used
         if self.species is not None:
             job_dict['species_labels'] = [species.label for species in self.species]
         if self.torsions is not None:
