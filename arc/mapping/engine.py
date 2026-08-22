@@ -1269,6 +1269,10 @@ def make_bond_changes(rxn: ARCReaction, r_cuts: list[ARCSpecies], r_label_dict: 
     """
     Makes bond changes before matching the reactants and products.
 
+    A charge-separating bond change is only applied if it leaves a valid electron count, i.e., if the
+    donor atom has a lone pair to give and the accepting atom has the two radical electrons that the
+    new bond consumes. Otherwise, that cut is left unchanged.
+
     Args:
         rxn (ARCReaction): An ARCReaction object
         r_cuts (list[ARCSpecies]): The cut products
@@ -1290,12 +1294,22 @@ def make_bond_changes(rxn: ARCReaction, r_cuts: list[ARCSpecies], r_label_dict: 
                     if atom1.radical_electrons == 0 and atom2.radical_electrons == 0: # Both atoms do not have any radicals, but their bond is changing. There probably is resonance, so this will not affect the isomorphism check.
                         return
                     elif atom1.radical_electrons == 0 and atom2.radical_electrons != 0:
+                        if atom1.lone_pairs < 1 or atom2.radical_electrons < 2:
+                            logger.debug(f'Not applying a charge-separating {action} of the {rxn.family} family '
+                                         f'to atoms {indices} of reaction {rxn.label}: '
+                                         f'it would result in a negative electron count.')
+                            continue
                         atom1.lone_pairs -= 1
                         atom2.lone_pairs += 1
                         atom1.charge += 1
                         atom2.charge -= 1
                         atom2.radical_electrons -= 2
                     elif atom2.radical_electrons == 0 and atom1.radical_electrons != 0:
+                        if atom2.lone_pairs < 1 or atom1.radical_electrons < 2:
+                            logger.debug(f'Not applying a charge-separating {action} of the {rxn.family} family '
+                                         f'to atoms {indices} of reaction {rxn.label}: '
+                                         f'it would result in a negative electron count.')
+                            continue
                         atom2.lone_pairs -= 1
                         atom1.lone_pairs += 1
                         atom2.charge += 1
