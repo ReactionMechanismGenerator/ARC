@@ -871,6 +871,49 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertTrue(restored.thermo_at_own_level)
         self.assertEqual(restored.adaptive_lot_n_heavy, 8)
 
+    def test_derived_stability_verdict_round_trip(self):
+        """Test that a measured stability verdict and the SCF references used round-trip through a restart"""
+        default_spc = ARCSpecies(label='ozone', smiles='[O-][O+]=O')
+        default_dict = default_spc.as_dict()
+        self.assertNotIn('derived_stability_verdict', default_dict)
+        self.assertNotIn('scf_references', default_dict)
+        restored_default = ARCSpecies(species_dict=default_dict)
+        self.assertIsNone(restored_default.derived_stability_verdict)
+        self.assertEqual(restored_default.scf_references, dict())
+
+        spc = ARCSpecies(label='ozone', smiles='[O-][O+]=O')
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True,
+                                         'negative_eigenvectors': [{'label': 'Triplet-A', 'eigenvalue': -0.0642}]}
+        spc.scf_references = {'freq': 'restricted', 'sp': 'unrestricted'}
+        spc_dict = spc.as_dict()
+        restored = ARCSpecies(species_dict=spc_dict)
+        self.assertEqual(restored.derived_stability_verdict['verdict'], 'external_instability')
+        self.assertIs(restored.derived_stability_verdict['restricted'], True)
+        self.assertEqual(restored.derived_stability_verdict['negative_eigenvectors'],
+                         [{'label': 'Triplet-A', 'eigenvalue': -0.0642}])
+        self.assertEqual(restored.scf_references, {'freq': 'restricted', 'sp': 'unrestricted'})
+        self.assertIsNone(restored.number_of_radicals)
+
+    def test_stability_sequencing_state_round_trip(self):
+        """Test that the stability analysis sequencing state round-trips through a restart"""
+        default_spc = ARCSpecies(label='ozone', smiles='[O-][O+]=O')
+        default_dict = default_spc.as_dict()
+        for key in ['stability_analysis_ran', 'stability_pending_opt_job', 'stability_reoptimized']:
+            self.assertNotIn(key, default_dict)
+        restored_default = ARCSpecies(species_dict=default_dict)
+        self.assertFalse(restored_default.stability_analysis_ran)
+        self.assertIsNone(restored_default.stability_pending_opt_job)
+        self.assertFalse(restored_default.stability_reoptimized)
+
+        spc = ARCSpecies(label='ozone', smiles='[O-][O+]=O')
+        spc.stability_analysis_ran = True
+        spc.stability_pending_opt_job = 'opt_a7'
+        spc.stability_reoptimized = True
+        restored = ARCSpecies(species_dict=spc.as_dict())
+        self.assertTrue(restored.stability_analysis_ran)
+        self.assertEqual(restored.stability_pending_opt_job, 'opt_a7')
+        self.assertTrue(restored.stability_reoptimized)
+
     def test_from_dict(self):
         """Test Species.from_dict()"""
         species_dict = self.spc2.as_dict()

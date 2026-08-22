@@ -27,6 +27,10 @@ logger = get_logger()
 default_job_settings, global_ess_settings, rotor_scan_resolution = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['rotor_scan_resolution']
 
+REFERENCE_AGNOSTIC_METHOD_TYPES = ['force_field', 'composite', 'semiempirical']
+
+DERIVED_UNRESTRICTED_VERDICT = 'external_instability'
+
 ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', 'linear'],
                              '1,2_Insertion_CO': ['kinbot', 'goflow', 'rits', 'linear'],
                              '1,2_Insertion_carbene': ['kinbot', 'goflow', 'rits', 'linear'],
@@ -163,7 +167,7 @@ def _initialize_adapter(obj: JobAdapter,
     obj.additional_job_info = None
     obj.args = args or dict()
     obj.bath_gas = bath_gas
-    obj.checkfile = checkfile
+    obj.checkfile = obj.readable_checkfile(checkfile)
     obj.conformer = conformer
     obj.constraints = constraints or list()
     obj.cpu_cores = cpu_cores
@@ -286,6 +290,19 @@ def is_restricted(obj: JobAdapter) -> bool | list[bool]:
     Check whether a Job Adapter should be executed as restricted or unrestricted.
     If the job adapter contains a list of species, return True or False per species.
 
+    The decision is also memoized on the job adapter as ``obj.restricted_used``, in the
+    same shape it is returned in. Adapters call this while writing their input file, so
+    the memo is the reference that job's input actually declared, and it is rewritten only
+    when that input is rewritten. A consumer that recomputes the decision instead reports
+    the reference the species would get today, which for a job that has already run is not
+    the same question.
+
+    The memo is written to the restart file by ``JobAdapter.as_dict()`` and restored by
+    ``Scheduler.restore_running_jobs()`` after the adapter is rebuilt, because rebuilding
+    it re-composes the input file and so calls this function again: without the restore, a
+    job that was queued before a reference decision changed would come back from a restart
+    carrying the reference it would be given now rather than the one it is running with.
+
     Args:
         obj: The job adapter object.
 
@@ -293,9 +310,138 @@ def is_restricted(obj: JobAdapter) -> bool | list[bool]:
         bool | list[bool]: Whether to run as restricted (``True``) or not (``False``).
     """
     if not obj.run_multi_species:
-        return is_species_restricted(obj)
+        restricted = is_species_restricted(obj)
     else:
-        return [is_species_restricted(obj, species) for species in obj.species]
+        restricted = [is_species_restricted(obj, species) for species in obj.species]
+    obj.restricted_used = restricted
+    return restricted
+
+
+def job_scf_reference_is_restricted(obj: JobAdapter) -> bool | None:
+    """
+    Report the SCF reference a job declared in the input it ran, or ``None`` where it declared none.
+
+    The value is read off the job adapter's ``restricted_used`` memo, which ``is_restricted()``
+    writes while the input is being composed, so it is the reference that job actually ran with
+    rather than the one the species would be given today. ``None`` is returned for a job carrying
+    no memo, a pipe task among them, for a multi-species job, whose memo is a decision per species
+    rather than a single one, and for the force field, composite and semiempirical method types,
+    for which ARC writes no reference prefix and whose flag is therefore not a reference choice
+    ARC made.
+
+    Args:
+        obj: The job adapter object.
+
+    Returns:
+        bool | None: Whether the job declared a restricted reference, or ``None`` if it declared none.
+    """
+    restricted = getattr(obj, 'restricted_used', None)
+    if not isinstance(restricted, bool):
+        return None
+    level = getattr(obj, 'level', None)
+    if level is None or level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
+        return None
+    return restricted
+
+
+def derived_reference_is_unrestricted(species: ARCSpecies | None) -> bool:
+    """
+    Check whether a species' measured wavefunction-stability verdict calls for an unrestricted reference.
+
+    Only an external instability of a restricted reference does. An external instability is
+    a relaxation of a constraint the reference imposes, Gaussian's RHF -> UHF class, so a
+    lower solution exists outside the spin symmetry the restricted reference holds the
+    wavefunction in and that reference is not the ground state. An internal instability lies
+    within the reference's own spin symmetry, so it is not evidence of broken-symmetry
+    character and does not call for a different reference. A ``'stable'`` verdict, an
+    ``'unknown'`` one, an absent verdict, and a verdict whose reference could not be read all
+    return ``False``.
+
+    Args:
+        species (ARCSpecies, optional): The species to check.
+
+    Returns:
+        bool: Whether the measured verdict calls for an unrestricted reference.
+    """
+    verdict = getattr(species, 'derived_stability_verdict', None)
+    if not isinstance(verdict, dict):
+        return False
+    return verdict.get('verdict') == DERIVED_UNRESTRICTED_VERDICT and verdict.get('restricted') is True
+
+
+def adopted_reference_is_unrestricted(species: ARCSpecies | None) -> bool:
+    """
+    Check whether a species' measured stability verdict is one ARC acts on, and not only reports.
+
+    ARC acts on a verdict for a transition state only. The analysis is run for any species whose
+    tested reference was restricted, and acting on it means re-optimizing the species on the lower
+    solution and running every job that follows there. The energy that produces is a
+    broken-symmetry one, spin-contaminated and unprojected, so adopting a verdict for a well would
+    write a contaminated energy into that species' thermo and into every reaction the species
+    appears in, on the strength of a measurement of the reference alone. A transition state has no
+    thermo of its own, and the reference of its remaining jobs is the decision the analysis
+    informs. A well whose verdict is not adopted is reported instead, and declaring
+    ``number_of_radicals`` for it runs its optimization, frequency and single point unrestricted
+    together.
+
+    A declared ``number_of_radicals`` of any value blocks adoption, since ``is_species_restricted``
+    decides from the declared value alone whenever there is one, so a verdict measured alongside a
+    declaration is reported and never acted on.
+
+    The energy an adopted verdict produces is a broken-symmetry one: it is spin-contaminated and
+    is not projected here. Broken-symmetry singlets are biased low and the restricted energy they
+    replace is biased high, so the true low-spin energy lies between the two. ``arc/checks/spin.py``
+    holds the Yamaguchi approximate spin-projection arithmetic that estimates it from the
+    broken-symmetry and high-spin energies and their ``S**2`` values; nothing consumes it yet, so
+    the residual error after adoption is the contamination, not the reference.
+
+    WHERE THAT ERROR LANDS. Adoption acts for a transition state only, so a TS whose restricted
+    reference was unstable runs unrestricted while the reactants and products it is compared
+    against stay restricted. The TS energy is the one biased low, so the barrier the run reports
+    is systematically UNDERestimated, by the contamination of the TS alone. The bias is one-sided
+    because the asymmetry is: nothing projects it out and nothing lowers the wells to match.
+
+    Args:
+        species (ARCSpecies, optional): The species to check.
+
+    Returns:
+        bool: Whether the measured verdict decides this species' reference.
+    """
+    return (getattr(species, 'number_of_radicals', None) is None
+            and derived_reference_is_unrestricted(species)
+            and bool(getattr(species, 'is_ts', False)))
+
+
+def open_shell_character_source(species: ARCSpecies | None) -> str | None:
+    """
+    Report which source attributed open-shell character to a species beyond its spin multiplicity.
+
+    Returns ``'declared'`` when the user declared a ``number_of_radicals`` greater than one,
+    which is the only declaration that attributes open-shell character beyond the multiplicity
+    and which always wins over a measured verdict; ``'derived'`` when the user declared nothing
+    and a measured wavefunction-stability verdict ARC acts on calls for an unrestricted
+    reference; and ``None`` when neither applies, in which case the spin multiplicity alone
+    decides the reference.
+
+    A declared ``number_of_radicals`` of zero or one is not a source: ``is_species_restricted``
+    turns a declaration into an unrestricted reference only above one, so such a declaration
+    attributes no open-shell character. It still blocks a measured verdict from being adopted,
+    which is why it does not fall through to ``'derived'`` either. A verdict ARC reports without
+    acting on it, which is any verdict measured for a species that is not a transition state,
+    likewise decides nothing and is not credited as the source.
+
+    Args:
+        species (ARCSpecies, optional): The species to check.
+
+    Returns: str | None
+        ``'declared'``, ``'derived'``, or ``None``.
+    """
+    number_of_radicals = getattr(species, 'number_of_radicals', None)
+    if number_of_radicals is not None:
+        return 'declared' if number_of_radicals > 1 else None
+    if adopted_reference_is_unrestricted(species):
+        return 'derived'
+    return None
 
 
 def is_species_restricted(obj: JobAdapter,
@@ -303,6 +449,12 @@ def is_species_restricted(obj: JobAdapter,
                           ) -> bool:
     """
     Check whether a species should be executed as restricted or unrestricted.
+
+    A user-declared ``number_of_radicals`` always decides. Only when the user declared
+    nothing does a measured wavefunction-stability verdict enter, and then only an external
+    instability of a restricted reference measured for a transition state, which makes the
+    species unrestricted. That precedence is written once, in
+    ``adopted_reference_is_unrestricted``, and is not restated here.
 
     Args:
         obj: The job adapter object.
@@ -312,12 +464,13 @@ def is_species_restricted(obj: JobAdapter,
         bool: Whether to run as restricted (``True``) or not (``False``).
     """
 
-    if obj.level.method_type in ['force_field', 'composite', 'semiempirical']:
+    if obj.level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
         return True
 
     multiplicity = obj.multiplicity if species is None else species.multiplicity
-    number_of_radicals = obj.species[0].number_of_radicals if species is None else species.number_of_radicals
-    species_label = obj.species[0].label if species is None else species.label
+    species_obj = obj.species[0] if species is None else species
+    number_of_radicals = species_obj.number_of_radicals
+    species_label = species_obj.label
     if multiplicity > 1 or (number_of_radicals is not None and number_of_radicals > 1):
         # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one,
         # or if it is one but the number of radicals is greater than one (e.g., bi-rad singlet)
@@ -326,6 +479,11 @@ def is_species_restricted(obj: JobAdapter,
         if number_of_radicals is not None and number_of_radicals > 1:
             logger.info(f'Using an unrestricted method for species {species_label} which has '
                         f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
+        return False
+    if adopted_reference_is_unrestricted(species_obj):
+        logger.info(f'Using an unrestricted method for species {species_label}, whose wavefunction stability '
+                    f'analysis reported an external instability of its restricted reference and for which no '
+                    f'number_of_radicals was declared.')
         return False
     return True
 
