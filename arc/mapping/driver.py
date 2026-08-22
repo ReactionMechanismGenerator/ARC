@@ -71,6 +71,9 @@ def map_reaction(rxn: ARCReaction,
         if general_map is not None:
             return check_atom_map_and_return(general_map)
         return map_reaction(rxn, backend=backend, flip=True)
+    if rxn.product_dicts and all(product_dict.get('discovered_in_reverse', False)
+                                 for product_dict in rxn.product_dicts):
+        return map_reaction(rxn, backend=backend, flip=True)
     raw_map = try_mapping(rxn)
     if raw_map is None:
         return map_reaction(rxn, backend=backend, flip=True)
@@ -303,7 +306,7 @@ def map_rxn(rxn: ARCReaction,
         p_label_map = rxn.product_dicts[pdi]['p_label_map']
         template_products = rxn.product_dicts[pdi]['products']
     except (IndexError, KeyError) as e:
-        logger.error(f"No valid template maps for reaction {rxn} ({rxn.family}), cannot atom map. Got:\n{e}")
+        logger.debug(f"No valid template maps for reaction {rxn} ({rxn.family}) in this orientation. Got:\n{e}")
         return None
     try:
         template_order = get_template_product_order(rxn, template_products)
@@ -311,7 +314,7 @@ def map_rxn(rxn: ARCReaction,
         if rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < MAX_PDI:
             return map_rxn(rxn, backend=backend, product_dict_index_to_try=pdi + 1)
         else:
-            logger.error(f'No valid template order for reaction {rxn} ({rxn.family}), cannot atom map.')
+            logger.debug(f'No valid template order for reaction {rxn} ({rxn.family}) in this orientation.')
             return None
 
     updated_p_label_map = reorder_p_label_map(p_label_map=p_label_map,
