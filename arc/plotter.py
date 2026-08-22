@@ -31,6 +31,7 @@ from arc.common import (NUMBER_BY_SYMBOL,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
                         )
+from arc.checks.common import TS_IRC_FAILED_MARKER, get_ts_validation_comment
 from arc.exceptions import InputError
 from arc.level import Level
 from arc.parser.parser import parse_trajectory
@@ -555,7 +556,10 @@ def draw_kinetics_plots(rxn_list: list,
                                                                             T=T,
                                                                             )
                                        for T in temperatures]})
-            _draw_kinetics_plots(rxn.label, arc_k, temperatures, rmg_rxns, units, pp)
+            rxn_plot_label = rxn.label
+            if get_ts_validation_comment(rxn.ts_species) is not None:
+                rxn_plot_label = f'{rxn.label}\n{TS_IRC_FAILED_MARKER}'
+            _draw_kinetics_plots(rxn_plot_label, arc_k, temperatures, rmg_rxns, units, pp)
 
     if path is not None:
         pp.close()
@@ -883,11 +887,18 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
                     f'TS optical isomers: {rxn.ts_species.optical_isomers}\n\n' \
                     f'Optimized TS geometry:\n{xyz_to_str(rxn.ts_species.final_xyz)}\n\n' \
                     f'{rxn.ts_species.long_thermo_description}'
+        ts_validation = get_ts_validation_comment(rxn.ts_species)
+        arrhenius_comment = ''
+        if ts_validation is not None:
+            long_desc = f'{ts_validation}\n\n{long_desc}'
+            arrhenius_comment = f",\n                         comment=\"{ts_validation}\""
+            logger.error(f'Saving a rate coefficient for reaction {rxn.label} in the kinetics library although its '
+                         f'TS failed the IRC check. {ts_validation}')
         rxn_txt = f"""entry(
     index = {i},
     label = "{rxn.label}",
     kinetics = Arrhenius(A=({rxn.kinetics['A'][0]:.2e}, '{rxn.kinetics['A'][1]}'), n={rxn.kinetics['n']:.2f}, Ea=({rxn.kinetics['Ea'][0]:.2f}, '{rxn.kinetics['Ea'][1]}'),
-                         T0=(1, 'K'), Tmin=({T_min}, 'K'), Tmax=({T_max}, 'K')),
+                         T0=(1, 'K'), Tmin=({T_min}, 'K'), Tmax=({T_max}, 'K'){arrhenius_comment}),
     longDesc = 
 \"\"\"
 {long_desc}
