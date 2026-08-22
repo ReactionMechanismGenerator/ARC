@@ -1559,5 +1559,77 @@ class TestInitializeLogDeferredWarnings(unittest.TestCase):
         self.assertEqual(self._read_log().count('only flushed once'), 1)
 
 
+class TestCheckRemotePathsOfPathNamingAdapters(unittest.TestCase):
+    """
+    An adapter whose input file names a path on the server cannot run on a server that has no
+    absolute ``path``, and the shipped remote server examples had no ``path`` at all, so this is
+    reported at startup rather than when the first TS search reaches it.
+    """
+
+    def _use_servers(self, servers_dict):
+        """Point arc.common at ``servers_dict`` for the duration of one test."""
+        original = common.servers
+        common.servers = servers_dict
+        self.addCleanup(setattr, common, 'servers', original)
+
+    def test_a_server_without_a_path_is_reported(self):
+        """The ordinary remote configuration, since no shipped server example defined a path."""
+        self._use_servers({'remote': {'cluster_soft': 'PBS', 'address': 'host.edu', 'un': 'user'}})
+        with self.assertRaises(SettingsError) as raised:
+            common.check_remote_paths_of_path_naming_adapters(ess_settings={'orca': ['remote']},
+                                                              ts_adapters=['heuristics', 'orca_neb'])
+        self.assertIn('remote', str(raised.exception))
+        self.assertIn('path', str(raised.exception))
+
+    def test_an_absolute_path_is_accepted(self):
+        """A correctly configured server must not be reported."""
+        self._use_servers({'remote': {'cluster_soft': 'PBS', 'address': 'host.edu', 'un': 'user',
+                                      'path': '/home'}})
+        common.check_remote_paths_of_path_naming_adapters(ess_settings={'orca': ['remote']},
+                                                          ts_adapters=['orca_neb'])
+
+    def test_a_relative_path_is_reported(self):
+        """A relative path is what the remote directories are rooted at, and Orca cannot follow it."""
+        self._use_servers({'remote': {'cluster_soft': 'PBS', 'address': 'host.edu', 'un': 'user',
+                                      'path': 'runs'}})
+        with self.assertRaises(SettingsError):
+            common.check_remote_paths_of_path_naming_adapters(ess_settings={'orca': ['remote']},
+                                                              ts_adapters=['orca_neb'])
+
+    def test_an_adapter_that_is_not_used_is_not_checked(self):
+        """A server that no path-naming adapter runs on must not block a run that never uses one."""
+        self._use_servers({'remote': {'cluster_soft': 'PBS', 'address': 'host.edu', 'un': 'user'}})
+        common.check_remote_paths_of_path_naming_adapters(ess_settings={'orca': ['remote']},
+                                                          ts_adapters=['heuristics', 'autotst'])
+
+    def test_the_local_server_is_not_checked(self):
+        """A local job reads its files from the directory ARC wrote them to, with no remote path."""
+        self._use_servers({'local': {'cluster_soft': 'local', 'un': 'user'}})
+        common.check_remote_paths_of_path_naming_adapters(ess_settings={'orca': ['local']},
+                                                          ts_adapters=['orca_neb'])
+
+    def test_the_adapter_is_checked_on_the_ess_key_it_resolves_its_server_from(self):
+        """
+        OrcaNEBAdapter is given its server while it is still an OrcaAdapter, so it runs wherever
+        orca runs. Keying the check on "orca_neb" instead would never match a real configuration.
+        """
+        self._use_servers({'remote': {'cluster_soft': 'PBS', 'address': 'host.edu', 'un': 'user'}})
+        common.check_remote_paths_of_path_naming_adapters(ess_settings={'orca_neb': ['remote']},
+                                                          ts_adapters=['orca_neb'])
+
+    def test_check_ess_settings_runs_the_check(self):
+        """The startup path must reach it, which is the whole point of validating there."""
+        self._use_servers({'remote': {'cluster_soft': 'PBS', 'address': 'host.edu', 'un': 'user'}})
+        with self.assertRaises(SettingsError):
+            common.check_ess_settings(ess_settings={'orca': ['remote']}, ts_adapters=['orca_neb'])
+
+    def test_the_shipped_server_examples_define_an_absolute_path(self):
+        """The documented configuration must be a working one, not the one that fails."""
+        for name in ['server1', 'server2', 'server3']:
+            path = settings['servers'][name].get('path')
+            self.assertIsNotNone(path, f'{name} has no "path" entry')
+            self.assertTrue(os.path.isabs(path), f'{name} has a relative path: {path!r}')
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

@@ -56,7 +56,6 @@ HALF_CIRCLE = 180.0
 
 default_job_types, servers, supported_ess = settings['default_job_types'], settings['servers'], settings['supported_ess']
 
-
 def initialize_job_types(job_types: dict | None = None,
                          specific_job_type: str = '',
                          ) -> dict:
@@ -121,7 +120,9 @@ def initialize_job_types(job_types: dict | None = None,
     return job_types
 
 
-def check_ess_settings(ess_settings: dict | None = None) -> dict:
+def check_ess_settings(ess_settings: dict | None = None,
+                       ts_adapters: list[str] | None = None,
+                       ) -> dict:
     """
     A helper function to convert servers in the ess_settings dict to lists
     Assists in troubleshooting job and trying a different server
@@ -129,9 +130,15 @@ def check_ess_settings(ess_settings: dict | None = None) -> dict:
 
     Args:
         ess_settings (dict, optional): ARC's ESS settings dictionary.
+        ts_adapters (list, optional): The TS search adapters this run will use, used to check the
+                                      remote paths of the servers they will run on. ``None``
+                                      selects the default set from the settings.
 
     Returns: dict
         An updated ARC ESS dictionary.
+
+    Raises:
+        SettingsError: If an ESS, a server, or the remote path of a server is unusable.
     """
     if ess_settings is None or not ess_settings:
         return dict()
@@ -155,8 +162,53 @@ def check_ess_settings(ess_settings: dict | None = None) -> dict:
             if not isinstance(server, bool) and server.lower() not in [s.lower() for s in servers.keys()]:
                 server_names = [name for name in servers.keys()]
                 raise SettingsError(f'Recognized servers are {server_names}. Got: {server}')
+    check_remote_paths_of_path_naming_adapters(ess_settings=settings_dict, ts_adapters=ts_adapters)
     logger.info(f'\nUsing the following ESS settings:\n{pprint.pformat(settings_dict)}\n')
     return settings_dict
+
+
+def check_remote_paths_of_path_naming_adapters(ess_settings: dict,
+                                               ts_adapters: list[str] | None = None,
+                                               ) -> None:
+    """
+    Check that every server an adapter which names a path on the server will run on has an
+    absolute ``path``.
+
+    Reported here, before any calculation is spawned, because the alternative is reaching it when
+    the first reaction gets to its TS search: the adapter cannot build a usable input file for
+    such a server, so the failure arrives once per run either way, and arriving at startup is the
+    difference between a settings error the reader can act on and a run that has already spent
+    time on jobs it will not be able to use.
+
+    A server that is not in the ``servers`` settings is not reported here, since
+    :func:`check_ess_settings` has already rejected it by name.
+
+    Args:
+        ess_settings (dict): ARC's ESS settings dictionary, each ESS mapped to a list of servers.
+        ts_adapters (list, optional): The TS search adapters this run will use. ``None`` selects
+                                      the default set from the settings.
+
+    Raises:
+        SettingsError: If such an adapter would run on a server whose ``path`` is missing or not
+                       absolute.
+    """
+    adapters = settings.get('ts_adapters', list()) if ts_adapters is None else ts_adapters
+    adapters = [adapter.lower() for adapter in adapters if isinstance(adapter, str)]
+    if 'orca_neb' not in adapters:
+        return
+    for server in ess_settings.get('orca', list()):
+        if not isinstance(server, str) or server.lower() == 'local':
+            continue
+        server_key = next((key for key in servers.keys() if key.lower() == server.lower()), None)
+        if server_key is None:
+            continue
+        path = servers[server_key].get('path')
+        if not path or not os.path.isabs(path):
+            raise SettingsError(f'Server "{server}" has no absolute "path" entry in the settings, '
+                                f'got {path!r}, but the "orca_neb" adapter will run on it and its '
+                                f'input file must name a path on the server. Set "path" for this '
+                                f'server to the absolute directory holding the user directories, '
+                                f'e.g. "/home", or remove "orca_neb" from "ts_adapters".')
 
 
 def initialize_log(log_file: str,
