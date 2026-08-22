@@ -7,9 +7,9 @@ This module contains unit tests of the arc.job.adapters.molpro module
 
 import os
 import shutil
+import tempfile
 import unittest
 
-from arc.common import ARC_TESTING_PATH
 from arc.job.adapters.molpro import MolproAdapter
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames
@@ -26,11 +26,13 @@ class TestMolproAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_molpro_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
         cls.job_1 = MolproAdapter(execution_type='queue',
                                   job_type='sp',
                                   level=Level(method='CCSD(T)-F12', basis='cc-pVTZ-f12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_1'),
+                                  project_directory=os.path.join(cls.scratch_dir, 'test_MolproAdapter_1'),
                                   species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                   testing=True,
                                   )
@@ -38,7 +40,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='opt',
                                   level=Level(method='CCSD(T)', basis='cc-pVQZ'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_2'),
+                                  project_directory=os.path.join(cls.scratch_dir, 'test_MolproAdapter_2'),
                                   species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                   testing=True,
                                   )
@@ -46,7 +48,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MRCI', basis='aug-cc-pvtz-f12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_3'),
+                                  project_directory=os.path.join(cls.scratch_dir, 'test_MolproAdapter_3'),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -57,7 +59,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MRCI-F12', basis='aug-cc-pvtz-f12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_4'),
+                                  project_directory=os.path.join(cls.scratch_dir, 'test_MolproAdapter_4'),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -68,7 +70,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MP2_CASSCF_MRCI-F12', basis='aug-cc-pVTZ-F12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_5'),
+                                  project_directory=os.path.join(cls.scratch_dir, 'test_MolproAdapter_5'),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -79,7 +81,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MP2_CASSCF_RS2C', basis='aug-cc-pVTZ'),  # CASPT2
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_6'),
+                                  project_directory=os.path.join(cls.scratch_dir, 'test_MolproAdapter_6'),
                                   species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
                                                                              O      1.01258   -0.17285    0.00000
                                                                              H     -0.93116   -0.20169    0.00000"""],
@@ -90,7 +92,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='MP2_CASSCF_RS2C', basis='aug-cc-pVTZ'),  # CASPT2
                                   project='test',
-                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter_7'),
+                                  project_directory=os.path.join(cls.scratch_dir, 'test_MolproAdapter_7'),
                                   species=[ARCSpecies(label='N', xyz=["""N     0.0    0.0    0.0"""],
                                                       multiplicity=4,
                                                       active={'occ': [3, 1, 1, 0, 1, 0, 0, 0],
@@ -461,16 +463,6 @@ int;
                                     'make_x': False}]
         self.assertEqual(self.job_1.files_to_upload, job_1_files_to_upload)
         self.assertEqual(self.job_1.files_to_download, job_1_files_to_download)
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
-        """
-        for attr in vars(cls).values():
-            if isinstance(attr, MolproAdapter):
-                shutil.rmtree(attr.project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':

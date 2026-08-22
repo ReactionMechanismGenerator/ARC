@@ -8,9 +8,9 @@ This module contains unit tests of the arc.job.adapters.cfour module
 import math
 import os
 import shutil
+import tempfile
 import unittest
 
-from arc.common import ARC_TESTING_PATH
 from arc.job.adapters.cfour import CFourAdapter
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames
@@ -27,6 +27,8 @@ class TestCFourAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_cfour_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
         xyz = {'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
                'coords': ((2.094965350070438, -0.6820312883655302, 0.41738812543556636),
@@ -45,7 +47,7 @@ class TestCFourAdapter(unittest.TestCase):
                                  job_type='sp',
                                  level=Level(method='CCSD(T)', basis='cc-pVTZ'),
                                  project='test',
-                                 project_directory=os.path.join(ARC_TESTING_PATH, 'test_CFourAdapter'),
+                                 project_directory=os.path.join(cls.scratch_dir, 'test_CFourAdapter'),
                                  species=[ARCSpecies(label='spc1', xyz=xyz)],
                                  testing=True,
                                  )
@@ -137,14 +139,6 @@ R8=0.9724
                                     'make_x': False}]
         self.assertEqual(self.job_1.files_to_upload, job_1_files_to_upload)
         self.assertEqual(self.job_1.files_to_download, job_1_files_to_download)
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
-        """
-        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_CFourAdapter'), ignore_errors=True)
 
 
 if __name__ == '__main__':

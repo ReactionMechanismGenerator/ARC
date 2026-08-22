@@ -89,13 +89,13 @@ class TestJobAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        for dir_name in ('test_JobAdapter', 'test_JobAdapter_scan', 'test_JobAdapter_ServerTimeLimit'):
-            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, dir_name), ignore_errors=True)
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_job_adapter_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
         cls.job_1 = GaussianAdapter(execution_type='queue',
                                     job_type='conf_opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                    project_directory=os.path.join(cls.scratch_dir, 'test_JobAdapter'),
                                     species=[ARCSpecies(label='spc1',
                                                         xyz=['O 0 0 1',
                                                              'O 0 0 2',
@@ -124,7 +124,7 @@ class TestJobAdapter(unittest.TestCase):
                                     job_type='opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                    project_directory=os.path.join(cls.scratch_dir, 'test_JobAdapter'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
@@ -151,7 +151,7 @@ class TestJobAdapter(unittest.TestCase):
                                     torsions=[[1, 2, 3, 4]],
                                     level=Level(method='wb97xd', basis='def2-tzvp'),
                                     project='test_scans',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_scan'),
+                                    project_directory=os.path.join(cls.scratch_dir, 'test_JobAdapter_scan'),
                                     species=[cls.spc_3a, cls.spc_3b, cls.spc_3c, cls.spc_3d, cls.spc_3e, cls.spc_3f],
                                     testing=True,
                                     )
@@ -159,12 +159,12 @@ class TestJobAdapter(unittest.TestCase):
                                     job_type='opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                    project_directory=os.path.join(cls.scratch_dir, 'test_JobAdapter'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
         # Copy the PBS time limit fixture into the directory structure the adapter expects.
-        stl_dir = os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit')
+        stl_dir = os.path.join(cls.scratch_dir, 'test_JobAdapter_ServerTimeLimit')
         err_dest = os.path.join(stl_dir, 'calcs', 'Species', 'spc1', 'opt_101')
         os.makedirs(err_dest, exist_ok=True)
         shutil.copy(os.path.join(ARC_TESTING_PATH, 'server', 'pbs', 'timelimit', 'err.txt'),
@@ -288,7 +288,7 @@ class TestJobAdapter(unittest.TestCase):
                                         job_type='opt',
                                         level=Level(method='cbs-qb3'),
                                         project='test',
-                                        project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                        project_directory=os.path.join(self.scratch_dir, 'test_JobAdapter'),
                                         species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                         testing=True,
                                         args={'keyword': {'general': 'val_tst_1 val_tst_2     val_tst_3'},
