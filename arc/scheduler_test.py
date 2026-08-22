@@ -2013,5 +2013,115 @@ class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
             self.build_scheduler(rxn, r + p + [collider], 'adaptive_collision')
 
 
-if __name__ == '__main__':
-    unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
+class TestTroubleshootOptJobIdentity(unittest.TestCase):
+    """
+    Test that opt troubleshooting acts on the job that actually failed, rather than re-deriving one
+    from the highest job number. Job numbers are only monotonic within a single execution, so a
+    restarted project holds several numbering eras at once.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
+        cls.xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+
+    def build_sched(self, name: str):
+        """Build a minimal Scheduler holding one species."""
+        spc = ARCSpecies(label='spc_test', xyz=self.xyz, multiplicity=1, charge=0, compute_thermo=False)
+        project_directory = os.path.join(ARC_PATH, 'Projects', f'arc_test_optjob_{name}')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=f'test_optjob_{name}', ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types={'conf_opt': False, 'opt': True, 'fine': True, 'freq': True,
+                                     'sp': True, 'rotors': False, 'irc': False},
+                          )
+        sched.trsh_ess_jobs = True
+        return sched
+
+    @staticmethod
+    def make_job(job_name: str, fine: bool, ess_done: bool):
+        """Build a stand-in opt job. Only the attributes troubleshoot_opt_jobs reads are set."""
+        job = MagicMock()
+        job.job_name = job_name
+        job.fine = fine
+        job.ess_trsh_methods = list()
+        job.job_status = ['done', {'status': 'done' if ess_done else 'errored',
+                                   'keywords': [] if ess_done else ['SCF'],
+                                   'error': '' if ess_done else 'SCF failed', 'line': ''}]
+        return job
+
+    def register(self, sched, jobs):
+        """Register opt jobs on the scheduler in the given (insertion) order."""
+        sched.job_dict['spc_test'] = {'opt': {j.job_name: j for j in jobs}}
+
+    def test_restarted_project_does_not_troubleshoot_a_stale_higher_numbered_job(self):
+        """The reported crash: a stale high-numbered done+fine job must not be picked over the real failure."""
+        sched = self.build_sched('stale')
+        stale = self.make_job('opt_a9755', fine=True, ess_done=True)     # old era, higher number, looks healthy
+        failed = self.make_job('opt_a2098', fine=True, ess_done=False)   # actually latest, actually failed
+        self.register(sched, [stale, failed])
+        with patch.object(Scheduler, 'troubleshoot_ess') as mock_trsh_ess:
+            sched.troubleshoot_opt_jobs(label='spc_test', job=failed)
+        mock_trsh_ess.assert_called_once()
+        self.assertIs(mock_trsh_ess.call_args.kwargs['job'], failed)
+
+    def test_get_latest_opt_job_uses_insertion_order_not_job_number(self):
+        """Recency must come from insertion order; the highest number can belong to an old era."""
+        sched = self.build_sched('latest')
+        stale = self.make_job('opt_a9755', fine=True, ess_done=True)
+        newest = self.make_job('opt_a2098', fine=True, ess_done=True)
+        self.register(sched, [stale, newest])
+        self.assertIs(sched.get_latest_opt_job('spc_test'), newest)
+
+    def test_get_preceding_opt_job_matches_by_identity(self):
+        """The predecessor is resolved by the job's identity, not by decrementing its number."""
+        sched = self.build_sched('prev')
+        first = self.make_job('opt_a9755', fine=False, ess_done=True)
+        second = self.make_job('opt_a2095', fine=False, ess_done=True)
+        third = self.make_job('opt_a2098', fine=True, ess_done=False)
+        self.register(sched, [first, second, third])
+        self.assertIs(sched.get_preceding_opt_job('spc_test', third), second)
+        self.assertIsNone(sched.get_preceding_opt_job('spc_test', first))
+
+    def test_get_preceding_opt_job_returns_none_for_unregistered_job(self):
+        """A job that is not registered for this species has no predecessor."""
+        sched = self.build_sched('unreg')
+        registered = self.make_job('opt_a2095', fine=False, ess_done=True)
+        self.register(sched, [registered])
+        stranger = self.make_job('opt_a3000', fine=True, ess_done=False)
+        self.assertIsNone(sched.get_preceding_opt_job('spc_test', stranger))
+
+    def test_stale_high_numbered_job_is_not_selected_when_no_job_is_passed(self):
+        """
+        Reproduces the reported crash using the original call signature.
+
+        A restarted project holds a stale ``opt_a9755`` (done, fine) alongside the real, newer
+        ``opt_a2098`` that failed. Selecting by highest job number picks the stale one, finds it
+        healthy, and raises ``SchedulerError: opt job ... seems right, yet "run_opt_job" was
+        called``, which aborts the whole run.
+        """
+        sched = self.build_sched('fallback')
+        stale = self.make_job('opt_a9755', fine=True, ess_done=True)
+        failed = self.make_job('opt_a2098', fine=True, ess_done=False)
+        self.register(sched, [stale, failed])
+        with patch.object(Scheduler, 'troubleshoot_ess') as mock_trsh_ess:
+            sched.troubleshoot_opt_jobs(label='spc_test')
+        mock_trsh_ess.assert_called_once()
+        self.assertIs(mock_trsh_ess.call_args.kwargs['job'], failed)
+
+    def test_no_opt_jobs_does_not_raise(self):
+        """With no opt job to troubleshoot, log and return rather than raising."""
+        sched = self.build_sched('none')
+        sched.job_dict['spc_test'] = {'opt': dict()}
+        self.assertIsNone(sched.troubleshoot_opt_jobs(label='spc_test'))
+
+
