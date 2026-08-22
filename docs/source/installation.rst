@@ -175,14 +175,16 @@ defaults. Missing values fall back to ARC's repository defaults.
 Remote Servers and SSH
 ----------------------
 
-Use SSH keys for remote servers. A remote server entry needs:
+Remote servers are reached over SSH. A remote server entry needs:
 
 * ``cluster_soft`` - one of the cluster software names configured in ARC;
 * ``address`` - SSH hostname;
-* ``un`` - username;
-* ``key`` - path to the private SSH key on the machine running ARC.
+* ``un`` - username.
 
-Example:
+Authentication is by SSH key. The recommended setup is to load the key into an
+ssh-agent and leave the server entry without a ``key``, in which case ARC falls back
+to the agent and then to the default key paths (``~/.ssh/id_rsa``,
+``~/.ssh/id_ecdsa``, ``~/.ssh/id_ed25519``):
 
 .. code-block:: python
 
@@ -191,11 +193,36 @@ Example:
            'cluster_soft': 'Slurm',
            'address': 'login.cluster.edu',
            'un': 'my_user',
-           'key': '/home/my_user/.ssh/id_rsa',
            'cpus': 32,
            'memory': 128,
        },
    }
+
+Two optional keys control the connection:
+
+* ``key`` - the path, on the machine running ARC, of the SSH **private** key to
+  authenticate with. Set it only when you are not using an agent. The file must
+  exist and be readable, or the connection fails.
+* ``strict_host_key_checking`` - ``False`` by default, meaning a host that is
+  absent from ``known_hosts`` is only warned about. Set it to ``True`` to refuse
+  such hosts outright, having first seeded ``~/.ssh/known_hosts``.
+
+.. code-block:: python
+
+   servers = {
+       'my_slurm': {
+           'cluster_soft': 'Slurm',
+           'address': 'login.cluster.edu',
+           'un': 'my_user',
+           'key': '/home/my_user/.ssh/id_ed25519',
+           'strict_host_key_checking': True,
+           'cpus': 32,
+           'memory': 128,
+       },
+   }
+
+See :ref:`remote_submission` for the full details, including how to do this from
+the Docker image.
 
 Local and HPC Execution
 -----------------------

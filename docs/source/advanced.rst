@@ -289,7 +289,6 @@ Server entries can also define node limits:
            'cluster_soft': 'Slurm',
            'address': 'login.cluster.edu',
            'un': 'my_user',
-           'key': '/home/my_user/.ssh/id_rsa',
            'cpus': 32,
            'memory': 128,
        },

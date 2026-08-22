@@ -58,6 +58,7 @@ Reference
    installation
    docker
    running
+   remote_submission
    how_it_works
    input_reference
    examples
