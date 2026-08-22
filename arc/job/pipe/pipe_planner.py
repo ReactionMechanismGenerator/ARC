@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 pipe_settings = settings['pipe_settings']
+rotor_scan_resolution = settings['rotor_scan_resolution']
 
 
 class PipePlanner:
@@ -308,7 +309,8 @@ class PipePlanner:
             job_type='scan',
             build_tasks_fn=lambda adapter: build_rotor_scan_1d_tasks(
                 self.sched.species_dict[label], label, rotor_indices,
-                self._level_dict(level), adapter, self._memory_mb),
+                self._level_dict(level), adapter, self._memory_mb,
+                scan_res=rotor_scan_resolution),
             log_msg=f'Routing {len(rotor_indices)} 1D rotor scans for {label} to pipe mode',
         )
         return set(rotor_indices) if submitted else set()
