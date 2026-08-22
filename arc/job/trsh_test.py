@@ -15,7 +15,7 @@ import arc.job.trsh as trsh
 from arc.common import ARC_TESTING_PATH, save_yaml_file
 from arc.exceptions import TrshError
 from arc.imports import settings
-from arc.parser.parser import parse_1d_scan_energies
+from arc.parser.parser import parse_1d_scan_energies, parse_normal_mode_displacement
 
 supported_ess = settings["supported_ess"]
 
@@ -1015,6 +1015,19 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(conformers, expected_conformers)
         self.assertEqual(output_errors, list())
         self.assertEqual(output_warnings, list())
+
+    def test_trsh_negative_freq_for_an_ess_without_normal_mode_displacements(self):
+        """Test that an ESS output file reporting no normal mode displacements is reported, not indexed."""
+        for file_name in ['orca_neg_freq_ts.out', 'orca_example_freq.log', 'orca6_example.out',
+                          'CH2O_freq_molpro.out', 'C2H6_freq_QChem.out', 'CH2O_freq_terachem.dat']:
+            log_file = os.path.join(ARC_TESTING_PATH, 'freq', file_name)
+            self.assertEqual(parse_normal_mode_displacement(log_file_path=log_file), (None, None))
+            current_neg_freqs_trshed, conformers, output_errors, output_warnings = \
+                trsh.trsh_negative_freq(label='spc', log_file=log_file)
+            self.assertEqual(current_neg_freqs_trshed, list())
+            self.assertEqual(conformers, list())
+            self.assertEqual(output_errors, list())
+            self.assertEqual(output_warnings, list())
 
     def test_scan_quality_check(self):
         """Test scan quality check for 1D rotor"""
