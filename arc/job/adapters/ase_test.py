@@ -8,11 +8,12 @@ These tests verify IO and logic without executing the external ASE script in CI.
 
 import os
 import shutil
+import tempfile
 import unittest
 from unittest.mock import patch
 import numpy as np
 
-from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
+from arc.common import read_yaml_file, save_yaml_file
 from arc.job.adapters.ase_adapter import ASEAdapter
 from arc.species.species import ARCSpecies
 from arc.job.adapters.scripts.ase_script import to_kJmol, numpy_vibrational_analysis, is_linear
@@ -29,9 +30,8 @@ class TestASEAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.project_directory = os.path.join(ARC_TESTING_PATH, 'test_ASEAdapter')
-        if not os.path.exists(cls.project_directory):
-            os.makedirs(cls.project_directory)
+        cls.project_directory = tempfile.mkdtemp(prefix='arc_test_ase_')
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
 
         xyz = {'symbols': ('O', 'H', 'H'),
                'isotopes': (16, 1, 1),
@@ -203,14 +203,6 @@ class TestASEAdapter(unittest.TestCase):
         self.assertEqual(len(results['freqs']), 4)
         for i, val in enumerate(freqs[5:]):
             self.assertAlmostEqual(results['freqs'][i], val, delta=1e-3)
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
-        """
-        shutil.rmtree(cls.project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':
