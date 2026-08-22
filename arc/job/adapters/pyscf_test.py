@@ -12,10 +12,11 @@ script (``pyscf_script.py``) are skipped unless PySCF is importable.
 import importlib.util
 import os
 import shutil
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
+from arc.common import read_yaml_file, save_yaml_file
 from arc.job.adapters.pyscf_adapter import PySCFAdapter
 from arc.level import Level
 from arc.parser.adapters.yaml import YAMLParser
@@ -35,9 +36,8 @@ class TestPySCFAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.project_directory = os.path.join(ARC_TESTING_PATH, 'test_PySCFAdapter')
-        if not os.path.exists(cls.project_directory):
-            os.makedirs(cls.project_directory)
+        cls.project_directory = tempfile.mkdtemp(prefix='arc_test_pyscf_')
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
 
         water_xyz = {'symbols': ('O', 'H', 'H'),
                      'isotopes': (16, 1, 1),
@@ -241,14 +241,6 @@ class TestPySCFAdapter(unittest.TestCase):
         self.assertEqual(normalize_basis('def2tzvp'), 'def2-tzvp')
         self.assertEqual(normalize_basis('def2SVP'), 'def2-svp')
         self.assertEqual(normalize_basis('cc-pvtz'), 'cc-pvtz')
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests.
-        """
-        shutil.rmtree(cls.project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':
