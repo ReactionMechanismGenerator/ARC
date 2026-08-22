@@ -9,15 +9,14 @@ import math
 import os
 import shutil
 import subprocess
+import tempfile
 import unittest
-from unittest import mock
+import unittest.mock as mock
 
-from arc.common import ARC_TESTING_PATH, get_logger, read_yaml_file, save_yaml_file
+from arc.common import read_yaml_file, save_yaml_file
 import arc.job.adapters.ts.kinbot_ts as kinbot_ts
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
-
-logger = get_logger()
 
 
 def kinbot_list_to_coords(structure: list) -> list:
@@ -39,7 +38,8 @@ class TestKinBotAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.project_dir = os.path.join(ARC_TESTING_PATH, 'test_KinBot')
+        cls.project_dir = tempfile.mkdtemp(prefix='arc_test_kinbot_')
+        cls.addClassCleanup(shutil.rmtree, cls.project_dir, ignore_errors=True)
 
     def setUp(self):
         """
@@ -49,21 +49,9 @@ class TestKinBotAdapter(unittest.TestCase):
                                  r_species=[ARCSpecies(label='CC[O]', smiles='CC[O]')],
                                  p_species=[ARCSpecies(label='[CH2]CO', smiles='[CH2]CO')])
 
-    def _remove_test_dir(self, path: str):
-        """A helper function to remove a single test's project directory (and the shared
-        parent directory if it is empty). Tests may run in parallel (pytest-xdist), so
-        each test must only ever remove its own subdirectory."""
-        shutil.rmtree(path, ignore_errors=True)
-        try:
-            os.rmdir(self.project_dir)
-        except OSError:
-            logger.debug(f'Could not remove shared parent dir {self.project_dir} during teardown '
-                         f'(non-empty or already removed by a parallel worker).')
-
     def get_adapter(self, dir_name: str) -> kinbot_ts.KinBotAdapter:
         """A helper function to instantiate a KinBotAdapter instance."""
         project_directory = os.path.join(self.project_dir, dir_name)
-        self.addCleanup(self._remove_test_dir, project_directory)
         return kinbot_ts.KinBotAdapter(job_type='tsg',
                              reactions=[self.rxn_1],
                              testing=True,
