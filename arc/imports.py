@@ -56,6 +56,49 @@ def resolve_overridden_dependents(settings: dict, local_settings_dict: dict) -> 
                 queue_deferred_warning(msg)
 
 
+_UNUSABLE_OVERLAYS_REPORTED = set()
+
+
+def _report_unusable_overlay(path: str, module: str, error: ImportError, what: str = '') -> None:
+    """
+    Report that a local ~/.arc overlay could not supply a setting, so ARC's default is used.
+
+    An overlay that fails to load leaves ARC running on the repository defaults, which is a
+    working configuration and therefore produces no other symptom: the submit script or the
+    server definitions the user wrote are simply not the ones in use, and a run goes to the
+    wrong cluster or with the wrong resources. Naming the file and the error is what makes that
+    visible instead of silent.
+
+    Whether the overlay file itself loaded decides how loud the report is, since the two cases
+    mean opposite things. A file that loaded but does not define the name is a partial overlay,
+    which is the ordinary way to override one setting and leave the rest alone, and is reported
+    at the debug level. A file that did not load at all, most often because something it imports
+    is not installed, loses every setting in it; that is reported once at the warning level, and
+    queued so it survives the log being initialized later in the run.
+
+    Note that a syntax error in an overlay is not reported here and never reaches this function:
+    it is a ``SyntaxError`` rather than an ``ImportError``, and it propagates out of this module
+    and stops ARC from starting at all.
+
+    Args:
+        path (str): The overlay file that could not be used.
+        module (str): The module name the overlay is imported under.
+        error (ImportError): The import failure.
+        what (str, optional): The name that could not be imported, when the file itself loaded.
+    """
+    if module in sys.modules:
+        logger.debug(f'{path} does not define "{what}", so ARC\'s default is used. '
+                     f'Got {type(error).__name__}: {error}')
+        return
+    if path in _UNUSABLE_OVERLAYS_REPORTED:
+        return
+    _UNUSABLE_OVERLAYS_REPORTED.add(path)
+    msg = f'Could not import {path}, so none of the settings in it are used and ARC\'s defaults ' \
+          f'are used instead. Got {type(error).__name__}: {error}'
+    logger.warning(msg)
+    queue_deferred_warning(msg)
+
+
 # Common imports where the user can optionally put a modified copy of settings.py or submit.py file under ~/.arc
 home = os.getenv("HOME") or os.path.expanduser("~")
 local_arc_path = os.path.join(home, '.arc')
@@ -68,8 +111,8 @@ if os.path.isfile(local_arc_settings_path):
         sys.path.insert(1, local_arc_path)
     try:
         import settings as local_settings
-    except ImportError:
-        pass
+    except ImportError as e:
+        _report_unusable_overlay(local_arc_settings_path, 'settings', e)
     if local_settings:
         local_settings_dict = {key: val for key, val in vars(local_settings).items() if '__' not in key}
         settings.update(local_settings_dict)
@@ -85,16 +128,16 @@ if os.path.isfile(local_arc_submit_path):
         sys.path.insert(1, local_arc_path)
     try:
         from submit import incore_commands as local_incore_commands
-    except ImportError:
-        pass
+    except ImportError as e:
+        _report_unusable_overlay(local_arc_submit_path, 'submit', e, 'incore_commands')
     try:
         from submit import pipe_submit as local_pipe_submit
-    except ImportError:
-        pass
+    except ImportError as e:
+        _report_unusable_overlay(local_arc_submit_path, 'submit', e, 'pipe_submit')
     try:
         from submit import submit_scripts as local_submit_scripts
-    except ImportError:
-        pass
+    except ImportError as e:
+        _report_unusable_overlay(local_arc_submit_path, 'submit', e, 'submit_scripts')
     if local_incore_commands:
         incore_commands.update(local_incore_commands)
     if local_pipe_submit:
@@ -109,7 +152,7 @@ if os.path.isfile(local_arc_inputs_path):
         sys.path.insert(1, local_arc_path)
     try:
         from inputs import input_files as local_input_files
-    except ImportError:
-        pass
+    except ImportError as e:
+        _report_unusable_overlay(local_arc_inputs_path, 'inputs', e, 'input_files')
     if local_input_files:
         input_files.update(local_input_files)

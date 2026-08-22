@@ -2,12 +2,13 @@
 This module contains unit tests for the arc.imports module.
 """
 
+import logging
 import os
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from arc.imports import resolve_overridden_dependents
+from arc.imports import _report_unusable_overlay, resolve_overridden_dependents
 from arc.settings import external_paths
 
 # The finders consult these before ``repo_path``, and CI exports two of them
@@ -131,6 +132,62 @@ class TestResolveOverriddenDependents(unittest.TestCase):
         with patch.dict(os.environ, {'ARC_RITS_CKPT': env_ckpt}):
             resolve_overridden_dependents(settings, local_settings_dict)
         self.assertEqual(settings['RITS_CKPT_PATH'], os.path.abspath(env_ckpt))
+
+
+class TestReportUnusableOverlay(unittest.TestCase):
+    """A ~/.arc overlay that cannot be used must say so, not leave ARC quietly on its defaults."""
+
+    OVERLAY = '/home/user/.arc/submit.py'
+
+    def setUp(self):
+        """Report every overlay afresh, since the warning is emitted once per file per run."""
+        reported = patch('arc.imports._UNUSABLE_OVERLAYS_REPORTED', set())
+        reported.start()
+        self.addCleanup(reported.stop)
+        queued = patch('arc.imports.queue_deferred_warning')
+        self.queued = queued.start()
+        self.addCleanup(queued.stop)
+
+    def _report(self, module, what='submit_scripts'):
+        """Report a failed overlay import, and return the records it logged.
+
+        The levels are read as ``levelno`` rather than ``levelname`` because
+        ``arc.common.initialize_log`` renames the level names process-wide, so
+        ``levelname`` is 'WARNING' or 'Warning: ' depending on whether anything has
+        initialized ARC's log yet.
+        """
+        error = ImportError(f'No module named {module!r}')
+        with self.assertLogs('arc', level='DEBUG') as captured:
+            _report_unusable_overlay(self.OVERLAY, module, error, what)
+        return captured.records
+
+    def test_a_file_that_did_not_load_is_a_warning(self):
+        """Every setting in the file is lost, and nothing else in the run says so."""
+        records = self._report('a_module_that_is_not_loaded')
+        self.assertEqual([record.levelno for record in records], [logging.WARNING])
+        self.assertIn(self.OVERLAY, records[0].getMessage())
+        self.assertIn('ImportError', records[0].getMessage())
+
+    def test_a_file_that_did_not_load_is_queued_for_the_log_file(self):
+        """The overlay is read before the log exists, so the warning has to survive until it does."""
+        self._report('a_module_that_is_not_loaded')
+        self.queued.assert_called_once()
+        self.assertIn(self.OVERLAY, self.queued.call_args[0][0])
+
+    def test_a_file_that_did_not_load_is_reported_once(self):
+        """submit.py is imported from three times, and one broken file is one problem."""
+        self._report('a_module_that_is_not_loaded')
+        with patch('arc.imports.logger.warning') as warning:
+            _report_unusable_overlay(self.OVERLAY, 'a_module_that_is_not_loaded',
+                                     ImportError('boom'), 'pipe_submit')
+        warning.assert_not_called()
+
+    def test_a_loaded_file_missing_one_name_is_only_a_debug_line(self):
+        """Overriding one setting and not the rest is the ordinary way to use an overlay."""
+        records = self._report('unittest')
+        self.assertEqual([record.levelno for record in records], [logging.DEBUG])
+        self.assertIn('submit_scripts', records[0].getMessage())
+        self.queued.assert_not_called()
 
 
 if __name__ == '__main__':
