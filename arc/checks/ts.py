@@ -9,7 +9,7 @@ import numpy as np
 from typing import TYPE_CHECKING
 
 from arc.parser import parser
-from arc.checks.nmd import analyze_ts_normal_mode_displacement
+from arc.checks.nmd import DEFAULT_AMPLITUDE, analyze_ts_normal_mode_displacement
 from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
                         extremum_list,
@@ -296,7 +296,7 @@ def check_normal_mode_displacement(reaction: ARCReaction,
         amplitude (float | list): The amplitude of the normal mode displacement motion to check.
                                         If a list, all possible results are returned.
     """
-    amplitude = amplitude or 0.25
+    amplitude = amplitude or DEFAULT_AMPLITUDE
     reaction.ts_species.ts_checks['NMD'] = analyze_ts_normal_mode_displacement(reaction=reaction,
                                                                                job=job,
                                                                                amplitude=amplitude,
