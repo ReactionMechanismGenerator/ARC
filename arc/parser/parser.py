@@ -266,6 +266,12 @@ parse_ess_version = make_parser(
     error_message='Could not parse ESS version from {path}',
 )
 
+parse_bond_orders = make_parser(
+    parse_method='parse_bond_orders',
+    return_type=np.ndarray | None,
+    error_message='Could not parse bond orders from {path}',
+)
+
 
 def parse_1d_scan_energies_from_specific_angle(log_file_path: str,
                                                initial_angle: float,
