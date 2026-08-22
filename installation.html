@@ -191,16 +191,40 @@ IRCs, and transition-state searches. Use <code class="docutils literal notransla
 select it (it resolves to the latest UMA model implemented in ARC).</p>
 <p>UMA runs in its own <code class="docutils literal notranslate"><span class="pre">uma_env</span></code> conda environment and is <strong>not</strong> installed by
 <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install-all</span></code> or in CI, because the model is gated behind a Meta license and a
-HuggingFace token and is heavy to download. To set it up, run:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make<span class="w"> </span>install-uma<span class="w">          </span><span class="c1"># or: bash devtools/install_uma.sh</span>
+HuggingFace token and is heavy to download.</p>
+<p>Set it up in three steps, in this order:</p>
+<ol class="arabic">
+<li><p><strong>Get access to the gated model.</strong> In a browser logged into HuggingFace, accept the
+license at <a class="reference external" href="https://huggingface.co/facebook/UMA">https://huggingface.co/facebook/UMA</a>, then create an access token at
+<a class="reference external" href="https://huggingface.co/settings/tokens">https://huggingface.co/settings/tokens</a> with read access to gated repositories.
+Accepting the license is not by itself enough — the download needs the token.</p></li>
+<li><p><strong>Create the environment:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make<span class="w"> </span>install-uma<span class="w">                      </span><span class="c1"># CPU-only build (the default)</span>
+bash<span class="w"> </span>devtools/install_uma.sh<span class="w"> </span>--gpu<span class="w">    </span><span class="c1"># CUDA machine</span>
 </pre></div>
 </div>
-<p>This creates <code class="docutils literal notranslate"><span class="pre">uma_env</span></code> (<code class="docutils literal notranslate"><span class="pre">fairchem-core</span></code> + <code class="docutils literal notranslate"><span class="pre">sella</span></code> + <code class="docutils literal notranslate"><span class="pre">ase</span></code>), verifies the
-required imports, and walks you through the one-time HuggingFace login for the gated
-model. Before running it, accept the model license at
-<a class="reference external" href="https://huggingface.co/facebook/UMA">https://huggingface.co/facebook/UMA</a> (in a browser logged into HuggingFace) and create
-a token with read access to gated repositories. To also run the UMA model-dependent
-unit tests after installing, use <code class="docutils literal notranslate"><span class="pre">bash</span> <span class="pre">devtools/install_uma.sh</span> <span class="pre">--test</span></code>.</p>
+<p>This creates <code class="docutils literal notranslate"><span class="pre">uma_env</span></code> (<code class="docutils literal notranslate"><span class="pre">fairchem-core</span></code> + <code class="docutils literal notranslate"><span class="pre">sella</span></code> + <code class="docutils literal notranslate"><span class="pre">ase</span></code> + <code class="docutils literal notranslate"><span class="pre">torch</span></code>) and
+verifies the required imports. <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install-uma</span></code> always takes the CPU path; call
+the script directly with <code class="docutils literal notranslate"><span class="pre">--gpu</span></code> on a CUDA machine. Note that <code class="docutils literal notranslate"><span class="pre">fairchem-core</span></code>
+pins its own <code class="docutils literal notranslate"><span class="pre">torch</span></code> version, so the installed one is whatever it requires; the script prints the
+resulting build and warns if <code class="docutils literal notranslate"><span class="pre">--gpu</span></code> was asked for but no CUDA device is visible.</p>
+</li>
+<li><p><strong>Authenticate.</strong> The script prompts for the login at the end. If you skipped it
+(<code class="docutils literal notranslate"><span class="pre">--skip-hf-login</span></code>) or it did not take, authenticate manually — activate the
+environment first, since <code class="docutils literal notranslate"><span class="pre">hf</span></code> is installed inside <code class="docutils literal notranslate"><span class="pre">uma_env</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>activate<span class="w"> </span>uma_env
+hf<span class="w"> </span>auth<span class="w"> </span>login
+</pre></div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">activate</span></code>, not <code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">run</span></code>: <code class="docutils literal notranslate"><span class="pre">conda</span> <span class="pre">run</span></code> gives the child process no
+TTY, so the interactive token prompt cannot read your input. To authenticate
+non-interactively instead, export <code class="docutils literal notranslate"><span class="pre">HF_TOKEN</span></code> before running the install script.
+Confirm with <code class="docutils literal notranslate"><span class="pre">hf</span> <span class="pre">auth</span> <span class="pre">whoami</span></code>.</p>
+</li>
+</ol>
+<p>Re-running the install script is safe; an existing <code class="docutils literal notranslate"><span class="pre">uma_env</span></code> is updated in place. To
+also run the UMA model-dependent unit tests after installing, use
+<code class="docutils literal notranslate"><span class="pre">bash</span> <span class="pre">devtools/install_uma.sh</span> <span class="pre">--test</span></code>.</p>
 </section>
 <section id="personal-configuration">
 <h2>Personal Configuration<a class="headerlink" href="#personal-configuration" title="Link to this heading"></a></h2>
