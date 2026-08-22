@@ -289,6 +289,69 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertIsNone(self.sched1.species_dict[label].freqs)
         self.assertFalse(os.path.isfile(freq_path))
 
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_check_freq_job_does_not_switch_ts_when_nmd_cannot_be_run(self, mock_switch_ts):
+        """
+        Test that a TS is not discarded when the normal mode displacement check cannot be performed.
+
+        The forming and breaking bond indices are indices into the concatenated reactant atoms, so a
+        TS geometry spanning a different number of atoms cannot be analyzed at all. Reporting that as
+        a failed check calls switch_ts() and throws away a TS that was never examined, and switching
+        to another guess cannot change the atom count that made the analysis impossible.
+        """
+        oh_xyz = str_to_xyz("""O       0.48890387    0.00000000    0.00000000
+H      -0.48890387    0.00000000    0.00000000""")
+        h2o_xyz = str_to_xyz("""O      -0.00032832    0.39781490    0.00000000
+H      -0.76330345   -0.19953755    0.00000000
+H       0.76363177   -0.19827735    0.00000000""")
+        ch4_xyz = str_to_xyz("""C      -0.00000000    0.00000000    0.00000000
+H      -0.65055201   -0.77428020   -0.41251879
+H      -0.34927558    0.98159583   -0.32768232
+H      -0.02233792   -0.04887375    1.09087665
+H       1.02216551   -0.15844188   -0.35067554""")
+        ts_xyz = ch4_xyz
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=ch4_xyz),
+                                     ARCSpecies(label='OH', smiles='[OH]', xyz=oh_xyz)],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=str_to_xyz(
+                              """C       0.00000000    0.00000001   -0.00000000
+H       1.06690511   -0.17519582    0.05416493
+H      -0.68531716   -0.83753536   -0.02808565
+H      -0.38158795    1.01273118   -0.02607927""")),
+                                     ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz)])
+        ts_label = 'TS_short'
+        ts_spc = ARCSpecies(label=ts_label, is_ts=True, xyz=ts_xyz, multiplicity=3, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, energy=0.0, xyz=ts_xyz,
+                                     execution_time='0:00:01')]
+        ts_spc.ts_guesses[0].opt_xyz = ts_xyz
+        ts_spc.chosen_ts = 0
+        ts_spc.rxn_index = 0
+        rxn.ts_species = ts_spc
+        rxn.ts_label = ts_label
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_nmd_no_switch_ts')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_nmd_no_switch', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.rxn_dict[0] = rxn
+
+        job = job_factory(job_adapter='gaussian', project='test_nmd_no_switch', ess_settings=self.ess_settings,
+                          species=[ts_spc], job_type='freq',
+                          level=Level(repr=default_levels_of_theory['freq']),
+                          project_directory=project_directory, job_num=105)
+        job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'CHO_neg_freq.out')
+        job.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
+        sched.check_freq_job(label=ts_label, job=job)
+        self.assertIsNone(sched.species_dict[ts_label].ts_checks['NMD'])
+        mock_switch_ts.assert_not_called()
+
     def test_determine_adaptive_level(self):
         """Test the determine_adaptive_level() method"""
         # adaptive_levels get converted to ``Level`` objects in main, but here we skip main and test Scheduler directly
