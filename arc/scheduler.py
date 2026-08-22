@@ -72,6 +72,11 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
+TS_GEOMETRY_JOB_TYPES: tuple[str, ...] = ('opt', 'optfreq', 'composite', 'freq')
+"""tuple: The job types that determine or validate a TS geometry, and may therefore reject a TS guess.
+Refinement job types (``scan``, ``directed_scan``, ``sp``, ``irc``, ``orbitals``, ``onedmin``) report on a
+geometry rather than establish it, so their failure must not discard an otherwise valid TS."""
+
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
     default_job_types, default_ts_adapters, max_ess_trsh, max_rotor_trsh, rotor_scan_resolution, servers_dict = \
     settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
@@ -3811,6 +3816,13 @@ class Scheduler(object):
         """
         Troubleshoot issues related to the electronic structure software, such as conversion.
 
+        When troubleshooting is exhausted, the failed job type determines the response. Only a
+        ``TS_GEOMETRY_JOB_TYPES`` job may reject a TS guess and trigger ``switch_ts()``; a failed
+        refinement job reports on a geometry rather than establishing one, and must not discard a TS
+        that has already passed its checks. An exhausted rotor scan invalidates just that rotor, since
+        leaving its ``'success'`` entry as ``None`` would make ``run_scan_jobs()`` re-spawn the very
+        scan that just exhausted troubleshooting.
+
         Args:
             label (str): The species label.
             job (JobAdapter): The job object to troubleshoot.
@@ -3915,14 +3927,29 @@ class Scheduler(object):
                          cpu_cores=cpu_cores,
                          shift=shift,
                          )
+        elif job.job_type in ('scan', 'directed_scan') and job.rotor_index is not None \
+                and job.rotor_index in self.species_dict[label].rotors_dict.keys():
+            rotor = self.species_dict[label].rotors_dict[job.rotor_index]
+            rotor['success'] = False
+            rotor['invalidation_reason'] = rotor.get('invalidation_reason', '') \
+                + 'ESS troubleshooting attempts exhausted for this rotor scan; '
+            logger.warning(f'Could not troubleshoot the rotor scan of {label} about pivots '
+                           f'{rotor.get("pivots")}. '
+                           f'Invalidating this rotor and keeping {label}; its torsional mode will be '
+                           f'treated approximately.')
         elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted \
-                and conformer is None:
+                and conformer is None and job.job_type in TS_GEOMETRY_JOB_TYPES:
             # Only switch TS guess when a full optimization fails, not when a single
             # conformer search job fails. Other conformers may still be running.
             logger.info(f'TS {label} did not converge. '
                         f'Status is:\n{self.species_dict[label].ts_checks}\n'
                         f'Searching for a better TS conformer...')
             self.switch_ts(label=label)
+        elif self.species_dict[label].is_ts and conformer is None \
+                and job.job_type not in TS_GEOMETRY_JOB_TYPES:
+            logger.error(f'Could not troubleshoot the {job.job_type} job of TS {label}. This job type does not '
+                         f'determine the TS geometry, so the TS is kept and not replaced; {label} will likely be '
+                         f'reported as unconverged.')
         elif conformer is not None and couldnt_trsh:
             logger.warning(f'Could not troubleshoot conformer {conformer} for {label}. '
                            f'Abandoning this conformer; waiting for others to finish.')
