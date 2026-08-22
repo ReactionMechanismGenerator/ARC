@@ -8,6 +8,7 @@ These tests verify IO and logic without executing the external ASE script in CI.
 
 import os
 import shutil
+import tempfile
 import unittest
 from unittest.mock import patch
 import numpy as np
@@ -15,7 +16,7 @@ import numpy as np
 from ase import Atoms
 from ase.calculators.emt import EMT
 
-from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
+from arc.common import read_yaml_file, save_yaml_file
 from arc.job.adapters.ase_adapter import ASEAdapter
 from arc.parser.parser import parse_1d_scan_coords, parse_1d_scan_energies
 from arc.species.species import ARCSpecies
@@ -51,8 +52,8 @@ class TestASEAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.project_directory = os.path.join(ARC_TESTING_PATH, 'test_ASEAdapter')
-        os.makedirs(cls.project_directory, exist_ok=True)  # parallel workers race here
+        cls.project_directory = tempfile.mkdtemp(prefix='arc_test_ase_')
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
 
         xyz = {'symbols': ('O', 'H', 'H'),
                'isotopes': (16, 1, 1),
@@ -402,14 +403,6 @@ class TestASEAdapter(unittest.TestCase):
         data = read_yaml_file(os.path.join(scan_dir, 'input.yml'))
         self.assertEqual(data['torsions'], expected)
         self.assertIsNotNone(data['torsions'][0])
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
-        """
-        shutil.rmtree(cls.project_directory, ignore_errors=True)
 
 
 if __name__ == '__main__':
