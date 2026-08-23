@@ -2,12 +2,26 @@
 # encoding: utf-8
 
 """
-A standalone script to run RMG
-and get kinetic rate coefficients for reactions
+A standalone script to run RMG and get kinetic rate coefficients for reactions.
+
+Output units (per entry returned by ``get_kinetics_from_reactions``):
+    - ``A``:    cm/mol/s convention (s^-1, cm^3/(mol*s), cm^6/(mol^2*s), ...),
+                obtained from the SI value via RMG's
+                ``A.get_conversion_factor_from_si_to_cm_mol_s()`` (the same
+                dimensionality-based factor RMG uses to write Chemkin files),
+                so it is correct regardless of the matched entry's molecularity.
+    - ``n``:    dimensionless temperature exponent.
+    - ``Ea``:   kJ/mol (converted from SI J/mol).
+    - ``T_min``, ``T_max``: K.
 """
 
 import os
+import sys
 from typing import Dict, List, Optional, Tuple
+
+# Make ``from common import ...`` work no matter how this script is invoked
+# (e.g. ``python /abs/path/to/rmg_kinetics.py``, ``cd elsewhere && python ...``).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import parse_command_line_arguments, read_yaml_file, save_yaml_file
 
@@ -35,11 +49,12 @@ def main():
     """
     args = parse_command_line_arguments()
     input_file = args.file
+    output_file = args.output or input_file
     reaction_list = read_yaml_file(path=input_file)
     if not isinstance(reaction_list, list):
         raise ValueError(f'The content of {input_file} must be a list, got {reaction_list} which is a {type(reaction_list)}')
     result = get_rate_coefficients(reaction_list)
-    save_yaml_file(path=input_file, content=result)
+    save_yaml_file(path=output_file, content=result)
 
 
 def get_rate_coefficients(reaction_list: List[Dict]) -> List[Dict]:
@@ -57,61 +72,89 @@ def get_rate_coefficients(reaction_list: List[Dict]) -> List[Dict]:
     for i in range(len(reaction_list)):
         rxn = Reaction(reactants=[Species().from_adjacency_list(adjlist) for adjlist in reaction_list[i]['reactants']],
                        products=[Species().from_adjacency_list(adjlist) for adjlist in reaction_list[i]['products']])
-        reaction_list[i]['kinetics'] = determine_rmg_kinetics(rmgdb=rmgdb, reaction=rxn, dh_rxn298=reaction_list[i]['dh_rxn298'],
-                                                              family=reaction_list[i]['family'] if 'family' in reaction_list[i] else None)
+        reaction_list[i]['kinetics'] = determine_rmg_kinetics(rmgdb=rmgdb, reaction=rxn, dh_rxn298=reaction_list[i]['dh_rxn298'])
     return reaction_list
+
+
+def format_kinetics_comment(family_label: str,
+                            source,
+                            entry,
+                            ) -> str:
+    """
+    Build a provenance comment for a family kinetics hit from what ``get_kinetics`` returns.
+
+    ``get_kinetics`` reports the source as a depository object (e.g. the ``training``
+    depository), the string ``'rate rules'``, or an estimator name, and the matched
+    database ``entry`` (``None`` for an averaged rate-rule estimate). This replaces the
+    former substring test on the kinetics comment prose, which discarded valid rate-rule
+    estimates once the rule tree is built from the training set.
+
+    Args:
+        family_label (str): The RMG family label.
+        source: The kinetics source returned by ``get_kinetics`` (a depository object,
+                or a string such as ``'rate rules'``).
+        entry: The matched database entry, or ``None`` for an averaged estimate.
+
+    Returns:
+        str: A human-readable provenance comment.
+    """
+    source_label = source.label if hasattr(source, 'label') else str(source)
+    comment = f'Family: {family_label}, source: {source_label}'
+    if entry is not None and getattr(entry, 'rank', None) is not None:
+        comment += f', rank: {entry.rank}'
+    return comment
 
 
 def determine_rmg_kinetics(rmgdb: RMGDatabase,
                            reaction: Reaction,
                            dh_rxn298: Optional[float] = None,
-                           family: Optional[str] = None,
                            ) -> List[Dict]:
     """
     Determine kinetics for `reaction` (an RMG Reaction object) from RMG's database, if possible.
     Assigns a list of all matching entries from both libraries and families.
 
+    Note:
+        Only forward-direction matches are reported. Reaction-path degeneracy is applied by
+        RMG's ``get_kinetics`` on the rate-rule path, so this function does not scale again.
+        The kinetics objects returned by RMG are already deep copies, so mutating the reported
+        copy does not affect the loaded ``rmgdb`` instance.
+
     Args:
         rmgdb (RMGDatabase): The RMG database instance.
         reaction (Reaction): The RMG Reaction object.
         dh_rxn298 (float, optional): The heat of reaction at 298 K in J/mol.
-        family (str, optional): The RMG family label.
 
     Returns: list[dict]
-        All matching RMG reactions kinetics (both libraries and families) as a dict of parameters.
+        All matching RMG reaction kinetics (both libraries and families) as a dict of parameters.
+        Empty list if nothing matched.
     """
     rmg_reactions = list()
-    # Libraries:
+    # Libraries (forward direction only; ``is_isomorphic`` defaults to ``either_direction=True``,
+    # which would report a reverse-direction entry's rate as though it were the forward rate).
     for library in rmgdb.kinetics.libraries.values():
-        library_reactions = library.get_library_reactions()
-        for library_reaction in library_reactions:
-            if reaction.is_isomorphic(library_reaction):
+        for library_reaction in library.get_library_reactions():
+            if reaction.is_isomorphic(library_reaction, either_direction=False):
                 library_reaction.comment = f'Library: {library.label}'
                 rmg_reactions.append(library_reaction)
                 break
-    # # Families:
-    A_units = "cm^3/(mol*s)" if len(reaction.reactants) == 2 else "s^-1"
-    fam_list = loop_families(rmgdb, reaction)
+    # Families:
     dh_rxn298 = dh_rxn298 or get_dh_rxn298(rmgdb=rmgdb, reaction=reaction)  # J/mol
-    for family, degenerate_reactions in fam_list:
+    for family, degenerate_reactions in loop_families(rmgdb, reaction):
         for deg_rxn in degenerate_reactions:
-            kinetics_list = family.get_kinetics(reaction=deg_rxn, template_labels=deg_rxn.template, degeneracy=deg_rxn.degeneracy)
-            for kinetics_detailes in kinetics_list:
-                kinetics = kinetics_detailes[0]
-                kinetics.change_rate(deg_rxn.degeneracy)
+            kinetics_list = family.get_kinetics(reaction=deg_rxn, template_labels=deg_rxn.template,
+                                                degeneracy=deg_rxn.degeneracy)
+            for kinetics, source, entry, is_forward in kinetics_list:
+                if not is_forward:
+                    # A reverse-direction depository match is a different rate; skip it.
+                    continue
                 if hasattr(kinetics, 'to_arrhenius'):
                     kinetics = kinetics.to_arrhenius(dh_rxn298)  # Convert ArrheniusEP to Arrhenius
-                kinetics.A.value_si = kinetics.A.value_si * (1e6 if A_units == "cm^3/(mol*s)" else 1)
                 deg_rxn.kinetics = kinetics
-                deg_rxn.comment = f'Family: {deg_rxn.family}'
-                if 'training' in deg_rxn.kinetics.comment:
-                    deg_rxn.comment += ' (training)'
                 deg_rxn.reactants = reaction.reactants
                 deg_rxn.products = reaction.products
                 rxn_copy = deg_rxn.copy()
-                rxn_copy.comment = deg_rxn.comment
-                if 'training' not in rxn_copy.comment:
-                    rmg_reactions.append(rxn_copy)
+                rxn_copy.comment = format_kinetics_comment(deg_rxn.family, source, entry)
+                rmg_reactions.append(rxn_copy)
     return get_kinetics_from_reactions(rmg_reactions)
 
 
@@ -150,11 +193,16 @@ def get_kinetics_from_reactions(reactions: List[Reaction]) -> List[Dict]:
     """
     kinetics_list = list()
     for rxn in reactions:
-        print(f'rxn: {rxn}, kinetics: {rxn.kinetics}, comment: {rxn.comment}')
+        try:
+            rxn_repr = str(rxn)
+        except (TypeError, AttributeError):
+            rxn_repr = '<reaction without reactants/products labels>'
+        print(f'rxn: {rxn_repr}, kinetics: {rxn.kinetics}, comment: {rxn.comment}', file=sys.stderr)
         kinetics_list.append({
             'kinetics': rxn.kinetics.__repr__(),
             'comment': rxn.comment,
-            'A': rxn.kinetics.A.value if hasattr(rxn.kinetics, 'A') else None,
+            'A': (rxn.kinetics.A.value_si * rxn.kinetics.A.get_conversion_factor_from_si_to_cm_mol_s()
+                  if hasattr(rxn.kinetics, 'A') else None),  # SI -> cm/mol/s, as RMG writes Chemkin
             'n': rxn.kinetics.n.value if hasattr(rxn.kinetics, 'n') else None,
             'Ea': rxn.kinetics.Ea.value_si * 0.001 if hasattr(rxn.kinetics, 'Ea') else None,  # kJ/mol
             'T_min': rxn.kinetics.Tmin.value_si if hasattr(rxn.kinetics, 'Tmin') and rxn.kinetics.Tmin is not None else None,
@@ -261,13 +309,20 @@ def load_rmg_database() -> RMGDatabase:
         RMGDatabase: The loaded RMG database.
     """
     rmgdb = RMGDatabase()
-    kinetics_libraries = read_yaml_file(path=os.path.join(os.path.dirname(__file__), 'libraries.yaml'))['kinetics']
-    thermo_libraries = read_yaml_file(path=os.path.join(os.path.dirname(__file__), 'libraries.yaml'))['thermo']
-    rmgdb.load_thermo(path=os.path.join(DB_PATH, 'thermo'), thermo_libraries=thermo_libraries, depository=True, surface=False)
+    libraries = read_yaml_file(path=os.path.join(os.path.dirname(__file__), 'libraries.yaml'))
+    rmgdb.load_thermo(path=os.path.join(DB_PATH, 'thermo'), thermo_libraries=libraries['thermo'], depository=True, surface=False)
     rmgdb.load_kinetics(path=os.path.join(DB_PATH, 'kinetics'),
-                        reaction_libraries=kinetics_libraries,
+                        reaction_libraries=libraries['kinetics'],
                         kinetics_families='default',
                         kinetics_depositories=['training'])
+    # ``load_kinetics`` does not populate the rate-rule tree; RMG builds it after loading
+    # (rmgpy/rmg/main.py) so family estimates don't fall back to a generic ancestor node.
+    # Mirror that here for every non-auto-generated family (auto-generated ones build their
+    # own rules on load).
+    for family in rmgdb.kinetics.families.values():
+        if not family.auto_generated:
+            family.add_rules_from_training(thermo_database=rmgdb.thermo)
+            family.fill_rules_by_averaging_up(verbose=False)
     return rmgdb
 
 

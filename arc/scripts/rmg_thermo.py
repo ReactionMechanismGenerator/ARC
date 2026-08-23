@@ -2,11 +2,19 @@
 # encoding: utf-8
 
 """
-A standalone script to run RMG
-and get thermodynamic properties for species
+A standalone script to run RMG and get thermodynamic properties for species.
+
+Output units (per entry returned by ``get_thermo``):
+    - ``h298``: kJ/mol (converted from SI J/mol).
+    - ``s298``: J/(mol*K).
+    - ``comment``: source / estimation comment from RMG.
 """
 
 import os
+import sys
+
+# Make ``from common import ...`` work no matter how this script is invoked.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import parse_command_line_arguments, read_yaml_file, save_yaml_file
 
@@ -33,11 +41,12 @@ def main():
     """
     args = parse_command_line_arguments()
     input_file = args.file
+    output_file = args.output or input_file
     species_list = read_yaml_file(path=input_file)
     if not isinstance(species_list, list):
         raise ValueError(f'The content of {input_file} must be a list, got {species_list} which is a {type(species_list)}')
     result = get_thermo(species_list)
-    save_yaml_file(path=input_file, content=result)
+    save_yaml_file(path=output_file, content=result)
 
 
 def get_thermo(species_list: list[dict]) -> list[dict]:
