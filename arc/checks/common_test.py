@@ -9,6 +9,7 @@ import datetime
 import unittest
 
 import arc.checks.common as common
+from arc.species import ARCSpecies
 
 
 class TestChecks(unittest.TestCase):
@@ -40,6 +41,45 @@ class TestChecks(unittest.TestCase):
         self.assertEqual(common.get_i_from_job_name('conf_opt_33'), 33)
         self.assertEqual(common.get_i_from_job_name('conf_opt_3355'), 3355)
         self.assertEqual(common.get_i_from_job_name('tsg2'), 2)
+
+    def test_is_ts_check_exempt(self):
+        """
+        Test the is_ts_check_exempt() function.
+        """
+        self.assertFalse(common.is_ts_check_exempt('NMD', {'NMD': False, 'E0': True}))
+        self.assertFalse(common.is_ts_check_exempt('E0', {'e_elect': False, 'E0': True}))
+        self.assertTrue(common.is_ts_check_exempt('e_elect', {'e_elect': False, 'E0': True}))
+        self.assertFalse(common.is_ts_check_exempt('e_elect', {'e_elect': False, 'E0': False}))
+        self.assertFalse(common.is_ts_check_exempt('e_elect', {'e_elect': False, 'E0': None}))
+        self.assertFalse(common.is_ts_check_exempt('e_elect', dict()))
+
+    def test_get_ts_validation_comment(self):
+        """
+        Test the get_ts_validation_comment() function.
+        """
+        self.assertIsNone(common.get_ts_validation_comment(None))
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        self.assertIsNone(common.get_ts_validation_comment(ts))
+        ts.ts_checks['IRC'] = True
+        self.assertIsNone(common.get_ts_validation_comment(ts))
+        ts.ts_checks['IRC'] = None
+        ts.ts_checks['NMD'] = False
+        self.assertIsNone(common.get_ts_validation_comment(ts))
+        ts.ts_checks['IRC'] = False
+        comment = common.get_ts_validation_comment(ts)
+        self.assertIn(common.TS_IRC_FAILED_MARKER, comment)
+        self.assertIn('NMD', comment)
+        ts.ts_checks['NMD'] = True
+        comment = common.get_ts_validation_comment(ts)
+        self.assertIn(common.TS_IRC_FAILED_MARKER, comment)
+        self.assertNotIn('NMD', comment)
+        ts.ts_checks['e_elect'] = False
+        ts.ts_checks['E0'] = True
+        self.assertNotIn('e_elect', common.get_ts_validation_comment(ts))
+        ts.ts_checks['E0'] = False
+        comment = common.get_ts_validation_comment(ts)
+        self.assertIn('e_elect', comment)
+        self.assertIn('E0', comment)
 
 
 if __name__ == '__main__':

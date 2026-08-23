@@ -6,11 +6,14 @@ This module contains unit tests for ARC's statmech.arkane module
 """
 
 import os
+import re
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from arc.common import ARC_PATH, ARC_TESTING_PATH
+from arc.checks.common import TS_IRC_FAILED_MARKER
+from arc.common import ARC_TESTING_PATH
 from arc.exceptions import InputError
 from arc.level import Level
 from arc.reaction import ARCReaction
@@ -32,8 +35,14 @@ from arc.statmech.arkane import (
     check_arkane_aec,
     check_arkane_bacs,
     get_arkane_model_chemistry,
+    parse_e0,
+    parse_reaction_kinetics,
+    parse_thermo_data_block,
+    run_arkane,
+    _classify_arkane_stderr,
+    _parse_conformer_statmech,
+    _summarize_arkane_stderr,
 )
-from unittest.mock import patch
 
 
 class TestEnumerationClasses(unittest.TestCase):
@@ -429,9 +438,33 @@ class TestArkaneAdapter(unittest.TestCase):
 class TestArkaneOutputParsing(unittest.TestCase):
     """Tests for parsing functions that read Arkane output.py content."""
 
+    kinetics_output_content = """
+conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
+
+kinetics(
+    label = 'nitroethane <=> ethyl_nitrite',
+    kinetics = Arrhenius(
+        A = (5.0, 's^-1'),
+        n = 1.0,
+        Ea = (20.0, 'kJ/mol'),
+        T0 = (1, 'K'),
+        Tmin = (300, 'K'),
+        Tmax = (2000, 'K'),
+        comment = 'Fitted to 10 data points; dA = *|/ 1.1, dn = +|- 0.01, dEa = +|- 0.1 kJ/mol',
+    ),
+)
+"""
+
+    @staticmethod
+    def isomerization_reaction() -> ARCReaction:
+        """Build the real nitroethane <=> ethyl nitrite reaction with a TS species named 'TS0'."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='nitroethane', smiles='CC[N+](=O)[O-]')],
+                          p_species=[ARCSpecies(label='ethyl_nitrite', smiles='CCON=O')])
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True)
+        return rxn
+
     def test_parse_e0(self):
         """Test parse_e0 extracts E0 from conformer blocks."""
-        from arc.statmech.arkane import parse_e0
         content = """
 conformer(
     label = 'CH4',
@@ -445,14 +478,11 @@ conformer(
         self.assertIsNone(parse_e0('missing_species', content))
 
     def test_parse_e0_positive(self):
-        from arc.statmech.arkane import parse_e0
         content = "conformer(label='CHO', E0=(44.0971, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)"
         self.assertAlmostEqual(parse_e0('CHO', content), 44.0971)
 
     def test_parse_conformer_statmech(self):
         """Test extraction of external_symmetry and optical_isomers."""
-        from arc.statmech.arkane import _parse_conformer_statmech
-        from unittest.mock import MagicMock
         content = """
 conformer(
     label = 'H2O',
@@ -467,18 +497,13 @@ conformer(
     optical_isomers = 1,
 )
 """
-        spc = MagicMock()
-        spc.label = 'H2O'
-        spc.optical_isomers = None
-        spc.external_symmetry = None
+        spc = ARCSpecies(label='H2O', smiles='O')
         _parse_conformer_statmech(spc, content)
         self.assertEqual(spc.optical_isomers, 1)
         self.assertEqual(spc.external_symmetry, 2)
 
     def test_parse_conformer_statmech_linear(self):
         """Test with LinearRotor."""
-        from arc.statmech.arkane import _parse_conformer_statmech
-        from unittest.mock import MagicMock
         content = """
 conformer(
     label = 'CO2',
@@ -488,23 +513,18 @@ conformer(
     optical_isomers = 1,
 )
 """
-        spc = MagicMock()
-        spc.label = 'CO2'
-        spc.optical_isomers = None
-        spc.external_symmetry = None
+        spc = ARCSpecies(label='CO2', smiles='O=C=O')
         _parse_conformer_statmech(spc, content)
         self.assertEqual(spc.external_symmetry, 2)
         self.assertEqual(spc.optical_isomers, 1)
 
     def test_parse_reaction_kinetics_with_uncertainties(self):
         """Test that dA, dn, dEa, n_data_points are parsed from the comment."""
-        from arc.statmech.arkane import parse_reaction_kinetics
-        from unittest.mock import MagicMock
         content = """
 conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
 
 kinetics(
-    label = 'A + B <=> C + D',
+    label = 'CH4 + OH <=> CH3 + H2O',
     kinetics = Arrhenius(
         A = (1.2e10, 'cm^3/(mol*s)'),
         n = 2.5,
@@ -516,11 +536,11 @@ kinetics(
     ),
 )
 """
-        rxn = MagicMock()
-        rxn.label = 'A + B <=> C + D'
-        rxn.ts_species = MagicMock()
-        rxn.ts_species.label = 'TS0'
-        rxn.ts_species.e0 = None
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True)
         parse_reaction_kinetics(rxn, content)
         self.assertIsNotNone(rxn.kinetics)
         self.assertAlmostEqual(rxn.kinetics['A'][0], 1.2e10)
@@ -534,13 +554,11 @@ kinetics(
 
     def test_parse_reaction_kinetics_no_comment(self):
         """Kinetics without a comment should still parse A, n, Ea."""
-        from arc.statmech.arkane import parse_reaction_kinetics
-        from unittest.mock import MagicMock
         content = """
 conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
 
 kinetics(
-    label = 'X <=> Y',
+    label = 'nitroethane <=> ethyl_nitrite',
     kinetics = Arrhenius(
         A = (5.0, 's^-1'),
         n = 1.0,
@@ -551,19 +569,38 @@ kinetics(
     ),
 )
 """
-        rxn = MagicMock()
-        rxn.label = 'X <=> Y'
-        rxn.ts_species = MagicMock()
-        rxn.ts_species.label = 'TS0'
-        rxn.ts_species.e0 = None
+        rxn = self.isomerization_reaction()
         parse_reaction_kinetics(rxn, content)
         self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
         self.assertAlmostEqual(rxn.kinetics['n'], 1.0)
         self.assertNotIn('dA', rxn.kinetics)
 
+    def test_parse_reaction_kinetics_marks_an_irc_invalid_ts(self):
+        """Kinetics of a TS that failed the IRC check are reported, and are labeled as invalid."""
+        content = self.kinetics_output_content
+        rxn = self.isomerization_reaction()
+        rxn.ts_species.ts_checks['IRC'] = False
+        rxn.ts_species.ts_checks['NMD'] = True
+        parse_reaction_kinetics(rxn, content)
+        self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
+        self.assertAlmostEqual(rxn.kinetics['Ea'][0], 20.0)
+        self.assertIn(TS_IRC_FAILED_MARKER, rxn.kinetics['ts_validation'])
+        self.assertIn(TS_IRC_FAILED_MARKER, rxn.kinetics['comment'])
+        self.assertIn('Fitted to 10 data points', rxn.kinetics['comment'])
+
+    def test_parse_reaction_kinetics_does_not_mark_an_unchecked_or_valid_ts(self):
+        """Kinetics of a TS for which the IRC check was not performed or was passed are not labeled."""
+        content = self.kinetics_output_content
+        for irc_value in [None, True]:
+            rxn = self.isomerization_reaction()
+            rxn.ts_species.ts_checks['IRC'] = irc_value
+            parse_reaction_kinetics(rxn, content)
+            self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
+            self.assertNotIn('ts_validation', rxn.kinetics)
+            self.assertNotIn(TS_IRC_FAILED_MARKER, rxn.kinetics['comment'])
+
     def test_parse_thermo_data_block_scalars_are_float(self):
         """Verify Tmin, Tmax, H298, S298 are parsed as floats, not strings."""
-        from arc.statmech.arkane import parse_thermo_data_block
         block = """
             H298 = (-108.9, 'kJ/mol'),
             S298 = (218.4, 'J/(mol*K)'),
@@ -578,7 +615,6 @@ kinetics(
 
     def test_find_scalar_word_boundary(self):
         """The ``n`` parameter must not match ``Tmin`` or substrings in the comment."""
-        import re
         # Simulate find_scalar with word boundary
         arr_block = "A = (1.0, 's^-1'), n = 2.5, Ea = (30.0, 'kJ/mol'), Tmin = (300, 'K')"
         pat = rf"\bn\s*=\s*([-+]?[\d.eE+-]+)"
@@ -708,7 +744,6 @@ class TestRunArkaneOutputPySignal(unittest.TestCase):
     """
 
     def setUp(self):
-        from arc.statmech.arkane import run_arkane
         self._run_arkane = run_arkane
         self.tmp = tempfile.mkdtemp(prefix='arkane-stderr-test-')
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
@@ -789,7 +824,6 @@ class TestRunArkaneOutputPySignal(unittest.TestCase):
         self.assertFalse(self._run_with_stderr([]))
 
     def test_missing_statmech_dir_returns_false_pre_flight(self):
-        from arc.statmech.arkane import run_arkane
         self.assertFalse(run_arkane('/nonexistent/dir'))
 
 
@@ -797,7 +831,6 @@ class TestClassifyArkaneStderr(unittest.TestCase):
     """Direct tests of the stderr-noise filter, independent of run_arkane."""
 
     def setUp(self):
-        from arc.statmech.arkane import _classify_arkane_stderr
         self._classify = _classify_arkane_stderr
 
     def test_empty_input_returns_empty(self):
@@ -826,7 +859,6 @@ class TestSummarizeArkaneStderr(unittest.TestCase):
     """The stderr summarizer condenses a traceback to the salient exception line for arc.log."""
 
     def setUp(self):
-        from arc.statmech.arkane import _summarize_arkane_stderr
         self._summarize = _summarize_arkane_stderr
 
     def test_empty(self):

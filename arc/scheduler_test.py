@@ -1460,6 +1460,197 @@ H      -1.82570782    0.42754384   -0.56130718"""
             self.assertIsNone(tsg.opt_xyz)
         self.assertEqual([tsg.index for tsg in sched.species_dict[ts_label].ts_guesses], [5, 2])
 
+    def make_irc_scheduler(self,
+                           ts_label: str,
+                           project_directory_name: str,
+                           num_guesses: int = 2,
+                           chosen_ts_list: list | None = None,
+                           ) -> Scheduler:
+        """
+        A helper for generating a Scheduler instance with a single TS species that has several TS guesses,
+        simulating the state right after the first chosen guess completed its opt/freq/sp jobs.
+
+        Args:
+            ts_label (str): The TS species label.
+            project_directory_name (str): The name of the testing project directory.
+            num_guesses (int, optional): The number of TS guesses to generate.
+            chosen_ts_list (list, optional): The indices of the TS guesses that were already tried.
+
+        Returns:
+            Scheduler: The Scheduler instance.
+        """
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        chosen_ts_list = chosen_ts_list if chosen_ts_list is not None else [0]
+        ts_spc = ARCSpecies(label=ts_label, is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=i, method='heuristics', success=True, energy=100.0 + 10 * i,
+                                     xyz=ts_xyz, execution_time='0:00:01')
+                             for i in range(num_guesses)]
+        for tsg in ts_spc.ts_guesses:
+            tsg.opt_xyz = ts_xyz
+            tsg.imaginary_freqs = [-500.0]
+        ts_spc.chosen_ts = chosen_ts_list[-1]
+        ts_spc.chosen_ts_list = list(chosen_ts_list)
+        ts_spc.ts_guesses_exhausted = False
+        project_directory = os.path.join(ARC_PATH, 'Projects', project_directory_name)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=project_directory_name, ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.output[ts_label]['job_types']['opt'] = True
+        sched.output[ts_label]['job_types']['freq'] = True
+        sched.output[ts_label]['job_types']['sp'] = True
+        sched.output[ts_label]['convergence'] = True
+        sched.job_dict[ts_label] = {'opt': {}, 'freq': {}, 'sp': {}}
+        sched.running_jobs[ts_label] = list()
+        return sched
+
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_process_irc_verdict_false_switches_ts(self, mock_switch_ts):
+        """Test that a positively failed IRC check rejects the TS and searches for a different TS guess."""
+        ts_label = 'TS_irc_false'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_1')
+        sched.species_dict[ts_label].ts_checks['IRC'] = False
+        with self.assertLogs('arc', level='ERROR') as log_records:
+            sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        mock_switch_ts.assert_called_once_with(ts_label)
+        self.assertTrue(any('do NOT correspond' in record for record in log_records.output))
+
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_process_irc_verdict_none_does_not_switch_ts(self, mock_switch_ts):
+        """Test that an IRC check which was not performed does not reject the TS."""
+        ts_label = 'TS_irc_none'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_2')
+        self.assertIsNone(sched.species_dict[ts_label].ts_checks['IRC'])
+        with self.assertNoLogs('arc', level='ERROR'):
+            sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        mock_switch_ts.assert_not_called()
+        self.assertTrue(sched.output[ts_label]['convergence'])
+
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_process_irc_verdict_true_does_not_switch_ts(self, mock_switch_ts):
+        """Test that a passed IRC check does not reject the TS."""
+        ts_label = 'TS_irc_true'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_3')
+        sched.species_dict[ts_label].ts_checks['IRC'] = True
+        with self.assertNoLogs('arc', level='ERROR'):
+            sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        mock_switch_ts.assert_not_called()
+        self.assertTrue(sched.output[ts_label]['convergence'])
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_process_irc_verdict_false_terminates_when_guesses_are_exhausted(self, mock_run_opt):
+        """Test that rejecting a TS by the IRC check terminates once all TS guesses were tried."""
+        ts_label = 'TS_irc_exhausted'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_4',
+                                        num_guesses=1,
+                                        chosen_ts_list=[0],
+                                        )
+        sched.species_dict[ts_label].ts_checks['IRC'] = False
+        sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        mock_run_opt.assert_not_called()
+        self.assertTrue(sched.species_dict[ts_label].ts_guesses_exhausted
+                        or sched.species_dict[ts_label].chosen_ts is None)
+        self.assertFalse(sched.output[ts_label]['convergence'])
+        self.assertIs(sched.species_dict[ts_label].ts_checks['IRC'], False)
+        for job_type in sched.output[ts_label]['job_types']:
+            sched.output[ts_label]['job_types'][job_type] = True
+        sched.check_all_done(ts_label)
+        self.assertFalse(sched.output[ts_label]['convergence'])
+
+    @patch('arc.scheduler.check_irc_species_and_rxn')
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_check_irc_species_rejects_a_ts_with_a_failed_irc(self, mock_run_opt, mock_check_irc_species_and_rxn):
+        """Test that check_irc_species rejects a TS whose IRC endpoints do not match the requested wells."""
+        ts_label = 'TS_irc_reject'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_5',
+                                        num_guesses=2,
+                                        )
+        ts_spc = sched.species_dict[ts_label]
+
+        def fail_irc(**kwargs):
+            """Simulate an IRC check the TS did not pass."""
+            ts_spc.ts_checks['IRC'] = False
+
+        mock_check_irc_species_and_rxn.side_effect = fail_irc
+        irc_label_1, irc_label_2 = f'IRC_{ts_label}_1', f'IRC_{ts_label}_2'
+        for irc_label in [irc_label_1, irc_label_2]:
+            irc_spc = ARCSpecies(label=irc_label, xyz=ts_spc.get_xyz(), compute_thermo=False, irc_label=ts_label)
+            sched.species_dict[irc_label] = irc_spc
+            sched.species_list.append(irc_spc)
+            sched.unique_species_labels.append(irc_label)
+            sched.job_dict[irc_label] = {'opt': {}}
+            sched.running_jobs[irc_label] = list()
+            sched.initialize_output_dict(label=irc_label)
+            sched.output[irc_label]['paths']['geo'] = f'{irc_label}_geo.out'
+        ts_spc.irc_label = f'{irc_label_1} {irc_label_2}'
+        sched.output[ts_label]['paths']['irc'] = ['irc_f.out', 'irc_r.out']
+
+        sched.check_irc_species(label=irc_label_1)
+
+        mock_check_irc_species_and_rxn.assert_called_once()
+        self.assertEqual(sched.species_dict[ts_label].chosen_ts, 1)
+        self.assertIn(1, sched.species_dict[ts_label].chosen_ts_list)
+        self.assertNotIn(irc_label_1, sched.species_dict)
+        self.assertNotIn(irc_label_2, sched.species_dict)
+        self.assertNotIn(irc_label_1, sched.running_jobs)
+        self.assertNotIn(irc_label_2, sched.output)
+        self.assertIsNone(sched.species_dict[ts_label].irc_label)
+        self.assertIsNone(sched.species_dict[ts_label].ts_checks['IRC'])
+        mock_run_opt.assert_called_once()
+
+    @patch('arc.scheduler.Scheduler.generate_final_ts_guess_report')
+    @patch('arc.scheduler.Scheduler.spawn_ts_jobs')
+    @patch('arc.scheduler.Scheduler.run_conformer_jobs')
+    def test_schedule_jobs_tolerates_a_label_deleted_while_it_is_iterated(self,
+                                                                         mock_run_conformer_jobs,
+                                                                         mock_spawn_ts_jobs,
+                                                                         mock_generate_report):
+        """
+        Test that the main loop survives a species label being removed from running_jobs mid-iteration.
+
+        Rejecting a TS by its IRC verdict calls switch_ts(), which calls delete_all_species_jobs()
+        on the TS, which in turn deletes the running_jobs entries of the very IRC species labels the
+        main loop is iterating over. The main loop must therefore not assume that a label it started
+        the iteration with is still a key of running_jobs by the time it reaches the cleanup below.
+        """
+        ts_label = 'TS_irc_deleted_label'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_6')
+        irc_label = f'IRC_{ts_label}_1'
+        irc_spc = ARCSpecies(label=irc_label, xyz=sched.species_dict[ts_label].get_xyz(),
+                             compute_thermo=False, irc_label=ts_label)
+        sched.species_dict[irc_label] = irc_spc
+        sched.species_list.append(irc_spc)
+        sched.job_dict[irc_label] = {'opt': {}}
+        sched.initialize_output_dict(label=irc_label)
+        del sched.running_jobs[ts_label]
+        sched.running_jobs[irc_label] = list()
+        sched.unique_species_labels = [irc_label]
+
+        def delete_the_iterated_label(label):
+            """Delete the label being iterated, as delete_all_species_jobs() does for an IRC species."""
+            del sched.running_jobs[label]
+
+        with patch.object(sched, 'check_all_done', side_effect=delete_the_iterated_label) as mock_check_all_done:
+            sched.schedule_jobs()
+        mock_check_all_done.assert_called_once_with(irc_label)
+        self.assertEqual(sched.running_jobs, dict())
+
     @patch('arc.scheduler.Scheduler.run_job')
     def test_run_sp_monoatomic_dlpno(self, mock_run_job):
         """Monoatomic H falls back to HF; heavier atoms (O) keep DLPNO intact."""

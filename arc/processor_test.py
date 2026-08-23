@@ -10,7 +10,8 @@ import shutil
 import unittest
 
 import arc.processor as processor
-from arc.common import ARC_TESTING_PATH
+from arc.checks.common import TS_IRC_FAILED_MARKER
+from arc.common import ARC_TESTING_PATH, read_yaml_file
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 
@@ -49,10 +50,13 @@ class TestProcessor(unittest.TestCase):
                                        ARCSpecies(label='H2', smiles='[H][H]')],
                             kinetics={'A': 4.79e+05, 'n': 2.5, 'Ea': 40.12},
                             )
+        rxn_1.ts_species = ARCSpecies(label='TS1', is_ts=True)
+        rxn_1.ts_species.ts_checks['IRC'] = False
         rxn_2 = ARCReaction(r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
                             p_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C')],
                             kinetics={'A': 7.18e5, 'n': 2.05, 'Ea': 151.88},
                             )
+        rxn_2.ts_species = ARCSpecies(label='TS2', is_ts=True)
         output_directory = os.path.join(ARC_TESTING_PATH, 'process_kinetics')
         reactions_to_compare = processor.compare_rates(rxns_for_kinetics_lib=[rxn_1, rxn_2],
                                                        output_directory=output_directory,
@@ -61,7 +65,11 @@ class TestProcessor(unittest.TestCase):
         self.assertEqual(len(reactions_to_compare[0].rmg_kinetics), 3)
         self.assertEqual(len(reactions_to_compare[1].rmg_kinetics), 1)
         self.assertTrue(os.path.isfile(os.path.join(output_directory, 'rate_plots.pdf')))
-        self.assertTrue(os.path.isfile(os.path.join(output_directory, 'RMG_kinetics.yml')))
+        kinetics_yml_path = os.path.join(output_directory, 'RMG_kinetics.yml')
+        self.assertTrue(os.path.isfile(kinetics_yml_path))
+        content = read_yaml_file(path=kinetics_yml_path)
+        self.assertIn(TS_IRC_FAILED_MARKER, content[0]['ts_validation'])
+        self.assertNotIn('ts_validation', content[1])
 
 
     @classmethod

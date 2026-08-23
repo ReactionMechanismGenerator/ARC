@@ -4,8 +4,13 @@ contains helper functions for Scheduler.
 """
 
 import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from arc.species.species import ARCSpecies
 
 CONFORMER_JOB_TYPES = ('conf_opt', 'conf_sp')
+TS_IRC_FAILED_MARKER = 'INVALID TS (failed IRC validation)'
 
 
 def is_conformer_job(job_name: str) -> bool:
@@ -56,3 +61,55 @@ def get_i_from_job_name(job_name: str) -> int | None:
     if job_name.startswith('tsg'):
         i = int(job_name[3:])
     return i
+
+
+def is_ts_check_exempt(check: str,
+                       ts_checks: dict,
+                       ) -> bool:
+    """
+    Determine whether a failed TS check is exempt, i.e., does not count as a TS validation failure.
+
+    The only exemption is 'e_elect': the electronic-energy barrier check is superseded by the
+    zero-point-corrected 'E0' check, so a failed 'e_elect' is excused once 'E0' passed.
+    'E0' is looked up with ``dict.get()``, so a ``ts_checks`` dictionary that has no 'E0' key
+    yields ``False`` (not exempt) instead of raising a ``KeyError``.
+
+    Args:
+        check (str): The key of the ``ts_checks`` entry being evaluated.
+        ts_checks (dict): The ``ts_checks`` dictionary of the TS species.
+
+    Returns:
+        bool: Whether a failed ``check`` is exempt.
+    """
+    return check == 'e_elect' and bool(ts_checks.get('E0'))
+
+
+def get_ts_validation_comment(ts_species: 'ARCSpecies | None') -> str | None:
+    """
+    Get a human-readable marker describing a positively-failed TS validation.
+
+    Only a ``ts_checks['IRC']`` value of ``False`` (checked and failed) produces a marker.
+    A value of ``None`` means the IRC check was not performed (e.g., IRC was not requested,
+    or the reaction connectivity was unavailable) and is treated as unknown, not as a failure.
+
+    The marker names any other TS check that also failed, applying the same exemption as
+    ``ts.ts_passed_checks()``: a ``False`` 'e_elect' is not reported once 'E0' passed.
+
+    Args:
+        ts_species (ARCSpecies, optional): The TS species of the reaction the rate was computed for.
+
+    Returns:
+        str | None: The marker, or ``None`` if the TS did not positively fail the IRC check.
+    """
+    ts_checks = getattr(ts_species, 'ts_checks', None) or dict()
+    if ts_checks.get('IRC', None) is not False:
+        return None
+    comment = f'{TS_IRC_FAILED_MARKER}: the optimized IRC endpoints of this TS do not correspond to the ' \
+              f'reactants and products of this reaction, therefore this rate coefficient does not describe ' \
+              f'this reaction and must not be used.'
+    other_failed_checks = sorted(key for key, val in ts_checks.items()
+                                 if key not in ['IRC', 'warnings'] and val is False
+                                 and not is_ts_check_exempt(key, ts_checks))
+    if other_failed_checks:
+        comment += f' Additional TS checks that failed: {", ".join(other_failed_checks)}.'
+    return comment
