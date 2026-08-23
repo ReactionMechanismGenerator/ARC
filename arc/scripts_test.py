@@ -8,6 +8,7 @@ These tests call the scripts as subprocesses in rmg_env (matching production usa
 Tests are skipped if rmg_env is not available.
 """
 
+import math
 import os
 import shutil
 import subprocess
@@ -52,6 +53,20 @@ def _rmg_env_available() -> bool:
 
 
 RMG_ENV = _rmg_env_available()
+
+R_J_MOL_K = 8.314462618
+
+
+def _nasa_enthalpy(coeffs: list, t: float) -> float:
+    """Return H(T) in J/mol from the 7 NASA coefficients of a single temperature range."""
+    a1, a2, a3, a4, a5, a6, _ = coeffs
+    return R_J_MOL_K * t * (a1 + a2 * t / 2 + a3 * t ** 2 / 3 + a4 * t ** 3 / 4 + a5 * t ** 4 / 5 + a6 / t)
+
+
+def _nasa_entropy(coeffs: list, t: float) -> float:
+    """Return S(T) in J/(mol*K) from the 7 NASA coefficients of a single temperature range."""
+    a1, a2, a3, a4, a5, _, a7 = coeffs
+    return R_J_MOL_K * (a1 * math.log(t) + a2 * t + a3 * t ** 2 / 2 + a4 * t ** 3 / 3 + a5 * t ** 4 / 4 + a7)
 
 
 @unittest.skipUnless(RMG_ENV, 'rmg_env not available')
@@ -266,6 +281,60 @@ class TestRmgScriptsOutputFlag(unittest.TestCase):
         self.assertIn('h298', out[0])
         self.assertIn('s298', out[0])
         self.assertIn('comment', out[0])
+
+@unittest.skipUnless(RMG_ENV, 'rmg_env not available')
+class TestSaveArkaneThermoOutputPyFallback(unittest.TestCase):
+    """
+    The motivating scenario end to end: Arkane's save_thermo_lib crashed on the two identical
+    reactants of an A+A reaction, so it left output.py behind but never wrote
+    RMG_libraries/thermo.py. Running the real script must still produce thermo.yaml for every
+    species, including both duplicates.
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp(prefix='test_aa_reload_')
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+        src = os.path.join(ARC_TESTING_PATH, 'statmech', 'thermo_aa', 'output.py')
+        shutil.copy(src, os.path.join(self.tmp_dir, 'output.py'))
+        self.assertFalse(os.path.isdir(os.path.join(self.tmp_dir, 'RMG_libraries')))
+
+    def _run_script(self):
+        script = os.path.join(ARC_PATH, 'arc', 'scripts', 'save_arkane_thermo.py')
+        result = subprocess.run(['conda', 'run', '-n', 'rmg_env', 'python', script],
+                                capture_output=True, text=True, cwd=self.tmp_dir, timeout=300)
+        self.assertEqual(result.returncode, 0, f'Script failed: {result.stderr}')
+        yaml_path = os.path.join(self.tmp_dir, 'thermo.yaml')
+        self.assertTrue(os.path.isfile(yaml_path),
+                        'thermo.yaml must be recovered from output.py when the library is absent')
+        return read_yaml_file(yaml_path)
+
+    def test_both_duplicates_recover_their_own_thermo(self):
+        """R1 and R2 are the same species submitted twice; each recovers thermo from its own block."""
+        data = self._run_script()
+        self.assertEqual(set(data), {'R1', 'R2', 'P1'})
+        for label in ('R1', 'R2', 'P1'):
+            self.assertIsNotNone(data[label]['H298'])
+            self.assertIsNotNone(data[label]['S298'])
+            self.assertIsNotNone(data[label]['nasa_low'])
+            self.assertIsNotNone(data[label]['nasa_high'])
+        self.assertAlmostEqual(data['R1']['H298'], data['R2']['H298'])
+        self.assertAlmostEqual(data['R1']['S298'], data['R2']['S298'])
+
+    def test_recovered_values_match_reference_thermochemistry(self):
+        """P1 is H2O; the recovered values are checked against JANAF, at 298 K and at 2000 K.
+
+        The high-temperature check evaluates the serialized nasa_high coefficients, which is what
+        ARC consumers use up to 3000 K, so a reload that corrupted them cannot pass.
+        """
+        data = self._run_script()
+        self.assertAlmostEqual(data['P1']['H298'], -241.8, delta=3.0)
+        self.assertAlmostEqual(data['P1']['S298'], 188.8, delta=2.0)
+        nasa_high = data['P1']['nasa_high']
+        self.assertGreaterEqual(nasa_high['tmax_k'], 3000.0)
+        h_2000 = _nasa_enthalpy(nasa_high['coeffs'], 2000.0) / 1000.0
+        s_2000 = _nasa_entropy(nasa_high['coeffs'], 2000.0)
+        self.assertAlmostEqual(h_2000 - data['P1']['H298'], 72.79, delta=3.0)
+        self.assertAlmostEqual(s_2000, 264.77, delta=3.0)
 
 
 if __name__ == '__main__':
