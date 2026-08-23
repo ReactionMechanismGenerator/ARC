@@ -17,6 +17,7 @@ from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter, constraint_type_dict
 from arc.job.adapters.common import (_initialize_adapter,
                                      is_restricted,
+                                     species_may_read_previous_orbitals,
                                      update_input_dict_with_args,
                                      which,
                                      combine_parameters
@@ -45,6 +46,8 @@ default_job_settings, gaussian_memory_headroom_fractions, global_ess_settings, i
 # gaussian_memory_headroom_fractions (see settings.py) while holding the queue
 # reservation constant.
 GAUSSIAN_MEMORY_HEADROOM_FRACTION = gaussian_memory_headroom_fractions[0]
+
+STABILITY_KEYWORD = 'stable=(rext,noopt)'
 
 
 # job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
@@ -215,11 +218,11 @@ class GaussianAdapter(JobAdapter):
         if isinstance(self.level, Level) and self.level.basis is not None:
             self.level.basis = re.sub('def2-', 'def2', self.level.basis.lower())
 
-        if self.checkfile is None:
-            if os.path.isfile(os.path.join(self.local_path, 'check.chk')):
-                self.checkfile = os.path.join(self.local_path, 'check.chk')
-            elif self.species[0].checkfile is not None and os.path.isfile(self.species[0].checkfile):
-                self.checkfile = self.species[0].checkfile
+        if self.checkfile is None and species_may_read_previous_orbitals(self.species[0]):
+            if os.path.isfile(os.path.join(self.local_path, self.check_file_name)):
+                self.checkfile = self.readable_checkfile(os.path.join(self.local_path, self.check_file_name))
+            elif self.species[0].checkfile is not None:
+                self.checkfile = self.readable_checkfile(self.species[0].checkfile)
 
     def write_input_file(self) -> None:
         """
@@ -324,6 +327,13 @@ class GaussianAdapter(JobAdapter):
 
         elif self.job_type in ['sp', 'conf_sp']:
             input_dict['job_type_1'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+            if input_dict['trsh']:
+                input_dict['trsh'] += ' '
+            input_dict['trsh'] += 'scf=(tight, direct)'
+
+        elif self.job_type == 'stability':
+            input_dict['job_type_1'] = f'{STABILITY_KEYWORD} ' \
+                                       f'integral=(grid=ultrafine, {integral_algorithm})'
             if input_dict['trsh']:
                 input_dict['trsh'] += ' '
             input_dict['trsh'] += 'scf=(tight, direct)'

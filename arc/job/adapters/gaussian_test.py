@@ -7,11 +7,12 @@ This module contains unit tests of the arc.job.adapters.gaussian module
 
 import math
 import os
+import re
 import shutil
 import tempfile
 import unittest
 
-from arc.job.adapters.gaussian import GaussianAdapter, get_memory_headroom_fraction
+from arc.job.adapters.gaussian import STABILITY_KEYWORD, GaussianAdapter, get_memory_headroom_fraction
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames, servers, submit_filenames
 from arc.species import ARCSpecies
@@ -1226,6 +1227,136 @@ H       0.04768200    1.19305700   -0.88359100
         route_section = [line for line in content.splitlines() if line.startswith('#')]
         self.assertEqual(len(route_section), 1)
         self.assertIn('verytight', route_section[0])
+
+    def _route_for_job_type(self, job_type: str) -> str:
+        """Write a Gaussian input file for a TS job of the given type and return its route line."""
+        job = GaussianAdapter(execution_type='queue',
+                              job_type=job_type,
+                              level=Level(method='wb97xd', basis='def2-TZVP'),
+                              project='test',
+                              project_directory=self.project_directory,
+                              species=[ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2'])],
+                              testing=True,
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        return [line for line in content.splitlines() if line.startswith('#P')][0]
+
+    def test_stability_keyword_in_route(self):
+        """Test that the wavefunction stability keyword is written for a stability job only"""
+        stability_route = self._route_for_job_type('stability')
+        self.assertIn('stable=(rext,noopt)', stability_route)
+        for job_type in ['opt', 'freq', 'sp', 'composite']:
+            self.assertNotIn('stable', self._route_for_job_type(job_type))
+
+    def test_stability_keyword_never_reoptimizes(self):
+        """Test that the stability route asks for no reoptimization and no complex orbitals"""
+        route = self._route_for_job_type('stability').lower()
+        options = re.search(r'stable=\(([^)]*)\)', route)
+        self.assertIsNotNone(options, msg=f'no stable=(...) group in route {route!r}')
+        options = [option.strip() for option in options.group(1).split(',')]
+        self.assertIn('noopt', options)
+        self.assertIn('rext', options)
+        for option in options:
+            self.assertNotIn(option, ['opt', 'repopt', '1opt', 'crhf', 'cuhf', 'int'],
+                             msg=f'route {route!r} carries the {option!r} stability option')
+        self.assertNotIn('stable=opt', route)
+        self.assertEqual(STABILITY_KEYWORD.lower(), f"stable=({','.join(options)})")
+
+    def test_a_checkfile_written_by_another_ess_is_refused(self):
+        """Test that an ORCA input.gbw offered to Gaussian is not read as a checkpoint file"""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_gaussian_foreign_checkfile_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        foreign = os.path.join(scratch_dir, 'input.gbw')
+        with open(foreign, 'w') as f:
+            f.write('orbitals')
+        spc = ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2'])
+        spc.checkfile = foreign
+        job = GaussianAdapter(execution_type='queue',
+                              job_type='sp',
+                              level=Level(method='wb97xd', basis='def2-TZVP'),
+                              project='test',
+                              project_directory=os.path.join(scratch_dir, 'test_GaussianAdapter'),
+                              checkfile=foreign,
+                              species=[spc],
+                              testing=True,
+                              )
+        self.assertIsNone(job.checkfile)
+        self.assertNotIn(foreign, [up_file['local'] for up_file in job.files_to_upload])
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertNotIn('guess=read', content)
+
+    def _checkfile_job(self,
+                       scratch_dir: str,
+                       checkfile: str | None = None,
+                       species: ARCSpecies | None = None,
+                       **kwargs,
+                       ) -> GaussianAdapter:
+        """Build a testing Gaussian job under a scratch directory of its own."""
+        return GaussianAdapter(execution_type='queue',
+                               job_type='sp',
+                               level=Level(method='wb97xd', basis='def2-TZVP'),
+                               project='test',
+                               project_directory=os.path.join(scratch_dir, 'test_GaussianCheckfile'),
+                               checkfile=checkfile,
+                               species=[species if species is not None
+                                        else ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2'])],
+                               testing=True,
+                               **kwargs,
+                               )
+
+    def test_an_empty_checkfile_is_refused(self):
+        """Test that the zero-byte file a failed download leaves behind is not read as a guess"""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_gaussian_empty_checkfile_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        empty = os.path.join(scratch_dir, 'check.chk')
+        with open(empty, 'w'):
+            pass
+        job = self._checkfile_job(scratch_dir, checkfile=empty)
+        self.assertIsNone(job.checkfile)
+        self.assertNotIn(empty, [up_file['local'] for up_file in job.files_to_upload])
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            self.assertNotIn('guess=read', f.read())
+
+    def test_orbitals_dropped_for_an_adopted_verdict_are_not_re_adopted(self):
+        """Test that a species holding no checkpoint of its adopted reference reads none from its directory"""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_gaussian_reused_directory_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        spc = ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2\nH 0 0 3'], multiplicity=1)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True,
+                                         'relaxations': ['RHF -> UHF']}
+        first = self._checkfile_job(scratch_dir, species=spc)
+        with open(os.path.join(first.local_path, 'check.chk'), 'w') as f:
+            f.write('orbitals')
+        second = self._checkfile_job(scratch_dir, species=spc,
+                                     job_name=first.job_name, job_num=first.job_num)
+        self.assertEqual(second.local_path, first.local_path)
+        self.assertIsNone(second.checkfile)
+        second.write_input_file()
+        with open(os.path.join(second.local_path, input_filenames[second.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertNotIn('guess=read', content)
+        self.assertIn('guess=mix', content)
+
+    def test_a_species_holding_orbitals_reads_them_from_its_job_directory(self):
+        """Test that the job directory remains a source of orbitals for a species holding none"""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_gaussian_own_directory_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        first = self._checkfile_job(scratch_dir)
+        planted = os.path.join(first.local_path, 'check.chk')
+        with open(planted, 'w') as f:
+            f.write('orbitals')
+        second = self._checkfile_job(scratch_dir, job_name=first.job_name, job_num=first.job_num)
+        self.assertEqual(second.checkfile, planted)
+
+    def test_stability_keyword_absent_from_other_job_types(self):
+        """Test that no other job type emits any form of the stability keyword"""
+        for job_type in ['opt', 'freq', 'sp', 'composite']:
+            self.assertNotIn('stable', self._route_for_job_type(job_type).lower())
 
 
 class TestGetMemoryHeadroomFraction(unittest.TestCase):
