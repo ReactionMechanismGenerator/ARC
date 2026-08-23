@@ -204,9 +204,11 @@ which orca
 mkdir -p $WorkDir
 cd $WorkDir
 cp $SubmitDir/input.in .
+cp $SubmitDir/guess.gbw . 2>/dev/null
 
 $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
+cp input.gbw  $SubmitDir/ 2>/dev/null
 rm -rf  $WorkDir
 
 touch final_time
@@ -458,12 +460,14 @@ mkdir -p $WorkDir
 cd $WorkDir
 
 cp "$SubmitDir/input.in" .
+cp "$SubmitDir/guess.gbw" . 2>/dev/null
 
 ${{OrcaDir}}/orca input.in > input.log
 
 cd $SubmitDir
 cp "$WorkDir/input.log" .
 cp "$WorkDir/input_property.txt" .
+cp "$WorkDir/input.gbw" . 2>/dev/null
 
 rm -rf $WorkDir
 
@@ -633,6 +637,7 @@ mkdir -p $WorkDir
 cd $WorkDir
 
 cp "$SubmitDir/input.in" .
+cp "$SubmitDir/guess.gbw" . 2>/dev/null
 
 ${ORCA_DIR}/orca input.in > input.log
 cp * "$SubmitDir/"
@@ -851,6 +856,7 @@ mkdir -p $WorkDir
 cd $WorkDir
 
 cp "$SubmitDir/input.in" .
+cp "$SubmitDir/guess.gbw" . 2>/dev/null
 
 /opt/orca/orca input.in > input.log
 cp * "$SubmitDir/"
@@ -900,9 +906,11 @@ which orca
 mkdir -p $WorkDir
 cd $WorkDir
 cp $SubmitDir/input.in .
+cp $SubmitDir/guess.gbw . 2>/dev/null
 
 $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
+cp input.gbw  $SubmitDir/ 2>/dev/null
 rm -rf  $WorkDir
 
 touch final_time
@@ -1013,9 +1021,11 @@ which orca
 mkdir -p $WorkDir
 cd $WorkDir
 cp $SubmitDir/input.in .
+cp $SubmitDir/guess.gbw . 2>/dev/null
 
 $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
+cp input.gbw  $SubmitDir/ 2>/dev/null
 rm -rf  $WorkDir
 
 touch final_time
