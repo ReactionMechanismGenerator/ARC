@@ -16,7 +16,6 @@ from arc.common import (almost_equal_coords,
                         dfs,
                         get_logger,
                         get_single_bond_length,
-                        is_angle_linear,
                         is_multiplicity_parity_valid,
                         is_xyz_linear,
                         read_yaml_file,
@@ -55,7 +54,7 @@ from arc.species.converter import (check_isomorphism,
                                    kabsch,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz, is_mol_valid
-from arc.species.vectors import calculate_angle, calculate_distance, calculate_dihedral_angle
+from arc.species.vectors import calculate_distance, calculate_dihedral_angle, is_torsion_linear
 
 logger = get_logger()
 
@@ -1473,9 +1472,8 @@ class ARCSpecies(object):
             raise ValueError('Cannot set dihedral without xyz')
         if deg_increment is not None:
             deg_abs = calculate_dihedral_angle(coords=xyz, torsion=torsion) + deg_increment
-        if is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[:3], index=0)) \
-                or is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[1:], index=0)):
-            logger.warning(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
+        if is_torsion_linear(xyz=xyz, torsion=torsion):
+            logger.debug(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
             return None
         mol = self.mol
         if mol is None:
