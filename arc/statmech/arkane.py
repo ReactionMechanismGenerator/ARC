@@ -343,9 +343,18 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
             e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0. Default: ``False``.
         """
+        reaction_species_labels = set()
+        for rxn in self.reactions or list():
+            reactants, products = rxn.get_reactants_and_products(return_copies=False)
+            rxn.reactants = [spc.label for spc in reactants]
+            rxn.products = [spc.label for spc in products]
+            reaction_species_labels.update(rxn.reactants + rxn.products)
         species_list = list()
         for spc in self.species:
-            if e0_only or spc.compute_thermo:
+            # A species named by a reaction must be declared even when its thermo is not being
+            # computed: Arkane's reaction() references species by label from the declared-species
+            # dict, so an undeclared reactant/product raises KeyError and no rate is produced.
+            if e0_only or spc.compute_thermo or spc.label in reaction_species_labels:
                 smiles = spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else ''
                 adjlist = ''
                 if smiles:
@@ -387,11 +396,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         freq_scale_factor = f'\nfrequencyScaleFactor = {self.freq_scale_factor}' \
             if self.freq_scale_factor is not None else ''
-        if self.reactions is not None:
-            for rxn in self.reactions:
-                reactants, products = rxn.get_reactants_and_products()
-                rxn.reactants = [spc.label for spc in reactants]
-                rxn.products = [spc.label for spc in products]
         calc_type = 'kinetics' if self.reactions else 'thermo'
         return Template(main_input_template).render(
             title=f'Arkane {calc_type} calculation',
