@@ -1,0 +1,246 @@
+ Entering Gaussian System, Link 0=g16
+ Initial command:
+ /usr/local/g16-gpu/g16/l1.exe "/scratch/g16/job/Gau-1868571.inp" -scrdir="/scratch/g16/job/"
+ Entering Link 1 = /usr/local/g16-gpu/g16/l1.exe PID=   1868577.
+  
+ Copyright (c) 1988-2021, Gaussian, Inc.  All Rights Reserved.
+  
+ This is part of the Gaussian(R) 16 program.  It is based on
+ the Gaussian(R) 09 system (copyright 2009, Gaussian, Inc.),
+ the Gaussian(R) 03 system (copyright 2003, Gaussian, Inc.),
+ the Gaussian(R) 98 system (copyright 1998, Gaussian, Inc.),
+ the Gaussian(R) 94 system (copyright 1995, Gaussian, Inc.),
+ the Gaussian 92(TM) system (copyright 1992, Gaussian, Inc.),
+ the Gaussian 90(TM) system (copyright 1990, Gaussian, Inc.),
+ the Gaussian 88(TM) system (copyright 1988, Gaussian, Inc.),
+ the Gaussian 86(TM) system (copyright 1986, Carnegie Mellon
+ University), and the Gaussian 82(TM) system (copyright 1983,
+ Carnegie Mellon University). Gaussian is a federally registered
+ trademark of Gaussian, Inc.
+  
+ This software contains proprietary and confidential information,
+ including trade secrets, belonging to Gaussian, Inc.
+  
+ This software is provided under written license and may be
+ used, copied, transmitted, or stored only in accord with that
+ written license.
+  
+ The following legend is applicable only to US Government
+ contracts under FAR:
+  
+                    RESTRICTED RIGHTS LEGEND
+  
+ Use, reproduction and disclosure by the US Government is
+ subject to restrictions as set forth in subparagraphs (a)
+ and (c) of the Commercial Computer Software - Restricted
+ Rights clause in FAR 52.227-19.
+  
+ Gaussian, Inc.
+ 340 Quinnipiac St., Bldg. 40, Wallingford CT 06492
+  
+  
+ ---------------------------------------------------------------
+ Warning -- This program may not be used in any manner that
+ competes with the business of Gaussian, Inc. or will provide
+ assistance to any competitor of Gaussian, Inc.  The licensee
+ of this program is prohibited from giving any competitor of
+ Gaussian, Inc. access to this program.  By using this program,
+ the user acknowledges that Gaussian, Inc. is engaged in the
+ business of creating and licensing software in the field of
+ computational chemistry and represents and warrants to the
+ licensee that it is not a competitor of Gaussian, Inc. and that
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 16, Revision C.02,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, 
+ G. A. Petersson, H. Nakatsuji, X. Li, M. Caricato, A. V. Marenich, 
+ J. Bloino, B. G. Janesko, R. Gomperts, B. Mennucci, H. P. Hratchian, 
+ J. V. Ortiz, A. F. Izmaylov, J. L. Sonnenberg, D. Williams-Young, 
+ F. Ding, F. Lipparini, F. Egidi, J. Goings, B. Peng, A. Petrone, 
+ T. Henderson, D. Ranasinghe, V. G. Zakrzewski, J. Gao, N. Rega, 
+ G. Zheng, W. Liang, M. Hada, M. Ehara, K. Toyota, R. Fukuda, 
+ J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, H. Nakai, 
+ T. Vreven, K. Throssell, J. A. Montgomery, Jr., J. E. Peralta, 
+ F. Ogliaro, M. J. Bearpark, J. J. Heyd, E. N. Brothers, K. N. Kudin, 
+ V. N. Staroverov, T. A. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. P. Rendell, J. C. Burant, S. S. Iyengar, 
+ J. Tomasi, M. Cossi, J. M. Millam, M. Klene, C. Adamo, R. Cammi, 
+ J. W. Ochterski, R. L. Martin, K. Morokuma, O. Farkas, 
+ J. B. Foresman, and D. J. Fox, Gaussian, Inc., Wallingford CT, 2019.
+ 
+ ******************************************
+ Gaussian 16:  ES64L-G16RevC.02  7-Dec-2021
+                13-Aug-2026 
+ ******************************************
+ %mem=16000mb
+ %NProcShared=8
+ Will use up to    8 processors via shared memory.
+ %chk=check.chk
+ ----------------------------------------------------------------------
+ #P ub3lyp/def2tzvp guess=(fragment=2,mix,always) integral=(grid=ultrafine, Acc2E
+ =12) scf=(direct,tight)
+ ----------------------------------------------------------------------
+ 1/38=1,172=1/1;
+ 2/12=2,17=6,18=5,40=1/2;
+ 3/5=44,7=101,11=2,25=1,27=12,30=1,74=-5,75=-5,116=2/1,2,3;
+ 4//1;
+ 5/5=2,32=2,38=5,87=12/2;
+ 8/6=1,10=90,11=11,87=12/1;
+ 9/8=-1,42=1,87=12/14;
+ 6/7=2,8=2,9=2,10=2,28=1,87=12/1;
+ 99/5=1,9=1/99;
+ Leave Link    1 at Thu Aug 13 03:09:37 2026, MaxMem=  2097152000 cpu:               0.0 elap:               0.0
+ (Enter /usr/local/g16-gpu/g16/l101.exe)
+ --------------------------------------------------
+ fragment guess reaction_21_intra_halogen_migration 
+ --------------------------------------------------
+ Symbolic Z-matrix:
+ Charge =  0 Multiplicity = 2
+ Charge =  0 Multiplicity = 2 for fragment   1
+ Charge =  0 Multiplicity = 1 for fragment   2
+ O(Fragment=1)           2.44052  -0.74022   0.00006 
+ C(Fragment=1)            1.2304  -0.15444   0.00004 
+ C(Fragment=1)           0.99241   1.16752   0.00007 
+ Cl(Fragment=2)         -2.24715  -0.15396  -0.00008 
+ H(Fragment=1)           3.13998   -0.0719    0.0001 
+ H(Fragment=1)           0.42979  -0.88112  -0.00001 
+ H(Fragment=1)           1.79721   1.89374   0.00012 
+ H(Fragment=2)          -0.02639   1.51989   0.00005 
+ 
+ ITRead=  0  0  0  0  0  0  0  0
+ MicOpt= -1 -1 -1 -1 -1 -1 -1 -1
+ NAtoms=      8 NQM=        8 NQMF=       0 NMMI=      0 NMMIF=      0
+                NMic=       0 NMicF=      0.
+                    Isotopes and Nuclear Properties:
+ (Nuclear quadrupole moments (NQMom) in fm**2, nuclear magnetic moments (NMagM)
+  in nuclear magnetons)
+
+  Atom         1           2           3           4           5           6           7           8
+ IAtWgt=          16          12          12          35           1           1           1           1
+ AtmWgt=  15.9949146  12.0000000  12.0000000  34.9688527   1.0078250   1.0078250   1.0078250   1.0078250
+ NucSpn=           0           0           0           3           1           1           1           1
+ AtZEff=  -0.0000000  -0.0000000  -0.0000000  -0.0000000  -0.0000000  -0.0000000  -0.0000000  -0.0000000
+ NQMom=    0.0000000   0.0000000   0.0000000  -8.1650000   0.0000000   0.0000000   0.0000000   0.0000000
+ NMagM=    0.0000000   0.0000000   0.0000000   0.8218740   2.7928460   2.7928460   2.7928460   2.7928460
+ AtZNuc=   8.0000000   6.0000000   6.0000000  17.0000000   1.0000000   1.0000000   1.0000000   1.0000000
+ Leave Link  101 at Thu Aug 13 03:09:38 2026, MaxMem=  2097152000 cpu:               0.1 elap:               0.1
+ (Enter /usr/local/g16-gpu/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0        2.440519   -0.740222    0.000056
+      2          6           0        1.230401   -0.154439    0.000037
+      3          6           0        0.992406    1.167521    0.000070
+      4         17           0       -2.247152   -0.153960   -0.000079
+      5          1           0        3.139983   -0.071898    0.000098
+      6          1           0        0.429789   -0.881122   -0.000010
+      7          1           0        1.797209    1.893741    0.000117
+      8          1           0       -0.026387    1.519886    0.000049
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3          4          5
+     1  O    0.000000
+     2  C    1.344443   0.000000
+     3  C    2.395102   1.343213   0.000000
+     4  Cl   4.724189   3.477553   3.498721   0.000000
+     5  H    0.967423   1.911365   2.479566   5.387760   0.000000
+     6  H    2.015661   1.081225   2.124494   2.773946   2.828426
+     7  H    2.711385   2.125162   1.084022   4.533204   2.380500
+     8  H    3.345701   2.093533   1.078008   2.780927   3.543963
+                    6          7          8
+     6  H    0.000000
+     7  H    3.093494   0.000000
+     8  H    2.443959   1.861524   0.000000
+ Stoichiometry    C2H4ClO(2)
+ Framework group  C1[X(C2H4ClO)]
+ Deg. of freedom    18
+ Full point group                 C1      NOp   1
+ Largest Abelian subgroup         C1      NOp   1
+ Largest concise Abelian subgroup C1      NOp   1
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0        2.440519   -0.740222    0.000056
+      2          6           0        1.230401   -0.154439    0.000037
+      3          6           0        0.992406    1.167521    0.000070
+      4         17           0       -2.247152   -0.153960   -0.000079
+      5          1           0        3.139983   -0.071898    0.000098
+      6          1           0        0.429789   -0.881122   -0.000010
+      7          1           0        1.797209    1.893741    0.000117
+      8          1           0       -0.026387    1.519886    0.000049
+ ---------------------------------------------------------------------
+ Rotational constants (GHZ):          15.3811042           1.6067831           1.4548071
+ Leave Link  202 at Thu Aug 13 03:09:38 2026, MaxMem=  2097152000 cpu:               0.1 elap:               0.0
+ (Enter /usr/local/g16-gpu/g16/l301.exe)
+ Standard basis: def2TZVP (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+ There are   174 symmetry adapted cartesian basis functions of A   symmetry.
+ There are   154 symmetry adapted basis functions of A   symmetry.
+   154 basis functions,   254 primitive gaussians,   174 cartesian basis functions
+    21 alpha electrons       20 beta electrons
+       nuclear repulsion energy       126.7866546617 Hartrees.
+ IExCor=  402 DFT=T Ex+Corr=B3LYP ExCW=0 ScaHFX=  0.200000
+ ScaDFX=  0.800000  0.720000  1.000000  0.810000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=  4
+ NAtoms=    8 NActive=    8 NUniq=    8 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 2 integral format.
+ Two-electron integral symmetry is turned on.
+ Leave Link  301 at Thu Aug 13 03:09:38 2026, MaxMem=  2097152000 cpu:               0.1 elap:               0.1
+ (Enter /usr/local/g16-gpu/g16/l302.exe)
+ NPDir=0 NMtPBC=     1 NCelOv=     1 NCel=       1 NClECP=     1 NCelD=      1
+         NCelK=      1 NCelE2=     1 NClLst=     1 CellRange=     0.0.
+ One-electron integrals computed using PRISM.
+ One-electron integral symmetry used in STVInt
+   1 Symmetry operations used in ECPInt.
+ ECPInt:  NShTT=    1953 NPrTT=    6330 LenC2=    1888 LenP2D=    4987.
+ LDataN:  DoStor=T MaxTD1= 6 Len=  172
+ NBasis=   154 RedAO= T EigKep=  2.05D-04  NBF=   154
+ NBsUse=   154 1.00D-06 EigRej= -1.00D+00 NBFU=   154
+ Precomputing XC quadrature grid using
+ IXCGrd= 4 IRadAn=           5 IRanWt=          -1 IRanGd=           0 AccXCQ= 1.00D-12.
+ Generated NRdTot=       0 NPtTot=           0 NUsed=           0 NTot=          32
+ NSgBfM=   173   173   173   173   173 MxSgAt=     8 MxSgA2=     8.
+ Leave Link  302 at Thu Aug 13 03:09:39 2026, MaxMem=  2097152000 cpu:               0.7 elap:               0.2
+ (Enter /usr/local/g16-gpu/g16/l303.exe)
+ DipDrv:  MaxL=1.
+ Leave Link  303 at Thu Aug 13 03:09:39 2026, MaxMem=  2097152000 cpu:               0.1 elap:               0.1
+ (Enter /usr/local/g16-gpu/g16/l401.exe)
+ ExpMin= 9.52D-02 ExpMax= 6.95D+04 ExpMxC= 2.37D+03 IAcc=3 IRadAn=         5 AccDes= 0.00D+00
+ Harris functional with IExCor=  402 and IRadAn=       5 diagonalized for initial guess.
+ HarFok:  IExCor=  402 AccDes= 0.00D+00 IRadAn=         5 IDoV= 1 UseB2=F ITyADJ=14
+ ICtDFT=  3500011 ScaDFX=  1.000000  1.000000  1.000000  1.000000
+ FoFCou: FMM=F IPFlag=           0 FMFlag=      100000 FMFlg1=           0
+         NFxFlg=           0 DoJE=T BraDBF=F KetDBF=T FulRan=T
+         wScrn=  0.000000 ICntrl=       500 IOpCl=  0 I1Cent=   200000004 NGrid=           0
+         NMat0=    1 NMatS0=      1 NMatT0=    0 NMatD0=    1 NMtDS0=    0 NMtDT0=    0
+ Petite list used in FoFCou.
+ Harris En= -614.011389393909    
+ JPrj=0 DoOrth=F DoCkMO=F.
+ Initial guess <Sx>= 0.0000 <Sy>= 0.0000 <Sz>= 0.5000 <S**2>= 0.7500 S= 0.5000
+ Leave Link  401 at Thu Aug 13 03:09:40 2026, MaxMem=  2097152000 cpu:               2.1 elap:               0.4
+ Gap=     0.038 Goal=   None    Shift=    0.000
+ RMSDP=8.08D-09 MaxDP=2.88D-07 DE=-1.75D-11 OVMax= 1.06D-06
+
+ SCF Done:  E(UB3LYP) =  -614.053677338     A.U. after   18 cycles
+            NFock= 18  Conv=0.81D-08     -V/T= 2.0023
+ <Sx>= 0.0000 <Sy>= 0.0000 <Sz>= 0.5000 <S**2>= 0.7536 S= 0.5018
+ <L.S>=  0.00000000000    
+ KE= 6.126643386659D+02 PE=-1.708196810389D+03 EE= 3.546921397242D+02
+ Annihilation of the first spin contaminant:
+ S**2 before annihilation     0.7536,   after     0.7500
+ Leave Link  502 at Thu Aug 13 03:09:49 2026, MaxMem=  2097152000 cpu:              41.7 elap:               8.7
+ (Enter /usr/local/g16-gpu/g16/l801.exe)
+ DoSCS=F DFT=T ScalE2(SS,OS)=  1.000000  1.000000
+ Range of M.O.s used for correlation:     1   154
+ NBasis=   154 NAE=    21 NBE=    20 NFC=     0 NFV=     0
+ NROrb=    154 NOA=    21 NOB=    20 NVA=   133 NVB=   134
+ Normal termination of Gaussian 16 at Thu Aug 13 03:10:02 2026.
