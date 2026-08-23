@@ -293,6 +293,7 @@ class Scheduler(object):
                  fine_only: bool | None = False,
                  trsh_ess_jobs: bool | None = True,
                  trsh_rotors: bool | None = True,
+                 rotor_scan_resolution: float | None = None,
                  kinetics_adapter: str = 'arkane',
                  freq_scale_factor: float = 1.0,
                  ts_adapters: list[str] = None,
@@ -325,6 +326,7 @@ class Scheduler(object):
         self.fine_only = fine_only
         self.trsh_ess_jobs = trsh_ess_jobs
         self.trsh_rotors = trsh_rotors
+        self.rotor_scan_resolution = rotor_scan_resolution
         self.kinetics_adapter = kinetics_adapter
         self.freq_scale_factor = freq_scale_factor
         self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
@@ -1040,6 +1042,7 @@ class Scheduler(object):
                         args['trsh'][key] = value
             else:
                 args['trsh'] = trsh
+        args = self.set_scan_resolution(args=args, job_type=job_type)
         if shift:
             args['shift'] = shift
         if scan_trsh:
@@ -1116,6 +1119,29 @@ class Scheduler(object):
         self.check_max_simultaneous_jobs_limit(job.server)
         job.execute()
         self.save_restart_dict()
+
+    def set_scan_resolution(self, args: dict, job_type: str) -> dict:
+        """
+        Inject the run-level rotor scan resolution into a scan job's troubleshooting args.
+
+        The value set via the ``rotor_scan_resolution`` input key is threaded through
+        ``args['trsh']['scan_res']`` (the same channel a per-job troubleshooting override uses),
+        so a run may state its 1D rotor scan resolution once instead of relying on the launching
+        host's settings value. Only ``'scan'`` jobs are affected, and a ``scan_res`` already present
+        in ``args`` (e.g. from troubleshooting) is never overridden. When ``self.rotor_scan_resolution``
+        is ``None`` the args are returned unchanged, so behaviour is identical to today's settings default.
+
+        Args:
+            args (dict): The job arguments dictionary.
+            job_type (str): The job type.
+
+        Returns: dict
+            The (possibly updated) job arguments dictionary.
+        """
+        if job_type == 'scan' and self.rotor_scan_resolution is not None \
+                and 'scan_res' not in args.get('trsh', dict()):
+            args.setdefault('trsh', dict())['scan_res'] = self.rotor_scan_resolution
+        return args
 
     def deduce_job_adapter(self, level: Level, job_type: str) -> str:
         """

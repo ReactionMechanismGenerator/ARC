@@ -206,6 +206,39 @@ class TestARC(unittest.TestCase):
                              'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False}
         self.assertEqual(arc1.job_types, job_type_expected)
 
+    def test_rotor_scan_resolution_input_key(self):
+        """Test the rotor_scan_resolution input key is parsed, stored, and round-tripped."""
+        arc0 = ARC(project='arc_test_scan_res', rotor_scan_resolution=4.0)
+        self.assertEqual(arc0.rotor_scan_resolution, 4.0)
+        self.assertEqual(arc0.as_dict()['rotor_scan_resolution'], 4.0)
+        # Absent the key, the attribute is None and it is not written to the restart dict,
+        # so an existing project's restart file is byte-identical to before this change.
+        arc1 = ARC(project='arc_test_no_scan_res')
+        self.assertIsNone(arc1.rotor_scan_resolution)
+        self.assertNotIn('rotor_scan_resolution', arc1.as_dict())
+
+    def test_rotor_scan_resolution_guard(self):
+        """Test that a rotor scan resolution coarser than 20 degrees is refused."""
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_coarse_scan_res', rotor_scan_resolution=30.0)
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_nonpositive_scan_res', rotor_scan_resolution=0.0)
+        # A non-numeric type (e.g. a quoted YAML value) is refused with a consistent InputError
+        # rather than raising a raw TypeError from the numeric comparison.
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_str_scan_res', rotor_scan_resolution='4.0')
+        # A bool is an int subclass; it must be refused rather than silently read as 1 or 0.
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_true_scan_res', rotor_scan_resolution=True)
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_false_scan_res', rotor_scan_resolution=False)
+        # A value that does not divide 360 evenly leaves a fractional final step and is refused.
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_indivisible_scan_res', rotor_scan_resolution=7.0)
+        # Exactly 20 degrees (18 points) is the coarsest still accepted.
+        arc0 = ARC(project='arc_test_boundary_scan_res', rotor_scan_resolution=20.0)
+        self.assertEqual(arc0.rotor_scan_resolution, 20.0)
+
     def test_check_project_name(self):
         """Test project name invalidity"""
         with self.assertRaises(InputError):

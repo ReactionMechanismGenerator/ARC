@@ -116,6 +116,11 @@ class TestJobCommon(unittest.TestCase):
         self.job_2.scan_res = 55.6
         with self.assertRaises(ValueError):
             common.check_argument_consistency(self.job_2)
+        # A resolution coarser than 20 degrees that still divides 360 (e.g. from a poor
+        # ~/.arc/settings.py rotor_scan_resolution) is caught at the job-build chokepoint.
+        self.job_2.scan_res = 30.0
+        with self.assertRaises(ValueError):
+            common.check_argument_consistency(self.job_2)
 
     def test_update_input_dict_with_args(self):
         """Test the update_input_dict_with_args() function"""
