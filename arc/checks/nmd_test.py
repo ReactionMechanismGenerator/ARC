@@ -8,6 +8,7 @@ This module contains unit tests for the arc.checks.nmd module
 import unittest
 import os
 import shutil
+from unittest.mock import patch
 
 import numpy as np
 
@@ -56,19 +57,19 @@ class TestNMD(unittest.TestCase):
                          H      -0.34927558    0.98159583   -0.32768232
                          H      -0.02233792   -0.04887375    1.09087665
                          H       1.02216551   -0.15844188   -0.35067554"""
-        oh_xyz = """O       0.48890387    0.00000000    0.00000000
-                    H      -0.48890387    0.00000000    0.00000000"""
-        ch3_xyz = """C       0.00000000    0.00000001   -0.00000000
-                     H       1.06690511   -0.17519582    0.05416493
-                     H      -0.68531716   -0.83753536   -0.02808565
-                     H      -0.38158795    1.01273118   -0.02607927"""
-        h2o_xyz = """O      -0.00032832    0.39781490    0.00000000
-                     H      -0.76330345   -0.19953755    0.00000000
-                     H       0.76363177   -0.19827735    0.00000000"""
+        cls.oh_xyz = """O       0.48890387    0.00000000    0.00000000
+                        H      -0.48890387    0.00000000    0.00000000"""
+        cls.ch3_xyz = """C       0.00000000    0.00000001   -0.00000000
+                         H       1.06690511   -0.17519582    0.05416493
+                         H      -0.68531716   -0.83753536   -0.02808565
+                         H      -0.38158795    1.01273118   -0.02607927"""
+        cls.h2o_xyz = """O      -0.00032832    0.39781490    0.00000000
+                         H      -0.76330345   -0.19953755    0.00000000
+                         H       0.76363177   -0.19827735    0.00000000"""
         cls.rxn_1 = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=cls.ch4_xyz),
-                                           ARCSpecies(label='OH', smiles='[OH]', xyz=oh_xyz)],
-                                p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=ch3_xyz),
-                                           ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz)])
+                                           ARCSpecies(label='OH', smiles='[OH]', xyz=cls.oh_xyz)],
+                                p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=cls.ch3_xyz),
+                                           ARCSpecies(label='H2O', smiles='O', xyz=cls.h2o_xyz)])
         cls.ts_1_xyz = check_xyz_dict("""C                    -1.212192   -0.010161    0.000000
                                          H                     0.010122    0.150115    0.000001
                                          H                    -1.460491   -0.555461   -0.907884
@@ -224,6 +225,53 @@ class TestNMD(unittest.TestCase):
                                          H       -2.906412   -0.425097    0.055493
                                          H       -1.951439    0.465285   -1.158262""")
         cls.rxn_3.ts_species = ARCSpecies(label='TS3', is_ts=True, xyz=cls.ts_3_xyz)
+
+        cls.ts_oh_oh_xyz = check_xyz_dict("""O      -1.10000000    0.00000000    0.00000000
+                                             H      -0.15000000    0.00000000    0.00000000
+                                             O       1.20000000    0.00000000    0.00000000
+                                             H       1.55000000    0.85000000    0.00000000""")
+
+    def test_get_repeated_species_atom_equivalences(self):
+        """Repeated identical reactants (e.g. OH + OH) must yield cross-copy atom-equivalence groups
+        (the two O's, the two H's) so NMD can try the alternative mapping when the atom map picks one
+        copy's atom but the TS uses the other's. Non-repeated reactions must yield none."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='H2O', smiles='O'),
+                                     ARCSpecies(label='O', smiles='[O]', multiplicity=3)],
+                          reactants=['OH', 'OH'], products=['H2O', 'O'])
+        groups = nmd.get_repeated_species_atom_equivalences(rxn, well=0)
+        self.assertEqual(sorted(sorted(g) for g in groups), [[0, 2], [1, 3]])
+        self.assertEqual(nmd.get_repeated_species_atom_equivalences(self.rxn_1, well=0), [])
+
+    def test_analyze_ts_normal_mode_displacement_repeated_reactant(self):
+        """Test that a TS of an A + A reaction is not reported as inconsistent with the reaction."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]', xyz=self.oh_xyz),
+                                     ARCSpecies(label='OH', smiles='[OH]', xyz=self.oh_xyz)],
+                          p_species=[ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz),
+                                     ARCSpecies(label='O', smiles='[O]', multiplicity=3,
+                                                xyz='O 0.00000000 0.00000000 0.00000000')])
+        rxn.ts_species = ARCSpecies(label='TS_OH_OH', is_ts=True, xyz=self.ts_oh_oh_xyz)
+        self.assertEqual(len(rxn.r_species), 1)
+        reactants, _ = rxn.get_reactants_and_products(return_copies=False)
+        self.assertEqual(sum(spc.number_of_atoms for spc in reactants), 4)
+        self.assertEqual(len(rxn.ts_species.get_xyz()['symbols']), 4)
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'CHO_neg_freq.out')
+        with patch.object(nmd.parser, 'parse_normal_mode_displacement', side_effect=NotImplementedError):
+            valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
+        self.assertIsNone(valid)
+
+    def test_analyze_ts_normal_mode_displacement_atom_count_mismatch(self):
+        """Test that a TS spanning a different set of atoms than the reactants is not reported as consistent."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz),
+                                     ARCSpecies(label='OH', smiles='[OH]', xyz=self.oh_xyz)],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=self.ch3_xyz),
+                                     ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)])
+        rxn.ts_species = ARCSpecies(label='TS_short', is_ts=True, xyz=self.ch4_xyz)
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
+        self.assertIsNot(valid, True)
+        self.assertIsNone(valid)
 
     def test_analyze_ts_normal_mode_displacement_simple_rxns(self):
         """Test the analyze_ts_normal_mode_displacement() function with simple reactions."""
