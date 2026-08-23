@@ -79,6 +79,151 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
             logger.warning(f'Could not map species {spc_1} and {spc_2}.')
         return None
 
+    trivial_map = trivial_atom_map(spc_1, spc_2, map_type=map_type)
+    if trivial_map is not None:
+        return trivial_map
+
+    if backend.lower() not in ['arc']:
+        raise ValueError(f'The backend {backend} is not supported for 3DAM.')
+    atom_map = None
+
+    if backend.lower() == 'arc':
+        candidates = identify_backbone_candidates(spc_1, spc_2, consider_chirality=consider_chirality)
+        if not candidates:
+            return None
+        rmsds, fixed_spcs = list(), list()
+        for candidate in candidates:
+            rmsd, fixed_spc_1, fixed_spc_2 = score_backbone_candidate(spc_1, spc_2, candidate)
+            rmsds.append(rmsd)
+            fixed_spcs.append((fixed_spc_1, fixed_spc_2))
+        lowest_rmsd = min(rmsds)
+        tied_indices = [i for i, rmsd in enumerate(rmsds) if rmsd - lowest_rmsd <= RMSD_TIE_TOLERANCE]
+        atom_maps = dict()
+        for i in tied_indices:
+            atom_maps[i] = map_hydrogens(fixed_spcs[i][0], fixed_spcs[i][1], candidates[i])
+            check_atom_map_is_a_permutation(atom_maps[i], spc_1, spc_2)
+        if len(tied_indices) > 1:
+            displacements = {i: fixed_spcs[i][0].kabsch(fixed_spcs[i][1],
+                                                        [v for k, v in sorted(atom_maps[i].items(),
+                                                                              key=lambda item: item[0])])
+                             for i in tied_indices}
+            lowest_displacement = min(displacements.values())
+            tied_indices = [i for i in tied_indices
+                            if displacements[i] - lowest_displacement <= RMSD_TIE_TOLERANCE]
+        chosen_candidate_index = max(tied_indices)
+        atom_map = atom_maps[chosen_candidate_index]
+        if map_type == 'list':
+            atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
+
+    if inc_vals is not None:
+        atom_map = [value + inc_vals for value in atom_map]
+    return atom_map
+
+
+def map_two_species_all(spc_1: ARCSpecies | Molecule,
+                        spc_2: ARCSpecies | Molecule,
+                        map_type: str = 'list',
+                        backend: str = 'ARC',
+                        consider_chirality: bool = True,
+                        inc_vals: int | None = None,
+                        verbose: bool = False,
+                        ) -> list[tuple[list[int] | dict[int, int], float]] | None:
+    """
+    Map the atoms in ``spc_1`` to the atoms in ``spc_2``, returning *every* superimposable candidate map
+    rather than only the best-scoring one.
+
+    This is the multiplicity-preserving counterpart of :func:`map_two_species`. Where ``map_two_species``
+    collapses the candidate list produced by :func:`identify_superimposable_candidates` down to a single
+    map (lowest backbone RMSD, ties broken by the all-atom Kabsch displacement and then by taking the last
+    tied candidate), this function scores and returns all of them. It is intended for callers that need to
+    enumerate distinct reaction channels, see ``arc.mapping.cluster``.
+
+    Note that the first entry of the returned list is not necessarily the map returned by
+    ``map_two_species``: entries are ordered by ascending backbone RMSD, whereas ``map_two_species``
+    resolves a tie by choosing the *last* tied candidate.
+
+    Candidates whose hydrogen mapping fails (a ``ValueError`` raised by :func:`map_hydrogens`, e.g. an
+    H-count mismatch at a mapped heavy atom) are skipped rather than aborting the whole enumeration.
+
+    Args:
+        spc_1 (ARCSpecies | Molecule): Species 1.
+        spc_2 (ARCSpecies | Molecule): Species 2.
+        map_type (str, optional): Whether to return 'list' or 'dict' type maps.
+        backend (str, optional): Currently only ``ARC``'s method is implemented as the backend.
+        consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
+        inc_vals (int, optional): An optional integer by which all values in the atom map lists will be incremented.
+        verbose (bool, optional): Whether to use logging.
+
+    Returns:
+        list[tuple[list[int] | dict[int, int], float]] | None:
+            Entries are ``(atom_map, backbone_rmsd)`` tuples ordered by ascending ``backbone_rmsd``.
+            ``None`` if the two species could not be mapped at all.
+    """
+    spc_1, spc_2 = get_arc_species(spc_1), get_arc_species(spc_2)
+    if not check_species_before_mapping(spc_1, spc_2, verbose=verbose):
+        if verbose:
+            logger.warning(f'Could not map species {spc_1} and {spc_2}.')
+        return None
+
+    trivial_map = trivial_atom_map(spc_1, spc_2, map_type=map_type)
+    if trivial_map is not None:
+        # A trivial map is unique by construction, so the enumeration holds exactly one entry.
+        return [(trivial_map, 0.0)]
+
+    if backend.lower() not in ['arc']:
+        raise ValueError(f'The backend {backend} is not supported for 3DAM.')
+
+    candidates = identify_backbone_candidates(spc_1, spc_2, consider_chirality=consider_chirality)
+    if not candidates:
+        return None
+
+    scored: list[tuple[list[int] | dict[int, int], float]] = list()
+    for candidate in candidates:
+        rmsd, fixed_spc_1, fixed_spc_2 = score_backbone_candidate(spc_1, spc_2, candidate)
+        try:
+            atom_map = map_hydrogens(fixed_spc_1, fixed_spc_2, candidate)
+            # A candidate that does not yield a permutation is discarded rather than raised on, since
+            # unlike map_two_species this function is enumerating and other candidates may still be good.
+            check_atom_map_is_a_permutation(atom_map, spc_1, spc_2)
+        except ValueError as e:
+            if verbose:
+                logger.warning(f'Could not map hydrogens for a backbone candidate of '
+                               f'{spc_1} and {spc_2}, skipping it. Got:\n{e}')
+            continue
+        if map_type == 'list':
+            atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
+            if inc_vals is not None:
+                atom_map = [value + inc_vals for value in atom_map]
+        elif inc_vals is not None:
+            atom_map = {k: v + inc_vals for k, v in atom_map.items()}
+        scored.append((atom_map, rmsd))
+    if not scored:
+        logger.warning(f'Could not map hydrogens for any backbone candidate of {spc_1} and {spc_2}.')
+        return None
+    scored.sort(key=lambda entry: entry[1])
+    return scored
+
+
+def trivial_atom_map(spc_1: ARCSpecies,
+                     spc_2: ARCSpecies,
+                     map_type: str = 'list',
+                     ) -> list[int] | dict[int, int] | None:
+    """
+    Return the atom map for the trivial cases that do not require the fingerprint/DFS/RMSD pipeline:
+    mono-atomic species, homonuclear diatomic species, and species in which every atom is a different element.
+
+    Note: Historically these shortcuts returned directly from ``map_two_species`` before the ``inc_vals``
+    increment was applied, so a trivial map is *not* incremented by ``inc_vals``. That behaviour is preserved
+    here. ``inc_vals`` is only exercised by the test suite, it is not used anywhere in the production pipeline.
+
+    Args:
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        map_type (str, optional): Whether to return a 'list' or a 'dict' map type.
+
+    Returns:
+        list[int] | dict[int, int] | None: The trivial atom map, or ``None`` if no shortcut applies.
+    """
     # A shortcut for mono-atomic species.
     if spc_1.number_of_atoms == spc_2.number_of_atoms == 1:
         if map_type == 'dict':
@@ -104,67 +249,90 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
             atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
         return atom_map
 
-    if backend.lower() not in ['arc']:
-        raise ValueError(f'The backend {backend} is not supported for 3DAM.')
-    atom_map = None
+    return None
 
-    if backend.lower() == 'arc':
+
+def identify_backbone_candidates(spc_1: ARCSpecies,
+                                 spc_2: ARCSpecies,
+                                 consider_chirality: bool = True,
+                                 ) -> list[dict[int, int]] | None:
+    """
+    Fingerprint both species and identify all superimposable heavy-atom backbone candidates.
+    If no candidate is found, the search is retried with the opposite ``consider_chirality`` setting.
+
+    Args:
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
+
+    Returns:
+        list[dict[int, int]] | None: The backbone candidates, or ``None`` if none could be identified.
+    """
+    fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
+    fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
+    candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
+    if candidates is None or len(candidates) == 0:
+        consider_chirality = not consider_chirality
         fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
         fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
         candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
         if candidates is None or len(candidates) == 0:
-            consider_chirality = not consider_chirality
-            fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
-            fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
-            candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
-            if candidates is None or len(candidates) == 0:
-                logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
-                return None
-        if not len(candidates):
-                return None
-        else:
-            rmsds, fixed_spcs = list(), list()
-            for candidate in candidates:
-                fixed_spc_1, fixed_spc_2 = fix_dihedrals_by_backbone_mapping(spc_1, spc_2, backbone_map=candidate)
-                fixed_spcs.append((fixed_spc_1, fixed_spc_2))
-                backbone_1, backbone_2 = set(list(candidate.keys())), set(list(candidate.values()))
-                xyz1, xyz2 = fixed_spc_1.get_xyz(), fixed_spc_2.get_xyz()
-                xyz1 = xyz_from_data(coords=[xyz1['coords'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
-                                     symbols=[xyz1['symbols'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
-                                     isotopes=[xyz1['isotopes'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1])
-                xyz2 = xyz_from_data(coords=[xyz2['coords'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
-                                     symbols=[xyz2['symbols'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
-                                     isotopes=[xyz2['isotopes'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2])
-                no_gap_candidate = remove_gaps_from_values(candidate)
-                xyz2 = sort_xyz_using_indices(xyz2, indices=[v for k, v in sorted(no_gap_candidate.items(),
-                                                                                  key=lambda item: item[0])])
-                rmsds.append(compare_confs(xyz1=xyz1, xyz2=xyz2, rmsd_score=True))
-            lowest_rmsd = min(rmsds)
-            tied_indices = [i for i, rmsd in enumerate(rmsds) if rmsd - lowest_rmsd <= RMSD_TIE_TOLERANCE]
-            atom_maps = dict()
-            for i in tied_indices:
-                atom_maps[i] = map_hydrogens(fixed_spcs[i][0], fixed_spcs[i][1], candidates[i])
-                if sorted(atom_maps[i].keys()) != list(range(spc_1.number_of_atoms)) \
-                        or sorted(atom_maps[i].values()) != list(range(spc_2.number_of_atoms)):
-                    raise ValueError(f'The atom map of {spc_1.label} and {spc_2.label} is not a permutation of their '
-                                     f'{spc_1.number_of_atoms} and {spc_2.number_of_atoms} atoms, '
-                                     f'got:\n{atom_maps[i]}')
-            if len(tied_indices) > 1:
-                displacements = {i: fixed_spcs[i][0].kabsch(fixed_spcs[i][1],
-                                                            [v for k, v in sorted(atom_maps[i].items(),
-                                                                                  key=lambda item: item[0])])
-                                 for i in tied_indices}
-                lowest_displacement = min(displacements.values())
-                tied_indices = [i for i in tied_indices
-                                if displacements[i] - lowest_displacement <= RMSD_TIE_TOLERANCE]
-            chosen_candidate_index = max(tied_indices)
-            atom_map = atom_maps[chosen_candidate_index]
-            if map_type == 'list':
-                atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
+            logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
+            return None
+    return candidates
 
-    if inc_vals is not None:
-        atom_map = [value + inc_vals for value in atom_map]
-    return atom_map
+
+def check_atom_map_is_a_permutation(atom_map: dict[int, int],
+                                    spc_1: ARCSpecies,
+                                    spc_2: ARCSpecies,
+                                    ) -> None:
+    """
+    Verify that a mapped species pair yields a genuine permutation of both species' atoms.
+
+    Args:
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        atom_map (dict[int, int]): The candidate atom map.
+
+    Raises:
+        ValueError: If the map does not cover every atom of both species exactly once.
+    """
+    if sorted(atom_map.keys()) != list(range(spc_1.number_of_atoms)) \
+            or sorted(atom_map.values()) != list(range(spc_2.number_of_atoms)):
+        raise ValueError(f'The atom map of {spc_1.label} and {spc_2.label} is not a permutation of their '
+                         f'{spc_1.number_of_atoms} and {spc_2.number_of_atoms} atoms, '
+                         f'got:\n{atom_map}')
+
+
+def score_backbone_candidate(spc_1: ARCSpecies,
+                             spc_2: ARCSpecies,
+                             candidate: dict[int, int],
+                             ) -> tuple[float, ARCSpecies, ARCSpecies]:
+    """
+    Score a single backbone candidate by the RMSD between the two dihedral-corrected backbone geometries.
+
+    Args:
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        candidate (dict[int, int]): The candidate backbone map.
+
+    Returns:
+        tuple[float, ARCSpecies, ARCSpecies]:
+            The backbone RMSD, and the two dihedral-corrected species this candidate implies.
+    """
+    fixed_spc_1, fixed_spc_2 = fix_dihedrals_by_backbone_mapping(spc_1, spc_2, backbone_map=candidate)
+    backbone_1, backbone_2 = set(list(candidate.keys())), set(list(candidate.values()))
+    xyz1, xyz2 = fixed_spc_1.get_xyz(), fixed_spc_2.get_xyz()
+    xyz1 = xyz_from_data(coords=[xyz1['coords'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
+                         symbols=[xyz1['symbols'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
+                         isotopes=[xyz1['isotopes'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1])
+    xyz2 = xyz_from_data(coords=[xyz2['coords'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
+                         symbols=[xyz2['symbols'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
+                         isotopes=[xyz2['isotopes'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2])
+    no_gap_candidate = remove_gaps_from_values(candidate)
+    xyz2 = sort_xyz_using_indices(xyz2, indices=[v for k, v in sorted(no_gap_candidate.items(),
+                                                                     key=lambda item: item[0])])
+    return compare_confs(xyz1=xyz1, xyz2=xyz2, rmsd_score=True), fixed_spc_1, fixed_spc_2
 
 
 def get_arc_species(spc: ARCSpecies | Molecule) -> ARCSpecies:
@@ -1582,6 +1750,35 @@ def map_pairs(pairs: list[tuple[ARCSpecies, ARCSpecies]]) -> list[list[int]]:
     maps = list()
     for pair in pairs:
         maps.append(map_two_species(pair[0], pair[1]))
+    return maps
+
+
+def map_pairs_all(pairs: list[tuple[ARCSpecies, ARCSpecies]],
+                  max_per_pair: int | None = None,
+                  ) -> list[list[list[int]]] | None:
+    """
+    The multiplicity-preserving counterpart of :func:`map_pairs`: for every matched fragment pair, return
+    *all* superimposable maps rather than only the best-scoring one.
+
+    Args:
+        pairs (list[tuple[ARCSpecies, ARCSpecies]]): The matched reactant/product fragment pairs.
+        max_per_pair (int, optional): Keep at most this many maps per pair, best-scoring first.
+
+    Returns:
+        list[list[list[int]]] | None:
+            Per pair, the list of candidate atom maps ordered by ascending backbone RMSD.
+            ``None`` if any pair could not be mapped at all.
+    """
+    maps = list()
+    for pair in pairs:
+        scored = map_two_species_all(pair[0], pair[1])
+        if not scored:
+            return None
+        candidates = [atom_map for atom_map, _ in scored]
+        if max_per_pair is not None and len(candidates) > max_per_pair:
+            logger.debug(f'map_pairs_all: keeping {max_per_pair} of {len(candidates)} maps for a fragment pair.')
+            candidates = candidates[:max_per_pair]
+        maps.append(candidates)
     return maps
 
 
