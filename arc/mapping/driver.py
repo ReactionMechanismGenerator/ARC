@@ -61,7 +61,7 @@ def map_reaction(rxn: ARCReaction,
         except ValueError:
             return None
     if flip:
-        raw_map = try_mapping(rxn.flip_reaction())
+        raw_map = try_mapping(prepare_flipped_reaction(rxn))
         if raw_map is None:
             return None
         return check_atom_map_and_return(flip_map(raw_map))
@@ -78,6 +78,42 @@ def map_reaction(rxn: ARCReaction,
     if raw_map is None:
         return map_reaction(rxn, backend=backend, flip=True)
     return check_atom_map_and_return(raw_map)
+
+
+def prepare_flipped_reaction(rxn: ARCReaction) -> ARCReaction:
+    """
+    Build the flipped reaction and give it a usable, forward-discovered family template.
+
+    ``ARCReaction.flip_reaction`` resets the family, so the flipped copy re-derives its product dictionaries
+    lazily with the *default* family set. When the original reaction was matched only by a broader set - the
+    usual situation for a template discovered in reverse - that rederivation comes back empty and the flip
+    retry has nothing to map with. Widen the search in that case, and prefer a template that describes the
+    flipped reaction forward.
+
+    Args:
+        rxn (ARCReaction): The reaction to flip.
+
+    Returns:
+        ARCReaction: The flipped reaction, seeded with a family and product dictionaries where possible.
+    """
+    flipped = rxn.flip_reaction()
+    try:
+        product_dicts = flipped.product_dicts or list()
+    except (ValueError, KeyError, AttributeError):
+        product_dicts = list()
+    if not any(not pd.get('discovered_in_reverse') for pd in product_dicts):
+        try:
+            widened = flipped.get_product_dicts(rmg_family_set='all')
+        except (ValueError, KeyError, AttributeError):
+            widened = list()
+        product_dicts = widened or product_dicts
+    forward_dicts = [pd for pd in product_dicts if not pd.get('discovered_in_reverse')]
+    product_dicts = forward_dicts or product_dicts
+    if product_dicts:
+        flipped.product_dicts = product_dicts
+        flipped.family = product_dicts[0]['family']
+        flipped.family_own_reverse = product_dicts[0]['own_reverse']
+    return flipped
 
 
 def check_atom_map_and_return(atom_map: list[int] | None) -> list[int] | None:
