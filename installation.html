@@ -174,7 +174,7 @@ make<span class="w"> </span>install-all<span class="w">       </span><span class
 <p>The RMG installer accepts flags:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make<span class="w"> </span>install-rmg
 make<span class="w"> </span>install-rmg<span class="w"> </span><span class="nv">RMG_ARGS</span><span class="o">=</span>--source
-make<span class="w"> </span>install-rmg<span class="w"> </span><span class="nv">RMG_ARGS</span><span class="o">=</span><span class="s2">&quot;--source --ssh&quot;</span>
+make<span class="w"> </span>install-rmg<span class="w"> </span><span class="nv">RMG_ARGS</span><span class="o">=</span><span class="s2">"--source --ssh"</span>
 </pre></div>
 </div>
 <p>Run this for the full list:</p>
@@ -258,13 +258,13 @@ defaults. Missing values fall back to ARC’s repository defaults.</p>
 </ul>
 <p>Example:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;my_slurm&#39;</span><span class="p">:</span> <span class="p">{</span>
-        <span class="s1">&#39;cluster_soft&#39;</span><span class="p">:</span> <span class="s1">&#39;Slurm&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;address&#39;</span><span class="p">:</span> <span class="s1">&#39;login.cluster.edu&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;un&#39;</span><span class="p">:</span> <span class="s1">&#39;my_user&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;key&#39;</span><span class="p">:</span> <span class="s1">&#39;/home/my_user/.ssh/id_rsa&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;cpus&#39;</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
-        <span class="s1">&#39;memory&#39;</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
+    <span class="s1">'my_slurm'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+        <span class="s1">'key'</span><span class="p">:</span> <span class="s1">'/home/my_user/.ssh/id_rsa'</span><span class="p">,</span>
+        <span class="s1">'cpus'</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
+        <span class="s1">'memory'</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">}</span>
 </pre></div>
@@ -278,11 +278,11 @@ In this context, <code class="docutils literal notranslate"><span class="pre">lo
 the configured scheduler unless your site-specific submit templates implement a
 different execution path.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;local&#39;</span><span class="p">:</span> <span class="p">{</span>
-        <span class="s1">&#39;cluster_soft&#39;</span><span class="p">:</span> <span class="s1">&#39;Slurm&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;un&#39;</span><span class="p">:</span> <span class="s1">&#39;my_user&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;cpus&#39;</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
-        <span class="s1">&#39;memory&#39;</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
+    <span class="s1">'local'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+        <span class="s1">'cpus'</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
+        <span class="s1">'memory'</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">}</span>
 </pre></div>
@@ -297,10 +297,10 @@ customize <code class="docutils literal notranslate"><span class="pre">check_sta
 <p>Tell ARC where electronic structure software is available using
 <code class="docutils literal notranslate"><span class="pre">global_ess_settings</span></code>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">global_ess_settings</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;gaussian&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">,</span> <span class="s1">&#39;my_slurm&#39;</span><span class="p">],</span>
-    <span class="s1">&#39;orca&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>
-    <span class="s1">&#39;qchem&#39;</span><span class="p">:</span> <span class="s1">&#39;my_slurm&#39;</span><span class="p">,</span>
-    <span class="s1">&#39;xtb&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>
+    <span class="s1">'gaussian'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'local'</span><span class="p">,</span> <span class="s1">'my_slurm'</span><span class="p">],</span>
+    <span class="s1">'orca'</span><span class="p">:</span> <span class="s1">'local'</span><span class="p">,</span>
+    <span class="s1">'qchem'</span><span class="p">:</span> <span class="s1">'my_slurm'</span><span class="p">,</span>
+    <span class="s1">'xtb'</span><span class="p">:</span> <span class="s1">'local'</span><span class="p">,</span>
 <span class="p">}</span>
 </pre></div>
 </div>

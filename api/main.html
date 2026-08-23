@@ -196,7 +196,7 @@
 <span id="arc-main"></span><span id="main"></span><h1>arc.main<a class="headerlink" href="#module-arc.main" title="Link to this heading"></a></h1>
 <p>ARC’s main module.
 To run ARC through its API, first make an instance of the ARC class, then call the .execute() method. For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">arc</span> <span class="o">=</span> <span class="n">ARC</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s1">&#39;ArcDemo&#39;</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="p">[</span><span class="n">spc0</span><span class="p">,</span> <span class="n">spc1</span><span class="p">,</span> <span class="n">spc2</span><span class="p">])</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">arc</span> <span class="o">=</span> <span class="n">ARC</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s1">'ArcDemo'</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="p">[</span><span class="n">spc0</span><span class="p">,</span> <span class="n">spc1</span><span class="p">,</span> <span class="n">spc2</span><span class="p">])</span>
 <span class="n">arc</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
 </pre></div>
 </div>
@@ -256,15 +256,15 @@ bound may be <code class="docutils literal notranslate"><span class="pre">'inf'<
 Job types sharing a level may be given as a whitespace- or comma-separated key (e.g. <code class="docutils literal notranslate"><span class="pre">'opt</span> <span class="pre">freq'</span></code>).
 Job types not defined in adaptive levels will have non-adaptive (regular) levels.
 Example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span> <span class="o">=</span> <span class="p">[{</span><span class="s1">&#39;atom_range&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span>
-                    <span class="s1">&#39;levels&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt freq&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">,</span>
-                               <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;ccsd(t)-f12/aug-cc-pvtz-f12&#39;</span><span class="p">}},</span>
-                   <span class="p">{</span><span class="s1">&#39;atom_range&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">15</span><span class="p">],</span>
-                    <span class="s1">&#39;levels&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt freq&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp/cbsb7&#39;</span><span class="p">,</span>
-                               <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;dlpno-ccsd(t)/def2-tzvp&#39;</span><span class="p">}},</span>
-                   <span class="p">{</span><span class="s1">&#39;atom_range&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">16</span><span class="p">,</span> <span class="s1">&#39;inf&#39;</span><span class="p">],</span>
-                    <span class="s1">&#39;levels&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt freq&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
-                               <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">}}]</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span> <span class="o">=</span> <span class="p">[{</span><span class="s1">'atom_range'</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span>
+                    <span class="s1">'levels'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'opt freq'</span><span class="p">:</span> <span class="s1">'wb97xd/6-311+g(2d,2p)'</span><span class="p">,</span>
+                               <span class="s1">'sp'</span><span class="p">:</span> <span class="s1">'ccsd(t)-f12/aug-cc-pvtz-f12'</span><span class="p">}},</span>
+                   <span class="p">{</span><span class="s1">'atom_range'</span><span class="p">:</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">15</span><span class="p">],</span>
+                    <span class="s1">'levels'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'opt freq'</span><span class="p">:</span> <span class="s1">'b3lyp/cbsb7'</span><span class="p">,</span>
+                               <span class="s1">'sp'</span><span class="p">:</span> <span class="s1">'dlpno-ccsd(t)/def2-tzvp'</span><span class="p">}},</span>
+                   <span class="p">{</span><span class="s1">'atom_range'</span><span class="p">:</span> <span class="p">[</span><span class="mi">16</span><span class="p">,</span> <span class="s1">'inf'</span><span class="p">],</span>
+                    <span class="s1">'levels'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'opt freq'</span><span class="p">:</span> <span class="s1">'b3lyp/6-31g(d,p)'</span><span class="p">,</span>
+                               <span class="s1">'sp'</span><span class="p">:</span> <span class="s1">'wb97xd/6-311+g(2d,2p)'</span><span class="p">}}]</span>
 </pre></div>
 </div>
 </p></li>
@@ -1030,12 +1030,12 @@ if <cite>diagnostics</cite> is True, this method will not raise errors, and will
 <code class="docutils literal notranslate"><span class="pre">'inf'</span></code> or <code class="docutils literal notranslate"><span class="pre">float('inf')</span></code>) and a <code class="docutils literal notranslate"><span class="pre">levels</span></code> mapping of job types to levels of theory.
 Job types that share a level may be given as a single whitespace- or comma-separated key
 (e.g. <code class="docutils literal notranslate"><span class="pre">'opt</span> <span class="pre">freq'</span></code>). A level value may be a string or a <code class="docutils literal notranslate"><span class="pre">Level</span></code> dictionary. For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span> <span class="o">=</span> <span class="p">[{</span><span class="s1">&#39;atom_range&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span>
-                    <span class="s1">&#39;levels&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt freq&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd/def2tzvp&#39;</span><span class="p">,</span>
-                               <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;ccsd(t)-f12/cc-pvtz-f12&#39;</span><span class="p">}},</span>
-                   <span class="p">{</span><span class="s1">&#39;atom_range&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="s1">&#39;inf&#39;</span><span class="p">],</span>
-                    <span class="s1">&#39;levels&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;opt freq&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
-                               <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;dlpno-ccsd(t)/def2-tzvp&#39;</span><span class="p">}}]</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span> <span class="o">=</span> <span class="p">[{</span><span class="s1">'atom_range'</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span>
+                    <span class="s1">'levels'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'opt freq'</span><span class="p">:</span> <span class="s1">'wb97xd/def2tzvp'</span><span class="p">,</span>
+                               <span class="s1">'sp'</span><span class="p">:</span> <span class="s1">'ccsd(t)-f12/cc-pvtz-f12'</span><span class="p">}},</span>
+                   <span class="p">{</span><span class="s1">'atom_range'</span><span class="p">:</span> <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="s1">'inf'</span><span class="p">],</span>
+                    <span class="s1">'levels'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'opt freq'</span><span class="p">:</span> <span class="s1">'b3lyp/6-31g(d,p)'</span><span class="p">,</span>
+                               <span class="s1">'sp'</span><span class="p">:</span> <span class="s1">'dlpno-ccsd(t)/def2-tzvp'</span><span class="p">}}]</span>
 </pre></div>
 </div>
 <dl class="field-list simple">

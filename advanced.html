@@ -329,16 +329,16 @@ keys for the heavy-atom ranges and tuple keys for grouped job types. In an
 <p>When using ARC from Python, pass regular Python tuples:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span> <span class="o">=</span> <span class="p">{</span>
     <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">):</span> <span class="p">{</span>
-        <span class="p">(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;ccsd(t)-f12/aug-cc-pvtz-f12&#39;</span><span class="p">,</span>
+        <span class="p">(</span><span class="s1">'opt'</span><span class="p">,</span> <span class="s1">'freq'</span><span class="p">):</span> <span class="s1">'wb97xd/6-311+g(2d,2p)'</span><span class="p">,</span>
+        <span class="s1">'sp'</span><span class="p">:</span> <span class="s1">'ccsd(t)-f12/aug-cc-pvtz-f12'</span><span class="p">,</span>
     <span class="p">},</span>
     <span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">15</span><span class="p">):</span> <span class="p">{</span>
-        <span class="p">(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/cbsb7&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;dlpno-ccsd(t)/def2-tzvp&#39;</span><span class="p">,</span>
+        <span class="p">(</span><span class="s1">'opt'</span><span class="p">,</span> <span class="s1">'freq'</span><span class="p">):</span> <span class="s1">'b3lyp/cbsb7'</span><span class="p">,</span>
+        <span class="s1">'sp'</span><span class="p">:</span> <span class="s1">'dlpno-ccsd(t)/def2-tzvp'</span><span class="p">,</span>
     <span class="p">},</span>
-    <span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="s1">&#39;inf&#39;</span><span class="p">):</span> <span class="p">{</span>
-        <span class="p">(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">,</span>
+    <span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="s1">'inf'</span><span class="p">):</span> <span class="p">{</span>
+        <span class="p">(</span><span class="s1">'opt'</span><span class="p">,</span> <span class="s1">'freq'</span><span class="p">):</span> <span class="s1">'b3lyp/6-31g(d,p)'</span><span class="p">,</span>
+        <span class="s1">'sp'</span><span class="p">:</span> <span class="s1">'wb97xd/6-311+g(2d,2p)'</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">}</span>
 </pre></div>
@@ -354,13 +354,13 @@ keys for the heavy-atom ranges and tuple keys for grouped job types. In an
 </div>
 <p>Server entries can also define node limits:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;my_slurm&#39;</span><span class="p">:</span> <span class="p">{</span>
-        <span class="s1">&#39;cluster_soft&#39;</span><span class="p">:</span> <span class="s1">&#39;Slurm&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;address&#39;</span><span class="p">:</span> <span class="s1">&#39;login.cluster.edu&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;un&#39;</span><span class="p">:</span> <span class="s1">&#39;my_user&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;key&#39;</span><span class="p">:</span> <span class="s1">&#39;/home/my_user/.ssh/id_rsa&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;cpus&#39;</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
-        <span class="s1">&#39;memory&#39;</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
+    <span class="s1">'my_slurm'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+        <span class="s1">'key'</span><span class="p">:</span> <span class="s1">'/home/my_user/.ssh/id_rsa'</span><span class="p">,</span>
+        <span class="s1">'cpus'</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
+        <span class="s1">'memory'</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">}</span>
 </pre></div>
@@ -497,20 +497,20 @@ so this attribute must be specified by the user.</p>
 <p>To execute ND rotor scans, first set the <code class="docutils literal notranslate"><span class="pre">rotors</span></code> job type to <code class="docutils literal notranslate"><span class="pre">True</span></code>, then set
 the <code class="docutils literal notranslate"><span class="pre">directed_rotors</span></code> attribute of the relevant species. Below are several examples.</p>
 <p>To run all dihedral scans of a species separately using brute-force sp (each as 1D):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;some_label&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;species_smiles&#39;</span><span class="p">,</span> <span class="n">directed_rotors</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;brute_force_sp&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;all&#39;</span><span class="p">]})</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'some_label'</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">'species_smiles'</span><span class="p">,</span> <span class="n">directed_rotors</span><span class="o">=</span><span class="p">{</span><span class="s1">'brute_force_sp'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'all'</span><span class="p">]})</span>
 </pre></div>
 </div>
 <p>To run all dihedral scans of a species as a conjugated scan (ND, N = the number of
 torsions):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;some_label&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;species_smiles&#39;</span><span class="p">,</span> <span class="n">directed_rotors</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;cont_opt&#39;</span><span class="p">:</span> <span class="p">[[</span><span class="s1">&#39;all&#39;</span><span class="p">]]})</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'some_label'</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">'species_smiles'</span><span class="p">,</span> <span class="n">directed_rotors</span><span class="o">=</span><span class="p">{</span><span class="s1">'cont_opt'</span><span class="p">:</span> <span class="p">[[</span><span class="s1">'all'</span><span class="p">]]})</span>
 </pre></div>
 </div>
 <p>Note the change in list level (<code class="docutils literal notranslate"><span class="pre">all</span></code> is either within one or two nested lists) in
 the above examples.</p>
 <p>To run specific dihedrals as ND (here all 2D combinations for a species with 3
 torsions):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;C4O2&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;[O]CCCC=O&#39;</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span>
-                  <span class="n">directed_rotors</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;brute_force_opt&#39;</span><span class="p">:</span> <span class="p">[[[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]],</span> <span class="p">[[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]],</span> <span class="p">[[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]]]})</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'C4O2'</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">'[O]CCCC=O'</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span>
+                  <span class="n">directed_rotors</span><span class="o">=</span><span class="p">{</span><span class="s1">'brute_force_opt'</span><span class="p">:</span> <span class="p">[[[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]],</span> <span class="p">[[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]],</span> <span class="p">[[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]]]})</span>
 </pre></div>
 </div>
 <ul class="simple">
@@ -542,9 +542,9 @@ make the calculation less dependent on automated TS guess generation.</p>
 <p>Pipe mode is ARC’s opt-in distributed execution path for large homogeneous job
 batches on HPC systems. It is disabled by default:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">pipe_settings</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;enabled&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-    <span class="s1">&#39;min_tasks&#39;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>
-    <span class="s1">&#39;lease_duration_hrs&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s1">'enabled'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s1">'min_tasks'</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="s1">'lease_duration_hrs'</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -621,50 +621,50 @@ input:</p>
 
 <span class="n">input_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
 
-<span class="n">input_dict</span><span class="p">[</span><span class="s1">&#39;project&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;Demo_project_input_file_from_API&#39;</span>
+<span class="n">input_dict</span><span class="p">[</span><span class="s1">'project'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'Demo_project_input_file_from_API'</span>
 
-<span class="n">input_dict</span><span class="p">[</span><span class="s1">&#39;job_types&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;conf_opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-                           <span class="s1">&#39;opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-                           <span class="s1">&#39;fine&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-                           <span class="s1">&#39;freq&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-                           <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-                           <span class="s1">&#39;rotors&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-                           <span class="s1">&#39;conf_sp&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
-                           <span class="s1">&#39;orbitals&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
-                           <span class="s1">&#39;lennard_jones&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+<span class="n">input_dict</span><span class="p">[</span><span class="s1">'job_types'</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'conf_opt'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">'opt'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">'fine'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">'freq'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">'sp'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">'rotors'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">'conf_sp'</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                           <span class="s1">'orbitals'</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                           <span class="s1">'lennard_jones'</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
                           <span class="p">}</span>
 
-<span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;NO&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;[N]=O&#39;</span><span class="p">)</span>
+<span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'NO'</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">'[N]=O'</span><span class="p">)</span>
 
-<span class="n">adj1</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;multiplicity 2</span>
+<span class="n">adj1</span> <span class="o">=</span> <span class="s2">"""multiplicity 2</span>
 <span class="s2">1 C u0 p0 c0 {2,D} {4,S} {5,S}</span>
 <span class="s2">2 C u0 p0 c0 {1,D} {3,S} {6,S}</span>
 <span class="s2">3 O u1 p2 c0 {2,S}</span>
 <span class="s2">4 H u0 p0 c0 {1,S}</span>
 <span class="s2">5 H u0 p0 c0 {1,S}</span>
-<span class="s2">6 H u0 p0 c0 {2,S}&quot;&quot;&quot;</span>
+<span class="s2">6 H u0 p0 c0 {2,S}"""</span>
 
 <span class="n">xyz2</span> <span class="o">=</span> <span class="p">[</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;O       1.35170118   -1.00275231   -0.48283333</span>
+<span class="w">    </span><span class="sd">"""O       1.35170118   -1.00275231   -0.48283333</span>
 <span class="sd">       C      -0.67437022    0.01989281    0.16029161</span>
 <span class="sd">       C       0.62797113   -0.03193934   -0.15151370</span>
 <span class="sd">       H      -1.14812497    0.95492850    0.42742905</span>
 <span class="sd">       H      -1.27300665   -0.88397696    0.14797321</span>
-<span class="sd">       H       1.11582953    0.94384729   -0.10134685&quot;&quot;&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;O       1.49847909   -0.87864716    0.21971764</span>
+<span class="sd">       H       1.11582953    0.94384729   -0.10134685"""</span><span class="p">,</span>
+<span class="w">    </span><span class="sd">"""O       1.49847909   -0.87864716    0.21971764</span>
 <span class="sd">       C      -0.69134542   -0.01812252    0.05076812</span>
 <span class="sd">       C       0.64534929    0.00412787   -0.04279617</span>
 <span class="sd">       H      -1.19713983   -0.90988817    0.40350584</span>
 <span class="sd">       H      -1.28488154    0.84437992   -0.22108130</span>
-<span class="sd">       H       1.02953840    0.95815005   -0.41011413&quot;&quot;&quot;</span><span class="p">]</span>
+<span class="sd">       H       1.02953840    0.95815005   -0.41011413"""</span><span class="p">]</span>
 
-<span class="n">spc2</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;vinoxy&#39;</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz2</span><span class="p">,</span> <span class="n">adjlist</span><span class="o">=</span><span class="n">adj1</span><span class="p">)</span>
+<span class="n">spc2</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'vinoxy'</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz2</span><span class="p">,</span> <span class="n">adjlist</span><span class="o">=</span><span class="n">adj1</span><span class="p">)</span>
 
 <span class="n">spc_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">spc1</span><span class="p">,</span> <span class="n">spc2</span><span class="p">]</span>
 
-<span class="n">input_dict</span><span class="p">[</span><span class="s1">&#39;species&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">spc</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span> <span class="k">for</span> <span class="n">spc</span> <span class="ow">in</span> <span class="n">spc_list</span><span class="p">]</span>
+<span class="n">input_dict</span><span class="p">[</span><span class="s1">'species'</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">spc</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span> <span class="k">for</span> <span class="n">spc</span> <span class="ow">in</span> <span class="n">spc_list</span><span class="p">]</span>
 
-<span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="s1">&#39;some/path/to/desired/folder/input.yml&#39;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">input_dict</span><span class="p">)</span>
+<span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="s1">'some/path/to/desired/folder/input.yml'</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">input_dict</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>The above code generates the following input file:</p>
@@ -690,7 +690,7 @@ input:</p>
   <span class="n">force_field</span><span class="p">:</span> <span class="n">MMFF94</span>
   <span class="n">generate_thermo</span><span class="p">:</span> <span class="n">true</span>
   <span class="n">is_ts</span><span class="p">:</span> <span class="n">false</span>
-  <span class="n">label</span><span class="p">:</span> <span class="s1">&#39;NO&#39;</span>
+  <span class="n">label</span><span class="p">:</span> <span class="s1">'NO'</span>
   <span class="n">mol</span><span class="p">:</span> <span class="o">|</span>
     <span class="n">multiplicity</span> <span class="mi">2</span>
     <span class="mi">1</span> <span class="n">N</span> <span class="n">u1</span> <span class="n">p1</span> <span class="n">c0</span> <span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="n">D</span><span class="p">}</span>

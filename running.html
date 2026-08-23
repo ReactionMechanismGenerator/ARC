@@ -162,21 +162,21 @@ ARC into scripts, or work in a notebook:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">arc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARC</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
 
-<span class="n">ethanol</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;ethanol&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;CCO&#39;</span><span class="p">)</span>
+<span class="n">ethanol</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'ethanol'</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">'CCO'</span><span class="p">)</span>
 
 <span class="n">arc</span> <span class="o">=</span> <span class="n">ARC</span><span class="p">(</span>
-    <span class="n">project</span><span class="o">=</span><span class="s1">&#39;ethanol_api_demo&#39;</span><span class="p">,</span>
+    <span class="n">project</span><span class="o">=</span><span class="s1">'ethanol_api_demo'</span><span class="p">,</span>
     <span class="n">species</span><span class="o">=</span><span class="p">[</span><span class="n">ethanol</span><span class="p">],</span>
     <span class="n">job_types</span><span class="o">=</span><span class="p">{</span>
-        <span class="s1">&#39;conf_opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="s1">&#39;opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="s1">&#39;fine&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="s1">&#39;freq&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="s1">&#39;rotors&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'conf_opt'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'opt'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'fine'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'freq'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'sp'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'rotors'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
     <span class="p">},</span>
-    <span class="n">level_of_theory</span><span class="o">=</span><span class="s1">&#39;wb97xd/def2svp&#39;</span><span class="p">,</span>
-    <span class="n">ess_settings</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;gaussian&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">},</span>
+    <span class="n">level_of_theory</span><span class="o">=</span><span class="s1">'wb97xd/def2svp'</span><span class="p">,</span>
+    <span class="n">ess_settings</span><span class="o">=</span><span class="p">{</span><span class="s1">'gaussian'</span><span class="p">:</span> <span class="s1">'local'</span><span class="p">},</span>
 <span class="p">)</span>
 
 <span class="n">arc</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
@@ -196,16 +196,16 @@ reserved <code class="docutils literal notranslate"><span class="pre">local</spa
 Here, <code class="docutils literal notranslate"><span class="pre">local</span></code> means ARC does not use SSH for that server. The job is still
 submitted using the configured scheduler and submit template.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;local&#39;</span><span class="p">:</span> <span class="p">{</span>
-        <span class="s1">&#39;cluster_soft&#39;</span><span class="p">:</span> <span class="s1">&#39;Slurm&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;un&#39;</span><span class="p">:</span> <span class="s1">&#39;my_user&#39;</span><span class="p">,</span>
+    <span class="s1">'local'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">}</span>
 
 <span class="n">global_ess_settings</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;gaussian&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>
-    <span class="s1">&#39;orca&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>
-    <span class="s1">&#39;xtb&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>
+    <span class="s1">'gaussian'</span><span class="p">:</span> <span class="s1">'local'</span><span class="p">,</span>
+    <span class="s1">'orca'</span><span class="p">:</span> <span class="s1">'local'</span><span class="p">,</span>
+    <span class="s1">'xtb'</span><span class="p">:</span> <span class="s1">'local'</span><span class="p">,</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -225,15 +225,15 @@ and route <code class="docutils literal notranslate"><span class="pre">pyscf</sp
 machine-wide CPU budget: it caps the cores any one in-core job may use and bounds the local worker
 pool. Set it below the physical core count to leave headroom:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;local&#39;</span><span class="p">:</span> <span class="p">{</span>
-        <span class="s1">&#39;cluster_soft&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>   <span class="c1"># no queueing system</span>
-        <span class="s1">&#39;un&#39;</span><span class="p">:</span> <span class="s1">&#39;my_user&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;cpus&#39;</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span>                <span class="c1"># machine-wide CPU budget (e.g. on a 16-core box)</span>
+    <span class="s1">'local'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'local'</span><span class="p">,</span>   <span class="c1"># no queueing system</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+        <span class="s1">'cpus'</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span>                <span class="c1"># machine-wide CPU budget (e.g. on a 16-core box)</span>
     <span class="p">},</span>
 <span class="p">}</span>
 
 <span class="n">global_ess_settings</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;pyscf&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">,</span>
+    <span class="s1">'pyscf'</span><span class="p">:</span> <span class="s1">'local'</span><span class="p">,</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -256,17 +256,17 @@ matches the level ARC records.</p></li>
 remote servers. Configure each remote server with <code class="docutils literal notranslate"><span class="pre">address</span></code>, <code class="docutils literal notranslate"><span class="pre">un</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">key</span></code>, then route ESS names to those servers:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;cluster_a&#39;</span><span class="p">:</span> <span class="p">{</span>
-        <span class="s1">&#39;cluster_soft&#39;</span><span class="p">:</span> <span class="s1">&#39;Slurm&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;address&#39;</span><span class="p">:</span> <span class="s1">&#39;login.cluster.edu&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;un&#39;</span><span class="p">:</span> <span class="s1">&#39;my_user&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;key&#39;</span><span class="p">:</span> <span class="s1">&#39;/home/my_user/.ssh/id_rsa&#39;</span><span class="p">,</span>
+    <span class="s1">'cluster_a'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+        <span class="s1">'key'</span><span class="p">:</span> <span class="s1">'/home/my_user/.ssh/id_rsa'</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">}</span>
 
 <span class="n">global_ess_settings</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;gaussian&#39;</span><span class="p">:</span> <span class="s1">&#39;cluster_a&#39;</span><span class="p">,</span>
-    <span class="s1">&#39;molpro&#39;</span><span class="p">:</span> <span class="s1">&#39;cluster_a&#39;</span><span class="p">,</span>
+    <span class="s1">'gaussian'</span><span class="p">:</span> <span class="s1">'cluster_a'</span><span class="p">,</span>
+    <span class="s1">'molpro'</span><span class="p">:</span> <span class="s1">'cluster_a'</span><span class="p">,</span>
 <span class="p">}</span>
 </pre></div>
 </div>

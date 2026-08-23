@@ -94,9 +94,9 @@
            <div itemprop="articleBody">
              
   <h1>Source code for arc.level</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span></span><span class="sd">"""</span>
 <span class="sd">A module for working with levels of theory.</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
@@ -108,19 +108,19 @@
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
-<span class="n">levels_ess</span><span class="p">,</span> <span class="n">supported_ess</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;levels_ess&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;supported_ess&#39;</span><span class="p">]</span>
+<span class="n">levels_ess</span><span class="p">,</span> <span class="n">supported_ess</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'levels_ess'</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'supported_ess'</span><span class="p">]</span>
 
 
 <div class="viewcode-block" id="Level">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Level</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Uniquely defines the settings used for a quantum calculation level of theory.</span>
 <span class="sd">    Either ``repr`` or ``method`` must be specified.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        repr (str, dict, Level optional): A dictionary or a simple string representation of the level of theory,</span>
-<span class="sd">                                          e.g. &quot;wb97xd/def2-tzvp&quot;, or {&#39;method&#39;: &#39;b3lyp&#39;, &#39;basis&#39;: &#39;6-31g&#39;}.</span>
+<span class="sd">                                          e.g. "wb97xd/def2-tzvp", or {'method': 'b3lyp', 'basis': '6-31g'}.</span>
 <span class="sd">                                          Not in ``LevelOfTheory``.</span>
 <span class="sd">        method (str, optional): Quantum chemistry method.</span>
 <span class="sd">        basis (str, optional): Basis set.</span>
@@ -132,14 +132,14 @@
 <span class="sd">        software (str, optional): Quantum chemistry software.</span>
 <span class="sd">        software_version (int | float | str, optional): Quantum chemistry software version.</span>
 <span class="sd">        solvation_method (str, optional): Solvation method.</span>
-<span class="sd">        solvent (str, optional): The solvent. Values are strings of &quot;known&quot; solvents, see https://gaussian.com/scrf/.</span>
+<span class="sd">        solvent (str, optional): The solvent. Values are strings of "known" solvents, see https://gaussian.com/scrf/.</span>
 <span class="sd">        solvation_scheme_level (Level, optional): A Level class representing the level of theory to calculate a</span>
 <span class="sd">                                                  solvation energy correction at. Not in ``LevelOfTheory``.</span>
 <span class="sd">        args (dict[dict[str, str]], optional): Additional arguments provided to the software.</span>
 <span class="sd">                                               Different than the ``args`` in ``LevelOfTheory``.</span>
 <span class="sd">        compatible_ess (list, optional): Entries are names of compatible ESS. Not in ``LevelOfTheory``.</span>
 <span class="sd">        year (int, optional): Optional 4-digit year suffix for differentiating methods such as b97d3/b97d32023.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                  <span class="nb">repr</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -161,10 +161,10 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">repr</span> <span class="o">=</span> <span class="nb">repr</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">method</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Either repr or method must be specified, not both.</span><span class="se">\n</span><span class="s1">&#39;</span>
-                             <span class="sa">f</span><span class="s1">&#39;Got: &quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1">&quot; and &quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="si">}</span><span class="s1">&quot;.&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Either repr or method must be specified, not both.</span><span class="se">\n</span><span class="s1">'</span>
+                             <span class="sa">f</span><span class="s1">'Got: "</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1">" and "</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="si">}</span><span class="s1">".'</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Either repr or method must be specified, got neither.&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'Either repr or method must be specified, got neither.'</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">basis</span> <span class="o">=</span> <span class="n">basis</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">auxiliary_basis</span> <span class="o">=</span> <span class="n">auxiliary_basis</span>
@@ -182,20 +182,20 @@
                 <span class="ow">and</span> <span class="p">(</span><span class="n">solvation_scheme_level</span><span class="o">.</span><span class="n">solvent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
                      <span class="ow">or</span> <span class="n">solvation_scheme_level</span><span class="o">.</span><span class="n">solvation_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
                      <span class="ow">or</span> <span class="n">solvation_scheme_level</span><span class="o">.</span><span class="n">solvation_scheme_level</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Cannot represent a solvation_scheme_level which itself has solvation attributes.&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'Cannot represent a solvation_scheme_level which itself has solvation attributes.'</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">solvation_scheme_level</span> <span class="o">=</span> <span class="n">solvation_scheme_level</span>
         <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">solvation_method</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">solvent</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s1">&#39;Both solvation method and solvent must be defined together, or both must be None. &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;Got solvation method = &quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">solvation_method</span><span class="si">}</span><span class="s1">&quot;, solvent = &quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">solvent</span><span class="si">}</span><span class="s1">&quot;.&#39;</span>
+                <span class="s1">'Both solvation method and solvent must be defined together, or both must be None. '</span>
+                <span class="sa">f</span><span class="s1">'Got solvation method = "</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">solvation_method</span><span class="si">}</span><span class="s1">", solvent = "</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">solvent</span><span class="si">}</span><span class="s1">".'</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="n">year</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">year</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">year</span><span class="p">)</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">year</span> <span class="o">&lt;</span> <span class="mi">1000</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">year</span> <span class="o">&gt;</span> <span class="mi">9999</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;year must be a 4-digit integer (1000-9999), got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'year must be a 4-digit integer (1000-9999), got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">year</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="n">args</span> <span class="ow">or</span> <span class="p">{</span><span class="s1">&#39;keyword&#39;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(),</span> <span class="s1">&#39;block&#39;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">()}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="n">args</span> <span class="ow">or</span> <span class="p">{</span><span class="s1">'keyword'</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(),</span> <span class="s1">'block'</span><span class="p">:</span> <span class="nb">dict</span><span class="p">()}</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">build</span><span class="p">()</span>
@@ -204,109 +204,109 @@
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">deduce_method_type</span><span class="p">()</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dispersion</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;dft&#39;</span><span class="p">,</span> <span class="s1">&#39;composite&#39;</span><span class="p">]:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Dispersion is only allowed for DFT (or composite) methods, got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">dispersion</span><span class="si">}</span><span class="s1"> &#39;</span>
-                             <span class="sa">f</span><span class="s1">&#39;for </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">method_type</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dispersion</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">'dft'</span><span class="p">,</span> <span class="s1">'composite'</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Dispersion is only allowed for DFT (or composite) methods, got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">dispersion</span><span class="si">}</span><span class="s1"> '</span>
+                             <span class="sa">f</span><span class="s1">'for </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">method_type</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="c1"># it wasn&#39;t set by the user, try determining it</span>
+            <span class="c1"># it wasn't set by the user, try determining it</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">deduce_software</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">Level</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Determine equality between Level object instances.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">Level</span><span class="p">):</span>
             <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">False</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Return a humane-readable string representation of the object.</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            str: The level of theory string representation.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">str_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;/</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">'/</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="si">}</span><span class="s1">'</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">year</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;, year: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">', year: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s1">'</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">auxiliary_basis</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;, auxiliary_basis: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">auxiliary_basis</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">', auxiliary_basis: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">auxiliary_basis</span><span class="si">}</span><span class="s1">'</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dispersion</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;, dispersion: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">dispersion</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">', dispersion: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">dispersion</span><span class="si">}</span><span class="s1">'</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cabs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;, cabs: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">cabs</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">', cabs: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">cabs</span><span class="si">}</span><span class="s1">'</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">solvation_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;, solvation_method: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">solvation_method</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">', solvation_method: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">solvation_method</span><span class="si">}</span><span class="s1">'</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">solvent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;, solvent: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">solvent</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">', solvent: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">solvent</span><span class="si">}</span><span class="s1">'</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">solvation_scheme_level</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;, solvation_scheme_level: &#39;</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">solvation_scheme_level</span><span class="p">)</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+                <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">", solvation_scheme_level: '</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">solvation_scheme_level</span><span class="p">)</span><span class="si">}</span><span class="s2">'"</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;, software: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">software</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">', software: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">software</span><span class="si">}</span><span class="s1">'</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">software_version</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;, software_version: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">software_version</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">', software_version: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">software_version</span><span class="si">}</span><span class="s1">'</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">([</span><span class="n">val</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">values</span><span class="p">()]):</span>
-            <span class="k">if</span> <span class="nb">any</span><span class="p">([</span><span class="n">key</span> <span class="o">==</span> <span class="s1">&#39;keyword&#39;</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">keys</span><span class="p">()]):</span>
-                <span class="n">str_</span> <span class="o">+=</span> <span class="s1">&#39;, keyword args:&#39;</span>
+            <span class="k">if</span> <span class="nb">any</span><span class="p">([</span><span class="n">key</span> <span class="o">==</span> <span class="s1">'keyword'</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">keys</span><span class="p">()]):</span>
+                <span class="n">str_</span> <span class="o">+=</span> <span class="s1">', keyword args:'</span>
                 <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">arg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                    <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s1">&#39;keyword&#39;</span><span class="p">:</span>
-                        <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39; </span><span class="si">{</span><span class="n">arg</span><span class="si">}</span><span class="s1">&#39;</span>
+                    <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s1">'keyword'</span><span class="p">:</span>
+                        <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">' </span><span class="si">{</span><span class="n">arg</span><span class="si">}</span><span class="s1">'</span>
         <span class="k">return</span> <span class="n">str_</span>
 
 <div class="viewcode-block" id="Level.copy">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level.copy">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        A method to create a copy of the object.</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            Level: A copy of the object.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">Level</span><span class="p">(</span><span class="nb">repr</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">as_dict</span><span class="p">())</span></div>
 
 
 <div class="viewcode-block" id="Level.get_args">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level.get_args">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_args</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        A method to get the args of the object, detached from it.</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            dict: A deep copy of the args, which can be mutated without affecting this object.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Level.simple">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level.simple">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">simple</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Return a simple humane-readable string representation of the object.</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            str: The simple level of theory string representation.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">str_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;/</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">'/</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="si">}</span><span class="s1">'</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">year</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39; (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s1">)&#39;</span>
+            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">' (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s1">)'</span>
         <span class="k">return</span> <span class="n">str_</span></div>
 
 
 <div class="viewcode-block" id="Level.as_dict">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level.as_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Returns a minimal dictionary representation from which the object can be reconstructed.</span>
 <span class="sd">        Useful for ARC restart files.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">original_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span>
         <span class="n">clean_dict</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">original_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">if</span> <span class="p">(</span><span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">key</span> <span class="o">!=</span> <span class="s1">&#39;args&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">key</span> <span class="o">==</span> <span class="s1">&#39;args&#39;</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span><span class="n">v</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">values</span><span class="p">())):</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">key</span> <span class="o">!=</span> <span class="s1">'args'</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">key</span> <span class="o">==</span> <span class="s1">'args'</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span><span class="n">v</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">values</span><span class="p">())):</span>
                 <span class="n">clean_dict</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
         <span class="k">return</span> <span class="n">clean_dict</span></div>
 
@@ -314,64 +314,64 @@
 <div class="viewcode-block" id="Level.build">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level.build">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Assign object attributes from a dictionary representation of the object or a simple string (&quot;method/basis&quot;).</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Assign object attributes from a dictionary representation of the object or a simple string ("method/basis").</span>
 <span class="sd">        Useful for ARC restart files.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">level_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-                      <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;auxiliary_basis&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;dispersion&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;cabs&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;method_type&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;software&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;software_version&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;compatible_ess&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;solvation_method&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;solvent&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;solvation_scheme_level&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;args&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-                      <span class="s1">&#39;year&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
+<span class="sd">        """</span>
+        <span class="n">level_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'method'</span><span class="p">:</span> <span class="s1">''</span><span class="p">,</span>
+                      <span class="s1">'basis'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'auxiliary_basis'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'dispersion'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'cabs'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'method_type'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'software'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'software_version'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'compatible_ess'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'solvation_method'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'solvent'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'solvation_scheme_level'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'args'</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="s1">'year'</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
         <span class="n">allowed_keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">level_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
 
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-            <span class="k">if</span> <span class="s1">&#39; &#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="p">:</span>
-                <span class="c1"># illegal inputs like &#39;dlpno-ccsd(t)/def2-svp def2-svp/c&#39; or &#39;b3 lyp&#39;</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1"> has empty spaces. Please use a dictionary format &#39;</span>
-                                 <span class="sa">f</span><span class="s1">&#39;to clearly specify method, basis, auxiliary basis, and dispersion in this case. &#39;</span>
-                                 <span class="sa">f</span><span class="s1">&#39;See documentation for more details.&#39;</span><span class="p">)</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
-                <span class="c1"># illegal inputs like &#39;dlpno-ccsd(t)/def2-svp/def2-svp/c&#39;</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1"> has multiple slashes. Please use a dictionary format &#39;</span>
-                                 <span class="sa">f</span><span class="s1">&#39;to specify method, basis, auxiliary basis, and dispersion in this case. &#39;</span>
-                                 <span class="sa">f</span><span class="s1">&#39;See documentation for more details.&#39;</span><span class="p">)</span>
-            <span class="k">if</span> <span class="s1">&#39;/&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="p">:</span>
-                <span class="c1"># e.g., &#39;AM1&#39;, &#39;XTB&#39;, &#39;CBS-QB3&#39;</span>
+            <span class="k">if</span> <span class="s1">' '</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="p">:</span>
+                <span class="c1"># illegal inputs like 'dlpno-ccsd(t)/def2-svp def2-svp/c' or 'b3 lyp'</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1"> has empty spaces. Please use a dictionary format '</span>
+                                 <span class="sa">f</span><span class="s1">'to clearly specify method, basis, auxiliary basis, and dispersion in this case. '</span>
+                                 <span class="sa">f</span><span class="s1">'See documentation for more details.'</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s1">'/'</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="c1"># illegal inputs like 'dlpno-ccsd(t)/def2-svp/def2-svp/c'</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1"> has multiple slashes. Please use a dictionary format '</span>
+                                 <span class="sa">f</span><span class="s1">'to specify method, basis, auxiliary basis, and dispersion in this case. '</span>
+                                 <span class="sa">f</span><span class="s1">'See documentation for more details.'</span><span class="p">)</span>
+            <span class="k">if</span> <span class="s1">'/'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="p">:</span>
+                <span class="c1"># e.g., 'AM1', 'XTB', 'CBS-QB3'</span>
                 <span class="c1"># Note that this function is not designed to distinguish between composite and semi-empirical methods.</span>
-                <span class="n">level_dict</span><span class="p">[</span><span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span>
+                <span class="n">level_dict</span><span class="p">[</span><span class="s1">'method'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="n">splits</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">)</span>
-                <span class="n">level_dict</span><span class="p">[</span><span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">splits</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">splits</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'/'</span><span class="p">)</span>
+                <span class="n">level_dict</span><span class="p">[</span><span class="s1">'method'</span><span class="p">]</span> <span class="o">=</span> <span class="n">splits</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
                 <span class="k">if</span> <span class="nb">len</span> <span class="p">(</span><span class="n">splits</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-                    <span class="n">level_dict</span><span class="p">[</span><span class="s1">&#39;basis&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">splits</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="n">level_dict</span><span class="p">[</span><span class="s1">'basis'</span><span class="p">]</span> <span class="o">=</span> <span class="n">splits</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
         <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
             <span class="c1"># also treats representations of LevelOfTheory.as_dict from a restart file</span>
-            <span class="k">if</span> <span class="s1">&#39;method&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The repr dictionary argument must at least have a &quot;method&quot; key, got:</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="s1">'method'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'The repr dictionary argument must at least have a "method" key, got:</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
             <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                 <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">allowed_keys</span> <span class="ow">and</span> <span class="n">value</span><span class="p">:</span>
                     <span class="n">level_dict</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
                 <span class="k">elif</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed_keys</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Got an illegal key &quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s1">&quot; in level of theory dictionary representation&#39;</span>
-                                     <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Got an illegal key "</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s1">" in level of theory dictionary representation'</span>
+                                     <span class="sa">f</span><span class="s1">'</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
 
         <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="p">,</span> <span class="n">Level</span><span class="p">):</span>
             <span class="n">level_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
 
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The repr argument must be either a string, a dictionary or a Level type.</span><span class="se">\n</span><span class="s1">&#39;</span>
-                             <span class="sa">f</span><span class="s1">&#39;Got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="p">)</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'The repr argument must be either a string, a dictionary or a Level type.</span><span class="se">\n</span><span class="s1">'</span>
+                             <span class="sa">f</span><span class="s1">'Got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="p">)</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">repr</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># reset</span>
         <span class="bp">self</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">level_dict</span><span class="p">)</span></div>
@@ -380,9 +380,9 @@
 <div class="viewcode-block" id="Level.lower">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level.lower">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">lower</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Set arguments to lowercase.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">basis</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
@@ -403,20 +403,20 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">solvent</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">solvent</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">solvent</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
 
-        <span class="n">args</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;keyword&#39;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(),</span> <span class="s1">&#39;block&#39;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">()}</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'keyword'</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(),</span> <span class="s1">'block'</span><span class="p">:</span> <span class="nb">dict</span><span class="p">()}</span>
 
         <span class="c1"># 1st level dict, set self.args in place</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
             <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">:</span>
                 <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;All entries in the args argument must be strings.</span><span class="se">\n</span><span class="s1">&#39;</span>
-                                     <span class="sa">f</span><span class="s1">&#39;Got </span><span class="si">{</span><span class="n">arg</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span><span class="si">}</span><span class="s1"> in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">arg</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">])</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'All entries in the args argument must be strings.</span><span class="se">\n</span><span class="s1">'</span>
+                                     <span class="sa">f</span><span class="s1">'Got </span><span class="si">{</span><span class="n">arg</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span><span class="si">}</span><span class="s1"> in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="s1">' '</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">arg</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">])</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;keyword&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;general&#39;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">lower</span><span class="p">()},</span> <span class="s1">&#39;block&#39;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">()}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'keyword'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'general'</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">lower</span><span class="p">()},</span> <span class="s1">'block'</span><span class="p">:</span> <span class="nb">dict</span><span class="p">()}</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The args argument must be either a string, an iterable or a dictionary.</span><span class="se">\n</span><span class="s1">&#39;</span>
-                             <span class="sa">f</span><span class="s1">&#39;Got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">)</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'The args argument must be either a string, an iterable or a dictionary.</span><span class="se">\n</span><span class="s1">'</span>
+                             <span class="sa">f</span><span class="s1">'Got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">)</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
 
         <span class="c1"># 2nd level dict, set in args, then transfer to self.args</span>
         <span class="k">for</span> <span class="n">key1</span><span class="p">,</span> <span class="n">val1</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -425,20 +425,20 @@
                 <span class="k">for</span> <span class="n">key2</span><span class="p">,</span> <span class="n">val2</span> <span class="ow">in</span> <span class="n">val1</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                     <span class="n">new_val2</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">val2</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val2</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">))</span> <span class="k">else</span> <span class="n">val2</span>
                     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">new_val2</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;All entries in the args argument must be str, int, or float types.</span><span class="se">\n</span><span class="s1">&#39;</span>
-                                         <span class="sa">f</span><span class="s1">&#39;Got </span><span class="si">{</span><span class="n">new_val2</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">new_val2</span><span class="p">)</span><span class="si">}</span><span class="s1"> in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'All entries in the args argument must be str, int, or float types.</span><span class="se">\n</span><span class="s1">'</span>
+                                         <span class="sa">f</span><span class="s1">'Got </span><span class="si">{</span><span class="n">new_val2</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">new_val2</span><span class="p">)</span><span class="si">}</span><span class="s1"> in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
                     <span class="n">args</span><span class="p">[</span><span class="n">key1</span><span class="o">.</span><span class="n">lower</span><span class="p">()][</span><span class="n">key2</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span> <span class="o">=</span> <span class="n">new_val2</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
             <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val1</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-                <span class="n">args</span><span class="p">[</span><span class="n">key1</span><span class="o">.</span><span class="n">lower</span><span class="p">()][</span><span class="s1">&#39;general&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">val1</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+                <span class="n">args</span><span class="p">[</span><span class="n">key1</span><span class="o">.</span><span class="n">lower</span><span class="p">()][</span><span class="s1">'general'</span><span class="p">]</span> <span class="o">=</span> <span class="n">val1</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
             <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val1</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
                 <span class="k">for</span> <span class="n">v1</span> <span class="ow">in</span> <span class="n">val1</span><span class="p">:</span>
                     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v1</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;All entries in the args argument must be strings.</span><span class="se">\n</span><span class="s1">&#39;</span>
-                                         <span class="sa">f</span><span class="s1">&#39;Got </span><span class="si">{</span><span class="n">v1</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span><span class="si">}</span><span class="s1"> in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
-                <span class="n">args</span><span class="p">[</span><span class="s1">&#39;keyword&#39;</span><span class="p">][</span><span class="s1">&#39;general&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">v1</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">v1</span> <span class="ow">in</span> <span class="n">val1</span><span class="p">])</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'All entries in the args argument must be strings.</span><span class="se">\n</span><span class="s1">'</span>
+                                         <span class="sa">f</span><span class="s1">'Got </span><span class="si">{</span><span class="n">v1</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span><span class="si">}</span><span class="s1"> in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
+                <span class="n">args</span><span class="p">[</span><span class="s1">'keyword'</span><span class="p">][</span><span class="s1">'general'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">' '</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">v1</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">v1</span> <span class="ow">in</span> <span class="n">val1</span><span class="p">])</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Values of the args dictionary must be either dictionaries, strings, or lists, &#39;</span>
-                                 <span class="sa">f</span><span class="s1">&#39;got </span><span class="si">{</span><span class="n">val1</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">val1</span><span class="p">)</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Values of the args dictionary must be either dictionaries, strings, or lists, '</span>
+                                 <span class="sa">f</span><span class="s1">'got </span><span class="si">{</span><span class="n">val1</span><span class="si">}</span><span class="s1"> which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">val1</span><span class="p">)</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="n">args</span></div>
 
@@ -446,108 +446,108 @@
 <div class="viewcode-block" id="Level.warn_if_year_set">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level.warn_if_year_set">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">warn_if_year_set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Warn if ``year`` is set on this Level. The ``year`` attribute only affects Arkane</span>
 <span class="sd">        database matching and is ignored on non-``arkane_level_of_theory`` levels.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            attr_name (str): The name of the attribute this Level is assigned to (for the warning message).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">year</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s1">&#39;The &quot;year&quot; attribute on </span><span class="si">{</span><span class="n">attr_name</span><span class="si">}</span><span class="s1"> (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">simple</span><span class="p">()</span><span class="si">}</span><span class="s1">) has no effect. &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;Year is only used for Arkane database matching via arkane_level_of_theory.&#39;</span>
+                <span class="sa">f</span><span class="s1">'The "year" attribute on </span><span class="si">{</span><span class="n">attr_name</span><span class="si">}</span><span class="s1"> (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">simple</span><span class="p">()</span><span class="si">}</span><span class="s1">) has no effect. '</span>
+                <span class="sa">f</span><span class="s1">'Year is only used for Arkane database matching via arkane_level_of_theory.'</span>
             <span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Level.deduce_method_type">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level.deduce_method_type">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">deduce_method_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Determine the model chemistry type:</span>
 <span class="sd">        DFT, wavefunction, force field, semi-empirical, or composite</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">wave_function_methods</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;hf&#39;</span><span class="p">,</span> <span class="s1">&#39;cc&#39;</span><span class="p">,</span> <span class="s1">&#39;ci&#39;</span><span class="p">,</span> <span class="s1">&#39;mp2&#39;</span><span class="p">,</span> <span class="s1">&#39;mp3&#39;</span><span class="p">,</span> <span class="s1">&#39;cp&#39;</span><span class="p">,</span> <span class="s1">&#39;cep&#39;</span><span class="p">,</span> <span class="s1">&#39;nevpt&#39;</span><span class="p">,</span> <span class="s1">&#39;dmrg&#39;</span><span class="p">,</span> <span class="s1">&#39;ri&#39;</span><span class="p">,</span> <span class="s1">&#39;cas&#39;</span><span class="p">,</span> <span class="s1">&#39;ic&#39;</span><span class="p">,</span> <span class="s1">&#39;mr&#39;</span><span class="p">,</span>
-                                 <span class="s1">&#39;bd&#39;</span><span class="p">,</span> <span class="s1">&#39;mbpt&#39;</span><span class="p">]</span>
-        <span class="n">semiempirical_methods</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;am&#39;</span><span class="p">,</span> <span class="s1">&#39;pm&#39;</span><span class="p">,</span> <span class="s1">&#39;zindo&#39;</span><span class="p">,</span> <span class="s1">&#39;mndo&#39;</span><span class="p">,</span> <span class="s1">&#39;xtb&#39;</span><span class="p">,</span> <span class="s1">&#39;nddo&#39;</span><span class="p">]</span>
-        <span class="n">force_field_methods</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;amber&#39;</span><span class="p">,</span> <span class="s1">&#39;mmff&#39;</span><span class="p">,</span> <span class="s1">&#39;dreiding&#39;</span><span class="p">,</span> <span class="s1">&#39;uff&#39;</span><span class="p">,</span> <span class="s1">&#39;qmdff&#39;</span><span class="p">,</span> <span class="s1">&#39;gfn&#39;</span><span class="p">,</span> <span class="s1">&#39;gaff&#39;</span><span class="p">,</span> <span class="s1">&#39;ghemical&#39;</span><span class="p">,</span> <span class="s1">&#39;charmm&#39;</span><span class="p">,</span> <span class="s1">&#39;ani&#39;</span><span class="p">]</span>
+<span class="sd">        """</span>
+        <span class="n">wave_function_methods</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'hf'</span><span class="p">,</span> <span class="s1">'cc'</span><span class="p">,</span> <span class="s1">'ci'</span><span class="p">,</span> <span class="s1">'mp2'</span><span class="p">,</span> <span class="s1">'mp3'</span><span class="p">,</span> <span class="s1">'cp'</span><span class="p">,</span> <span class="s1">'cep'</span><span class="p">,</span> <span class="s1">'nevpt'</span><span class="p">,</span> <span class="s1">'dmrg'</span><span class="p">,</span> <span class="s1">'ri'</span><span class="p">,</span> <span class="s1">'cas'</span><span class="p">,</span> <span class="s1">'ic'</span><span class="p">,</span> <span class="s1">'mr'</span><span class="p">,</span>
+                                 <span class="s1">'bd'</span><span class="p">,</span> <span class="s1">'mbpt'</span><span class="p">]</span>
+        <span class="n">semiempirical_methods</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'am'</span><span class="p">,</span> <span class="s1">'pm'</span><span class="p">,</span> <span class="s1">'zindo'</span><span class="p">,</span> <span class="s1">'mndo'</span><span class="p">,</span> <span class="s1">'xtb'</span><span class="p">,</span> <span class="s1">'nddo'</span><span class="p">]</span>
+        <span class="n">force_field_methods</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'amber'</span><span class="p">,</span> <span class="s1">'mmff'</span><span class="p">,</span> <span class="s1">'dreiding'</span><span class="p">,</span> <span class="s1">'uff'</span><span class="p">,</span> <span class="s1">'qmdff'</span><span class="p">,</span> <span class="s1">'gfn'</span><span class="p">,</span> <span class="s1">'gaff'</span><span class="p">,</span> <span class="s1">'ghemical'</span><span class="p">,</span> <span class="s1">'charmm'</span><span class="p">,</span> <span class="s1">'ani'</span><span class="p">]</span>
         <span class="c1"># all composite methods supported by Gaussian</span>
-        <span class="n">composite_methods</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;cbs-4m&#39;</span><span class="p">,</span> <span class="s1">&#39;cbs-qb3&#39;</span><span class="p">,</span> <span class="s1">&#39;cbs-qb3-paraskevas&#39;</span><span class="p">,</span> <span class="s1">&#39;rocbs-qb3&#39;</span><span class="p">,</span> <span class="s1">&#39;cbs-apno&#39;</span><span class="p">,</span> <span class="s1">&#39;w1u&#39;</span><span class="p">,</span> <span class="s1">&#39;w1ro&#39;</span><span class="p">,</span> <span class="s1">&#39;w1bd&#39;</span><span class="p">,</span>
-                             <span class="s1">&#39;g1&#39;</span><span class="p">,</span> <span class="s1">&#39;g2&#39;</span><span class="p">,</span> <span class="s1">&#39;g3&#39;</span><span class="p">,</span> <span class="s1">&#39;g4&#39;</span><span class="p">,</span> <span class="s1">&#39;g2mp2&#39;</span><span class="p">,</span> <span class="s1">&#39;g3mp2&#39;</span><span class="p">,</span> <span class="s1">&#39;g3b3&#39;</span><span class="p">,</span> <span class="s1">&#39;g3mp2b3&#39;</span><span class="p">,</span> <span class="s1">&#39;g4mp2&#39;</span><span class="p">]</span>
+        <span class="n">composite_methods</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'cbs-4m'</span><span class="p">,</span> <span class="s1">'cbs-qb3'</span><span class="p">,</span> <span class="s1">'cbs-qb3-paraskevas'</span><span class="p">,</span> <span class="s1">'rocbs-qb3'</span><span class="p">,</span> <span class="s1">'cbs-apno'</span><span class="p">,</span> <span class="s1">'w1u'</span><span class="p">,</span> <span class="s1">'w1ro'</span><span class="p">,</span> <span class="s1">'w1bd'</span><span class="p">,</span>
+                             <span class="s1">'g1'</span><span class="p">,</span> <span class="s1">'g2'</span><span class="p">,</span> <span class="s1">'g3'</span><span class="p">,</span> <span class="s1">'g4'</span><span class="p">,</span> <span class="s1">'g2mp2'</span><span class="p">,</span> <span class="s1">'g3mp2'</span><span class="p">,</span> <span class="s1">'g3b3'</span><span class="p">,</span> <span class="s1">'g3mp2b3'</span><span class="p">,</span> <span class="s1">'g4mp2'</span><span class="p">]</span>
         <span class="c1"># Composite methods</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="n">composite_methods</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">&#39;composite&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">'composite'</span>
         <span class="c1"># Special cases</span>
-        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;m06hf&#39;</span><span class="p">,</span> <span class="s1">&#39;m06-hf&#39;</span><span class="p">]:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">&#39;dft&#39;</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">'m06hf'</span><span class="p">,</span> <span class="s1">'m06-hf'</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">'dft'</span>
         <span class="c1"># General cases</span>
         <span class="k">elif</span> <span class="nb">any</span><span class="p">(</span><span class="n">wf_method</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="k">for</span> <span class="n">wf_method</span> <span class="ow">in</span> <span class="n">wave_function_methods</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">&#39;wavefunction&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">'wavefunction'</span>
         <span class="k">elif</span> <span class="nb">any</span><span class="p">(</span><span class="n">sm_method</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="k">for</span> <span class="n">sm_method</span> <span class="ow">in</span> <span class="n">semiempirical_methods</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">&#39;semiempirical&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">'semiempirical'</span>
         <span class="k">elif</span> <span class="nb">any</span><span class="p">(</span><span class="n">ff_method</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="k">for</span> <span class="n">ff_method</span> <span class="ow">in</span> <span class="n">force_field_methods</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">&#39;force_field&#39;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">'force_field'</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="c1"># assume DFT</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">&#39;dft&#39;</span></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">'dft'</span></div>
 
 
 <div class="viewcode-block" id="Level.deduce_software">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level.deduce_software">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">deduce_software</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                         <span class="n">job_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Deduce the ESS to be used for a given level of theory.</span>
 <span class="sd">        Populates the .software attribute.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            job_type (str, optional): An ARC job type, assists in determining the software.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">job_type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span>
 
-        <span class="c1"># UMA (run via the ASE adapter; &#39;uma&#39; resolves to UMA_LATEST_MODEL; specific checkpoints named explicitly)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;uma&#39;</span><span class="p">,</span> <span class="s1">&#39;uma-s-1&#39;</span><span class="p">,</span> <span class="s1">&#39;uma-s-1p1&#39;</span><span class="p">,</span> <span class="s1">&#39;uma-s-1p2&#39;</span><span class="p">,</span> <span class="s1">&#39;uma-m-1p1&#39;</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">&#39;ase&#39;</span>
+        <span class="c1"># UMA (run via the ASE adapter; 'uma' resolves to UMA_LATEST_MODEL; specific checkpoints named explicitly)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">'uma'</span><span class="p">,</span> <span class="s1">'uma-s-1'</span><span class="p">,</span> <span class="s1">'uma-s-1p1'</span><span class="p">,</span> <span class="s1">'uma-s-1p2'</span><span class="p">,</span> <span class="s1">'uma-m-1p1'</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">'ase'</span>
             <span class="k">return</span>
 
         <span class="c1"># OneDMin</span>
-        <span class="k">if</span> <span class="n">job_type</span> <span class="o">==</span> <span class="s1">&#39;onedmin&#39;</span><span class="p">:</span>
-            <span class="k">if</span> <span class="s1">&#39;onedmin&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not find the OneDMin software to compute Lennard-Jones parameters.</span><span class="se">\n</span><span class="s1">&#39;</span>
-                                 <span class="sa">f</span><span class="s1">&#39;levels_ess is:</span><span class="se">\n</span><span class="si">{</span><span class="n">levels_ess</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">&#39;onedmin&#39;</span>
+        <span class="k">if</span> <span class="n">job_type</span> <span class="o">==</span> <span class="s1">'onedmin'</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s1">'onedmin'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not find the OneDMin software to compute Lennard-Jones parameters.</span><span class="se">\n</span><span class="s1">'</span>
+                                 <span class="sa">f</span><span class="s1">'levels_ess is:</span><span class="se">\n</span><span class="si">{</span><span class="n">levels_ess</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">'onedmin'</span>
 
         <span class="c1"># QChem</span>
-        <span class="k">if</span> <span class="n">job_type</span> <span class="o">==</span> <span class="s1">&#39;orbitals&#39;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">job_type</span> <span class="o">==</span> <span class="s1">'orbitals'</span><span class="p">:</span>
             <span class="c1"># currently we only have a script to print orbitals on QChem,</span>
             <span class="c1"># could/should be elaborated to additional ESS</span>
-            <span class="k">if</span> <span class="s1">&#39;qchem&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not find the QChem software to compute molecular orbitals.</span><span class="se">\n</span><span class="s1">&#39;</span>
-                                 <span class="sa">f</span><span class="s1">&#39;levels_ess is:</span><span class="se">\n</span><span class="si">{</span><span class="n">levels_ess</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">&#39;qchem&#39;</span>
+            <span class="k">if</span> <span class="s1">'qchem'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not find the QChem software to compute molecular orbitals.</span><span class="se">\n</span><span class="s1">'</span>
+                                 <span class="sa">f</span><span class="s1">'levels_ess is:</span><span class="se">\n</span><span class="si">{</span><span class="n">levels_ess</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">'qchem'</span>
 
         <span class="c1"># Orca</span>
-        <span class="k">if</span> <span class="s1">&#39;dlpno&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">:</span>
-            <span class="k">if</span> <span class="s1">&#39;orca&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not find Orca to run a DLPNO job.</span><span class="se">\n</span><span class="s1">levels_ess is:</span><span class="se">\n</span><span class="si">{</span><span class="n">levels_ess</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">&#39;orca&#39;</span>
+        <span class="k">if</span> <span class="s1">'dlpno'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s1">'orca'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not find Orca to run a DLPNO job.</span><span class="se">\n</span><span class="s1">levels_ess is:</span><span class="se">\n</span><span class="si">{</span><span class="n">levels_ess</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">'orca'</span>
 
         <span class="c1"># Gaussian</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">==</span> <span class="s1">&#39;composite&#39;</span> <span class="ow">or</span> <span class="n">job_type</span> <span class="o">==</span> <span class="s1">&#39;composite&#39;</span> <span class="ow">or</span> <span class="n">job_type</span> <span class="o">==</span> <span class="s1">&#39;irc&#39;</span> \
-                <span class="ow">or</span> <span class="nb">any</span><span class="p">([</span><span class="nb">sum</span><span class="p">([</span><span class="s1">&#39;iop&#39;</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">subdict</span><span class="o">.</span><span class="n">values</span><span class="p">()])</span> <span class="k">for</span> <span class="n">subdict</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">values</span><span class="p">()]):</span>
-            <span class="k">if</span> <span class="s1">&#39;gaussian&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not find Gaussian to run the </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="si">}</span><span class="s1">.</span><span class="se">\n</span><span class="s1">&#39;</span>
-                                 <span class="sa">f</span><span class="s1">&#39;levels_ess is:</span><span class="se">\n</span><span class="si">{</span><span class="n">levels_ess</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">&#39;gaussian&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">==</span> <span class="s1">'composite'</span> <span class="ow">or</span> <span class="n">job_type</span> <span class="o">==</span> <span class="s1">'composite'</span> <span class="ow">or</span> <span class="n">job_type</span> <span class="o">==</span> <span class="s1">'irc'</span> \
+                <span class="ow">or</span> <span class="nb">any</span><span class="p">([</span><span class="nb">sum</span><span class="p">([</span><span class="s1">'iop'</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">subdict</span><span class="o">.</span><span class="n">values</span><span class="p">()])</span> <span class="k">for</span> <span class="n">subdict</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">values</span><span class="p">()]):</span>
+            <span class="k">if</span> <span class="s1">'gaussian'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not find Gaussian to run the </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="si">}</span><span class="s1">.</span><span class="se">\n</span><span class="s1">'</span>
+                                 <span class="sa">f</span><span class="s1">'levels_ess is:</span><span class="se">\n</span><span class="si">{</span><span class="n">levels_ess</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">'gaussian'</span>
 
         <span class="c1"># TorchANI</span>
-        <span class="k">if</span> <span class="s1">&#39;torchani&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">&#39;torchani&#39;</span>
+        <span class="k">if</span> <span class="s1">'torchani'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">'torchani'</span>
 
         <span class="c1"># xTB</span>
-        <span class="k">if</span> <span class="s1">&#39;xtb&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">or</span> <span class="s1">&#39;gfn&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">&#39;xtb&#39;</span>
+        <span class="k">if</span> <span class="s1">'xtb'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">or</span> <span class="s1">'gfn'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="s1">'xtb'</span>
 
         <span class="c1"># User phrases from settings (levels_ess)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -558,16 +558,16 @@
                         <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="n">ess</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">preferred_ess_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;gaussian&#39;</span><span class="p">,</span> <span class="s1">&#39;qchem&#39;</span><span class="p">,</span> <span class="s1">&#39;orca&#39;</span><span class="p">,</span> <span class="s1">&#39;molpro&#39;</span><span class="p">,</span> <span class="s1">&#39;terachem&#39;</span><span class="p">,</span> <span class="s1">&#39;cfour&#39;</span><span class="p">]</span>
+            <span class="n">preferred_ess_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'gaussian'</span><span class="p">,</span> <span class="s1">'qchem'</span><span class="p">,</span> <span class="s1">'orca'</span><span class="p">,</span> <span class="s1">'molpro'</span><span class="p">,</span> <span class="s1">'terachem'</span><span class="p">,</span> <span class="s1">'cfour'</span><span class="p">]</span>
 
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;force_field&#39;</span><span class="p">,</span> <span class="s1">&#39;semiempirical&#39;</span><span class="p">]:</span>
-                <span class="n">preferred_ess_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;gaussian&#39;</span><span class="p">,</span> <span class="s1">&#39;qchem&#39;</span><span class="p">,</span> <span class="s1">&#39;orca&#39;</span><span class="p">,</span> <span class="s1">&#39;molpro&#39;</span><span class="p">,</span> <span class="s1">&#39;terachem&#39;</span><span class="p">]</span>
-            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;wavefunction&#39;</span><span class="p">]:</span>
-                <span class="n">preferred_ess_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;molpro&#39;</span><span class="p">,</span> <span class="s1">&#39;gaussian&#39;</span><span class="p">,</span> <span class="s1">&#39;orca&#39;</span><span class="p">,</span> <span class="s1">&#39;cfour&#39;</span><span class="p">,</span> <span class="s1">&#39;qchem&#39;</span><span class="p">]</span>
-            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;composite&#39;</span><span class="p">]:</span>
-                <span class="n">preferred_ess_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;gaussian&#39;</span><span class="p">]</span>
-            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;dft&#39;</span><span class="p">]:</span>
-                <span class="n">preferred_ess_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;gaussian&#39;</span><span class="p">,</span> <span class="s1">&#39;qchem&#39;</span><span class="p">,</span> <span class="s1">&#39;terachem&#39;</span><span class="p">,</span> <span class="s1">&#39;orca&#39;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">'force_field'</span><span class="p">,</span> <span class="s1">'semiempirical'</span><span class="p">]:</span>
+                <span class="n">preferred_ess_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'gaussian'</span><span class="p">,</span> <span class="s1">'qchem'</span><span class="p">,</span> <span class="s1">'orca'</span><span class="p">,</span> <span class="s1">'molpro'</span><span class="p">,</span> <span class="s1">'terachem'</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">'wavefunction'</span><span class="p">]:</span>
+                <span class="n">preferred_ess_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'molpro'</span><span class="p">,</span> <span class="s1">'gaussian'</span><span class="p">,</span> <span class="s1">'orca'</span><span class="p">,</span> <span class="s1">'cfour'</span><span class="p">,</span> <span class="s1">'qchem'</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">'composite'</span><span class="p">]:</span>
+                <span class="n">preferred_ess_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'gaussian'</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">'dft'</span><span class="p">]:</span>
+                <span class="n">preferred_ess_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'gaussian'</span><span class="p">,</span> <span class="s1">'qchem'</span><span class="p">,</span> <span class="s1">'terachem'</span><span class="p">,</span> <span class="s1">'orca'</span><span class="p">]</span>
 
             <span class="bp">self</span><span class="o">.</span><span class="n">determine_compatible_ess</span><span class="p">()</span>
             <span class="n">relevant_software</span> <span class="o">=</span> <span class="n">get_ordered_intersection_of_two_lists</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">compatible_ess</span><span class="p">,</span> <span class="n">supported_ess</span><span class="p">)</span>
@@ -578,13 +578,13 @@
 <div class="viewcode-block" id="Level.determine_compatible_ess">
 <a class="viewcode-back" href="../../api/level.html#arc.level.Level.determine_compatible_ess">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">determine_compatible_ess</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Determine compatible ESS.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">compatible_ess</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="c1"># Don&#39;t append if the user already specified a restricted list.</span>
+            <span class="c1"># Don't append if the user already specified a restricted list.</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">compatible_ess</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
-            <span class="n">ess_methods</span> <span class="o">=</span> <span class="n">read_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ARC_PATH</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">,</span> <span class="s1">&#39;ess_methods.yml&#39;</span><span class="p">))</span>
+            <span class="n">ess_methods</span> <span class="o">=</span> <span class="n">read_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ARC_PATH</span><span class="p">,</span> <span class="s1">'data'</span><span class="p">,</span> <span class="s1">'ess_methods.yml'</span><span class="p">))</span>
             <span class="n">ess_methods</span> <span class="o">=</span> <span class="p">{</span><span class="n">ess</span><span class="p">:</span> <span class="p">[</span><span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">methods</span><span class="p">]</span> <span class="k">for</span> <span class="n">ess</span><span class="p">,</span> <span class="n">methods</span> <span class="ow">in</span> <span class="n">ess_methods</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
             <span class="k">for</span> <span class="n">ess</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">ess</span> <span class="ow">in</span> <span class="n">ess_methods</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="n">ess_methods</span><span class="p">[</span><span class="n">ess</span><span class="p">]:</span>
@@ -596,7 +596,7 @@
 <div class="viewcode-block" id="assign_frequency_scale_factor">
 <a class="viewcode-back" href="../../api/level.html#arc.level.assign_frequency_scale_factor">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">assign_frequency_scale_factor</span><span class="p">(</span><span class="n">level</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Level</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Assign a frequency scaling factor to a level of theory.</span>
 
 <span class="sd">    Args:</span>
@@ -604,12 +604,12 @@
 
 <span class="sd">    Returns:</span>
 <span class="sd">        float | None: The frequency scaling factor.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">freq_scale_factors</span> <span class="o">=</span> <span class="n">read_yaml_file</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ARC_PATH</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">,</span> <span class="s1">&#39;freq_scale_factors.yml&#39;</span><span class="p">))[</span><span class="s1">&#39;freq_scale_factors&#39;</span><span class="p">]</span>
+<span class="sd">    """</span>
+    <span class="n">freq_scale_factors</span> <span class="o">=</span> <span class="n">read_yaml_file</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ARC_PATH</span><span class="p">,</span> <span class="s1">'data'</span><span class="p">,</span> <span class="s1">'freq_scale_factors.yml'</span><span class="p">))[</span><span class="s1">'freq_scale_factors'</span><span class="p">]</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
         <span class="n">entry</span> <span class="o">=</span> <span class="n">freq_scale_factors</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">entry</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">entry</span><span class="p">[</span><span class="s1">&#39;factor&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">entry</span>
+            <span class="k">return</span> <span class="n">entry</span><span class="p">[</span><span class="s1">'factor'</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">entry</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">level</span> <span class="o">=</span> <span class="n">Level</span><span class="p">(</span><span class="nb">repr</span><span class="o">=</span><span class="n">level</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
@@ -618,7 +618,7 @@
     <span class="n">level_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
     <span class="n">entry</span> <span class="o">=</span> <span class="n">freq_scale_factors</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">level_str</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">entry</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">entry</span><span class="p">[</span><span class="s1">&#39;factor&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">entry</span>
+        <span class="k">return</span> <span class="n">entry</span><span class="p">[</span><span class="s1">'factor'</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">entry</span>
     <span class="k">return</span> <span class="kc">None</span></div>
 
 </pre></div>

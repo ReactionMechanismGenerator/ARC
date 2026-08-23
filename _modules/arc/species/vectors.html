@@ -94,9 +94,9 @@
            <div itemprop="articleBody">
              
   <h1>Source code for arc.species.vectors</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span></span><span class="sd">"""</span>
 <span class="sd">A module for manipulating vectors</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">"""</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -112,7 +112,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">get_normal</span><span class="p">(</span><span class="n">v1</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
                <span class="n">v2</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
                <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Calculate a normal vector using cross multiplication.</span>
 
 <span class="sd">    Args:</span>
@@ -121,7 +121,7 @@
 
 <span class="sd">    Returns: list</span>
 <span class="sd">        A normal unit vector to v1 and v2.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">normal</span> <span class="o">=</span> <span class="p">[</span><span class="n">v1</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">v2</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">v2</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">v1</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="o">-</span> <span class="n">v1</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">v2</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="n">v2</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">v1</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">v1</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">v2</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">v2</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">v1</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
     <span class="k">return</span> <span class="n">unit_vector</span><span class="p">(</span><span class="n">normal</span><span class="p">)</span></div>
 
@@ -130,7 +130,7 @@
 <div class="viewcode-block" id="get_perpendicular_unit_vector">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.get_perpendicular_unit_vector">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_perpendicular_unit_vector</span><span class="p">(</span><span class="n">vector</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Get a deterministic unit vector perpendicular to ``vector``.</span>
 
 <span class="sd">    Crossing ``vector`` with the Cartesian axis it is least aligned with can never be degenerate:</span>
@@ -148,13 +148,13 @@
 
 <span class="sd">    Returns: list</span>
 <span class="sd">        A unit vector perpendicular to ``vector``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;vector must be of length three, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'vector must be of length three, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">component</span><span class="p">)</span> <span class="k">for</span> <span class="n">component</span> <span class="ow">in</span> <span class="n">vector</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;vector must be finite, got </span><span class="si">{</span><span class="n">vector</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'vector must be finite, got </span><span class="si">{</span><span class="n">vector</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">vector</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;vector must be non-zero, got </span><span class="si">{</span><span class="n">vector</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'vector must be non-zero, got </span><span class="si">{</span><span class="n">vector</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
     <span class="n">reference</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]</span>
     <span class="n">reference</span><span class="p">[</span><span class="nb">min</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">index</span><span class="p">:</span> <span class="nb">abs</span><span class="p">(</span><span class="n">vector</span><span class="p">[</span><span class="n">index</span><span class="p">]))]</span> <span class="o">=</span> <span class="mf">1.0</span>
     <span class="k">return</span> <span class="n">get_normal</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">reference</span><span class="p">)</span></div>
@@ -165,26 +165,26 @@
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.get_angle">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_angle</span><span class="p">(</span><span class="n">v1</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
               <span class="n">v2</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-              <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;rads&#39;</span><span class="p">,</span>
+              <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'rads'</span><span class="p">,</span>
               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Calculate the angle between two vectors.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">         v1 (list): Vector 1.</span>
 <span class="sd">         v2 (list): Vector 2.</span>
-<span class="sd">         units (str, optional): The desired units, either &#39;rads&#39; for radians, or &#39;degs&#39; for degrees.</span>
+<span class="sd">         units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        VectorsError: If ``v1`` and ``v2`` are of different lengths.</span>
 
 <span class="sd">    Returns: float</span>
 <span class="sd">        The angle between ``v1`` and ``v2`` in the desired units.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">v2</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;v1 and v2 must be the same length, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span><span class="si">}</span><span class="s1"> and </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v2</span><span class="p">)</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'v1 and v2 must be the same length, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span><span class="si">}</span><span class="s1"> and </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v2</span><span class="p">)</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
     <span class="n">v1_u</span><span class="p">,</span> <span class="n">v2_u</span> <span class="o">=</span> <span class="n">unit_vector</span><span class="p">(</span><span class="n">v1</span><span class="p">),</span> <span class="n">unit_vector</span><span class="p">(</span><span class="n">v2</span><span class="p">)</span>
-    <span class="n">conversion</span> <span class="o">=</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="k">if</span> <span class="s1">&#39;degs&#39;</span> <span class="ow">in</span> <span class="n">units</span> <span class="k">else</span> <span class="mi">1</span>
+    <span class="n">conversion</span> <span class="o">=</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="k">if</span> <span class="s1">'degs'</span> <span class="ow">in</span> <span class="n">units</span> <span class="k">else</span> <span class="mi">1</span>
     <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arccos</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">v1_u</span><span class="p">,</span> <span class="n">v2_u</span><span class="p">),</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span> <span class="o">*</span> <span class="n">conversion</span><span class="p">)</span></div>
 
 
@@ -194,10 +194,10 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">get_dihedral</span><span class="p">(</span><span class="n">v1</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
                  <span class="n">v2</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
                  <span class="n">v3</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-                 <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;degs&#39;</span><span class="p">,</span>
+                 <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'degs'</span><span class="p">,</span>
                  <span class="n">tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-8</span><span class="p">,</span>
                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Calculate the dihedral angle between three vectors.</span>
 <span class="sd">    ``v2`` connects between ``v1`` and ``v3``.</span>
 
@@ -205,7 +205,7 @@
 <span class="sd">         v1 (list): Vector 1.</span>
 <span class="sd">         v2 (list): Vector 2.</span>
 <span class="sd">         v3 (list): Vector 3.</span>
-<span class="sd">         units (str, optional): The desired units, either &#39;rads&#39; for radians, or &#39;degs&#39; for degrees.</span>
+<span class="sd">         units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.</span>
 <span class="sd">         tol (float, optional): The tolerance for zero-length vectors.</span>
 
 <span class="sd">    Raises:</span>
@@ -213,10 +213,10 @@
 
 <span class="sd">    Returns: float</span>
 <span class="sd">        The dihedral angle between ``v1`` and ``v2`` in the desired units.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># 1) length check</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">3</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">v2</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">3</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">v3</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;v1, v2, and v3 must each be length 3, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span><span class="si">}</span><span class="s1">, </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v2</span><span class="p">)</span><span class="si">}</span><span class="s1">, </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v3</span><span class="p">)</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'v1, v2, and v3 must each be length 3, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span><span class="si">}</span><span class="s1">, </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v2</span><span class="p">)</span><span class="si">}</span><span class="s1">, </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v3</span><span class="p">)</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
 
     <span class="c1"># 2) convert and zero-length check</span>
     <span class="n">v1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">v1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
@@ -224,19 +224,19 @@
     <span class="n">v3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">v3</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span> <span class="o">==</span> <span class="mf">0.0</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">v2</span><span class="p">)</span> <span class="o">==</span> <span class="mf">0.0</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">v3</span><span class="p">)</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="s1">&#39;Input vectors must be non-zero.&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="s1">'Input vectors must be non-zero.'</span><span class="p">)</span>
 
     <span class="c1"># 3) compute normals</span>
     <span class="n">v2_x_v1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">v2</span><span class="p">,</span> <span class="n">v1</span><span class="p">)</span>
     <span class="n">norm1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">v2_x_v1</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">norm1</span> <span class="o">&lt;</span> <span class="n">tol</span><span class="p">:</span>
-        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;nan&#39;</span><span class="p">)</span> <span class="c1"># colinear</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="s1">'nan'</span><span class="p">)</span> <span class="c1"># colinear</span>
     <span class="n">v2_x_v1</span> <span class="o">/=</span> <span class="n">norm1</span>
 
     <span class="n">v3_x_v2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">v3</span><span class="p">,</span> <span class="n">v2</span><span class="p">)</span>
     <span class="n">norm2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">v3_x_v2</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">norm2</span> <span class="o">&lt;</span> <span class="n">tol</span><span class="p">:</span>
-        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;nan&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="s1">'nan'</span><span class="p">)</span>
     <span class="n">v3_x_v2</span> <span class="o">/=</span> <span class="n">norm2</span>
 
     <span class="c1"># 4) angle between normals</span>
@@ -248,7 +248,7 @@
         <span class="n">dihedral</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">-</span> <span class="n">dihedral</span>
 
     <span class="c1"># 6) unit conversion</span>
-    <span class="n">conversion</span> <span class="o">=</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="k">if</span> <span class="s1">&#39;degs&#39;</span> <span class="ow">in</span> <span class="n">units</span> <span class="k">else</span> <span class="mi">1</span>
+    <span class="n">conversion</span> <span class="o">=</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="k">if</span> <span class="s1">'degs'</span> <span class="ow">in</span> <span class="n">units</span> <span class="k">else</span> <span class="mi">1</span>
 
     <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">dihedral</span><span class="p">)</span> <span class="o">*</span> <span class="n">conversion</span></div>
 
@@ -260,7 +260,7 @@
                        <span class="n">atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                        <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
                        <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Calculate a distance.</span>
 
 <span class="sd">    Args:</span>
@@ -274,25 +274,25 @@
 
 <span class="sd">    Returns: float</span>
 <span class="sd">        The distance in the coords units.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">&#39;coords&#39;</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">:</span>
-        <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">]</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">'coords'</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">:</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="s1">'coords'</span><span class="p">]</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
-        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;coords must be a list or a tuple, got</span><span class="se">\n</span><span class="si">{</span><span class="n">coords</span><span class="si">}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'coords must be a list or a tuple, got</span><span class="se">\n</span><span class="si">{</span><span class="n">coords</span><span class="si">}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">index</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;index must be either 0 or 1, got </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'index must be either 0 or 1, got </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;distance atom list must be of length two, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'distance atom list must be of length two, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">atoms</span><span class="p">))</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;some atoms are repetitive: </span><span class="si">{</span><span class="n">atoms</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'some atoms are repetitive: </span><span class="si">{</span><span class="n">atoms</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="n">new_atoms</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
     <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">atoms</span><span class="p">:</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">atom</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">&#39;X&#39;</span> <span class="ow">in</span> <span class="n">atom</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">atom</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">'X'</span> <span class="ow">in</span> <span class="n">atom</span><span class="p">:</span>
             <span class="n">new_atoms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">atom</span><span class="p">[</span><span class="mi">1</span><span class="p">:]))</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">new_atoms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">atom</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">new_atoms</span><span class="p">]):</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;all entries in atoms must be integers, got: </span><span class="si">{</span><span class="n">new_atoms</span><span class="si">}</span><span class="s1"> (</span><span class="si">{</span><span class="p">[</span><span class="nb">type</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">new_atoms</span><span class="p">]</span><span class="si">}</span><span class="s1">)&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'all entries in atoms must be integers, got: </span><span class="si">{</span><span class="n">new_atoms</span><span class="si">}</span><span class="s1"> (</span><span class="si">{</span><span class="p">[</span><span class="nb">type</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">new_atoms</span><span class="p">]</span><span class="si">}</span><span class="s1">)'</span><span class="p">)</span>
     <span class="n">new_atoms</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span> <span class="o">-</span> <span class="n">index</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">new_atoms</span><span class="p">]</span>  <span class="c1"># convert 1-index to 0-index</span>
     <span class="k">if</span> <span class="n">_ck_available</span><span class="p">:</span>
         <span class="n">c0</span><span class="p">,</span> <span class="n">c1</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_atoms</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_atoms</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
@@ -308,16 +308,16 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">calculate_angle</span><span class="p">(</span><span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">,</span>
                     <span class="n">atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                     <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
-                    <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;degs&#39;</span><span class="p">,</span>
+                    <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'degs'</span><span class="p">,</span>
                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Calculate an angle.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        coords (list, tuple, dict): The array-format or tuple-format coordinates, or the xyz dict.</span>
 <span class="sd">        atoms (list): The 3 atoms defining the angle.</span>
 <span class="sd">        index (int, optional): Whether ``atoms`` is 0-indexed or 1-indexed (values are 0 or 1).</span>
-<span class="sd">        units (str, optional): The desired units, either &#39;rads&#39; for radians, or &#39;degs&#39; for degrees.</span>
+<span class="sd">        units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        VectorsError: If ``index`` is out of range, or ``atoms`` is of wrong length or has repeating indices.</span>
@@ -325,25 +325,25 @@
 
 <span class="sd">    Returns: float</span>
 <span class="sd">        The angle.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">&#39;coords&#39;</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">:</span>
-        <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">]</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">'coords'</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">:</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="s1">'coords'</span><span class="p">]</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
-        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;coords must be a list or a tuple, got</span><span class="se">\n</span><span class="si">{</span><span class="n">coords</span><span class="si">}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'coords must be a list or a tuple, got</span><span class="se">\n</span><span class="si">{</span><span class="n">coords</span><span class="si">}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">index</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;index must be either 0 or 1, got </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'index must be either 0 or 1, got </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;angle atom list must be of length three, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'angle atom list must be of length three, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">atoms</span><span class="p">))</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;some atoms are repetitive: </span><span class="si">{</span><span class="n">atoms</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'some atoms are repetitive: </span><span class="si">{</span><span class="n">atoms</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="n">new_atoms</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
     <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">atoms</span><span class="p">:</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">atom</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">&#39;X&#39;</span> <span class="ow">in</span> <span class="n">atom</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">atom</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">'X'</span> <span class="ow">in</span> <span class="n">atom</span><span class="p">:</span>
             <span class="n">new_atoms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">atom</span><span class="p">[</span><span class="mi">1</span><span class="p">:]))</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">new_atoms</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">atom</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">new_atoms</span><span class="p">]):</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;all entries in atoms must be integers, got: </span><span class="si">{</span><span class="n">new_atoms</span><span class="si">}</span><span class="s1"> (</span><span class="si">{</span><span class="p">[</span><span class="nb">type</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">new_atoms</span><span class="p">]</span><span class="si">}</span><span class="s1">)&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'all entries in atoms must be integers, got: </span><span class="si">{</span><span class="n">new_atoms</span><span class="si">}</span><span class="s1"> (</span><span class="si">{</span><span class="p">[</span><span class="nb">type</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">new_atoms</span><span class="p">]</span><span class="si">}</span><span class="s1">)'</span><span class="p">)</span>
     <span class="n">new_atoms</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span> <span class="o">-</span> <span class="n">index</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">new_atoms</span><span class="p">]</span>  <span class="c1"># convert 1-index to 0-index</span>
     <span class="c1"># Computed in float64, not float32. Coordinates used to be truncated to float32 here</span>
     <span class="c1"># (dd452891, 2020), which cost up to ~8e-4 deg -- the same order as the 1e-3 deg</span>
@@ -355,7 +355,7 @@
         <span class="n">c0</span><span class="p">,</span> <span class="n">c1</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_atoms</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_atoms</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
         <span class="n">c2</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_atoms</span><span class="p">[</span><span class="mi">2</span><span class="p">]]</span>
         <span class="n">deg</span> <span class="o">=</span> <span class="n">_ck</span><span class="o">.</span><span class="n">zmat_a</span><span class="p">(</span><span class="n">c0</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">c0</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">c0</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">c1</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">c1</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">c1</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">c2</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">c2</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">c2</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
-        <span class="k">return</span> <span class="n">deg</span> <span class="k">if</span> <span class="s1">&#39;degs&#39;</span> <span class="ow">in</span> <span class="n">units</span> <span class="k">else</span> <span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">deg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">deg</span> <span class="k">if</span> <span class="s1">'degs'</span> <span class="ow">in</span> <span class="n">units</span> <span class="k">else</span> <span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">deg</span><span class="p">)</span>
     <span class="n">coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
     <span class="n">v1</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_atoms</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">-</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_atoms</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
     <span class="n">v2</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_atoms</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">-</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_atoms</span><span class="p">[</span><span class="mi">2</span><span class="p">]]</span>
@@ -368,16 +368,16 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">calculate_dihedral_angle</span><span class="p">(</span><span class="n">coords</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">,</span>
                              <span class="n">torsion</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                              <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
-                             <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;degs&#39;</span><span class="p">,</span>
+                             <span class="n">units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'degs'</span><span class="p">,</span>
                              <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Calculate a dihedral angle.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        coords (list, tuple, dict): The array-format or tuple-format coordinates, or the xyz dict.</span>
 <span class="sd">        torsion (list): The 4 atoms defining the dihedral angle.</span>
 <span class="sd">        index (int, optional): Whether ``torsion`` is 0-indexed or 1-indexed (values are 0 or 1).</span>
-<span class="sd">        units (str, optional): The desired units, either &#39;rads&#39; for radians, or &#39;degs&#39; for degrees.</span>
+<span class="sd">        units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        VectorsError: If ``index`` is out of range, or ``torsion`` is of wrong length or has repeating indices.</span>
@@ -385,28 +385,28 @@
 
 <span class="sd">    Returns: float</span>
 <span class="sd">        The dihedral angle in a 0-360 degrees range.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">&#39;coords&#39;</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">:</span>
-        <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">]</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">'coords'</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">:</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="s1">'coords'</span><span class="p">]</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
-        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;coords must be a list or a tuple, got</span><span class="se">\n</span><span class="si">{</span><span class="n">coords</span><span class="si">}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'coords must be a list or a tuple, got</span><span class="se">\n</span><span class="si">{</span><span class="n">coords</span><span class="si">}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">index</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;index must be either 0 or 1, got </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'index must be either 0 or 1, got </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">torsion</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;torsion cannot be None&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'torsion cannot be None'</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">torsion</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">4</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;torsion atom list must be of length four, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">torsion</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'torsion atom list must be of length four, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">torsion</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">torsion</span><span class="p">))</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;some indices in torsion are repetitive: </span><span class="si">{</span><span class="n">torsion</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'some indices in torsion are repetitive: </span><span class="si">{</span><span class="n">torsion</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
     <span class="n">new_torsion</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
     <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">torsion</span><span class="p">:</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">atom</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">&#39;X&#39;</span> <span class="ow">in</span> <span class="n">atom</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">atom</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">'X'</span> <span class="ow">in</span> <span class="n">atom</span><span class="p">:</span>
             <span class="n">new_torsion</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">atom</span><span class="p">[</span><span class="mi">1</span><span class="p">:]))</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">new_torsion</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">atom</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">new_torsion</span><span class="p">]):</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;all entries in torsion must be integers, got: </span><span class="si">{</span><span class="n">new_torsion</span><span class="si">}</span><span class="s1"> &#39;</span>
-                           <span class="sa">f</span><span class="s1">&#39;(</span><span class="si">{</span><span class="p">[</span><span class="nb">type</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">new_torsion</span><span class="p">]</span><span class="si">}</span><span class="s1">)&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'all entries in torsion must be integers, got: </span><span class="si">{</span><span class="n">new_torsion</span><span class="si">}</span><span class="s1"> '</span>
+                           <span class="sa">f</span><span class="s1">'(</span><span class="si">{</span><span class="p">[</span><span class="nb">type</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">t</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">new_torsion</span><span class="p">]</span><span class="si">}</span><span class="s1">)'</span><span class="p">)</span>
     <span class="n">new_torsion</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span> <span class="o">-</span> <span class="n">index</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">new_torsion</span><span class="p">]</span>  <span class="c1"># convert 1-index to 0-index if needed</span>
     <span class="k">if</span> <span class="n">_ck_available</span><span class="p">:</span>
         <span class="n">c0</span><span class="p">,</span> <span class="n">c1</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_torsion</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_torsion</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
@@ -414,7 +414,7 @@
         <span class="n">deg</span> <span class="o">=</span> <span class="n">_ck</span><span class="o">.</span><span class="n">zmat_d_f32</span><span class="p">(</span><span class="n">c0</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">c0</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">c0</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">c1</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">c1</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">c1</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
                               <span class="n">c2</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">c2</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">c2</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">c3</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">c3</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">c3</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">deg</span><span class="p">):</span>
-            <span class="k">return</span> <span class="n">deg</span> <span class="k">if</span> <span class="s1">&#39;degs&#39;</span> <span class="ow">in</span> <span class="n">units</span> <span class="k">else</span> <span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">deg</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">deg</span> <span class="k">if</span> <span class="s1">'degs'</span> <span class="ow">in</span> <span class="n">units</span> <span class="k">else</span> <span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">deg</span><span class="p">)</span>
         <span class="c1"># The kernel collapses two distinct degenerate cases onto NaN, while</span>
         <span class="c1"># get_dihedral() distinguishes them: a zero-length bond vector raises</span>
         <span class="c1"># VectorsError, and only a collinear (yet non-degenerate) triplet returns</span>
@@ -425,7 +425,7 @@
         <span class="c1"># would silently change which reference atoms zmat.py picks.</span>
         <span class="n">pts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">coords</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">new_torsion</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
         <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">pts</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">pts</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)):</span>
-            <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="s1">&#39;Input vectors must be non-zero.&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="s1">'Input vectors must be non-zero.'</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">deg</span>  <span class="c1"># NaN, in either unit</span>
     <span class="n">coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
     <span class="n">v1</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_torsion</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">-</span> <span class="n">coords</span><span class="p">[</span><span class="n">new_torsion</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
@@ -441,7 +441,7 @@
                     <span class="n">atoms</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                     <span class="n">index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Calculate a distance / angle / dihedral angle parameter.</span>
 <span class="sd">    Default units (deg for angles) are used.</span>
 
@@ -452,7 +452,7 @@
 
 <span class="sd">    Returns: float</span>
 <span class="sd">        The calculated parameter.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">calculate_distance</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">coords</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="n">atoms</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">)</span>
     <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
@@ -460,14 +460,14 @@
     <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">calculate_dihedral_angle</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">coords</span><span class="p">,</span> <span class="n">torsion</span><span class="o">=</span><span class="n">atoms</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Expected 2, 3, or 4 indices in coords, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">coords</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Expected 2, 3, or 4 indices in coords, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">coords</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span></div>
 
 
 
 <div class="viewcode-block" id="unit_vector">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.unit_vector">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">unit_vector</span><span class="p">(</span><span class="n">vector</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Calculate a unit vector in the same direction as the input vector.</span>
 
 <span class="sd">    Args:</span>
@@ -475,7 +475,7 @@
 
 <span class="sd">    Returns: list</span>
 <span class="sd">        The unit vector.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">length</span> <span class="o">=</span> <span class="n">get_vector_length</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span>
     <span class="k">return</span> <span class="p">[</span><span class="n">vi</span> <span class="o">/</span> <span class="n">length</span> <span class="k">for</span> <span class="n">vi</span> <span class="ow">in</span> <span class="n">vector</span><span class="p">]</span></div>
 
@@ -486,7 +486,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">set_vector_length</span><span class="p">(</span><span class="n">vector</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
                       <span class="n">length</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Set the length of a 3D vector.</span>
 
 <span class="sd">    Args:</span>
@@ -495,7 +495,7 @@
 
 <span class="sd">    Returns: list</span>
 <span class="sd">        A vector with the desired length.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">u</span> <span class="o">=</span> <span class="n">unit_vector</span><span class="p">(</span><span class="n">vector</span><span class="p">)</span>
     <span class="k">return</span> <span class="p">[</span><span class="n">u</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">length</span><span class="p">,</span> <span class="n">u</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">length</span><span class="p">,</span> <span class="n">u</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="n">length</span><span class="p">]</span></div>
 
@@ -508,7 +508,7 @@
                   <span class="n">normal</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
                   <span class="n">theta</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Rotate a vector in 3D space around a given axis by a certain angle.</span>
 
 <span class="sd">    Inspired by https://stackoverflow.com/questions/6802577/rotation-of-3d-vector</span>
@@ -521,7 +521,7 @@
 
 <span class="sd">    Returns: list</span>
 <span class="sd">        The rotated vector (the new coordinates for point B).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">normal</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">normal</span><span class="p">)</span>
     <span class="n">normal</span> <span class="o">=</span> <span class="n">normal</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">normal</span><span class="p">,</span> <span class="n">normal</span><span class="p">))</span>  <span class="c1"># should *not* be replaced by an augmented assignment</span>
     <span class="n">a</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">theta</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">)</span>
@@ -546,8 +546,8 @@
                              <span class="n">angle_rad</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
                              <span class="n">indices</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
                              <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Rotate atoms at ``indices`` around an axis using Rodrigues&#39; formula.</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Rotate atoms at ``indices`` around an axis using Rodrigues' formula.</span>
 
 <span class="sd">    Modifies ``coords`` in-place and returns it.</span>
 
@@ -560,7 +560,7 @@
 
 <span class="sd">    Returns:</span>
 <span class="sd">        list: The same ``coords`` list with rotated atoms.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">c</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angle_rad</span><span class="p">),</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angle_rad</span><span class="p">)</span>
     <span class="n">kx</span><span class="p">,</span> <span class="n">ky</span><span class="p">,</span> <span class="n">kz</span> <span class="o">=</span> <span class="n">axis_unit</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">axis_unit</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">axis_unit</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
     <span class="n">ox</span><span class="p">,</span> <span class="n">oy</span><span class="p">,</span> <span class="n">oz</span> <span class="o">=</span> <span class="n">axis_origin</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">axis_origin</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">axis_origin</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
@@ -586,7 +586,7 @@
                <span class="n">anchor</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Get a vector between two atoms in the molecule (pointing from pivot to anchor).</span>
 
 <span class="sd">    Args:</span>
@@ -596,9 +596,9 @@
 
 <span class="sd">    Returns: list</span>
 <span class="sd">         A vector pointing from the pivotal atom towards the anchor atom.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">px</span><span class="p">,</span> <span class="n">py</span><span class="p">,</span> <span class="n">pz</span> <span class="o">=</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">pivot</span><span class="p">]</span>
-    <span class="n">ax</span><span class="p">,</span> <span class="n">ay</span><span class="p">,</span> <span class="n">az</span> <span class="o">=</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">anchor</span><span class="p">]</span>
+<span class="sd">    """</span>
+    <span class="n">px</span><span class="p">,</span> <span class="n">py</span><span class="p">,</span> <span class="n">pz</span> <span class="o">=</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">'coords'</span><span class="p">][</span><span class="n">pivot</span><span class="p">]</span>
+    <span class="n">ax</span><span class="p">,</span> <span class="n">ay</span><span class="p">,</span> <span class="n">az</span> <span class="o">=</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">'coords'</span><span class="p">][</span><span class="n">anchor</span><span class="p">]</span>
     <span class="k">return</span> <span class="p">[</span><span class="n">ax</span> <span class="o">-</span> <span class="n">px</span><span class="p">,</span> <span class="n">ay</span> <span class="o">-</span> <span class="n">py</span><span class="p">,</span> <span class="n">az</span> <span class="o">-</span> <span class="n">pz</span><span class="p">]</span></div>
 
 
@@ -610,12 +610,12 @@
                   <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                   <span class="n">pivot</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Get a vector from the pivotal atom in the molecule towards its lone electron pair (lp).</span>
 <span class="sd">    The approach is to reverse the average of the three unit vectors between the pivotal atom and its neighbors.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        label (str): The species&#39; label.</span>
+<span class="sd">        label (str): The species' label.</span>
 <span class="sd">        mol (Molecule): The 2D graph representation of the molecule.</span>
 <span class="sd">        xyz (dict): The 3D coordinates of the molecule with the same atom order as in mol.</span>
 <span class="sd">        pivot (int): The 0-index of the pivotal atom of interest.</span>
@@ -625,19 +625,19 @@
 
 <span class="sd">    Returns: list</span>
 <span class="sd">        A unit vector pointing from the pivotal (nitrogen) atom towards its lone electron pairs orbital.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">neighbors</span><span class="p">,</span> <span class="n">vectors</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(),</span> <span class="nb">list</span><span class="p">()</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">pivot</span><span class="p">]</span><span class="o">.</span><span class="n">is_nitrogen</span><span class="p">():</span>
-        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The get_lp_vector specializes in nitrogen atoms, got </span><span class="si">{</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">pivot</span><span class="p">]</span><span class="o">.</span><span class="n">symbol</span><span class="si">}</span><span class="s1"> &#39;</span>
-                       <span class="sa">f</span><span class="s1">&#39;(atom number </span><span class="si">{</span><span class="n">pivot</span><span class="si">}</span><span class="s1">) in species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'The get_lp_vector specializes in nitrogen atoms, got </span><span class="si">{</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">pivot</span><span class="p">]</span><span class="o">.</span><span class="n">symbol</span><span class="si">}</span><span class="s1"> '</span>
+                       <span class="sa">f</span><span class="s1">'(atom number </span><span class="si">{</span><span class="n">pivot</span><span class="si">}</span><span class="s1">) in species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">pivot</span><span class="p">]</span><span class="o">.</span><span class="n">edges</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
         <span class="n">neighbors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom</span><span class="p">))</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">neighbors</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
         <span class="c1"># N will have 3, S may have more.</span>
-        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Can only get lp vector if the pivotal atom has at least three neighbors. &#39;</span>
-                           <span class="sa">f</span><span class="s1">&#39;Atom </span><span class="si">{</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">pivot</span><span class="p">]</span><span class="si">}</span><span class="s1"> in </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> has only </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">neighbors</span><span class="p">)</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">VectorsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Can only get lp vector if the pivotal atom has at least three neighbors. '</span>
+                           <span class="sa">f</span><span class="s1">'Atom </span><span class="si">{</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">pivot</span><span class="p">]</span><span class="si">}</span><span class="s1"> in </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> has only </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">neighbors</span><span class="p">)</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">neighbor</span> <span class="ow">in</span> <span class="n">neighbors</span><span class="p">:</span>
-        <span class="c1"># already taken in &quot;reverse&quot;, pointing towards the lone pair</span>
+        <span class="c1"># already taken in "reverse", pointing towards the lone pair</span>
         <span class="n">vectors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">unit_vector</span><span class="p">(</span><span class="n">get_vector</span><span class="p">(</span><span class="n">pivot</span><span class="o">=</span><span class="n">neighbor</span><span class="p">,</span> <span class="n">anchor</span><span class="o">=</span><span class="n">pivot</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz</span><span class="p">)))</span>
     <span class="n">x</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">vectors</span><span class="p">)</span>
     <span class="n">y</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">vectors</span><span class="p">)</span>
@@ -649,15 +649,15 @@
 <div class="viewcode-block" id="get_vector_length">
 <a class="viewcode-back" href="../../../api/vectors.html#arc.species.vectors.get_vector_length">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_vector_length</span><span class="p">(</span><span class="n">v</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Get the length of an ND vector</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        v (list): The vector.</span>
 
 <span class="sd">    Returns: float</span>
-<span class="sd">        The vector&#39;s length.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        The vector's length.</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="o">**</span> <span class="mf">0.5</span><span class="p">)</span></div>
 
 
@@ -667,7 +667,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">get_delta_angle</span><span class="p">(</span><span class="n">a1</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
                     <span class="n">a2</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Get the difference between two (dihedral or regular) angles.</span>
 
 <span class="sd">    Examples::</span>
@@ -681,7 +681,7 @@
 
 <span class="sd">    Returns: float</span>
 <span class="sd">        The difference between the angles in degrees.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">a1</span> <span class="o">%=</span> <span class="mi">360</span>
     <span class="n">a2</span> <span class="o">%=</span> <span class="mi">360</span>
     <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">a1</span> <span class="o">-</span> <span class="n">a2</span><span class="p">),</span> <span class="nb">abs</span><span class="p">(</span><span class="n">a1</span> <span class="o">+</span> <span class="mi">360</span> <span class="o">-</span> <span class="n">a2</span><span class="p">),</span> <span class="nb">abs</span><span class="p">(</span><span class="n">a1</span> <span class="o">-</span> <span class="n">a2</span> <span class="o">-</span> <span class="mi">360</span><span class="p">))</span></div>

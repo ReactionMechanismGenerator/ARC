@@ -174,11 +174,11 @@ where applicable.</p>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">N2H4</span>
 <span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NN</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NH</span>
-<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;[NH]&#39;</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="s">'[NH]'</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">N2H3</span>
 <span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">N[NH]</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NH2</span>
-<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;[NH2]&#39;</span>
+<span class="w">    </span><span class="nt">smiles</span><span class="p">:</span><span class="w"> </span><span class="s">'[NH2]'</span>
 
 <span class="nt">reactions</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">N2H4 + NH &lt;=&gt; N2H3 + NH2</span>
@@ -224,31 +224,31 @@ input files, and supported ESS output files.</p>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.reaction</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCReaction</span>
 
-<span class="n">n2h4</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;N2H4&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;NN&#39;</span><span class="p">)</span>
-<span class="n">nh</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;NH&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;[NH]&#39;</span><span class="p">)</span>
-<span class="n">n2h3</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;N2H3&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;N[NH]&#39;</span><span class="p">)</span>
-<span class="n">nh2</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;NH2&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;[NH2]&#39;</span><span class="p">)</span>
+<span class="n">n2h4</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'N2H4'</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">'NN'</span><span class="p">)</span>
+<span class="n">nh</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'NH'</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">'[NH]'</span><span class="p">)</span>
+<span class="n">n2h3</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'N2H3'</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">'N[NH]'</span><span class="p">)</span>
+<span class="n">nh2</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">'NH2'</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">'[NH2]'</span><span class="p">)</span>
 
 <span class="n">reaction</span> <span class="o">=</span> <span class="n">ARCReaction</span><span class="p">(</span>
-    <span class="n">label</span><span class="o">=</span><span class="s1">&#39;N2H4 + NH &lt;=&gt; N2H3 + NH2&#39;</span><span class="p">,</span>
+    <span class="n">label</span><span class="o">=</span><span class="s1">'N2H4 + NH &lt;=&gt; N2H3 + NH2'</span><span class="p">,</span>
     <span class="n">r_species</span><span class="o">=</span><span class="p">[</span><span class="n">n2h4</span><span class="p">,</span> <span class="n">nh</span><span class="p">],</span>
     <span class="n">p_species</span><span class="o">=</span><span class="p">[</span><span class="n">n2h3</span><span class="p">,</span> <span class="n">nh2</span><span class="p">],</span>
 <span class="p">)</span>
 
 <span class="n">arc</span> <span class="o">=</span> <span class="n">ARC</span><span class="p">(</span>
-    <span class="n">project</span><span class="o">=</span><span class="s1">&#39;api_reaction_demo&#39;</span><span class="p">,</span>
+    <span class="n">project</span><span class="o">=</span><span class="s1">'api_reaction_demo'</span><span class="p">,</span>
     <span class="n">species</span><span class="o">=</span><span class="p">[</span><span class="n">n2h4</span><span class="p">,</span> <span class="n">nh</span><span class="p">,</span> <span class="n">n2h3</span><span class="p">,</span> <span class="n">nh2</span><span class="p">],</span>
     <span class="n">reactions</span><span class="o">=</span><span class="p">[</span><span class="n">reaction</span><span class="p">],</span>
     <span class="n">job_types</span><span class="o">=</span><span class="p">{</span>
-        <span class="s1">&#39;conf_opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="s1">&#39;opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="s1">&#39;fine&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="s1">&#39;freq&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-        <span class="s1">&#39;rotors&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'conf_opt'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'opt'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'fine'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'freq'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'sp'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'rotors'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
     <span class="p">},</span>
-    <span class="n">level_of_theory</span><span class="o">=</span><span class="s1">&#39;wb97xd/def2svp&#39;</span><span class="p">,</span>
-    <span class="n">ess_settings</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;gaussian&#39;</span><span class="p">:</span> <span class="s1">&#39;local&#39;</span><span class="p">},</span>
+    <span class="n">level_of_theory</span><span class="o">=</span><span class="s1">'wb97xd/def2svp'</span><span class="p">,</span>
+    <span class="n">ess_settings</span><span class="o">=</span><span class="p">{</span><span class="s1">'gaussian'</span><span class="p">:</span> <span class="s1">'local'</span><span class="p">},</span>
 <span class="p">)</span>
 
 <span class="n">arc</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>

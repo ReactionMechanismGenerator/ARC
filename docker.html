@@ -119,21 +119,21 @@ and be aware that some numerical dependencies may misbehave under emulation.</p>
 <p>No <code class="docutils literal notranslate"><span class="pre">linux/arm64</span></code> image is published.</p>
 <p>Run ARC non-interactively:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm \
-    -v &quot;$PWD:/work&quot; -w /work \
+    -v "$PWD:/work" -w /work \
     -e PUID=$(id -u) -e PGID=$(id -g) \
     laxzal/arc:latest arc my_case/input.yml
 </pre></div>
 </div>
 <p>Run RMG non-interactively:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm \
-    -v &quot;$PWD:/work&quot; -w /work \
+    -v "$PWD:/work" -w /work \
     -e PUID=$(id -u) -e PGID=$(id -g) \
     laxzal/arc:latest rmg my_case/input.py
 </pre></div>
 </div>
 <p>Manual RMG invocation:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm \
-    -v &quot;$PWD:/work&quot; -w /work \
+    -v "$PWD:/work" -w /work \
     -e PUID=$(id -u) -e PGID=$(id -g) \
     laxzal/arc:latest \
     micromamba run -n rmg_env python /home/mambauser/Code/RMG-Py/rmg.py my_case/input.py
@@ -141,7 +141,7 @@ and be aware that some numerical dependencies may misbehave under emulation.</p>
 </div>
 <p>Manual ARC invocation:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm \
-    -v &quot;$PWD:/work&quot; -w /work \
+    -v "$PWD:/work" -w /work \
     -e PUID=$(id -u) -e PGID=$(id -g) \
     laxzal/arc:latest \
     micromamba run -n arc_env python /home/mambauser/Code/ARC/ARC.py my_case/input.yml
@@ -149,7 +149,7 @@ and be aware that some numerical dependencies may misbehave under emulation.</p>
 </div>
 <p>Open an interactive shell:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm -it \
-    -v &quot;$PWD:/work&quot; -w /work \
+    -v "$PWD:/work" -w /work \
     -e PUID=$(id -u) -e PGID=$(id -g) \
     laxzal/arc:latest
 </pre></div>

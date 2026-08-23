@@ -149,6 +149,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.post_sp_actions"><code class="docutils literal notranslate"><span class="pre">Scheduler.post_sp_actions()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.process_conformers"><code class="docutils literal notranslate"><span class="pre">Scheduler.process_conformers()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.process_directed_scans"><code class="docutils literal notranslate"><span class="pre">Scheduler.process_directed_scans()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.process_irc_verdict"><code class="docutils literal notranslate"><span class="pre">Scheduler.process_irc_verdict()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.record_tsg_job_error"><code class="docutils literal notranslate"><span class="pre">Scheduler.record_tsg_job_error()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.report_running_jobs_snapshot"><code class="docutils literal notranslate"><span class="pre">Scheduler.report_running_jobs_snapshot()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.restore_running_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.restore_running_jobs()</span></code></a></li>
@@ -243,21 +244,21 @@ Includes spawning, terminating, checking, and troubleshooting various jobs</p>
 <dd><p>ARC’s Scheduler class. Creates jobs, submits, checks status, troubleshoots.
 Each species in <cite>species_list</cite> has to have a unique label.</p>
 <p>Dictionary structures:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">job_dict</span> <span class="o">=</span> <span class="p">{</span><span class="n">label_1</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;conf_opt&#39;</span><span class="p">:</span>   <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">job_dict</span> <span class="o">=</span> <span class="p">{</span><span class="n">label_1</span><span class="p">:</span> <span class="p">{</span><span class="s1">'conf_opt'</span><span class="p">:</span>   <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
                                      <span class="mi">1</span><span class="p">:</span> <span class="n">Job2</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
-                      <span class="s1">&#39;conf_sp&#39;</span><span class="p">:</span>    <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
+                      <span class="s1">'conf_sp'</span><span class="p">:</span>    <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
                                      <span class="mi">1</span><span class="p">:</span> <span class="n">Job2</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
-                      <span class="s1">&#39;tsg&#39;</span><span class="p">:</span>        <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
+                      <span class="s1">'tsg'</span><span class="p">:</span>        <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
                                      <span class="mi">1</span><span class="p">:</span> <span class="n">Job2</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>  <span class="c1"># TS guesses</span>
-                      <span class="s1">&#39;opt&#39;</span><span class="p">:</span>        <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
+                      <span class="s1">'opt'</span><span class="p">:</span>        <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
                                      <span class="n">job_name2</span><span class="p">:</span> <span class="n">Job2</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
-                      <span class="s1">&#39;sp&#39;</span><span class="p">:</span>         <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
+                      <span class="s1">'sp'</span><span class="p">:</span>         <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
                                      <span class="n">job_name2</span><span class="p">:</span> <span class="n">Job2</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
-                      <span class="s1">&#39;freq&#39;</span><span class="p">:</span>       <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
+                      <span class="s1">'freq'</span><span class="p">:</span>       <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
                                      <span class="n">job_name2</span><span class="p">:</span> <span class="n">Job2</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
-                      <span class="s1">&#39;composite&#39;</span><span class="p">:</span>  <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
+                      <span class="s1">'composite'</span><span class="p">:</span>  <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
                                      <span class="n">job_name2</span><span class="p">:</span> <span class="n">Job2</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
-                      <span class="s1">&#39;scan&#39;</span><span class="p">:</span>       <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
+                      <span class="s1">'scan'</span><span class="p">:</span>       <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
                                      <span class="n">job_name2</span><span class="p">:</span> <span class="n">Job2</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
                       <span class="o">&lt;</span><span class="n">job_type</span><span class="o">&gt;</span><span class="p">:</span>   <span class="p">{</span><span class="n">job_name1</span><span class="p">:</span> <span class="n">Job1</span><span class="p">,</span>
                                      <span class="n">job_name2</span><span class="p">:</span> <span class="n">Job2</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
@@ -266,22 +267,22 @@ Each species in <cite>species_list</cite> has to have a unique label.</p>
             <span class="n">label_2</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">},</span>
             <span class="p">}</span>
 
-<span class="n">output</span> <span class="o">=</span> <span class="p">{</span><span class="n">label_1</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;job_types&#39;</span><span class="p">:</span> <span class="p">{</span><span class="n">job_type1</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">status1</span><span class="o">&gt;</span><span class="p">,</span>  <span class="c1"># boolean</span>
+<span class="n">output</span> <span class="o">=</span> <span class="p">{</span><span class="n">label_1</span><span class="p">:</span> <span class="p">{</span><span class="s1">'job_types'</span><span class="p">:</span> <span class="p">{</span><span class="n">job_type1</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">status1</span><span class="o">&gt;</span><span class="p">,</span>  <span class="c1"># boolean</span>
                                   <span class="n">job_type2</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">status2</span><span class="o">&gt;</span><span class="p">,</span>
                                  <span class="p">},</span>
-                    <span class="s1">&#39;paths&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;geo&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">geometry</span> <span class="n">optimization</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
-                              <span class="s1">&#39;freq&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">freq</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
-                              <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">sp</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
-                              <span class="s1">&#39;composite&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">composite</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
-                              <span class="s1">&#39;irc&#39;</span><span class="p">:</span> <span class="p">[</span><span class="nb">list</span> <span class="n">of</span> <span class="n">two</span> <span class="n">IRC</span> <span class="n">paths</span><span class="p">],</span>
+                    <span class="s1">'paths'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'geo'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">geometry</span> <span class="n">optimization</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
+                              <span class="s1">'freq'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">freq</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
+                              <span class="s1">'sp'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">sp</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
+                              <span class="s1">'composite'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">composite</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
+                              <span class="s1">'irc'</span><span class="p">:</span> <span class="p">[</span><span class="nb">list</span> <span class="n">of</span> <span class="n">two</span> <span class="n">IRC</span> <span class="n">paths</span><span class="p">],</span>
                              <span class="p">},</span>
-                    <span class="s1">&#39;conformers&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
-                    <span class="s1">&#39;isomorphism&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
-                    <span class="s1">&#39;convergence&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">status</span><span class="o">&gt;</span><span class="p">,</span>  <span class="c1"># bool | None</span>
-                    <span class="s1">&#39;restart&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
-                    <span class="s1">&#39;info&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
-                    <span class="s1">&#39;warnings&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
-                    <span class="s1">&#39;errors&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
+                    <span class="s1">'conformers'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
+                    <span class="s1">'isomorphism'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
+                    <span class="s1">'convergence'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">status</span><span class="o">&gt;</span><span class="p">,</span>  <span class="c1"># bool | None</span>
+                    <span class="s1">'restart'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
+                    <span class="s1">'info'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
+                    <span class="s1">'warnings'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
+                    <span class="s1">'errors'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
                    <span class="p">},</span>
          <span class="n">label_2</span><span class="p">:</span> <span class="p">{</span><span class="o">...</span><span class="p">},</span>
          <span class="p">}</span>
@@ -926,7 +927,8 @@ stable species, and that exactly one imaginary frequency was assigned for a TS.<
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.check_irc_species">
 <span class="sig-name descname"><span class="pre">check_irc_species</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_irc_species"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_irc_species" title="Link to this definition"></a></dt>
-<dd><p>Check that the optimized geometry of the two species created from a TS IRC runs makes sense</p>
+<dd><p>Check that the optimized geometry of the two species created from a TS IRC runs makes sense.
+A TS for which the IRC check positively failed is rejected, and a different TS guess is sought.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>label</strong> (<em>str</em>) – The label of one of the optimized IRC-resulting species.</p>
@@ -1390,6 +1392,25 @@ If more than one conformer is available, they will be optimized at the DFT confo
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.process_irc_verdict">
+<span class="sig-name descname"><span class="pre">process_irc_verdict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ts_label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rxn</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.process_irc_verdict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.process_irc_verdict" title="Link to this definition"></a></dt>
+<dd><p>Act on the verdict of the IRC check of a TS species.</p>
+<p>The verdict is three-valued: <code class="docutils literal notranslate"><span class="pre">True</span></code> means the optimized IRC endpoints correspond to the
+requested wells, <code class="docutils literal notranslate"><span class="pre">False</span></code> means they positively do not, and <code class="docutils literal notranslate"><span class="pre">None</span></code> means the check was not
+performed or its result could not be determined (e.g., IRC jobs were not requested).
+Only a <code class="docutils literal notranslate"><span class="pre">False</span></code> verdict rejects the TS, in which case a different TS guess is sought.
+Once every guess was tried, the TS is marked unconverged and the verdict is restored.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ts_label</strong> (<em>str</em>) – The label of the TS species the IRC check was performed for.</p></li>
+<li><p><strong>rxn</strong> (<em>ARCReaction</em><em>, </em><em>optional</em>) – The reaction the TS species belongs to.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.record_tsg_job_error">
 <span class="sig-name descname"><span class="pre">record_tsg_job_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_error</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.record_tsg_job_error"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.record_tsg_job_error" title="Link to this definition"></a></dt>
 <dd><p>Record an unrecoverable TS-search job error on the TS guesses that job produced.</p>
@@ -1753,9 +1774,9 @@ Using the following methods:
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>job</strong> (<em>JobAdapter</em>) – The scan Job object.</p></li>
 <li><p><strong>methods</strong> (<em>dict</em>) – <p>The troubleshooting method/s to try:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>{&#39;freeze&#39;: &lt;a list of problematic internal coordinates&gt;,
- &#39;inc_res&#39;: ``None``,
- &#39;change conformer&#39;: &lt;a xyz dict&gt;}
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>{'freeze': &lt;a list of problematic internal coordinates&gt;,
+ 'inc_res': ``None``,
+ 'change conformer': &lt;a xyz dict&gt;}
 </pre></div>
 </div>
 </p></li>
