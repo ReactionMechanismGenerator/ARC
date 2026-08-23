@@ -600,7 +600,8 @@ where some entries could be <code class="docutils literal notranslate"><span cla
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>angle</strong> (<em>float</em>) – An angle in degrees.</p></li>
+<li><p><strong>angle</strong> (<em>int</em><em> | </em><em>float</em><em> | </em><em>str</em>) – An angle in degrees. Accepts a string too, since the Scheduler
+stores rotor dihedrals as ‘:.2f’ strings for YAML restart serialization.</p></li>
 <li><p><strong>round_to</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of decimal figures to round the result to.
 <code class="docutils literal notranslate"><span class="pre">None</span></code> to not round. Default: 2.</p></li>
 </ul>

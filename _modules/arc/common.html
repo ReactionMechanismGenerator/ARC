@@ -1866,20 +1866,22 @@
 
 <div class="viewcode-block" id="get_angle_in_180_range">
 <a class="viewcode-back" href="../../api/common.html#arc.common.get_angle_in_180_range">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">get_angle_in_180_range</span><span class="p">(</span><span class="n">angle</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_angle_in_180_range</span><span class="p">(</span><span class="n">angle</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
                            <span class="n">round_to</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Get the corresponding angle in the -180 to +180 degree range, [-180, 180)</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        angle (float): An angle in degrees.</span>
+<span class="sd">        angle (int | float | str): An angle in degrees. Accepts a string too, since the Scheduler</span>
+<span class="sd">                                   stores rotor dihedrals as ':.2f' strings for YAML restart serialization.</span>
 <span class="sd">        round_to (int, optional): The number of decimal figures to round the result to.</span>
 <span class="sd">                                  ``None`` to not round. Default: 2.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        float: The corresponding angle in the -180 to +180 degree range.</span>
 <span class="sd">    """</span>
+    <span class="n">angle</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">angle</span><span class="p">)</span>
     <span class="n">wrapped</span> <span class="o">=</span> <span class="p">(</span><span class="n">angle</span> <span class="o">+</span> <span class="n">HALF_CIRCLE</span><span class="p">)</span> <span class="o">%</span> <span class="n">FULL_CIRCLE</span> <span class="o">-</span> <span class="n">HALF_CIRCLE</span>
     <span class="k">return</span> <span class="nb">round</span><span class="p">(</span><span class="n">wrapped</span><span class="p">,</span> <span class="n">round_to</span><span class="p">)</span> <span class="k">if</span> <span class="n">round_to</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">wrapped</span></div>
 
