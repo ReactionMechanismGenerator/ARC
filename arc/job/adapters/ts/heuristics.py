@@ -871,10 +871,15 @@ def h_abstraction(reaction: ARCReaction,
         dihedral_increment (int, optional): The dihedral increment to use for B-H-A-C and D-B-H-C dihedral scans.
 
     Returns: list[dict]
-        Entries are Cartesian coordinates of TS guesses for all reactions.
+        Entries are Cartesian coordinates of TS guesses for all reactions. Returns an empty list if
+        ``reaction.product_dicts`` is empty (i.e., no matching H_Abstraction family products were identified).
     """
     xyz_guesses = list()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
+    if not reaction.product_dicts:
+        logger.warning(f'Could not generate H_Abstraction TS guesses for reaction {reaction}: '
+                        f'no product_dicts were identified for this reaction. Other TS search methods will be attempted.')
+        return xyz_guesses
     reactants_reversed, products_reversed = are_h_abs_wells_reversed(rxn=reaction, product_dict=reaction.product_dicts[0])
     for product_dict in reaction.product_dicts:
         # Identify R1H and R2H in the "R1H + R2 <=> R1 + R2H" or "R2 + R1H <=> R2H + R1" reaction
