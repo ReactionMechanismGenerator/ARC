@@ -9,6 +9,7 @@ import copy
 import itertools
 import os
 import shutil
+import tempfile
 import unittest
 
 from arc.common import ARC_TESTING_PATH, almost_equal_coords
@@ -22,6 +23,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_modified_params_from_zmat_2,
                                             get_new_map_based_on_zmat_1,
                                             get_new_zmat_2_map,
+                                            h_abstraction,
                                             stretch_zmat_bond,
                                             get_main_reactant_and_water_from_hydrolysis_reaction,
                                             setup_zmat_indices,
@@ -32,9 +34,11 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             check_ts_bonds,
                                             h_abstraction,
                                             )
+from arc.molecule.molecule import Molecule
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
 from arc.species.species import ARCSpecies
+from arc.species.vectors import calculate_angle, calculate_distance
 from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
 from arc.species.species import check_isomorphism
@@ -559,6 +563,56 @@ H      -3.45360689    0.15275707   -0.76116277""")
         rxn1.product_dicts = []
         xyz_guesses = h_abstraction(reaction=rxn1)
         self.assertEqual(xyz_guesses, [])
+    def test_heuristics_for_h_abstraction_symmetric_reactants(self):
+        """OH + OH <=> H2O + O, an H-abstraction between two identical reactants.
+
+        The two product dicts label the transferring hydrogen (*2) in different reactants, so each of
+        them resolves ``reactants_reversed`` differently, and ``h1`` indexes a hydrogen of the
+        reactant that carries it in both.
+        """
+        o_triplet = ARCSpecies(label='O', smiles='[O]', xyz='O 0.0 0.0 0.0')
+        rxn = ARCReaction(r_species=[self.oh, self.oh], p_species=[self.h2o, o_triplet])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        reactants = rxn.get_reactants_and_products(return_copies=False)[0]
+        n_atoms_r_0 = len(reactants[0].mol.atoms)
+        reactants_reversed_values = list()
+        for product_dict in rxn.product_dicts:
+            reactants_reversed = are_h_abs_wells_reversed(rxn, product_dict=product_dict)[0]
+            reactants_reversed_values.append(reactants_reversed)
+            h1 = product_dict['r_label_map']['*2']
+            if reactants_reversed:
+                self.assertGreaterEqual(h1, n_atoms_r_0)
+                h1 -= n_atoms_r_0
+            else:
+                self.assertLess(h1, n_atoms_r_0)
+            reactant = reactants[int(reactants_reversed)]
+            self.assertLess(h1, len(reactant.mol.atoms))
+            self.assertTrue(reactant.mol.atoms[h1].is_hydrogen())
+        self.assertEqual(sorted(reactants_reversed_values), [False, True])
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        heuristics = HeuristicsAdapter(job_type='tsg',
+                                       reactions=[rxn],
+                                       testing=True,
+                                       project='test',
+                                       project_directory=project_directory,
+                                       dihedral_increment=30,
+                                       )
+        heuristics.execute_incore()
+        self.assertGreater(len(rxn.ts_species.ts_guesses), 0)
+        for ts_guess in rxn.ts_species.ts_guesses:
+            xyz = ts_guess.initial_xyz
+            o_indices = [i for i, symbol in enumerate(xyz['symbols']) if symbol == 'O']
+            h_indices = [i for i, symbol in enumerate(xyz['symbols']) if symbol == 'H']
+            self.assertEqual(len(o_indices), 2)
+            self.assertEqual(len(h_indices), 2)
+            transferred_h = min(h_indices,
+                                key=lambda i: sum(calculate_distance(xyz, [o, i]) for o in o_indices))
+            for o in o_indices:
+                self.assertGreater(calculate_distance(xyz, [o, transferred_h]), 1.0)
+                self.assertLess(calculate_distance(xyz, [o, transferred_h]), 1.4)
+            self.assertGreater(calculate_angle(xyz, [o_indices[0], transferred_h, o_indices[1]]), 170)
+            self.assertGreater(calculate_distance(xyz, o_indices), 2.2)
 
     def test_heuristics_for_h_abstraction_2(self):
         # C3H8 + HO2 <=> C3H7 + H2O2
@@ -1998,7 +2052,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                                      consider_arc_families=False,
                                                      discover_own_reverse_rxns_in_reverse=False,
                                                      )
-        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn, product_dict=product_dicts[0])
+        r_reversed, p_reversed, _ = are_h_abs_wells_reversed(rxn, product_dict=product_dicts[0])
         self.assertEqual(r_reversed, expected_r_reversed)
         self.assertEqual(p_reversed, expected_p_reversed)
 
@@ -2049,6 +2103,237 @@ H      -3.45360689    0.15275707   -0.76116277""")
                           p_species=[ARCSpecies(label='CCCC([O])=O', smiles='CCCC([O])=O'),
                                      ARCSpecies(label='H2O', smiles='O')])
         self._check_h_abs_wells_reversed(rxn, expected_r_reversed=False, expected_p_reversed=False)
+
+    def _get_h_abs_product_dicts(self, rxn: 'ARCReaction') -> list:
+        """Get the H_Abstraction family product dicts of ``rxn``."""
+        return get_reaction_family_products(rxn=rxn,
+                                            rmg_family_set=[rxn.family],
+                                            consider_rmg_families=True,
+                                            consider_arc_families=False,
+                                            discover_own_reverse_rxns_in_reverse=False,
+                                            )
+
+    def test_are_h_abs_wells_reversed_star_2_is_the_first_atom_of_the_second_reactant(self):
+        """CH3 + H2 <=> CH4 + H — *2 is the first atom of the second reactant.
+
+        One of the two product dicts labels the first H of H2 as *2, i.e. r_label_map['*2'] equals
+        the number of atoms in the first reactant. The transferring H is then in the second
+        reactant, so reactants_reversed must be True, and h_abstraction must index h1 into H2
+        rather than into CH3.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2', smiles='[H][H]')],
+                          p_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='H', smiles='[H]')])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        product_dicts = self._get_h_abs_product_dicts(rxn)
+        n_atoms_r_0 = len(rxn.r_species[0].mol.atoms)
+        boundary_dicts = [p_dict for p_dict in product_dicts if p_dict['r_label_map']['*2'] == n_atoms_r_0]
+        self.assertEqual(len(boundary_dicts), 1)
+        reactants = rxn.get_reactants_and_products(return_copies=False)[0]
+        for product_dict in product_dicts:
+            reactants_reversed, _, _ = are_h_abs_wells_reversed(rxn, product_dict=product_dict)
+            reactant = reactants[int(reactants_reversed)]
+            h1 = product_dict['r_label_map']['*2']
+            if reactants_reversed:
+                h1 -= len(reactants[0].mol.atoms)
+            self.assertLess(h1, len(reactant.mol.atoms))
+            self.assertTrue(reactant.mol.atoms[h1].is_hydrogen())
+        self.assertTrue(are_h_abs_wells_reversed(rxn, product_dict=boundary_dicts[0])[0])
+        rxn.product_dicts = product_dicts
+        xyz_guesses = h_abstraction(reaction=rxn, dihedral_increment=120)
+        self.assertGreater(len(xyz_guesses), 0)
+
+    def test_are_h_abs_wells_reversed_star_2_is_the_first_atom_of_the_second_dict_product(self):
+        """C2H6 + OH <=> C2H5 + H2O with the transferred H first in the second dict product.
+
+        p_label_map['*2'] is a global index into the concatenated dict products, so a value equal
+        to the number of atoms of the first dict product already belongs to the second one, making
+        the H bearing dict product the second one. The dict products are constructed here with the
+        transferred H of the water first. The reaction product paired with the H bearing dict
+        product must be the water in both product orders.
+        """
+        h2o_h_first = Molecule().from_adjacency_list("""1 H u0 p0 c0 {2,S}
+2 O u0 p2 c0 {1,S} {3,S}
+3 H u0 p0 c0 {2,S}
+""")
+        c2h5, h2o = ARCSpecies(label='C2H5', smiles='[CH2]C'), ARCSpecies(label='H2O', smiles='O')
+        dict_products = [c2h5.mol.copy(deep=True), h2o_h_first]
+        p_star_2 = len(dict_products[0].atoms)
+        self.assertTrue(dict_products[1].atoms[0].is_hydrogen())
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[c2h5, h2o])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        product_dict = self._get_h_abs_product_dicts(rxn)[0]
+        product_dict['products'] = dict_products
+        product_dict['p_label_map'] = {'*2': p_star_2}
+        _, products_reversed, dict_products_reversed = are_h_abs_wells_reversed(rxn, product_dict=product_dict)
+        self.assertFalse(dict_products_reversed)
+        self.assertFalse(products_reversed)
+        self.assertEqual(rxn.p_species[int(not products_reversed)].mol.get_formula(), 'H2O')
+        rxn_reversed_products = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                                                       ARCSpecies(label='OH', smiles='[OH]')],
+                                            p_species=[h2o, c2h5])
+        product_dict = self._get_h_abs_product_dicts(rxn_reversed_products)[0]
+        product_dict['products'] = dict_products
+        product_dict['p_label_map'] = {'*2': p_star_2}
+        _, products_reversed, dict_products_reversed = are_h_abs_wells_reversed(rxn_reversed_products,
+                                                                                product_dict=product_dict)
+        self.assertFalse(dict_products_reversed)
+        self.assertTrue(products_reversed)
+        self.assertEqual(rxn_reversed_products.p_species[int(not products_reversed)].mol.get_formula(), 'H2O')
+
+    def test_are_h_abs_wells_reversed_with_a_charge_separated_perception(self):
+        """isoxazol-5-yl + propyne <=> isoxazole + propargyl, with a charge separated re-perception.
+
+        Perceiving isoxazole from its Cartesian coordinates may yield the charge separated aromatic
+        [n-]1ccc[o+]1 rather than the neutral c1ccno1, and copying an ARCSpecies that carries
+        coordinates re-perceives its 2D graph. Here that re-perception is forced deterministically:
+        the orientation must still be resolved against the neutral graph the reaction holds, so that
+        the product paired with each dict product keeps its molecular formula.
+        """
+        isoxazole_charge_separated_adjlist = """1 C u0 p0 c0 {2,S} {5,D} {6,S}
+2 C u0 p0 c0 {1,S} {3,D} {7,S}
+3 C u0 p0 c0 {2,D} {4,S} {8,S}
+4 N u0 p2 c-1 {3,S} {5,S}
+5 O u0 p1 c+1 {1,D} {4,S}
+6 H u0 p0 c0 {1,S}
+7 H u0 p0 c0 {2,S}
+8 H u0 p0 c0 {3,S}
+"""
+        isoxazolyl = ARCSpecies(label='isoxazolyl', smiles='O1[C]=CC=N1', multiplicity=2)
+        isoxazolyl.final_xyz = str_to_xyz("""O       1.62581768   -0.29842095   -0.47814520
+C       0.65307399   -1.11584355   -0.97117760
+C      -0.57247729   -0.54346433   -0.73207366
+C      -0.27021319    0.65775554   -0.07029399
+N       1.04374329    0.82411794    0.09216569
+H      -1.53760759   -0.94291122   -1.00026412
+H      -0.94233690    1.41876655    0.30089417""")
+        propyne = ARCSpecies(label='propyne', smiles='C#CC')
+        propyne.final_xyz = str_to_xyz("""C       1.69667781   -0.18348962    0.34176455
+C       0.50414063   -0.05452099    0.28779005
+C      -0.94919940    0.10265252    0.22201144
+H       2.75513851   -0.29795839    0.38967067
+H      -1.44299398   -0.87115669    0.15094730
+H      -1.23736098    0.69413790   -0.65222854
+H      -1.32640259    0.61033527    1.11485159""")
+        isoxazole = ARCSpecies(label='isoxazole', smiles='c1ccno1')
+        isoxazole.final_xyz = str_to_xyz("""C      -1.09143635   -0.08868244   -0.00645500
+C      -0.03176118    0.77687168   -0.08273051
+C       1.09337013   -0.05945157    0.02217020
+N       0.75345117   -1.34403600    0.15327038
+O      -0.63329583   -1.35807858    0.13462360
+H      -2.16536354    0.01990666   -0.03354656
+H      -0.06648136    1.84914961   -0.19678701
+H       2.14151697    0.20432063    0.00945491""")
+        propargyl = ARCSpecies(label='propargyl', smiles='C#C[CH2]', multiplicity=2)
+        propargyl.final_xyz = str_to_xyz("""C       1.49185539    0.01644235    0.23786746
+C       0.30713117    0.00338503    0.04897028
+C      -1.08917296   -0.01200422   -0.17366215
+H       2.54370249    0.02803524    0.40557840
+H      -1.61674460    0.90953448   -0.38628957
+H      -1.63677149   -0.94539289   -0.13246443""")
+        rxn = ARCReaction(r_species=[isoxazolyl, propyne], p_species=[isoxazole, propargyl])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        self.assertEqual(rxn.p_species[0].mol.get_net_charge(), 0)
+        self.assertTrue(all(not atom.charge for atom in rxn.p_species[0].mol.atoms))
+        product_dicts = self._get_h_abs_product_dicts(rxn)
+        original_mol_from_xyz = ARCSpecies.mol_from_xyz
+
+        def charge_separated_mol_from_xyz(spc, xyz=None, get_cheap=False):
+            """Perceive isoxazole as its charge separated aromatic form, anything else as usual."""
+            if spc.mol is not None and spc.mol.get_formula() == 'C3H3NO':
+                spc.mol = Molecule().from_adjacency_list(isoxazole_charge_separated_adjlist,
+                                                         raise_atomtype_exception=False,
+                                                         raise_charge_exception=False,
+                                                         )
+                return None
+            return original_mol_from_xyz(spc, xyz=xyz, get_cheap=get_cheap)
+
+        self.addCleanup(setattr, ARCSpecies, 'mol_from_xyz', original_mol_from_xyz)
+        ARCSpecies.mol_from_xyz = charge_separated_mol_from_xyz
+        self.assertTrue(any(atom.charge for atom in isoxazole.copy().mol.atoms))
+        for product_dict in product_dicts:
+            _, products_reversed, dict_products_reversed = are_h_abs_wells_reversed(rxn, product_dict=product_dict)
+            product = rxn.get_reactants_and_products(return_copies=False)[1][int(not products_reversed)]
+            dict_product = product_dict['products'][int(not dict_products_reversed)]
+            self.assertEqual(product.mol.get_formula(), dict_product.get_formula())
+
+    def test_h_abstraction_without_product_dicts(self):
+        """H2 + O <=> H + OH with no product dicts at all."""
+        rxn = ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        rxn.product_dicts = list()
+        with self.assertLogs('arc', level='WARNING') as log:
+            xyz_guesses = h_abstraction(reaction=rxn)
+        self.assertEqual(xyz_guesses, [])
+        warning = '\n'.join(log.output)
+        self.assertIn('H_Abstraction', warning)
+        self.assertIn(rxn.label, warning)
+
+    def test_h_abstraction_with_product_dicts_of_another_family(self):
+        """CH3 + C2H5 <=> CH4 + C2H4, a disproportionation labeled as an H_Abstraction.
+
+        The family attribute is set explicitly and is not derived from the product dicts, so the
+        product dicts of this reaction belong to another family and none of them may be read as an
+        H_Abstraction label map.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='C2H5', smiles='[CH2]C')],
+                          p_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='C2H4', smiles='C=C')],
+                          family='H_Abstraction')
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        families = [product_dict['family'] for product_dict in rxn.product_dicts]
+        self.assertGreater(len(families), 0)
+        self.assertNotIn('H_Abstraction', families)
+        with self.assertLogs('arc', level='WARNING') as log:
+            xyz_guesses = h_abstraction(reaction=rxn)
+        self.assertEqual(xyz_guesses, [])
+        warning = '\n'.join(log.output)
+        self.assertIn('H_Abstraction', warning)
+        self.assertIn(rxn.label, warning)
+
+    def test_h_abstraction_ignores_product_dicts_of_another_family(self):
+        """CH3 + H2 <=> CH4 + H with a product dict of another family added to the reaction."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2', smiles='[H][H]')],
+                          p_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='H', smiles='[H]')])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        h_abs_product_dicts = self._get_h_abs_product_dicts(rxn)
+        rxn.product_dicts = h_abs_product_dicts
+        xyz_guesses = h_abstraction(reaction=rxn, dihedral_increment=120)
+        self.assertGreater(len(xyz_guesses), 0)
+        rxn.product_dicts = h_abs_product_dicts + [{'family': 'Disproportionation',
+                                                    'products': list(),
+                                                    'r_label_map': {'*1': 0},
+                                                    'p_label_map': {'*1': 0}}]
+        self.assertEqual(len(h_abstraction(reaction=rxn, dihedral_increment=120)), len(xyz_guesses))
+
+    def test_h_abstraction_skips_a_product_dict_whose_star_2_is_not_a_hydrogen(self):
+        """CH3 + H2 <=> CH4 + H with a product dict whose *2 label points at the carbon of CH3."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2', smiles='[H][H]')],
+                          p_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='H', smiles='[H]')])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        product_dicts = self._get_h_abs_product_dicts(rxn)
+        self.assertEqual(len(product_dicts), 2)
+        rxn.product_dicts = product_dicts[:1]
+        xyz_guesses = h_abstraction(reaction=rxn, dihedral_increment=120)
+        self.assertGreater(len(xyz_guesses), 0)
+        corrupted_product_dict = dict(product_dicts[1])
+        corrupted_product_dict['r_label_map'] = dict(corrupted_product_dict['r_label_map'])
+        corrupted_product_dict['r_label_map']['*2'] = 0
+        self.assertFalse(rxn.r_species[0].mol.atoms[0].is_hydrogen())
+        rxn.product_dicts = product_dicts[:1] + [corrupted_product_dict]
+        with self.assertLogs('arc', level='WARNING') as log:
+            self.assertEqual(len(h_abstraction(reaction=rxn, dihedral_increment=120)), len(xyz_guesses))
+        warning = '\n'.join(log.output)
+        self.assertIn('*2', warning)
+        self.assertIn(rxn.label, warning)
 
     def test_process_hydrolysis_reaction(self):
         """Test the process_hydrolysis_reaction() function."""
