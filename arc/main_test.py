@@ -123,7 +123,8 @@ class TestARC(unittest.TestCase):
                                        'opt': True,
                                        'orbitals': False,
                                        'rotors': False,
-                                       'sp': True},
+                                       'sp': True,
+                                       'stability': False},
                          'max_job_time': 120,
                          'opt_level': {'basis': '6-311+g(3df,2p)',
                                        'method': 'b3lyp',
@@ -203,7 +204,8 @@ class TestARC(unittest.TestCase):
                         }
         arc1 = ARC(**restart_dict)
         job_type_expected = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
-                             'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False}
+                             'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False,
+                             'stability': False}
         self.assertEqual(arc1.job_types, job_type_expected)
 
     def test_rotor_scan_resolution_input_key(self):
@@ -551,6 +553,27 @@ class TestARC(unittest.TestCase):
                        level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
                        ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
                        )
+
+    def test_summary_reports_the_warnings_of_a_converged_species(self):
+        """Test that the run summary prints the warnings of a species that converged"""
+        arc0 = ARC(project='arc_test',
+                   job_types=self.job_types1,
+                   species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)],
+                   level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
+                   )
+        arc0.output = {'spc1': {'convergence': True,
+                                'job_types': {},
+                                'info': '',
+                                'warnings': 'the electronic energy and the ZPE were computed with different '
+                                            'SCF references; ',
+                                'errors': '',
+                                'wavefunction_stability': 'external_instability (RHF-->UHF, -0.0312)',
+                                }}
+        with self.assertLogs(logger=get_logger(), level=logging.INFO) as captured:
+            status_dict = arc0.summary()
+        self.assertTrue(status_dict['spc1'])
+        self.assertTrue(any('different SCF references' in record for record in captured.output))
+        self.assertTrue(any('external_instability' in record for record in captured.output))
 
     @classmethod
     def tearDownClass(cls):
