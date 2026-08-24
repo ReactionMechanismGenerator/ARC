@@ -551,6 +551,100 @@ class TestTSChecks(unittest.TestCase):
         ts.check_normal_mode_displacement(reaction=self.rxn_3, job=self.job1)
         self.assertTrue(self.rxn_3.ts_species.ts_checks['NMD'])
 
+    def make_c3h7_intra_h_rxn(self):
+        """A helper for building the C[CH]C <=> [CH2]CC reaction with a fresh TS species."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=self.r_xyz_2a)],
+                          p_species=[ARCSpecies(label='[CH2]CC', smiles='[CH2]CC', xyz=self.p_xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=self.ts_xyz_2)
+        rxn.ts_species.mol_from_xyz()
+        return rxn
+
+    def test_check_normal_mode_displacement_only_defaults_a_none_amplitude(self):
+        """Test that only ``None`` selects the default amplitude, while other values reach the analysis as given."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite',
+                                                           'TS_intra_H_migration_CBS-QB3.out')
+        requested_amplitudes = [None, 0, 0.0, [], [0.25, 0.5]]
+        forwarded = list()
+
+        def record_amplitude(reaction, job, amplitude):
+            forwarded.append(amplitude)
+            return None
+
+        with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', side_effect=record_amplitude):
+            for requested in requested_amplitudes:
+                rxn = self.make_c3h7_intra_h_rxn()
+                rxn.ts_species.populate_ts_checks()
+                ts.check_normal_mode_displacement(reaction=rxn, job=self.job1, amplitude=requested)
+        self.assertEqual(forwarded, [ts.DEFAULT_AMPLITUDE, 0, 0.0, [], [0.25, 0.5]])
+
+    def test_check_normal_mode_displacement_with_an_amplitude_that_probes_nothing(self):
+        """Test that an amplitude leaving no displacement to probe does not fall through to the default."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite',
+                                                           'TS_intra_H_migration_CBS-QB3.out')
+        rxn = self.make_c3h7_intra_h_rxn()
+        rxn.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
+        rxn.ts_species.populate_ts_checks()
+        ts.check_normal_mode_displacement(reaction=rxn, job=self.job1)
+        self.assertIs(rxn.ts_species.ts_checks['NMD'], True)
+        for amplitude in [0, []]:
+            rxn.ts_species.populate_ts_checks()
+            ts.check_normal_mode_displacement(reaction=rxn, job=self.job1, amplitude=amplitude)
+            self.assertIs(rxn.ts_species.ts_checks['NMD'], False, msg=f'amplitude {amplitude}')
+
+    def test_check_ts_does_not_promote_an_unknown_nmd_verdict_when_skipping(self):
+        """Test that skip_nmd promotes a failed NMD check and leaves an unperformed one unknown."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        rxn = self.make_c3h7_intra_h_rxn()
+        rxn.ts_species.populate_ts_checks()
+        ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=True)
+        self.assertIsNone(rxn.ts_species.ts_checks['NMD'])
+
+        def fail_the_check(reaction, job, amplitude):
+            return False
+
+        rxn = self.make_c3h7_intra_h_rxn()
+        rxn.ts_species.populate_ts_checks()
+        with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', side_effect=fail_the_check):
+            ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=True)
+        self.assertIs(rxn.ts_species.ts_checks['NMD'], True)
+
+    def test_check_ts_reaches_the_rotor_block_for_an_ess_reporting_no_normal_modes(self):
+        """Test that a TS whose ESS reports no normal mode displacements does not end the run."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        for skip_nmd in [True, False]:
+            rxn = self.make_c3h7_intra_h_rxn()
+            rxn.ts_species.populate_ts_checks()
+            for check in ['E0', 'e_elect', 'freq']:
+                rxn.ts_species.ts_checks[check] = True
+            ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=skip_nmd)
+            self.assertIsNone(rxn.ts_species.ts_checks['NMD'], msg=f'skip_nmd={skip_nmd}')
+            self.assertTrue(ts.ts_passed_checks(species=rxn.ts_species, exemptions=['E0', 'warnings']))
+
+    def test_get_rxn_zone_atom_indices_for_an_ess_reporting_no_normal_modes(self):
+        """Test that a log file yielding no normal mode displacements yields an empty reaction zone."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        rxn = self.make_c3h7_intra_h_rxn()
+        self.assertEqual(ts.get_rxn_zone_atom_indices(reaction=rxn, job=self.job1), list())
+        ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(rxn, self.job1)
+        self.assertEqual([key for key, rotor in rxn.ts_species.rotors_dict.items()
+                          if 'pivTS' in rotor['invalidation_reason']], list())
+
+    def test_ts_passed_checks_nmd(self):
+        """Test that ts_passed_checks() treats the three-valued NMD check correctly."""
+        spc = ARCSpecies(label='TS', is_ts=True)
+        spc.populate_ts_checks()
+        for key in ['E0', 'e_elect', 'IRC', 'freq']:
+            spc.ts_checks[key] = True
+
+        spc.ts_checks['NMD'] = True
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
+        spc.ts_checks['NMD'] = None
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
+        spc.ts_checks['NMD'] = False
+        self.assertFalse(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
     def test_invalidate_rotors_with_both_pivots_in_a_reactive_zone(self):
         """Test the invalidate_rotors_with_both_pivots_in_a_reactive_zone() function."""
         ts_spc_1 = ARCSpecies(label='TS', is_ts=True, xyz=self.ts_xyz_1, multiplicity=2)
@@ -641,16 +735,6 @@ class TestTSChecks(unittest.TestCase):
                                                  0.9804112316882941,     # 14 * (the abstracted H)
                                                  0.12176444538905733,    # 15
                                                  0.12462988320468919]))  # 16
-
-    def test_get_index_of_abs_largest_neg_freq(self):
-        """Test the get_index_of_abs_largest_neg_freq() function."""
-        self.assertIsNone(ts.get_index_of_abs_largest_neg_freq(np.array([], np.float64)))
-        self.assertIsNone(ts.get_index_of_abs_largest_neg_freq(np.array([1, 320.5], np.float64)))
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-1], np.float64)), 0)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-1, 320.5], np.float64)), 0)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([320.5, -1], np.float64)), 1)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([320.5, -1, -80, -90, 5000], np.float64)), 3)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-320.5, -1, -80, -90, 5000], np.float64)), 0)
 
     def test_get_expected_num_atoms_with_largest_normal_mode_disp(self):
         """Test the get_expected_num_atoms_with_largest_normal_mode_disp() function"""

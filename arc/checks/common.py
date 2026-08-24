@@ -6,6 +6,8 @@ contains helper functions for Scheduler.
 import datetime
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
     from arc.species.species import ARCSpecies
 
@@ -63,6 +65,22 @@ def get_i_from_job_name(job_name: str) -> int | None:
     return i
 
 
+def get_index_of_abs_largest_neg_freq(freqs: np.ndarray | None) -> int | None:
+    """
+    Get the index of the |largest| negative frequency.
+
+    Args:
+        freqs (np.ndarray, optional): Entries are frequency values.
+
+    Returns:
+        int | None: The 0-index of the largest absolute negative frequency,
+                    ``None`` if no frequencies were given or none of them is negative.
+    """
+    if freqs is None or not len(freqs) or all(freq > 0 for freq in freqs):
+        return None
+    return list(freqs).index(min(freqs))
+
+
 def is_ts_check_exempt(check: str,
                        ts_checks: dict,
                        ) -> bool:
@@ -82,6 +100,24 @@ def is_ts_check_exempt(check: str,
         bool: Whether a failed ``check`` is exempt.
     """
     return check == 'e_elect' and bool(ts_checks.get('E0'))
+
+
+def record_ts_check_warning(species: 'ARCSpecies',
+                            warning: str,
+                            ) -> None:
+    """
+    Append a diagnostic ``warning`` to a TS species' ``ts_checks['warnings']`` entry.
+
+    The entry accumulates the reasons a TS check could not reach a verdict, and is written to the
+    restart and output files, so a repeated check must not repeat its message. A ``warning`` that is
+    already present is not appended again.
+
+    Args:
+        species (ARCSpecies): The TS species.
+        warning (str): The message to record.
+    """
+    if warning not in species.ts_checks['warnings']:
+        species.ts_checks['warnings'] += warning
 
 
 def get_ts_validation_comment(ts_species: 'ARCSpecies | None') -> str | None:
