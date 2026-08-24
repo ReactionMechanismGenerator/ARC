@@ -50,7 +50,7 @@ for a description of the underlying single-map pipeline.
 from dataclasses import dataclass, field
 
 from arc.common import logger
-from arc.mapping.driver import MAX_PDI, map_rxn_all
+from arc.mapping.driver import MAX_PDI, map_rxn_all, prepare_flipped_reaction
 from arc.mapping.engine import flip_map
 from arc.species import ARCSpecies
 
@@ -547,7 +547,11 @@ def enumerate_atom_maps(rxn,
 
     sweep(rxn, flip=False)
     if include_flipped and len(maps) < max_maps:
-        sweep(rxn.flip_reaction(), flip=True)
+        # Use prepare_flipped_reaction rather than flip_reaction: the latter resets the family, so the
+        # flipped copy re-derives its product dictionaries with the default family set and comes back
+        # empty. That is the whole enumeration for a reaction whose template was only discovered in
+        # reverse, since every forward product dictionary then fails at get_template_product_order.
+        sweep(prepare_flipped_reaction(rxn), flip=True)
 
     if len(maps) >= max_maps:
         logger.warning(f'enumerate_atom_maps hit the cap of {max_maps} maps for {rxn}; '

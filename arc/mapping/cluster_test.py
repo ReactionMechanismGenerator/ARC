@@ -517,6 +517,27 @@ class TestClusteringIntegration(unittest.TestCase):
             for center in map_cluster.centers:
                 self.assertIn(center, expected)
 
+    def test_enumerates_a_reverse_discovered_reaction(self):
+        """Test that a reaction whose template was only discovered in reverse still yields maps.
+
+        Every forward product dictionary of such a reaction fails at ``get_template_product_order``, so the
+        whole enumeration rests on the flipped sweep. That sweep is useless unless the flipped reaction is
+        seeded with a family, since ``flip_reaction`` resets it and the default family set finds nothing.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5Cl', smiles='CCCl')],
+                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                     ARCSpecies(label='HCl', smiles='Cl')])
+        rxn.product_dicts = rxn.get_product_dicts(rmg_family_set='all')
+        rxn.family = rxn.product_dicts[0]['family']
+        rxn.family_own_reverse = rxn.product_dicts[0]['own_reverse']
+        self.assertTrue(rxn.product_dicts[0]['discovered_in_reverse'])
+        atom_maps = cluster.enumerate_atom_maps(rxn, max_maps=20)
+        self.assertTrue(atom_maps)
+        for atom_map in atom_maps:
+            self.assertEqual(sorted(atom_map), list(range(len(atom_map))))
+        clusters = cluster.cluster_atom_maps(atom_maps, rxn)
+        self.assertEqual(len(clusters), 1)
+
     def test_arc_reaction_atom_map_clusters_property(self):
         """Test that ARCReaction exposes the clusters and caches them."""
         clusters = self.rxn.atom_map_clusters
