@@ -6,11 +6,71 @@ from abc import ABC
 
 import numpy as np
 import pandas as pd
-from arc.common import read_yaml_file
+from arc.common import get_element_mass, is_str_float, logger, read_yaml_file
 from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
 from arc.species.converter import str_to_xyz
+
+CARTESIAN_NORMAL_MODE_SCHEMA_VERSION = 2
+CARTESIAN_CONVENTION = 'cartesian_unit_norm'
+LEGACY_CONVENTION = 'legacy_mass_deweighted_unnormalized'
+MASS_WEIGHTED_MARGIN = 0.5
+CENTER_OF_MASS_RESIDUAL_FLOOR = 0.05
+
+
+def get_weighted_residual(displacements: np.ndarray,
+                          weights: np.ndarray,
+                          ) -> np.ndarray:
+    """
+    Compute the normalized weighted sum of a set of normal mode displacement vectors.
+
+    The residual of mode ``k`` is ``|sum_a w_a * d_ka| / sqrt(sum_a w_a * sum_a w_a * |d_ka|^2)``,
+    the Cauchy-Schwarz bound of the numerator being the denominator, so that every residual lies in
+    ``[0, 1]`` regardless of the scale of the displacements. A residual of one is reported for a
+    mode of zero norm, which satisfies no weighting.
+
+    Args:
+        displacements (np.ndarray): The normal mode displacements, shaped (modes, atoms, 3).
+        weights (np.ndarray): The per atom weights.
+
+    Returns: np.ndarray
+        The residual of each mode.
+    """
+    numerator = np.linalg.norm(np.einsum('a,kax->kx', weights, displacements), axis=1)
+    denominator = np.sqrt(weights.sum() * np.einsum('a,kax,kax->k', weights, displacements, displacements))
+    return np.divide(numerator, denominator, out=np.ones_like(numerator), where=denominator > 0)
+
+
+def are_modes_mass_weighted(displacements: np.ndarray,
+                            symbols: tuple | list,
+                            ) -> bool:
+    """
+    Determine whether normal mode displacements are mass weighted rather than Cartesian.
+
+    A Cartesian mode leaves the center of mass in place, ``sum_a m_a * d_a = 0``, while a mass
+    weighted mode instead satisfies ``sum_a sqrt(m_a) * d_a = 0``. Both residuals are normalized
+    onto a common ``[0, 1]`` scale by :func:`get_weighted_residual` and compared per mode. A mode
+    counts as mass weighted only when its mass weighted residual is smaller than its Cartesian one
+    by a clear margin and its Cartesian residual rises well above the rounding noise of a file
+    written at print precision, so that neither test alone can carry the verdict. ``True`` is
+    returned when most of the modes count as mass weighted.
+
+    Args:
+        displacements (np.ndarray): The normal mode displacements, shaped (modes, atoms, 3).
+        symbols (tuple, list): The chemical element symbols of the atoms, in the geometry order.
+
+    Returns: bool
+        Whether the displacements are mass weighted.
+    """
+    if displacements.ndim != 3 or not len(symbols) or displacements.shape[1] != len(symbols):
+        return False
+    masses = np.array([get_element_mass(symbol)[0] for symbol in symbols], dtype=np.float64)
+    cartesian_residual = get_weighted_residual(displacements, masses)
+    mass_weighted_residual = get_weighted_residual(displacements, np.sqrt(masses))
+    votes = (cartesian_residual > CENTER_OF_MASS_RESIDUAL_FLOOR) \
+        & (mass_weighted_residual < MASS_WEIGHTED_MARGIN * cartesian_residual)
+    return bool(votes.mean() > 0.5)
 
 
 class YAMLParser(ESSAdapter, ABC):
@@ -23,6 +83,26 @@ class YAMLParser(ESSAdapter, ABC):
     def __init__(self, log_file_path: str):
         super().__init__(log_file_path=log_file_path)
         self.data = read_yaml_file(log_file_path) or dict()
+        self.normal_mode_convention = None
+
+    def get_schema_version(self) -> float:
+        """
+        Determine the schema version the file was written under.
+
+        Returns ``0`` for a file that carries no ``schema_version`` key or carries one that is not
+        a number, which is how every producer wrote before the key was introduced.
+
+        Returns: float
+            The schema version.
+        """
+        schema_version = self.data.get('schema_version')
+        if isinstance(schema_version, bool):
+            return 0.0
+        if isinstance(schema_version, (int, float)):
+            return float(schema_version)
+        if isinstance(schema_version, str) and is_str_float(schema_version):
+            return float(schema_version)
+        return 0.0
 
     def logfile_contains_errors(self) -> str | None:
         """
@@ -67,17 +147,47 @@ class YAMLParser(ESSAdapter, ABC):
         """
         Parse frequencies and normal mode displacement.
 
+        Each mode is rescaled to a unit Euclidean norm, ``sum(|d|^2) = 1``, which is the Cartesian
+        displacement convention Gaussian reports and the one used elsewhere in ARC. Any Cartesian
+        scale is accepted: rescaling maps it onto that convention and leaves the direction of the
+        mode, and hence the physical reduced mass ``sum(m_a * |d_a|^2)``, unchanged. The rescaling is
+        required because files written under a schema version below
+        ``CARTESIAN_NORMAL_MODE_SCHEMA_VERSION`` carry mass deweighted unnormalized modes ``l_a``,
+        normalized so that ``sum(m_a * |l_a|^2) = 1`` and therefore carrying a norm of
+        ``1 / sqrt(mu)``. Which of the two conventions the file was read under is recorded on
+        ``self.normal_mode_convention``. A mode of zero norm is returned as zeros.
+
+        Rescaling does not correct a mass weighted mode, which already carries a unit norm, so the
+        modes are also tested against the file's own geometry and a warning is logged when they look
+        mass weighted. The modes are expected to be shaped (modes, atoms, 3); a leading axis of
+        length one is dropped, and any other shape yields ``None`` rather than a set of modes
+        normalized over the wrong axes.
+
         Returns: tuple[np.ndarray | None, np.ndarray | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         freqs = self.data.get('freqs') or self.data.get('frequencies')
         modes = self.data.get('modes') or self.data.get('normal_modes')
-        if freqs and modes:
-            return (
-                np.array(freqs, dtype=np.float64) if freqs is not None else None,
-                np.array(modes, dtype=np.float64) if modes is not None else None
-            )
-        return None, None
+        if not freqs or not modes:
+            return None, None
+        displacements = np.array(modes, dtype=np.float64)
+        if displacements.ndim == 4 and displacements.shape[0] == 1:
+            displacements = displacements[0]
+        if displacements.ndim != 3 or displacements.shape[2] != 3:
+            logger.warning(f'Expected the normal mode displacements in {self.log_file_path} to be shaped '
+                           f'(modes, atoms, 3), got {displacements.shape}. Not returning normal modes.')
+            return None, None
+        self.normal_mode_convention = CARTESIAN_CONVENTION \
+            if self.get_schema_version() >= CARTESIAN_NORMAL_MODE_SCHEMA_VERSION else LEGACY_CONVENTION
+        norms = np.linalg.norm(displacements.reshape(displacements.shape[0], -1), axis=1)[:, None, None]
+        displacements = np.divide(displacements, norms,
+                                  out=np.zeros_like(displacements), where=norms > 0)
+        xyz = self.parse_geometry()
+        if xyz is not None and are_modes_mass_weighted(displacements, xyz.get('symbols') or tuple()):
+            logger.warning(f'The normal mode displacements in {self.log_file_path} look mass weighted rather than '
+                           f'Cartesian. Rescaling them to a unit norm does not convert them, so any analysis that '
+                           f'follows describes a mass weighted mode and is tilted towards the heavy atoms.')
+        return np.array(freqs, dtype=np.float64), displacements
 
     def parse_t1(self) -> float | None:
         """

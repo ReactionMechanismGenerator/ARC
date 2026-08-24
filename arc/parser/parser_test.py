@@ -10,7 +10,9 @@ import os
 import unittest
 
 import arc.parser.parser as parser
-from arc.common import ARC_TESTING_PATH, almost_equal_coords
+from ase.data import atomic_masses, atomic_numbers
+
+from arc.common import ARC_TESTING_PATH, almost_equal_coords, get_element_mass, read_yaml_file
 from arc.parser.adapters.gaussian import parse_ic_info, parse_ic_values
 from arc.species import ARCSpecies
 from arc.species.converter import str_to_xyz, xyz_to_str
@@ -267,10 +269,10 @@ class TestParser(unittest.TestCase):
         expected_freqs = np.array([1224.9751, 1355.2709, 3158.763], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
         expected_normal_modes_disp_3 = np.array(
-            [[[0.57, -0.41, -0.], [-0.51, 0.36, 0.], [-0.25, 0.22, 0.]],
-             [[-0.22, -0.11, 0.], [0.39, -0.03, -0.], [-0.68, 0.57, 0.]],
-             [[0.15, 0.19, -0.], [0.02, -0.01, -0.], [-0.66, -0.71, 0.]]], np.float64)
-        np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_3)
+            [[[0.350618, -0.252199, -0.], [-0.313711, 0.221443, 0.], [-0.612654, 0.539135, 0.]],
+             [[-0.06171, -0.030855, 0.], [0.109396, -0.008415, -0.], [-0.759906, 0.63698, 0.]],
+             [[0.038763, 0.0491, -0.], [0.005168, -0.002584, -0.], [-0.679502, -0.730979, 0.]]], np.float64)
+        np.testing.assert_allclose(normal_modes_disp, expected_normal_modes_disp_3, atol=1e-6)
 
         path = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'TS_0', 'output.out')
         freqs, normal_modes_disp = parser.parse_normal_mode_displacement(log_file_path=path)
@@ -279,61 +281,18 @@ class TestParser(unittest.TestCase):
                                    1321.179, 1387.6548, 1411.7322, 1487.6621, 1498.6573, 1966.2006,
                                    2911.7142, 2997.4744, 3022.6253, 3079.0819, 3116.3252, 3159.603], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
-        expected_normal_modes_disp_3 = np.array(
-            [[[0.08, -0.13, -0.17], [0.14, 0.03, 0.18], [0., -0.01, 0.], [-0.84, 0.42, -0.06], [0.03, 0., 0.01],
-              [0.02, -0.01, 0.02], [0.01, -0.03, -0.01], [0.02, 0.02, -0.], [0., 0., 0.], [-0.01, -0., -0.]],
-             [[-0.04, -0.06, -0.19], [-0.01, 0.1, 0.26], [0.04, -0.02, -0.04], [0.05, -0.09, 0.05], [-0.02, 0.02, -0.05],
-              [-0.03, -0.04, -0.16], [-0.01, 0.08, 0.14], [0.35, -0.4, 0.09], [-0.12, 0.06, -0.52], [-0.18, 0.28, 0.34]],
-             [[0.17, 0.05, 0.07], [0.02, -0.25, -0.28], [-0.16, 0.1, 0.12], [-0.18, -0.22, 0.08], [0.12, 0.42, 0.41],
-              [0.16, -0.08, -0.45], [-0., -0., 0.02], [-0.16, -0.05, 0.11], [0.03, 0.16, 0.01], [-0.09, 0.1, 0.12]],
-             [[0.37, 0.2, -0.07], [0.03, -0.4, 0.21], [-0.37, 0.09, -0.09], [0.1, 0.07, -0.03], [-0.07, 0.03, -0.3],
-              [0.3, 0.12, 0.25], [0.01, -0.08, 0.11], [-0.1, 0.08, -0.06], [-0.03, 0.18, -0.11], [-0.31, -0., -0.02]],
-             [[-0.07, -0.05, -0.02], [0.01, 0.09, 0.32], [-0.01, 0.02, 0.01], [0.16, 0.11, -0.02], [-0.09, 0.21, 0.04],
-              [0.14, -0.07, -0.25], [0.05, -0.48, -0.63], [0.13, 0.13, -0.1], [-0.04, -0.02, -0.05], [-0.1, -0.07, -0.07]],
-             [[0.07, 0.17, 0.39], [0.09, -0.11, -0.09], [0.03, -0.01, -0.], [-0.1, 0.08, 0.03], [-0.27, -0.19, -0.52],
-              [-0.25, -0.12, -0.55], [-0.02, -0.01, 0.01], [-0.01, 0.01, -0.], [0.03, 0.03, -0.01], [-0.02, -0., 0.]],
-             [[0.25, 0.16, -0.09], [0.07, 0.11, 0.03], [-0.16, -0.21, 0.1], [0.09, 0.08, -0.05], [0.41, -0.3, 0.24],
-              [-0.47, 0.01, -0.1], [-0.29, -0.05, -0.08], [-0.02, 0.1, -0.05], [0.03, 0.09, -0.07], [-0.32, -0.13, -0.01]],
-             [[-0.4, 0.13, -0.08], [0., -0.31, 0.02], [0.5, 0.03, 0.03], [-0.05, -0.01, 0.05], [-0.1, 0.08, 0.04],
-              [-0.08, 0.07, 0.1], [-0.22, -0.07, 0.05], [0.01, 0.18, -0.05], [0.35, 0.36, -0.1], [-0.26, -0.06, 0.01]],
-             [[0.05, -0.14, 0.07], [-0.08, -0.08, -0.27], [0.02, 0.18, 0.34], [0.01, 0.1, -0.11], [-0.05, 0.08, 0.01],
-              [0.12, -0.04, -0.01], [-0.22, 0.11, 0.14], [0.53, 0.28, -0.19], [-0.26, -0.2, -0.17], [-0.13, -0.19, -0.15]],
-             [[0.01, -0.27, 0.14], [0.1, 0.48, -0.14], [-0.05, -0.38, 0.04], [0.09, 0.16, -0.1], [-0.17, 0.15, -0.08],
-              [0.31, -0.07, -0.02], [-0.08, 0.2, 0.07], [-0.2, 0.04, -0.], [0.18, 0.21, -0.04], [-0.34, -0.1, 0.06]],
-             [[-0.18, 0.21, -0.1], [0.26, 0.08, -0.14], [-0.12, -0.19, 0.24], [-0.18, -0.34, 0.21], [-0.04, -0.03, -0.07],
-              [-0.08, 0.09, 0.11], [0.6, 0.02, -0.08], [0.12, 0.11, -0.06], [-0.06, -0.02, -0.08], [-0.23, -0.16, -0.02]],
-             [[-0.27, 0.07, -0.04], [0.24, -0.23, 0.02], [-0.12, -0.06, -0.01], [0.31, 0.59, -0.23], [0., 0.16, 0.2],
-              [-0.15, -0., -0.14], [0.35, 0.11, 0.22], [0., -0.04, 0.], [-0.03, -0.04, 0.02], [0.03, -0.01, -0.01]],
-             [[-0.16, -0., -0.03], [0.65, 0.01, -0.02], [-0.19, 0.05, -0.05], [0.01, -0.11, 0.16], [-0.2, 0.25, -0.04],
-              [-0.16, 0.05, 0.16], [-0.48, -0.05, -0.03], [-0.04, -0.14, 0.06], [-0.15, -0.18, 0.07], [0.02, -0.01, -0.03]],
-             [[-0.36, 0.17, 0.01], [0.23, -0.02, -0.01], [-0.11, -0., 0.], [-0.01, 0.03, 0.1], [0.26, -0.52, 0.07],
-              [0.59, -0., -0.21], [-0.15, -0., 0.02], [0.06, -0.03, -0.], [0., 0.02, 0.01], [0.08, -0., -0.03]],
-             [[0.02, -0.02, -0.], [0.05, 0., -0.01], [-0.35, -0.24, 0.01], [0., -0.04, 0.03], [-0.05, 0.08, -0.01],
-              [-0.07, 0., 0.05], [-0.06, -0., -0.], [0.4, 0.23, -0.23], [0.29, 0.39, 0.05], [0.48, 0.2, 0.14]],
-             [[-0.03, 0.02, -0.], [0.01, -0.04, -0.02], [0.09, -0.08, -0.19], [-0., -0.01, -0.], [0.02, -0.03, 0.01],
-              [0.03, 0., -0.01], [-0., 0., 0.01], [0.11, 0.29, -0.18], [-0.06, -0.32, 0.45], [-0.33, 0.4, 0.48]],
-             [[-0.02, 0.01, -0.01], [0.06, -0.03, 0.02], [0.1, -0.14, 0.11], [0.01, 0.01, 0.02], [0., -0.01, 0.01],
-              [0.01, 0., 0.], [-0.04, -0.01, 0.01], [-0.47, 0.47, -0.11], [-0.27, -0.12, -0.52], [0.27, 0.19, 0.17]],
-             [[0.09, -0.1, -0.11], [-0.13, -0.01, -0.14], [0.01, 0., 0.], [0.12, 0.38, 0.88], [0.02, 0.02, -0.02],
-              [-0.01, -0.03, 0.01], [0.01, 0.02, -0.02], [0., -0., -0.], [0., -0., 0.], [-0.01, -0., 0.]],
-             [[0., -0., 0.], [0.01, 0.01, 0.], [0.02, 0.11, 0.24], [-0.01, 0., -0.], [0., 0., -0.], [0., 0., -0.],
-              [-0., 0., -0.], [-0.21, -0.41, -0.84], [0.1, -0.06, 0.01], [-0.01, 0.06, 0.]], 
-             [[-0., -0., 0.],  [-0.01, -0., 0.], [-0.2, 0.14, 0.04], [0., -0., -0.], [0., 0., -0.], [0., 0., -0.],
-              [-0., 0.02, -0.01], [-0., 0.08, 0.11], [0.74, -0.55, -0.27], [-0.02, -0.01, 0.04]],
-             [[-0., -0.01, 0.], [0., -0.01, 0.01], [-0.03, 0.18, -0.16], [-0., 0., 0.], [0., 0., -0.], [0., 0.01, -0.],
-              [-0., 0.06, -0.05], [-0.02, 0., -0.07], [-0.03, 0.05, -0.01], [0.14, -0.69, 0.66]],
-             [[0.01, 0.03, -0.01], [0.01, -0.22, 0.15], [0.01, -0.02, 0.02], [0., -0.01, -0.], [-0.04, -0.01, 0.02],
-              [0.01, -0.1, 0.03], [-0.04, 0.78, -0.55], [0., -0., 0.01], [-0.01, 0.01, 0.01], [-0.01, 0.05, -0.05]],
-             [[-0.16, 0.1, 0.06], [0., 0.01, -0.], [0., 0., -0.], [-0.01, 0., -0.01], [0.55, 0.3, -0.37],
-              [-0., -0.64, 0.16], [0., -0.03, 0.02], [0., 0., 0.], [-0., 0., -0.], [0., -0., 0.]],
-             [[0.13, 0.26, -0.13],  [0., 0.03, -0.02], [-0., 0., -0.], [0., 0.01, -0.], [-0.49, -0.23, 0.33],
-              [0.03, -0.68, 0.15], [0., -0.08, 0.06], [-0., -0., -0.], [0.01, -0., -0.], [0., -0.02, 0.02]]], np.float64)
-        np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_3)
+        self.assertEqual(normal_modes_disp.shape, (24, 10, 3))
+        expected_imaginary_mode = np.array(
+            [[0.024452, -0.039734, -0.05196], [0.042791, 0.009169, 0.055017], [0., -0.003056, 0.],
+             [-0.886261, 0.443131, -0.063304], [0.031652, 0., 0.010551], [0.021101, -0.010551, 0.021101],
+             [0.010551, -0.031652, -0.010551], [0.021101, 0.021101, -0.], [0., 0., 0.],
+             [-0.010551, -0., -0.]], np.float64)
+        np.testing.assert_allclose(normal_modes_disp[0], expected_imaginary_mode, atol=1e-6)
 
         path = os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml')
         freqs, normal_modes_disp = parser.parse_normal_mode_displacement(log_file_path=path)
         self.assertEqual(freqs[-1], 3922.9230982968807)
-        expected_normal_modes_disp_4_0 = np.array(
+        stored_normal_mode_0 = np.array(
             [[0.008599578508578239, 0.01787645439208711, -0.04175706756233052],
              [-0.008909310426849138, -0.018556163013860285, 0.04330724268285693],
              [0.011241853539959802, 0.023478488708442366, -0.054747714680216726],
@@ -343,7 +302,201 @@ class TestParser(unittest.TestCase):
              [-0.1273765184024777, -0.09250300723936498, 0.07996788342871741],
              [0.07839541036186716, -0.009452306143447562, 0.15793005333991175],
              [-0.16184923713199378, -0.3376354950974596, 0.787886990928027]], np.float64)
-        np.testing.assert_almost_equal(normal_modes_disp[0], expected_normal_modes_disp_4_0)
+        stored_norm = np.linalg.norm(stored_normal_mode_0)
+        np.testing.assert_allclose(normal_modes_disp[0], stored_normal_mode_0 / stored_norm, atol=1e-10)
+
+    def test_parse_normal_mode_displacement_normalizes_yaml_modes_to_a_unit_norm(self):
+        """Test that YAML normal modes are rescaled to a unit norm without being rotated."""
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml')
+        content = read_yaml_file(path)
+        stored_modes = np.array(content['modes'], np.float64)
+        stored_norms = np.linalg.norm(stored_modes.reshape(stored_modes.shape[0], -1), axis=1)
+        self.assertLess(stored_norms.max(), 0.99)
+
+        freqs, disp = parser.parse_normal_mode_displacement(log_file_path=path)
+        self.assertEqual(disp.shape, stored_modes.shape)
+        np.testing.assert_allclose((disp ** 2).sum(axis=(1, 2)), np.ones(disp.shape[0]), atol=1e-10)
+
+        flat_stored = stored_modes.reshape(stored_modes.shape[0], -1)
+        flat_parsed = disp.reshape(disp.shape[0], -1)
+        cosines = (flat_stored * flat_parsed).sum(axis=1) \
+            / (np.linalg.norm(flat_stored, axis=1) * np.linalg.norm(flat_parsed, axis=1))
+        np.testing.assert_allclose(cosines, np.ones(disp.shape[0]), atol=1e-12)
+
+        symbols = parser.parse_geometry(log_file_path=path)['symbols']
+        masses = np.array([get_element_mass(symbol)[0] for symbol in symbols], np.float64)
+        reduced_masses = (masses[None, :, None] * disp ** 2).sum(axis=(1, 2))
+        np.testing.assert_allclose(reduced_masses, np.array(content['reduced_masses'], np.float64), rtol=1e-3)
+
+    def test_parse_normal_mode_displacement_rescales_only_the_modes_that_need_it(self):
+        """Test that a unit norm YAML mode is returned unchanged and a zero norm mode as zeros."""
+        import shutil
+        import tempfile
+        from arc.common import save_yaml_file
+
+        scratch_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        path = os.path.join(scratch_dir, 'output.yml')
+        unit_norm_mode = [[0.0, 0.6, 0.0], [0.0, 0.0, 0.8]]
+        zero_norm_mode = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+        save_yaml_file(path=path, content={'freqs': [100.0, 200.0],
+                                           'modes': [unit_norm_mode, zero_norm_mode]})
+
+        _, disp = parser.parse_normal_mode_displacement(log_file_path=path)
+        np.testing.assert_allclose(disp[0], np.array(unit_norm_mode, np.float64), atol=1e-14)
+        np.testing.assert_allclose(disp[1], np.zeros((2, 3)), atol=1e-14)
+        self.assertFalse(bool(np.isnan(disp).any()))
+
+    def test_parse_normal_mode_displacement_records_the_convention_it_applied(self):
+        """Test that the parser records whether it read a legacy file or a Cartesian one."""
+        import shutil
+        import tempfile
+        from arc.common import save_yaml_file
+        from arc.parser.adapters.yaml import (CARTESIAN_CONVENTION, CARTESIAN_NORMAL_MODE_SCHEMA_VERSION,
+                                              LEGACY_CONVENTION, YAMLParser)
+
+        legacy_path = os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml')
+        legacy_parser = YAMLParser(log_file_path=legacy_path)
+        self.assertIsNone(legacy_parser.normal_mode_convention)
+        legacy_parser.parse_normal_mode_displacement()
+        self.assertEqual(legacy_parser.get_schema_version(), 0.0)
+        self.assertEqual(legacy_parser.normal_mode_convention, LEGACY_CONVENTION)
+
+        scratch_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        content = read_yaml_file(path=legacy_path)
+        stamped_path = os.path.join(scratch_dir, 'output.yml')
+        save_yaml_file(path=stamped_path,
+                       content={'schema_version': CARTESIAN_NORMAL_MODE_SCHEMA_VERSION,
+                                'xyz': content['xyz'],
+                                'freqs': content['freqs'],
+                                'modes': content['modes']})
+        stamped_parser = YAMLParser(log_file_path=stamped_path)
+        stamped_parser.parse_normal_mode_displacement()
+        self.assertEqual(stamped_parser.get_schema_version(), float(CARTESIAN_NORMAL_MODE_SCHEMA_VERSION))
+        self.assertEqual(stamped_parser.normal_mode_convention, CARTESIAN_CONVENTION)
+
+    def test_parse_normal_mode_displacement_warns_when_the_modes_look_mass_weighted(self):
+        """Test that mass weighted modes, which rescaling cannot correct, are reported rather than accepted."""
+        import shutil
+        import tempfile
+        from arc.common import save_yaml_file
+        from arc.parser.adapters.yaml import are_modes_mass_weighted
+
+        content = read_yaml_file(path=os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml'))
+        symbols = content['xyz']['symbols']
+        masses = np.array([get_element_mass(symbol)[0] for symbol in symbols], np.float64)
+        cartesian = np.array(content['modes'], np.float64)
+        mass_weighted = cartesian * np.sqrt(masses)[None, :, None]
+
+        self.assertFalse(are_modes_mass_weighted(cartesian, symbols))
+        self.assertTrue(are_modes_mass_weighted(mass_weighted, symbols))
+        self.assertFalse(are_modes_mass_weighted(np.round(cartesian, 2), symbols))
+        self.assertTrue(are_modes_mass_weighted(np.round(mass_weighted, 2), symbols))
+
+        scratch_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        path = os.path.join(scratch_dir, 'output.yml')
+        save_yaml_file(path=path, content={'schema_version': 2,
+                                           'xyz': content['xyz'],
+                                           'freqs': content['freqs'],
+                                           'modes': mass_weighted.tolist()})
+        with self.assertLogs('arc', level='WARNING') as captured:
+            freqs, disp = parser.parse_normal_mode_displacement(log_file_path=path)
+        self.assertIn('mass weighted', '\n'.join(captured.output))
+        self.assertEqual(disp.shape, cartesian.shape)
+
+    def test_parse_normal_mode_displacement_rejects_modes_of_an_unexpected_shape(self):
+        """Test that modes that are not shaped (modes, atoms, 3) are refused, not normalized regardless."""
+        import shutil
+        import tempfile
+        from arc.common import save_yaml_file
+        from arc.parser.adapters.yaml import YAMLParser
+
+        scratch_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        mode = [[[0.0, 0.6, 0.0], [0.0, 0.0, 0.8]], [[0.5, 0.0, 0.0], [0.0, 0.5, 0.0]]]
+
+        batched_path = os.path.join(scratch_dir, 'batched.yml')
+        save_yaml_file(path=batched_path, content={'freqs': [100.0, 200.0], 'modes': [mode]})
+        _, batched_disp = YAMLParser(log_file_path=batched_path).parse_normal_mode_displacement()
+        self.assertEqual(batched_disp.shape, (2, 2, 3))
+        np.testing.assert_allclose((batched_disp ** 2).sum(axis=(1, 2)), np.ones(2), atol=1e-10)
+
+        flat_path = os.path.join(scratch_dir, 'flat.yml')
+        save_yaml_file(path=flat_path, content={'freqs': [100.0], 'modes': [[0.0, 0.6, 0.8]]})
+        flat_freqs, flat_disp = YAMLParser(log_file_path=flat_path).parse_normal_mode_displacement()
+        self.assertIsNone(flat_freqs)
+        self.assertIsNone(flat_disp)
+
+    def test_parse_normal_mode_displacement_converts_xtb_modes_to_cartesian_displacements(self):
+        """Test that xTB's mass-weighted eigenvectors are returned in Gaussian's Cartesian convention."""
+        for label in ['HO2', 'TS_0']:
+            directory = os.path.join(ARC_TESTING_PATH, 'normal_mode', label)
+            freqs, disp = parser.parse_normal_mode_displacement(
+                log_file_path=os.path.join(directory, 'output.out'))
+            symbols = parser.parse_geometry(log_file_path=os.path.join(directory, 'g98.out'))['symbols']
+            masses = np.array([atomic_masses[atomic_numbers[symbol]] for symbol in symbols], np.float64)
+            self.assertEqual(disp.shape, (len(freqs), len(symbols), 3))
+
+            squared_norms = (disp ** 2).sum(axis=(1, 2))
+            np.testing.assert_allclose(squared_norms, np.ones(len(freqs)), atol=1e-10)
+
+            reduced_masses = (masses[None, :, None] * disp ** 2).sum(axis=(1, 2))
+            self.assertGreaterEqual(reduced_masses.min(), masses.min())
+            self.assertLessEqual(reduced_masses.max(), masses.max())
+
+            momenta = np.linalg.norm((masses[None, :, None] * disp).sum(axis=1), axis=1)
+            printing_noise = 0.005 * np.sqrt(3) * np.sqrt(masses).sum() * np.sqrt(reduced_masses)
+            np.testing.assert_array_less(momenta, printing_noise)
+
+    def test_parse_normal_mode_displacement_recovers_the_physical_reduced_mass_of_an_xtb_mode(self):
+        """Test that the converted displacements yield the physical reduced mass, not xTB's printed value."""
+        directory = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'HO2')
+        freqs, disp = parser.parse_normal_mode_displacement(log_file_path=os.path.join(directory, 'output.out'))
+        symbols = parser.parse_geometry(log_file_path=os.path.join(directory, 'g98.out'))['symbols']
+        masses = np.array([atomic_masses[atomic_numbers[symbol]] for symbol in symbols], np.float64)
+
+        oh_stretch = int(np.argmax(freqs))
+        self.assertAlmostEqual(freqs[oh_stretch], 3158.763, places=3)
+        reduced_mass = float((masses * (disp[oh_stretch] ** 2).sum(axis=1)).sum())
+        self.assertAlmostEqual(reduced_mass, 1.067167, places=5)
+        self.assertLess(reduced_mass, 1.8842)
+
+        oxygen_amplitude = float(np.linalg.norm(disp[oh_stretch, 0]))
+        hydrogen_amplitude = float(np.linalg.norm(disp[oh_stretch, 2]))
+        self.assertAlmostEqual(oxygen_amplitude / hydrogen_amplitude, 1.0 / 16.0, places=2)
+
+    def test_get_normal_mode_displacement_returns_the_parsed_displacements(self):
+        """Test that the frequencies and normal mode displacements are returned unchanged."""
+        for log_file_path in [os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log'),
+                              os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml'),
+                              os.path.join(ARC_TESTING_PATH, 'normal_mode', 'TS_0', 'output.out')]:
+            expected_freqs, expected_disp = parser.parse_normal_mode_displacement(log_file_path=log_file_path)
+            parsed_modes = parser.get_normal_mode_displacement(log_file_path=log_file_path, label='TS')
+            self.assertIsNotNone(parsed_modes, msg=log_file_path)
+            np.testing.assert_array_equal(parsed_modes[0], expected_freqs)
+            np.testing.assert_array_equal(parsed_modes[1], expected_disp)
+
+    def test_get_normal_mode_displacement_returns_none_when_no_modes_are_reported(self):
+        """Test that an output file yielding no normal mode displacements returns None, not the (None, None) sentinel."""
+        for file_name in ['orca_neg_freq_ts.out', 'orca_example_freq.log', 'orca6_example.out',
+                          'CH2O_freq_molpro.out', 'C2H6_freq_QChem.out', 'CH2O_freq_terachem.dat',
+                          'yml_no_freqs.yml']:
+            log_file_path = os.path.join(ARC_TESTING_PATH, 'freq', file_name)
+            self.assertEqual(parser.parse_normal_mode_displacement(log_file_path=log_file_path), (None, None))
+            self.assertIsNone(parser.get_normal_mode_displacement(log_file_path=log_file_path), msg=file_name)
+            self.assertIsNone(parser.get_normal_mode_displacement(log_file_path=log_file_path, label='TS'))
+
+    def test_get_normal_mode_displacement_returns_none_for_a_file_it_cannot_read(self):
+        """Test that a file that cannot be read at all is reported as no normal mode displacements."""
+        missing_path = os.path.join(ARC_TESTING_PATH, 'freq', 'no_such_frequency_output.log')
+        self.assertFalse(os.path.isfile(missing_path))
+        with self.assertLogs('arc', level='WARNING') as captured:
+            self.assertIsNone(parser.get_normal_mode_displacement(log_file_path=missing_path, label='TS'))
+        warning = '\n'.join(captured.output)
+        self.assertIn(missing_path, warning)
+        self.assertIn('TS', warning)
 
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""
@@ -561,6 +714,22 @@ H      -1.69381305    0.40788834    0.90078104"""
         path_4 = os.path.join(ARC_TESTING_PATH, 'TS_confs', 'TS0_conf_9.out')
         xyz_4 = parser.parse_geometry(log_file_path=path_4)
         self.assertEqual(len(xyz_4['symbols']), 17)
+
+    def test_parse_geometry_in_normal_mode_frame(self):
+        """Test that the geometry is taken from the file the normal mode displacements are reported in."""
+        gaussian_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        self.assertEqual(parser.parse_geometry_in_normal_mode_frame(log_file_path=gaussian_path),
+                         parser.parse_geometry(log_file_path=gaussian_path))
+
+        xtb_path = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'TS_0', 'output.out')
+        g98_path = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'TS_0', 'g98.out')
+        self.assertIsNone(parser.parse_geometry(log_file_path=xtb_path))
+        self.assertEqual(parser.parse_geometry_in_normal_mode_frame(log_file_path=xtb_path),
+                         parser.parse_geometry(log_file_path=g98_path))
+
+        no_g98_path = os.path.join(ARC_TESTING_PATH, 'freq', 'CO2_xtb.out')
+        self.assertEqual(len(parser.parse_geometry(log_file_path=no_g98_path)['symbols']), 3)
+        self.assertIsNone(parser.parse_geometry_in_normal_mode_frame(log_file_path=no_g98_path))
 
     def test_parse_trajectory(self):
         """Test parsing trajectories"""
@@ -1140,7 +1309,9 @@ H      -1.69381305    0.40788834    0.90078104"""
                 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.09), (1.03, 0.0, -0.36), (-0.51, 0.89, -0.36), (-0.51, -0.89, -0.36))
             },
             'freqs': [1000.0, 1500.0, 3000.0],
-            'normal_modes': [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            'normal_modes': [[[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                             [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                             [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
             'T1': 0.012,
             'sp': -100.5,
             'zpe': 50.2,
@@ -1178,7 +1349,8 @@ H      -1.69381305    0.40788834    0.90078104"""
             # Test parse_normal_mode_displacement
             modes_f, modes_d = adapter.parse_normal_mode_displacement()
             np.testing.assert_array_almost_equal(modes_f, np.array([1000.0, 1500.0, 3000.0]))
-            np.testing.assert_array_almost_equal(modes_d, np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]))
+            self.assertEqual(modes_d.shape, (3, 5, 3))
+            np.testing.assert_array_almost_equal(modes_d, np.array(yaml_data['normal_modes'], np.float64))
 
             # Test parse_t1
             self.assertEqual(adapter.parse_t1(), 0.012)
