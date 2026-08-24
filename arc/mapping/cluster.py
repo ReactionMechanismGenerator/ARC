@@ -43,8 +43,9 @@ H radical, H2, ...). Remaining hydrogens are represented in the changed-bond set
 which is well defined precisely because hydrogens on a common parent are interchangeable. This keeps
 hydrogen-transfer reactions - where the migrating atom *is* a hydrogen - fully representable.
 
-See ``docs/atom_mapping_clustering_design.md`` for the full design, and ``docs/atom_mapping_summary.md``
-for a description of the underlying single-map pipeline.
+Reaction path degeneracy is not counted from the enumeration, which only ever sees the maps RMG's templates
+happened to produce. It is the orbit size of the reaction center under the *full* automorphism group - the
+core group extended by permutations of the hydrogens on each core atom - see :func:`center_degeneracy`.
 """
 
 from dataclasses import dataclass, field
@@ -107,29 +108,27 @@ class MapCluster:
     representative: list[int]
     members: list[list[int]] = field(default_factory=list)
     centers: set = field(default_factory=set)
+    degeneracy: int = 0
     key: tuple = ()
     signature: tuple = ()
     truncated: bool = False
 
     @property
-    def degeneracy(self) -> int:
+    def enumerated_degeneracy(self) -> int:
         """
-        int: The reaction path degeneracy of this channel, i.e. the number of distinct reaction centers.
+        int: How many distinct reaction centers the enumeration actually found.
 
-        This deliberately counts distinct changed-bond sets rather than distinct atom maps. Two maps with
-        the same changed-bond set differ only by an element of ``Aut(P)`` - they relabel product atoms
-        without changing which reactant bonds break and form - so they are the same reaction path and must
-        not be counted twice. For CH4 + OH the four abstractions give four centers, while a map that only
-        swaps the two resulting water hydrogens adds a member but no new center.
-
-        Note that this is a count of the paths actually *enumerated*. It is a lower bound on the true
-        degeneracy whenever the enumeration is incomplete.
+        This counts distinct changed-bond sets rather than distinct atom maps, since two maps sharing a
+        changed-bond set differ only by an element of ``Aut(P)`` and are the same reaction path. It is a
+        lower bound on :attr:`degeneracy`, and can be a poor one: RMG generates only two template matches
+        for ``C2H5Cl -> C2H4 + HCl``, so the enumeration sees at most two of the three equivalent methyl
+        hydrogens even though the true degeneracy is 3. Compare the two to gauge enumeration coverage.
         """
         return len(self.centers)
 
     def __repr__(self) -> str:
-        return f'<MapCluster degeneracy={self.degeneracy} maps={len(self.members)} ' \
-               f'signature={self.signature}>'
+        return f'<MapCluster degeneracy={self.degeneracy} enumerated={self.enumerated_degeneracy} ' \
+               f'maps={len(self.members)} signature={self.signature}>'
 
 
 def build_complex_graph(species_list: list[ARCSpecies]) -> ComplexGraph:
@@ -445,6 +444,69 @@ def _endpoint(graph: ComplexGraph, index: int) -> tuple:
     return CORE, index
 
 
+def center_degeneracy(center: frozenset,
+                      graph: ComplexGraph,
+                      automorphisms: list[dict[int, int]],
+                      ) -> int:
+    """
+    The exact reaction path degeneracy of a reaction center: the size of its orbit under the *full*
+    automorphism group of the reactant complex.
+
+    Counting the distinct centers actually enumerated is a lower bound, and often a poor one - RMG generates
+    only two template matches for ``C2H5Cl -> C2H4 + HCl``, so enumeration sees at most two of the three
+    equivalent methyl hydrogens. The orbit size is exact and does not depend on the enumeration at all.
+
+    The full automorphism group is the core-skeleton group extended by arbitrary permutations of the
+    hydrogens attached to each core atom, and the orbit factorises accordingly::
+
+        degeneracy = (number of distinct images of the collapsed center under the core group)
+                     * product over core atoms p of  n_p! / (n_p - k_p)!
+
+    where ``n_p`` is how many hydrogens hang off core atom ``p`` and ``k_p`` how many distinct ones the
+    center actually names. The falling factorial counts the ordered choices of which hydrogens play the
+    named roles. For CH4 + OH the core group is trivial and one of methane's four hydrogens is named, giving
+    4; for C2H6 + OH the core group swaps the two carbons and one of three hydrogens is named, giving 6.
+
+    Args:
+        center (frozenset): The changed-bond set, in reactant indices and *not* hydrogen-collapsed.
+        graph (ComplexGraph): The reactant complex.
+        automorphisms (list[dict[int, int]]): The core-skeleton automorphism group.
+
+    Returns:
+        int: The reaction path degeneracy.
+    """
+    if not center:
+        return 0
+    collapsed = collapse_hydrogens(center, graph)
+    images = set()
+    for alpha in automorphisms:
+        image = list()
+        for endpoint_a, endpoint_b, order_before, order_after in collapsed:
+            mapped_a = (endpoint_a[0], alpha.get(endpoint_a[1], endpoint_a[1]))
+            mapped_b = (endpoint_b[0], alpha.get(endpoint_b[1], endpoint_b[1]))
+            if mapped_b < mapped_a:
+                mapped_a, mapped_b = mapped_b, mapped_a
+            image.append((mapped_a, mapped_b, order_before, order_after))
+        images.add(tuple(sorted(image)))
+    core_orbit = len(images) or 1
+
+    hydrogen_counts = {v: 0 for v in graph.core}
+    for hydrogen, parent in graph.parent.items():
+        hydrogen_counts[parent] = hydrogen_counts.get(parent, 0) + 1
+    named: dict[int, set] = dict()
+    for i, j, _, _ in center:
+        for index in (i, j):
+            if index in graph.parent:
+                named.setdefault(graph.parent[index], set()).add(index)
+
+    hydrogen_factor = 1
+    for parent, hydrogens in named.items():
+        available = hydrogen_counts.get(parent, 0)
+        for offset in range(len(hydrogens)):
+            hydrogen_factor *= max(available - offset, 1)
+    return core_orbit * hydrogen_factor
+
+
 def canonical_center_key(center: frozenset, automorphisms: list[dict[int, int]]) -> tuple:
     """
     Canonicalize a changed-bond set under the reactant automorphism group: the key is the lexicographic
@@ -622,6 +684,7 @@ def cluster_atom_maps(atom_maps: list[list[int]],
         if key not in clusters:
             clusters[key] = MapCluster(representative=list(atom_map),
                                        key=key,
+                                       degeneracy=center_degeneracy(center, r_graph, automorphisms),
                                        signature=center_signature(collapsed, orbits, r_graph.symbols),
                                        truncated=truncated)
         clusters[key].members.append(list(atom_map))
@@ -672,7 +735,10 @@ def expected_reaction_centers(rxn, ignore_bond_orders: bool = True) -> set[froze
     centers, skipped = set(), 0
     for product_dict in rxn.product_dicts[:MAX_PDI]:
         r_label_map = product_dict.get('r_label_map')
-        if not r_label_map:
+        if not r_label_map or product_dict.get('discovered_in_reverse'):
+            # A reverse-discovered dictionary's label maps describe the flipped reaction, so the indices
+            # they carry are in the flipped frame and cannot be compared against a changed-bond set built
+            # in this reaction's own frame. Using them anyway predicts centers that match nothing.
             skipped += 1
             continue
         try:

@@ -363,6 +363,22 @@ class TestExpectedCenters(unittest.TestCase):
         rxn = _BrokenStub(family='intra_H_migration', product_dicts=[{'r_label_map': {'a': 0}}])
         self.assertIsNone(cluster.expected_reaction_centers(rxn))
 
+    def test_reverse_discovered_product_dicts_are_skipped(self):
+        """Test that a reverse-discovered dictionary is not used to predict centers.
+
+        Its label maps describe the flipped reaction, so the indices they carry are in the flipped frame.
+        Building a reference from them predicts centers that match nothing, which silently rejects every
+        enumerated map and drops the reaction back to the relative filter.
+        """
+        rxn = _StubReaction(family='XY_Addition_MultipleBond',
+                            product_dicts=[{'r_label_map': {'*1': 0}, 'discovered_in_reverse': True}],
+                            breaking=[(0, 1)], forming=[(1, 5)])
+        self.assertIsNone(cluster.expected_reaction_centers(rxn))
+        # The same dictionary discovered forward is usable.
+        rxn.product_dicts = [{'r_label_map': {'*1': 0}, 'discovered_in_reverse': False}]
+        self.assertEqual(cluster.expected_reaction_centers(rxn),
+                         {frozenset({(0, 1, 1, 0), (1, 5, 0, 1)})})
+
     def test_builds_one_center_per_product_dict(self):
         """Test that each product dictionary contributes its own predicted center."""
         rxn = _StubReaction(family='H_Abstraction',
@@ -390,21 +406,76 @@ class TestMapCluster(unittest.TestCase):
     Contains unit tests for the MapCluster container.
     """
 
-    def test_degeneracy_counts_distinct_centers_not_maps(self):
-        """Test that degeneracy counts reaction paths, so an Aut(P) relabeling does not inflate it."""
+    def test_enumerated_degeneracy_counts_centers_not_maps(self):
+        """Test that the enumerated count tracks reaction paths, so an Aut(P) relabeling does not inflate it."""
         map_cluster = cluster.MapCluster(representative=[0, 1, 2])
         map_cluster.members.extend([[0, 1, 2], [0, 2, 1]])
         # Both maps describe the same path, so they share a center.
         map_cluster.centers.add(frozenset({(0, 1, 1, 0)}))
         self.assertEqual(len(map_cluster.members), 2)
-        self.assertEqual(map_cluster.degeneracy, 1)
+        self.assertEqual(map_cluster.enumerated_degeneracy, 1)
         # A genuinely different path adds a center.
         map_cluster.centers.add(frozenset({(0, 2, 1, 0)}))
-        self.assertEqual(map_cluster.degeneracy, 2)
+        self.assertEqual(map_cluster.enumerated_degeneracy, 2)
+
+    def test_degeneracy_is_stored_not_derived_from_the_enumeration(self):
+        """Test that the reported degeneracy is the exact orbit size, independent of what was enumerated."""
+        map_cluster = cluster.MapCluster(representative=[0, 1, 2], degeneracy=3)
+        map_cluster.centers.add(frozenset({(0, 1, 1, 0)}))
+        # Only one path was enumerated, but three exist.
+        self.assertEqual(map_cluster.enumerated_degeneracy, 1)
+        self.assertEqual(map_cluster.degeneracy, 3)
 
     def test_empty_cluster_has_zero_degeneracy(self):
         """Test the degenerate case of a cluster with no recorded center."""
         self.assertEqual(cluster.MapCluster(representative=[0]).degeneracy, 0)
+        self.assertEqual(cluster.MapCluster(representative=[0]).enumerated_degeneracy, 0)
+
+
+class TestCenterDegeneracy(unittest.TestCase):
+    """
+    Contains unit tests for the exact, orbit-based reaction path degeneracy.
+    """
+
+    @staticmethod
+    def _degeneracy(smiles_list, center):
+        """Compute the exact degeneracy of a center on a complex built from a list of SMILES."""
+        graph = cluster.build_complex_graph([ARCSpecies(label=f's{i}', smiles=smiles)
+                                             for i, smiles in enumerate(smiles_list)])
+        automorphisms, _ = cluster.core_automorphisms(graph)
+        return cluster.center_degeneracy(center, graph, automorphisms), graph
+
+    def test_methane_abstraction(self):
+        """Test that abstracting one of methane's four equivalent hydrogens has degeneracy 4."""
+        # CH4 + OH: 0=C, 1-4=H, 5=O, 6=H. Break C-H(1), form H(1)-O.
+        degeneracy, _ = self._degeneracy(['C', '[OH]'], frozenset({(0, 1, 1, 0), (1, 5, 0, 1)}))
+        self.assertEqual(degeneracy, 4)
+
+    def test_ethane_abstraction_combines_core_symmetry_and_hydrogen_choice(self):
+        """Test that ethane's degeneracy of 6 is the 2 equivalent carbons times 3 hydrogens each."""
+        # CC: 0,1=C, 2-7=H. Break C(0)-H(2).
+        graph = cluster.build_complex_graph([ARCSpecies(label='ethane', smiles='CC')])
+        automorphisms, _ = cluster.core_automorphisms(graph)
+        hydrogen = min(h for h, parent in graph.parent.items() if parent == graph.core[0])
+        center = frozenset({(graph.core[0], hydrogen, 1, 0)})
+        self.assertEqual(cluster.center_degeneracy(center, graph, automorphisms), 6)
+
+    def test_propane_primary_and_secondary_differ(self):
+        """Test that propane's primary sites give 6 and its secondary site 2."""
+        graph = cluster.build_complex_graph([ARCSpecies(label='propane', smiles='CCC')])
+        automorphisms, _ = cluster.core_automorphisms(graph)
+        hydrogens = dict()
+        for hydrogen, parent in graph.parent.items():
+            hydrogens.setdefault(parent, list()).append(hydrogen)
+        primary = frozenset({(0, min(hydrogens[0]), 1, 0)})
+        secondary = frozenset({(1, min(hydrogens[1]), 1, 0)})
+        self.assertEqual(cluster.center_degeneracy(primary, graph, automorphisms), 6)
+        self.assertEqual(cluster.center_degeneracy(secondary, graph, automorphisms), 2)
+
+    def test_empty_center(self):
+        """Test that a center with no changed bonds has zero degeneracy."""
+        degeneracy, _ = self._degeneracy(['C'], frozenset())
+        self.assertEqual(degeneracy, 0)
 
 
 class TestClusteringIntegration(unittest.TestCase):
