@@ -609,6 +609,47 @@ class TestClusteringIntegration(unittest.TestCase):
         clusters = cluster.cluster_atom_maps(atom_maps, rxn)
         self.assertEqual(len(clusters), 1)
 
+    def test_sec_butyl_to_n_butyl_has_two_channels(self):
+        """Test that sec-butyl -> n-butyl is recognized as two distinct channels, three paths each.
+
+        ``CC[CH]C <=> CCC[CH2]`` is C0-C1-C2(.)-C3 losing a hydrogen from a terminal methyl onto the radical
+        carbon C2. Either methyl works, and both give n-butyl, because n-butyl is the same molecule numbered
+        from either end:
+
+            C3 -> C2 is a 1,2 shift through a three-membered TS
+            C0 -> C2 is a 1,3 shift through a four-membered TS
+
+        The two are not symmetry-equivalent - sec-butyl has no automorphism exchanging its ends, and the two
+        transition states are structurally different - so they must not merge into one channel of degeneracy
+        6. Each carries the three hydrogens of its methyl.
+
+        Both transition states have been located and optimized separately, with distinct barriers, by
+        supplying the two atom maps below to ARC by hand. This test pins that the clustering derives the same
+        two channels without them.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='sec-butyl', smiles='CC[CH]C')],
+                          p_species=[ARCSpecies(label='n-butyl', smiles='CCC[CH2]')])
+        self.assertEqual(rxn.family, 'intra_H_migration')
+
+        # The two hand-written maps, one per located transition state.
+        one_two_shift = [0, 1, 2, 3, 6, 4, 5, 8, 7, 10, 9, 12, 11]
+        one_three_shift = [3, 2, 1, 0, 7, 12, 11, 10, 9, 8, 4, 5, 6]
+        manual = cluster.cluster_atom_maps([one_two_shift, one_three_shift], rxn)
+        self.assertEqual(len(manual), 2)
+        for map_cluster in manual:
+            self.assertEqual(map_cluster.degeneracy, 3)
+
+        # The enumeration finds the same two channels unaided.
+        enumerated = cluster.cluster_atom_maps(cluster.enumerate_atom_maps(rxn), rxn)
+        self.assertEqual(len(enumerated), 2)
+        self.assertEqual(sorted(c.degeneracy for c in enumerated), [3, 3])
+        self.assertEqual({c.key for c in manual}, {c.key for c in enumerated})
+
+        # One channel moves a hydrogen off C0, the other off C3; both onto the radical carbon C2.
+        donors = {tuple(sorted(entry[:2])) for c in enumerated for entry in c.signature
+                  if (entry[2], entry[3]) == (1, 0)}
+        self.assertEqual(len(donors), 2)
+
     def test_arc_reaction_atom_map_clusters_property(self):
         """Test that ARCReaction exposes the clusters and caches them."""
         clusters = self.rxn.atom_map_clusters
