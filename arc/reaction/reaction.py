@@ -970,8 +970,6 @@ class ARCReaction(object):
                 A length-2 tuple is which entries represent reactants and product information, respectively.
                 Each entry is a list of tuples, each represents a bond and contains sorted atom indices.
         """
-        if self.atom_map is None:
-            raise ReactionError('Cannot get bonds without an atom map.')
         reactants, products = self.get_reactants_and_products()
         r_bonds, p_bonds = list(), list()
         len_atoms = 0
@@ -985,6 +983,8 @@ class ARCReaction(object):
         len_atoms = 0
         if r_bonds_only:
             return r_bonds, p_bonds
+        if self.atom_map is None:
+            raise ReactionError('Cannot get product bonds without an atom map.')
         for spc in products:
             for i, atom_1 in enumerate(spc.mol.atoms):
                 for atom2, bond12 in atom_1.edges.items():
@@ -993,10 +993,89 @@ class ARCReaction(object):
                     if bond not in p_bonds:
                         p_bonds.append(bond)
             len_atoms += spc.number_of_atoms
-        mapped_p_bonds = list()
-        for p_bond in p_bonds:
-            mapped_p_bonds.append(tuple([self.atom_map.index(p_bond[0]), self.atom_map.index(p_bond[1])]))
         return r_bonds, p_bonds
+
+    def get_reactive_bonds_from_family(
+        self,
+    ) -> tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]] | None:
+        """
+        Derive formed, broken, and order-changed bonds directly from the RMG family's
+        recipe actions and ``r_label_map``, bypassing ``atom_map``.
+
+        All returned tuples are in reactant global index space. This is the canonical source
+        used elsewhere in ARC (see ``arc.mapping.engine.find_all_breaking_bonds``),
+        and is sufficient for NMD validation which only needs reactive-atom roles.
+
+        Only a product dict of the reaction's family that was discovered in the forward
+        direction is used. A product dict discovered in reverse carries an ``r_label_map``
+        in *product* global index space and recipe actions that describe the reverse
+        direction, so it cannot express reactant-space bonds and is skipped.
+
+        Returns:
+            tuple[formed, broken, changed] | None: ``None`` when the family is unavailable,
+            when no forward-discovered product dict of the reaction's family exists, or when
+            a recipe label cannot be resolved, in which case the label-based path cannot be
+            taken and the caller falls back to atom-map-derived bonds.
+        """
+        if self.family is None or not self.product_dicts:
+            return None
+        product_dict = next((product_dict for product_dict in self.product_dicts
+                             if product_dict.get('family') == self.family
+                             and not product_dict.get('discovered_in_reverse', False)), None)
+        if product_dict is None:
+            return None
+        r_label_map = product_dict.get('r_label_map')
+        if not r_label_map:
+            return None
+        actions = ReactionFamily(label=self.family).actions
+        formed, broken, changed = list(), list(), list()
+        for action in actions:
+            kind = action[0].upper()
+            if kind not in ('BREAK_BOND', 'FORM_BOND', 'CHANGE_BOND'):
+                continue
+            label_1, label_2 = action[1], action[3]
+            idx_1 = self._resolve_label_index(r_label_map, label_1, preferred_occurrence=0)
+            idx_2 = self._resolve_label_index(
+                r_label_map, label_2,
+                preferred_occurrence=1 if label_1 == label_2 else 0,
+            )
+            if idx_1 is None or idx_2 is None or idx_1 == idx_2:
+                return None
+            bond = tuple(sorted((idx_1, idx_2)))
+            if kind == 'FORM_BOND':
+                formed.append(bond)
+            elif kind == 'BREAK_BOND':
+                broken.append(bond)
+            else:
+                changed.append(bond)
+        return formed, broken, changed
+
+    @staticmethod
+    def _resolve_label_index(
+        label_map: dict[str, int],
+        label: str,
+        preferred_occurrence: int = 0,
+    ) -> int | None:
+        """
+        Resolve an RMG label (e.g. ``'*1'``) to a global atom index in ``label_map``.
+
+        When the same label appears twice in a recipe (e.g. ``R_Recombination``),
+        the label map disambiguates duplicates via suffixed keys (``'*'``, ``'*_2'``).
+        The matching keys are ordered, and ``preferred_occurrence`` selects among them,
+        clamped to the last one when it exceeds the number of matches.
+
+        Args:
+            label_map (dict[str, int]): A mapping of RMG labels to global atom indices.
+            label (str): The RMG label to resolve.
+            preferred_occurrence (int, optional): Which of the matching keys to resolve to.
+
+        Returns:
+            int | None: The global atom index, ``None`` if ``label`` matches no key of ``label_map``.
+        """
+        keys = sorted(k for k in label_map if k == label or k.startswith(f'{label}_'))
+        if not keys:
+            return None
+        return label_map[keys[min(preferred_occurrence, len(keys) - 1)]]
 
     def get_formed_and_broken_bonds(self) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
         """
@@ -1004,6 +1083,15 @@ class ARCReaction(object):
         Returns:
             tuple[list[tuple[int, int]], list[tuple[int, int]]]: The formed and broken bonds.
         """
+        if self.atom_map is None and self.family and self.product_dicts:
+            family_bonds = self.get_reactive_bonds_from_family()
+            if family_bonds is not None:
+                formed, broken, _changed = family_bonds
+                logger.warning(
+                    f'Using RMG-family-derived formed/broken bonds for reaction {self} '
+                    f'because no atom map is available.'
+                )
+                return formed, broken
         r_bonds, p_bonds = self.get_bonds()
         r_bonds, p_bonds = set(r_bonds), set(p_bonds)
         formed_bonds, broken_bonds = p_bonds - r_bonds, r_bonds - p_bonds
@@ -1015,6 +1103,11 @@ class ARCReaction(object):
         Returns:
             list[tuple[int, int]]: The bonds that change their bond order.
         """
+        if self.atom_map is None and self.family and self.product_dicts:
+            family_bonds = self.get_reactive_bonds_from_family()
+            if family_bonds is not None:
+                _formed, _broken, changed = family_bonds
+                return changed
         r_bonds, p_bonds = self.get_bonds()
         r_bonds, p_bonds = set(r_bonds), set(p_bonds)
         shared_bonds = p_bonds.intersection(r_bonds)
