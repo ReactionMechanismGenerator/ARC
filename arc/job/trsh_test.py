@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.job.trsh module
 """
 
+import numpy as np
 import os
 import shutil
 import tempfile
@@ -15,7 +16,7 @@ import arc.job.trsh as trsh
 from arc.common import ARC_TESTING_PATH, save_yaml_file
 from arc.exceptions import TrshError
 from arc.imports import settings
-from arc.parser.parser import parse_1d_scan_energies
+from arc.parser.parser import parse_1d_scan_energies, parse_geometry, parse_normal_mode_displacement
 
 supported_ess = settings["supported_ess"]
 
@@ -966,55 +967,38 @@ class TestTrsh(unittest.TestCase):
             trsh.trsh_negative_freq(label='2-methoxy_n-methylaniline', log_file=gaussian_neg_freq_path)
         expected_current_neg_freqs_trshed = [-18.07]
         self.assertEqual(current_neg_freqs_trshed, expected_current_neg_freqs_trshed)
-        expected_conformers = [{'symbols': ('C', 'N', 'C', 'C', 'O', 'C', 'C', 'C', 'C', 'C',
-                                            'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
-                                'isotopes': (12, 14, 12, 12, 16, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-                                'coords': ((1.594007, 2.403416, -0.07830928634059947),
-                                           (1.38126, 0.982746, -0.09401470363370595),
-                                           (0.132808, 0.524622, -0.008713254037844386),
-                                           (-0.094298, -0.898343, -0.060980778264910704),
-                                           (0.838851, -1.856028, -0.2008542138464136),
-                                           (2.24123, -1.636965, 0.24357411305964283),
-                                           (-1.398852, -1.390697, -0.06968303230275509),
-                                           (-2.487721, -0.546972, 0.008673254037844387),
-                                           (-2.300616, 0.840612, 0.10443604845413262),
-                                           (-1.033759, 1.353715, 0.10441904845413262),
-                                           (1.1793300978405823, 2.8826114755398544, 0.8734619510797088),
-                                           (1.1385669021594176, 2.8928465244601456, -0.8938670489202911),
-                                           (2.665025, 2.602779, -0.04588672014131042),
-                                           (2.4813881330978163, -1.0934802866902185, 0.9879432514329849),
-                                           (2.672003, -2.637149, 0.10192048920291205),
-                                           (2.634424866902184, -1.0780867133097816, -0.7788617485670152),
-                                           (-1.525589, -2.465278, -0.03837743345109202),
-                                           (-3.487346, -0.961916, 0.002509762230072801),
-                                           (-3.155537, 1.504321, 0.053595006831528826),
-                                           (-0.898688, 2.426019, 0.04851648237138322))},
-                               {'symbols': ('C', 'N', 'C', 'C', 'O', 'C', 'C', 'C', 'C', 'C',
-                                            'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
-                                'isotopes': (12, 14, 12, 12, 16, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-                                'coords': ((1.594007, 2.403416, 0.07757528634059946),
-                                           (1.38126, 0.982746, 0.09308870363370594),
-                                           (0.132808, 0.524622, 0.008607254037844387),
-                                           (-0.094298, -0.898343, 0.06026277826491071),
-                                           (0.838851, -1.856028, 0.1990822138464136),
-                                           (2.24123, -1.636965, -0.24140011305964282),
-                                           (-1.398852, -1.390697, 0.0688810323027551),
-                                           (-2.487721, -0.546972, -0.008647254037844386),
-                                           (-2.300616, 0.840612, -0.10341004845413262),
-                                           (-1.033759, 1.353715, -0.10342704845413263),
-                                           (1.1391739021594176, 2.8926505244601453, 0.8935400489202912),
-                                           (1.1787230978405823, 2.8828074755398547, -0.8737889510797088),
-                                           (2.665025, 2.602779, 0.044464720141310414),
-                                           (2.631973866902184, -1.0784217133097818, 0.7821427485670152),
-                                           (2.672003, -2.637149, -0.09886048920291204),
-                                           (2.483839133097816, -1.0931452866902183, -0.9846622514329849),
-                                           (-1.525589, -2.465278, 0.036915433451092015),
-                                           (-3.487346, -0.961916, -0.002509762230072801),
-                                           (-3.155537, 1.504321, -0.05181500683152882),
-                                           (-0.898688, 2.426019, -0.046854482371383226))}]
-        self.assertEqual(conformers, expected_conformers)
+
+        xyz = parse_geometry(log_file_path=gaussian_neg_freq_path)
+        freqs, modes = parse_normal_mode_displacement(log_file_path=gaussian_neg_freq_path)
+        largest_neg_freq_idx = min(range(len(freqs)), key=lambda i: freqs[i])
+        self.assertAlmostEqual(float(freqs[largest_neg_freq_idx]), -18.0696, places=4)
+        coords = np.array(xyz['coords'], np.float64)
+        mode = np.array(modes[largest_neg_freq_idx], np.float64)
+
+        self.assertEqual(len(conformers), 2)
+        steps = list()
+        for conformer in conformers:
+            self.assertEqual(conformer['symbols'], xyz['symbols'])
+            self.assertEqual(conformer['isotopes'], xyz['isotopes'])
+            steps.append(np.array(conformer['coords'], np.float64) - coords)
+        np.testing.assert_allclose(steps[0], 0.25 * mode, atol=1e-10)
+        np.testing.assert_allclose(steps[1], -0.25 * mode, atol=1e-10)
+
         self.assertEqual(output_errors, list())
         self.assertEqual(output_warnings, list())
+
+    def test_trsh_negative_freq_for_an_ess_without_normal_mode_displacements(self):
+        """Test that an ESS output file reporting no normal mode displacements is reported, not indexed."""
+        for file_name in ['orca_neg_freq_ts.out', 'orca_example_freq.log', 'orca6_example.out',
+                          'CH2O_freq_molpro.out', 'C2H6_freq_QChem.out', 'CH2O_freq_terachem.dat']:
+            log_file = os.path.join(ARC_TESTING_PATH, 'freq', file_name)
+            self.assertEqual(parse_normal_mode_displacement(log_file_path=log_file), (None, None))
+            current_neg_freqs_trshed, conformers, output_errors, output_warnings = \
+                trsh.trsh_negative_freq(label='spc', log_file=log_file)
+            self.assertEqual(current_neg_freqs_trshed, list())
+            self.assertEqual(conformers, list())
+            self.assertEqual(output_errors, list())
+            self.assertEqual(output_warnings, list())
 
     def test_scan_quality_check(self):
         """Test scan quality check for 1D rotor"""
