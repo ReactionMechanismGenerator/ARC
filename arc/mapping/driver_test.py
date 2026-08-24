@@ -871,9 +871,12 @@ class TestMappingDriver(unittest.TestCase):
                                      ARCSpecies(label='HCl', smiles='Cl')])
         rxn.product_dicts = rxn.get_product_dicts(rmg_family_set='all')
         flipped = prepare_flipped_reaction(rxn)
-        self.assertIsNotNone(flipped.family)
+        self.assertEqual(flipped.family, 'XY_Addition_MultipleBond')
         self.assertTrue(flipped.product_dicts)
         self.assertFalse(flipped.product_dicts[0]['discovered_in_reverse'])
+        # Only the chosen family's dictionaries survive, so a recipe can never be paired with another
+        # family's label map.
+        self.assertEqual({pd['family'] for pd in flipped.product_dicts}, {'XY_Addition_MultipleBond'})
         # The template products of a forward discovery are isomorphic to that reaction's own products.
         template_products = flipped.product_dicts[0]['products']
         self.assertEqual(len(template_products), len(flipped.p_species))
