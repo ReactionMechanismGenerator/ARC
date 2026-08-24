@@ -719,6 +719,13 @@ Either <code class="docutils literal notranslate"><span class="pre">species</spa
 <dt class="sig sig-object py" id="arc.plotter.save_thermo_lib">
 <span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_thermo_lib</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lib_long_desc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#save_thermo_lib"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_thermo_lib" title="Link to this definition"></a></dt>
 <dd><p>Save an RMG thermo library of all species.</p>
+<p>A species is written only if it has thermo data and <code class="docutils literal notranslate"><span class="pre">include_in_thermo_lib</span></code> is <code class="docutils literal notranslate"><span class="pre">True</span></code>.
+A species whose adjacency list and multiplicity match an already written entry is skipped
+with a warning, because <code class="docutils literal notranslate"><span class="pre">rmgpy.data.thermo.ThermoLibrary.load_entry</span></code> raises
+<code class="docutils literal notranslate"><span class="pre">DatabaseError</span></code> on such a pair and the whole library would then fail to load. This applies
+to a reaction whose two reactants are the same species, which reaches this function as two
+separately labeled entries. Skipping affects the library file only; every species keeps its
+own computed thermo everywhere else it is reported.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
