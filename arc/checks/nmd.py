@@ -34,6 +34,9 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
     Analyze the normal mode displacement by identifying bonds that break and form
     and comparing them to the expected given reaction.
     Note that the TS geometry must be in the standard orientation for the normal mode displacement to be relevant.
+    The forming, breaking and changed bonds of the reaction are indexed into the concatenated reactant atoms,
+    where a species participating more than once (e.g. ``A + A``, for which ``r_species`` holds a single entry)
+    contributes its atoms once per occurrence. The TS geometry must span that same set of atoms.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
@@ -46,8 +49,22 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
 
     Returns:
         bool | None: Whether the TS normal mode displacement is consistent with the desired reaction.
+                     ``None`` if the analysis could not be performed, either because no frequency job was
+                     given, because the TS geometry does not span the reactant atoms the bond indices refer
+                     to, or because no normal mode displacements could be parsed from the job's output file.
+                     Only ``False`` marks the TS as inconsistent with the reaction.
     """
     if job is None:
+        return None
+    ts_xyz = reaction.ts_species.get_xyz()
+    n_ts = len(ts_xyz['symbols'])
+    reactants, _ = reaction.get_reactants_and_products(return_copies=False)
+    n_expected = sum(spc.number_of_atoms for spc in reactants)
+    if n_ts != n_expected:
+        logger.warning(f'The geometry of TS {reaction.ts_species.label} has {n_ts} atoms, while the reactants of '
+                       f'reaction {reaction.label} have {n_expected} atoms in total. The forming, breaking and '
+                       f'changed bonds of the reaction are indexed into the reactant atoms, so they cannot be '
+                       f'applied to this TS geometry. Skipping the normal mode displacement analysis.')
         return None
     if reaction.atom_map is None:
         # Without an atom map the formed/broken/changed bonds cannot be determined; skip the NMD
@@ -58,11 +75,6 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
                 not in reaction.ts_species.ts_checks['warnings']:
             reaction.ts_species.ts_checks['warnings'] += 'Atom map is None; skipped the TS normal mode displacement check; '
         return None
-    ts_xyz = reaction.ts_species.get_xyz()
-    n_ts = len(ts_xyz['symbols'])
-    n_expected = sum(spc.number_of_atoms for spc in reaction.r_species)
-    if n_ts != n_expected:
-        return False
     try:
         freqs, normal_mode_disp = parser.parse_normal_mode_displacement(log_file_path=job.local_path_to_output_file)
     except NotImplementedError:
@@ -486,6 +498,37 @@ def get_bond_length_in_reaction(bond: tuple[int, int] | list[int],
     return float(distance)
 
 
+def get_repeated_species_atom_equivalences(reaction: ARCReaction,
+                                           well: int = 0,
+                                           ) -> list[list[int]]:
+    """
+    Build atom-equivalence groups across repeated identical species in a reaction well.
+
+    When a species participates more than once (e.g. OH + OH), ``r_species`` is deduplicated, so the
+    atom map may assign a reactive atom to one copy while the located TS uses the equivalent atom of
+    another copy. For each atom position within such a species, the atoms at that position across all
+    copies are equivalent. Indices follow the expanded (per-occurrence) atom ordering used by the atom
+    map and by ``get_reactants_and_products``.
+
+    Args:
+        reaction (ARCReaction): The reaction.
+        well (int): ``0`` for the reactants well, ``1`` for the products well.
+
+    Returns:
+        list[list[int]]: Equivalence groups (each a list of global atom indices) for repeated species.
+    """
+    species = reaction.r_species if well == 0 else reaction.p_species
+    groups, offset = list(), 0
+    for spc in species:
+        count = reaction.get_species_count(species=spc, well=well)
+        n_atoms = spc.number_of_atoms
+        if count > 1:
+            for pos in range(n_atoms):
+                groups.append([offset + copy_i * n_atoms + pos for copy_i in range(count)])
+        offset += count * n_atoms
+    return groups
+
+
 def find_equivalent_atoms(reaction: ARCReaction,
                           reactant_only: bool = True,
                           ) -> tuple[list[list[int]], list[list[int]]]:
@@ -493,6 +536,8 @@ def find_equivalent_atoms(reaction: ARCReaction,
     Find equivalent atoms in the reactants and products of a reaction.
     This is a tentative function that should be replaced when atom mapping returns a list.
     It is meant to suggest additional atoms that can move instead of the ones selected by the atom map.
+    Reactant equivalences cover both atoms made equivalent within a molecule and atoms at the same
+    position across the copies of a species that participates more than once.
 
     Args:
         reaction (ARCReaction): The reaction for which equivalent atoms are searched.
@@ -510,6 +555,7 @@ def find_equivalent_atoms(reaction: ARCReaction,
                                                                 inc=sum([len(r.mol.atoms) for r in reactants[:i]]),
                                                                 atom_map=None,
                                                                 ))
+    r_eq_atoms.extend(get_repeated_species_atom_equivalences(reaction, well=0))
     if not reactant_only:
         for i, product in enumerate(products):
             p_eq_atoms.extend(identify_equivalent_atoms_in_molecule(molecule=product.mol,
