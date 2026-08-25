@@ -471,6 +471,25 @@ class TestArkaneAdapter(unittest.TestCase):
         self.assertNotIn("SMILES('[CH2]')", content)     # must NOT use the lossy SMILES
         self.assertIn("structure=SMILES('O')", content)  # normal species unchanged
 
+    def test_kinetics_input_declares_reaction_species_without_compute_thermo(self):
+        """A reactant/product carrying ``compute_thermo=False`` must still be declared as a
+        ``species(...)`` line in a rendered kinetics input. Otherwise the ``reaction(...)`` block
+        references a species Arkane never declared, and Arkane raises ``KeyError`` on the label
+        (``arkane/input.py`` builds ``reactants`` from the declared-species dict). A species that no
+        reaction names must still be excluded by ``compute_thermo=False``."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C[NH]', compute_thermo=False)],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]N', compute_thermo=False)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        spc_x = ARCSpecies(label='X', smiles='O', compute_thermo=False)
+        adapter = ArkaneAdapter(output_directory=self.tmpdir, calcs_directory=self.tmpdir,
+                                output_dict=dict(), sp_level=Level('gfn2'),
+                                species=rxn.r_species + rxn.p_species + [rxn.ts_species, spc_x],
+                                reactions=[rxn])
+        content = adapter.render_arkane_input_template(statmech_dir=self.tmpdir)
+        self.assertIn("species('R',", content)
+        self.assertIn("species('P',", content)
+        self.assertNotIn("species('X',", content)
+
     @classmethod
     def tearDownClass(cls):
         """
