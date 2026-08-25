@@ -12,16 +12,51 @@ script (``pyscf_script.py``) are skipped unless PySCF is importable.
 import importlib.util
 import os
 import shutil
+import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
+import numpy as np
+
+from arc.common import read_yaml_file, save_yaml_file
 from arc.job.adapters.pyscf_adapter import PySCFAdapter
 from arc.level import Level
-from arc.parser.adapters.yaml import YAMLParser
+from arc.parser.adapters.yaml import CARTESIAN_CONVENTION, YAMLParser
+from arc.settings.settings import PYSCF_PYTHON
 from arc.species.species import ARCSpecies
 
 HAS_PYSCF = importlib.util.find_spec('pyscf') is not None
+
+PYSCF_IMPORT_PROBE_TIMEOUT = 120
+
+
+def pyscf_env_can_import() -> bool:
+    """
+    Determine whether the interpreter configured as ``PYSCF_PYTHON`` can import PySCF.
+
+    ``PYSCF_PYTHON`` is a configured path, and a path being set does not mean that the
+    environment it points at has PySCF installed, so the imports are attempted once rather
+    than inferred from the setting. The modules probed are those ``pyscf_script`` imports
+    at module level, which excludes the geometry optimization solver.
+
+    Returns:
+        bool: Whether that interpreter imports PySCF successfully.
+    """
+    if PYSCF_PYTHON is None:
+        return False
+    try:
+        completed = subprocess.run([PYSCF_PYTHON, '-c',
+                                    'from pyscf import dft, gto, lib; from pyscf.hessian import thermo'],
+                                   capture_output=True,
+                                   timeout=PYSCF_IMPORT_PROBE_TIMEOUT)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return completed.returncode == 0
+
+
+PYSCF_ENV_AVAILABLE = pyscf_env_can_import()
+PYSCF_SCHEMA_VERSION = 2
 
 
 class TestPySCFAdapter(unittest.TestCase):
@@ -35,9 +70,7 @@ class TestPySCFAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.project_directory = os.path.join(ARC_TESTING_PATH, 'test_PySCFAdapter')
-        if not os.path.exists(cls.project_directory):
-            os.makedirs(cls.project_directory)
+        cls.project_directory = tempfile.mkdtemp(prefix='test_PySCFAdapter_')
 
         water_xyz = {'symbols': ('O', 'H', 'H'),
                      'isotopes': (16, 1, 1),
@@ -241,6 +274,58 @@ class TestPySCFAdapter(unittest.TestCase):
         self.assertEqual(normalize_basis('def2tzvp'), 'def2-tzvp')
         self.assertEqual(normalize_basis('def2SVP'), 'def2-svp')
         self.assertEqual(normalize_basis('cc-pvtz'), 'cc-pvtz')
+
+    @unittest.skipUnless(PYSCF_ENV_AVAILABLE, 'The interpreter at PYSCF_PYTHON cannot import PySCF')
+    def test_run_freq_executes_in_the_pyscf_environment(self):
+        """Test that a freq job really runs run_freq() and writes Cartesian unit norm modes.
+
+        PySCF is absent from the environment ARC itself runs in, so the engine is exercised through
+        the in-core subprocess that production uses rather than by importing it here.
+        """
+        job = PySCFAdapter(execution_type='incore',
+                           job_type='freq',
+                           project='test_run_freq',
+                           project_directory=os.path.join(self.project_directory, 'test_run_freq'),
+                           level=Level(repr='b3lyp/sto-3g'),
+                           cpu_cores=2,
+                           species=[ARCSpecies(label='H2O',
+                                               xyz={'symbols': ('O', 'H', 'H'),
+                                                    'isotopes': (16, 1, 1),
+                                                    'coords': ((0.0, 0.0, 0.1173),
+                                                               (0.0, 0.7572, -0.4692),
+                                                               (0.0, -0.7572, -0.4692))})])
+        job.execute()
+        output = read_yaml_file(path=job.local_path_to_output_file)
+        self.assertTrue(output['success'], msg=f"PySCF reported: {output.get('error')}")
+        self.assertEqual(output['schema_version'], PYSCF_SCHEMA_VERSION)
+        self.assertEqual(len(output['freqs']), 3)
+        modes = np.array(output['modes'], dtype=np.float64)
+        self.assertEqual(modes.shape, (3, 3, 3))
+        norms = np.linalg.norm(modes.reshape(modes.shape[0], -1), axis=1)
+        self.assertTrue(np.allclose(norms, 1.0, rtol=0, atol=1e-8), msg=f'Got norms {norms}')
+        parser = YAMLParser(log_file_path=job.local_path_to_output_file)
+        freqs, displacements = parser.parse_normal_mode_displacement()
+        self.assertEqual(parser.normal_mode_convention, CARTESIAN_CONVENTION)
+        self.assertEqual(displacements.shape, (len(freqs), 3, 3))
+
+    @unittest.skipUnless(PYSCF_ENV_AVAILABLE, 'The interpreter at PYSCF_PYTHON cannot import PySCF')
+    def test_run_freq_of_a_monatomic_species(self):
+        """Test that a freq job of a species with no vibrational modes reports none and does not fail."""
+        job = PySCFAdapter(execution_type='incore',
+                           job_type='freq',
+                           project='test_run_freq_monatomic',
+                           project_directory=os.path.join(self.project_directory, 'test_run_freq_monatomic'),
+                           level=Level(repr='b3lyp/sto-3g'),
+                           cpu_cores=2,
+                           species=[ARCSpecies(label='Ne',
+                                               xyz={'symbols': ('Ne',),
+                                                    'isotopes': (20,),
+                                                    'coords': ((0.0, 0.0, 0.0),)})])
+        job.execute()
+        output = read_yaml_file(path=job.local_path_to_output_file)
+        self.assertTrue(output['success'], msg=f"PySCF reported: {output.get('error')}")
+        self.assertEqual(output['freqs'], list())
+        self.assertEqual(output['modes'], list())
 
     @classmethod
     def tearDownClass(cls):

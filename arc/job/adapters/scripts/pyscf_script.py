@@ -26,7 +26,6 @@ import numpy as np
 import yaml
 
 from pyscf import dft, gto, lib
-from pyscf.geomopt.geometric_solver import optimize
 from pyscf.hessian import thermo
 
 try:
@@ -44,6 +43,8 @@ NUM_HESS_DISP_ANG = 0.005
 
 # XC grid level for a "fine" job: the closest PySCF match to Gaussian's UltraFine grid.
 FINE_GRIDS_LEVEL = 4
+
+SCHEMA_VERSION = 2
 
 
 def read_yaml_file(path):
@@ -268,6 +269,7 @@ def run_opt(mf, xyz_in, multiplicity, is_ts=False, constraints=None, work_dir='.
     if constraints:
         params['constraints'] = write_geometric_constraints(
             constraints, os.path.join(work_dir, 'constraints.txt'))
+    from pyscf.geomopt.geometric_solver import optimize
     mol_eq = optimize(mf, maxsteps=int(settings.get('maxsteps', 250)), **params)
     mf_opt = make_mf(mol_eq, mf.xc, multiplicity, settings=settings)
     mf_opt.kernel()
@@ -326,6 +328,10 @@ def run_freq(mf, multiplicity, settings=None):
         multiplicity (int): The spin multiplicity.
         settings (dict, optional): Numerical settings forwarded to the mean-field builder.
 
+    The normal modes are Cartesian displacements rescaled to a unit Euclidean norm, Gaussian's
+    convention and the one ARC's YAML parser expects of a file stamped with schema version
+    ``SCHEMA_VERSION``. A species with no vibrational modes yields an empty list.
+
     Returns:
         dict: Keys ``freqs`` (cm^-1), ``modes``, and ``zpe`` (kJ/mol).
     """
@@ -341,7 +347,12 @@ def run_freq(mf, multiplicity, settings=None):
     results = thermo.harmonic_analysis(mf.mol, hess)
     raw = np.asarray(results['freq_wavenumber'], dtype=complex)
     freqs = [float(f.real) if abs(f.imag) < 1e-6 else -float(abs(f.imag)) for f in raw]
-    modes = np.asarray(results['norm_mode'], dtype=float).tolist()
+    modes = np.asarray(results['norm_mode'], dtype=float)
+    if modes.size:
+        mode_norms = np.linalg.norm(modes.reshape(modes.shape[0], -1), axis=1)[:, None, None]
+        modes = np.divide(modes, mode_norms, out=np.zeros_like(modes), where=mode_norms > 0).tolist()
+    else:
+        modes = list()
     zpe = 0.5 * sum(f for f in freqs if f > 0) * CM2KJMOL
     return {'freqs': freqs, 'modes': modes, 'zpe': float(zpe)}
 
@@ -355,7 +366,7 @@ def run_job(input_dict, work_dir):
         work_dir (str): The working directory (for scratch files).
 
     Returns:
-        dict: The schema-v1 output dictionary.
+        dict: The output dictionary, stamped with ``SCHEMA_VERSION``.
     """
     job_type = input_dict.get('job_type')
     xyz = input_dict.get('xyz')
@@ -368,7 +379,7 @@ def run_job(input_dict, work_dir):
     basis = settings.get('basis', 'def2-tzvp')
     memory_mb = settings.get('memory_mb')
 
-    output = {'schema_version': 1, 'adapter': 'pyscf', 'success': True, 'error': None}
+    output = {'schema_version': SCHEMA_VERSION, 'adapter': 'pyscf', 'success': True, 'error': None}
 
     # Pin the thread count so concurrent local PySCF jobs cannot each grab every core.
     if settings.get('cpu_cores'):
@@ -421,7 +432,7 @@ def main():
         input_dict = read_yaml_file(input_path)
         output = run_job(input_dict, work_dir)
     except Exception as exc:
-        output = {'schema_version': 1, 'adapter': 'pyscf', 'success': False,
+        output = {'schema_version': SCHEMA_VERSION, 'adapter': 'pyscf', 'success': False,
                   'error': f'{type(exc).__name__}: {exc}'}
 
     save_yaml_file(os.path.join(work_dir, 'output.yml'), output)
