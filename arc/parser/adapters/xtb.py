@@ -9,12 +9,14 @@ import numpy as np
 import os
 import pandas as pd
 
-from arc.common import is_str_float
+from ase.data import atomic_masses
+
+from arc.common import is_str_float, is_str_int
 from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import str_to_xyz, xyz_from_data, logger
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
-from arc.parser.parser import _get_lines_from_file
+from arc.parser.parser import _get_lines_from_file, parse_geometry
 
 
 class XTBParser(ESSAdapter, ABC):
@@ -165,19 +167,56 @@ class XTBParser(ESSAdapter, ABC):
 
         return np.array(freqs, dtype=np.float64) if freqs else None
 
+    def get_normal_mode_file_path(self) -> str | None:
+        """
+        Get the path of the file the normal modes of this xTB job are reported in.
+
+        xTB writes its normal modes to a Gaussian 98 formatted ``g98.out`` file
+        next to the job's output file, not to the output file itself.
+
+        Returns: str | None
+            The path, ``None`` if no such file accompanies the output file.
+        """
+        g98_path = os.path.join(os.path.dirname(self.log_file_path), 'g98.out')
+        return g98_path if os.path.isfile(g98_path) else None
+
+    def parse_geometry_in_normal_mode_frame(self) -> dict[str, tuple] | None:
+        """
+        Parse the geometry in the Cartesian frame in which ``parse_normal_mode_displacement()``
+        reports the normal mode displacements of this log file.
+
+        Returns: dict[str, tuple] | None
+            The cartesian geometry.
+        """
+        g98_path = self.get_normal_mode_file_path()
+        if g98_path is None:
+            return None
+        return parse_geometry(log_file_path=g98_path)
+
     def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
         Parse frequencies and normal mode displacement.
 
+        xTB writes mass-weighted eigenvectors ``L_a = sqrt(m_a) * l_a`` into its ``g98.out`` file,
+        normalized so that ``sum(|L|^2) = 1``. The displacements returned here follow the convention
+        used elsewhere in ARC, which is Gaussian's: Cartesian displacements ``d_a = sqrt(mu) * l_a``,
+        normalized so that ``sum(|d|^2) = 1``. Both steps of the conversion are required, since
+        ``L / sqrt(m)`` carries a norm of ``1 / sqrt(mu)`` rather than unity. The masses are the
+        IUPAC standard atomic weights of the atomic numbers reported in the ``g98.out`` atom block,
+        taken from ``ase.data.atomic_masses``, since xTB is given a geometry that carries element
+        symbols only and never learns of a specific isotope.
+
+        After the conversion ``sum(m_a * |d_a|^2)`` approximates the physical reduced mass of the
+        mode, and differs from the value in the file's ``Red. masses`` column.
+
         Returns: tuple[np.ndarray | None, np.ndarray | None]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
-        # Locate the g98.out file in the same directory as the log file
-        g98_path = os.path.join(os.path.dirname(self.log_file_path), 'g98.out')
-        if not os.path.isfile(g98_path):
+        g98_path = self.get_normal_mode_file_path()
+        if g98_path is None:
             return None, None
 
-        freqs, displacements = list(), list()
+        freqs, displacements, atomic_numbers = list(), list(), list()
 
         with open(g98_path, 'r') as f:
             lines = f.readlines()
@@ -196,21 +235,23 @@ class XTBParser(ESSAdapter, ABC):
             # Atom AN ... displacement values
             elif line.strip().startswith('Atom AN'):
                 i += 1
-                floats_list = list()
+                floats_list, block_atomic_numbers = list(), list()
                 while i < len(lines):
                     next_line = lines[i].strip()
                     if not next_line or next_line.startswith('----'):
                         break
-                    parts = next_line.split()[2:]  # skip Atom index and Atomic Number
+                    splits = next_line.split()
+                    parts = splits[2:]
                     if not parts:
                         i += 1
                         continue
                     if not any(is_str_float(x) for x in parts):
                         break
-                    if len(parts) != 3 * n_modes_in_block:
+                    if len(parts) != 3 * n_modes_in_block or not is_str_int(splits[1]):
                         i += 1
                         continue
                     floats_list.append([float(x) for x in parts])
+                    block_atomic_numbers.append(int(splits[1]))
                     i += 1
 
                 n_atoms = len(floats_list)
@@ -223,15 +264,21 @@ class XTBParser(ESSAdapter, ABC):
                         current_block[mode, atom_idx] = floats[3 * mode: 3 * mode + 3]
 
                 displacements.append(current_block)
+                atomic_numbers = atomic_numbers or block_atomic_numbers
             else:
                 i += 1
 
-        if not freqs or not displacements:
+        if not freqs or not displacements or not atomic_numbers:
             return None, None
 
         full_displacements = np.concatenate(displacements, axis=0)
+        masses = np.array([atomic_masses[atomic_number] for atomic_number in atomic_numbers],
+                          dtype=np.float64)
+        disp = full_displacements / np.sqrt(masses)[None, :, None]
+        norms = np.linalg.norm(disp.reshape(disp.shape[0], -1), axis=1)
+        disp = np.divide(disp, norms[:, None, None], out=np.zeros_like(disp), where=norms[:, None, None] > 0)
 
-        return np.array(freqs, dtype=np.float64), full_displacements
+        return np.array(freqs, dtype=np.float64), disp
 
     def parse_t1(self) -> float | None:
         """

@@ -539,29 +539,31 @@ def translate_xyz(xyz_dict: dict,
 def displace_xyz(xyz: dict,
                  displacement: np.ndarray,
                  amplitude: float = 0.25,
-                 use_weights: bool = True,
                  ) -> tuple[dict, dict]:
     """
-    Displace the coordinates using the ``displacement`` by the requested ``amplitude`` using atom mass weights.
+    Displace the coordinates using the ``displacement`` by the requested ``amplitude``.
+
+    The ``displacement`` is a Cartesian normal mode displacement in Angstrom and is added to the
+    coordinates as is. ARC's parsers report normal modes in Gaussian's convention, normalized so
+    that ``sum(|d|^2) = 1``, hence ``amplitude`` is the Euclidean norm in Angstrom of the resulting
+    perturbation over all atoms.
 
     Args:
         xyz (dict): The coordinates.
         displacement (list): The corresponding xyz displacement for each atom.
         amplitude (float, optional): The factor multiplication for the displacement.
-        use_weights( bool, optional): Whether to scale displacements by the square root of the respective element mass.
 
     Returns:
         tuple[dict, dict]:
-            The two displaced xyz's, one for each direction (+/-) of the weighted ``displacement``.
+            The two displaced xyz's, one for each direction (+/-) of the ``displacement``.
     """
     coords = xyz_to_coords_list(xyz)
-    weights = [mass ** 0.5 for mass in get_element_mass_from_xyz(xyz)] if use_weights else [1] * len(xyz['symbols'])
-    coords_1 = [[float(coord[0] + amplitude * displacement[i][0] * weights[i]),
-                 float(coord[1] + amplitude * displacement[i][1] * weights[i]),
-                 float(coord[2] + amplitude * displacement[i][2] * weights[i])] for i, coord in enumerate(coords)]
-    coords_2 = [[float(coord[0] - amplitude * displacement[i][0] * weights[i]),
-                 float(coord[1] - amplitude * displacement[i][1] * weights[i]),
-                 float(coord[2] - amplitude * displacement[i][2] * weights[i])] for i, coord in enumerate(coords)]
+    coords_1 = [[float(coord[0] + amplitude * displacement[i][0]),
+                 float(coord[1] + amplitude * displacement[i][1]),
+                 float(coord[2] + amplitude * displacement[i][2])] for i, coord in enumerate(coords)]
+    coords_2 = [[float(coord[0] - amplitude * displacement[i][0]),
+                 float(coord[1] - amplitude * displacement[i][1]),
+                 float(coord[2] - amplitude * displacement[i][2])] for i, coord in enumerate(coords)]
     xyz_1 = xyz_from_data(coords=coords_1, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
     xyz_2 = xyz_from_data(coords=coords_2, symbols=xyz['symbols'], isotopes=xyz['isotopes'])
     return xyz_1, xyz_2

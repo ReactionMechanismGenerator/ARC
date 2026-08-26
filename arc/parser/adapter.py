@@ -198,6 +198,16 @@ class ESSAdapter(ABC):
         """
         pass
 
+    def parse_geometry_in_normal_mode_frame(self) -> dict[str, tuple] | None:
+        """
+        Parse the geometry in the Cartesian frame in which ``parse_normal_mode_displacement()``
+        reports the normal mode displacements of this log file.
+
+        Returns: dict[str, tuple] | None
+            The cartesian geometry.
+        """
+        return self.parse_geometry()
+
     def parse_opt_steps(self) -> int | None:
         """
         Parse the number of geometry optimization steps from an opt job output file.

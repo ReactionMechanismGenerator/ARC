@@ -1010,6 +1010,67 @@ H       1.12853146   -0.86793870    0.06973060"""
         self.assertEqual(formed_bonds, [(0, 5)])
         self.assertEqual(broken_bonds, [(3, 5)])
 
+    def test_get_bonds_and_reactive_bonds_without_atom_map(self):
+        """
+        When atom_map cannot be built (e.g. fingerprint-based pair superposition
+        fails on positional-isomer radicals), get_bonds(r_bonds_only=True) must
+        still work, and get_formed_and_broken_bonds / get_changed_bonds must fall
+        back to the RMG family recipe + r_label_map instead of raising.
+        """
+        # Intermolecular H-abstraction between α- and β-radical of pentyl ether.
+        # map_two_species cannot superimpose the two radical cuts, so atom_map is None.
+        r1 = ARCSpecies(label='r1', smiles='CC[CH]OCC')
+        r2 = ARCSpecies(label='r2', smiles='CCCOCC')
+        p1 = ARCSpecies(label='p1', smiles='C[CH]OCCC')
+        p2 = ARCSpecies(label='p2', smiles='CCCOCC')
+        rxn = ARCReaction(r_species=[r1, r2], p_species=[p1, p2])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        self.assertTrue(rxn.product_dicts)
+        rxn.atom_map = None
+
+        r_bonds, p_bonds = rxn.get_bonds(r_bonds_only=True)
+        self.assertGreater(len(r_bonds), 0)
+        self.assertEqual(p_bonds, [])
+
+        r_label_map = rxn.product_dicts[0]['r_label_map']
+        star1, star2, star3 = r_label_map['*1'], r_label_map['*2'], r_label_map['*3']
+
+        formed, broken = rxn.get_formed_and_broken_bonds()
+        self.assertEqual(formed, [tuple(sorted((star2, star3)))])
+        self.assertEqual(broken, [tuple(sorted((star1, star2)))])
+        self.assertEqual(rxn.get_changed_bonds(), [])
+
+    def test_get_reactive_bonds_from_family_reverse_discovery(self):
+        """
+        A product dict discovered in reverse holds its r_label_map in product index space,
+        so get_reactive_bonds_from_family() must not derive reactant-space bonds from it.
+        """
+        # Ene reaction of ethene + propene, matched by Retroene only in the reverse direction.
+        rxn = ARCReaction(r_species=[ARCSpecies(label='ethene', smiles='C=C'),
+                                     ARCSpecies(label='propene', smiles='C=CC')],
+                          p_species=[ARCSpecies(label='pentene', smiles='C=CCCC')])
+        self.assertEqual(rxn.family, 'Retroene')
+        self.assertTrue(all(product_dict['discovered_in_reverse'] for product_dict in rxn.product_dicts))
+        self.assertIsNone(rxn.get_reactive_bonds_from_family())
+
+        r1 = ARCSpecies(label='r1', smiles='CC[CH]OCC')
+        r2 = ARCSpecies(label='r2', smiles='CCCOCC')
+        p1 = ARCSpecies(label='p1', smiles='C[CH]OCCC')
+        p2 = ARCSpecies(label='p2', smiles='CCCOCC')
+        fwd_rxn = ARCReaction(r_species=[r1, r2], p_species=[p1, p2])
+        self.assertEqual(fwd_rxn.family, 'H_Abstraction')
+        self.assertFalse(fwd_rxn.product_dicts[0]['discovered_in_reverse'])
+        forward_bonds = fwd_rxn.get_reactive_bonds_from_family()
+        self.assertIsNotNone(forward_bonds)
+
+        reverse_dict = dict(fwd_rxn.product_dicts[0])
+        reverse_dict['discovered_in_reverse'] = True
+        reverse_dict['r_label_map'] = {label: index + 1 for label, index in reverse_dict['r_label_map'].items()}
+        foreign_dict = dict(fwd_rxn.product_dicts[0])
+        foreign_dict['family'] = 'Disproportionation'
+        fwd_rxn.product_dicts = [reverse_dict, foreign_dict] + fwd_rxn.product_dicts
+        self.assertEqual(fwd_rxn.get_reactive_bonds_from_family(), forward_bonds)
+
     def test_get_changed_bonds(self):
         """Test the get_changed_bonds() function."""
         rxn_7 = ARCReaction(r_species=[ARCSpecies(label='C2H5NO2', smiles='[O-][N+](=O)CC',

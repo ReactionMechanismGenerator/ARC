@@ -8,6 +8,8 @@ This module contains unit tests for the arc.checks.common module
 import datetime
 import unittest
 
+import numpy as np
+
 import arc.checks.common as common
 from arc.species import ARCSpecies
 
@@ -32,6 +34,19 @@ class TestChecks(unittest.TestCase):
         self.assertEqual(common.sum_time_delta([dt3, dt4]), datetime.timedelta(days=10, minutes=2, seconds=30, microseconds=300))
         self.assertEqual(common.sum_time_delta([dt3, fake_dt5, fake_dt6, fake_dt7]),
                          datetime.timedelta(days=0, minutes=1, seconds=15))
+
+    def test_get_index_of_abs_largest_neg_freq(self):
+        """Test the get_index_of_abs_largest_neg_freq() function."""
+        self.assertIsNone(common.get_index_of_abs_largest_neg_freq(None))
+        self.assertIsNone(common.get_index_of_abs_largest_neg_freq(np.array([], np.float64)))
+        self.assertIsNone(common.get_index_of_abs_largest_neg_freq(np.array([1, 320.5], np.float64)))
+        self.assertEqual(common.get_index_of_abs_largest_neg_freq(np.array([-1], np.float64)), 0)
+        self.assertEqual(common.get_index_of_abs_largest_neg_freq(np.array([-1, 320.5], np.float64)), 0)
+        self.assertEqual(common.get_index_of_abs_largest_neg_freq(np.array([320.5, -1], np.float64)), 1)
+        self.assertEqual(common.get_index_of_abs_largest_neg_freq(np.array([320.5, -1, -80, -90, 5000],
+                                                                          np.float64)), 3)
+        self.assertEqual(common.get_index_of_abs_largest_neg_freq(np.array([-320.5, -1, -80, -90, 5000],
+                                                                          np.float64)), 0)
 
     def test_get_i_from_job_name(self):
         """Test the get_i_from_job_name() function"""

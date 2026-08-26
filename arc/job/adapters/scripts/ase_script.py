@@ -26,6 +26,7 @@ amu = 1.660538921e-27
 pi = math.pi
 h = 6.62606896e-34
 E_h = 4.35974434e-18  # Hartree in Joules
+SCHEMA_VERSION = 2
 N_A = 6.02214179e23
 
 
@@ -243,6 +244,7 @@ def numpy_vibrational_analysis(masses: np.ndarray, hessian: np.ndarray, is_linea
     final_indices = sorted(filtered_indices, key=lambda i: freqs[i])
 
     return {
+        'schema_version': SCHEMA_VERSION,
         'freqs': [freqs[i] for i in final_indices],
         'modes': md_normalized[final_indices].reshape(len(final_indices), -1, 3).tolist(),
         'force_constants': [fconstants[i].tolist() for i in final_indices],
@@ -276,14 +278,15 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict):
             freqs, modes, force_constants, reduced_masses = torchani.utils.vibrational_analysis(masses, hessian, mode_type='MDN')
             
             return {
+                'schema_version': SCHEMA_VERSION,
                 'freqs': (freqs.cpu().numpy().tolist() if hasattr(freqs, 'cpu') else freqs.numpy().tolist()),
                 'hessian': hessian.cpu().numpy().tolist() if hasattr(hessian, 'cpu') else hessian.tolist(),
                 'modes': modes.cpu().numpy().tolist() if hasattr(modes, 'cpu') else modes.tolist(),
                 'force_constants': force_constants.cpu().numpy().tolist() if hasattr(force_constants, 'cpu') else force_constants.tolist(),
                 'reduced_masses': reduced_masses.cpu().numpy().tolist() if hasattr(reduced_masses, 'cpu') else reduced_masses.tolist()
             }
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f'TorchANI vibrational analysis failed, falling back to ASE: {exc}')
 
     vib = Vibrations(atoms, name='vib_tmp', nfree=4)
     vib.run()
@@ -333,7 +336,7 @@ def main():
     
     apply_constraints(atoms, input_dict.get('constraints'))
     
-    output = {}
+    output = {'schema_version': SCHEMA_VERSION}
     
     def save_current_geometry(out_dict, atoms_obj, input_xyz):
         out_dict['opt_xyz'] = {
