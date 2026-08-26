@@ -155,13 +155,77 @@ class OrcaParser(ESSAdapter, ABC):
 
     def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
-        Parse frequencies and normal mode displacement.
+        Parse the frequencies and normal mode displacements from an Orca frequency job output file.
 
-        Returns: tuple[np.ndarray | None, np.ndarray | None]
-            The frequencies (in cm^-1) and the normal mode displacements.
+        Returns:
+            tuple[np.ndarray | None, np.ndarray | None]:
+                - frequencies (in cm^-1), exact-zero translation/rotation modes excluded.
+                - normal mode displacements, shape (num_modes, num_atoms, 3), same mode order as frequencies.
         """
-        # Not implemented for Orca.
-        return None, None
+        with open(self.log_file_path, 'r') as f:
+            lines = f.readlines()
+
+        all_freqs = list()
+        for i, line in enumerate(lines):
+            if 'VIBRATIONAL FREQUENCIES' in line:
+                j = i + 1
+                while j < len(lines) and 'cm**-1' not in lines[j]:
+                    j += 1
+                while j < len(lines):
+                    stripped = lines[j].strip()
+                    if not stripped:
+                        break
+                    parts = stripped.replace(':', ' ').split()
+                    try:
+                        all_freqs.append(float(parts[1]))
+                    except (IndexError, ValueError):
+                        break
+                    j += 1
+                break
+        if not all_freqs:
+            return None, None
+        n_dof = len(all_freqs)
+
+        start = None
+        for i, line in enumerate(lines):
+            if line.strip() == 'NORMAL MODES':
+                start = i
+                break
+        if start is None:
+            return None, None
+
+        full_matrix = [[0.0] * n_dof for _ in range(n_dof)]
+        n_cols_parsed = 0
+        i = start
+        while n_cols_parsed < n_dof and i < len(lines):
+            stripped = lines[i].strip()
+            if stripped and '.' not in stripped:
+                try:
+                    col_indices = [int(tok) for tok in stripped.split()]
+                except ValueError:
+                    i += 1
+                    continue
+                i += 1
+                for row in range(n_dof):
+                    vals = lines[i].split()[1:]
+                    for k, col in enumerate(col_indices):
+                        full_matrix[row][col] = float(vals[k])
+                    i += 1
+                n_cols_parsed += len(col_indices)
+            else:
+                i += 1
+        if n_cols_parsed < n_dof:
+            return None, None
+
+        keep = [idx for idx, freq in enumerate(all_freqs) if freq != 0.0]
+        freqs = np.array([all_freqs[idx] for idx in keep], dtype=np.float64)
+        n_atoms = n_dof // 3
+        full_matrix_np = np.array(full_matrix, dtype=np.float64)
+        normal_modes_disp = np.array(
+            [full_matrix_np[:, idx].reshape(n_atoms, 3) for idx in keep],
+            dtype=np.float64,
+        )
+        return freqs, normal_modes_disp
 
     def parse_t1(self) -> float | None:
         """
