@@ -498,6 +498,31 @@ class TestParser(unittest.TestCase):
         self.assertIn(missing_path, warning)
         self.assertIn('TS', warning)
 
+        path = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'n_cetane', 'output.log')
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(log_file_path=path)
+        self.assertEqual(len(freqs), 144)
+        expected_freqs = np.array(
+            [-33.01, 16.27, 25.64, 39.59, 50.28, 52.63, 66.15, 89.35, 94.27, 102.74, 121.39, 131.04, 138.98,
+             155.81, 162.43, 167.8, 168.41, 208.48, 242.09, 255.16, 263.76, 287.41, 336.12, 390.57, 403.27,
+             436.59, 487.4, 510.61, 542.11, 730.2, 730.58, 732.5, 737.04, 745.58, 762.99, 787.24, 808.06,
+             845.48, 889.76, 909.71, 911.43, 920.32, 945.29, 977.07, 1008.49, 1011.17, 1022.54, 1036.38,
+             1046.72, 1059.6, 1063.73, 1076.99, 1082.5, 1089.15, 1093.37, 1094.52, 1095.7, 1104.51, 1113.18,
+             1146.23, 1166.62, 1199.48, 1215.02, 1229.15, 1237.54, 1252.0, 1263.31, 1272.63, 1288.75, 1295.02,
+             1305.13, 1320.15, 1322.62, 1330.36, 1333.47, 1336.2, 1339.65, 1341.72, 1344.52, 1348.68, 1351.22,
+             1358.46, 1384.84, 1388.49, 1405.63, 1419.42, 1421.45, 1422.44, 1423.4, 1427.25, 1428.65, 1429.52,
+             1487.35, 1487.85, 1489.0, 1490.45, 1491.13, 1492.08, 1493.54, 1494.23, 1496.62, 1501.11, 1503.69,
+             1504.3, 1506.32, 1507.13, 1511.16, 1513.91, 1515.19, 1517.24, 3026.36, 3026.81, 3027.04, 3028.03,
+             3028.11, 3029.63, 3030.28, 3031.6, 3032.76, 3034.73, 3037.88, 3040.87, 3042.59, 3043.94, 3049.39,
+             3050.43, 3050.9, 3051.22, 3052.87, 3056.5, 3059.03, 3062.83, 3066.86, 3071.48, 3074.03, 3080.84,
+             3087.03, 3090.54, 3092.04, 3095.14, 3121.2, 3121.22, 3129.34, 3130.0], np.float64)
+        np.testing.assert_almost_equal(freqs, expected_freqs)
+        self.assertEqual(normal_modes_disp.shape, (144, 50, 3))
+        # freqs[0] (-33.01 cm^-1) is the sole imaginary mode; spot-check its displacement vectors.
+        expected_r1_imaginary_mode_first_atom = np.array([0.020715, -0.025648, 0.103113], np.float64)
+        expected_r1_imaginary_mode_last_atom = np.array([-0.000219, 0.135443, -0.044644], np.float64)
+        np.testing.assert_almost_equal(normal_modes_disp[0][0], expected_r1_imaginary_mode_first_atom)
+        np.testing.assert_almost_equal(normal_modes_disp[0][-1], expected_r1_imaginary_mode_last_atom)
+
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""
         path1 = os.path.join(ARC_TESTING_PATH, 'xyz', 'CH3C(O)O.gjf')
