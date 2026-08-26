@@ -126,12 +126,12 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.converter</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">displace_xyz</span><span class="p">,</span> <span class="n">ics_to_scan_constraints</span><span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">determine_rotor_symmetry</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.vectors</span><span class="w"> </span><span class="kn">import</span> <span class="n">calculate_dihedral_angle</span><span class="p">,</span> <span class="n">calculate_distance</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">arc.parser.parser</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">parse_1d_scan_coords</span><span class="p">,</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.parser.parser</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">determine_ess</span><span class="p">,</span>
+                               <span class="n">get_normal_mode_displacement</span><span class="p">,</span>
+                               <span class="n">parse_1d_scan_coords</span><span class="p">,</span>
                                <span class="n">parse_geometry</span><span class="p">,</span>
-                               <span class="n">parse_normal_mode_displacement</span><span class="p">,</span>
                                <span class="n">parse_scan_args</span><span class="p">,</span>
                                <span class="n">parse_scan_conformers</span><span class="p">,</span>
-                               <span class="n">determine_ess</span>
                                <span class="p">)</span>
 
 
@@ -705,10 +705,11 @@
     <span class="n">factors</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.50</span><span class="p">,</span> <span class="mf">0.75</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">]</span>
     <span class="n">factor</span> <span class="o">=</span> <span class="n">factors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="n">max_times_to_trsh_neg_freq</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">factors</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
-    <span class="n">freqs</span><span class="p">,</span> <span class="n">normal_modes_disp</span> <span class="o">=</span> <span class="n">parse_normal_mode_displacement</span><span class="p">(</span><span class="n">log_file_path</span><span class="o">=</span><span class="n">log_file</span><span class="p">,</span> <span class="n">raise_error</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">normal_modes_disp</span><span class="p">):</span>
+    <span class="n">parsed_modes</span> <span class="o">=</span> <span class="n">get_normal_mode_displacement</span><span class="p">(</span><span class="n">log_file_path</span><span class="o">=</span><span class="n">log_file</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">parsed_modes</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not troubleshoot negative frequency for species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
         <span class="k">return</span> <span class="p">[],</span> <span class="p">[],</span> <span class="n">output_errors</span><span class="p">,</span> <span class="p">[]</span>
+    <span class="n">freqs</span><span class="p">,</span> <span class="n">normal_modes_disp</span> <span class="o">=</span> <span class="n">parsed_modes</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">neg_freqs_trshed</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_times_to_trsh_neg_freq</span><span class="p">:</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> was troubleshooted for negative frequencies too many times.'</span><span class="p">)</span>
         <span class="k">if</span> <span class="s1">'rotors'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">job_types</span><span class="p">:</span>

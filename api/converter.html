@@ -508,19 +508,22 @@ integer number of 360 degrees / sigma are considered identical.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.species.converter.displace_xyz">
-<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">displace_xyz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">displacement</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amplitude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#displace_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.displace_xyz" title="Link to this definition"></a></dt>
-<dd><p>Displace the coordinates using the <code class="docutils literal notranslate"><span class="pre">displacement</span></code> by the requested <code class="docutils literal notranslate"><span class="pre">amplitude</span></code> using atom mass weights.</p>
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">displace_xyz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">displacement</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amplitude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.25</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#displace_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.displace_xyz" title="Link to this definition"></a></dt>
+<dd><p>Displace the coordinates using the <code class="docutils literal notranslate"><span class="pre">displacement</span></code> by the requested <code class="docutils literal notranslate"><span class="pre">amplitude</span></code>.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">displacement</span></code> is a Cartesian normal mode displacement in Angstrom and is added to the
+coordinates as is. ARC’s parsers report normal modes in Gaussian’s convention, normalized so
+that <code class="docutils literal notranslate"><span class="pre">sum(|d|^2)</span> <span class="pre">=</span> <span class="pre">1</span></code>, hence <code class="docutils literal notranslate"><span class="pre">amplitude</span></code> is the Euclidean norm in Angstrom of the resulting
+perturbation over all atoms.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>xyz</strong> (<em>dict</em>) – The coordinates.</p></li>
 <li><p><strong>displacement</strong> (<em>list</em>) – The corresponding xyz displacement for each atom.</p></li>
 <li><p><strong>amplitude</strong> (<em>float</em><em>, </em><em>optional</em>) – The factor multiplication for the displacement.</p></li>
-<li><p><strong>use_weights</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to scale displacements by the square root of the respective element mass.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The two displaced xyz’s, one for each direction (+/-) of the weighted <code class="docutils literal notranslate"><span class="pre">displacement</span></code>.</p>
+<dd class="field-even"><p>The two displaced xyz’s, one for each direction (+/-) of the <code class="docutils literal notranslate"><span class="pre">displacement</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>tuple[dict, dict]</p>
