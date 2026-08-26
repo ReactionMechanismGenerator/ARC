@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.species.species module
 """
 
+import datetime
 import os
 import shutil
 import tempfile
@@ -37,6 +38,7 @@ from arc.species.species import (ARCSpecies,
                                  colliding_atoms,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 process_run_time,
                                  rmg_mol_from_dict_repr,
                                  rmg_mol_to_dict_repr,
                                  split_mol,
@@ -870,6 +872,56 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         restored = ARCSpecies(species_dict=spc_dict)
         self.assertTrue(restored.thermo_at_own_level)
         self.assertEqual(restored.adaptive_lot_n_heavy, 8)
+
+    def test_run_time_coercion(self):
+        """Test that run_time is coerced to a timedelta at construction and round-trips."""
+        # None stays None.
+        spc_none = ARCSpecies(label='x', smiles='C')
+        self.assertIsNone(spc_none.run_time)
+
+        # A plain number is interpreted as seconds and coerced to a timedelta.
+        spc = ARCSpecies(label='x', smiles='C', run_time=12.5)
+        self.assertEqual(spc.run_time, datetime.timedelta(seconds=12.5))
+        restored = ARCSpecies(species_dict=spc.as_dict())
+        self.assertEqual(restored.run_time, datetime.timedelta(seconds=12.5))
+
+        # An int is likewise seconds.
+        self.assertEqual(ARCSpecies(label='x', smiles='C', run_time=90).run_time,
+                         datetime.timedelta(seconds=90))
+
+        # A timedelta is stored unchanged.
+        td = datetime.timedelta(hours=1, seconds=5)
+        self.assertEqual(ARCSpecies(label='x', smiles='C', run_time=td).run_time, td)
+
+        # An unacceptable type raises immediately at construction.
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='x', smiles='C', run_time='12.5')
+        self.assertIn('run_time', str(cm.exception))
+        self.assertIn('str', str(cm.exception))
+
+        # A boolean is a caller mistake, not 1 second.
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='x', smiles='C', run_time=True)
+
+        # A non-finite number cannot be a duration.
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='x', smiles='C', run_time=float('inf'))
+        self.assertIn('finite', str(cm.exception))
+
+    def test_process_run_time(self):
+        """Test the process_run_time() coercion helper directly."""
+        self.assertIsNone(process_run_time(None))
+        self.assertEqual(process_run_time(12.5), datetime.timedelta(seconds=12.5))
+        self.assertEqual(process_run_time(90), datetime.timedelta(seconds=90))
+        td = datetime.timedelta(minutes=3)
+        self.assertIs(process_run_time(td), td)
+        with self.assertRaises(SpeciesError):
+            process_run_time('12.5')
+        with self.assertRaises(SpeciesError):
+            process_run_time(True)
+        for non_finite in [float('inf'), float('-inf'), float('nan')]:
+            with self.assertRaises(SpeciesError):
+                process_run_time(non_finite)
 
     def test_from_dict(self):
         """Test Species.from_dict()"""
