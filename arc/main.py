@@ -673,6 +673,9 @@ class ARC(object):
     def save_project_info_file(self):
         """
         Save a project info file.
+
+        Species that are absent from ``self.output`` (e.g., an IRC species deleted mid-run)
+        are logged and are not listed in the info file nor in the accompanying YAML file.
         """
         self.execution_time = time_lapse(t0=self.t0)
         path = os.path.join(self.project_directory, f'{self.project}.info')
@@ -706,7 +709,13 @@ class ARC(object):
             txt += 'NOT using bond additivity corrections for thermo\n'
         txt += f'\nUsing the following ESS settings: {self.ess_settings}\n'
         txt += '\nConsidered the following species and TSs:\n'
+        unreported_labels = [species.label for species in self.species if species.label not in self.output]
+        if unreported_labels:
+            logger.warning(f'The following species are missing from the output dictionary and will not be '
+                           f'reported in {self.project}.info nor in {self.project}_info.yml: {unreported_labels}')
         for species in self.species:
+            if species.label not in self.output:
+                continue
             descriptor = 'TS' if species.is_ts else 'Species'
             failed = '' if self.output[species.label]['convergence'] else ' (Failed!)'
             txt += f'{descriptor} {species.label}{failed} (run time: {species.run_time})\n'
@@ -727,7 +736,7 @@ class ARC(object):
         if os.path.exists(path):
             os.remove(path)
         for species in self.species:
-            if not species.is_ts:
+            if not species.is_ts and species.label in self.output:
                 spc_dict = dict()
                 spc_dict['label'] = species.label
                 spc_dict['success'] = self.output[species.label]['convergence']
