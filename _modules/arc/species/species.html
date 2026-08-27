@@ -102,7 +102,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">isclose</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">isclose</span><span class="p">,</span> <span class="n">isfinite</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">arc.molecule.element</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">elements</span>
@@ -224,7 +224,8 @@
 <span class="sd">        rxn_index (int, optional): The reaction index which is the respective key to the Scheduler rxn_dict.</span>
 <span class="sd">        external_symmetry (int, optional): The external symmetry of the species (not including rotor symmetries).</span>
 <span class="sd">        optical_isomers (int, optional): Whether (=2) or not (=1) the species has chiral center/s.</span>
-<span class="sd">        run_time (timedelta, optional): Overall species execution time.</span>
+<span class="sd">        run_time (timedelta | int | float, optional): Overall species execution time,</span>
+<span class="sd">                                                     an ``int``/``float`` is interpreted as seconds.</span>
 <span class="sd">        checkfile (str, optional): The local path to the latest checkfile by Gaussian for the species.</span>
 <span class="sd">        number_of_radicals (int, optional): The number of radicals (inputted by the user, ARC won't attempt to determine</span>
 <span class="sd">                                            it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,</span>
@@ -436,7 +437,7 @@
                  <span class="n">number_of_radicals</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">optical_isomers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">preserve_param_in_scan</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">run_time</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">run_time</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">rxn_label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">rxn_index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">smiles</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">''</span><span class="p">,</span>
@@ -475,7 +476,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">active</span> <span class="o">=</span> <span class="n">active</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">optical_isomers</span> <span class="o">=</span> <span class="n">optical_isomers</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">charge</span> <span class="o">=</span> <span class="n">charge</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">run_time</span> <span class="o">=</span> <span class="n">run_time</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_time</span> <span class="o">=</span> <span class="n">process_run_time</span><span class="p">(</span><span class="n">run_time</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">checkfile</span> <span class="o">=</span> <span class="n">checkfile</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">transport_data</span> <span class="o">=</span> <span class="n">TransportData</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">yml_path</span> <span class="o">=</span> <span class="n">yml_path</span>
@@ -979,7 +980,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'label'</span><span class="p">]</span>
         <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="s1">'All species must have a label'</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">run_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="n">species_dict</span><span class="p">[</span><span class="s1">'run_time'</span><span class="p">])</span> <span class="k">if</span> <span class="s1">'run_time'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">run_time</span> <span class="o">=</span> <span class="n">process_run_time</span><span class="p">(</span><span class="n">species_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'run_time'</span><span class="p">))</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">original_label</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'original_label'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'original_label'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">t1</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'t1'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'t1'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">e_elect</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'e_elect'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'e_elect'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
@@ -3184,6 +3185,37 @@
 <span class="sd">        """</span>
         <span class="k">return</span> <span class="p">(</span><span class="n">TransportData</span><span class="p">,</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shapeIndex</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dipoleMoment</span><span class="p">,</span>
                                 <span class="bp">self</span><span class="o">.</span><span class="n">polarizability</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rotrelaxcollnum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">comment</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="process_run_time">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.process_run_time">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">process_run_time</span><span class="p">(</span><span class="n">run_time</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Coerce a ``run_time`` value to a ``datetime.timedelta`` at the point it enters an ARCSpecies.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        run_time (datetime.timedelta | int | float | None): The overall species execution time.</span>
+<span class="sd">            ``None`` stays ``None``; a ``timedelta`` is returned unchanged; an ``int``/``float`` is</span>
+<span class="sd">            interpreted as a number of seconds (the convention used by ``as_dict``/``from_dict``).</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        SpeciesError: If ``run_time`` is a bool, a non-finite number, or any type other than the ones</span>
+<span class="sd">                      above, so a caller mistake fails loudly at construction rather than silently at</span>
+<span class="sd">                      serialization.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        datetime.timedelta | None: The normalized run time.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">run_time</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">run_time</span><span class="p">,</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">run_time</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">run_time</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">run_time</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="n">SpeciesError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'run_time must be a datetime.timedelta, an int/float number of seconds, '</span>
+                           <span class="sa">f</span><span class="s1">'or None, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">run_time</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">run_time</span><span class="si">!r}</span><span class="s1">'</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">isfinite</span><span class="p">(</span><span class="n">run_time</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">SpeciesError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'run_time must be a finite number of seconds, got </span><span class="si">{</span><span class="n">run_time</span><span class="si">!r}</span><span class="s1">'</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="n">run_time</span><span class="p">)</span></div>
 
 
 

@@ -230,6 +230,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.determine_rotor_symmetry"><code class="docutils literal notranslate"><span class="pre">determine_rotor_symmetry()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.determine_rotor_type"><code class="docutils literal notranslate"><span class="pre">determine_rotor_type()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.enumerate_bonds"><code class="docutils literal notranslate"><span class="pre">enumerate_bonds()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.species.process_run_time"><code class="docutils literal notranslate"><span class="pre">process_run_time()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.rmg_mol_from_dict_repr"><code class="docutils literal notranslate"><span class="pre">rmg_mol_from_dict_repr()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.rmg_mol_to_dict_repr"><code class="docutils literal notranslate"><span class="pre">rmg_mol_to_dict_repr()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.split_mol"><code class="docutils literal notranslate"><span class="pre">split_mol()</span></code></a></li>
@@ -358,7 +359,8 @@ reaction-consistent (coarser) level and no copy is made.</p></li>
 <li><p><strong>rxn_index</strong> (<em>int</em><em>, </em><em>optional</em>) – The reaction index which is the respective key to the Scheduler rxn_dict.</p></li>
 <li><p><strong>external_symmetry</strong> (<em>int</em><em>, </em><em>optional</em>) – The external symmetry of the species (not including rotor symmetries).</p></li>
 <li><p><strong>optical_isomers</strong> (<em>int</em><em>, </em><em>optional</em>) – Whether (=2) or not (=1) the species has chiral center/s.</p></li>
-<li><p><strong>run_time</strong> (<em>timedelta</em><em>, </em><em>optional</em>) – Overall species execution time.</p></li>
+<li><p><strong>run_time</strong> (<em>timedelta</em><em> | </em><em>int</em><em> | </em><em>float</em><em>, </em><em>optional</em>) – Overall species execution time,
+an <code class="docutils literal notranslate"><span class="pre">int</span></code>/<code class="docutils literal notranslate"><span class="pre">float</span></code> is interpreted as seconds.</p></li>
 <li><p><strong>checkfile</strong> (<em>str</em><em>, </em><em>optional</em>) – The local path to the latest checkfile by Gaussian for the species.</p></li>
 <li><p><strong>number_of_radicals</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of radicals (inputted by the user, ARC won’t attempt to determine
 it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
@@ -2478,6 +2480,30 @@ is aromatic), since we don’t have implementation for aromatic bond additivity 
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.species.process_run_time">
+<span class="sig-prename descclassname"><span class="pre">arc.species.species.</span></span><span class="sig-name descname"><span class="pre">process_run_time</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">run_time</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#process_run_time"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.process_run_time" title="Link to this definition"></a></dt>
+<dd><p>Coerce a <code class="docutils literal notranslate"><span class="pre">run_time</span></code> value to a <code class="docutils literal notranslate"><span class="pre">datetime.timedelta</span></code> at the point it enters an ARCSpecies.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>run_time</strong> (<em>datetime.timedelta</em><em> | </em><em>int</em><em> | </em><em>float</em><em> | </em><em>None</em>) – The overall species execution time.
+<code class="docutils literal notranslate"><span class="pre">None</span></code> stays <code class="docutils literal notranslate"><span class="pre">None</span></code>; a <code class="docutils literal notranslate"><span class="pre">timedelta</span></code> is returned unchanged; an <code class="docutils literal notranslate"><span class="pre">int</span></code>/<code class="docutils literal notranslate"><span class="pre">float</span></code> is
+interpreted as a number of seconds (the convention used by <code class="docutils literal notranslate"><span class="pre">as_dict</span></code>/<code class="docutils literal notranslate"><span class="pre">from_dict</span></code>).</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>SpeciesError</strong> – If <code class="docutils literal notranslate"><span class="pre">run_time</span></code> is a bool, a non-finite number, or any type other than the ones
+    above, so a caller mistake fails loudly at construction rather than silently at
+    serialization.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The normalized run time.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>datetime.timedelta | None</p>
 </dd>
 </dl>
 </dd></dl>
