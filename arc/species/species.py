@@ -6,7 +6,7 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 import datetime
 import numpy as np
 import os
-from math import isclose
+from math import isclose, isfinite
 from typing import Any
 
 import arc.molecule.element as elements
@@ -126,7 +126,8 @@ class ARCSpecies(object):
         rxn_index (int, optional): The reaction index which is the respective key to the Scheduler rxn_dict.
         external_symmetry (int, optional): The external symmetry of the species (not including rotor symmetries).
         optical_isomers (int, optional): Whether (=2) or not (=1) the species has chiral center/s.
-        run_time (timedelta, optional): Overall species execution time.
+        run_time (timedelta | int | float, optional): Overall species execution time,
+                                                     an ``int``/``float`` is interpreted as seconds.
         checkfile (str, optional): The local path to the latest checkfile by Gaussian for the species.
         number_of_radicals (int, optional): The number of radicals (inputted by the user, ARC won't attempt to determine
                                             it). Defaults to None. Important, e.g., if a Species is a bi-rad singlet,
@@ -338,7 +339,7 @@ class ARCSpecies(object):
                  number_of_radicals: int | None = None,
                  optical_isomers: int | None = None,
                  preserve_param_in_scan: list | None = None,
-                 run_time: datetime.timedelta | None = None,
+                 run_time: datetime.timedelta | int | float | None = None,
                  rxn_label: str | None = None,
                  rxn_index: int | None = None,
                  smiles: str = '',
@@ -377,7 +378,7 @@ class ARCSpecies(object):
         self.active = active
         self.optical_isomers = optical_isomers
         self.charge = charge
-        self.run_time = run_time
+        self.run_time = process_run_time(run_time)
         self.checkfile = checkfile
         self.transport_data = TransportData()
         self.yml_path = yml_path
@@ -870,7 +871,7 @@ class ARCSpecies(object):
             self.label = species_dict['label']
         except KeyError:
             raise InputError('All species must have a label')
-        self.run_time = datetime.timedelta(seconds=species_dict['run_time']) if 'run_time' in species_dict else None
+        self.run_time = process_run_time(species_dict.get('run_time'))
         self.original_label = species_dict['original_label'] if 'original_label' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
@@ -2936,6 +2937,34 @@ class TransportData(object):
         """
         return (TransportData, (self.shapeIndex, self.epsilon, self.sigma, self.dipoleMoment,
                                 self.polarizability, self.rotrelaxcollnum, self.comment))
+
+
+def process_run_time(run_time: datetime.timedelta | int | float | None,
+                     ) -> datetime.timedelta | None:
+    """
+    Coerce a ``run_time`` value to a ``datetime.timedelta`` at the point it enters an ARCSpecies.
+
+    Args:
+        run_time (datetime.timedelta | int | float | None): The overall species execution time.
+            ``None`` stays ``None``; a ``timedelta`` is returned unchanged; an ``int``/``float`` is
+            interpreted as a number of seconds (the convention used by ``as_dict``/``from_dict``).
+
+    Raises:
+        SpeciesError: If ``run_time`` is a bool, a non-finite number, or any type other than the ones
+                      above, so a caller mistake fails loudly at construction rather than silently at
+                      serialization.
+
+    Returns:
+        datetime.timedelta | None: The normalized run time.
+    """
+    if run_time is None or isinstance(run_time, datetime.timedelta):
+        return run_time
+    if isinstance(run_time, bool) or not isinstance(run_time, (int, float)):
+        raise SpeciesError(f'run_time must be a datetime.timedelta, an int/float number of seconds, '
+                           f'or None, got {type(run_time).__name__}: {run_time!r}')
+    if not isfinite(run_time):
+        raise SpeciesError(f'run_time must be a finite number of seconds, got {run_time!r}')
+    return datetime.timedelta(seconds=run_time)
 
 
 def determine_occ(xyz, charge):
