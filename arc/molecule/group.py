@@ -1041,7 +1041,7 @@ class GroupBond(Edge):
         in bond order. `order` is normally 1 or -1, but can be any value
         """
         new_order = [value + order for value in self.order]
-        if any([value < 0 or value > 4 for value in new_order]):
+        if any([new_value < 0 or new_value > 4 for new_value in new_order]):
             raise ActionError('Unable to update Bond due to CHANGE_BOND action: '
                               'Invalid resulting order "{0}".'.format(new_order))
         # Change any modified benzene orders to the appropriate stable order
