@@ -498,8 +498,12 @@ class TestParser(unittest.TestCase):
         self.assertIn(missing_path, warning)
         self.assertIn('TS', warning)
 
+    def test_parse_orca_normal_mode_displacement(self):
+        """Test parsing Cartesian normal-mode displacements from an Orca output."""
         path = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'n_cetane', 'output.log')
         freqs, normal_modes_disp = parser.parse_normal_mode_displacement(log_file_path=path)
+        parsed_freqs = parser.parse_frequencies(log_file_path=path)
+        np.testing.assert_array_equal(freqs, parsed_freqs)
         self.assertEqual(len(freqs), 144)
         expected_freqs = np.array(
             [-33.01, 16.27, 25.64, 39.59, 50.28, 52.63, 66.15, 89.35, 94.27, 102.74, 121.39, 131.04, 138.98,
@@ -522,6 +526,14 @@ class TestParser(unittest.TestCase):
         expected_r1_imaginary_mode_last_atom = np.array([-0.000219, 0.135443, -0.044644], np.float64)
         np.testing.assert_almost_equal(normal_modes_disp[0][0], expected_r1_imaginary_mode_first_atom)
         np.testing.assert_almost_equal(normal_modes_disp[0][-1], expected_r1_imaginary_mode_last_atom)
+
+        xyz = parser.parse_geometry(log_file_path=path)
+        masses = np.array(
+            [atomic_masses[atomic_numbers[symbol]] for symbol in xyz['symbols']],
+            dtype=np.float64,
+        )
+        mass_weighted_sum = (masses[:, np.newaxis] * normal_modes_disp[0]).sum(axis=0)
+        np.testing.assert_allclose(mass_weighted_sum, np.zeros(3), atol=1e-3)
 
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""

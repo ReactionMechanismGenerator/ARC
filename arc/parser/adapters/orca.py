@@ -111,9 +111,12 @@ class OrcaParser(ESSAdapter, ABC):
                     return xyz_from_data(coords=np.array(coords), numbers=np.array(numbers))
         return None
 
-    def parse_frequencies(self) -> np.ndarray | None:
+    def _parse_frequencies(self, include_zeros: bool = False) -> np.ndarray | None:
         """
         Parse the frequencies from a freq job output file.
+
+        Args:
+            include_zeros (bool, optional): Whether to retain exact-zero translation and rotation modes.
 
         Returns: np.ndarray | None
             The parsed frequencies (in cm^-1).
@@ -138,8 +141,8 @@ class OrcaParser(ESSAdapter, ABC):
                     if len(parts) >= 2 and parts[0].rstrip(':').isdigit():
                         try:
                             freq = float(parts[1])
-                            # Keep negative freqs (imaginary modes), drop exact zeros (translations/rotations).
-                            if abs(freq) > 0.0:
+                            # Keep negative freqs (imaginary modes), optionally drop exact-zero translations/rotations.
+                            if include_zeros or abs(freq) > 0.0:
                                 frequencies.append(freq)
                             found_freqs = True
                         except ValueError:
@@ -153,6 +156,15 @@ class OrcaParser(ESSAdapter, ABC):
 
         return np.array(frequencies, dtype=np.float64) if frequencies else None
 
+    def parse_frequencies(self) -> np.ndarray | None:
+        """
+        Parse the nonzero frequencies from a freq job output file.
+
+        Returns: np.ndarray | None
+            The parsed nonzero frequencies (in cm^-1).
+        """
+        return self._parse_frequencies(include_zeros=False)
+
     def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
         Parse the frequencies and normal mode displacements from an Orca frequency job output file.
@@ -165,24 +177,8 @@ class OrcaParser(ESSAdapter, ABC):
         with open(self.log_file_path, 'r') as f:
             lines = f.readlines()
 
-        all_freqs = list()
-        for i, line in enumerate(lines):
-            if 'VIBRATIONAL FREQUENCIES' in line:
-                j = i + 1
-                while j < len(lines) and 'cm**-1' not in lines[j]:
-                    j += 1
-                while j < len(lines):
-                    stripped = lines[j].strip()
-                    if not stripped:
-                        break
-                    parts = stripped.replace(':', ' ').split()
-                    try:
-                        all_freqs.append(float(parts[1]))
-                    except (IndexError, ValueError):
-                        break
-                    j += 1
-                break
-        if not all_freqs:
+        all_freqs = self._parse_frequencies(include_zeros=True)
+        if all_freqs is None:
             return None, None
         n_dof = len(all_freqs)
 
