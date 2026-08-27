@@ -8,6 +8,7 @@ This module contains unit tests of the arc.reaction.reaction module
 from itertools import permutations
 import os
 import shutil
+import tempfile
 import time
 import unittest
 
@@ -1139,7 +1140,9 @@ H       1.12853146   -0.86793870    0.06973060"""
 
     def test_load_ts_xyz_user_guess_from_files(self):
         """Test various loading a reaction and populating the TS ARCSpecies with user xyz guesses from files"""
-        project_directory = os.path.join(ARC_TESTING_PATH, 'reactions', 'methanoate_hydrolysis')
+        project_directory = os.path.join(tempfile.mkdtemp(prefix='arc_test_reaction_'), 'methanoate_hydrolysis')
+        self.addCleanup(shutil.rmtree, os.path.dirname(project_directory), ignore_errors=True)
+        shutil.copytree(os.path.join(ARC_TESTING_PATH, 'reactions', 'methanoate_hydrolysis'), project_directory)
         input_dict = read_yaml_file(path=os.path.join(project_directory, 'input_1.yml'))
         input_dict['project_directory'] = project_directory
         arc_object = ARC(**input_dict)
@@ -1215,15 +1218,6 @@ H       1.12853146   -0.86793870    0.06973060"""
     @classmethod
     def tearDownClass(cls):
         """A function that is run ONCE after all unit tests in this class."""
-        project_directory = os.path.join(ARC_TESTING_PATH, 'reactions', 'methanoate_hydrolysis')
-        sub_folders = ['log_and_restart_archive', 'output']
-        files_to_remove = ['arc.log']
-        for sub_folder in sub_folders:
-            shutil.rmtree(os.path.join(project_directory, sub_folder), ignore_errors=True)
-        for file_path in files_to_remove:
-            full_file_path = os.path.join(project_directory, file_path)
-            if os.path.isfile(full_file_path):
-                os.remove(full_file_path)
         file_paths = [os.path.join(ARC_PATH, 'arc', 'reaction', 'nul'), os.path.join(ARC_PATH, 'arc', 'reaction', 'run.out')]
         for file_path in file_paths:
             if os.path.isfile(file_path):

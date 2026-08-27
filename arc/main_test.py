@@ -11,9 +11,9 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from unittest import mock
+import unittest.mock as mock
 
-from arc.common import ARC_PATH, get_logger
+from arc.common import get_logger
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.job.adapters.gaussian import GaussianAdapter
@@ -36,6 +36,8 @@ class TestARC(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_main_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
         cls.servers = servers.keys()
         cls.job_types1 = {'conf_opt': True,
                           'opt': True,
@@ -48,12 +50,6 @@ class TestARC(unittest.TestCase):
                           'lennard_jones': False,
                           'bde': True,
                           }
-        projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
-                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            if os.path.isdir(project_directory):
-                shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_as_dict(self):
         """Test the as_dict() method of ARC"""
@@ -62,6 +58,7 @@ class TestARC(unittest.TestCase):
                           compute_thermo=False,
                           )
         arc0 = ARC(project='arc_test',
+                   project_directory=os.path.join(self.scratch_dir, 'arc_test'),
                    job_types=self.job_types1,
                    species=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
@@ -178,10 +175,12 @@ class TestARC(unittest.TestCase):
                                      'optical_isomers': 1,
                                      'rotors_dict': {},
                                      'xyzs': []}],
-                        'project_directory': os.path.join(ARC_PATH, 'Projects',
-                                                          'arc_project_for_testing_delete_after_usage_test_from_dict'),
+                        'project_directory': os.path.join(
+                            self.scratch_dir, 'arc_project_for_testing_delete_after_usage_test_from_dict'),
                         }
-        arc1 = ARC(project='wrong', freq_scale_factor=0.95)
+        arc1 = ARC(project='wrong',
+                   project_directory=os.path.join(self.scratch_dir, 'wrong'),
+                   freq_scale_factor=0.95)
         self.assertEqual(arc1.freq_scale_factor, 0.95)  # user input
         arc2 = ARC(**restart_dict)
         self.assertEqual(arc2.freq_scale_factor, 0.96)  # loaded from the restart dict
@@ -199,7 +198,7 @@ class TestARC(unittest.TestCase):
         """Test the from_dict() method of ARC"""
         restart_dict = {'specific_job_type': 'bde',
                         'project': 'unit_test_specific_job',
-                        'project_directory': os.path.join(ARC_PATH, 'Projects', 'unit_test_specific_job'),
+                        'project_directory': os.path.join(self.scratch_dir, 'unit_test_specific_job'),
                         }
         arc1 = ARC(**restart_dict)
         job_type_expected = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
@@ -252,21 +251,27 @@ class TestARC(unittest.TestCase):
 
     def test_determine_model_chemistry_and_freq_scale_factor(self):
         """Test determining the model chemistry and the frequency scaling factor"""
-        arc0 = ARC(project='arc_model_chemistry_test', level_of_theory='CBS-QB3')
+        arc0 = ARC(project='arc_model_chemistry_test',
+                   project_directory=os.path.join(self.scratch_dir, 'arc_model_chemistry_test'),
+                   level_of_theory='CBS-QB3')
         self.assertEqual(str(arc0.arkane_level_of_theory), "cbs-qb3, software: gaussian")
         self.assertEqual(arc0.freq_scale_factor, 1.004)
 
-        arc1 = ARC(project='arc_model_chemistry_test', level_of_theory='cbs-qb3-paraskevas')
+        arc1 = ARC(project='arc_model_chemistry_test',
+                   project_directory=os.path.join(self.scratch_dir, 'arc_model_chemistry_test'),
+                   level_of_theory='cbs-qb3-paraskevas')
         self.assertEqual(str(arc1.arkane_level_of_theory), 'cbs-qb3-paraskevas, software: gaussian')
         self.assertEqual(arc1.freq_scale_factor, 1.004)
         self.assertEqual(arc1.bac_type, 'p')
 
         arc2 = ARC(project='arc_model_chemistry_test',
+                   project_directory=os.path.join(self.scratch_dir, 'arc_model_chemistry_test'),
                    level_of_theory='ccsd(t)-f12/cc-pvtz-f12//m062x/cc-pvtz')
         self.assertEqual(str(arc2.arkane_level_of_theory), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro')
         self.assertEqual(arc2.freq_scale_factor, 0.955)
 
         arc3 = ARC(project='arc_model_chemistry_test',
+                   project_directory=os.path.join(self.scratch_dir, 'arc_model_chemistry_test'),
                    sp_level='ccsd(t)-f12/cc-pvtz-f12', opt_level='wb97xd/def2tzvp')
         self.assertEqual(str(arc3.arkane_level_of_theory), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro')
         self.assertEqual(arc3.freq_scale_factor, 0.988)
@@ -275,33 +280,46 @@ class TestARC(unittest.TestCase):
         """Test determining the model chemistry specification dictionary for job types"""
         # Test conflicted inputs: specify both level_of_theory and composite_method
         with self.assertRaises(InputError):
-            ARC(project='test', level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97x-d/aug-cc-pvtz',
+            ARC(project='test',
+                project_directory=os.path.join(self.scratch_dir, 'test'),
+                level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97x-d/aug-cc-pvtz',
                 composite_method='cbs-qb3')
 
         # Test illegal level of theory specification (method contains multiple slashes)
         with self.assertRaises(ValueError):
-            ARC(project='test', level_of_theory='dlpno-mp2-f12/D/cc-pVDZ(fi/sf/fw)//b3lyp/G/def2svp')
+            ARC(project='test',
+                project_directory=os.path.join(self.scratch_dir, 'test'),
+                level_of_theory='dlpno-mp2-f12/D/cc-pVDZ(fi/sf/fw)//b3lyp/G/def2svp')
 
         # Test illegal job level specification (method contains multiple slashes)
         with self.assertRaises(ValueError):
-            ARC(project='test', opt_level='b3lyp/d/def2tzvp/def2tzvp/c')
+            ARC(project='test',
+                project_directory=os.path.join(self.scratch_dir, 'test'),
+                opt_level='b3lyp/d/def2tzvp/def2tzvp/c')
 
         # Test illegal job level specification (method contains empty space)
         with self.assertRaises(ValueError):
-            ARC(project='test', opt_level='b3lyp/def2tzvp def2tzvp/c')
+            ARC(project='test',
+                project_directory=os.path.join(self.scratch_dir, 'test'),
+                opt_level='b3lyp/def2tzvp def2tzvp/c')
 
         # Test direct job level specification conflicts with level of theory specification
         with self.assertRaises(InputError):
-            ARC(project='test', level_of_theory='b3lyp/sto-3g', opt_level='wb97xd/def2tzvp')
+            ARC(project='test',
+                project_directory=os.path.join(self.scratch_dir, 'test'),
+                level_of_theory='b3lyp/sto-3g', opt_level='wb97xd/def2tzvp')
 
         # Test deduce levels from default method from settings.py
-        arc1 = ARC(project='test')
+        arc1 = ARC(project='test',
+                   project_directory=os.path.join(self.scratch_dir, 'test'))
         self.assertEqual(arc1.opt_level.simple(), 'wb97xd/def2tzvp')
         self.assertEqual(arc1.freq_level.simple(), 'wb97xd/def2tzvp')
         self.assertEqual(arc1.sp_level.simple(), 'ccsd(t)-f12/cc-pvtz-f12')
 
         # Test deduce levels from composite method specification
-        arc2 = ARC(project='test', composite_method='cbs-qb3')
+        arc2 = ARC(project='test',
+                   project_directory=os.path.join(self.scratch_dir, 'test'),
+                   composite_method='cbs-qb3')
         self.assertIsNotNone(arc2.opt_level)
         self.assertIsNone(arc2.sp_level)
         self.assertIsNone(arc2.orbitals_level)
@@ -310,35 +328,47 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc2.composite_method.simple(), 'cbs-qb3')
 
         # Test deduce levels from level of theory specification
-        arc3 = ARC(project='test', level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97m-v/def2tzvpd', freq_scale_factor=1)
+        arc3 = ARC(project='test',
+                   project_directory=os.path.join(self.scratch_dir, 'test'),
+                   level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97m-v/def2tzvpd', freq_scale_factor=1)
         self.assertEqual(arc3.opt_level.simple(), 'wb97m-v/def2tzvpd')
         self.assertEqual(arc3.freq_level.simple(), 'wb97m-v/def2tzvpd')
         self.assertEqual(arc3.sp_level.simple(), 'ccsd(t)-f12/cc-pvtz-f12')
         self.assertEqual(arc3.scan_level.simple(), 'wb97m-v/def2tzvpd')
         self.assertIsNone(arc3.orbitals_level)
 
-        arc4 = ARC(project='test', opt_level='wb97x-d3/6-311++G(3df,3pd)', freq_level='m062x/def2-tzvpp',
+        arc4 = ARC(project='test',
+                   project_directory=os.path.join(self.scratch_dir, 'test'),
+                   opt_level='wb97x-d3/6-311++G(3df,3pd)', freq_level='m062x/def2-tzvpp',
                    sp_level='ccsd(t)f12/aug-cc-pvqz', calc_freq_factor=False, compute_thermo=False)
         self.assertEqual(arc4.opt_level.simple(), 'wb97x-d3/6-311++g(3df,3pd)')
         self.assertEqual(arc4.freq_level.simple(), 'm062x/def2-tzvpp')
         self.assertEqual(arc4.sp_level.simple(), 'ccsd(t)f12/aug-cc-pvqz')
 
         # Test deduce freq level from opt level
-        arc7 = ARC(project='test', opt_level='wb97xd/aug-cc-pvtz', calc_freq_factor=False)
+        arc7 = ARC(project='test',
+                   project_directory=os.path.join(self.scratch_dir, 'test'),
+                   opt_level='wb97xd/aug-cc-pvtz', calc_freq_factor=False)
         self.assertEqual(arc7.opt_level.simple(), 'wb97xd/aug-cc-pvtz')
         self.assertEqual(arc7.freq_level.simple(), 'wb97xd/aug-cc-pvtz')
 
         # Test a level not supported by Arkane does not raise error if compute_thermo is False
-        arc8 = ARC(project='test', sp_level='method/unsupported', calc_freq_factor=False, compute_thermo=False)
+        arc8 = ARC(project='test',
+                   project_directory=os.path.join(self.scratch_dir, 'test'),
+                   sp_level='method/unsupported', calc_freq_factor=False, compute_thermo=False)
         self.assertEqual(arc8.sp_level.simple(), 'method/unsupported')
         self.assertEqual(arc8.freq_level.simple(), 'wb97xd/def2tzvp')
 
         # Test that a level not supported by Arkane does raise an error if compute_thermo is True (default)
         with self.assertRaises(ValueError):
-            ARC(project='test', sp_level='method/unsupported', calc_freq_factor=False)
+            ARC(project='test',
+                project_directory=os.path.join(self.scratch_dir, 'test'),
+                sp_level='method/unsupported', calc_freq_factor=False)
 
         # Test dictionary format specification with auxiliary basis and DFT dispersion
-        arc9 = ARC(project='test', opt_level={},
+        arc9 = ARC(project='test',
+                   project_directory=os.path.join(self.scratch_dir, 'test'),
+                   opt_level={},
                    freq_level={'method': 'B3LYP/G', 'basis': 'cc-pVDZ(fi/sf/fw)', 'auxiliary_basis': 'def2-svp/C',
                                'dispersion': 'DEF2-tzvp/c'},
                    sp_level={'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
@@ -352,33 +382,43 @@ class TestARC(unittest.TestCase):
                          'cabs: cc-pvtz-f12-cabs, software: orca')
 
         # Test using default frequency and orbital level for composite job, also forbid rotors job
-        arc10 = ARC(project='test', composite_method='cbs-qb3', calc_freq_factor=False,
+        arc10 = ARC(project='test',
+                    project_directory=os.path.join(self.scratch_dir, 'test'),
+                    composite_method='cbs-qb3', calc_freq_factor=False,
                     job_types={'rotors': False, 'orbitals': True})
         self.assertEqual(arc10.freq_level.simple(), 'b3lyp/cbsb7')
         self.assertIsNone(arc10.scan_level)
         self.assertEqual(arc10.orbitals_level.simple(), 'b3lyp/cbsb7')
 
         # Test using specified frequency, scan, and orbital for composite job
-        arc11 = ARC(project='test', composite_method='cbs-qb3', freq_level='wb97xd/6-311g', scan_level='apfd/def2svp',
+        arc11 = ARC(project='test',
+                    project_directory=os.path.join(self.scratch_dir, 'test'),
+                    composite_method='cbs-qb3', freq_level='wb97xd/6-311g', scan_level='apfd/def2svp',
                     orbitals_level='hf/sto-3g', job_types={'orbitals': True}, calc_freq_factor=False)
         self.assertEqual(arc11.scan_level.simple(), 'apfd/def2svp')
         self.assertEqual(arc11.freq_level.simple(), 'wb97xd/6-311g')
         self.assertEqual(arc11.orbitals_level.simple(), 'hf/sto-3g')
 
         # Test using default frequency and orbital level for job specified from level of theory, also forbid rotors job
-        arc12 = ARC(project='test', level_of_theory='b3lyp/sto-3g', calc_freq_factor=False,
+        arc12 = ARC(project='test',
+                    project_directory=os.path.join(self.scratch_dir, 'test'),
+                    level_of_theory='b3lyp/sto-3g', calc_freq_factor=False,
                     job_types={'rotors': False, 'orbitals': True}, compute_thermo=False)
         self.assertIsNone(arc12.scan_level)
         self.assertEqual(arc12.freq_level.simple(), 'b3lyp/sto-3g')
         self.assertEqual(arc12.orbitals_level.simple(), 'wb97x-d3/def2tzvp')
 
         # Test using specified scan level
-        arc13 = ARC(project='test', level_of_theory='b3lyp/sto-3g', calc_freq_factor=False, scan_level='apfd/def2svp',
+        arc13 = ARC(project='test',
+                    project_directory=os.path.join(self.scratch_dir, 'test'),
+                    level_of_theory='b3lyp/sto-3g', calc_freq_factor=False, scan_level='apfd/def2svp',
                     job_types={'rotors': True}, compute_thermo=False)
         self.assertEqual(arc13.scan_level.simple(), 'apfd/def2svp')
 
         # Test specifying semi-empirical and force-field methods using dictionary
-        arc14 = ARC(project='test', opt_level={'method': 'AM1'}, freq_level={'method': 'PM6'},
+        arc14 = ARC(project='test',
+                    project_directory=os.path.join(self.scratch_dir, 'test'),
+                    opt_level={'method': 'AM1'}, freq_level={'method': 'PM6'},
                     sp_level={'method': 'AMBER'}, calc_freq_factor=False, compute_thermo=False)
         self.assertEqual(arc14.opt_level.simple(), 'am1')
         self.assertEqual(arc14.freq_level.simple(), 'pm6')
@@ -386,6 +426,7 @@ class TestARC(unittest.TestCase):
 
         # Test explicit year in arkane_level_of_theory dictionary
         arc15 = ARC(project='test',
+                    project_directory=os.path.join(self.scratch_dir, 'test'),
                     sp_level='wb97xd/def2tzvp',
                     opt_level='wb97xd/def2tzvp',
                     arkane_level_of_theory={'method': 'wb97xd', 'basis': 'def2tzvp', 'year': 2023},
@@ -395,6 +436,7 @@ class TestARC(unittest.TestCase):
 
         # Test warning when year is specified on sp_level instead of arkane_level_of_theory
         arc16 = ARC(project='test',
+                    project_directory=os.path.join(self.scratch_dir, 'test'),
                     sp_level={'method': 'wb97xd', 'basis': 'def2tzvp', 'year': 2023},
                     opt_level='wb97xd/def2tzvp',
                     calc_freq_factor=False, compute_thermo=False)
@@ -407,7 +449,9 @@ class TestARC(unittest.TestCase):
         spc0 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)
         spc1 = ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)
         spc2 = ARCSpecies(label='spc2', smiles='CC', compute_thermo=False)
-        arc0 = ARC(project='arc_test', job_types=self.job_types1, species=[spc0, spc1, spc2],
+        arc0 = ARC(project='arc_test',
+                   project_directory=os.path.join(self.scratch_dir, 'arc_test'),
+                   job_types=self.job_types1, species=[spc0, spc1, spc2],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         self.assertEqual(arc0.unique_species_labels, ['spc0', 'spc1', 'spc2'])
         spc3 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)
@@ -418,13 +462,17 @@ class TestARC(unittest.TestCase):
     def test_add_hydrogen_for_bde(self):
         """Test the add_hydrogen_for_bde method"""
         spc0 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)
-        arc0 = ARC(project='arc_test', job_types=self.job_types1, species=[spc0],
+        arc0 = ARC(project='arc_test',
+                   project_directory=os.path.join(self.scratch_dir, 'arc_test'),
+                   job_types=self.job_types1, species=[spc0],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc0.add_hydrogen_for_bde()
         self.assertEqual(len(arc0.species), 1)
 
         spc1 = ARCSpecies(label='spc1', smiles='CC', compute_thermo=False, bdes=['all_h'])
-        arc1 = ARC(project='arc_test', job_types=self.job_types1, species=[spc1],
+        arc1 = ARC(project='arc_test',
+                   project_directory=os.path.join(self.scratch_dir, 'arc_test'),
+                   job_types=self.job_types1, species=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc1.add_hydrogen_for_bde()
         self.assertEqual(len(arc1.species), 2)
@@ -461,7 +509,9 @@ class TestARC(unittest.TestCase):
         self.assertEqual(processed_2[(1, 'inf')][('sp',)].simple(), 'b3lyp/6-311+g(d,p)')
 
         # Restart round-trip: as_dict() must emit the list form and reproduce the same structure.
-        arc0 = ARC(project='adaptive_levels_test', adaptive_levels=adaptive_levels_1)
+        arc0 = ARC(project='adaptive_levels_test',
+                   project_directory=os.path.join(self.scratch_dir, 'adaptive_levels_test'),
+                   adaptive_levels=adaptive_levels_1)
         restart_levels = arc0.as_dict()['adaptive_levels']
         self.assertIsInstance(restart_levels, list)
         reprocessed = process_adaptive_levels(restart_levels)
@@ -506,16 +556,22 @@ class TestARC(unittest.TestCase):
         """
         Tests the process_level_of_theory function.
         """
-        arc0 = ARC(project='test_0', level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
+        arc0 = ARC(project='test_0',
+                   project_directory=os.path.join(self.scratch_dir, 'test_0'),
+                   level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
                    bac_type=None, freq_scale_factor=1)
-        arc1 = ARC(project='test_1', level_of_theory='wb97xd/6-311+g(2d,2p)',
+        arc1 = ARC(project='test_1',
+                   project_directory=os.path.join(self.scratch_dir, 'test_1'),
+                   level_of_theory='wb97xd/6-311+g(2d,2p)',
                    arkane_level_of_theory="b3lyp/6-311+g(3df,2p)",
                    bac_type=None,
                    freq_scale_factor=1,
                    job_types={"freq": True,
                               "sp": True,
                               "opt": False})
-        arc2 = ARC(project='test_2', sp_level='wb97xd/6-311+g(2d,2p)',
+        arc2 = ARC(project='test_2',
+                   project_directory=os.path.join(self.scratch_dir, 'test_2'),
+                   sp_level='wb97xd/6-311+g(2d,2p)',
                    opt_level='wb97xd/6-311+g(2d,2p)',
                    arkane_level_of_theory="b3lyp/6-311+g(3df,2p)",
                    bac_type=None,
@@ -523,7 +579,9 @@ class TestARC(unittest.TestCase):
                    job_types={"freq": True,
                               "sp": False,
                               "opt": False})
-        arc3 = ARC(project='test_3', sp_level='wb97xd/6-311+g(2d,2p)',
+        arc3 = ARC(project='test_3',
+                   project_directory=os.path.join(self.scratch_dir, 'test_3'),
+                   sp_level='wb97xd/6-311+g(2d,2p)',
                    opt_level='wb97xd/6-311+g(2d,2p)',
                    arkane_level_of_theory="b3lyp/6-311+g(3df,2p)",
                    bac_type=None,
@@ -546,24 +604,12 @@ class TestARC(unittest.TestCase):
                           )
         with self.assertRaises(InputError):
             arc0 = ARC(project='arc_test',
+                       project_directory=os.path.join(self.scratch_dir, 'arc_test'),
                        job_types=self.job_types1,
                        species=[spc1],
                        level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
                        ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
                        )
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
-        """
-        projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
-                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            if os.path.isdir(project_directory):
-                shutil.rmtree(project_directory, ignore_errors=True)
 
 
 class TestCheckFileCleanup(unittest.TestCase):
