@@ -464,6 +464,49 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                          'not a torsional mode (angles = 0.20, 13.03 degrees)')
         self.assertFalse(self.sched1.species_dict['CtripCO'].rotors_dict[0]['success'])
 
+    def test_set_scan_resolution(self):
+        """Test that set_scan_resolution() routes the run-level value only for scan jobs."""
+        # Absent a run-level value (default None), args are untouched: the settings default applies.
+        args = self.sched1.set_scan_resolution(args={'keyword': {}, 'block': {}}, job_type='scan')
+        self.assertNotIn('trsh', args)
+        sched = Scheduler(project='project_test_scan_res', ess_settings=self.ess_settings,
+                          species_list=[self.spc1], scan_level=Level(repr=default_levels_of_theory['scan']),
+                          project_directory=self.project_directory, testing=True, job_types=self.job_types1,
+                          rotor_scan_resolution=6.0)
+        self.assertEqual(sched.rotor_scan_resolution, 6.0)
+        # With a run-level value, a scan job receives it through args['trsh']['scan_res'].
+        args = sched.set_scan_resolution(args={'keyword': {}, 'block': {}}, job_type='scan')
+        self.assertEqual(args['trsh']['scan_res'], 6.0)
+        # Non-scan jobs are never affected.
+        args = sched.set_scan_resolution(args={'keyword': {}, 'block': {}}, job_type='opt')
+        self.assertNotIn('trsh', args)
+        # An explicit troubleshooting scan_res is never overridden.
+        args = sched.set_scan_resolution(args={'keyword': {}, 'block': {}, 'trsh': {'scan_res': 2.0}},
+                                         job_type='scan')
+        self.assertEqual(args['trsh']['scan_res'], 2.0)
+
+    def test_rotor_scan_resolution_reaches_scan_job(self):
+        """Test that a run-level rotor_scan_resolution reaches a real scan job's scan_res attribute."""
+        sched = Scheduler(project='project_test_scan_res_job', ess_settings=self.ess_settings,
+                          species_list=[self.spc1], scan_level=Level(repr=default_levels_of_theory['scan']),
+                          project_directory=self.project_directory, testing=True, job_types=self.job_types1,
+                          rotor_scan_resolution=6.0)
+        args = sched.set_scan_resolution(args={'keyword': {}, 'block': {}}, job_type='scan')
+        job = job_factory(job_adapter='gaussian', project='project_test_scan_res_job',
+                          ess_settings=self.ess_settings, species=[self.spc1], xyz=self.spc1.get_xyz(),
+                          job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0, args=args,
+                          level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
+                          project_directory=self.project_directory, job_num=201)
+        self.assertEqual(job.scan_res, 6.0)
+        # Absent the run-level value, the job falls back to the settings resolution (byte-identical).
+        args_default = self.sched1.set_scan_resolution(args={'keyword': {}, 'block': {}}, job_type='scan')
+        job_default = job_factory(job_adapter='gaussian', project='project_test_scan_res_job',
+                                  ess_settings=self.ess_settings, species=[self.spc1], xyz=self.spc1.get_xyz(),
+                                  job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0, args=args_default,
+                                  level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
+                                  project_directory=self.project_directory, job_num=202)
+        self.assertEqual(job_default.scan_res, settings['rotor_scan_resolution'])
+
     def test_deduce_job_adapter(self):
         """Test the deduce_job_adapter() method."""
         level_1 = Level(method='CBS-QB3')

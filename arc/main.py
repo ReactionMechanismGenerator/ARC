@@ -253,6 +253,7 @@ class ARC(object):
                  project: str | None = None,
                  project_directory: str | None = None,
                  reactions: list[ARCReaction] | None = None,
+                 rotor_scan_resolution: float | None = None,
                  running_jobs: dict | None = None,
                  scan_level: str | dict | Level | None = None,
                  sp_level: str | dict | Level | None = None,
@@ -311,6 +312,7 @@ class ARC(object):
         self.job_types = job_types or default_job_types
         self.job_types = initialize_job_types(job_types, specific_job_type=self.specific_job_type)
         self.bath_gas = bath_gas
+        self.rotor_scan_resolution = check_rotor_scan_resolution(rotor_scan_resolution)
         self.n_confs = n_confs
         self.e_confs = e_confs
         self.adaptive_levels = process_adaptive_levels(adaptive_levels)
@@ -503,6 +505,8 @@ class ARC(object):
             restart_dict['reactions'] = [rxn.as_dict() for rxn in self.reactions]
         if self.running_jobs:
             restart_dict['running_jobs'] = self.running_jobs
+        if self.rotor_scan_resolution is not None:
+            restart_dict['rotor_scan_resolution'] = self.rotor_scan_resolution
         if self.scan_level is not None and len(self.scan_level.method) \
                 and str(self.scan_level).split()[0] != default_levels_of_theory['scan']:
             restart_dict['scan_level'] = self.scan_level.as_dict() \
@@ -600,6 +604,7 @@ class ARC(object):
                                    dont_gen_confs=self.dont_gen_confs,
                                    trsh_ess_jobs=self.trsh_ess_jobs,
                                    trsh_rotors=self.trsh_rotors,
+                                   rotor_scan_resolution=self.rotor_scan_resolution,
                                    fine_only=self.fine_only,
                                    ts_adapters=self.ts_adapters,
                                    report_e_elect=self.report_e_elect,
@@ -1269,6 +1274,37 @@ class ARC(object):
             logger.debug(f'output dictionary successfully parsed:\n{self.output}')
         elif self.output is None:
             self.output = dict()
+
+
+def check_rotor_scan_resolution(rotor_scan_resolution: float | None) -> float | None:
+    """
+    Validate the user-facing ``rotor_scan_resolution`` input key (a 1D rotor scan degree increment).
+
+    A resolution coarser than 20 degrees is refused rather than warned: it yields fewer than 18
+    points per rotor, below which RMG-Py's Fourier fitter never runs and ``get_potential()`` reads
+    an uninitialised C double, so a coarse value is not a preference but a silent wrong answer.
+
+    Args:
+        rotor_scan_resolution (float | None): The requested rotor scan resolution in degrees,
+                                              or ``None`` to fall back to the settings default.
+
+    Returns: float | None
+        The validated resolution, or ``None`` if none was provided.
+    """
+    if rotor_scan_resolution is None:
+        return None
+    if isinstance(rotor_scan_resolution, bool) or not isinstance(rotor_scan_resolution, (int, float)):
+        raise InputError(f'The rotor_scan_resolution must be a number (e.g., 4.0), '
+                         f'got {rotor_scan_resolution} which is a {type(rotor_scan_resolution)}.')
+    if rotor_scan_resolution <= 0 or rotor_scan_resolution > 20:
+        raise InputError(f'The rotor_scan_resolution must be a positive value no coarser than 20 degrees '
+                         f'(coarser resolutions give fewer than 18 points per rotor, below which the '
+                         f'Fourier fit is invalid and returns a silent wrong answer). Got: {rotor_scan_resolution}')
+    if divmod(360, rotor_scan_resolution)[1]:
+        raise InputError(f'The rotor_scan_resolution must divide 360 evenly so a full rotor is an integer '
+                         f'number of steps. Got: {rotor_scan_resolution}, which leaves a remainder of '
+                         f'{divmod(360, rotor_scan_resolution)[1]}.')
+    return rotor_scan_resolution
 
 
 def process_adaptive_levels(adaptive_levels: list | None) -> dict | None:
