@@ -208,6 +208,20 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(error, "")
         self.assertEqual(line, "")
 
+        # test detection of a normally terminated Orca NEB-TS job.
+        # NEB logs switch to SOSCF right after the
+        # ***  Starting incremental Fock matrix formation  ***
+        # line, so the first SCF iteration energy is several lines further down, past a separator line
+        # that holds a single token. The SCF parser must skip such lines rather than fail on them.
+        path = os.path.join(ARC_TESTING_PATH, "neb", "neb_res.out")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="test", job_type="tsg", software="orca"
+        )
+        self.assertEqual(status, "done")
+        self.assertEqual(keywords, list())
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
+
         # test detection of SCF energy diverge issue
         path = os.path.join(self.base_path["orca"], "orca_scf_blow_up_error.log")
         status, keywords, error, line = trsh.determine_ess_status(
@@ -374,6 +388,37 @@ class TestTrsh(unittest.TestCase):
         )
         self.assertEqual(error, expected_error_msg)
         self.assertIn("This wavefunction IS NOT FULLY CONVERGED!", line)
+
+    def test_determine_ess_status_orca_scf_energies_unavailable(self):
+        """
+        Test that determine_ess_status() reports 'done' for a normally terminated Orca job whose SCF
+        block cannot be mined for the initial/final energy pair used by the divergence heuristic.
+
+        The heuristic needs BOTH energies; whenever either is missing there is nothing to compare and
+        a normally terminated job must simply be reported as done (never raise).
+
+        Both fixtures are real Orca NEB output (arc/testing/neb/neb_res.out) truncated at a point that
+        leaves the SCF block incomplete, so they carry genuine Orca formatting rather than a
+        hand-written approximation. Each pins a different half of the fix:
+
+        - neb_scf_no_iteration_line.out keeps the incremental-Fock marker, the SOSCF header and the
+          column header but no numeric iteration row. It exercises the forward scan, which must run
+          off the end of the file without ever assigning an initial energy instead of indexing past
+          a one-token separator line.
+        - neb_scf_no_total_energy.out keeps a parseable iteration row but stops before the
+          'TOTAL SCF ENERGY' block, so the initial energy is assigned while the final one is not.
+          Before the guard required both energies this read an unassigned local and raised
+          UnboundLocalError out of determine_ess_status, which no caller catches.
+        """
+        for file_name in ('neb_scf_no_iteration_line.out', 'neb_scf_no_total_energy.out'):
+            path = os.path.join(ARC_TESTING_PATH, 'neb', file_name)
+            status, keywords, error, line = trsh.determine_ess_status(
+                output_path=path, species_label="test", job_type="sp", software="orca"
+            )
+            self.assertEqual(status, "done", msg=f'for {file_name}')
+            self.assertEqual(keywords, list(), msg=f'for {file_name}')
+            self.assertEqual(error, "", msg=f'for {file_name}')
+            self.assertEqual(line, "", msg=f'for {file_name}')
 
     def test_trsh_ess_job(self):
         """Test the trsh_ess_job() function"""

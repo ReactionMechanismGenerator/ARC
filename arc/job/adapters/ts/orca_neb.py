@@ -209,6 +209,11 @@ class OrcaNEBAdapter(OrcaAdapter):
         self.local_path_to_output_file = os.path.join(self.local_path, output_filenames[self.job_adapter])
         self.execution_type = execution_type or 'queue'
 
+    @property
+    def ess_software(self) -> str:
+        """Orca NEB is a TS-search adapter, but its output is an Orca log."""
+        return 'orca'
+
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
