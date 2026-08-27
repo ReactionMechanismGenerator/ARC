@@ -394,6 +394,7 @@
                  <span class="n">fine_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                  <span class="n">trsh_ess_jobs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                  <span class="n">trsh_rotors</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                 <span class="n">rotor_scan_resolution</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">kinetics_adapter</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'arkane'</span><span class="p">,</span>
                  <span class="n">freq_scale_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
                  <span class="n">ts_adapters</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -426,6 +427,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">fine_only</span> <span class="o">=</span> <span class="n">fine_only</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">trsh_ess_jobs</span> <span class="o">=</span> <span class="n">trsh_ess_jobs</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">trsh_rotors</span> <span class="o">=</span> <span class="n">trsh_rotors</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rotor_scan_resolution</span> <span class="o">=</span> <span class="n">rotor_scan_resolution</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">kinetics_adapter</span> <span class="o">=</span> <span class="n">kinetics_adapter</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span> <span class="o">=</span> <span class="n">freq_scale_factor</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span> <span class="o">=</span> <span class="n">ts_adapters</span> <span class="k">if</span> <span class="n">ts_adapters</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">default_ts_adapters</span>
@@ -1155,6 +1157,7 @@
                         <span class="n">args</span><span class="p">[</span><span class="s1">'trsh'</span><span class="p">][</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">args</span><span class="p">[</span><span class="s1">'trsh'</span><span class="p">]</span> <span class="o">=</span> <span class="n">trsh</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">set_scan_resolution</span><span class="p">(</span><span class="n">args</span><span class="o">=</span><span class="n">args</span><span class="p">,</span> <span class="n">job_type</span><span class="o">=</span><span class="n">job_type</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">shift</span><span class="p">:</span>
             <span class="n">args</span><span class="p">[</span><span class="s1">'shift'</span><span class="p">]</span> <span class="o">=</span> <span class="n">shift</span>
         <span class="k">if</span> <span class="n">scan_trsh</span><span class="p">:</span>
@@ -1231,6 +1234,32 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">check_max_simultaneous_jobs_limit</span><span class="p">(</span><span class="n">job</span><span class="o">.</span><span class="n">server</span><span class="p">)</span>
         <span class="n">job</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Scheduler.set_scan_resolution">
+<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.set_scan_resolution">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_scan_resolution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">job_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Inject the run-level rotor scan resolution into a scan job's troubleshooting args.</span>
+
+<span class="sd">        The value set via the ``rotor_scan_resolution`` input key is threaded through</span>
+<span class="sd">        ``args['trsh']['scan_res']`` (the same channel a per-job troubleshooting override uses),</span>
+<span class="sd">        so a run may state its 1D rotor scan resolution once instead of relying on the launching</span>
+<span class="sd">        host's settings value. Only ``'scan'`` jobs are affected, and a ``scan_res`` already present</span>
+<span class="sd">        in ``args`` (e.g. from troubleshooting) is never overridden. When ``self.rotor_scan_resolution``</span>
+<span class="sd">        is ``None`` the args are returned unchanged, so behaviour is identical to today's settings default.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            args (dict): The job arguments dictionary.</span>
+<span class="sd">            job_type (str): The job type.</span>
+
+<span class="sd">        Returns: dict</span>
+<span class="sd">            The (possibly updated) job arguments dictionary.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="n">job_type</span> <span class="o">==</span> <span class="s1">'scan'</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">rotor_scan_resolution</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> \
+                <span class="ow">and</span> <span class="s1">'scan_res'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'trsh'</span><span class="p">,</span> <span class="nb">dict</span><span class="p">()):</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">'trsh'</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())[</span><span class="s1">'scan_res'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rotor_scan_resolution</span>
+        <span class="k">return</span> <span class="n">args</span></div>
 
 
 <div class="viewcode-block" id="Scheduler.deduce_job_adapter">
