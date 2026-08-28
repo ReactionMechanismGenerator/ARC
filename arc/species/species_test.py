@@ -15,6 +15,7 @@ from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
                         almost_equal_coords_lists,
                         check_that_all_entries_are_in_list,
+                        read_yaml_file,
                         save_yaml_file,
                         )
 from arc.species.converter import check_xyz_dict
@@ -3617,6 +3618,39 @@ class TestTSGuess(unittest.TestCase):
         ts_dict_for_report = self.tsg1.as_dict(for_report=True)
         self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_sources', 'method_index', 'success', 'index',
                                                            'conformer_index', 'initial_xyz', 'opt_xyz'])
+
+    def test_execution_time_survives_the_dict_round_trip(self):
+        """Test that a non-zero execution time is not zeroed by an as_dict()/from_dict() restart round trip"""
+        for execution_time in [datetime.timedelta(seconds=3, microseconds=420000),
+                               datetime.timedelta(days=2, hours=3),
+                               datetime.timedelta(0),
+                               ]:
+            tsg = TSGuess(method='KinBot', family='H_Abstraction', xyz=self.xyz_3, success=True)
+            tsg.execution_time = execution_time
+            tsg_dict = tsg.as_dict()
+            self.assertEqual(tsg_dict['execution_time'], str(execution_time))
+            restored = TSGuess(ts_dict=tsg_dict)
+            self.assertEqual(restored.execution_time, execution_time,
+                             msg=f'execution time {str(execution_time)!r} was not preserved by the round trip')
+
+    def test_a_user_guess_execution_time_is_overwritten_without_being_parsed(self):
+        """Test that restoring a user guess does not warn about an execution time it then discards"""
+        restart_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '2_restart_rate', 'restart.yml')
+        ts_dicts = [ts_dict for spc_dict in read_yaml_file(restart_path)['species']
+                    for ts_dict in spc_dict.get('ts_guesses') or list()]
+        self.assertTrue(any(ts_dict.get('execution_time') == '0' for ts_dict in ts_dicts),
+                        msg='the fixture no longer holds an unparseable execution time, so this test is vacuous')
+        with self.assertNoLogs('arc', level='WARNING'):
+            restored = [TSGuess(ts_dict=ts_dict) for ts_dict in ts_dicts]
+        for tsg in restored:
+            self.assertIn('user guess', tsg.method)
+            self.assertEqual(tsg.execution_time, datetime.timedelta(0))
+
+    def test_an_unparseable_execution_time_still_warns_when_it_is_kept(self):
+        """Test that an unparseable execution time of a guess that keeps it is still reported"""
+        with self.assertLogs('arc', level='WARNING'):
+            tsg = TSGuess(ts_dict={'method': 'kinbot', 'execution_time': '0', 'initial_xyz': self.xyz_3})
+        self.assertIsNone(tsg.execution_time)
 
     def test_process_xyz(self):
         """Test the process_xyz() method"""

@@ -147,6 +147,127 @@ class TestCommon(unittest.TestCase):
         lap = common.time_lapse(t0)
         self.assertEqual(lap, '00:00:02')
 
+    def test_time_lapse_beyond_a_day(self):
+        """Test that time_lapse() gives a whole number of days and stays readable by timedelta_from_str()"""
+        now = time.time()
+        self.assertEqual(common.time_lapse(now - 30 * 3600), '1 days, 06:00:00')
+        self.assertEqual(common.time_lapse(now - 3 * 86400), '3 days, 00:00:00')
+        self.assertEqual(common.time_lapse(now - (400 * 86400 + 1)), '400 days, 00:00:01')
+        for seconds in [6 * 3600, 23 * 3600 + 59 * 60 + 59, 30 * 3600, 3 * 86400, 400 * 86400 + 1]:
+            lap = common.time_lapse(now - seconds)
+            self.assertEqual(common.timedelta_from_str(lap), datetime.timedelta(seconds=seconds),
+                             msg=f'time_lapse() gave {lap!r}, which does not read back as {seconds} s')
+
+    def test_format_duration(self):
+        """Test the format_duration() function"""
+        self.assertEqual(common.format_duration(datetime.timedelta(0)), '0.0 s')
+        self.assertEqual(common.format_duration(datetime.timedelta(seconds=3.42)), '3.4 s')
+        self.assertEqual(common.format_duration(datetime.timedelta(minutes=7)), '7.0 m')
+        self.assertEqual(common.format_duration(datetime.timedelta(hours=13, minutes=7)), '13.1 h')
+        self.assertEqual(common.format_duration(datetime.timedelta(days=2, hours=3)), '2.1 d')
+        self.assertEqual(common.format_duration(datetime.timedelta(days=140, hours=1)), '140.0 d')
+
+    def test_format_duration_keeps_sub_minute_timings_distinct(self):
+        """Test that the sub-minute TS guess timings of a real run render to three distinct strings"""
+        rendered = [common.format_duration(datetime.timedelta(seconds=seconds))
+                    for seconds in [3.4, 16.8, 18.1]]
+        self.assertEqual(rendered, ['3.4 s', '16.8 s', '18.1 s'])
+        self.assertEqual(len(set(rendered)), 3)
+
+    def test_format_duration_unit_boundaries(self):
+        """Test that format_duration() steps up a unit rather than reporting a full unit's worth of the smaller"""
+        self.assertEqual(common.format_duration(datetime.timedelta(seconds=59.9)), '59.9 s')
+        self.assertEqual(common.format_duration(datetime.timedelta(seconds=59.99)), '1.0 m')
+        self.assertEqual(common.format_duration(datetime.timedelta(seconds=60)), '1.0 m')
+        self.assertEqual(common.format_duration(datetime.timedelta(minutes=59.99)), '1.0 h')
+        self.assertEqual(common.format_duration(datetime.timedelta(hours=23.99)), '1.0 d')
+
+    def test_format_duration_spans_seconds_to_days(self):
+        """Test that format_duration() gives one decimal place and a unit symbol across its whole range"""
+        rendered = [common.format_duration(datetime.timedelta(seconds=seconds))
+                    for seconds in [0, 0.05, 3.4, 59.9, 60, 3599, 3600, 86399, 86400, 12096000, 864000000]]
+        self.assertEqual(rendered, ['0.0 s', '0.1 s', '3.4 s', '59.9 s', '1.0 m', '1.0 h', '1.0 h',
+                                    '1.0 d', '1.0 d', '140.0 d', '10000.0 d'])
+        for cell in rendered:
+            self.assertRegex(cell, r'^\d+\.\d [smhd]$')
+
+    def test_format_duration_from_str(self):
+        """Test that format_duration() accepts the str() representation of a timedelta"""
+        for delta in [datetime.timedelta(seconds=3.42),
+                      datetime.timedelta(hours=13, minutes=7, seconds=6.5),
+                      datetime.timedelta(days=1, seconds=12),
+                      datetime.timedelta(days=2, hours=3)]:
+            self.assertEqual(common.format_duration(str(delta)), common.format_duration(delta))
+
+    def test_format_duration_uninterpretable(self):
+        """Test that format_duration() reports an absent or negative duration as an empty string"""
+        for duration in [None, '', 'not a duration', 24, datetime.timedelta(seconds=-1)]:
+            self.assertEqual(common.format_duration(duration), '')
+
+    def test_format_duration_reads_a_string_exactly_as_timedelta_from_str_does(self):
+        """Test that format_duration() and timedelta_from_str() agree on every duration string"""
+        for time_str in ['0:00:00', '0:00:00.500000', '0:00:03.4', '0:00:03.420000', '0:00:16.8', '0:00:18.1',
+                         '0:17:05', '13:07:06.500000', '1 day, 0:00:00', '2 days, 3:00:00', '400 days, 0:00:01',
+                         '-1 day, 23:59:59', '-3 days, 5:00:00', '1hr2m3s', '45s',
+                         '', '   ', 'not a duration', '3:04', 'None']:
+            self.assertEqual(common.format_duration(time_str),
+                             common.format_duration(common.timedelta_from_str(time_str)),
+                             msg=f'{time_str!r} is read differently by the two entry points')
+        self.assertEqual([common.format_duration(time_str) for time_str in ['0:00:03.4', '0:00:16.8', '0:00:18.1']],
+                         ['3.4 s', '16.8 s', '18.1 s'])
+        self.assertEqual(common.format_duration('0:00:00'), '0.0 s')
+        self.assertEqual(common.format_duration('0:00:00.500000'), '0.5 s')
+        self.assertEqual(common.format_duration('2 days, 3:00:00'), '2.1 d')
+        self.assertEqual(common.format_duration('-1 day, 23:59:59'), '')
+        self.assertEqual(common.timedelta_from_str('-1 day, 23:59:59'), datetime.timedelta(seconds=-1))
+        self.assertEqual(common.format_duration('not a duration'), '')
+
+    def test_format_duration_does_not_warn_for_an_absent_duration(self):
+        """Test that format_duration() reports an absent duration quietly, without a parse warning"""
+        with self.assertNoLogs('arc', level='WARNING'):
+            for duration in [None, '', '   ', datetime.timedelta(seconds=-1)]:
+                self.assertEqual(common.format_duration(duration), '')
+
+    def test_format_table(self):
+        """Test the format_table() function"""
+        table = common.format_table(headers=['Label', ('H298', '(kJ/mol)')],
+                                    rows=[['CH4', '-74.60'], ['a longer label', '1.00']],
+                                    alignments='<>',
+                                    )
+        self.assertEqual(table, ['Label               H298',
+                                 '                (kJ/mol)',
+                                 '--------------  --------',
+                                 'CH4               -74.60',
+                                 'a longer label      1.00'])
+
+    def test_format_table_column_widths(self):
+        """Test that format_table() sizes each column to its widest entry, header or cell"""
+        table = common.format_table(headers=['A', 'BBBBB'], rows=[['CCC', 'D']], separator='|', rule_char='')
+        self.assertEqual(table, ['A  |BBBBB', 'CCC|D'])
+
+    def test_format_table_no_rows(self):
+        """Test that format_table() renders the header alone when there are no rows"""
+        self.assertEqual(common.format_table(headers=['A', 'BB'], rows=[]), ['A  BB', '-  --'])
+
+    def test_format_table_raises_on_a_ragged_row(self):
+        """Test that format_table() rejects a row or an alignment string that does not match the headers"""
+        with self.assertRaises(InputError):
+            common.format_table(headers=['A', 'B'], rows=[['1']])
+        with self.assertRaises(InputError):
+            common.format_table(headers=['A', 'B'], rows=[['1', '2']], alignments='<')
+
+    def test_format_table_raises_input_error_on_a_bad_cell_or_alignment(self):
+        """Test that format_table() reports a non-string cell or an unknown alignment as an InputError"""
+        for row in [[None, '2'], [1, '2'], [['1'], '2']]:
+            with self.assertRaises(InputError):
+                common.format_table(headers=['A', 'B'], rows=[row])
+        with self.assertRaises(InputError):
+            common.format_table(headers=['A', 'B'], rows=[['1', '2']], alignments='<x')
+
+    def test_format_table_with_an_empty_header(self):
+        """Test that format_table() renders a column with an empty multi-line header and no rows"""
+        self.assertEqual(common.format_table(headers=[()], rows=[]), [''])
+
     def test_check_ess_settings(self):
         """Test the check_ess_settings function"""
         server_names = list(servers.keys())
@@ -1289,6 +1410,41 @@ class TestCommon(unittest.TestCase):
         self.assertIn('0:00:00.5', str_delta)
         reconstructed_delta = common.timedelta_from_str(str_delta)
         self.assertIsInstance(reconstructed_delta, datetime.timedelta)
+        self.assertEqual(reconstructed_delta, delta)
+
+        self.assertEqual(common.timedelta_from_str('0:00:03.420000'),
+                         datetime.timedelta(seconds=3, microseconds=420000))
+        self.assertEqual(common.timedelta_from_str('2 days, 3:00:00'), datetime.timedelta(days=2, hours=3))
+        self.assertEqual(common.timedelta_from_str('1 day, 0:00:00'), datetime.timedelta(days=1))
+        self.assertEqual(common.timedelta_from_str('400 days, 0:00:01'), datetime.timedelta(days=400, seconds=1))
+        self.assertEqual(common.timedelta_from_str('-1 day, 23:59:59'), datetime.timedelta(seconds=-1))
+
+        self.assertEqual(common.timedelta_from_str('0:00:00'), datetime.timedelta(0))
+        self.assertIsNotNone(common.timedelta_from_str('0:00:00'))
+
+        self.assertEqual(common.timedelta_from_str('1hr2m3s'), datetime.timedelta(hours=1, minutes=2, seconds=3))
+        self.assertEqual(common.timedelta_from_str('45s'), datetime.timedelta(seconds=45))
+        self.assertEqual(common.timedelta_from_str('2m'), datetime.timedelta(minutes=2))
+
+        for time_str in ['', '   ', '0', 'None', 'nonsense', '1:2', '3:04', 'hrms', '0:00:03.42x']:
+            self.assertIsNone(common.timedelta_from_str(time_str), msg=f'{time_str!r} must not parse')
+        self.assertIsNone(common.timedelta_from_str(None))
+        self.assertIsNone(common.timedelta_from_str(5))
+
+    def test_timedelta_from_str_round_trip(self):
+        """Test that timedelta_from_str() inverts str() for a spread of durations"""
+        for delta in [datetime.timedelta(0),
+                      datetime.timedelta(microseconds=1),
+                      datetime.timedelta(seconds=0.5),
+                      datetime.timedelta(seconds=3, microseconds=420000),
+                      datetime.timedelta(minutes=17, seconds=5),
+                      datetime.timedelta(hours=26, minutes=3, seconds=9, microseconds=123456),
+                      datetime.timedelta(days=2, hours=3),
+                      datetime.timedelta(days=400, seconds=1),
+                      datetime.timedelta(seconds=-1),
+                      datetime.timedelta(days=-3, hours=5),
+                      ]:
+            self.assertEqual(common.timedelta_from_str(str(delta)), delta, msg=f'failed to round-trip {str(delta)!r}')
 
     def test_torsions_to_scans(self):
         """Test the torsions_to_scans() function"""

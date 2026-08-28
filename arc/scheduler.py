@@ -20,6 +20,8 @@ from arc import plotter
 from arc.checks.common import get_i_from_job_name, is_conformer_job, sum_time_delta
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
+                        format_duration,
+                        format_table,
                         get_angle_in_180_range,
                         get_logger,
                         get_number_with_ordinal_indicator,
@@ -2486,6 +2488,7 @@ class Scheduler(object):
                 # Reset e_min to the lowest value regardless of other criteria (imaginary frequencies, IRC, normal modes).
                 if tsg.energy is not None and (e_min is None or tsg.energy < e_min):
                     e_min = tsg.energy
+            reported_tsgs = list()
             for tsg in self.species_dict[label].ts_guesses:
                 if tsg.index == selected_i:
                     self.species_dict[label].chosen_ts = selected_i
@@ -2496,23 +2499,34 @@ class Scheduler(object):
                     self.species_dict[label].ts_guesses_exhausted = False
                     if getattr(tsg, 'log_path', None):
                         self.output[label]['paths']['neb'] = tsg.log_path
-                if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
+                if tsg.energy is not None:
                     tsg.energy -= e_min
-                    im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
-                    execution_time = str(tsg.execution_time)
-                    execution_time = execution_time[:execution_time.index('.') + 2] \
-                        if '.' in execution_time else execution_time
-                    aux = f' {tsg.errors}.' if tsg.errors else '.'
+                if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     methods_str = tsg.method
                     if tsg.method_sources and len(tsg.method_sources) > 1:
                         methods_str += f' (also: {", ".join(m for m in tsg.method_sources if m != tsg.method)})'
-                    logger.info(f'TS guess {tsg.index:2} for {label}. '
-                                f'Method: {methods_str}, '
-                                f'relative energy: {tsg.energy:8.2f} kJ/mol, '
-                                f'guess ex time: {execution_time}{im_freqs}'
-                                f'{aux}')
-                    # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                    plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
+                    reported_tsgs.append((tsg, [str(tsg.index),
+                                                methods_str,
+                                                f'{tsg.energy:.2f}',
+                                                format_duration(tsg.execution_time),
+                                                ', '.join(f'{freq:.1f}' for freq in tsg.imaginary_freqs)
+                                                if tsg.imaginary_freqs is not None else '']))
+            headers = ['TS Guess', 'Method', ('Rel. Energy', '(kJ/mol)'),
+                       'Guess Time', ('Img Freq', '(cm-1)')]
+            alignments = '><>>>'
+            if any(tsg.errors for tsg, _ in reported_tsgs):
+                headers.append('Status')
+                alignments += '<'
+                for tsg, row in reported_tsgs:
+                    row.append(tsg.errors)
+            table = format_table(headers=headers,
+                                 rows=[row for _, row in reported_tsgs],
+                                 alignments=alignments,
+                                 )
+            for line in table:
+                logger.info(line)
+            for tsg, _ in reported_tsgs:
+                plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
             logger.info('\n')
             if self.species_dict[label].chosen_ts is None:
                 raise SpeciesError(f'Could not pair most stable conformer {selected_i} of {label} to a respective '
