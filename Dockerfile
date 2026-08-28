@@ -34,11 +34,15 @@ ENV MAMBA_USER=mambauser
 # which then dies with NoChannelsConfiguredError (non-fatally) and silently drops that pin.
 RUN printf 'channels:\n  - conda-forge\n' > /home/mambauser/.condarc
 
-# Set JuliaUp PATH and install Julia 1.10 as req. by RMG (mirrors RMG-Py's own Dockerfile)
+# Set JuliaUp PATH and install Julia as req. by RMG (mirrors RMG-Py's own Dockerfile).
+# Pinned to a patch version, not the 1.10 channel: `from juliacall import Main` segfaults under
+# Julia 1.10.12 (released 17 Aug 2026), and the channel floats to the newest patch, so every build
+# from 20 Aug on died in install_rms.sh. RMG-Py pinned the same version for the same reason in
+# 62eb728c0 ("Pin Julia and openbabel to unbreak CI").
 ENV PATH="/home/mambauser/.juliaup/bin:$PATH"
-RUN wget -qO- https://install.julialang.org | sh -s -- --yes --default-channel 1.10 && \
-    juliaup add 1.10 && \
-    juliaup default 1.10 && \
+RUN wget -qO- https://install.julialang.org | sh -s -- --yes --default-channel 1.10.11 && \
+    juliaup add 1.10.11 && \
+    juliaup default 1.10.11 && \
     juliaup list && \
     rm -rf /home/mambauser/.juliaup/downloads /home/mambauser/.juliaup/tmp
 
@@ -153,7 +157,7 @@ ENV PYTHON_JULIAPKG_EXE=/home/mambauser/.juliaup/bin/julia
 # any --entrypoint override) lands on root with HOME=/root rather than going through
 # entrywrapper.sh's `runuser -u mambauser`. juliaup then finds no config, falls back to the
 # `release` channel, and downloads a newer Julia over the network - silently bypassing the pinned
-# 1.10 and every pkgimage baked above, or hard-failing when the host is offline. Pinning the depot
+# 1.10.11 and every pkgimage baked above, or hard-failing when the host is offline. Pinning the depot
 # explicitly makes resolution HOME-independent. Note this is JULIAUP_DEPOT_PATH, not
 # JULIA_DEPOT_PATH; juliaup does not read the latter for channel lookup.
 ENV JULIAUP_DEPOT_PATH=/home/mambauser/.julia
