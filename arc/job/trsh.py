@@ -127,7 +127,7 @@ def determine_ess_status(output_path: str,
                         error = 'There are two blank lines between z-matrix and ' \
                                 'the variables, expected only one.'
                     elif 'l202.exe' in line:
-                        keywords = ['OptOrientation', 'GL202']
+                        keywords = ['OptOrientation', 'GL202', 'NoSymm']
                         error = 'During the optimization process, either the standard ' \
                                 'orientation or the point group of the molecule has changed.'
                     elif 'l301.exe' in line:
@@ -195,8 +195,14 @@ def determine_ess_status(output_path: str,
                                         'specified correctly. Alternatively, a specified atom does not match any ' \
                                         'standard atomic symbol.'
                         elif 'GL401' in keywords:
-                            keywords.append('BasisSet')
-                            error = 'The projection from the old to the new basis set has failed.'
+                            # A guess=read from a checkpoint built with a different basis fails to
+                            # project onto the new basis. Removing the checkfile drops guess=read so
+                            # the job restarts from a fresh SCF guess with no projection step - this
+                            # is retryable, so classify it as CheckFile (mirroring the checkpoint-
+                            # data-missing cases above), not as a dead-end BasisSet error.
+                            keywords = ['CheckFile']
+                            error = 'The projection from the old to the new basis set has failed; ' \
+                                    'removing the checkfile to restart from a fresh SCF guess.'
                 elif 'Erroneous write' in line or 'Write error in NtrExt1' in line:
                     keywords = ['DiskSpace']
                     error = 'Ran out of disk space.'
@@ -868,6 +874,23 @@ def trsh_special_rotor(special_rotor: list,
     return to_freeze
 
 
+# Gaussian error classes that resubmission cannot fix: input/template/method-basis problems.
+# When one of these is detected we refuse to troubleshoot instead of burning a resubmit on an
+# unrelated remedy (historically every Gaussian error picked up a spurious int=(Acc2E=14) step).
+# NOTE: this is deliberately conservative - it excludes classes that a resubmit *can* help
+# (SCF, opt cycles, internal-coordinate, negative eigenvalues, memory, checkfile, and the
+# generic 'Unknown' class, which the scheduler retries on a different node).
+# 'ZMat' (L716: z-matrix angle outside 0 < x < 180) is intentionally NOT here: ARC always
+# submits Cartesian geometries, so a ZMat error always means the optimizer drove atoms
+# collinear - the textbook opt=(cartesian) case, handled by trsh_keyword_cartesian.
+# 'BasisSet' is intentionally NOT here either: every genuine dead-end basis error (GL301
+# "atomic number out of range" / "Unrecognized basis set") is already refused by the dedicated
+# BasisSet branch in trsh_ess_job, and the one retryable BasisSet case - the GL401 guess=read
+# projection failure - is reclassified as 'CheckFile' (see determine_ess_status) and fixed by
+# dropping the checkfile. So no BasisSet error reaches this gate.
+GAUSSIAN_NON_RETRYABLE_KEYWORDS = ('Syntax', 'InputError', 'MP2', 'Scratch')
+
+
 def trsh_ess_job(label: str,
                  level_of_theory: Level | dict | str,
                  server: str,
@@ -881,6 +904,7 @@ def trsh_ess_job(label: str,
                  ess_trsh_methods: list,
                  is_h: bool = False,
                  is_monoatomic: bool = False,
+                 is_ts: bool = False,
                  ) -> tuple:
     """
     Troubleshoot issues related to the electronic structure software, such as convergence.
@@ -900,6 +924,8 @@ def trsh_ess_job(label: str,
         ess_trsh_methods (list): The troubleshooting methods tried for this job.
         is_h (bool): Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.
         is_monoatomic (bool): Whether the species is monoatomic (single atom).
+        is_ts (bool): Whether the species is a transition state. Makes the opt-cycle remedy
+                      ladder TS-aware (rely on RFO + Hessian recompute, avoid GDIIS/GEDIIS).
 
     Todo:
         - Change server to one that has the same ESS if running out of disk space.
@@ -943,6 +969,17 @@ def trsh_ess_job(label: str,
         couldnt_trsh = True
         logger.info(f'Troubleshooting {job_type} job in {software} for {label} that failed with '
                     '"Basis set data is not on the checkpoint file" by removing the checkfile.')
+
+    elif software == 'gaussian' \
+            and any(kw in job_status['keywords'] for kw in GAUSSIAN_NON_RETRYABLE_KEYWORDS):
+        # Non-retryable input/method error: refuse rather than waste a resubmit (see note above).
+        non_retryable = next(kw for kw in GAUSSIAN_NON_RETRYABLE_KEYWORDS if kw in job_status['keywords'])
+        output_errors.append(f'Error: Could not troubleshoot {job_type} for {label}! Gaussian reported a '
+                             f'non-retryable "{non_retryable}" error that resubmission cannot fix '
+                             f'({job_status.get("error", "").strip() or "no further detail"}); ')
+        logger.error(f'Could not troubleshoot {job_type} job in {software} for {label}: non-retryable '
+                     f'"{non_retryable}" error. {job_status.get("error", "").strip()}')
+        couldnt_trsh = True
 
     elif software == 'gaussian':
         trsh_keyword = [] # initialize as a list
@@ -993,7 +1030,7 @@ def trsh_ess_job(label: str,
 
         # Troubleshoot by increasing opt max cycles
         #P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)
-        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, is_ts, fine)
         # print out any words that beging with 'opt='
         opt_list = [i for i in ess_trsh_methods if i.startswith('opt=')]
         if opt_list:
@@ -1011,9 +1048,9 @@ def trsh_ess_job(label: str,
                 formatted_string += f', {i}'
             logger_info.append(formatted_string)
             
-        # Remove qc from ess_trsh_methods if 'no_qc' is in the keywords
+        # Drop the quadratic-convergence SCF remedy (record 'no_xqc') if Gaussian failed in l508
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
-        if 'no_qc' in ess_trsh_methods:
+        if 'no_xqc' in ess_trsh_methods:
             logger_info.append('removed QC')
         
 
@@ -1887,9 +1924,16 @@ def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tu
 
 def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword: list, couldnt_trsh: bool) -> tuple[list, list, bool]:
     """
-    Check if the job requires change of cartesian coordinate
+    Switch the optimization to Cartesian coordinates (opt=(cartesian)).
+
+    Fires for both L103 ('InternalCoordinateError') and L716 ('ZMat', z-matrix angle driven
+    outside 0 < x < 180 during the optimization). Since ARC always submits Cartesian geometries,
+    a ZMat error is never a bad input - it is the collinear-angle degeneracy that Cartesian
+    optimization sidesteps. Tried once (guarded by 'cartesian' not in ess_trsh_methods); if the
+    error recurs after Cartesian was already attempted, ess_trsh_methods stops changing and
+    trsh_ess_job() terminates the retry loop via the 'all_attempted' marker.
     """
-    if 'InternalCoordinateError' in job_status['keywords'] \
+    if ('InternalCoordinateError' in job_status['keywords'] or 'ZMat' in job_status['keywords']) \
                 and 'cartesian' not in ess_trsh_methods:
         ess_trsh_methods.append('cartesian')
         trsh_keyword.append('opt=(cartesian)')
@@ -1907,8 +1951,10 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
     Check if the job requires change of scf
     """
     scf_pattern = r"scf=\((.*?)\)" # e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000
-    if 'SCF' in job_status['keywords'] and 'scf=(qc)' not in ess_trsh_methods and 'no_qc' not in ess_trsh_methods:
+    if 'SCF' in job_status['keywords'] and 'scf=(qc)' not in ess_trsh_methods and 'no_xqc' not in ess_trsh_methods:
         # try both qc and nosymm
+        # ('no_xqc' records that the quadratic-convergence remedy already failed in l508
+        # and was dropped, so don't re-add it - see trsh_keyword_no_qc())
         ess_trsh_methods.append('scf=(qc)')
         couldnt_trsh = False
     elif 'SCF' in job_status['keywords'] and 'scf=(NDamp=30)' not in ess_trsh_methods:
@@ -1923,8 +1969,12 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
         ess_trsh_methods.append('guess=INDO')
         couldnt_trsh = False
         trsh_keyword.append('guess=INDO')
-    # If we have attempted all scf methods above, then we will try last resort methods
-    if 'SCF' in job_status['keywords'] and 'scf=(qc)' in ess_trsh_methods and 'scf=(NDamp=30)' in ess_trsh_methods and 'scf=(NoDIIS)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods \
+    # If we have attempted all scf methods above, then we will try last resort methods.
+    # 'scf=(qc)' counts as attempted either if it is still active or if it was tried and
+    # dropped after failing in l508 (recorded as 'no_xqc').
+    if 'SCF' in job_status['keywords'] \
+        and ('scf=(qc)' in ess_trsh_methods or 'no_xqc' in ess_trsh_methods) \
+        and 'scf=(NDamp=30)' in ess_trsh_methods and 'scf=(NoDIIS)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods \
         and 'scf=(Fermi)' not in ess_trsh_methods and 'scf=(Noincfock)' not in ess_trsh_methods and 'scf=(NoVarAcc)' not in ess_trsh_methods:
         # Uses Fermi broadening to help SCF convergence
         ess_trsh_methods.append('scf=(Fermi)')
@@ -1932,7 +1982,8 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
         ess_trsh_methods.append('scf=(Noincfock)')
         ess_trsh_methods.append('scf=(NoVarAcc)')
         couldnt_trsh = False
-    if 'no_qc' in ess_trsh_methods and 'scf=(qc)' in ess_trsh_methods:
+    if 'no_xqc' in ess_trsh_methods and 'scf=(qc)' in ess_trsh_methods:
+        # safety net: never keep the qc remedy active once it has been dropped via 'no_xqc'
         ess_trsh_methods.remove('scf=(qc)')
         couldnt_trsh = False
 
@@ -1945,7 +1996,8 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
 
 def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine) -> tuple[list, list, bool, bool]:
     """
-    Check if the job requires change of scf
+    Remediate a generic 'Unconverged' (Gaussian l9999) failure by switching to a fine
+    integration grid for the SCF and the integrals (recorded as 'fine'). This is tried once.
     """
     if 'Unconverged' in job_status['keywords'] and 'fine' not in ess_trsh_methods and not fine:
         # try a fine grid for SCF and integral
@@ -1971,39 +2023,85 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 
-def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
+def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, is_ts=False, fine=False) -> tuple[list, list, bool]:
     """
-    Check if the job requires change of opt(maxcycle=200)
+    Escalate the remedy for an optimization that hit its cycle limit (MaxOptCycles), one step
+    per retry. The ladder recomputes the Hessian before flipping the step algorithm:
+
+        1. opt=(maxcycle=200)  - simply allow more cycles (cheapest).
+        1b. opt=(cartesian)    - fine TS opt ONLY (is_ts and fine): a fine TS opt that dead-ends on
+                                 the l9999 "Optimization stopped" redundant-internal-coordinate
+                                 oscillation is far more likely to be a coordinate-system pathology
+                                 than a step/Hessian-quality problem, so switch to Cartesian
+                                 coordinates (which sidestep the collinear/redundant-coordinate
+                                 degeneracy) BEFORE spending expensive recalcfc/calcall/RFO cycles.
+                                 Tried once (guarded by 'cartesian' not in ess_trsh_methods) and
+                                 carried through the rest of the ladder via the opt-route merge.
+                                 Gated tightly to the fine TS opt so ground-state (is_ts=False) and
+                                 coarse TS opt (fine=False) ladders are unchanged.
+        2. opt=(recalcfc=5)    - recompute the exact Hessian every 5 steps. Recomputing force
+                                 constants is the first-line remedy for a stuck optimization, and
+                                 is essential for a TS opt where following the single negative
+                                 eigenvalue depends entirely on Hessian quality.
+        3. opt=(calcall)       - recompute the Hessian at every step (expensive last resort).
+        4. opt=(RFO)           - rational-function / eigenvector-following step. Correct for both
+                                 minima and TS.
+        5. opt=(GDIIS)         - minimization only. GDIIS is a DIIS step accelerator that can walk
+        6. opt=(GEDIIS)          a TS opt downhill into a nearby minimum and lose the saddle, so
+                                 these are skipped for TS optimizations (is_ts=True).
     """
     opt_pattern = r"opt=\((.*?)\)"
-    if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycle=200)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(maxcycle=200)')
-        trsh_keyword.append('opt=(maxcycle=200)')
-        couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords'] and 'opt=(RFO)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(RFO)')
-        trsh_keyword.append('opt=(RFO)')
-        couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(GDIIS)')
-        trsh_keyword.append('opt=(GDIIS)')
-        couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' in ess_trsh_methods and 'opt=(GEDIIS)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(GEDIIS)')
-        trsh_keyword.append('opt=(GEDIIS)')
-        couldnt_trsh = False
-    
+    if 'MaxOptCycles' in job_status['keywords']:
+        if 'opt=(maxcycle=200)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(maxcycle=200)')
+            trsh_keyword.append('opt=(maxcycle=200)')
+            couldnt_trsh = False
+        elif is_ts and fine and 'cartesian' not in ess_trsh_methods:
+            # Fine TS opt oscillation (l9999 "Optimization stopped"): try Cartesian coordinates
+            # early, before escalating the Hessian ladder. Stored as the bare 'cartesian' marker
+            # (consistent with trsh_keyword_cartesian) and folded into the opt route by the merge
+            # block below.
+            ess_trsh_methods.append('cartesian')
+            trsh_keyword.append('opt=(cartesian)')
+            couldnt_trsh = False
+        elif 'opt=(recalcfc=5)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(recalcfc=5)')
+            trsh_keyword.append('opt=(recalcfc=5)')
+            couldnt_trsh = False
+        elif 'opt=(calcall)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(calcall)')
+            trsh_keyword.append('opt=(calcall)')
+            couldnt_trsh = False
+        elif 'opt=(RFO)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(RFO)')
+            trsh_keyword.append('opt=(RFO)')
+            couldnt_trsh = False
+        elif not is_ts and 'opt=(GDIIS)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(GDIIS)')
+            trsh_keyword.append('opt=(GDIIS)')
+            couldnt_trsh = False
+        elif not is_ts and 'opt=(GDIIS)' in ess_trsh_methods and 'opt=(GEDIIS)' not in ess_trsh_methods:
+            ess_trsh_methods.append('opt=(GEDIIS)')
+            trsh_keyword.append('opt=(GEDIIS)')
+            couldnt_trsh = False
+
     if any('opt' in keyword for keyword in ess_trsh_methods):
         opt_list = [match for element in ess_trsh_methods for match in re.findall(opt_pattern, element)] if any(re.search(opt_pattern, element) for element in ess_trsh_methods) else []
 
+        # Fold the bare 'cartesian' marker (see the is_ts+fine branch above) into the merged opt
+        # route as a leading parameter so it survives alongside the maxcycle/Hessian/algorithm
+        # keywords rather than being clobbered by the route rewrite below.
+        if 'cartesian' in ess_trsh_methods and 'cartesian' not in opt_list:
+            opt_list.insert(0, 'cartesian')
+
         if opt_list:
 
-            filtered_methods = prioritize_opt_methods(opt_list)
+            filtered_methods = prioritize_opt_methods(opt_list, is_ts=is_ts)
 
             new_opt_keyword = 'opt=(' + ','.join(filtered_methods) + ')'
 
             trsh_keyword = [kw if not kw.startswith('opt') else new_opt_keyword for kw in trsh_keyword]
-    
+
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 
@@ -2037,12 +2135,11 @@ def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keywor
         ess_trsh_methods.append('guess=INDO')
         trsh_keyword.append('guess=INDO')
         couldnt_trsh = False
-    elif 'InaccurateQuadrature' in job_status['keywords'] and 'int=grid=300590' in ess_trsh_methods and 'scf=(NoVarAcc)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods and 'int=ultrafine' not in ess_trsh_methods:
-        # Try all methods above
-        trsh_keyword.append('int=grid=300590')
-        trsh_keyword.append('guess=INDO')
-        # NoVarAcc is not included in trsh_keyword, because it will be in ess_trsh_methods
-        
+    # Once int=grid=300590, scf=(NoVarAcc) and guess=INDO have all been tried, the ladder is
+    # exhausted: ess_trsh_methods stops changing and trsh_ess_job() terminates the retry loop
+    # via the 'all_attempted' marker. (There is no separate int=ultrafine step - the fine-grid
+    # remedy is handled by trsh_keyword_unconverged, and ultrafine is the Gaussian 16 default.)
+
     scf_pattern = r"scf=\((.*?)\)" # e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000
     if any('scf' in keyword for keyword in ess_trsh_methods):
         scf_list = [match for element in ess_trsh_methods for match in re.findall(scf_pattern, element)] if any(re.search(scf_pattern, element) for element in ess_trsh_methods) else []
@@ -2091,30 +2188,48 @@ def trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_t
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 
-def prioritize_opt_methods(opt_methods):
+def prioritize_opt_methods(opt_methods, is_ts=False):
+    """
+    Reduce an accumulated list of opt=(...) parameters to a self-consistent set:
 
-    preferred_order = ['GEDIIS', 'GDIIS', 'RFO']
-    selected_method = None
-    
-    for method in preferred_order:
-        if method in opt_methods:
-            selected_method = method
-            break
-    
-    filtered_methods = [method for method in opt_methods if method not in preferred_order or method == selected_method]
+    - Keep a single step algorithm. For minimizations prefer GEDIIS > GDIIS > RFO. For a TS
+      optimization keep only RFO (eigenvector following); GDIIS/GEDIIS are minimization-oriented
+      DIIS accelerators that can drift off the saddle, so they are dropped.
+    - Keep a single Hessian-recompute directive, most aggressive wins: calcall > recalcfc=* > calcfc.
+    """
+    all_algorithms = ['GEDIIS', 'GDIIS', 'RFO']
+    preferred_order = ['RFO'] if is_ts else all_algorithms
+    selected_method = next((method for method in preferred_order if method in opt_methods), None)
+    methods = [method for method in opt_methods if method not in all_algorithms or method == selected_method]
 
-    return filtered_methods
+    # Collapse conflicting force-constant recompute directives to the single most aggressive one.
+    has_calcall = 'calcall' in methods
+    has_recalcfc = any(method.startswith('recalcfc') for method in methods)
+
+    def _keep_fc(method: str) -> bool:
+        if method == 'calcfc':
+            return not (has_calcall or has_recalcfc)
+        if method.startswith('recalcfc'):
+            return not has_calcall
+        return True
+
+    return [method for method in methods if _keep_fc(method)]
 
 
 def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
-    When a job fails with no qc, there are two possible solutions based upon the error message:
-    1. If SCF fails, then try to change the algorithm to LQA.
-    2. If SCF fails, then try to change the algorithm to LQA.
+    Drop the quadratic-convergence SCF remedy after Gaussian failed in link 508.
+
+    A previous retry added 'scf=(qc)' (which the Gaussian adapter upgrades to scf=(xqc)).
+    If the job then died in l508, the QC/XQC algorithm itself failed to converge, so remove
+    'scf=(qc)' from the attempted methods and record 'no_xqc' instead. 'no_xqc' guards
+    trsh_keyword_scf() from re-adding 'scf=(qc)' (while still counting it as attempted for
+    the last-resort SCF methods) and tells the Gaussian adapter not to upgrade qc to xqc.
     """
     if 'no_xqc' in job_status['keywords'] and 'scf=(qc)' in ess_trsh_methods:
         ess_trsh_methods.remove('scf=(qc)')
-        ess_trsh_methods.append('no_xqc')
+        if 'no_xqc' not in ess_trsh_methods:
+            ess_trsh_methods.append('no_xqc')
         couldnt_trsh = False
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
