@@ -50,6 +50,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../remote_submission.html">Remote Job Submission over SSH</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../how_it_works.html">How ARC Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
@@ -84,6 +85,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.calc_rmsd"><code class="docutils literal notranslate"><span class="pre">calc_rmsd()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.calculate_arrhenius_rate_coefficient"><code class="docutils literal notranslate"><span class="pre">calculate_arrhenius_rate_coefficient()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.check_ess_settings"><code class="docutils literal notranslate"><span class="pre">check_ess_settings()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.common.check_remote_paths_of_path_naming_adapters"><code class="docutils literal notranslate"><span class="pre">check_remote_paths_of_path_naming_adapters()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.check_that_all_entries_are_in_list"><code class="docutils literal notranslate"><span class="pre">check_that_all_entries_are_in_list()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.check_torsion_change"><code class="docutils literal notranslate"><span class="pre">check_torsion_change()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.common.clean_text"><code class="docutils literal notranslate"><span class="pre">clean_text()</span></code></a></li>
@@ -308,17 +310,54 @@ rate is returned in the same units as A.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.common.check_ess_settings">
-<span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">check_ess_settings</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ess_settings</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/common.html#check_ess_settings"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.check_ess_settings" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">check_ess_settings</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ess_settings</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ts_adapters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/common.html#check_ess_settings"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.check_ess_settings" title="Link to this definition"></a></dt>
 <dd><p>A helper function to convert servers in the ess_settings dict to lists
 Assists in troubleshooting job and trying a different server
 Also check ESS and servers.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ess_settings</strong> (<em>dict</em><em>, </em><em>optional</em>) – ARC’s ESS settings dictionary.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ess_settings</strong> (<em>dict</em><em>, </em><em>optional</em>) – ARC’s ESS settings dictionary.</p></li>
+<li><p><strong>ts_adapters</strong> (<em>list</em><em>, </em><em>optional</em>) – The TS search adapters this run will use, used to check the
+remote paths of the servers they will run on. <code class="docutils literal notranslate"><span class="pre">None</span></code>
+selects the default set from the settings.</p></li>
+</ul>
 </dd>
 </dl>
 <dl class="simple">
 <dt>Returns: dict</dt><dd><p>An updated ARC ESS dictionary.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>SettingsError</strong> – If an ESS, a server, or the remote path of a server is unusable.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.common.check_remote_paths_of_path_naming_adapters">
+<span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">check_remote_paths_of_path_naming_adapters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ess_settings</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ts_adapters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/common.html#check_remote_paths_of_path_naming_adapters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.check_remote_paths_of_path_naming_adapters" title="Link to this definition"></a></dt>
+<dd><p>Check that every server an adapter which names a path on the server will run on has an
+absolute <code class="docutils literal notranslate"><span class="pre">path</span></code>.</p>
+<p>Reported here, before any calculation is spawned, because the alternative is reaching it when
+the first reaction gets to its TS search: the adapter cannot build a usable input file for
+such a server, so the failure arrives once per run either way, and arriving at startup is the
+difference between a settings error the reader can act on and a run that has already spent
+time on jobs it will not be able to use.</p>
+<p>A server that is not in the <code class="docutils literal notranslate"><span class="pre">servers</span></code> settings is not reported here, since
+<a class="reference internal" href="#arc.common.check_ess_settings" title="arc.common.check_ess_settings"><code class="xref py py-func docutils literal notranslate"><span class="pre">check_ess_settings()</span></code></a> has already rejected it by name.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ess_settings</strong> (<em>dict</em>) – ARC’s ESS settings dictionary, each ESS mapped to a list of servers.</p></li>
+<li><p><strong>ts_adapters</strong> (<em>list</em><em>, </em><em>optional</em>) – The TS search adapters this run will use. <code class="docutils literal notranslate"><span class="pre">None</span></code> selects
+the default set from the settings.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>SettingsError</strong> – If such an adapter would run on a server whose <code class="docutils literal notranslate"><span class="pre">path</span></code> is missing or not
+    absolute.</p>
 </dd>
 </dl>
 </dd></dl>

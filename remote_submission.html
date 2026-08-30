@@ -1,0 +1,571 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Remote Job Submission over SSH &mdash; ARC 1.1.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=6285a516" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fc837d61"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="How ARC Works" href="how_it_works.html" />
+    <link rel="prev" title="Running ARC" href="running.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            ARC
+              <img src="_static/arc.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="docker.html">Docker image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Remote Job Submission over SSH</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#server-settings">Server Settings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#authentication">Authentication</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#using-an-ssh-agent-preferred">Using an ssh-agent (preferred)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#using-a-key-file">Using a key file</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ssh-config-is-not-read"><code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code> is not read</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#host-key-verification">Host Key Verification</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#why-warning-is-the-default">Why warning is the default</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#running-in-the-docker-image">Running in the Docker Image</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#mounting-your-arc-settings">Mounting your ARC settings</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#with-agent-forwarding-preferred">With agent forwarding (preferred)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#with-a-mounted-key-fallback">With a mounted key (fallback)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#docker-compose">Docker Compose</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#known-hosts-in-a-fresh-container">known_hosts in a fresh container</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#network-reachability">Network reachability</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#startup-checks">Startup Checks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="how_it_works.html">How ARC Works</a></li>
+<li class="toctree-l1"><a class="reference internal" href="input_reference.html">Input YAML Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="TS_search.html">Transition State Search</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone Tools</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licence.html">Licence</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">ARC</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Remote Job Submission over SSH</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/remote_submission.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="remote-job-submission-over-ssh">
+<span id="remote-submission"></span><h1>Remote Job Submission over SSH<a class="headerlink" href="#remote-job-submission-over-ssh" title="Link to this heading"></a></h1>
+<p>ARC submits electronic structure jobs to a remote cluster by opening an SSH session
+with paramiko. This page describes how to authenticate that session, how host keys
+are verified, and how to do both from inside the Docker image.</p>
+<p>If ARC and the electronic structure software run on the same machine, you do not
+need any of this - define a server named <code class="docutils literal notranslate"><span class="pre">local</span></code> instead, as described in
+<a class="reference internal" href="running.html#running"><span class="std std-ref">Running ARC</span></a>.</p>
+<section id="server-settings">
+<h2>Server Settings<a class="headerlink" href="#server-settings" title="Link to this heading"></a></h2>
+<p>Remote servers are declared in the <code class="docutils literal notranslate"><span class="pre">servers</span></code> dictionary of your personal
+<code class="docutils literal notranslate"><span class="pre">~/.arc/settings.py</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">'cluster_a'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'path'</span><span class="p">:</span> <span class="s1">'/home'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The keys that affect the SSH connection itself are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">address</span></code> - the hostname ARC connects to;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">un</span></code> - the username on the remote machine;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">path</span></code> - the <strong>absolute</strong> path on the server holding the user directories, under
+which ARC runs (<code class="docutils literal notranslate"><span class="pre">&lt;path&gt;/&lt;un&gt;/runs/ARC_Projects/</span></code>). Without it the remote job
+directories are relative to the SSH login directory, which an input file that must
+name a path on the server, such as Orca NEB’s, cannot follow; ARC reports such a
+server at startup;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">key</span></code> - <strong>optional</strong>. The path, on the machine running ARC, of the SSH
+<strong>private key</strong> to authenticate with;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">strict_host_key_checking</span></code> - optional, <code class="docutils literal notranslate"><span class="pre">False</span></code> by default. See
+<a class="reference internal" href="#host-key-verification">Host Key Verification</a>.</p></li>
+</ul>
+</section>
+<section id="authentication">
+<h2>Authentication<a class="headerlink" href="#authentication" title="Link to this heading"></a></h2>
+<p>ARC hands <code class="docutils literal notranslate"><span class="pre">key</span></code> to paramiko as the identity to authenticate with. There are two
+supported ways to authenticate, and the choice is made simply by whether you set
+<code class="docutils literal notranslate"><span class="pre">key</span></code>.</p>
+<section id="using-an-ssh-agent-preferred">
+<h3>Using an ssh-agent (preferred)<a class="headerlink" href="#using-an-ssh-agent-preferred" title="Link to this heading"></a></h3>
+<p>Omit <code class="docutils literal notranslate"><span class="pre">key</span></code> entirely. paramiko then looks for a running ssh-agent, and after that
+for the default key paths <code class="docutils literal notranslate"><span class="pre">~/.ssh/id_rsa</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.ssh/id_ecdsa</span></code> and
+<code class="docutils literal notranslate"><span class="pre">~/.ssh/id_ed25519</span></code>. There is no <code class="docutils literal notranslate"><span class="pre">id_dsa</span></code> in that list; paramiko 4 dropped DSA.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">'cluster_a'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'path'</span><span class="p">:</span> <span class="s1">'/home'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Add the key to your agent once per login session:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ssh-add<span class="w"> </span>~/.ssh/id_ed25519
+</pre></div>
+</div>
+<p>This is the preferred route. Passphrase-protected keys keep working, because the
+agent holds the decrypted key and ARC never has to prompt for the passphrase. In a
+container it also means the key material itself never has to enter the container.</p>
+</section>
+<section id="using-a-key-file">
+<h3>Using a key file<a class="headerlink" href="#using-a-key-file" title="Link to this heading"></a></h3>
+<p>Set <code class="docutils literal notranslate"><span class="pre">key</span></code> to the path of the private key:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">'cluster_a'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'path'</span><span class="p">:</span> <span class="s1">'/home'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+        <span class="s1">'key'</span><span class="p">:</span> <span class="s1">'/home/my_user/.ssh/id_ed25519'</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The path must exist and be readable <strong>on the machine running ARC</strong>, and it must
+name the private key, not the public <code class="docutils literal notranslate"><span class="pre">.pub</span></code> half and not <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code>.
+paramiko raises if it cannot read the file, and ARC then retries the connection for
+up to 24 hours, so a wrong path shows up as a run that appears to hang rather than
+as an immediate error.</p>
+</section>
+<section id="ssh-config-is-not-read">
+<h3><code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code> is not read<a class="headerlink" href="#ssh-config-is-not-read" title="Link to this heading"></a></h3>
+<p>ARC connects with paramiko, and paramiko only applies <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code> when the
+application explicitly builds a <code class="docutils literal notranslate"><span class="pre">paramiko.SSHConfig</span></code>. ARC does not, so <strong>no</strong>
+directive in that file has any effect: not <code class="docutils literal notranslate"><span class="pre">IdentityFile</span></code>, not <code class="docutils literal notranslate"><span class="pre">User</span></code>, not
+<code class="docutils literal notranslate"><span class="pre">HostName</span></code>, not <code class="docutils literal notranslate"><span class="pre">Port</span></code>, and not <code class="docutils literal notranslate"><span class="pre">ProxyJump</span></code> or <code class="docutils literal notranslate"><span class="pre">ProxyCommand</span></code>.</p>
+<p>The practical consequences are:</p>
+<ul class="simple">
+<li><p>every connection detail must be spelled out in the server entry - <code class="docutils literal notranslate"><span class="pre">address</span></code>,
+<code class="docutils literal notranslate"><span class="pre">un</span></code>, and <code class="docutils literal notranslate"><span class="pre">key</span></code> if you use one - even when your <code class="docutils literal notranslate"><span class="pre">ssh</span></code> command line works
+without them;</p></li>
+<li><p><strong>bastion and jump hosts are not supported</strong>. A cluster that can only be reached
+through a jump host cannot be driven by ARC directly. Run ARC on a machine that
+has direct access to the login node instead, or establish the tunnel outside ARC
+and point <code class="docutils literal notranslate"><span class="pre">address</span></code> at the local end of it.</p></li>
+</ul>
+<p>This is a property of ARC on any machine, not something introduced by running it
+in a container.</p>
+</section>
+</section>
+<section id="host-key-verification">
+<h2>Host Key Verification<a class="headerlink" href="#host-key-verification" title="Link to this heading"></a></h2>
+<p>ARC loads the system host keys from paramiko’s default location, which is
+<code class="docutils literal notranslate"><span class="pre">~/.ssh/known_hosts</span></code> on the machine running ARC, and nothing else. In particular
+<code class="docutils literal notranslate"><span class="pre">/etc/ssh/ssh_known_hosts</span></code> is <strong>not</strong> read, even though the OpenSSH command line
+client reads it; paramiko’s <code class="docutils literal notranslate"><span class="pre">load_system_host_keys()</span></code> consults the user file only,
+and silently ignores it if it cannot be read. The path is not configurable from
+<code class="docutils literal notranslate"><span class="pre">settings.py</span></code>.</p>
+<p>What happens when a host is <em>not</em> in <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> depends on the per-server
+<code class="docutils literal notranslate"><span class="pre">strict_host_key_checking</span></code> flag:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 78.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Value</p></th>
+<th class="head"><p>Behavior for an unknown host</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">False</span></code> (default)</p></td>
+<td><p>The connection proceeds and a warning is logged. Convenient, but a
+machine-in-the-middle is indistinguishable from a first-ever connection,
+so the warning is the only signal you get.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p></td>
+<td><p>The connection is refused. The host must be present in <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code>
+before ARC can reach it. The refusal is immediate – it raises its own
+exception type, which ARC does not retry – so it is reported as an error
+naming the host rather than as a silent wait. Seed <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> first.</p></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">'cluster_a'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'path'</span><span class="p">:</span> <span class="s1">'/home'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+        <span class="s1">'strict_host_key_checking'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Seed <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> before enabling the flag:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ssh-keyscan<span class="w"> </span>-H<span class="w"> </span>login.cluster.edu<span class="w"> </span>&gt;&gt;<span class="w"> </span>~/.ssh/known_hosts
+</pre></div>
+</div>
+<p>Verify the fingerprints against a trusted source before trusting the result -
+<code class="docutils literal notranslate"><span class="pre">ssh-keyscan</span></code> trusts whatever answers on the network.</p>
+<section id="why-warning-is-the-default">
+<h3>Why warning is the default<a class="headerlink" href="#why-warning-is-the-default" title="Link to this heading"></a></h3>
+<p>Refusing an unknown host is the safer policy in the abstract, and it is a poor
+default for ARC specifically, because ARC is a scheduler that runs unattended for
+days rather than a client that makes one connection.</p>
+<p>A refused host key does not fail the run once and stop. Every submission, status
+poll and download for that server fails while the ARC driver stays alive, so the run
+continues, submits nothing, and looks like a stall. Each individual refusal is
+reported at once rather than retried, but nothing takes the driver down, so whoever
+is running it typically finds out hours later, and recovery means stopping ARC,
+running <code class="docutils literal notranslate"><span class="pre">ssh-keyscan</span></code>, and starting again.
+Weighed against a first-ever connection to a login node reached over a network the
+user already trusts enough to submit jobs to, that failure mode costs more than the
+risk it removes.</p>
+<p>What makes the default defensible is that the risk is <em>reported</em>, not hidden. ARC
+checks <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> at startup (see <a class="reference internal" href="#startup-checks">Startup Checks</a>), so an unseeded host is
+named before any calculation is submitted, and
+<code class="docutils literal notranslate"><span class="pre">'strict_host_key_checking':</span> <span class="pre">True</span></code> remains available per server for anyone who
+wants the connection refused instead.</p>
+</section>
+</section>
+<section id="running-in-the-docker-image">
+<h2>Running in the Docker Image<a class="headerlink" href="#running-in-the-docker-image" title="Link to this heading"></a></h2>
+<p>Everything above applies unchanged inside the container; what changes is that
+<code class="docutils literal notranslate"><span class="pre">~/.arc</span></code>, the SSH material, and possibly the agent socket have to be bind-mounted
+in. See <a class="reference internal" href="docker.html#docker"><span class="std std-ref">Docker image</span></a> for the image’s general usage.</p>
+<section id="mounting-your-arc-settings">
+<h3>Mounting your ARC settings<a class="headerlink" href="#mounting-your-arc-settings" title="Link to this heading"></a></h3>
+<p>The container user is <code class="docutils literal notranslate"><span class="pre">mambauser</span></code> with <code class="docutils literal notranslate"><span class="pre">HOME=/home/mambauser</span></code>, so your personal
+settings must be mounted at <code class="docutils literal notranslate"><span class="pre">/home/mambauser/.arc</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.arc:/home/mambauser/.arc:ro"</span>
+</pre></div>
+</div>
+<p>ARC reads <code class="docutils literal notranslate"><span class="pre">settings.py</span></code>, <code class="docutils literal notranslate"><span class="pre">submit.py</span></code> and <code class="docutils literal notranslate"><span class="pre">inputs.py</span></code> from that directory. All
+three matter for remote submission: <code class="docutils literal notranslate"><span class="pre">submit.py</span></code> holds the cluster’s PBS/Slurm
+submit script templates, and without it ARC will submit jobs with the repository’s
+generic templates.</p>
+<p>Two properties of that overlay are worth knowing:</p>
+<ul class="simple">
+<li><p>It is a <strong>replacement of top-level names</strong>, not a deep merge. A <code class="docutils literal notranslate"><span class="pre">settings.py</span></code>
+that defines only <code class="docutils literal notranslate"><span class="pre">servers</span></code> replaces the whole <code class="docutils literal notranslate"><span class="pre">servers</span></code> dictionary and
+leaves every other setting at its repository default - which is what you
+usually want - but a <code class="docutils literal notranslate"><span class="pre">settings.py</span></code> that defines, say, <code class="docutils literal notranslate"><span class="pre">levels_ess</span></code> replaces
+that whole dictionary too.</p></li>
+<li><p>Whenever a local <code class="docutils literal notranslate"><span class="pre">settings.py</span></code> exists, ARC forces <code class="docutils literal notranslate"><span class="pre">global_ess_settings</span></code> to
+<code class="docutils literal notranslate"><span class="pre">None</span></code> unless that file defines a truthy value of its own. This is deliberate:
+the repository defaults are dummies. If you route software to servers through
+<code class="docutils literal notranslate"><span class="pre">global_ess_settings</span></code>, define it in your own <code class="docutils literal notranslate"><span class="pre">settings.py</span></code>.</p></li>
+</ul>
+<p>Mount the directory read-only, and set <code class="docutils literal notranslate"><span class="pre">PYTHONDONTWRITEBYTECODE=1</span></code> so Python does
+not try to write <code class="docutils literal notranslate"><span class="pre">__pycache__</span></code> into a read-only mount:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>-e<span class="w"> </span><span class="nv">PYTHONDONTWRITEBYTECODE</span><span class="o">=</span><span class="m">1</span>
+</pre></div>
+</div>
+</section>
+<section id="with-agent-forwarding-preferred">
+<h3>With agent forwarding (preferred)<a class="headerlink" href="#with-agent-forwarding-preferred" title="Link to this heading"></a></h3>
+<p>Forward the host’s ssh-agent socket and omit <code class="docutils literal notranslate"><span class="pre">key</span></code> from the server entry. No key
+material enters the container:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">:/work"</span><span class="w"> </span>-w<span class="w"> </span>/work<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">PUID</span><span class="o">=</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="w"> </span>-e<span class="w"> </span><span class="nv">PGID</span><span class="o">=</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">PYTHONDONTWRITEBYTECODE</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.arc:/home/mambauser/.arc:ro"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.ssh/known_hosts:/home/mambauser/.ssh/known_hosts:ro"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$SSH_AUTH_SOCK</span><span class="s2">:/ssh-agent"</span><span class="w"> </span>-e<span class="w"> </span><span class="nv">SSH_AUTH_SOCK</span><span class="o">=</span>/ssh-agent<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>laxzal/arc:latest<span class="w"> </span>arc<span class="w"> </span>my_case/input.yml
+</pre></div>
+</div>
+<p>On macOS, Docker Desktop exposes the host agent at a fixed path, so use
+<code class="docutils literal notranslate"><span class="pre">-v</span> <span class="pre">/run/host-services/ssh-auth.sock:/ssh-agent</span></code> instead of <code class="docutils literal notranslate"><span class="pre">$SSH_AUTH_SOCK</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">PUID</span></code>/<code class="docutils literal notranslate"><span class="pre">PGID</span></code> remap the <code class="docutils literal notranslate"><span class="pre">mambauser</span></code> account to your host UID/GID. This is not
+optional for agent forwarding, it is the mechanism: an agent socket is mode <code class="docutils literal notranslate"><span class="pre">0600</span></code>
+and owned by you, so only a container user carrying your UID can open it.</p>
+<p>The entrypoint deliberately does <strong>not</strong> relax the socket’s permissions to work
+around a missing remap. A bind mount shares the inode with the host, so doing that
+would make your real, live agent socket readable and writable by every other user on
+the machine, for as long as the agent runs - and because the entrypoint hands off
+with <code class="docutils literal notranslate"><span class="pre">exec</span></code>, nothing would ever restore it. If you genuinely need that behaviour,
+set <code class="docutils literal notranslate"><span class="pre">ARC_WIDEN_AGENT_SOCKET=1</span></code>; the entrypoint will then relax the mode, say
+exactly what it changed, and remind you to run <code class="docutils literal notranslate"><span class="pre">chmod</span> <span class="pre">600</span> <span class="pre">&quot;$SSH_AUTH_SOCK&quot;</span></code> on the
+host afterwards. Passing <code class="docutils literal notranslate"><span class="pre">PUID</span></code>/<code class="docutils literal notranslate"><span class="pre">PGID</span></code> is almost always the better answer.</p>
+<p>A note on stale sockets: if <code class="docutils literal notranslate"><span class="pre">$SSH_AUTH_SOCK</span></code> points at an agent that has since
+exited, Docker creates the missing bind-mount source rather than failing, leaving a
+root-owned directory at that path on your host. The entrypoint reports it as “not a
+socket” and continues without agent forwarding. The same applies to <code class="docutils literal notranslate"><span class="pre">$HOME/.arc</span></code>
+if that directory does not exist.</p>
+</section>
+<section id="with-a-mounted-key-fallback">
+<h3>With a mounted key (fallback)<a class="headerlink" href="#with-a-mounted-key-fallback" title="Link to this heading"></a></h3>
+<p>For headless runs where no agent is available, mount the key read-only and point
+<code class="docutils literal notranslate"><span class="pre">key</span></code> at the path <strong>inside</strong> the container:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">'cluster_a'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'path'</span><span class="p">:</span> <span class="s1">'/home'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+        <span class="s1">'key'</span><span class="p">:</span> <span class="s1">'/home/mambauser/.ssh/id_ed25519'</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">:/work"</span><span class="w"> </span>-w<span class="w"> </span>/work<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">PUID</span><span class="o">=</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="w"> </span>-e<span class="w"> </span><span class="nv">PGID</span><span class="o">=</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">PYTHONDONTWRITEBYTECODE</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.arc:/home/mambauser/.arc:ro"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.ssh/id_ed25519:/home/mambauser/.ssh/id_ed25519:ro"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.ssh/known_hosts:/home/mambauser/.ssh/known_hosts:ro"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>laxzal/arc:latest<span class="w"> </span>arc<span class="w"> </span>my_case/input.yml
+</pre></div>
+</div>
+<p>A read-only mount is fine: ARC uses paramiko, which unlike the OpenSSH command line
+client does not refuse key files with permissive modes. The key must be
+passphrase-free, since there is nothing to prompt for it in a batch run.</p>
+<p>To mount the whole directory instead of individual files, use
+<code class="docutils literal notranslate"><span class="pre">-v</span> <span class="pre">&quot;$HOME/.ssh:/home/mambauser/.ssh:ro&quot;</span></code>. The entrypoint detects that
+<code class="docutils literal notranslate"><span class="pre">/home/mambauser/.ssh</span></code> is a bind mount and leaves its ownership and modes alone,
+so nothing leaks back to your host files.</p>
+</section>
+<section id="docker-compose">
+<h3>Docker Compose<a class="headerlink" href="#docker-compose" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code> in the repository root wires all of this up already:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">ARC_WORKDIR</span><span class="o">=</span><span class="nv">$PWD</span><span class="w"> </span><span class="nv">ARC_INPUT</span><span class="o">=</span>my_case/input.yml<span class="w"> </span><span class="se">\</span>
+<span class="nv">PUID</span><span class="o">=</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="w"> </span><span class="nv">PGID</span><span class="o">=</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="w"> </span><span class="se">\</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>arc
+</pre></div>
+</div>
+<p>It mounts <code class="docutils literal notranslate"><span class="pre">$HOME/.arc</span></code> read-only, forwards <code class="docutils literal notranslate"><span class="pre">$SSH_AUTH_SOCK</span></code> to <code class="docutils literal notranslate"><span class="pre">/ssh-agent</span></code>,
+mounts <code class="docutils literal notranslate"><span class="pre">$ARC_KNOWN_HOSTS</span></code> read-only at <code class="docutils literal notranslate"><span class="pre">/home/mambauser/.ssh/known_hosts</span></code>, and
+sets <code class="docutils literal notranslate"><span class="pre">PYTHONDONTWRITEBYTECODE=1</span></code>. The key-file mount is present but commented out;
+uncomment it if you are not using an agent.</p>
+<p>Point <code class="docutils literal notranslate"><span class="pre">ARC_KNOWN_HOSTS</span></code> at your host keys to share them with the container:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">ARC_WORKDIR</span><span class="o">=</span><span class="nv">$PWD</span><span class="w"> </span><span class="nv">ARC_INPUT</span><span class="o">=</span>my_case/input.yml<span class="w"> </span><span class="se">\</span>
+<span class="nv">ARC_KNOWN_HOSTS</span><span class="o">=</span><span class="nv">$HOME</span>/.ssh/known_hosts<span class="w"> </span><span class="se">\</span>
+<span class="nv">PUID</span><span class="o">=</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="w"> </span><span class="nv">PGID</span><span class="o">=</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="w"> </span><span class="se">\</span>
+docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>arc
+</pre></div>
+</div>
+<p>The variable defaults to <code class="docutils literal notranslate"><span class="pre">/dev/null</span></code>, which reads as an empty set of host keys,
+rather than to <code class="docutils literal notranslate"><span class="pre">$HOME/.ssh/known_hosts</span></code> directly. Docker creates any bind-mount
+source that does not exist, so naming that path unconditionally would leave a
+root-owned <em>directory</em> at <code class="docutils literal notranslate"><span class="pre">$HOME/.ssh/known_hosts</span></code> on a host that has never
+written the file - which then breaks <code class="docutils literal notranslate"><span class="pre">ssh</span></code> on the host itself.</p>
+</section>
+<section id="known-hosts-in-a-fresh-container">
+<h3>known_hosts in a fresh container<a class="headerlink" href="#known-hosts-in-a-fresh-container" title="Link to this heading"></a></h3>
+<p>A fresh container starts with an empty <code class="docutils literal notranslate"><span class="pre">/home/mambauser/.ssh</span></code>, so <em>every</em> host is
+an unknown host. With the default <code class="docutils literal notranslate"><span class="pre">strict_host_key_checking:</span> <span class="pre">False</span></code> that only
+produces a warning per connection, but with <code class="docutils literal notranslate"><span class="pre">strict_host_key_checking:</span> <span class="pre">True</span></code> it
+refuses every connection until the file is seeded. paramiko reads it from its
+default location, so the mount target has to be exactly
+<code class="docutils literal notranslate"><span class="pre">/home/mambauser/.ssh/known_hosts</span></code> - mounting it anywhere else has no effect.</p>
+<p>Either mount the host’s file, as in the examples above, or seed one inside the
+container. The image ships <code class="docutils literal notranslate"><span class="pre">openssh-client</span></code> for exactly this:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.ssh:/home/mambauser/.ssh"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">PUID</span><span class="o">=</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="w"> </span>-e<span class="w"> </span><span class="nv">PGID</span><span class="o">=</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>laxzal/arc:latest<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>ssh-keyscan<span class="w"> </span>login.cluster.edu
+</pre></div>
+</div>
+<p>Append the verified output to the <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> file you then mount read-only.</p>
+</section>
+<section id="network-reachability">
+<h3>Network reachability<a class="headerlink" href="#network-reachability" title="Link to this heading"></a></h3>
+<p>A container on Docker’s default bridge network reaches an ordinary cluster login
+node without any extra flags: the host acts as a NAT router, DNS resolves, and
+paramiko speaks SSH itself rather than shelling out to <code class="docutils literal notranslate"><span class="pre">ssh</span></code>, so nothing but
+outbound TCP on port 22 is required. <code class="docutils literal notranslate"><span class="pre">--network</span> <span class="pre">host</span></code> is not needed in the normal
+case.</p>
+<p>Two situations do differ from running on the host:</p>
+<ul class="simple">
+<li><p><strong>The cluster is reachable only over a VPN on the host.</strong> Split-tunnel routing
+and firewall rules frequently exclude the <code class="docutils literal notranslate"><span class="pre">docker0</span></code> bridge, so the container’s
+traffic never enters the tunnel. <code class="docutils literal notranslate"><span class="pre">--network</span> <span class="pre">host</span></code> is the escape hatch: the
+container then shares the host’s network namespace and its VPN routes.</p></li>
+<li><p><strong>Internal hostnames resolved by a VPN-pushed resolver.</strong> The container uses
+Docker’s resolver, not the host’s, so a name that only the VPN’s DNS server knows
+will not resolve. Use the IP address in <code class="docutils literal notranslate"><span class="pre">address</span></code>, or pass
+<code class="docutils literal notranslate"><span class="pre">--dns</span> <span class="pre">&lt;resolver-ip&gt;</span></code>.</p></li>
+</ul>
+<p>To tell the two apart, check reachability from inside the container before blaming
+ARC:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>laxzal/arc:latest<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>bash<span class="w"> </span>-lc<span class="w"> </span><span class="s1">'getent hosts login.cluster.edu &amp;&amp; ssh-keyscan -T 5 login.cluster.edu'</span>
+</pre></div>
+</div>
+<p>A resolved address followed by a host key means the network path is fine and the
+problem is authentication.</p>
+</section>
+</section>
+<section id="startup-checks">
+<h2>Startup Checks<a class="headerlink" href="#startup-checks" title="Link to this heading"></a></h2>
+<p>Every ARC run, in a container or not, reports the configured servers that have no
+host key in <code class="docutils literal notranslate"><span class="pre">~/.ssh/known_hosts</span></code> before it submits anything. The message names the
+server, its address, and the <code class="docutils literal notranslate"><span class="pre">ssh-keyscan</span></code> command that fixes it. It is a warning,
+never fatal, and the check is entirely local: the <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> file is read, and
+no name is resolved and no connection opened.</p>
+<p>Three kinds of server entry are skipped, because reporting them would be noise
+rather than information: the <code class="docutils literal notranslate"><span class="pre">local</span></code> server, entries with no <code class="docutils literal notranslate"><span class="pre">address</span></code>, and
+entries still carrying the repository’s placeholder <code class="docutils literal notranslate"><span class="pre">*.host.edu</span></code> address or
+<code class="docutils literal notranslate"><span class="pre">&lt;username&gt;</span></code> user name.</p>
+<p>Inside the container the entrypoint checks more, and earlier - before ARC itself
+starts - because the failure modes there are otherwise invisible until much later in
+the run. Most notably, ARC ignores a <code class="docutils literal notranslate"><span class="pre">~/.arc/settings.py</span></code> that fails to import
+and silently continues with the repository’s dummy servers
+(<code class="docutils literal notranslate"><span class="pre">server1.host.edu</span></code>, <code class="docutils literal notranslate"><span class="pre">&lt;username&gt;</span></code>) - in a container, a mis-typed mount path
+produces exactly that.</p>
+<p>The entrypoint therefore:</p>
+<ul class="simple">
+<li><p>refuses to start ARC, with exit code 78, if <code class="docutils literal notranslate"><span class="pre">/home/mambauser/.arc/settings.py</span></code>
+exists but cannot be imported, printing the import traceback;</p></li>
+<li><p>warns if no <code class="docutils literal notranslate"><span class="pre">settings.py</span></code> is mounted at all;</p></li>
+<li><p>warns about a server whose <code class="docutils literal notranslate"><span class="pre">key</span></code> does not exist or is not readable inside the
+container;</p></li>
+<li><p>warns about a server with no <code class="docutils literal notranslate"><span class="pre">key</span></code> when the container has neither a forwarded
+agent nor a default key under <code class="docutils literal notranslate"><span class="pre">/home/mambauser/.ssh</span></code>;</p></li>
+<li><p>warns about a server with <code class="docutils literal notranslate"><span class="pre">strict_host_key_checking</span></code> when no <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code>
+file is present.</p></li>
+</ul>
+<p>Only the unimportable <code class="docutils literal notranslate"><span class="pre">settings.py</span></code> is fatal. The rest are warnings, so a server
+that is configured but not used in this particular run cannot abort it. Set
+<code class="docutils literal notranslate"><span class="pre">ARC_SKIP_PREFLIGHT=1</span></code> to skip the checks entirely.</p>
+<p>Exit codes from the entrypoint follow <code class="docutils literal notranslate"><span class="pre">sysexits.h</span></code>: 64 for a usage error, 66 for
+a missing input file, and 78 for a configuration error.</p>
+</section>
+<section id="troubleshooting">
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h2>
+<p><strong>ARC connects to</strong> <code class="docutils literal notranslate"><span class="pre">server1.host.edu</span></code> <strong>, or reports unknown server names.</strong>
+Your <code class="docutils literal notranslate"><span class="pre">~/.arc/settings.py</span></code> was not picked up. Outside a container, check that the
+file is at <code class="docutils literal notranslate"><span class="pre">$HOME/.arc/settings.py</span></code> and imports cleanly with
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-c</span> <span class="pre">&quot;import</span> <span class="pre">sys;</span> <span class="pre">sys.path.insert(0,</span> <span class="pre">'$HOME/.arc');</span> <span class="pre">import</span> <span class="pre">settings&quot;</span></code>.
+Inside a container, check the mount target is <code class="docutils literal notranslate"><span class="pre">/home/mambauser/.arc</span></code>.</p>
+<p><strong>The run appears to hang while connecting.</strong> ARC retries a failed connection every
+60 seconds, up to 1440 times, so a full 24 hours – but only a transport-level one,
+such as a login node that is down or a <code class="docutils literal notranslate"><span class="pre">key</span></code> pointing at a missing file. The
+reason is reported on every attempt, but only every tenth attempt goes through the
+logger, at info level; the others are written straight to standard output, so look
+there as well as in the log if the run seems stuck.</p>
+<p>Failures that retrying cannot resolve are not retried at all: a rejected identity
+(a wrong username, or a key the server does not accept), a host key that contradicts
+<code class="docutils literal notranslate"><span class="pre">known_hosts</span></code>, and a rejected host key under <code class="docutils literal notranslate"><span class="pre">strict_host_key_checking</span></code> raise a
+<code class="docutils literal notranslate"><span class="pre">ServerError</span></code> naming the cause on the first attempt.</p>
+<p><strong>Permission denied, or the forwarded agent is not usable.</strong> Pass
+<code class="docutils literal notranslate"><span class="pre">-e</span> <span class="pre">PUID=$(id</span> <span class="pre">-u)</span> <span class="pre">-e</span> <span class="pre">PGID=$(id</span> <span class="pre">-g)</span></code>. Without it the container user’s UID does not
+match the owner of your mounts or of the agent socket, and the entrypoint will say
+so.</p>
+<p><strong>“cannot remap mambauser to uid/gid N”.</strong> The requested ID belongs to an account
+the container cannot safely displace - the superuser, or a system account reserved
+by the distribution. Ordinary, idle accounts are shared automatically, so this only
+appears for IDs below 1000. Drop the flag named in the message and mount ownership
+will fall back to the image’s own <code class="docutils literal notranslate"><span class="pre">mambauser</span></code> IDs.</p>
+<p><strong>Host key refused.</strong> The server sets <code class="docutils literal notranslate"><span class="pre">strict_host_key_checking:</span> <span class="pre">True</span></code> and the
+host is not in <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code>. Seed it with <code class="docutils literal notranslate"><span class="pre">ssh-keyscan</span></code>, verify the
+fingerprint, and mount the file at <code class="docutils literal notranslate"><span class="pre">/home/mambauser/.ssh/known_hosts</span></code>.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="running.html" class="btn btn-neutral float-left" title="Running ARC" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="how_it_works.html" class="btn btn-neutral float-right" title="How ARC Works" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2026, Alon Grinberg Dana.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

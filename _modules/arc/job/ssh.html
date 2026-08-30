@@ -47,6 +47,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../remote_submission.html">Remote Job Submission over SSH</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../how_it_works.html">How ARC Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../examples.html">Examples</a></li>
@@ -102,11 +103,14 @@
 <span class="sd">    * delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number</span>
 <span class="sd">"""</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">shlex</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Counter</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
 
@@ -123,6 +127,137 @@
     <span class="n">settings</span><span class="p">[</span><span class="s1">'check_status_command'</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'delete_command'</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'list_available_nodes_command'</span><span class="p">],</span> \
     <span class="n">settings</span><span class="p">[</span><span class="s1">'servers'</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'submit_command'</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'submit_filenames'</span><span class="p">]</span>
 
+<span class="n">KNOWN_HOSTS_PATH</span> <span class="o">=</span> <span class="s1">'~/.ssh/known_hosts'</span>
+<span class="n">PLACEHOLDER_ADDRESS_SUFFIX</span> <span class="o">=</span> <span class="s1">'.host.edu'</span>
+<span class="n">PLACEHOLDER_USERNAME</span> <span class="o">=</span> <span class="s1">'&lt;username&gt;'</span>
+
+
+<div class="viewcode-block" id="UnknownHostKeyError">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.UnknownHostKeyError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UnknownHostKeyError</span><span class="p">(</span><span class="n">ServerError</span><span class="p">,</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">SSHException</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Raised when a server's host key is absent from ``known_hosts`` and the server sets</span>
+<span class="sd">    ``strict_host_key_checking``.</span>
+
+<span class="sd">    An ARC :class:`~arc.exceptions.ServerError`, so ARC's server error handling covers it, and a</span>
+<span class="sd">    ``paramiko.SSHException``, which is what a missing host key policy is expected to raise. Being</span>
+<span class="sd">    a distinct type, a refused host key is told apart from a transport failure without matching on</span>
+<span class="sd">    paramiko's message text.</span>
+<span class="sd">    """</span></div>
+
+
+
+<div class="viewcode-block" id="get_host_key_fingerprint">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.get_host_key_fingerprint">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_host_key_fingerprint</span><span class="p">(</span><span class="n">key</span><span class="p">:</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">PKey</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Return the OpenSSH-style SHA256 fingerprint of a host key.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        key (paramiko.PKey): The host key to fingerprint.</span>
+
+<span class="sd">    Returns: str</span>
+<span class="sd">        The fingerprint, formatted as ``SHA256:&lt;unpadded base64&gt;``, as reported by</span>
+<span class="sd">        ``ssh-keygen -lf`` and by OpenSSH when it prompts about an unknown host.</span>
+<span class="sd">    """</span>
+    <span class="n">digest</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">key</span><span class="o">.</span><span class="n">asbytes</span><span class="p">())</span><span class="o">.</span><span class="n">digest</span><span class="p">()</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s1">'SHA256:</span><span class="si">{</span><span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">digest</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">"="</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span></div>
+
+
+
+<div class="viewcode-block" id="LogAndAcceptHostKeyPolicy">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.LogAndAcceptHostKeyPolicy">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LogAndAcceptHostKeyPolicy</span><span class="p">(</span><span class="n">paramiko</span><span class="o">.</span><span class="n">MissingHostKeyPolicy</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    A missing host key policy that reports the unknown key through ARC's logger, then accepts it.</span>
+
+<span class="sd">    paramiko's ``WarningPolicy`` emits through ``warnings.warn()``, which ARC's</span>
+<span class="sd">    :func:`arc.common.initialize_log` filters out for the ``paramiko`` module, so nothing of it</span>
+<span class="sd">    reaches the log file or the terminal. This policy logs the host and the key's fingerprint at</span>
+<span class="sd">    the warning level, and connects.</span>
+<span class="sd">    """</span>
+
+<div class="viewcode-block" id="LogAndAcceptHostKeyPolicy.missing_host_key">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.LogAndAcceptHostKeyPolicy.missing_host_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">missing_host_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                         <span class="n">client</span><span class="p">:</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">SSHClient</span><span class="p">,</span>
+                         <span class="n">hostname</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                         <span class="n">key</span><span class="p">:</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">PKey</span><span class="p">,</span>
+                         <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Log the unknown host key and accept it.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            client (paramiko.SSHClient): The client the key was presented to.</span>
+<span class="sd">            hostname (str): The address of the server that presented the key.</span>
+<span class="sd">            key (paramiko.PKey): The host key that is not in ``known_hosts``.</span>
+<span class="sd">        """</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Connecting to </span><span class="si">{</span><span class="n">hostname</span><span class="si">}</span><span class="s1"> with an unverified host key: '</span>
+                       <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">key</span><span class="o">.</span><span class="n">get_name</span><span class="p">()</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">get_host_key_fingerprint</span><span class="p">(</span><span class="n">key</span><span class="p">)</span><span class="si">}</span><span class="s1"> is not in '</span>
+                       <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">KNOWN_HOSTS_PATH</span><span class="si">}</span><span class="s1">, so a first-ever connection cannot be told apart '</span>
+                       <span class="sa">f</span><span class="s1">'from an interception. Verify the fingerprint against a trusted source '</span>
+                       <span class="sa">f</span><span class="s1">'and add the key with:</span><span class="se">\n</span><span class="s1">'</span>
+                       <span class="sa">f</span><span class="s1">'    ssh-keyscan -H </span><span class="si">{</span><span class="n">hostname</span><span class="si">}</span><span class="s1"> &gt;&gt; </span><span class="si">{</span><span class="n">KNOWN_HOSTS_PATH</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="RejectUnknownHostKeyPolicy">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.RejectUnknownHostKeyPolicy">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RejectUnknownHostKeyPolicy</span><span class="p">(</span><span class="n">paramiko</span><span class="o">.</span><span class="n">RejectPolicy</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    A missing host key policy that refuses the connection, raising :class:`UnknownHostKeyError`.</span>
+<span class="sd">    """</span>
+
+<div class="viewcode-block" id="RejectUnknownHostKeyPolicy.missing_host_key">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.RejectUnknownHostKeyPolicy.missing_host_key">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">missing_host_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                         <span class="n">client</span><span class="p">:</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">SSHClient</span><span class="p">,</span>
+                         <span class="n">hostname</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                         <span class="n">key</span><span class="p">:</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">PKey</span><span class="p">,</span>
+                         <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Refuse the unknown host key.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            client (paramiko.SSHClient): The client the key was presented to.</span>
+<span class="sd">            hostname (str): The address of the server that presented the key.</span>
+<span class="sd">            key (paramiko.PKey): The host key that is not in ``known_hosts``.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            UnknownHostKeyError: Always.</span>
+<span class="sd">        """</span>
+        <span class="k">raise</span> <span class="n">UnknownHostKeyError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'The host key of </span><span class="si">{</span><span class="n">hostname</span><span class="si">}</span><span class="s1"> '</span>
+                                  <span class="sa">f</span><span class="s1">'(</span><span class="si">{</span><span class="n">key</span><span class="o">.</span><span class="n">get_name</span><span class="p">()</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">get_host_key_fingerprint</span><span class="p">(</span><span class="n">key</span><span class="p">)</span><span class="si">}</span><span class="s1">) is not in '</span>
+                                  <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">KNOWN_HOSTS_PATH</span><span class="si">}</span><span class="s1">, and this server sets '</span>
+                                  <span class="sa">f</span><span class="s1">'strict_host_key_checking. Verify the fingerprint against a '</span>
+                                  <span class="sa">f</span><span class="s1">'trusted source and add the key with:</span><span class="se">\n</span><span class="s1">'</span>
+                                  <span class="sa">f</span><span class="s1">'    ssh-keyscan -H </span><span class="si">{</span><span class="n">hostname</span><span class="si">}</span><span class="s1"> &gt;&gt; </span><span class="si">{</span><span class="n">KNOWN_HOSTS_PATH</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="HostKeyMismatchError">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.HostKeyMismatchError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">HostKeyMismatchError</span><span class="p">(</span><span class="n">ServerError</span><span class="p">,</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">SSHException</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Raised when the host key a server presents contradicts the one stored in ``known_hosts``.</span>
+
+<span class="sd">    Told apart from :class:`UnknownHostKeyError`, which is the absence of a stored key, because</span>
+<span class="sd">    the two mean different things: an absent key is a host never connected to before, while a</span>
+<span class="sd">    contradicted key is either a re-keyed server or an interception, and only the second of</span>
+<span class="sd">    those is a security event. Being an ARC :class:`~arc.exceptions.ServerError` keeps it inside</span>
+<span class="sd">    ARC's server error handling, and being a ``paramiko.SSHException`` keeps it catchable</span>
+<span class="sd">    alongside the exception it is raised from.</span>
+<span class="sd">    """</span></div>
+
+
+
+<span class="n">PERMANENT_CONNECTION_ERRORS</span> <span class="o">=</span> <span class="p">(</span><span class="n">paramiko</span><span class="o">.</span><span class="n">AuthenticationException</span><span class="p">,</span>
+                               <span class="n">paramiko</span><span class="o">.</span><span class="n">BadHostKeyException</span><span class="p">,</span>
+                               <span class="n">UnknownHostKeyError</span><span class="p">,</span>
+                               <span class="p">)</span>
+
 
 <div class="viewcode-block" id="check_connections">
 <a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.check_connections">[docs]</a>
@@ -134,11 +269,16 @@
 <span class="sd">    to make sure your connection still alive. If connection is bad, this</span>
 <span class="sd">    decorator will reconnect the SSH channel, to avoid connection related</span>
 <span class="sd">    error when executing the method.</span>
+
+<span class="sd">    ``connect()`` assigns ``self._sftp`` and ``self._ssh`` itself and returns nothing, so its</span>
+<span class="sd">    result is not unpacked into them. Unpacking it raised ``TypeError: cannot unpack</span>
+<span class="sd">    non-iterable NoneType object`` for any client that had not connected yet, which is the one</span>
+<span class="sd">    case this branch exists to serve.</span>
 <span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">decorator</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
         <span class="bp">self</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># not sure if some status may cause False</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_sftp</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
         <span class="c1"># test connection, reference:</span>
         <span class="c1"># https://stackoverflow.com/questions/</span>
         <span class="c1"># 20147902/how-to-know-if-a-paramiko-ssh-channel-is-disconnected</span>
@@ -165,19 +305,30 @@
 <span class="sd">                                             waiting a minute between attempts. The default keeps trying</span>
 <span class="sd">                                             for 24 hours, which is appropriate while jobs are running.</span>
 <span class="sd">                                             Pass a low number where blocking is worse than giving up.</span>
+<span class="sd">                                             A permanent failure raises on the first attempt whatever</span>
+<span class="sd">                                             this is set to, see :meth:`connect`.</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        server (str): The server name as specified in ARCs's settings file under ``servers`` as a key.</span>
 <span class="sd">        address (str): The server's address.</span>
 <span class="sd">        un (str): The username to use on the server.</span>
-<span class="sd">        key (str): A path to a file containing the RSA SSH private key to the server.</span>
+<span class="sd">        key (str | None): A path to a file containing the SSH private key to the server.</span>
+<span class="sd">                          Optional: when it is not set (or set to an empty string), no explicit</span>
+<span class="sd">                          identity is offered and paramiko falls back to a running ssh-agent and</span>
+<span class="sd">                          then to the default key paths (``~/.ssh/id_rsa``, ``~/.ssh/id_ecdsa``,</span>
+<span class="sd">                          ``~/.ssh/id_ed25519``), which is how agent-based setups authenticate.</span>
 <span class="sd">        connection_attempts (int): The number of times to try connecting to the server.</span>
 <span class="sd">        _ssh (paramiko.SSHClient): A high-level representation of a session with an SSH server.</span>
 <span class="sd">        _sftp (paramiko.sftp_client.SFTPClient): SFTP client used to perform remote file operations.</span>
+<span class="sd">        _keepalive_interval (int | None): The keepalive interval this client was asked for, which</span>
+<span class="sd">                                          :meth:`connect` re-applies to every transport it opens.</span>
+<span class="sd">                                          ``None`` until :func:`arc.job.ssh_pool.set_keepalive`</span>
+<span class="sd">                                          sets it, since a client that is not pooled is not held</span>
+<span class="sd">                                          open long enough to be dropped while idle.</span>
 <span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                  <span class="n">server</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">''</span><span class="p">,</span>
-                 <span class="n">connection_attempts</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1440</span><span class="p">,</span>  <span class="c1"># Continue trying for 24 hrs (24 hr * 60 min/hr).</span>
+                 <span class="n">connection_attempts</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1440</span><span class="p">,</span>
                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">server</span> <span class="o">==</span> <span class="s1">''</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'A server name must be specified'</span><span class="p">)</span>
@@ -186,10 +337,11 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">server</span> <span class="o">=</span> <span class="n">server</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">address</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s1">'address'</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">un</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s1">'un'</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s1">'key'</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'key'</span><span class="p">)</span> <span class="ow">or</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">connection_attempts</span> <span class="o">=</span> <span class="n">connection_attempts</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_sftp</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_keepalive_interval</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"paramiko"</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">WARNING</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SSHClient</span><span class="p">:</span>
@@ -223,7 +375,7 @@
             <span class="c1"># and even yield different behaviors.</span>
             <span class="c1"># Make sure to change directory back after the command is executed</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_dir_exists</span><span class="p">(</span><span class="n">remote_path</span><span class="p">):</span>
-                <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'cd "</span><span class="si">{</span><span class="n">remote_path</span><span class="si">}</span><span class="s1">"; </span><span class="si">{</span><span class="n">command</span><span class="si">}</span><span class="s1">; cd '</span>
+                <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'cd -- </span><span class="si">{</span><span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">remote_path</span><span class="p">)</span><span class="si">}</span><span class="s1">; </span><span class="si">{</span><span class="n">command</span><span class="si">}</span><span class="s1">; cd '</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span>
                     <span class="sa">f</span><span class="s1">'Cannot execute command at given remote_path(</span><span class="si">{</span><span class="n">remote_path</span><span class="si">}</span><span class="s1">)'</span><span class="p">)</span>
@@ -240,8 +392,7 @@
         <span class="n">stderr</span> <span class="o">=</span> <span class="n">stderr</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span>
 
-<div class="viewcode-block" id="SSHClient.upload_file">
-<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.upload_file">[docs]</a>
+    <span class="nd">@check_connections</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">upload_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                     <span class="n">remote_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">local_file_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">''</span><span class="p">,</span>
@@ -280,17 +431,25 @@
                                <span class="n">remotepath</span><span class="o">=</span><span class="n">remote_file_path</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">IOError</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not upload file </span><span class="si">{</span><span class="n">local_file_path</span><span class="si">}</span><span class="s1"> to </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">!'</span><span class="p">)</span>
-            <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not write file </span><span class="si">{</span><span class="n">remote_file_path</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">. '</span><span class="p">)</span></div>
+            <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not write file </span><span class="si">{</span><span class="n">remote_file_path</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">. '</span><span class="p">)</span>
 
-
-<div class="viewcode-block" id="SSHClient.download_file">
-<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.download_file">[docs]</a>
+    <span class="nd">@check_connections</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">download_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                       <span class="n">remote_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                       <span class="n">local_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Download a file from the server.</span>
+
+<span class="sd">        The existence of the remote file is checked up to three times, one second apart, since</span>
+<span class="sd">        scheduler epilogues may flush a job's stdout and stderr to the work directory a second or</span>
+<span class="sd">        two after the job has left the queue.</span>
+
+<span class="sd">        If the remote file does not exist, the local path is emptied instead of being downloaded</span>
+<span class="sd">        to: it is created if it is absent, and truncated if a file is already there. A file left</span>
+<span class="sd">        at that path by an earlier job therefore never survives to be read as this job's output</span>
+<span class="sd">        (see :meth:`arc.job.adapter.JobAdapter._get_additional_job_info`), and the miss is</span>
+<span class="sd">        reported at the warning level.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            remote_file_path (str): The remote path to be downloaded from.</span>
@@ -299,20 +458,37 @@
 <span class="sd">        Raises:</span>
 <span class="sd">            ServerError: If the file cannot be downloaded with maximum times to try</span>
 <span class="sd">        """</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_file_exists</span><span class="p">(</span><span class="n">remote_file_path</span><span class="p">):</span>
-            <span class="c1"># Check if a file exists</span>
-            <span class="c1"># This doesn't have a real impact now to avoid screwing up ESS trsh</span>
-            <span class="c1"># but introduce an opportunity for better troubleshooting.</span>
-            <span class="c1"># The current behavior is that if the remote path does not exist</span>
-            <span class="c1"># an empty file will be created at the local path</span>
-            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">remote_file_path</span><span class="si">}</span><span class="s1"> does not exist on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_file_exists</span><span class="p">(</span><span class="n">remote_file_path</span><span class="p">):</span>
+                <span class="k">break</span>
+            <span class="k">if</span> <span class="n">attempt</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">remote_file_path</span><span class="si">}</span><span class="s1"> does not exist on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">. '</span>
+                           <span class="sa">f</span><span class="s1">'Emptied </span><span class="si">{</span><span class="n">local_file_path</span><span class="si">}</span><span class="s1"> instead of downloading it.'</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_empty_local_file</span><span class="p">(</span><span class="n">local_file_path</span><span class="p">)</span>
+            <span class="k">return</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_sftp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">remotepath</span><span class="o">=</span><span class="n">remote_file_path</span><span class="p">,</span>
                            <span class="n">localpath</span><span class="o">=</span><span class="n">local_file_path</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">IOError</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Got an IOError when trying to download file '</span>
-                           <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">remote_file_path</span><span class="si">}</span><span class="s1"> from </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span></div>
+                           <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">remote_file_path</span><span class="si">}</span><span class="s1"> from </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
 
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_empty_local_file</span><span class="p">(</span><span class="n">local_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Create ``local_file_path`` if it does not exist, and truncate it if it does.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            local_file_path (str): The local path to empty.</span>
+<span class="sd">        """</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">local_file_path</span><span class="p">,</span> <span class="s1">'wb'</span><span class="p">):</span>
+                <span class="k">pass</span>
+        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not empty the local file </span><span class="si">{</span><span class="n">local_file_path</span><span class="si">}</span><span class="s1">. '</span>
+                           <span class="sa">f</span><span class="s1">'Got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
 
     <span class="nd">@check_connections</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">read_remote_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
@@ -407,7 +583,7 @@
         <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="p">][</span><span class="s1">'cluster_soft'</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">status_line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">stdout</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="n">i_dict</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">]:</span>
-                <span class="n">job_id</span> <span class="o">=</span> <span class="n">status_line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">split_by_dict</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">job_id</span> <span class="o">=</span> <span class="n">status_line</span><span class="o">.</span><span class="n">lstrip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">split_by_dict</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
                 <span class="n">job_id</span> <span class="o">=</span> <span class="n">job_id</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'.'</span> <span class="ow">in</span> <span class="n">job_id</span> <span class="k">else</span> <span class="n">job_id</span>
                 <span class="n">running_job_ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job_id</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">running_job_ids</span></div>
@@ -442,19 +618,22 @@
                 <span class="k">if</span> <span class="s1">'Requested node configuration is not available'</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">'User may be requesting more resources than are available. Please check server '</span>
                                    <span class="s1">'settings, such as cpus and memory, in ARC/arc/settings/settings.py'</span><span class="p">)</span>
+                <span class="k">if</span> <span class="s1">'Memory specification can not be satisfied'</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">'User may be requesting more memory than is available. Please check server '</span>
+                                   <span class="s1">'settings, such as cpus and memory, in ARC/arc/settings/settings.py.'</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'slurm'</span> <span class="ow">and</span> <span class="s1">'AssocMaxSubmitJobLimit'</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Max number of submitted jobs was reached, sleeping...'</span><span class="p">)</span>
                     <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">5</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">submit_job</span><span class="p">(</span><span class="n">remote_path</span><span class="o">=</span><span class="n">remote_path</span><span class="p">,</span> <span class="n">recursion</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">recursion</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
-        <span class="k">elif</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">'oge'</span><span class="p">,</span> <span class="s1">'sge'</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">'submitted'</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+        <span class="k">elif</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">'oge'</span><span class="p">,</span> <span class="s1">'sge'</span><span class="p">]</span> <span class="ow">and</span> <span class="n">stdout</span> <span class="ow">and</span> <span class="s1">'submitted'</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
             <span class="n">job_id</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">2</span><span class="p">]</span>
-        <span class="k">elif</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'slurm'</span> <span class="ow">and</span> <span class="s1">'submitted'</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+        <span class="k">elif</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'slurm'</span> <span class="ow">and</span> <span class="n">stdout</span> <span class="ow">and</span> <span class="s1">'submitted'</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
             <span class="n">job_id</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">3</span><span class="p">]</span>
-        <span class="k">elif</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'pbs'</span><span class="p">:</span>
+        <span class="k">elif</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'pbs'</span> <span class="ow">and</span> <span class="n">stdout</span><span class="p">:</span>
             <span class="n">job_id</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="k">elif</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'htcondor'</span> <span class="ow">and</span> <span class="s1">'submitting'</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+        <span class="k">elif</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'htcondor'</span> <span class="ow">and</span> <span class="n">stdout</span> <span class="ow">and</span> <span class="s1">'submitting'</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
             <span class="c1"># Submitting job(s).</span>
             <span class="c1"># 1 job(s) submitted to cluster 443069.</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">())</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)):</span>
@@ -471,8 +650,26 @@
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        A modulator function for _connect(). Connect to the server.</span>
 
+<span class="sd">        Failures that retrying cannot resolve -- a rejected authentication, a host key that does</span>
+<span class="sd">        not match ``known_hosts``, and an unknown host key on a server that sets</span>
+<span class="sd">        ``strict_host_key_checking`` (:data:`PERMANENT_CONNECTION_ERRORS`) -- raise a</span>
+<span class="sd">        ``ServerError`` on the first attempt, carrying the paramiko exception as its cause -- this</span>
+<span class="sd">        holds whatever ``connection_attempts`` is set to, since no number of retries can resolve</span>
+<span class="sd">        them. A configured ``key`` file that does not exist is permanent for the same reason, and</span>
+<span class="sd">        is told apart from the transport-level ``OSError``s by :meth:`_is_a_missing_key_file`.</span>
+<span class="sd">        Every other failure is transport-level, and is retried once a minute until</span>
+<span class="sd">        ``connection_attempts`` attempts have been made (24 hours by default). No interval is</span>
+<span class="sd">        waited out after the last attempt, so a client asked for a single attempt fails at once.</span>
+
+<span class="sd">        A contradicted host key raises the :class:`HostKeyMismatchError` subclass of</span>
+<span class="sd">        ``ServerError`` rather than a plain one, and is reported at the error level naming both</span>
+<span class="sd">        fingerprints, so it is told apart from a wrong password in the log rather than reading as</span>
+<span class="sd">        one more failed connection.</span>
+
 <span class="sd">        Raises:</span>
-<span class="sd">            ServerError: Cannot connect to the server with maximum times to try</span>
+<span class="sd">            HostKeyMismatchError: The server's host key contradicts the one in ``known_hosts``.</span>
+<span class="sd">            ServerError: Cannot connect to the server with maximum times to try,</span>
+<span class="sd">                         or the failure is permanent.</span>
 <span class="sd">        """</span>
         <span class="n">times_tried</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="n">interval</span> <span class="o">=</span> <span class="mi">60</span>  <span class="c1"># wait 60 sec between trials</span>
@@ -480,14 +677,23 @@
             <span class="n">times_tried</span> <span class="o">+=</span> <span class="mi">1</span>
             <span class="k">try</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_sftp</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_connect</span><span class="p">()</span>
+            <span class="k">except</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">BadHostKeyException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="bp">self</span><span class="o">.</span><span class="n">_host_key_mismatch_error</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+            <span class="k">except</span> <span class="n">PERMANENT_CONNECTION_ERRORS</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not connect to server </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">, and retrying '</span>
+                                  <span class="sa">f</span><span class="s1">'cannot resolve it. Got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+            <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_a_missing_key_file</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not connect to server </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">, and retrying '</span>
+                                      <span class="sa">f</span><span class="s1">'cannot resolve it: the SSH key file </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">key</span><span class="si">!r}</span><span class="s1"> does not '</span>
+                                      <span class="sa">f</span><span class="s1">'exist. Either correct the "key" entry of this server in the '</span>
+                                      <span class="sa">f</span><span class="s1">'settings, or remove it to authenticate via a running '</span>
+                                      <span class="sa">f</span><span class="s1">'ssh-agent or the default key paths.'</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_report_a_failed_connection_attempt</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">times_tried</span><span class="p">)</span>
             <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="n">times_tried</span> <span class="o">%</span> <span class="mi">10</span><span class="p">:</span>
-                    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Tried connecting to </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">times_tried</span><span class="si">}</span><span class="s1"> times with no success...'</span>
-                                <span class="sa">f</span><span class="s1">'</span><span class="se">\n</span><span class="s1">Got: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Tried connecting to </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">times_tried</span><span class="si">}</span><span class="s1"> times with no success...'</span>
-                          <span class="sa">f</span><span class="s1">'</span><span class="se">\n</span><span class="s1">Got: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_report_a_failed_connection_attempt</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">times_tried</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_apply_keepalive</span><span class="p">()</span>
                 <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Successfully connected to </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1"> at the </span><span class="si">{</span><span class="n">times_tried</span><span class="si">}</span><span class="s1"> trial.'</span><span class="p">)</span>
                 <span class="k">return</span>
             <span class="k">if</span> <span class="n">times_tried</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection_attempts</span><span class="p">:</span>
@@ -495,26 +701,166 @@
         <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not connect to server </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1"> even after </span><span class="si">{</span><span class="n">times_tried</span><span class="si">}</span><span class="s1"> trials.'</span><span class="p">)</span></div>
 
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_keepalive</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Re-apply the keepalive interval this client was asked for to its current transport.</span>
+
+<span class="sd">        A keepalive is a property of a paramiko ``Transport``, not of the client that holds it, so</span>
+<span class="sd">        it is lost whenever a new transport is opened. :func:`check_connections` reconnects a</span>
+<span class="sd">        client in place when its socket has gone half-open, which replaces the transport under a</span>
+<span class="sd">        pooled client that outlives many such reconnects, so the interval is re-applied here for</span>
+<span class="sd">        every transport rather than only for the first.</span>
+
+<span class="sd">        Returns: bool</span>
+<span class="sd">            Whether a keepalive was applied, ``False`` when none was asked for or there is no</span>
+<span class="sd">            live transport to apply it to.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_keepalive_interval</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">transport</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span><span class="o">.</span><span class="n">get_transport</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">transport</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">transport</span><span class="o">.</span><span class="n">set_keepalive</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_keepalive_interval</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_report_a_failed_connection_attempt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">error</span><span class="p">:</span> <span class="ne">Exception</span><span class="p">,</span> <span class="n">times_tried</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Report a connection attempt that failed and will be retried.</span>
+
+<span class="sd">        Every tenth attempt goes to the log, and the ones in between are printed, so that a run</span>
+<span class="sd">        that spends hours retrying leaves a bounded trail in the log file while still showing</span>
+<span class="sd">        progress on the terminal.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            error (Exception): The failure to report.</span>
+<span class="sd">            times_tried (int): The number of attempts made so far, including this one.</span>
+<span class="sd">        """</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'Tried connecting to </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">times_tried</span><span class="si">}</span><span class="s1"> times with no success...'</span> \
+                  <span class="sa">f</span><span class="s1">'</span><span class="se">\n</span><span class="s1">Got: </span><span class="si">{</span><span class="n">error</span><span class="si">}</span><span class="s1">'</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">times_tried</span> <span class="o">%</span> <span class="mi">10</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_is_a_missing_key_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">error</span><span class="p">:</span> <span class="ne">OSError</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Whether ``error`` reports that this client's configured ``key`` file does not exist.</span>
+
+<span class="sd">        paramiko reads the identity it was asked to authenticate with outside the ``SSHException``</span>
+<span class="sd">        it guards that read with, so an absent key file surfaces as a ``FileNotFoundError``. That</span>
+<span class="sd">        is an ``OSError``, as a refused or reset connection is, and the two must not be treated</span>
+<span class="sd">        alike: a missing file is permanent, while a network failure is exactly what the retry loop</span>
+<span class="sd">        exists for. They are told apart by the error being a ``FileNotFoundError`` that names the</span>
+<span class="sd">        configured key path.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            error (OSError): The error raised while connecting.</span>
+
+<span class="sd">        Returns: bool</span>
+<span class="sd">            Whether the error is the absence of the configured key file.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">error</span><span class="p">,</span> <span class="ne">FileNotFoundError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">error</span><span class="p">,</span> <span class="s1">'filename'</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">filename</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span> <span class="o">==</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_host_key_mismatch_error</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">error</span><span class="p">:</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">BadHostKeyException</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">HostKeyMismatchError</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Report a contradicted host key and build the error to raise for it.</span>
+
+<span class="sd">        The report goes out at the error level and names the stored and the presented</span>
+<span class="sd">        fingerprints, since which of the two the reader recognises is what decides whether the</span>
+<span class="sd">        server was re-keyed or the session was intercepted.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            error (paramiko.BadHostKeyException): The mismatch paramiko raised.</span>
+
+<span class="sd">        Returns: HostKeyMismatchError</span>
+<span class="sd">            The error to raise, carrying the same report as its message.</span>
+<span class="sd">        """</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="n">KNOWN_HOSTS_PATH</span><span class="p">)</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'The host key </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">address</span><span class="si">}</span><span class="s1"> presented does not match the key stored for it '</span> \
+                  <span class="sa">f</span><span class="s1">'in </span><span class="si">{</span><span class="n">KNOWN_HOSTS_PATH</span><span class="si">}</span><span class="s1">, so server </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1"> was not connected to.</span><span class="se">\n</span><span class="s1">'</span> \
+                  <span class="sa">f</span><span class="s1">'    stored:    </span><span class="si">{</span><span class="n">error</span><span class="o">.</span><span class="n">expected_key</span><span class="o">.</span><span class="n">get_name</span><span class="p">()</span><span class="si">}</span><span class="s1"> '</span> \
+                  <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">get_host_key_fingerprint</span><span class="p">(</span><span class="n">error</span><span class="o">.</span><span class="n">expected_key</span><span class="p">)</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span> \
+                  <span class="sa">f</span><span class="s1">'    presented: </span><span class="si">{</span><span class="n">error</span><span class="o">.</span><span class="n">key</span><span class="o">.</span><span class="n">get_name</span><span class="p">()</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">get_host_key_fingerprint</span><span class="p">(</span><span class="n">error</span><span class="o">.</span><span class="n">key</span><span class="p">)</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span> \
+                  <span class="sa">f</span><span class="s1">'A re-keyed or rebuilt server and an intercepted session look exactly like '</span> \
+                  <span class="sa">f</span><span class="s1">'this, and the fingerprints are what tells them apart. Verify the presented '</span> \
+                  <span class="sa">f</span><span class="s1">'fingerprint against a trusted source. Only once it is confirmed to be the '</span> \
+                  <span class="sa">f</span><span class="s1">'server</span><span class="se">\'</span><span class="s1">s own key, replace the stored one with:</span><span class="se">\n</span><span class="s1">'</span> \
+                  <span class="sa">f</span><span class="s1">'    ssh-keygen -R </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">address</span><span class="si">}</span><span class="s1"> -f </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span> \
+                  <span class="sa">f</span><span class="s1">'    ssh-keyscan -H </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">address</span><span class="si">}</span><span class="s1"> &gt;&gt; </span><span class="si">{</span><span class="n">KNOWN_HOSTS_PATH</span><span class="si">}</span><span class="s1">'</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">HostKeyMismatchError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">_connect</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">paramiko</span><span class="o">.</span><span class="n">sftp_client</span><span class="o">.</span><span class="n">SFTPClient</span><span class="p">,</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">SSHClient</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Connect via paramiko, and open an SSH session as well as a SFTP session.</span>
+
+<span class="sd">        ``self.key`` is passed as paramiko's ``key_filename``, i.e. as the identity to</span>
+<span class="sd">        authenticate with. It may be ``None``, in which case paramiko looks for a running</span>
+<span class="sd">        ssh-agent and then for the default key paths; that is the only way an agent-forwarded</span>
+<span class="sd">        session can be used, and it also avoids paramiko raising on a configured key path that</span>
+<span class="sd">        does not exist on this machine.</span>
+
+<span class="sd">        Note that ARC never parses ``~/.ssh/config``: paramiko only does so when an application</span>
+<span class="sd">        builds a ``paramiko.SSHConfig`` itself, and ARC does not. Directives such as</span>
+<span class="sd">        ``IdentityFile``, ``ProxyJump`` and ``ProxyCommand`` therefore have no effect here.</span>
+
+<span class="sd">        Host key policy applies to an *unknown* key only. A key that is known and contradicted</span>
+<span class="sd">        is refused by paramiko whatever the policy, and :meth:`connect` turns that into a</span>
+<span class="sd">        :class:`HostKeyMismatchError` naming both fingerprints.</span>
+
+<span class="sd">        An unknown host key means either a first-ever connection or a</span>
+<span class="sd">        machine-in-the-middle, and the two are indistinguishable from here. The default policy</span>
+<span class="sd">        is :class:`LogAndAcceptHostKeyPolicy`, which logs the unknown key through ARC's logger</span>
+<span class="sd">        and connects; the key is never added to ``known_hosts``, so the warning repeats on every</span>
+<span class="sd">        connection. Setting ``strict_host_key_checking: True`` on the server selects</span>
+<span class="sd">        :class:`RejectUnknownHostKeyPolicy` instead, which raises :class:`UnknownHostKeyError`</span>
+<span class="sd">        for any host that is not already in ``known_hosts``.</span>
+
+<span class="sd">        Warning rather than rejecting is the default because ARC is a scheduler that runs</span>
+<span class="sd">        unattended for days. Rejecting an unknown host does not fail once: every job submission,</span>
+<span class="sd">        status poll and download for that server fails while the driver stays alive, so the run</span>
+<span class="sd">        keeps going and produces nothing, and the cause surfaces only when someone reads the log.</span>
+<span class="sd">        Recovering then means stopping ARC, running ``ssh-keyscan``, and restarting. To make the</span>
+<span class="sd">        default policy's residual risk visible before that cost is paid,</span>
+<span class="sd">        :func:`check_servers_known_hosts` reports every configured server that is absent from</span>
+<span class="sd">        ``known_hosts`` at startup, before any calculation is submitted.</span>
+
+<span class="sd">        The timeout is enlarged from paramiko's 15 second default because a server may accept</span>
+<span class="sd">        the connection while its SSH daemon takes longer to answer, e.g. under network</span>
+<span class="sd">        congestion.</span>
+
+<span class="sd">        The retry covers transport-level failures only, such as "SSHException: Error reading SSH</span>
+<span class="sd">        protocol banner[Error 104] Connection reset by peer". A bad key, a bad username and a</span>
+<span class="sd">        refused host key (:data:`PERMANENT_CONNECTION_ERRORS`) are raised without a second</span>
+<span class="sd">        attempt. A bare ``except`` here also swallowed KeyboardInterrupt/SystemExit, and</span>
+<span class="sd">        discarded the first exception so that a bad key or username surfaced as the retry's error</span>
+<span class="sd">        instead of its own.</span>
 
 <span class="sd">        Returns: tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]</span>
 <span class="sd">            - An SFTP client used to perform remote file operations.</span>
 <span class="sd">            - A high-level representation of a session with an SSH server.</span>
 <span class="sd">        """</span>
         <span class="n">ssh</span> <span class="o">=</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">SSHClient</span><span class="p">()</span>
-        <span class="n">ssh</span><span class="o">.</span><span class="n">set_missing_host_key_policy</span><span class="p">(</span><span class="n">paramiko</span><span class="o">.</span><span class="n">AutoAddPolicy</span><span class="p">())</span>
-        <span class="n">ssh</span><span class="o">.</span><span class="n">load_system_host_keys</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
+        <span class="n">ssh</span><span class="o">.</span><span class="n">load_system_host_keys</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">servers</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'strict_host_key_checking'</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+            <span class="n">ssh</span><span class="o">.</span><span class="n">set_missing_host_key_policy</span><span class="p">(</span><span class="n">RejectUnknownHostKeyPolicy</span><span class="p">())</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ssh</span><span class="o">.</span><span class="n">set_missing_host_key_policy</span><span class="p">(</span><span class="n">LogAndAcceptHostKeyPolicy</span><span class="p">())</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="c1"># If the server accepts the connection but the SSH daemon doesn't respond in</span>
-            <span class="c1"># 15 seconds (default in paramiko) due to network congestion, faulty switches,</span>
-            <span class="c1"># etc..., common solution is enlarging the timeout variable.</span>
-            <span class="n">ssh</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">hostname</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">address</span><span class="p">,</span> <span class="n">username</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">un</span><span class="p">,</span> <span class="n">banner_timeout</span><span class="o">=</span><span class="mi">200</span><span class="p">)</span>
-        <span class="k">except</span><span class="p">:</span>
-            <span class="c1"># This sometimes gives "SSHException: Error reading SSH protocol banner[Error 104] Connection reset by peer"</span>
-            <span class="c1"># Try again:</span>
-            <span class="n">ssh</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">hostname</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">address</span><span class="p">,</span> <span class="n">username</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">un</span><span class="p">,</span> <span class="n">banner_timeout</span><span class="o">=</span><span class="mi">200</span><span class="p">)</span>
+            <span class="n">ssh</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">hostname</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">address</span><span class="p">,</span> <span class="n">username</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">un</span><span class="p">,</span> <span class="n">banner_timeout</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">key_filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">PERMANENT_CONNECTION_ERRORS</span><span class="p">:</span>
+            <span class="k">raise</span>
+        <span class="k">except</span> <span class="p">(</span><span class="n">paramiko</span><span class="o">.</span><span class="n">SSHException</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_is_a_missing_key_file</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+                <span class="k">raise</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">'First SSH connection attempt to </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1"> failed with '</span>
+                         <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">. Retrying once.'</span><span class="p">)</span>
+            <span class="n">ssh</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">hostname</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">address</span><span class="p">,</span> <span class="n">username</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">un</span><span class="p">,</span> <span class="n">banner_timeout</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">key_filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
         <span class="n">sftp</span> <span class="o">=</span> <span class="n">ssh</span><span class="o">.</span><span class="n">open_sftp</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">sftp</span><span class="p">,</span> <span class="n">ssh</span>
 
@@ -580,7 +926,7 @@
 <span class="sd">        Args:</span>
 <span class="sd">            package_name (str): The name of the package to search for.</span>
 <span class="sd">        """</span>
-        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'. ~/.bashrc; which </span><span class="si">{</span><span class="n">package_name</span><span class="si">}</span><span class="s1">'</span>
+        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'. ~/.bashrc; which </span><span class="si">{</span><span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">package_name</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span></div>
 
 
@@ -635,8 +981,32 @@
         <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">remote_path</span><span class="p">):</span>
             <span class="n">remote_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">remote_path</span><span class="p">)</span>
         <span class="n">recursive</span> <span class="o">=</span> <span class="s1">' -R'</span> <span class="k">if</span> <span class="n">recursive</span> <span class="k">else</span> <span class="s1">''</span>
-        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'chmod</span><span class="si">{</span><span class="n">recursive</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">'</span>
+        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'chmod</span><span class="si">{</span><span class="n">recursive</span><span class="si">}</span><span class="s1"> -- </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">file_name</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SSHClient.remove_dir">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.remove_dir">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Remove a directory, and everything under it, on the server.</span>
+
+<span class="sd">        This is the remote-cleanup primitive. ARC's own job flow does not call it: no job removes</span>
+<span class="sd">        its remote work directory today, and the caller that will is added separately. It is</span>
+<span class="sd">        reached through :meth:`arc.job.adapter.JobAdapter.remove_remote_files`, which supplies</span>
+<span class="sd">        the job's remote path.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            remote_path (str): The path to the directory to remove on the remote server.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ServerError: If the directory could not be removed.</span>
+<span class="sd">        """</span>
+        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'rm -rf -- </span><span class="si">{</span><span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">remote_path</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">stderr</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s1">'Cannot remove dir for the given path (</span><span class="si">{</span><span class="n">remote_path</span><span class="si">}</span><span class="s1">).</span><span class="se">\n</span><span class="s1">Got: </span><span class="si">{</span><span class="n">stderr</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="SSHClient.delete_remote_check_files">
@@ -648,16 +1018,16 @@
 <span class="sd">        Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.</span>
 <span class="sd">        The local counterpart of this method is ``arc.common.delete_check_files()``.</span>
 
+<span class="sd">        Unlike :meth:`remove_dir`, this keeps the remote directory and everything in it that is</span>
+<span class="sd">        not a checkfile, so a project's outputs remain on the server after the cleanup.</span>
+<span class="sd">        A failure is logged rather than raised, see :func:`delete_check_files_on_servers`.</span>
+
 <span class="sd">        Args:</span>
 <span class="sd">            remote_path (str): The remote directory path under which checkfiles will be deleted.</span>
 <span class="sd">        """</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">remote_path</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">remote_path</span> <span class="ow">or</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_dir_exists</span><span class="p">(</span><span class="n">remote_path</span><span class="p">):</span>
             <span class="k">return</span>
-        <span class="n">quoted_path</span> <span class="o">=</span> <span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">remote_path</span><span class="p">)</span>
-        <span class="c1"># Both the existence test and the deletion are done in a single quoted command:</span>
-        <span class="c1"># a separate existence check would have to quote the path just as carefully,</span>
-        <span class="c1"># and a directory that isn't there is a no-op rather than an error worth reporting.</span>
-        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'[ -d </span><span class="si">{</span><span class="n">quoted_path</span><span class="si">}</span><span class="s1"> ] &amp;&amp; find </span><span class="si">{</span><span class="n">quoted_path</span><span class="si">}</span><span class="s1"> -type f -name "*.chk" -delete'</span>
+        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'find </span><span class="si">{</span><span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">remote_path</span><span class="p">)</span><span class="si">}</span><span class="s1"> -type f -name "*.chk" -delete'</span>
         <span class="n">_</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">stderr</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not delete all check files under </span><span class="si">{</span><span class="n">remote_path</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">.</span><span class="se">\n</span><span class="s1">Got: </span><span class="si">{</span><span class="n">stderr</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span></div>
@@ -675,7 +1045,7 @@
 <span class="sd">        Returs:</span>
 <span class="sd">            bool: Whether the file exists on the remote server. ``True`` if it exists.</span>
 <span class="sd">        """</span>
-        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'[ -f "</span><span class="si">{</span><span class="n">remote_file_path</span><span class="si">}</span><span class="s1">" ] &amp;&amp; echo "File exists"'</span>
+        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'[ -f </span><span class="si">{</span><span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">remote_file_path</span><span class="p">)</span><span class="si">}</span><span class="s1"> ] &amp;&amp; echo "File exists"'</span>
         <span class="n">stdout</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">remote_path</span><span class="o">=</span><span class="s1">''</span><span class="p">)</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">):</span>
             <span class="k">return</span> <span class="kc">True</span>
@@ -692,7 +1062,7 @@
 <span class="sd">        Returns:</span>
 <span class="sd">            bool: Whether the directory exists on the remote server. ``True`` if it exists.</span>
 <span class="sd">        """</span>
-        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'[ -d "</span><span class="si">{</span><span class="n">remote_dir_path</span><span class="si">}</span><span class="s1">" ] &amp;&amp; echo "Dir exists"'</span>
+        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'[ -d </span><span class="si">{</span><span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">remote_dir_path</span><span class="p">)</span><span class="si">}</span><span class="s1"> ] &amp;&amp; echo "Dir exists"'</span>
         <span class="n">stdout</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">)</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">):</span>
             <span class="k">return</span> <span class="kc">True</span>
@@ -704,11 +1074,195 @@
 <span class="sd">        Args:</span>
 <span class="sd">            remote_path (str): The path to the directory to create on the remote server.</span>
 <span class="sd">        """</span>
-        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'mkdir -p "</span><span class="si">{</span><span class="n">remote_path</span><span class="si">}</span><span class="s1">"'</span>
+        <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'mkdir -p -- </span><span class="si">{</span><span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">remote_path</span><span class="p">)</span><span class="si">}</span><span class="s1">'</span>
         <span class="n">_</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">stderr</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span>
                 <span class="sa">f</span><span class="s1">'Cannot create dir for the given path (</span><span class="si">{</span><span class="n">remote_path</span><span class="si">}</span><span class="s1">).</span><span class="se">\n</span><span class="s1">Got: </span><span class="si">{</span><span class="n">stderr</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_addresses_worth_checking</span><span class="p">(</span><span class="n">server_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Return the address of every server whose host key is worth looking up.</span>
+
+<span class="sd">    Servers named ``local``, entries that are not dictionaries, servers without an ``address``,</span>
+<span class="sd">    and servers still carrying ARC's shipped placeholder address or username are left out. The</span>
+<span class="sd">    placeholders cannot be reached at all, and reporting them would fire on every run made with</span>
+<span class="sd">    the repository's default settings.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        server_dict (dict): The servers to filter.</span>
+
+<span class="sd">    Returns: dict[str, str]</span>
+<span class="sd">        The address of each server to check, keyed by server name.</span>
+<span class="sd">    """</span>
+    <span class="n">addresses</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">server_name</span><span class="p">,</span> <span class="n">server_settings</span> <span class="ow">in</span> <span class="n">server_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">server_name</span> <span class="o">==</span> <span class="s1">'local'</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">server_settings</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="n">address</span> <span class="o">=</span> <span class="n">server_settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'address'</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">address</span> <span class="ow">or</span> <span class="n">address</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">PLACEHOLDER_ADDRESS_SUFFIX</span><span class="p">)</span> \
+                <span class="ow">or</span> <span class="n">server_settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'un'</span><span class="p">)</span> <span class="o">==</span> <span class="n">PLACEHOLDER_USERNAME</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">addresses</span><span class="p">[</span><span class="n">server_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">address</span>
+    <span class="k">return</span> <span class="n">addresses</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_load_known_hosts</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">HostKeys</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Read a ``known_hosts`` file, returning an empty set of host keys if it cannot be read.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        path (str): The expanded path of the ``known_hosts`` file to read.</span>
+
+<span class="sd">    Returns: paramiko.HostKeys</span>
+<span class="sd">        The host keys the file holds, empty when the file is absent or unreadable.</span>
+<span class="sd">    """</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">HostKeys</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">SSHException</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Could not read the host keys in </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">HostKeys</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="get_servers_missing_host_keys">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.get_servers_missing_host_keys">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_servers_missing_host_keys</span><span class="p">(</span><span class="n">server_dict</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                  <span class="n">known_hosts_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Determine which of the configured servers have no host key on this machine.</span>
+
+<span class="sd">    The lookup is local and offline: the ``known_hosts`` file is read, nothing is resolved and</span>
+<span class="sd">    no connection is opened. paramiko's ``HostKeys`` performs the lookup, so hashed entries</span>
+<span class="sd">    (``ssh-keyscan -H``) and ``[host]:port`` entries are matched as OpenSSH matches them.</span>
+
+<span class="sd">    This reports an absent key only. Whether a stored key still matches the one a server</span>
+<span class="sd">    presents is not knowable from this machine, since only the server can present it; that</span>
+<span class="sd">    comparison is made by paramiko while connecting, and raises</span>
+<span class="sd">    :class:`HostKeyMismatchError`. What can be checked offline alongside an absent key is a</span>
+<span class="sd">    ``known_hosts`` file that contradicts itself, which is</span>
+<span class="sd">    :func:`get_servers_with_conflicting_host_keys`.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        server_dict (dict, optional): The servers to check. Defaults to the configured servers.</span>
+<span class="sd">        known_hosts_path (str, optional): The ``known_hosts`` file to read.</span>
+<span class="sd">                                          Defaults to :data:`KNOWN_HOSTS_PATH`.</span>
+
+<span class="sd">    Returns: dict[str, str]</span>
+<span class="sd">        The address of each server that has no host key, keyed by server name.</span>
+<span class="sd">    """</span>
+    <span class="n">server_dict</span> <span class="o">=</span> <span class="n">servers</span> <span class="k">if</span> <span class="n">server_dict</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">server_dict</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="n">known_hosts_path</span> <span class="k">if</span> <span class="n">known_hosts_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">KNOWN_HOSTS_PATH</span><span class="p">)</span>
+    <span class="n">host_keys</span> <span class="o">=</span> <span class="n">_load_known_hosts</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">missing</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">server_name</span><span class="p">,</span> <span class="n">address</span> <span class="ow">in</span> <span class="n">_addresses_worth_checking</span><span class="p">(</span><span class="n">server_dict</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">host_keys</span><span class="o">.</span><span class="n">lookup</span><span class="p">(</span><span class="n">address</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">missing</span><span class="p">[</span><span class="n">server_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">address</span>
+    <span class="k">return</span> <span class="n">missing</span></div>
+
+
+
+<div class="viewcode-block" id="get_servers_with_conflicting_host_keys">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.get_servers_with_conflicting_host_keys">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_servers_with_conflicting_host_keys</span><span class="p">(</span><span class="n">server_dict</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                           <span class="n">known_hosts_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Determine which of the configured servers have contradictory host keys on this machine.</span>
+
+<span class="sd">    A server legitimately has one host key per key type, and ``ssh-keyscan`` writes one line per</span>
+<span class="sd">    type. More than one entry of the *same* type for one address means the file disagrees with</span>
+<span class="sd">    itself about what that server's key is, which is what a stale entry left behind by a rebuilt</span>
+<span class="sd">    server looks like, and equally what an entry prepended to shadow the real key looks like.</span>
+<span class="sd">    Only the first matching entry is ever consulted -- by OpenSSH, and by the ``HostKeys.lookup``</span>
+<span class="sd">    paramiko authenticates with -- so a shadowed key is trusted silently while the server's real</span>
+<span class="sd">    key is reported as a mismatch.</span>
+
+<span class="sd">    The check is local and offline: the ``known_hosts`` file is read, nothing is resolved and no</span>
+<span class="sd">    connection is opened. It therefore cannot say *which* of the recorded keys is the server's;</span>
+<span class="sd">    answering that requires the key the server presents, which is compared while connecting and</span>
+<span class="sd">    raises :class:`HostKeyMismatchError`.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        server_dict (dict, optional): The servers to check. Defaults to the configured servers.</span>
+<span class="sd">        known_hosts_path (str, optional): The ``known_hosts`` file to read.</span>
+<span class="sd">                                          Defaults to :data:`KNOWN_HOSTS_PATH`.</span>
+
+<span class="sd">    Returns: dict[str, list[str]]</span>
+<span class="sd">        The key types recorded more than once, sorted, keyed by server name. Servers whose</span>
+<span class="sd">        entries do not contradict each other are absent.</span>
+<span class="sd">    """</span>
+    <span class="n">server_dict</span> <span class="o">=</span> <span class="n">servers</span> <span class="k">if</span> <span class="n">server_dict</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">server_dict</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="n">known_hosts_path</span> <span class="k">if</span> <span class="n">known_hosts_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">KNOWN_HOSTS_PATH</span><span class="p">)</span>
+    <span class="n">host_keys</span> <span class="o">=</span> <span class="n">_load_known_hosts</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">conflicting</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">server_name</span><span class="p">,</span> <span class="n">address</span> <span class="ow">in</span> <span class="n">_addresses_worth_checking</span><span class="p">(</span><span class="n">server_dict</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">entries</span> <span class="o">=</span> <span class="n">host_keys</span><span class="o">.</span><span class="n">lookup</span><span class="p">(</span><span class="n">address</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">entries</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">repeated</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">key_type</span> <span class="k">for</span> <span class="n">key_type</span><span class="p">,</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">Counter</span><span class="p">(</span><span class="n">entries</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">count</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">repeated</span><span class="p">:</span>
+            <span class="n">conflicting</span><span class="p">[</span><span class="n">server_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">repeated</span>
+    <span class="k">return</span> <span class="n">conflicting</span></div>
+
+
+
+<div class="viewcode-block" id="check_servers_known_hosts">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.check_servers_known_hosts">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_servers_known_hosts</span><span class="p">(</span><span class="n">server_dict</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                              <span class="n">known_hosts_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                              <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Report configured servers whose host keys need attention before any job is submitted.</span>
+
+<span class="sd">    Two offline conditions are reported, at two levels. A server with no host key at all is a</span>
+<span class="sd">    warning: ARC connects to an unknown host anyway (see :meth:`SSHClient._connect`), so without</span>
+<span class="sd">    this the first sign of an unseeded ``known_hosts`` is a per-connection warning buried in a</span>
+<span class="sd">    running job's log, or -- for a server with ``strict_host_key_checking`` -- a run that appears</span>
+<span class="sd">    to hang while every connection is refused. A server with contradictory entries</span>
+<span class="sd">    (:func:`get_servers_with_conflicting_host_keys`) is an error: the file records two different</span>
+<span class="sd">    keys as that server's, only one of them is consulted, and which one is trusted is decided by</span>
+<span class="sd">    line order rather than by anything the reader chose.</span>
+
+<span class="sd">    A stored key that no longer matches the key the server presents is not reported here and</span>
+<span class="sd">    cannot be, since the comparison needs the server. paramiko makes it while connecting, and it</span>
+<span class="sd">    surfaces as :class:`HostKeyMismatchError`.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        server_dict (dict, optional): The servers to check. Defaults to the configured servers.</span>
+<span class="sd">        known_hosts_path (str, optional): The ``known_hosts`` file to read.</span>
+<span class="sd">                                          Defaults to :data:`KNOWN_HOSTS_PATH`.</span>
+
+<span class="sd">    Returns: dict[str, str]</span>
+<span class="sd">        The address of each server that has no host key, keyed by server name.</span>
+<span class="sd">    """</span>
+    <span class="n">server_dict</span> <span class="o">=</span> <span class="n">servers</span> <span class="k">if</span> <span class="n">server_dict</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">server_dict</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expanduser</span><span class="p">(</span><span class="n">known_hosts_path</span> <span class="k">if</span> <span class="n">known_hosts_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">KNOWN_HOSTS_PATH</span><span class="p">)</span>
+    <span class="n">missing</span> <span class="o">=</span> <span class="n">get_servers_missing_host_keys</span><span class="p">(</span><span class="n">server_dict</span><span class="o">=</span><span class="n">server_dict</span><span class="p">,</span> <span class="n">known_hosts_path</span><span class="o">=</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">server_name</span><span class="p">,</span> <span class="n">address</span> <span class="ow">in</span> <span class="n">missing</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">server_dict</span><span class="p">[</span><span class="n">server_name</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'strict_host_key_checking'</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+            <span class="n">consequence</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'server "</span><span class="si">{</span><span class="n">server_name</span><span class="si">}</span><span class="s1">" sets strict_host_key_checking, so every '</span> \
+                          <span class="sa">f</span><span class="s1">'connection to it will be refused'</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">consequence</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'ARC will connect to server "</span><span class="si">{</span><span class="n">server_name</span><span class="si">}</span><span class="s1">" anyway and warn on every '</span> \
+                          <span class="sa">f</span><span class="s1">'connection, and cannot tell a first-ever connection from an interception'</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'The host key of </span><span class="si">{</span><span class="n">address</span><span class="si">}</span><span class="s1"> is not in </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">; </span><span class="si">{</span><span class="n">consequence</span><span class="si">}</span><span class="s1">. '</span>
+                       <span class="sa">f</span><span class="s1">'Verify the fingerprint against a trusted source and add it with:</span><span class="se">\n</span><span class="s1">'</span>
+                       <span class="sa">f</span><span class="s1">'    ssh-keyscan -H </span><span class="si">{</span><span class="n">address</span><span class="si">}</span><span class="s1"> &gt;&gt; </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+    <span class="n">conflicting</span> <span class="o">=</span> <span class="n">get_servers_with_conflicting_host_keys</span><span class="p">(</span><span class="n">server_dict</span><span class="o">=</span><span class="n">server_dict</span><span class="p">,</span> <span class="n">known_hosts_path</span><span class="o">=</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">server_name</span><span class="p">,</span> <span class="n">key_types</span> <span class="ow">in</span> <span class="n">conflicting</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">address</span> <span class="o">=</span> <span class="n">server_dict</span><span class="p">[</span><span class="n">server_name</span><span class="p">][</span><span class="s1">'address'</span><span class="p">]</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1"> records more than one </span><span class="si">{</span><span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">key_types</span><span class="p">)</span><span class="si">}</span><span class="s1"> host key for '</span>
+                     <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">address</span><span class="si">}</span><span class="s1">, the address of server "</span><span class="si">{</span><span class="n">server_name</span><span class="si">}</span><span class="s1">", so it disagrees with '</span>
+                     <span class="sa">f</span><span class="s1">'itself about that server</span><span class="se">\'</span><span class="s1">s identity. Only the first entry is used, which '</span>
+                     <span class="sa">f</span><span class="s1">'means a stale key left by a rebuilt server, or a key placed there to '</span>
+                     <span class="sa">f</span><span class="s1">'impersonate it, would be trusted in place of the real one. Verify the '</span>
+                     <span class="sa">f</span><span class="s1">'server</span><span class="se">\'</span><span class="s1">s fingerprint against a trusted source, then leave only that key:</span><span class="se">\n</span><span class="s1">'</span>
+                     <span class="sa">f</span><span class="s1">'    ssh-keygen -R </span><span class="si">{</span><span class="n">address</span><span class="si">}</span><span class="s1"> -f </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span>
+                     <span class="sa">f</span><span class="s1">'    ssh-keyscan -H </span><span class="si">{</span><span class="n">address</span><span class="si">}</span><span class="s1"> &gt;&gt; </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">missing</span></div>
 
 
 
@@ -720,7 +1274,12 @@
 <span class="sd">    The local counterpart of this function is ``arc.common.delete_check_files()``.</span>
 <span class="sd">    Errors are only logged and never raised: this runs once ARC is done with the science,</span>
 <span class="sd">    an unreachable server at that point is an inconvenience, not a reason to lose a run.</span>
-<span class="sd">    Only a single connection attempt is made per server for the same reason.</span>
+
+<span class="sd">    Each server is reached through its own single-attempt client rather than through the</span>
+<span class="sd">    connection pool (:mod:`arc.job.ssh_pool`), for the same reason: both the pool's factory and</span>
+<span class="sd">    the fallback in :func:`~arc.job.ssh_pool.borrow_ssh_client` build a client with the default</span>
+<span class="sd">    24-hour retry, so borrowing here would let a server that has gone away hold up the end of a</span>
+<span class="sd">    run indefinitely. A cleanup that cannot reach a server must give up, not wait.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        remote_project_paths (dict): Keys are server names, values are the respective remote paths</span>

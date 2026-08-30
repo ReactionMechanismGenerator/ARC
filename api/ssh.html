@@ -50,6 +50,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../remote_submission.html">Remote Job Submission over SSH</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../how_it_works.html">How ARC Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
@@ -71,6 +72,15 @@
 <li class="toctree-l2"><a class="reference internal" href="scheduler.html">arc.scheduler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="job.html">arc.job</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">arc.job.ssh</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.HostKeyMismatchError"><code class="docutils literal notranslate"><span class="pre">HostKeyMismatchError</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.LogAndAcceptHostKeyPolicy"><code class="docutils literal notranslate"><span class="pre">LogAndAcceptHostKeyPolicy</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.LogAndAcceptHostKeyPolicy.missing_host_key"><code class="docutils literal notranslate"><span class="pre">LogAndAcceptHostKeyPolicy.missing_host_key()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.RejectUnknownHostKeyPolicy"><code class="docutils literal notranslate"><span class="pre">RejectUnknownHostKeyPolicy</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.RejectUnknownHostKeyPolicy.missing_host_key"><code class="docutils literal notranslate"><span class="pre">RejectUnknownHostKeyPolicy.missing_host_key()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.SSHClient"><code class="docutils literal notranslate"><span class="pre">SSHClient</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.server"><code class="docutils literal notranslate"><span class="pre">SSHClient.server</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.address"><code class="docutils literal notranslate"><span class="pre">SSHClient.address</span></code></a></li>
@@ -79,6 +89,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.connection_attempts"><code class="docutils literal notranslate"><span class="pre">SSHClient.connection_attempts</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient._ssh"><code class="docutils literal notranslate"><span class="pre">SSHClient._ssh</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient._sftp"><code class="docutils literal notranslate"><span class="pre">SSHClient._sftp</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient._keepalive_interval"><code class="docutils literal notranslate"><span class="pre">SSHClient._keepalive_interval</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.change_mode"><code class="docutils literal notranslate"><span class="pre">SSHClient.change_mode()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.check_job_status"><code class="docutils literal notranslate"><span class="pre">SSHClient.check_job_status()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.check_running_jobs_ids"><code class="docutils literal notranslate"><span class="pre">SSHClient.check_running_jobs_ids()</span></code></a></li>
@@ -87,18 +98,22 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.delete_job"><code class="docutils literal notranslate"><span class="pre">SSHClient.delete_job()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.delete_jobs"><code class="docutils literal notranslate"><span class="pre">SSHClient.delete_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.delete_remote_check_files"><code class="docutils literal notranslate"><span class="pre">SSHClient.delete_remote_check_files()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.download_file"><code class="docutils literal notranslate"><span class="pre">SSHClient.download_file()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.find_package"><code class="docutils literal notranslate"><span class="pre">SSHClient.find_package()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.list_available_nodes"><code class="docutils literal notranslate"><span class="pre">SSHClient.list_available_nodes()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.list_dir"><code class="docutils literal notranslate"><span class="pre">SSHClient.list_dir()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.remove_dir"><code class="docutils literal notranslate"><span class="pre">SSHClient.remove_dir()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.submit_job"><code class="docutils literal notranslate"><span class="pre">SSHClient.submit_job()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#arc.job.ssh.SSHClient.upload_file"><code class="docutils literal notranslate"><span class="pre">SSHClient.upload_file()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.UnknownHostKeyError"><code class="docutils literal notranslate"><span class="pre">UnknownHostKeyError</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.check_connections"><code class="docutils literal notranslate"><span class="pre">check_connections()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.check_job_status_in_stdout"><code class="docutils literal notranslate"><span class="pre">check_job_status_in_stdout()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.check_servers_known_hosts"><code class="docutils literal notranslate"><span class="pre">check_servers_known_hosts()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.delete_all_arc_jobs"><code class="docutils literal notranslate"><span class="pre">delete_all_arc_jobs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.delete_check_files_on_servers"><code class="docutils literal notranslate"><span class="pre">delete_check_files_on_servers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.get_host_key_fingerprint"><code class="docutils literal notranslate"><span class="pre">get_host_key_fingerprint()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.get_servers_missing_host_keys"><code class="docutils literal notranslate"><span class="pre">get_servers_missing_host_keys()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.ssh.get_servers_with_conflicting_host_keys"><code class="docutils literal notranslate"><span class="pre">get_servers_with_conflicting_host_keys()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="local.html">arc.job.local</a></li>
@@ -151,6 +166,67 @@
 <span id="arc-job-ssh"></span><span id="ssh"></span><h1>arc.job.ssh<a class="headerlink" href="#module-arc.job.ssh" title="Link to this heading"></a></h1>
 <p>A module for SSHing into servers.
 Used for giving commands, uploading, and downloading files.</p>
+<dl class="py exception">
+<dt class="sig sig-object py" id="arc.job.ssh.HostKeyMismatchError">
+<span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">HostKeyMismatchError</span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#HostKeyMismatchError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.HostKeyMismatchError" title="Link to this definition"></a></dt>
+<dd><p>Raised when the host key a server presents contradicts the one stored in <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code>.</p>
+<p>Told apart from <a class="reference internal" href="#arc.job.ssh.UnknownHostKeyError" title="arc.job.ssh.UnknownHostKeyError"><code class="xref py py-class docutils literal notranslate"><span class="pre">UnknownHostKeyError</span></code></a>, which is the absence of a stored key, because
+the two mean different things: an absent key is a host never connected to before, while a
+contradicted key is either a re-keyed server or an interception, and only the second of
+those is a security event. Being an ARC <code class="xref py py-class docutils literal notranslate"><span class="pre">ServerError</span></code> keeps it inside
+ARC’s server error handling, and being a <code class="docutils literal notranslate"><span class="pre">paramiko.SSHException</span></code> keeps it catchable
+alongside the exception it is raised from.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arc.job.ssh.LogAndAcceptHostKeyPolicy">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">LogAndAcceptHostKeyPolicy</span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#LogAndAcceptHostKeyPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.LogAndAcceptHostKeyPolicy" title="Link to this definition"></a></dt>
+<dd><p>A missing host key policy that reports the unknown key through ARC’s logger, then accepts it.</p>
+<p>paramiko’s <code class="docutils literal notranslate"><span class="pre">WarningPolicy</span></code> emits through <code class="docutils literal notranslate"><span class="pre">warnings.warn()</span></code>, which ARC’s
+<a class="reference internal" href="common.html#arc.common.initialize_log" title="arc.common.initialize_log"><code class="xref py py-func docutils literal notranslate"><span class="pre">arc.common.initialize_log()</span></code></a> filters out for the <code class="docutils literal notranslate"><span class="pre">paramiko</span></code> module, so nothing of it
+reaches the log file or the terminal. This policy logs the host and the key’s fingerprint at
+the warning level, and connects.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.job.ssh.LogAndAcceptHostKeyPolicy.missing_host_key">
+<span class="sig-name descname"><span class="pre">missing_host_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hostname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#LogAndAcceptHostKeyPolicy.missing_host_key"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.LogAndAcceptHostKeyPolicy.missing_host_key" title="Link to this definition"></a></dt>
+<dd><p>Log the unknown host key and accept it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>client</strong> (<em>paramiko.SSHClient</em>) – The client the key was presented to.</p></li>
+<li><p><strong>hostname</strong> (<em>str</em>) – The address of the server that presented the key.</p></li>
+<li><p><strong>key</strong> (<em>paramiko.PKey</em>) – The host key that is not in <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="arc.job.ssh.RejectUnknownHostKeyPolicy">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">RejectUnknownHostKeyPolicy</span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#RejectUnknownHostKeyPolicy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.RejectUnknownHostKeyPolicy" title="Link to this definition"></a></dt>
+<dd><p>A missing host key policy that refuses the connection, raising <a class="reference internal" href="#arc.job.ssh.UnknownHostKeyError" title="arc.job.ssh.UnknownHostKeyError"><code class="xref py py-class docutils literal notranslate"><span class="pre">UnknownHostKeyError</span></code></a>.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.job.ssh.RejectUnknownHostKeyPolicy.missing_host_key">
+<span class="sig-name descname"><span class="pre">missing_host_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hostname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#RejectUnknownHostKeyPolicy.missing_host_key"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.RejectUnknownHostKeyPolicy.missing_host_key" title="Link to this definition"></a></dt>
+<dd><p>Refuse the unknown host key.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>client</strong> (<em>paramiko.SSHClient</em>) – The client the key was presented to.</p></li>
+<li><p><strong>hostname</strong> (<em>str</em>) – The address of the server that presented the key.</p></li>
+<li><p><strong>key</strong> (<em>paramiko.PKey</em>) – The host key that is not in <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#arc.job.ssh.UnknownHostKeyError" title="arc.job.ssh.UnknownHostKeyError"><strong>UnknownHostKeyError</strong></a> – Always.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">SSHClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">connection_attempts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1440</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient" title="Link to this definition"></a></dt>
@@ -162,7 +238,9 @@ Used for giving commands, uploading, and downloading files.</p>
 <li><p><strong>connection_attempts</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of times to try connecting to the server,
 waiting a minute between attempts. The default keeps trying
 for 24 hours, which is appropriate while jobs are running.
-Pass a low number where blocking is worse than giving up.</p></li>
+Pass a low number where blocking is worse than giving up.
+A permanent failure raises on the first attempt whatever
+this is set to, see <a class="reference internal" href="#arc.job.ssh.SSHClient.connect" title="arc.job.ssh.SSHClient.connect"><code class="xref py py-meth docutils literal notranslate"><span class="pre">connect()</span></code></a>.</p></li>
 </ul>
 </dd>
 </dl>
@@ -202,10 +280,14 @@ Pass a low number where blocking is worse than giving up.</p></li>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.key">
 <span class="sig-name descname"><span class="pre">key</span></span><a class="headerlink" href="#arc.job.ssh.SSHClient.key" title="Link to this definition"></a></dt>
-<dd><p>A path to a file containing the RSA SSH private key to the server.</p>
+<dd><p>A path to a file containing the SSH private key to the server.
+Optional: when it is not set (or set to an empty string), no explicit
+identity is offered and paramiko falls back to a running ssh-agent and
+then to the default key paths (<code class="docutils literal notranslate"><span class="pre">~/.ssh/id_rsa</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.ssh/id_ecdsa</span></code>,
+<code class="docutils literal notranslate"><span class="pre">~/.ssh/id_ed25519</span></code>), which is how agent-based setups authenticate.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>str</p>
+<dd class="field-odd"><p>str | None</p>
 </dd>
 </dl>
 </dd></dl>
@@ -239,6 +321,21 @@ Pass a low number where blocking is worse than giving up.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>paramiko.sftp_client.SFTPClient</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.job.ssh.SSHClient._keepalive_interval">
+<span class="sig-name descname"><span class="pre">_keepalive_interval</span></span><a class="headerlink" href="#arc.job.ssh.SSHClient._keepalive_interval" title="Link to this definition"></a></dt>
+<dd><p>The keepalive interval this client was asked for, which
+<a class="reference internal" href="#arc.job.ssh.SSHClient.connect" title="arc.job.ssh.SSHClient.connect"><code class="xref py py-meth docutils literal notranslate"><span class="pre">connect()</span></code></a> re-applies to every transport it opens.
+<code class="docutils literal notranslate"><span class="pre">None</span></code> until <code class="xref py py-func docutils literal notranslate"><span class="pre">arc.job.ssh_pool.set_keepalive()</span></code>
+sets it, since a client that is not pooled is not held
+open long enough to be dropped while idle.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int | None</p>
 </dd>
 </dl>
 </dd></dl>
@@ -296,9 +393,27 @@ under a directory.``True`` for recursively change.</p></li>
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.connect">
 <span class="sig-name descname"><span class="pre">connect</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.connect"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.connect" title="Link to this definition"></a></dt>
 <dd><p>A modulator function for _connect(). Connect to the server.</p>
+<p>Failures that retrying cannot resolve – a rejected authentication, a host key that does
+not match <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code>, and an unknown host key on a server that sets
+<code class="docutils literal notranslate"><span class="pre">strict_host_key_checking</span></code> (<code class="xref py py-data docutils literal notranslate"><span class="pre">PERMANENT_CONNECTION_ERRORS</span></code>) – raise a
+<code class="docutils literal notranslate"><span class="pre">ServerError</span></code> on the first attempt, carrying the paramiko exception as its cause – this
+holds whatever <code class="docutils literal notranslate"><span class="pre">connection_attempts</span></code> is set to, since no number of retries can resolve
+them. A configured <code class="docutils literal notranslate"><span class="pre">key</span></code> file that does not exist is permanent for the same reason, and
+is told apart from the transport-level <code class="docutils literal notranslate"><span class="pre">OSError``s</span> <span class="pre">by</span> <span class="pre">:meth:`_is_a_missing_key_file`.</span>
+<span class="pre">Every</span> <span class="pre">other</span> <span class="pre">failure</span> <span class="pre">is</span> <span class="pre">transport-level,</span> <span class="pre">and</span> <span class="pre">is</span> <span class="pre">retried</span> <span class="pre">once</span> <span class="pre">a</span> <span class="pre">minute</span> <span class="pre">until</span>
+<span class="pre">``connection_attempts</span></code> attempts have been made (24 hours by default). No interval is
+waited out after the last attempt, so a client asked for a single attempt fails at once.</p>
+<p>A contradicted host key raises the <a class="reference internal" href="#arc.job.ssh.HostKeyMismatchError" title="arc.job.ssh.HostKeyMismatchError"><code class="xref py py-class docutils literal notranslate"><span class="pre">HostKeyMismatchError</span></code></a> subclass of
+<code class="docutils literal notranslate"><span class="pre">ServerError</span></code> rather than a plain one, and is reported at the error level naming both
+fingerprints, so it is told apart from a wrong password in the log rather than reading as
+one more failed connection.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ServerError</strong> – Cannot connect to the server with maximum times to try</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference internal" href="#arc.job.ssh.HostKeyMismatchError" title="arc.job.ssh.HostKeyMismatchError"><strong>HostKeyMismatchError</strong></a> – The server’s host key contradicts the one in <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code>.</p></li>
+<li><p><strong>ServerError</strong> – Cannot connect to the server with maximum times to try,
+    or the failure is permanent.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -332,26 +447,12 @@ under a directory.``True`` for recursively change.</p></li>
 They usually take up lots of space and are not needed after ARC terminates.
 Pass <code class="docutils literal notranslate"><span class="pre">True</span></code> to the <code class="docutils literal notranslate"><span class="pre">keep_checks</span></code> flag in ARC to avoid deleting check files.
 The local counterpart of this method is <code class="docutils literal notranslate"><span class="pre">arc.common.delete_check_files()</span></code>.</p>
+<p>Unlike <a class="reference internal" href="#arc.job.ssh.SSHClient.remove_dir" title="arc.job.ssh.SSHClient.remove_dir"><code class="xref py py-meth docutils literal notranslate"><span class="pre">remove_dir()</span></code></a>, this keeps the remote directory and everything in it that is
+not a checkfile, so a project’s outputs remain on the server after the cleanup.
+A failure is logged rather than raised, see <a class="reference internal" href="#arc.job.ssh.delete_check_files_on_servers" title="arc.job.ssh.delete_check_files_on_servers"><code class="xref py py-func docutils literal notranslate"><span class="pre">delete_check_files_on_servers()</span></code></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>remote_path</strong> (<em>str</em>) – The remote directory path under which checkfiles will be deleted.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="arc.job.ssh.SSHClient.download_file">
-<span class="sig-name descname"><span class="pre">download_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_file_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">local_file_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.download_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.download_file" title="Link to this definition"></a></dt>
-<dd><p>Download a file from the server.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>remote_file_path</strong> (<em>str</em>) – The remote path to be downloaded from.</p></li>
-<li><p><strong>local_file_path</strong> (<em>str</em>) – The local path to be downloaded to.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ServerError</strong> – If the file cannot be downloaded with maximum times to try</p>
 </dd>
 </dl>
 </dd></dl>
@@ -393,6 +494,24 @@ The local counterpart of this method is <code class="docutils literal notranslat
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.job.ssh.SSHClient.remove_dir">
+<span class="sig-name descname"><span class="pre">remove_dir</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.remove_dir"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.remove_dir" title="Link to this definition"></a></dt>
+<dd><p>Remove a directory, and everything under it, on the server.</p>
+<p>This is the remote-cleanup primitive. ARC’s own job flow does not call it: no job removes
+its remote work directory today, and the caller that will is added separately. It is
+reached through <code class="xref py py-meth docutils literal notranslate"><span class="pre">arc.job.adapter.JobAdapter.remove_remote_files()</span></code>, which supplies
+the job’s remote path.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>remote_path</strong> (<em>str</em>) – The path to the directory to remove on the remote server.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ServerError</strong> – If the directory could not be removed.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.submit_job">
 <span class="sig-name descname"><span class="pre">submit_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recursion</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.submit_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.submit_job" title="Link to this definition"></a></dt>
 <dd><p>Submit a job to the server.</p>
@@ -414,28 +533,17 @@ Either <cite>errored</cite> or <cite>submitted</cite>.</p></li>
 </dl>
 </dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="arc.job.ssh.SSHClient.upload_file">
-<span class="sig-name descname"><span class="pre">upload_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_file_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">local_file_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_string</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.upload_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.upload_file" title="Link to this definition"></a></dt>
-<dd><p>Upload a local file or contents from a string to the remote server.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>remote_file_path</strong> (<em>str</em>) – The path to write into on the remote server.</p></li>
-<li><p><strong>local_file_path</strong> (<em>str</em><em> | </em><em>None</em>) – The local file path to be copied to the remote location.</p></li>
-<li><p><strong>file_string</strong> (<em>str</em><em> | </em><em>None</em>) – The file content to be copied and saved as the remote file.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><ul class="simple">
-<li><p><strong>InputError</strong> – If both <cite>local_file_path</cite> or <cite>file_string</cite> are invalid,
-    or <cite>local_file_path</cite> does not exist.</p></li>
-<li><p><strong>ServerError</strong> – If the file cannot be uploaded with maximum times to try</p></li>
-</ul>
-</dd>
-</dl>
 </dd></dl>
 
+<dl class="py exception">
+<dt class="sig sig-object py" id="arc.job.ssh.UnknownHostKeyError">
+<span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">UnknownHostKeyError</span></span><a class="reference internal" href="../_modules/arc/job/ssh.html#UnknownHostKeyError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.UnknownHostKeyError" title="Link to this definition"></a></dt>
+<dd><p>Raised when a server’s host key is absent from <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> and the server sets
+<code class="docutils literal notranslate"><span class="pre">strict_host_key_checking</span></code>.</p>
+<p>An ARC <code class="xref py py-class docutils literal notranslate"><span class="pre">ServerError</span></code>, so ARC’s server error handling covers it, and a
+<code class="docutils literal notranslate"><span class="pre">paramiko.SSHException</span></code>, which is what a missing host key policy is expected to raise. Being
+a distinct type, a refused host key is told apart from a transport failure without matching on
+paramiko’s message text.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -447,6 +555,10 @@ SSHClient instance and then checks if you can send <code class="docutils literal
 to make sure your connection still alive. If connection is bad, this
 decorator will reconnect the SSH channel, to avoid connection related
 error when executing the method.</p>
+<p><code class="docutils literal notranslate"><span class="pre">connect()</span></code> assigns <code class="docutils literal notranslate"><span class="pre">self._sftp</span></code> and <code class="docutils literal notranslate"><span class="pre">self._ssh</span></code> itself and returns nothing, so its
+result is not unpacked into them. Unpacking it raised <code class="docutils literal notranslate"><span class="pre">TypeError:</span> <span class="pre">cannot</span> <span class="pre">unpack</span>
+<span class="pre">non-iterable</span> <span class="pre">NoneType</span> <span class="pre">object</span></code> for any client that had not connected yet, which is the one
+case this branch exists to serve.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -466,6 +578,36 @@ error when executing the method.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.ssh.check_servers_known_hosts">
+<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">check_servers_known_hosts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">known_hosts_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#check_servers_known_hosts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.check_servers_known_hosts" title="Link to this definition"></a></dt>
+<dd><p>Report configured servers whose host keys need attention before any job is submitted.</p>
+<p>Two offline conditions are reported, at two levels. A server with no host key at all is a
+warning: ARC connects to an unknown host anyway (see <code class="xref py py-meth docutils literal notranslate"><span class="pre">SSHClient._connect()</span></code>), so without
+this the first sign of an unseeded <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> is a per-connection warning buried in a
+running job’s log, or – for a server with <code class="docutils literal notranslate"><span class="pre">strict_host_key_checking</span></code> – a run that appears
+to hang while every connection is refused. A server with contradictory entries
+(<a class="reference internal" href="#arc.job.ssh.get_servers_with_conflicting_host_keys" title="arc.job.ssh.get_servers_with_conflicting_host_keys"><code class="xref py py-func docutils literal notranslate"><span class="pre">get_servers_with_conflicting_host_keys()</span></code></a>) is an error: the file records two different
+keys as that server’s, only one of them is consulted, and which one is trusted is decided by
+line order rather than by anything the reader chose.</p>
+<p>A stored key that no longer matches the key the server presents is not reported here and
+cannot be, since the comparison needs the server. paramiko makes it while connecting, and it
+surfaces as <a class="reference internal" href="#arc.job.ssh.HostKeyMismatchError" title="arc.job.ssh.HostKeyMismatchError"><code class="xref py py-class docutils literal notranslate"><span class="pre">HostKeyMismatchError</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>server_dict</strong> (<em>dict</em><em>, </em><em>optional</em>) – The servers to check. Defaults to the configured servers.</p></li>
+<li><p><strong>known_hosts_path</strong> (<em>str</em><em>, </em><em>optional</em>) – The <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> file to read.
+Defaults to <code class="xref py py-data docutils literal notranslate"><span class="pre">KNOWN_HOSTS_PATH</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: dict[str, str]</dt><dd><p>The address of each server that has no host key, keyed by server name.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -493,12 +635,91 @@ Useful when terminating ARC while some (ghost) jobs are still running.</p>
 <dd><p>Delete ESS checkfiles from an ARC project’s directory on all servers it ran jobs on.
 The local counterpart of this function is <code class="docutils literal notranslate"><span class="pre">arc.common.delete_check_files()</span></code>.
 Errors are only logged and never raised: this runs once ARC is done with the science,
-an unreachable server at that point is an inconvenience, not a reason to lose a run.
-Only a single connection attempt is made per server for the same reason.</p>
+an unreachable server at that point is an inconvenience, not a reason to lose a run.</p>
+<p>Each server is reached through its own single-attempt client rather than through the
+connection pool (<code class="xref py py-mod docutils literal notranslate"><span class="pre">arc.job.ssh_pool</span></code>), for the same reason: both the pool’s factory and
+the fallback in <code class="xref py py-func docutils literal notranslate"><span class="pre">borrow_ssh_client()</span></code> build a client with the default
+24-hour retry, so borrowing here would let a server that has gone away hold up the end of a
+run indefinitely. A cleanup that cannot reach a server must give up, not wait.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>remote_project_paths</strong> (<em>dict</em>) – Keys are server names, values are the respective remote paths
 of the project’s directory on that server.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.ssh.get_host_key_fingerprint">
+<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">get_host_key_fingerprint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#get_host_key_fingerprint"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.get_host_key_fingerprint" title="Link to this definition"></a></dt>
+<dd><p>Return the OpenSSH-style SHA256 fingerprint of a host key.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>key</strong> (<em>paramiko.PKey</em>) – The host key to fingerprint.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: str</dt><dd><p>The fingerprint, formatted as <code class="docutils literal notranslate"><span class="pre">SHA256:&lt;unpadded</span> <span class="pre">base64&gt;</span></code>, as reported by
+<code class="docutils literal notranslate"><span class="pre">ssh-keygen</span> <span class="pre">-lf</span></code> and by OpenSSH when it prompts about an unknown host.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.ssh.get_servers_missing_host_keys">
+<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">get_servers_missing_host_keys</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">known_hosts_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#get_servers_missing_host_keys"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.get_servers_missing_host_keys" title="Link to this definition"></a></dt>
+<dd><p>Determine which of the configured servers have no host key on this machine.</p>
+<p>The lookup is local and offline: the <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> file is read, nothing is resolved and
+no connection is opened. paramiko’s <code class="docutils literal notranslate"><span class="pre">HostKeys</span></code> performs the lookup, so hashed entries
+(<code class="docutils literal notranslate"><span class="pre">ssh-keyscan</span> <span class="pre">-H</span></code>) and <code class="docutils literal notranslate"><span class="pre">[host]:port</span></code> entries are matched as OpenSSH matches them.</p>
+<p>This reports an absent key only. Whether a stored key still matches the one a server
+presents is not knowable from this machine, since only the server can present it; that
+comparison is made by paramiko while connecting, and raises
+<a class="reference internal" href="#arc.job.ssh.HostKeyMismatchError" title="arc.job.ssh.HostKeyMismatchError"><code class="xref py py-class docutils literal notranslate"><span class="pre">HostKeyMismatchError</span></code></a>. What can be checked offline alongside an absent key is a
+<code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> file that contradicts itself, which is
+<a class="reference internal" href="#arc.job.ssh.get_servers_with_conflicting_host_keys" title="arc.job.ssh.get_servers_with_conflicting_host_keys"><code class="xref py py-func docutils literal notranslate"><span class="pre">get_servers_with_conflicting_host_keys()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>server_dict</strong> (<em>dict</em><em>, </em><em>optional</em>) – The servers to check. Defaults to the configured servers.</p></li>
+<li><p><strong>known_hosts_path</strong> (<em>str</em><em>, </em><em>optional</em>) – The <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> file to read.
+Defaults to <code class="xref py py-data docutils literal notranslate"><span class="pre">KNOWN_HOSTS_PATH</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: dict[str, str]</dt><dd><p>The address of each server that has no host key, keyed by server name.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.ssh.get_servers_with_conflicting_host_keys">
+<span class="sig-prename descclassname"><span class="pre">arc.job.ssh.</span></span><span class="sig-name descname"><span class="pre">get_servers_with_conflicting_host_keys</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">known_hosts_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#get_servers_with_conflicting_host_keys"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.get_servers_with_conflicting_host_keys" title="Link to this definition"></a></dt>
+<dd><p>Determine which of the configured servers have contradictory host keys on this machine.</p>
+<p>A server legitimately has one host key per key type, and <code class="docutils literal notranslate"><span class="pre">ssh-keyscan</span></code> writes one line per
+type. More than one entry of the <em>same</em> type for one address means the file disagrees with
+itself about what that server’s key is, which is what a stale entry left behind by a rebuilt
+server looks like, and equally what an entry prepended to shadow the real key looks like.
+Only the first matching entry is ever consulted – by OpenSSH, and by the <code class="docutils literal notranslate"><span class="pre">HostKeys.lookup</span></code>
+paramiko authenticates with – so a shadowed key is trusted silently while the server’s real
+key is reported as a mismatch.</p>
+<p>The check is local and offline: the <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> file is read, nothing is resolved and no
+connection is opened. It therefore cannot say <em>which</em> of the recorded keys is the server’s;
+answering that requires the key the server presents, which is compared while connecting and
+raises <a class="reference internal" href="#arc.job.ssh.HostKeyMismatchError" title="arc.job.ssh.HostKeyMismatchError"><code class="xref py py-class docutils literal notranslate"><span class="pre">HostKeyMismatchError</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>server_dict</strong> (<em>dict</em><em>, </em><em>optional</em>) – The servers to check. Defaults to the configured servers.</p></li>
+<li><p><strong>known_hosts_path</strong> (<em>str</em><em>, </em><em>optional</em>) – The <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> file to read.
+Defaults to <code class="xref py py-data docutils literal notranslate"><span class="pre">KNOWN_HOSTS_PATH</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: dict[str, list[str]]</dt><dd><p>The key types recorded more than once, sorted, keyed by server name. Servers whose
+entries do not contradict each other are absent.</p>
 </dd>
 </dl>
 </dd></dl>

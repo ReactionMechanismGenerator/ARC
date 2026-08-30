@@ -54,6 +54,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="remote_submission.html">Remote Job Submission over SSH</a></li>
 <li class="toctree-l1"><a class="reference internal" href="how_it_works.html">How ARC Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -155,7 +156,9 @@ and be aware that some numerical dependencies may misbehave under emulation.</p>
 </pre></div>
 </div>
 <p>For job submission, the scheduler client tools must be available in the container
-or accessed via SSH on a remote host.</p>
+or accessed via SSH on a remote host. To submit to a remote cluster you also need
+to mount your personal ARC settings and your SSH material into the container; see
+<a class="reference internal" href="remote_submission.html#remote-submission"><span class="std std-ref">Remote Job Submission over SSH</span></a> for the required mounts and the two authentication routes.</p>
 </section>
 <section id="aliases-in-interactive-shells">
 <h2>Aliases in interactive shells<a class="headerlink" href="#aliases-in-interactive-shells" title="Link to this heading"></a></h2>

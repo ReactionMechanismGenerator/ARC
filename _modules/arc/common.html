@@ -47,6 +47,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../remote_submission.html">Remote Job Submission over SSH</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../how_it_works.html">How ARC Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../examples.html">Examples</a></li>
@@ -152,7 +153,6 @@
 
 <span class="n">default_job_types</span><span class="p">,</span> <span class="n">servers</span><span class="p">,</span> <span class="n">supported_ess</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'default_job_types'</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'servers'</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'supported_ess'</span><span class="p">]</span>
 
-
 <div class="viewcode-block" id="initialize_job_types">
 <a class="viewcode-back" href="../../api/common.html#arc.common.initialize_job_types">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">initialize_job_types</span><span class="p">(</span><span class="n">job_types</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -222,7 +222,9 @@
 
 <div class="viewcode-block" id="check_ess_settings">
 <a class="viewcode-back" href="../../api/common.html#arc.common.check_ess_settings">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">check_ess_settings</span><span class="p">(</span><span class="n">ess_settings</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_ess_settings</span><span class="p">(</span><span class="n">ess_settings</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="n">ts_adapters</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    A helper function to convert servers in the ess_settings dict to lists</span>
 <span class="sd">    Assists in troubleshooting job and trying a different server</span>
@@ -230,9 +232,15 @@
 
 <span class="sd">    Args:</span>
 <span class="sd">        ess_settings (dict, optional): ARC's ESS settings dictionary.</span>
+<span class="sd">        ts_adapters (list, optional): The TS search adapters this run will use, used to check the</span>
+<span class="sd">                                      remote paths of the servers they will run on. ``None``</span>
+<span class="sd">                                      selects the default set from the settings.</span>
 
 <span class="sd">    Returns: dict</span>
 <span class="sd">        An updated ARC ESS dictionary.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        SettingsError: If an ESS, a server, or the remote path of a server is unusable.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="n">ess_settings</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">ess_settings</span><span class="p">:</span>
         <span class="k">return</span> <span class="nb">dict</span><span class="p">()</span>
@@ -256,8 +264,56 @@
             <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">server</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">and</span> <span class="n">server</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">servers</span><span class="o">.</span><span class="n">keys</span><span class="p">()]:</span>
                 <span class="n">server_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">servers</span><span class="o">.</span><span class="n">keys</span><span class="p">()]</span>
                 <span class="k">raise</span> <span class="n">SettingsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Recognized servers are </span><span class="si">{</span><span class="n">server_names</span><span class="si">}</span><span class="s1">. Got: </span><span class="si">{</span><span class="n">server</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+    <span class="n">check_remote_paths_of_path_naming_adapters</span><span class="p">(</span><span class="n">ess_settings</span><span class="o">=</span><span class="n">settings_dict</span><span class="p">,</span> <span class="n">ts_adapters</span><span class="o">=</span><span class="n">ts_adapters</span><span class="p">)</span>
     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">'</span><span class="se">\n</span><span class="s1">Using the following ESS settings:</span><span class="se">\n</span><span class="si">{</span><span class="n">pprint</span><span class="o">.</span><span class="n">pformat</span><span class="p">(</span><span class="n">settings_dict</span><span class="p">)</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">settings_dict</span></div>
+
+
+
+<div class="viewcode-block" id="check_remote_paths_of_path_naming_adapters">
+<a class="viewcode-back" href="../../api/common.html#arc.common.check_remote_paths_of_path_naming_adapters">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_remote_paths_of_path_naming_adapters</span><span class="p">(</span><span class="n">ess_settings</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+                                               <span class="n">ts_adapters</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                               <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Check that every server an adapter which names a path on the server will run on has an</span>
+<span class="sd">    absolute ``path``.</span>
+
+<span class="sd">    Reported here, before any calculation is spawned, because the alternative is reaching it when</span>
+<span class="sd">    the first reaction gets to its TS search: the adapter cannot build a usable input file for</span>
+<span class="sd">    such a server, so the failure arrives once per run either way, and arriving at startup is the</span>
+<span class="sd">    difference between a settings error the reader can act on and a run that has already spent</span>
+<span class="sd">    time on jobs it will not be able to use.</span>
+
+<span class="sd">    A server that is not in the ``servers`` settings is not reported here, since</span>
+<span class="sd">    :func:`check_ess_settings` has already rejected it by name.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        ess_settings (dict): ARC's ESS settings dictionary, each ESS mapped to a list of servers.</span>
+<span class="sd">        ts_adapters (list, optional): The TS search adapters this run will use. ``None`` selects</span>
+<span class="sd">                                      the default set from the settings.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        SettingsError: If such an adapter would run on a server whose ``path`` is missing or not</span>
+<span class="sd">                       absolute.</span>
+<span class="sd">    """</span>
+    <span class="n">adapters</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'ts_adapters'</span><span class="p">,</span> <span class="nb">list</span><span class="p">())</span> <span class="k">if</span> <span class="n">ts_adapters</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ts_adapters</span>
+    <span class="n">adapters</span> <span class="o">=</span> <span class="p">[</span><span class="n">adapter</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">adapter</span> <span class="ow">in</span> <span class="n">adapters</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">adapter</span><span class="p">,</span> <span class="nb">str</span><span class="p">)]</span>
+    <span class="k">if</span> <span class="s1">'orca_neb'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">adapters</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="k">for</span> <span class="n">server</span> <span class="ow">in</span> <span class="n">ess_settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'orca'</span><span class="p">,</span> <span class="nb">list</span><span class="p">()):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">server</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="n">server</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'local'</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">server_key</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">key</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">servers</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="n">server</span><span class="o">.</span><span class="n">lower</span><span class="p">()),</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">server_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server_key</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'path'</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isabs</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SettingsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Server "</span><span class="si">{</span><span class="n">server</span><span class="si">}</span><span class="s1">" has no absolute "path" entry in the settings, '</span>
+                                <span class="sa">f</span><span class="s1">'got </span><span class="si">{</span><span class="n">path</span><span class="si">!r}</span><span class="s1">, but the "orca_neb" adapter will run on it and its '</span>
+                                <span class="sa">f</span><span class="s1">'input file must name a path on the server. Set "path" for this '</span>
+                                <span class="sa">f</span><span class="s1">'server to the absolute directory holding the user directories, '</span>
+                                <span class="sa">f</span><span class="s1">'e.g. "/home", or remove "orca_neb" from "ts_adapters".'</span><span class="p">)</span></div>
 
 
 

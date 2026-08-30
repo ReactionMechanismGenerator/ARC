@@ -21,7 +21,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="How ARC Works" href="how_it_works.html" />
+    <link rel="next" title="Remote Job Submission over SSH" href="remote_submission.html" />
     <link rel="prev" title="Docker image" href="docker.html" /> 
 </head>
 
@@ -61,6 +61,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#run-arkane-independently">Run Arkane Independently</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="remote_submission.html">Remote Job Submission over SSH</a></li>
 <li class="toctree-l1"><a class="reference internal" href="how_it_works.html">How ARC Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -253,14 +254,14 @@ matches the level ARC records.</p></li>
 <section id="run-over-ssh">
 <h2>Run over SSH<a class="headerlink" href="#run-over-ssh" title="Link to this heading"></a></h2>
 <p>Use SSH mode when ARC runs on your workstation but submits jobs on one or more
-remote servers. Configure each remote server with <code class="docutils literal notranslate"><span class="pre">address</span></code>, <code class="docutils literal notranslate"><span class="pre">un</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">key</span></code>, then route ESS names to those servers:</p>
+remote servers. Configure each remote server with <code class="docutils literal notranslate"><span class="pre">address</span></code> and <code class="docutils literal notranslate"><span class="pre">un</span></code>, then
+route ESS names to those servers:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
     <span class="s1">'cluster_a'</span><span class="p">:</span> <span class="p">{</span>
         <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
         <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'path'</span><span class="p">:</span> <span class="s1">'/home'</span><span class="p">,</span>
         <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
-        <span class="s1">'key'</span><span class="p">:</span> <span class="s1">'/home/my_user/.ssh/id_rsa'</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">}</span>
 
@@ -270,6 +271,19 @@ remote servers. Configure each remote server with <code class="docutils literal 
 <span class="p">}</span>
 </pre></div>
 </div>
+<p>With no <code class="docutils literal notranslate"><span class="pre">key</span></code> in the entry, ARC authenticates through a running ssh-agent and
+then through the default key paths, so <code class="docutils literal notranslate"><span class="pre">ssh-add</span> <span class="pre">~/.ssh/id_ed25519</span></code> is all that is
+needed. To point at a specific private key instead, add
+<code class="docutils literal notranslate"><span class="pre">'key':</span> <span class="pre">'/home/my_user/.ssh/id_ed25519'</span></code>; the path is read on the machine running
+ARC and must name the private key.</p>
+<p>A host that is absent from <code class="docutils literal notranslate"><span class="pre">~/.ssh/known_hosts</span></code> is warned about but still
+connected to. Add <code class="docutils literal notranslate"><span class="pre">'strict_host_key_checking':</span> <span class="pre">True</span></code> to a server entry to refuse
+unknown hosts instead. ARC names every such server at startup, before it submits
+anything, together with the <code class="docutils literal notranslate"><span class="pre">ssh-keyscan</span></code> command that seeds the missing key.</p>
+<p>ARC does not read <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code>, so every connection detail has to be given in
+the server entry, and jump hosts (<code class="docutils literal notranslate"><span class="pre">ProxyJump</span></code>/<code class="docutils literal notranslate"><span class="pre">ProxyCommand</span></code>) are not supported.</p>
+<p>See <a class="reference internal" href="remote_submission.html#remote-submission"><span class="std std-ref">Remote Job Submission over SSH</span></a> for authentication, host key verification, and remote
+submission from the Docker image.</p>
 </section>
 <section id="run-on-hpc">
 <h2>Run on HPC<a class="headerlink" href="#run-on-hpc" title="Link to this heading"></a></h2>
@@ -302,7 +316,7 @@ valid checkouts before running Arkane.</p>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="docker.html" class="btn btn-neutral float-left" title="Docker image" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="how_it_works.html" class="btn btn-neutral float-right" title="How ARC Works" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="remote_submission.html" class="btn btn-neutral float-right" title="Remote Job Submission over SSH" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

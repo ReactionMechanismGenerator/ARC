@@ -47,6 +47,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../remote_submission.html">Remote Job Submission over SSH</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../how_it_works.html">How ARC Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../examples.html">Examples</a></li>
@@ -120,7 +121,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.level</span><span class="w"> </span><span class="kn">import</span> <span class="n">Level</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.local</span><span class="w"> </span><span class="kn">import</span> <span class="n">execute_command</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.ssh</span><span class="w"> </span><span class="kn">import</span> <span class="n">SSHClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.ssh_pool</span><span class="w"> </span><span class="kn">import</span> <span class="n">borrow_ssh_client</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.conformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">determine_smallest_atom_index_in_scan</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.converter</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">displace_xyz</span><span class="p">,</span> <span class="n">ics_to_scan_constraints</span><span class="p">)</span>
@@ -1606,13 +1607,13 @@
         <span class="n">execute_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">True</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">with</span> <span class="n">SSHClient</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="k">as</span> <span class="n">ssh</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">borrow_ssh_client</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="k">as</span> <span class="n">ssh</span><span class="p">:</span>
             <span class="n">ssh</span><span class="o">.</span><span class="n">delete_job</span><span class="p">(</span><span class="n">job_id</span><span class="p">)</span>
 
     <span class="c1"># find available node</span>
     <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s1">'Troubleshooting by changing node.'</span><span class="p">)</span>
-    <span class="n">ssh</span> <span class="o">=</span> <span class="n">SSHClient</span><span class="p">(</span><span class="n">server</span><span class="p">)</span>
-    <span class="n">nodes</span> <span class="o">=</span> <span class="n">ssh</span><span class="o">.</span><span class="n">list_available_nodes</span><span class="p">()</span>
+    <span class="k">with</span> <span class="n">borrow_ssh_client</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="k">as</span> <span class="n">ssh</span><span class="p">:</span>
+        <span class="n">nodes</span> <span class="o">=</span> <span class="n">ssh</span><span class="o">.</span><span class="n">list_available_nodes</span><span class="p">()</span>
     <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">nodes</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">node</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">server_nodes</span><span class="p">:</span>
             <span class="n">server_nodes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
@@ -1625,7 +1626,7 @@
 
     <span class="c1"># modify the submit file</span>
     <span class="n">remote_submit_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">remote_path</span><span class="p">,</span> <span class="n">submit_filenames</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">])</span>
-    <span class="k">with</span> <span class="n">SSHClient</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="k">as</span> <span class="n">ssh</span><span class="p">:</span>
+    <span class="k">with</span> <span class="n">borrow_ssh_client</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="k">as</span> <span class="n">ssh</span><span class="p">:</span>
         <span class="n">content</span> <span class="o">=</span> <span class="n">ssh</span><span class="o">.</span><span class="n">read_remote_file</span><span class="p">(</span><span class="n">remote_file_path</span><span class="o">=</span><span class="n">remote_submit_file</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'oge'</span><span class="p">:</span>
         <span class="n">node_assign</span> <span class="o">=</span> <span class="s1">'#$ -l h='</span>
@@ -1635,19 +1636,19 @@
         <span class="n">insert_line_num</span> <span class="o">=</span> <span class="mi">5</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="c1"># Other software?</span>
-        <span class="n">logger</span><span class="o">.</span><span class="n">denug</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Unknown cluster software </span><span class="si">{</span><span class="n">cluster_soft</span><span class="si">}</span><span class="s1"> is encountered when '</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Unknown cluster software </span><span class="si">{</span><span class="n">cluster_soft</span><span class="si">}</span><span class="s1"> is encountered when '</span>
                      <span class="sa">f</span><span class="s1">'troubleshooting by changing node.'</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span>
     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">content</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">node_assign</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
             <span class="n">content</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">node_assign</span> <span class="o">+</span> <span class="n">node</span>
-        <span class="k">break</span>
+            <span class="k">break</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">content</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">insert_line_num</span><span class="p">,</span> <span class="n">node_assign</span> <span class="o">+</span> <span class="n">node</span><span class="p">)</span>
     <span class="n">content</span> <span class="o">=</span> <span class="s1">''</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">content</span><span class="p">)</span>  <span class="c1"># convert list into a single string, not to upset paramiko</span>
 
     <span class="c1"># resubmit</span>
-    <span class="k">with</span> <span class="n">SSHClient</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="k">as</span> <span class="n">ssh</span><span class="p">:</span>
+    <span class="k">with</span> <span class="n">borrow_ssh_client</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="k">as</span> <span class="n">ssh</span><span class="p">:</span>
         <span class="n">ssh</span><span class="o">.</span><span class="n">upload_file</span><span class="p">(</span><span class="n">remote_file_path</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">remote_path</span><span class="p">,</span>
                         <span class="n">submit_filenames</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">]),</span> <span class="n">file_string</span><span class="o">=</span><span class="n">content</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">node</span><span class="p">,</span> <span class="kc">True</span></div>

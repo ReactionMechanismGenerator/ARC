@@ -47,6 +47,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../remote_submission.html">Remote Job Submission over SSH</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../how_it_works.html">How ARC Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../examples.html">Examples</a></li>
@@ -140,7 +141,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.local</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_running_jobs_ids</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.pipe.pipe_coordinator</span><span class="w"> </span><span class="kn">import</span> <span class="n">PipeCoordinator</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.pipe.pipe_planner</span><span class="w"> </span><span class="kn">import</span> <span class="n">PipePlanner</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.ssh</span><span class="w"> </span><span class="kn">import</span> <span class="n">SSHClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.ssh_pool</span><span class="w"> </span><span class="kn">import</span> <span class="n">borrow_ssh_client</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.trsh</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">scan_quality_check</span><span class="p">,</span>
                           <span class="n">trsh_conformer_isomorphism</span><span class="p">,</span>
                           <span class="n">trsh_ess_job</span><span class="p">,</span>
@@ -3800,7 +3801,7 @@
         <span class="k">for</span> <span class="n">server</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">specific_server</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">server</span> <span class="o">==</span> <span class="n">specific_server</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">server</span> <span class="o">!=</span> <span class="s1">'local'</span><span class="p">:</span>
-                    <span class="k">with</span> <span class="n">SSHClient</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="k">as</span> <span class="n">ssh</span><span class="p">:</span>
+                    <span class="k">with</span> <span class="n">borrow_ssh_client</span><span class="p">(</span><span class="n">server</span><span class="p">)</span> <span class="k">as</span> <span class="n">ssh</span><span class="p">:</span>
                         <span class="bp">self</span><span class="o">.</span><span class="n">server_job_ids</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">ssh</span><span class="o">.</span><span class="n">check_running_jobs_ids</span><span class="p">())</span>
                 <span class="k">else</span><span class="p">:</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">server_job_ids</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">check_running_jobs_ids</span><span class="p">())</span></div>

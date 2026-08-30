@@ -63,6 +63,7 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="remote_submission.html">Remote Job Submission over SSH</a></li>
 <li class="toctree-l1"><a class="reference internal" href="how_it_works.html">How ARC Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -249,26 +250,55 @@ defaults. Missing values fall back to ARC’s repository defaults.</p>
 </section>
 <section id="remote-servers-and-ssh">
 <h2>Remote Servers and SSH<a class="headerlink" href="#remote-servers-and-ssh" title="Link to this heading"></a></h2>
-<p>Use SSH keys for remote servers. A remote server entry needs:</p>
+<p>Remote servers are reached over SSH. A remote server entry needs:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">cluster_soft</span></code> - one of the cluster software names configured in ARC;</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">address</span></code> - SSH hostname;</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">un</span></code> - username;</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">key</span></code> - path to the private SSH key on the machine running ARC.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">path</span></code> - the absolute path on the server holding the user directories, under which
+ARC runs. See <a class="reference internal" href="remote_submission.html"><span class="doc">Remote Job Submission over SSH</span></a>.</p></li>
 </ul>
-<p>Example:</p>
+<p>Authentication is by SSH key. The recommended setup is to load the key into an
+ssh-agent and leave the server entry without a <code class="docutils literal notranslate"><span class="pre">key</span></code>, in which case ARC falls back
+to the agent and then to the default key paths (<code class="docutils literal notranslate"><span class="pre">~/.ssh/id_rsa</span></code>,
+<code class="docutils literal notranslate"><span class="pre">~/.ssh/id_ecdsa</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.ssh/id_ed25519</span></code>):</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
     <span class="s1">'my_slurm'</span><span class="p">:</span> <span class="p">{</span>
         <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
         <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'path'</span><span class="p">:</span> <span class="s1">'/home'</span><span class="p">,</span>
         <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
-        <span class="s1">'key'</span><span class="p">:</span> <span class="s1">'/home/my_user/.ssh/id_rsa'</span><span class="p">,</span>
         <span class="s1">'cpus'</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
         <span class="s1">'memory'</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">}</span>
 </pre></div>
 </div>
+<p>Two optional keys control the connection:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">key</span></code> - the path, on the machine running ARC, of the SSH <strong>private</strong> key to
+authenticate with. Set it only when you are not using an agent. The file must
+exist and be readable, or the connection fails.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">strict_host_key_checking</span></code> - <code class="docutils literal notranslate"><span class="pre">False</span></code> by default, meaning a host that is
+absent from <code class="docutils literal notranslate"><span class="pre">known_hosts</span></code> is only warned about. Set it to <code class="docutils literal notranslate"><span class="pre">True</span></code> to refuse
+such hosts outright, having first seeded <code class="docutils literal notranslate"><span class="pre">~/.ssh/known_hosts</span></code>.</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">servers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">'my_slurm'</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">'cluster_soft'</span><span class="p">:</span> <span class="s1">'Slurm'</span><span class="p">,</span>
+        <span class="s1">'address'</span><span class="p">:</span> <span class="s1">'login.cluster.edu'</span><span class="p">,</span>
+        <span class="s1">'path'</span><span class="p">:</span> <span class="s1">'/home'</span><span class="p">,</span>
+        <span class="s1">'un'</span><span class="p">:</span> <span class="s1">'my_user'</span><span class="p">,</span>
+        <span class="s1">'key'</span><span class="p">:</span> <span class="s1">'/home/my_user/.ssh/id_ed25519'</span><span class="p">,</span>
+        <span class="s1">'strict_host_key_checking'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">'cpus'</span><span class="p">:</span> <span class="mi">32</span><span class="p">,</span>
+        <span class="s1">'memory'</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>See <a class="reference internal" href="remote_submission.html#remote-submission"><span class="std std-ref">Remote Job Submission over SSH</span></a> for the full details, including how to do this from
+the Docker image.</p>
 </section>
 <section id="local-and-hpc-execution">
 <h2>Local and HPC Execution<a class="headerlink" href="#local-and-hpc-execution" title="Link to this heading"></a></h2>

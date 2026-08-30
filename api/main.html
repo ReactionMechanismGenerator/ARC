@@ -50,6 +50,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../docker.html">Docker image</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../remote_submission.html">Remote Job Submission over SSH</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../how_it_works.html">How ARC Works</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../input_reference.html">Input YAML Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
@@ -968,7 +969,11 @@ if <cite>diagnostics</cite> is True, this method will not raise errors, and will
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.main.ARC.execute">
 <span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/main.html#ARC.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.main.ARC.execute" title="Link to this definition"></a></dt>
-<dd><p>Execute ARC.</p>
+<dd><p>Execute ARC, releasing the SSH connections the run opened once it ends.</p>
+<p>The pooled connections (<code class="xref py py-mod docutils literal notranslate"><span class="pre">arc.job.ssh_pool</span></code>) are held open for the lifetime of the
+run and closed here, in a <code class="docutils literal notranslate"><span class="pre">finally</span></code>, so they are also released when the run raises or
+is interrupted, and so a consumer that drives ARC in-process rather than through
+<code class="docutils literal notranslate"><span class="pre">ARC.py</span></code> – a library caller, a test, a pipe worker – releases them too.</p>
 <dl class="simple">
 <dt>Returns: dict</dt><dd><p>Status dictionary indicating which species converged successfully.</p>
 </dd>
