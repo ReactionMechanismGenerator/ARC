@@ -116,7 +116,12 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
             atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
 
     if inc_vals is not None:
-        atom_map = [value + inc_vals for value in atom_map]
+        # Iterating a dict yields its keys, so the dict branch has to be explicit: incrementing keys would
+        # return a map with a shifted domain instead of shifted values, silently violating map_type='dict'.
+        if isinstance(atom_map, dict):
+            atom_map = {key: value + inc_vals for key, value in atom_map.items()}
+        else:
+            atom_map = [value + inc_vals for value in atom_map]
     return atom_map
 
 
