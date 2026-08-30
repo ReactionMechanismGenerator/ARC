@@ -6,6 +6,7 @@ This module contains unit tests of the arc.mapping.cluster module
 """
 
 import unittest
+from unittest import mock
 
 import arc.mapping.cluster as cluster
 from arc.reaction import ARCReaction
@@ -739,6 +740,38 @@ class TestClusteringIntegration(unittest.TestCase):
     def test_cluster_atom_maps_survives_only_malformed_input(self):
         """Test that clustering reports no channels rather than raising when nothing is usable."""
         self.assertEqual(cluster.cluster_atom_maps([[0, 0, 1, 2, 3, 4, 5]], self.rxn), list())
+
+    def test_atom_map_clusters_does_not_log_an_error_without_geometries(self):
+        """Test that 'not yet computable' is not reported as a mapping failure.
+
+        Without geometries nothing is attempted, so an error here would be indistinguishable from a real
+        failure and would repeat on every access.
+        """
+        rxn = ARCReaction(r_species=[spc.copy() for spc in self.rxn.r_species],
+                          p_species=[spc.copy() for spc in self.rxn.p_species])
+        # A species whose geometry is not available yet.
+        rxn.r_species[0].get_xyz = lambda *args, **kwargs: None
+        with mock.patch('arc.reaction.reaction.map_reaction_clusters') as mocked_map:
+            with mock.patch('arc.reaction.reaction.logger') as mocked_logger:
+                self.assertIsNone(rxn.atom_map_clusters)
+                self.assertIsNone(rxn.atom_map_clusters)
+        # Nothing was attempted, so nothing is reported and nothing is cached.
+        mocked_map.assert_not_called()
+        mocked_logger.error.assert_not_called()
+        self.assertIsNone(rxn._atom_map_clusters)
+
+    def test_atom_map_clusters_logs_a_failure_once_and_caches_it(self):
+        """Test that an attempt which yields no channels is reported once, not on every access."""
+        rxn = ARCReaction(r_species=[spc.copy() for spc in self.rxn.r_species],
+                          p_species=[spc.copy() for spc in self.rxn.p_species])
+        with mock.patch('arc.reaction.reaction.map_reaction_clusters', return_value=list()) as mocked_map:
+            with mock.patch('arc.reaction.reaction.logger') as mocked_logger:
+                self.assertEqual(rxn.atom_map_clusters, list())
+                self.assertEqual(rxn.atom_map_clusters, list())
+                self.assertEqual(rxn.atom_map_clusters, list())
+        # Attempted once, reported once, then served from the cache.
+        self.assertEqual(mocked_map.call_count, 1)
+        self.assertEqual(mocked_logger.error.call_count, 1)
 
     def test_arc_reaction_atom_map_clusters_not_persisted(self):
         """Test that as_dict carries the atom map but never the derived clusters."""

@@ -189,11 +189,18 @@ class ARCReaction(object):
         Not persisted by ``as_dict``, unlike ``atom_map`` - it is a derived quantity that can always be
         recomputed from the species.
         """
-        if self._atom_map_clusters is None \
-                and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
+        if self._atom_map_clusters is None:
+            if not all(species.get_xyz(generate=False) is not None
+                       for species in self.r_species + self.p_species):
+                # Not yet computable rather than failed: without geometries no mapping was attempted, so
+                # this must stay distinguishable from a genuine failure and must not be reported as one.
+                logger.debug(f'Not clustering atom maps for {self}: not all species have geometries yet.')
+                return None
             self._atom_map_clusters = map_reaction_clusters(rxn=self, backend='ARC')
-        if not self._atom_map_clusters:
-            logger.error(f"The requested ARC reaction {self} could not be atom mapped into channels.")
+            if not self._atom_map_clusters:
+                # Logged once, here, immediately after the attempt that failed. The empty result is cached,
+                # so later accesses return it without repeating this.
+                logger.error(f"The requested ARC reaction {self} could not be atom mapped into channels.")
         return self._atom_map_clusters
 
     @atom_map_clusters.setter
