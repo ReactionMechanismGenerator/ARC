@@ -48,6 +48,7 @@ happened to produce. It is the orbit size of the reaction center under the *full
 core group extended by permutations of the hydrogens on each core atom - see :func:`center_degeneracy`.
 """
 
+import operator
 from dataclasses import dataclass, field
 
 from arc.common import logger
@@ -621,6 +622,35 @@ def enumerate_atom_maps(rxn,
     return maps
 
 
+def is_permutation_map(atom_map, n_reactant_atoms: int, n_product_atoms: int) -> bool:
+    """
+    Whether ``atom_map`` is a genuine bijection of reactant indices onto product indices.
+
+    :func:`changed_bonds` inverts the map, so anything short of a bijection - a duplicated or missing
+    product index, an out-of-range entry, a non-integer entry - raises a ``KeyError`` there and aborts the
+    entire clustering run rather than just discarding the offending map. Callers screen maps with this
+    first, in the same spirit as ``driver.check_atom_map_and_return``.
+
+    Args:
+        atom_map: The candidate atom map, ``atom_map[reactant_index] == product_index``.
+        n_reactant_atoms (int): Number of atoms in the reactant complex.
+        n_product_atoms (int): Number of atoms in the product complex.
+
+    Returns:
+        bool: ``True`` iff the map is a bijection of ``range(n_reactant_atoms)`` onto
+              ``range(n_product_atoms)``.
+    """
+    if not isinstance(atom_map, (list, tuple)) or len(atom_map) != n_reactant_atoms:
+        return False
+    try:
+        # operator.index() accepts numpy integers, which the mapping pipeline can produce, while still
+        # rejecting floats, None and strings.
+        indices = [operator.index(value) for value in atom_map]
+    except TypeError:
+        return False
+    return len(set(indices)) == n_product_atoms and all(0 <= index < n_product_atoms for index in indices)
+
+
 def cluster_atom_maps(atom_maps: list[list[int]],
                       rxn,
                       ignore_bond_orders: bool = True,
@@ -656,9 +686,10 @@ def cluster_atom_maps(atom_maps: list[list[int]],
 
     scored: list[tuple[list[int], frozenset]] = list()
     for atom_map in atom_maps:
-        if len(atom_map) != r_graph.n_atoms:
-            logger.warning(f'Skipping an atom map of length {len(atom_map)} for {rxn}, '
-                           f'expected {r_graph.n_atoms}.')
+        if not is_permutation_map(atom_map, r_graph.n_atoms, p_graph.n_atoms):
+            logger.warning(f'Skipping an atom map for {rxn} that is not a bijection of the '
+                           f'{r_graph.n_atoms} reactant atoms onto the {p_graph.n_atoms} product '
+                           f'atoms: {atom_map}.')
             continue
         scored.append((atom_map, changed_bonds(r_graph, p_graph, atom_map,
                                                ignore_bond_orders=ignore_bond_orders)))

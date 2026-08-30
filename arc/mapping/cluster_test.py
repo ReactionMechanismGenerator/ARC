@@ -478,6 +478,51 @@ class TestCenterDegeneracy(unittest.TestCase):
         self.assertEqual(degeneracy, 0)
 
 
+class TestPermutationValidation(unittest.TestCase):
+    """
+    Contains unit tests for the guard that keeps malformed atom maps out of changed_bonds().
+    """
+
+    def test_accepts_a_genuine_permutation(self):
+        """Test that a bijection of the atoms is accepted."""
+        self.assertTrue(cluster.is_permutation_map([2, 0, 1], 3, 3))
+        self.assertTrue(cluster.is_permutation_map([0, 1, 2], 3, 3))
+        self.assertTrue(cluster.is_permutation_map((2, 1, 0), 3, 3))
+
+    def test_rejects_a_wrong_length(self):
+        """Test that a map that does not cover every reactant atom is rejected."""
+        self.assertFalse(cluster.is_permutation_map([0, 1], 3, 3))
+        self.assertFalse(cluster.is_permutation_map([0, 1, 2, 3], 3, 3))
+
+    def test_rejects_duplicates(self):
+        """Test that a map sending two reactant atoms to one product atom is rejected.
+
+        This is the case that matters: it has the right length, so a length check passes it through, and it
+        leaves changed_bonds() with an inverse map that is missing a product index.
+        """
+        self.assertFalse(cluster.is_permutation_map([0, 0, 2], 3, 3))
+
+    def test_rejects_out_of_range_indices(self):
+        """Test that a product index outside the product complex is rejected."""
+        self.assertFalse(cluster.is_permutation_map([0, 1, 3], 3, 3))
+        self.assertFalse(cluster.is_permutation_map([0, 1, -1], 3, 3))
+
+    def test_rejects_non_integer_entries(self):
+        """Test that entries which cannot index a graph are rejected."""
+        self.assertFalse(cluster.is_permutation_map([0, 1, None], 3, 3))
+        self.assertFalse(cluster.is_permutation_map([0, 1, 2.5], 3, 3))
+        self.assertFalse(cluster.is_permutation_map([0, 1, '2'], 3, 3))
+
+    def test_rejects_a_non_sequence(self):
+        """Test that something which is not a map at all is rejected rather than raising."""
+        self.assertFalse(cluster.is_permutation_map(None, 3, 3))
+        self.assertFalse(cluster.is_permutation_map({0: 0, 1: 1, 2: 2}, 3, 3))
+
+    def test_rejects_a_map_onto_a_differently_sized_product(self):
+        """Test that a map which cannot be onto the product complex is rejected."""
+        self.assertFalse(cluster.is_permutation_map([0, 1, 2], 3, 4))
+
+
 class TestClusteringIntegration(unittest.TestCase):
     """
     Contains end-to-end unit tests running the full enumerate-and-cluster pipeline on a real reaction.
@@ -675,6 +720,25 @@ class TestClusteringIntegration(unittest.TestCase):
         self.assertEqual(rxn.atom_map_clusters, ['sentinel'])
         rxn.atom_map_clusters = None
         self.assertIsNone(rxn._atom_map_clusters)
+
+    def test_cluster_atom_maps_skips_a_non_permutation_map(self):
+        """Test that a malformed map is discarded instead of aborting the whole clustering run.
+
+        changed_bonds() inverts the atom map, so a duplicated product index leaves it with a missing key and
+        it raises KeyError. A length check alone lets such a map through, since it has the right length.
+        """
+        malformed = [0, 0, 1, 2, 3, 4, 5]
+        self.assertEqual(len(malformed), len(self.atom_maps[0]))
+        self.assertNotEqual(sorted(malformed), sorted(self.atom_maps[0]))
+        clusters = cluster.cluster_atom_maps(list(self.atom_maps) + [malformed], self.rxn)
+        # The valid maps are still clustered exactly as they are without the malformed one.
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(clusters[0].degeneracy, 4)
+        self.assertNotIn(malformed, clusters[0].members)
+
+    def test_cluster_atom_maps_survives_only_malformed_input(self):
+        """Test that clustering reports no channels rather than raising when nothing is usable."""
+        self.assertEqual(cluster.cluster_atom_maps([[0, 0, 1, 2, 3, 4, 5]], self.rxn), list())
 
     def test_arc_reaction_atom_map_clusters_not_persisted(self):
         """Test that as_dict carries the atom map but never the derived clusters."""
