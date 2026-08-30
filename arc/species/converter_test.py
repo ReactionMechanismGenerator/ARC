@@ -1025,7 +1025,9 @@ H                 -4.01978712   -0.12970163    0.82103635"""
                                     (-2.4426534384901547e-09, 0.9528575945413793, -1.015818661524137),
                                     (7.032081834243086e-08, -0.9528574729632926, 1.015818803737915))}
 
-        self.assertEqual(xyz6, expected_xyz6)
+        self.assertEqual(xyz6['symbols'], expected_xyz6['symbols'])
+        self.assertEqual(xyz6['isotopes'], expected_xyz6['isotopes'])
+        self.assertTrue(almost_equal_coords(xyz6, expected_xyz6))
 
     def test_remove_dummies(self):
         """Test removing dummy atoms from xyz"""

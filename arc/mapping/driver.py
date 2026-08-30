@@ -369,7 +369,7 @@ def map_rxn(rxn: ARCReaction,
                                               actual_products=rxn.get_reactants_and_products()[1])
     try:
         make_bond_changes(rxn, r_cuts, r_label_map)
-    except (ValueError, IndexError, ActionError, AtomTypeError) as e:
+    except (KeyError, ValueError, IndexError, ActionError, AtomTypeError) as e:
         logger.warning(e)
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
     pairs = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
