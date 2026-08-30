@@ -61,7 +61,7 @@ def map_reaction(rxn: ARCReaction,
         except ValueError:
             return None
     if flip:
-        raw_map = try_mapping(rxn.flip_reaction())
+        raw_map = try_mapping(prepare_flipped_reaction(rxn))
         if raw_map is None:
             return None
         return check_atom_map_and_return(flip_map(raw_map))
@@ -78,6 +78,52 @@ def map_reaction(rxn: ARCReaction,
     if raw_map is None:
         return map_reaction(rxn, backend=backend, flip=True)
     return check_atom_map_and_return(raw_map)
+
+
+def prepare_flipped_reaction(rxn: ARCReaction) -> ARCReaction:
+    """
+    Build the flipped reaction and give it a usable, forward-discovered family template.
+
+    ``ARCReaction.flip_reaction`` resets the family, so the flipped copy re-derives its product dictionaries
+    lazily with the *default* family set. When the original reaction was matched only by a broader set - the
+    usual situation for a template discovered in reverse - that rederivation comes back empty and the flip
+    retry has nothing to map with. Widen the search in that case, and prefer a template that describes the
+    flipped reaction forward.
+
+    Args:
+        rxn (ARCReaction): The reaction to flip.
+
+    Returns:
+        ARCReaction: The flipped reaction, seeded with a family and product dictionaries where possible.
+    """
+    flipped = rxn.flip_reaction()
+    try:
+        product_dicts = flipped.product_dicts or list()
+    except (ValueError, KeyError, AttributeError):
+        product_dicts = list()
+    if all(pd.get('discovered_in_reverse') for pd in product_dicts):
+        try:
+            widened = flipped.get_product_dicts(rmg_family_set='all')
+        except (ValueError, KeyError, AttributeError):
+            widened = list()
+        logger.debug(f'Widened the family search for {flipped.label} to all families, '
+                     f'got {len(widened)} product dictionaries.')
+        product_dicts = widened or product_dicts
+    forward_dicts = [pd for pd in product_dicts if not pd.get('discovered_in_reverse')]
+    product_dicts = forward_dicts or product_dicts
+    if product_dicts:
+        # Keep only the chosen family's dictionaries. get_reaction_family_products() concatenates matches
+        # across every family without grouping them, while ``family`` can only name one, so leaving the
+        # whole list in place lets map_rxn's product_dict_index retry pair one family's recipe with
+        # another's label map. Every family labels its atoms *1/*2/*3, so that mispairing resolves against
+        # the wrong atoms and still yields a permutation, which is all check_atom_map_and_return verifies.
+        # TODO: replace with ARCReaction.restrict_product_dicts_to_family() once #978 lands.
+        family = product_dicts[0]['family']
+        product_dicts = [pd for pd in product_dicts if pd['family'] == family]
+        flipped.product_dicts = product_dicts
+        flipped.family = family
+        flipped.family_own_reverse = product_dicts[0]['own_reverse']
+    return flipped
 
 
 def check_atom_map_and_return(atom_map: list[int] | None) -> list[int] | None:
