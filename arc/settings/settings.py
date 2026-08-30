@@ -21,6 +21,12 @@ from arc.settings.external_paths import (
 # Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
 # https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
+# 'key' is the path to the SSH *private* key to authenticate with, and is optional:
+# omit it to authenticate via a running ssh-agent (including a forwarded one) or via the
+# default key paths '~/.ssh/id_rsa', '~/.ssh/id_ecdsa' and '~/.ssh/id_ed25519'.
+# ARC does not read '~/.ssh/config', so IdentityFile/ProxyJump/ProxyCommand have no effect.
+# Set 'strict_host_key_checking': True on a server to refuse hosts absent from known_hosts
+# instead of only warning about them.
 # If ARC is being executed on a server, and ESS are available on that server, define a server named 'local',
 # for which only the cluster software and username are required.
 # servers = {
@@ -28,7 +34,6 @@ from arc.settings.external_paths import (
 #         'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
 #         'address': 'pharos.mit.edu',
 #         'un': '<username>',
-#         'key': '/home/<username>/.ssh/known_hosts',
 #     },
 #     'rmg': {
 #         'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
@@ -46,6 +51,7 @@ servers = {
     'server1': {
         'cluster_soft': 'OGE',
         'address': 'server1.host.edu',
+        'path': '/home',  # an absolute path on the server holding the user directories; ARC runs under <path>/<un>/runs/ARC_Projects/
         'un': '<username>',
         'key': 'path_to_rsa_key',
         'max_simultaneous_jobs': 10,  # optional, "check_status_command" must be set to only return jobs for your user
@@ -53,6 +59,7 @@ servers = {
     'server2': {
         'cluster_soft': 'Slurm',
         'address': 'server2.host.edu',
+        'path': '/home',  # an absolute path on the server holding the user directories; ARC runs under <path>/<un>/runs/ARC_Projects/
         'un': '<username>',
         'key': 'path_to_rsa_key',
         'cpus': 24,  # number of cpu's per node, optional (default: 8)
@@ -61,6 +68,7 @@ servers = {
     'server3': {
         'cluster_soft': 'PBS',
         'address': 'server3.host.edu',
+        'path': '/home',  # an absolute path on the server holding the user directories; ARC runs under <path>/<un>/runs/ARC_Projects/
         'un': '<username>',
         'key': 'path_to_rsa_key',
     },
