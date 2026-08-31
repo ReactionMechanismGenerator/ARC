@@ -210,6 +210,28 @@ def bfs_path(adj: list[list[int]], src: int, dst: int) -> list[int] | None:
     return None
 
 
+def bond_path_length(adj: dict[int, set[int]],
+                     start: int,
+                     end: int,
+                     ) -> int | None:
+    """
+    Return the number of bonds on the shortest path between two atoms.
+
+    Delegates to :func:`bfs_path` and reports the length of the path it finds.
+
+    Args:
+        adj: Adjacency dict from :func:`mol_to_adjacency`.
+        start: Atom index to search from.
+        end: Atom index to search for.
+
+    Returns:
+        int | None: The bond count, or ``None`` when the two atoms lie in
+            different fragments.
+    """
+    path = bfs_path(adj, start, end)
+    return None if path is None else len(path) - 1
+
+
 def downstream(adj: list[list[int]], cut_a: int, cut_b: int) -> set[int]:
     """
     Return all atom indices reachable from *cut_b* without crossing *cut_a*.
