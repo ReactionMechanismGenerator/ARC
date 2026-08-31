@@ -6,7 +6,7 @@ This module contains unit tests of the arc.mapping.cluster module
 """
 
 import unittest
-from unittest import mock
+import unittest.mock as mock
 
 import arc.mapping.cluster as cluster
 from arc.reaction import ARCReaction
