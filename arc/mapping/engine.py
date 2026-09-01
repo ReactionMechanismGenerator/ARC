@@ -21,8 +21,9 @@ from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, xyz_from_data
-from arc.species.vectors import (apply_rodrigues_rotation, calculate_dihedral_angle, get_angle, get_delta_angle,
-                                 get_perpendicular_axes, get_vector, get_vector_length, unit_vector)
+from arc.species.vectors import (apply_rodrigues_rotation, calculate_dihedral_angle,
+                                 get_angle, get_delta_angle, get_perpendicular_axes, get_vector,
+                                 get_vector_length, is_torsion_linear, unit_vector)
 from arc.species.zmat import TOL_180
 
 if TYPE_CHECKING:
@@ -661,6 +662,9 @@ def get_backbone_dihedral_angles(spc_1: ARCSpecies,
                                  ) -> list[dict[str, float | list[int]]]:
     """
     Determine the dihedral angles of the backbone torsions of two backbone mapped species.
+    Torsions that span a linear segment (e.g. a cumulene/ketene O=C=C backbone) are skipped:
+    their dihedral angle is geometrically undefined and ``ARCSpecies.set_dihedral()`` no-ops on
+    them, so feeding them into the backbone alignment loop only generates repeated log noise.
     The output has the following format::
 
         torsions = [{'torsion 1': [0, 1, 2, 3],  # The first torsion in terms of species 1's indices.
@@ -689,8 +693,10 @@ def get_backbone_dihedral_angles(spc_1: ARCSpecies,
             if spc_1.mol.atoms[torsion_1[0]].is_non_hydrogen() \
                     and spc_1.mol.atoms[torsion_1[3]].is_non_hydrogen():
                 # This is not a "terminal" torsion.
+                torsion_2 = [backbone_map[t_1] for t_1 in torsion_1]
+                if is_torsion_linear(spc_1.get_xyz(), torsion_1) or is_torsion_linear(spc_2.get_xyz(), torsion_2):
+                    continue
                 for rotor_dict_2 in spc_2.rotors_dict.values():
-                    torsion_2 = [backbone_map[t_1] for t_1 in torsion_1]
                     if all(pivot_2 in [torsion_2[1], torsion_2[2]]
                            for pivot_2 in [rotor_dict_2['torsion'][1], rotor_dict_2['torsion'][2]]):
                         torsions.append({'torsion 1': torsion_1,
