@@ -624,8 +624,9 @@ class TestTSChecks(unittest.TestCase):
         """Test that a log file yielding no normal mode displacements yields an empty reaction zone."""
         self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
         rxn = self.make_c3h7_intra_h_rxn()
-        self.assertEqual(ts.get_rxn_zone_atom_indices(reaction=rxn, job=self.job1), list())
-        ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(rxn, self.job1)
+        with patch.object(ts.parser, 'get_normal_mode_displacement', return_value=None):
+            self.assertEqual(ts.get_rxn_zone_atom_indices(reaction=rxn, job=self.job1), list())
+            ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(rxn, self.job1)
         self.assertEqual([key for key, rotor in rxn.ts_species.rotors_dict.items()
                           if 'pivTS' in rotor['invalidation_reason']], list())
 

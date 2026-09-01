@@ -564,7 +564,8 @@ class TestNMD(unittest.TestCase):
         self.generic_job.local_path_to_output_file = log_path
         self.assertEqual(tuple(rxn.ts_species.get_xyz()['symbols']),
                          tuple(rxn.get_reactants_xyz(return_format='dict')['symbols']))
-        self.assertIsNone(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job))
+        with patch.object(nmd.parser, 'get_normal_mode_displacement', return_value=None):
+            self.assertIsNone(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job))
         self.assertIn(nmd.NO_NORMAL_MODES_WARNING, rxn.ts_species.ts_checks['warnings'])
 
     def test_analyze_ts_nmd_returns_none_when_the_ts_atom_order_differs_from_the_reactants(self):
@@ -765,8 +766,7 @@ class TestNMD(unittest.TestCase):
 
     def test_analyze_ts_normal_mode_displacement_skips_an_unsupported_ess(self):
         """Test that an ESS ARC cannot parse normal mode displacements from is skipped rather than raising."""
-        for file_name in ['orca_neg_freq_ts.out', 'orca_example_freq.log', 'CH2O_freq_molpro.out',
-                          'C2H6_freq_QChem.out', 'CH2O_freq_terachem.dat']:
+        for file_name in ['CH2O_freq_molpro.out', 'C2H6_freq_QChem.out', 'CH2O_freq_terachem.dat']:
             log_file_path = os.path.join(ARC_TESTING_PATH, 'freq', file_name)
             self.assertEqual(parse_normal_mode_displacement(log_file_path=log_file_path), (None, None))
             self.generic_job.local_path_to_output_file = log_file_path
@@ -777,11 +777,14 @@ class TestNMD(unittest.TestCase):
 
     def test_analyze_ts_normal_mode_displacement_skips_a_log_without_normal_modes(self):
         """Test that a supported ESS log file that holds no normal modes is skipped rather than raising."""
-        log_file_path = os.path.join(ARC_TESTING_PATH, 'freq', 'yml_no_freqs.yml')
-        self.assertEqual(parse_normal_mode_displacement(log_file_path=log_file_path), (None, None))
-        self.generic_job.local_path_to_output_file = log_file_path
-        valid = nmd.analyze_ts_normal_mode_displacement(reaction=self.rxn_1, job=self.generic_job, amplitude=0.25)
-        self.assertIsNone(valid)
+        for file_name in ['orca6_example.out', 'yml_no_freqs.yml']:
+            log_file_path = os.path.join(ARC_TESTING_PATH, 'freq', file_name)
+            self.assertEqual(parse_normal_mode_displacement(log_file_path=log_file_path), (None, None))
+            self.generic_job.local_path_to_output_file = log_file_path
+            valid = nmd.analyze_ts_normal_mode_displacement(reaction=self.rxn_1,
+                                                            job=self.generic_job,
+                                                            amplitude=0.25)
+            self.assertIsNone(valid)
 
     def test_analyze_ts_normal_mode_displacement_reaches_a_verdict_for_an_xtb_log(self):
         """Test that an ESS whose normal mode displacements do parse still reaches a verdict."""

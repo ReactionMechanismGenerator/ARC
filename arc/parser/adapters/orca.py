@@ -111,9 +111,12 @@ class OrcaParser(ESSAdapter, ABC):
                     return xyz_from_data(coords=np.array(coords), numbers=np.array(numbers))
         return None
 
-    def parse_frequencies(self) -> np.ndarray | None:
+    def _parse_frequencies(self, include_zeros: bool = False) -> np.ndarray | None:
         """
         Parse the frequencies from a freq job output file.
+
+        Args:
+            include_zeros (bool, optional): Whether to retain exact-zero translation and rotation modes.
 
         Returns: np.ndarray | None
             The parsed frequencies (in cm^-1).
@@ -138,8 +141,8 @@ class OrcaParser(ESSAdapter, ABC):
                     if len(parts) >= 2 and parts[0].rstrip(':').isdigit():
                         try:
                             freq = float(parts[1])
-                            # Keep negative freqs (imaginary modes), drop exact zeros (translations/rotations).
-                            if abs(freq) > 0.0:
+                            # Keep negative freqs (imaginary modes), optionally drop exact-zero translations/rotations.
+                            if include_zeros or abs(freq) > 0.0:
                                 frequencies.append(freq)
                             found_freqs = True
                         except ValueError:
@@ -153,15 +156,79 @@ class OrcaParser(ESSAdapter, ABC):
 
         return np.array(frequencies, dtype=np.float64) if frequencies else None
 
+    def parse_frequencies(self) -> np.ndarray | None:
+        """
+        Parse the nonzero frequencies from a freq job output file.
+
+        Returns: np.ndarray | None
+            The parsed nonzero frequencies (in cm^-1).
+        """
+        return self._parse_frequencies(include_zeros=False)
+
     def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
-        Parse frequencies and normal mode displacement.
+        Parse the frequencies and normal mode displacements from an Orca frequency job output file.
 
-        Returns: tuple[np.ndarray | None, np.ndarray | None]
-            The frequencies (in cm^-1) and the normal mode displacements.
+        Returns:
+            tuple[np.ndarray | None, np.ndarray | None]:
+                - frequencies (in cm^-1), exact-zero translation/rotation modes excluded.
+                - normal mode displacements, shape (num_modes, num_atoms, 3), same mode order as frequencies.
         """
-        # Not implemented for Orca.
-        return None, None
+        with open(self.log_file_path, 'r') as f:
+            lines = f.readlines()
+
+        all_freqs = self._parse_frequencies(include_zeros=True)
+        if all_freqs is None:
+            return None, None
+        n_dof = len(all_freqs)
+
+        start = None
+        for i, line in enumerate(lines):
+            if line.strip() == 'NORMAL MODES':
+                start = i
+                break
+        if start is None:
+            return None, None
+
+        full_matrix = [[0.0] * n_dof for _ in range(n_dof)]
+        n_cols_parsed = 0
+        i = start
+        while n_cols_parsed < n_dof and i < len(lines):
+            stripped = lines[i].strip()
+            if stripped and '.' not in stripped:
+                try:
+                    col_indices = [int(tok) for tok in stripped.split()]
+                except ValueError:
+                    i += 1
+                    continue
+                i += 1
+                for row in range(n_dof):
+                    if i >= len(lines):
+                        return None, None
+                    vals = lines[i].split()[1:]
+                    if len(vals) < len(col_indices):
+                        return None, None
+                    for k, col in enumerate(col_indices):
+                        try:
+                            full_matrix[row][col] = float(vals[k])
+                        except (IndexError, ValueError):
+                            return None, None
+                    i += 1
+                n_cols_parsed += len(col_indices)
+            else:
+                i += 1
+        if n_cols_parsed < n_dof:
+            return None, None
+
+        keep = [idx for idx, freq in enumerate(all_freqs) if freq != 0.0]
+        freqs = np.array([all_freqs[idx] for idx in keep], dtype=np.float64)
+        n_atoms = n_dof // 3
+        full_matrix_np = np.array(full_matrix, dtype=np.float64)
+        normal_modes_disp = np.array(
+            [full_matrix_np[:, idx].reshape(n_atoms, 3) for idx in keep],
+            dtype=np.float64,
+        )
+        return freqs, normal_modes_disp
 
     def parse_t1(self) -> float | None:
         """
