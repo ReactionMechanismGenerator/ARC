@@ -574,10 +574,8 @@ class TestAdapterPayloadAndUpload(unittest.TestCase):
         )
         self.assertEqual(payload["calculation"]["type"], "opt")
         self.assertEqual(payload["calculation"]["software_release"]["name"], "gaussian")
-        self.assertEqual(
-            payload["calculation"]["software_release"]["version"],
-            "Gaussian 16, Revision A.03",
-        )
+        self.assertEqual(payload["calculation"]["software_release"]["version"], "16")
+        self.assertEqual(payload["calculation"]["software_release"]["revision"], "A.03")
         self.assertEqual(payload["calculation"]["level_of_theory"]["method"], "wb97xd")
         self.assertEqual(payload["calculation"]["level_of_theory"]["basis"], "def2-tzvp")
 
@@ -1356,20 +1354,28 @@ class TestAdditionalCalculations(unittest.TestCase):
         # opt uses opt_level + ess_versions['opt']
         self.assertEqual(primary["level_of_theory"]["method"], "wb97xd")
         self.assertEqual(primary["level_of_theory"]["basis"], "def2-tzvp")
-        self.assertEqual(primary["software_release"]["version"], "Gaussian 16, Revision A.03")
+        self.assertEqual(primary["software_release"]["version"], "16")
+        self.assertEqual(primary["software_release"]["revision"], "A.03")
         # freq uses freq_level (distinct basis) + ess_versions['freq']
         self.assertEqual(freq["level_of_theory"]["method"], "wb97xd")
         self.assertEqual(freq["level_of_theory"]["basis"], "6-31g*")
         self.assertEqual(freq["software_release"]["name"], "gaussian")
-        self.assertEqual(freq["software_release"]["version"], "Gaussian 16, Revision A.03")
+        self.assertEqual(freq["software_release"]["version"], "16")
+        self.assertEqual(freq["software_release"]["revision"], "A.03")
         # sp uses sp_level (different method+software) + ess_versions['sp']
         self.assertEqual(sp["level_of_theory"]["method"], "ccsd(t)-f12a")
         self.assertEqual(sp["level_of_theory"]["basis"], "cc-pvtz-f12")
         self.assertEqual(sp["software_release"]["name"], "molpro")
-        self.assertEqual(sp["software_release"]["version"], "Molpro 2022.3")
+        self.assertEqual(sp["software_release"]["version"], "2022.3")
+        self.assertNotIn("revision", sp["software_release"])
 
     def test_freq_sp_levels_fall_back_to_opt_level_when_missing(self):
-        """Option B: missing freq_level/sp_level falls back to opt_level."""
+        """Option B: missing freq_level/sp_level falls back to opt_level.
+
+        The *level* falls back; the ESS version does not. ``ess_versions`` here holds
+        only an ``opt`` entry, and the opt job's banner is not evidence of what the freq
+        or sp job ran, so those calculations carry a name and no version.
+        """
         doc = _fake_output_doc()
         # freq_level / sp_level absent (the common ARC case)
         record = _fake_record()
@@ -1380,9 +1386,10 @@ class TestAdditionalCalculations(unittest.TestCase):
         self.assertEqual(freq["level_of_theory"]["method"], "wb97xd")
         self.assertEqual(freq["level_of_theory"]["basis"], "def2-tzvp")
         self.assertEqual(sp["level_of_theory"]["method"], "wb97xd")
-        # ess_versions has only 'opt' → both freq and sp fall back to that
-        self.assertEqual(freq["software_release"]["version"], "Gaussian 16, Revision A.03")
-        self.assertEqual(sp["software_release"]["version"], "Gaussian 16, Revision A.03")
+        self.assertEqual(freq["software_release"]["name"], "gaussian")
+        self.assertEqual(sp["software_release"]["name"], "gaussian")
+        self.assertNotIn("version", freq["software_release"])
+        self.assertNotIn("version", sp["software_release"])
 
     def test_ess_versions_uses_job_type_key_not_software_name(self):
         """7. ess_versions lookup must use job-type keys ('opt'/'freq'/'sp')."""
@@ -1401,6 +1408,77 @@ class TestAdditionalCalculations(unittest.TestCase):
         freq, sp = payload["additional_calculations"]
         self.assertEqual(freq["software_release"]["version"], "FREQ_VER")
         self.assertEqual(sp["software_release"]["version"], "SP_VER")
+
+    def test_a_job_type_with_no_version_entry_gets_no_version(self):
+        """A missing entry must not be filled from another job's log.
+
+        This is the ``conformers[0]`` signature: the conformer's job type has no
+        ``ess_versions`` entry, and the old fallback handed it the opt job's banner —
+        which, in a mixed-program run, was a different program's version paired with
+        this level's software name.
+        """
+        record = _fake_record()
+        record["freq_n_imag"] = 0
+        record["sp_energy_hartree"] = -154.5
+        record["ess_versions"] = {"opt": "Gaussian 16, Revision A.03"}
+        _, _, payload = self._submit(output_doc=_fake_output_doc(), record=record)
+        freq, sp = payload["additional_calculations"]
+        self.assertEqual(payload["calculation"]["software_release"]["version"], "16")
+        self.assertNotIn("version", freq["software_release"])
+        self.assertNotIn("version", sp["software_release"])
+
+    def test_version_is_dropped_when_ess_software_contradicts_the_level(self):
+        """A banner from another program is never paired with this level's software."""
+        record = _fake_record()
+        record["ess_versions"] = {"opt": "ORCA 6.0.0"}
+        record["ess_software"] = {"opt": "orca"}
+        with self.assertLogs("arc", level="WARNING") as cm:
+            _, _, payload = self._submit(output_doc=_fake_output_doc(), record=record)
+        software_release = payload["calculation"]["software_release"]
+        self.assertEqual(software_release["name"], "gaussian")
+        self.assertNotIn("version", software_release)
+        self.assertTrue(any("omitting the ESS version" in m for m in cm.output),
+                        msg=f"expected a pairing-mismatch warning, got: {cm.output}")
+
+    def test_version_is_kept_when_ess_software_agrees_with_the_level(self):
+        record = _fake_record()
+        record["ess_versions"] = {"opt": "Gaussian 16, Revision A.03"}
+        record["ess_software"] = {"opt": "gaussian"}
+        _, _, payload = self._submit(output_doc=_fake_output_doc(), record=record)
+        software_release = payload["calculation"]["software_release"]
+        self.assertEqual(software_release["name"], "gaussian")
+        self.assertEqual(software_release["version"], "16")
+        self.assertEqual(software_release["revision"], "A.03")
+
+    def test_version_is_kept_for_a_record_written_before_ess_software_existed(self):
+        """Documents already on disk carry no ``ess_software``; they still get a version."""
+        record = _fake_record()
+        record["ess_versions"] = {"opt": "Gaussian 16, Revision A.03"}
+        self.assertNotIn("ess_software", record)
+        _, _, payload = self._submit(output_doc=_fake_output_doc(), record=record)
+        self.assertEqual(payload["calculation"]["software_release"]["version"], "16")
+
+    def test_ess_software_entry_for_another_job_does_not_gate_this_one(self):
+        """Only the entry for this calculation's own job type is consulted.
+
+        ``ess_software`` here names a contradicting program for the ``sp`` job and says
+        nothing about ``opt``, so the opt calculation keeps its version: the mismatch
+        belongs to a different job.
+        """
+        record = _fake_record()
+        record["ess_versions"] = {"opt": "Gaussian 16, Revision A.03"}
+        record["ess_software"] = {"sp": "orca"}
+        _, _, payload = self._submit(output_doc=_fake_output_doc(), record=record)
+        self.assertEqual(payload["calculation"]["software_release"]["version"], "16")
+
+    def test_an_unrecognised_banner_is_deposited_verbatim(self):
+        """An unparseable banner keeps what the log said rather than being discarded."""
+        record = _fake_record()
+        record["ess_versions"] = {"opt": "OPT_VER"}
+        _, _, payload = self._submit(output_doc=_fake_output_doc(), record=record)
+        software_release = payload["calculation"]["software_release"]
+        self.assertEqual(software_release["version"], "OPT_VER")
+        self.assertNotIn("revision", software_release)
 
     def test_idempotency_key_changes_when_freq_sp_added(self):
         """Adding freq/sp to a previously opt-only record must change the idempotency key."""
