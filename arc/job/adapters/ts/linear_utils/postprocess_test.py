@@ -6,13 +6,22 @@ This module contains unit tests of the
 arc.job.adapters.ts.linear_utils.postprocess module
 """
 
+import math
 import unittest
 
 import numpy as np
 
+from arc.common import get_element_mass, get_single_bond_length
+from arc.job.adapters.ts.linear_utils.geom_utils import bond_path_length, mol_to_adjacency
 from arc.molecule.molecule import Molecule
 from arc.job.adapters.ts.linear_utils.postprocess import (
+    H_BRIDGE_BOND_ORDER,
+    H_BRIDGE_BOND_ORDER_COEFFICIENT,
+    H_BRIDGE_DELTA,
+    H_BRIDGE_MIN_OVERREACH,
+    H_BRIDGE_STRAINED_DONOR_ACCEPTOR_PATH,
     PAULING_DELTA,
+    h_bridge_target_distances,
     _get_migrating_group_info,
     _has_detached_heavy_atom,
     _orient_donor_h_away_from_acceptor,
@@ -610,9 +619,206 @@ class TestPostprocessConstants(unittest.TestCase):
         """A method that is run before all unit tests in this class."""
         cls.maxDiff = None
 
-    def test_pauling_delta_value(self):
-        """PAULING_DELTA is approximately 0.6*ln(2) ~ 0.42."""
-        self.assertAlmostEqual(PAULING_DELTA, 0.42, places=2)
+    def test_pauling_delta_is_the_inherited_empirical_value(self):
+        """
+        PAULING_DELTA is 0.42 A and corresponds to a bond order near 0.20, not 0.5.
+
+        Guards the log base: 0.6*log10(0.5) = 0.181 is the half-formed elongation, and
+        0.6*ln(0.5) = 0.416 is the value the module's earlier derivation reached by using
+        the natural log with a log-base-10 coefficient.
+        """
+        self.assertAlmostEqual(PAULING_DELTA, 0.42, places=12)
+        self.assertAlmostEqual(10 ** (-PAULING_DELTA / 0.6), 0.1995, places=4)
+        self.assertNotAlmostEqual(PAULING_DELTA, -0.6 * math.log10(0.5), places=2)
+
+    def test_h_bridge_delta_value(self):
+        """H_BRIDGE_DELTA is the half-formed elongation at the bridging-H coefficient."""
+        self.assertAlmostEqual(H_BRIDGE_DELTA,
+                               -H_BRIDGE_BOND_ORDER_COEFFICIENT * math.log10(H_BRIDGE_BOND_ORDER), places=12)
+        self.assertAlmostEqual(H_BRIDGE_DELTA, 0.248350, places=6)
+        self.assertEqual(H_BRIDGE_BOND_ORDER, 0.5)
+        self.assertLess(H_BRIDGE_DELTA, PAULING_DELTA)
+
+    def test_h_bridge_target_distances_uses_bridge_delta_when_reachable(self):
+        """
+        Both targets are sbl(X-H) + H_BRIDGE_DELTA when they span the donor-acceptor gap.
+
+        C-H is 1.09 + 0.2484 = 1.3383 and N-H is 1.04 + 0.2484 = 1.2884; their sum,
+        2.6267, covers the 2.50 A separation outright, so no fallback is needed.
+        """
+        d_dh, d_ah = h_bridge_target_distances('C', 'N', 2.50)
+        self.assertAlmostEqual(d_dh, 1.338350, places=6)
+        self.assertAlmostEqual(d_ah, 1.288350, places=6)
+        self.assertGreaterEqual(d_dh + d_ah, 2.50)
+
+    def test_h_bridge_target_distances_stretch_smoothly_across_the_gap(self):
+        """
+        Widening the donor-acceptor gap moves both targets continuously.
+
+        Each target grows monotonically with the gap and never jumps: the largest step
+        over a 0.001 A sweep from 2.3 to 3.2 A stays far below the 0.17 A difference
+        between the bridge and the general elongation.
+        """
+        prev_dh = prev_ah = 0.0
+        biggest_step = 0.0
+        gap = 2.30
+        while gap <= 3.20:
+            d_dh, d_ah = h_bridge_target_distances('C', 'O', gap)
+            self.assertGreaterEqual(d_dh, prev_dh - 1e-12, msg=f'donor target went backwards at gap {gap:.3f}')
+            self.assertGreaterEqual(d_ah, prev_ah - 1e-12, msg=f'acceptor target went backwards at gap {gap:.3f}')
+            if prev_dh:
+                biggest_step = max(biggest_step, d_dh - prev_dh, d_ah - prev_ah)
+            prev_dh, prev_ah = d_dh, d_ah
+            gap += 0.001
+        self.assertLess(biggest_step, 0.01, msg=f'largest single step was {biggest_step:.4f} A')
+
+    def test_h_bridge_target_distances_keep_the_h_off_the_axis_while_they_can(self):
+        """
+        Up to the capped reach the two targets span the gap, so the H is placed off-axis.
+
+        Exactly on the axis is a 180 degree D-H-A angle, which ARC's zmat builder treats
+        as linear; the reference transfers sit at 173.95 degrees. Beyond the capped reach
+        the targets stop growing and the caller's axis fallback takes over, which is the
+        right answer for a donor and acceptor too far apart to bridge.
+        """
+        self.assertAlmostEqual(H_BRIDGE_MIN_OVERREACH, 0.0035, places=12)
+        capped_reach = (get_single_bond_length('C', 'H') + get_single_bond_length('O', 'H')
+                        + 2.0 * PAULING_DELTA)
+        for gap in (2.0, 2.45, 2.687, capped_reach - 0.05):
+            d_dh, d_ah = h_bridge_target_distances('C', 'O', gap)
+            self.assertGreater(d_dh + d_ah, gap + 0.003,
+                               msg=f'gap {gap:.3f} leaves the hydrogen on the axis')
+
+    def test_h_bridge_target_distances_are_argument_order_symmetric(self):
+        """Swapping donor and acceptor swaps the two targets and nothing else."""
+        for gap in (2.0, 2.687, 3.2):
+            fwd = h_bridge_target_distances('C', 'O', gap)
+            rev = h_bridge_target_distances('O', 'C', gap)
+            self.assertAlmostEqual(fwd[0], rev[1], places=12, msg=f'gap {gap}')
+            self.assertAlmostEqual(fwd[1], rev[0], places=12, msg=f'gap {gap}')
+
+    def test_h_bridge_target_distances_widen_for_a_four_membered_ring(self):
+        """
+        A donor and acceptor two bonds apart take the general elongation.
+
+        They close a four-membered ring through the transferring hydrogen, whose
+        D-H-A angle the ring holds near 105-120 degrees, while H_BRIDGE_DELTA is
+        measured on transfers near 174 degrees. A three-membered ring (one bond) and
+        every longer path keep the bridge elongation.
+        """
+        self.assertEqual(H_BRIDGE_STRAINED_DONOR_ACCEPTOR_PATH, 2)
+        reachable = 2.20
+        d_dh, d_ah = h_bridge_target_distances('C', 'O', reachable, 2)
+        self.assertAlmostEqual(d_dh, get_single_bond_length('C', 'H') + PAULING_DELTA, places=12)
+        self.assertAlmostEqual(d_ah, get_single_bond_length('O', 'H') + PAULING_DELTA, places=12)
+        for path in (1, 3, 4, None):
+            d_dh, d_ah = h_bridge_target_distances('C', 'O', reachable, path)
+            self.assertAlmostEqual(d_dh, get_single_bond_length('C', 'H') + H_BRIDGE_DELTA, places=12,
+                                   msg=f'donor-acceptor path {path} should take the bridge elongation')
+            self.assertAlmostEqual(d_ah, get_single_bond_length('O', 'H') + H_BRIDGE_DELTA, places=12,
+                                   msg=f'donor-acceptor path {path} should take the bridge elongation')
+
+    def test_h_bridge_target_distances_cap_the_stretch_at_the_general_elongation(self):
+        """
+        A donor-acceptor gap too wide for the targets stops at the general elongation.
+
+        Without the cap the common scaling grows without bound and returns a hydrogen
+        bonded to neither partner: a 3.5 A C...O gap would otherwise ask for 1.83 and
+        1.67 A.
+        """
+        cap_dh = get_single_bond_length('C', 'H') + PAULING_DELTA
+        cap_ah = get_single_bond_length('O', 'H') + PAULING_DELTA
+        for gap in (3.0, 3.5, 4.0, 5.0, 8.0):
+            d_dh, d_ah = h_bridge_target_distances('C', 'O', gap)
+            self.assertLessEqual(d_dh, cap_dh + 1e-12, msg=f'gap {gap} stretched the donor target past the cap')
+            self.assertLessEqual(d_ah, cap_ah + 1e-12, msg=f'gap {gap} stretched the acceptor target past the cap')
+        self.assertAlmostEqual(h_bridge_target_distances('C', 'O', 8.0)[0], cap_dh, places=12)
+
+    def test_strained_gate_reads_the_true_bond_path(self):
+        """
+        Only a two-bond donor-acceptor path is treated as strained, at any chain length.
+
+        bond_path_length reports the real shortest path, so the gate cannot mistake a
+        longer chain for a four-membered ring.
+        """
+        mol = Molecule().from_smiles('CCCCCO')
+        adj = mol_to_adjacency(mol)
+        a2i = {a: i for i, a in enumerate(mol.atoms)}
+        o_idx = next(i for i, a in enumerate(mol.atoms) if a.symbol == 'O')
+        chain, prev, cur = [], None, o_idx
+        for _ in range(5):
+            nxt = next(a2i[n] for n in mol.atoms[cur].bonds if n.symbol == 'C' and a2i[n] != prev)
+            chain.append(nxt)
+            prev, cur = cur, nxt
+        for true_path, atom in enumerate(chain, start=1):
+            measured = bond_path_length(adj, o_idx, atom)
+            self.assertEqual(measured, true_path, msg=f'atom {atom}')
+            d_dh, _ = h_bridge_target_distances('O', 'C', 2.20, measured)
+            expected = get_single_bond_length('O', 'H') + (PAULING_DELTA if true_path == 2 else H_BRIDGE_DELTA)
+            self.assertAlmostEqual(d_dh, expected, places=12, msg=f'true path {true_path}')
+
+    def test_h_bridge_target_distances_unknown_element(self):
+        """
+        An element with no tabulated X-H length takes get_single_bond_length's fallback.
+
+        That fallback is 1.75 A, the generic heavy-heavy value; no real X-H bond is that
+        long, so this pins inherited behaviour rather than a defensible length.
+        """
+        d_dh, d_ah = h_bridge_target_distances('Xx', 'C', 1.0)
+        self.assertAlmostEqual(d_dh, 1.75 + H_BRIDGE_DELTA, places=12)
+        self.assertAlmostEqual(d_ah, get_single_bond_length('C', 'H') + H_BRIDGE_DELTA, places=12)
+
+
+class TestFixFormingBondDistancesReactiveCore(unittest.TestCase):
+    """The clash guard in fix_forming_bond_distances must ignore the reactive core."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+
+    def _linear_transfer_xyz(self, smiles, acceptor_symbol):
+        """Build a donor...acceptor geometry three bonds apart with an H on the donor."""
+        mol = Molecule().from_smiles(smiles)
+        symbols = tuple(a.symbol for a in mol.atoms)
+        a2i = {a: i for i, a in enumerate(mol.atoms)}
+        acceptor = next(i for i, a in enumerate(mol.atoms) if a.symbol == acceptor_symbol)
+        first_c = next(a2i[n] for n in mol.atoms[acceptor].bonds if n.symbol == 'C')
+        mid_c = next(a2i[n] for n in mol.atoms[first_c].bonds
+                     if n.symbol == 'C' and a2i[n] != first_c)
+        donor = next(a2i[n] for n in mol.atoms[mid_c].bonds
+                     if n.symbol == 'C' and a2i[n] != first_c)
+        h_idx = next(a2i[n] for n in mol.atoms[donor].bonds if n.symbol == 'H')
+        coords = np.zeros((len(symbols), 3))
+        coords[donor] = (0.0, 0.0, 0.0)
+        coords[acceptor] = (2.35, 0.0, 0.0)
+        coords[h_idx] = (1.0, 0.5, 0.0)
+        for k in range(len(symbols)):
+            if k not in (donor, acceptor, h_idx):
+                coords[k] = (12.0 + k, 12.0, 12.0)
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(get_element_mass(sym)[1] for sym in symbols),
+               'coords': tuple(tuple(row) for row in coords)}
+        return mol, xyz, donor, acceptor, h_idx
+
+    def test_short_acceptor_h_target_is_not_discarded_as_a_clash(self):
+        """
+        A migrating H is placed even when its acceptor target is below the 1.2 A guard.
+
+        F-H is 0.92 + 0.2484 = 1.1683 A, inside the guard's threshold, so measuring the
+        hydrogen against its own acceptor would reject the placement and leave the H
+        where the interpolation put it. O-H at 1.2083 A clears the threshold by 8 mA,
+        which is not a margin worth relying on either.
+        """
+        for smiles, acceptor_symbol, expected in (('CCCF', 'F', 1.1683),
+                                                  ('CCCO', 'O', 1.2083),
+                                                  ('CCCCl', 'Cl', 1.5183)):
+            mol, xyz, donor, acceptor, h_idx = self._linear_transfer_xyz(smiles, acceptor_symbol)
+            out = fix_forming_bond_distances(xyz, mol, [(acceptor, h_idx)])
+            coords = np.asarray(out['coords'], dtype=float)
+            self.assertAlmostEqual(float(np.linalg.norm(coords[h_idx] - coords[acceptor])),
+                                   expected, places=3,
+                                   msg=f'{smiles}: migrating H was not placed at its acceptor target')
 
 
 class TestAdjustReactiveBondDistances(unittest.TestCase):
