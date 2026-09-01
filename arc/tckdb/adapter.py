@@ -3024,15 +3024,11 @@ class TCKDBAdapter:
             )
 
         software_release: dict[str, Any] = {"name": str(software_name)}
-        ess_versions = record.get("ess_versions")
-        if isinstance(ess_versions, Mapping):
-            # ess_versions is keyed by job type ('opt', 'freq', 'sp', 'neb'),
-            # not by software name. Fall back to opt's version if the
-            # job-specific entry is missing (often the case for combined
-            # opt+freq runs or shared sp/freq logs).
-            ess_version = ess_versions.get(ess_job_key) or ess_versions.get("opt")
-            if ess_version:
-                software_release["version"] = str(ess_version)
+        ess_version = _ess_version_for_job(
+            record, ess_job_key, str(software_name), calc_type=calc_type,
+        )
+        if ess_version:
+            software_release.update(_split_ess_version_banner(ess_version))
 
         calc: dict[str, Any] = {
             "type": calc_type,
@@ -4643,6 +4639,85 @@ def _arc_workflow_tool_release(
     if arc_git_commit:
         wt["git_commit"] = str(arc_git_commit)
     return wt
+
+
+_ESS_VERSION_BANNER = re.compile(
+    r"^(?P<program>[A-Za-z][A-Za-z0-9\-]*(?:\s+[A-Za-z][A-Za-z0-9\-]*)*?)"
+    r"\s+(?P<version>\d[^\s,]*)"
+    r"(?:\s*,\s*Revision\s+(?P<revision>[^\s,]+))?"
+    r",?\s*$"
+)
+
+
+def _split_ess_version_banner(banner: str) -> dict[str, str]:
+    """Split a full ESS version banner into TCKDB's ``version`` and ``revision`` fields.
+
+    ``output.yml`` records the banner exactly as the program printed it
+    (``'Gaussian 16, Revision C.01'``, ``'ORCA 6.0.0'``, ``'Molpro 2015.1.37'``). TCKDB
+    keeps the bare version token and the revision in separate columns and dedupes a
+    release on ``(software, version, revision, build)``, so depositing the whole banner
+    as the version would repeat the program name inside it and mint a release row that
+    never matches the canonical one.
+
+    Returns ``{'version': ...}``, plus ``'revision'`` when the banner carries one. A
+    banner that does not match the recognised shape is passed through whole as the
+    version: coarser than the split, but it preserves what the log actually reported.
+    """
+    text = str(banner).strip()
+    match = _ESS_VERSION_BANNER.match(text)
+    if match is None:
+        logger.debug(
+            "TCKDB: ESS version banner %r does not match the recognised "
+            "'<program> <version>[, Revision <revision>]' shape; depositing it verbatim.",
+            text,
+        )
+        return {"version": text}
+    release = {"version": match.group("version")}
+    revision = match.group("revision")
+    if revision:
+        release["revision"] = revision
+    return release
+
+
+def _ess_version_for_job(record: Mapping[str, Any],
+                         ess_job_key: str,
+                         software_name: str,
+                         *,
+                         calc_type: str,
+                         ) -> str | None:
+    """Return the ESS version banner for one job type, or ``None``.
+
+    ``record['ess_versions']`` is keyed by job type (``opt``/``freq``/``sp``/``neb``) and
+    each entry is the banner of the log that job wrote. A job type with no entry yields
+    ``None``: another job's banner is not this job's version, and TCKDB stores whatever
+    is deposited as fact.
+
+    When the record also carries ``ess_software`` — the sibling map naming the program
+    that produced each of those banners — the banner is returned only if that program is
+    the one this calculation's level of theory declares. A disagreement means the name
+    and the version came from different runs and the pairing cannot be trusted, so the
+    version is dropped and the mismatch logged. Records written before ``ess_software``
+    existed carry no such evidence, and the job-type-keyed banner is returned on the
+    level's declaration alone.
+    """
+    ess_versions = record.get("ess_versions")
+    if not isinstance(ess_versions, Mapping):
+        return None
+    ess_version = ess_versions.get(ess_job_key)
+    if not ess_version:
+        return None
+    ess_software = record.get("ess_software")
+    if isinstance(ess_software, Mapping):
+        producer = ess_software.get(ess_job_key)
+        if producer and str(producer).strip().lower() != software_name.strip().lower():
+            logger.warning(
+                "TCKDB %s calculation for label=%s: the %s log was produced by %r but the "
+                "level of theory declares %r; omitting the ESS version rather than pairing "
+                "a version with the software that did not produce it.",
+                calc_type, record.get("label"), ess_job_key, str(producer), software_name,
+            )
+            return None
+    return str(ess_version)
 
 
 def _arc_analysis_software_release(
