@@ -65,6 +65,7 @@ from arc.job.adapters.ts.linear_utils.math_zmat import (BASE_WEIGHT_GRID,
                                                          )
 from arc.job.adapters.ts.linear_utils.postprocess import (FAMILY_POSTPROCESSORS,
                                                            FAMILY_VALIDATORS,
+                                                           PAULING_DELTA,
                                                            has_inward_migrating_group_h,
                                                            postprocess_generic,
                                                            postprocess_ts_guess,
@@ -76,6 +77,7 @@ from arc.molecule import Molecule
 from arc.reaction import ARCReaction
 from arc.species.converter import compare_zmats, order_mol_by_atom_map, order_xyz_by_atom_map, str_to_xyz, xyz_to_str, zmat_from_xyz
 from arc.species.species import ARCSpecies, colliding_atoms
+from arc.species.vectors import calculate_angle
 
 
 def _angle_deg(p1: np.ndarray, vertex: np.ndarray, p2: np.ndarray) -> float:
@@ -4372,51 +4374,32 @@ H       1.80251143    1.03132880   -1.10238169"""
         p2 = ARCSpecies(label='P2', smiles='CC(=O)O', xyz=p2_xyz)
         rxn = ARCReaction(r_species=[r], p_species=[p1, p2])
         ts_xyzs = interpolate(rxn)
-        found_ring = False
+        d_ch = get_single_bond_length('C', 'H') + PAULING_DELTA
+        d_oh = get_single_bond_length('O', 'H') + PAULING_DELTA
+        ring_guess = None
         for ts_xyz in ts_xyzs:
             coords = np.array(ts_xyz['coords'], dtype=float)
-            d_o3c4 = float(np.linalg.norm(coords[3] - coords[4]))
-            d_o2c4 = float(np.linalg.norm(coords[2] - coords[4]))
-            d_c5h13 = float(np.linalg.norm(coords[5] - coords[13]))
-            d_h13o3 = float(np.linalg.norm(coords[13] - coords[3]))
-            # Check 6-membered ring characteristics:
-            # O3-C4 stretched (breaking)
-            if d_o3c4 < 1.8:
+            if float(np.linalg.norm(coords[3] - coords[4])) < 1.8:
                 continue
-            # O2-C4 contracted (ring contact, both O's participate)
-            if d_o2c4 > 2.5:
+            if abs(float(np.linalg.norm(coords[5] - coords[13])) - d_ch) > 0.1:
                 continue
-            # H13 migrating from C5 (near Pauling TS distance)
-            if d_c5h13 > 1.7:
+            if abs(float(np.linalg.norm(coords[2] - coords[13])) - d_oh) > 0.1:
                 continue
-            # H13 approaching O3
-            if d_h13o3 > 2.5:
-                continue
-            found_ring = True
+            ring_guess = ts_xyz
             break
-        self.assertTrue(found_ring, msg='No TS guess has 6-membered ring retroene characteristics: O3-C4 stretched '
-                                        '(breaking), O2-C4 contracted (ring), H13 migrating from C5 toward O3')
-        expected_ts = """C                  3.35667786   -0.45750645    0.53734155
- C                  2.24637997    0.53978750    0.40948895
- O                  1.25975689    0.57306185    1.13089404
- O                  1.90798055    1.60139464   -0.37185519
- C                 -0.25465664    2.12528094    0.76768134
- C                 -0.03131089    3.04259438   -0.26607527
- C                 -1.40160640    3.23262677    0.38080580
- C                  0.80777963    4.31367617   -0.11759400
- H                  3.43291583   -1.04518301   -0.37749397
- H                  4.29490197    0.05808884    0.74227330
- H                  3.14278867   -1.13176712    1.36663279
- H                 -0.88551430    1.24137878    0.67368347
- H                 -0.03778772    2.29994313    1.82151292
- H                  0.87654037    2.16543158   -1.09462311
- H                 -1.31181604    3.41929928    1.45094180
- H                 -1.92716397    4.07668244   -0.06580283
- H                 -2.02058432    2.34596864    0.24367923
- H                  1.76588869    4.21544196   -0.62796354
- H                  0.29073745    5.16969147   -0.55118965
- H                  1.00524898    4.53585118    0.93109285"""
-        self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
+        self.assertIsNotNone(ring_guess,
+                             msg='No TS guess has 6-membered ring retroene characteristics: O3-C4 stretched '
+                                 '(breaking), H13 migrating from C5 toward the carbonyl O2')
+        ring_coords = np.array(ring_guess['coords'], dtype=float)
+        d_o3h13 = float(np.linalg.norm(ring_coords[3] - ring_coords[13]))
+        self.assertGreater(d_o3h13, 2.0,
+                           msg=f'H13 was placed on the ester O3 instead of the carbonyl O2: {d_o3h13:.3f}')
+        d_o2c4 = float(np.linalg.norm(ring_coords[2] - ring_coords[4]))
+        self.assertGreater(d_o2c4, 2.4,
+                           msg=f'a spurious O2-C4 contact was fabricated: {d_o2c4:.3f}')
+        angle = calculate_angle(coords=ring_guess, atoms=[5, 13, 2])
+        self.assertAlmostEqual(angle, 126.0, delta=5.0,
+                               msg=f'C5-H13...O2 bridge angle is {angle:.1f}, expected ~126')
 
     def test_interpolate_singlet_carbene_intra_disproportionation(self):
         """Test the interpolate_isomerization() function for Singlet_Carbene_Intra_Disproportionation: C=C1C=C[C]C1 <=> C=C1C=CC=C1"""
