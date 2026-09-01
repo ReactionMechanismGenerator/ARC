@@ -5,19 +5,15 @@
 This module contains unit tests of the arc.job.adapters.common module
 """
 
-import os
 import shutil
+import tempfile
 import unittest
 
 import arc.job.adapters.common as common
-from arc.common import ARC_TESTING_PATH, get_test_project_name
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.adapters.molpro import MolproAdapter
 from arc.level import Level
 from arc.species import ARCSpecies
-
-GAUSSIAN_PROJECT_DIR = os.path.join(ARC_TESTING_PATH, get_test_project_name('test_GaussianAdapter_common'))
-MOLPRO_PROJECT_DIR = os.path.join(ARC_TESTING_PATH, get_test_project_name('test_MolproAdapter_common'))
 
 
 class TestJobCommon(unittest.TestCase):
@@ -30,11 +26,13 @@ class TestJobCommon(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.project_directory = tempfile.mkdtemp(prefix='test_JobAdaptersCommon_')
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
         cls.job_1 = GaussianAdapter(execution_type='incore',
                                     job_type='composite',
                                     level=Level(method='cbs-qb3-paraskevas'),
                                     project='test',
-                                    project_directory=GAUSSIAN_PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -44,7 +42,7 @@ class TestJobCommon(unittest.TestCase):
                                     torsions=[[1, 2, 3, 4]],
                                     level=Level(method='wb97xd', basis='def2tzvp'),
                                     project='test',
-                                    project_directory=GAUSSIAN_PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -54,7 +52,7 @@ class TestJobCommon(unittest.TestCase):
                                     torsions=[[1, 2, 3, 4]],
                                     level=Level(method='wb97xd', basis='def2tzvp'),
                                     project='test',
-                                    project_directory=GAUSSIAN_PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1, number_of_radicals=2)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -64,7 +62,7 @@ class TestJobCommon(unittest.TestCase):
                                     torsions=[[1, 2, 3, 4]],
                                     level=Level(method='wb97xd', basis='def2tzvp'),
                                     project='test',
-                                    project_directory=GAUSSIAN_PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1, number_of_radicals=2, multi_species='mltspc1'),
                                             ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1, number_of_radicals=1, multi_species='mltspc1')],
                                     testing=True,
@@ -89,7 +87,7 @@ class TestJobCommon(unittest.TestCase):
                           job_type='irc',
                           level=Level(method='ccsd(t)', basis='cc-pvtz'),
                           project='test',
-                          project_directory=MOLPRO_PROJECT_DIR,
+                          project_directory=self.project_directory,
                           species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1)],
                           testing=True,
                           )
@@ -98,7 +96,7 @@ class TestJobCommon(unittest.TestCase):
                             job_type='irc',
                             level=Level(method='b3lyp', basis='def2svp'),
                             project='test',
-                            project_directory=GAUSSIAN_PROJECT_DIR,
+                            project_directory=self.project_directory,
                             species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1)],
                             testing=True,
                             args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -112,11 +110,16 @@ class TestJobCommon(unittest.TestCase):
                           torsions=[[1, 2, 3, 4]],
                           level=Level(method='ccsd(t)', basis='cc-pvtz'),
                           project='test',
-                          project_directory=MOLPRO_PROJECT_DIR,
+                          project_directory=self.project_directory,
                           species=[spc],
                           testing=True,
                           )
         self.job_2.scan_res = 55.6
+        with self.assertRaises(ValueError):
+            common.check_argument_consistency(self.job_2)
+        # A resolution coarser than 20 degrees that still divides 360 (e.g. from a poor
+        # ~/.arc/settings.py rotor_scan_resolution) is caught at the job-build chokepoint.
+        self.job_2.scan_res = 30.0
         with self.assertRaises(ValueError):
             common.check_argument_consistency(self.job_2)
 
@@ -334,14 +337,49 @@ class TestJobCommon(unittest.TestCase):
         stripped_dict = common.input_dict_strip(input_dict)
         self.assertEqual(stripped_dict, expected_stripped_dict)
 
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
-        """
-        shutil.rmtree(GAUSSIAN_PROJECT_DIR, ignore_errors=True)
-        shutil.rmtree(MOLPRO_PROJECT_DIR, ignore_errors=True)
+
+class TestResolveJobServer(unittest.TestCase):
+    """The one answer to "which server will this job go to", shared by the adapters and the pipe."""
+
+    def test_the_first_server_listed_is_the_one_used(self):
+        """ARC submits to the first entry, so anything else would describe a different job."""
+        self.assertEqual(common.resolve_job_server({'gaussian': ['zeus', 'atlas']}, 'gaussian'),
+                         'zeus')
+
+    def test_a_bare_string_is_read_as_a_single_server(self):
+        self.assertEqual(common.resolve_job_server({'gaussian': 'zeus'}, 'gaussian'), 'zeus')
+
+    def test_an_unlisted_adapter_resolves_to_nothing(self):
+        self.assertIsNone(common.resolve_job_server({'gaussian': ['zeus']}, 'orca'))
+
+    def test_an_empty_server_list_resolves_to_nothing(self):
+        """The open-coded version indexed [0] here and raised IndexError."""
+        self.assertIsNone(common.resolve_job_server({'gaussian': []}, 'gaussian'))
+
+    def test_empty_ess_settings_resolve_to_nothing(self):
+        self.assertIsNone(common.resolve_job_server(dict(), 'gaussian'))
+        self.assertIsNone(common.resolve_job_server(None, 'gaussian'))
+
+    def test_a_troubleshooting_override_wins(self):
+        """The override exists to move a job off the server that failed it."""
+        self.assertEqual(common.resolve_job_server({'gaussian': ['zeus']}, 'gaussian',
+                                                   args={'trsh': {'server': 'atlas'}}),
+                         'atlas')
+
+    def test_an_override_is_honoured_even_when_it_is_empty(self):
+        """The caller must see the same server the job itself would be given."""
+        self.assertIsNone(common.resolve_job_server({'gaussian': ['zeus']}, 'gaussian',
+                                                    args={'trsh': {'server': None}}))
+
+    def test_trsh_args_without_a_server_fall_through(self):
+        self.assertEqual(common.resolve_job_server({'gaussian': ['zeus']}, 'gaussian',
+                                                   args={'trsh': {'scan_res': 8}}),
+                         'zeus')
+
+    def test_args_without_a_trsh_entry_fall_through(self):
+        self.assertEqual(common.resolve_job_server({'gaussian': ['zeus']}, 'gaussian',
+                                                   args={'keyword': {}}),
+                         'zeus')
 
 
 if __name__ == '__main__':

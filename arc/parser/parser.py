@@ -182,6 +182,13 @@ parse_geometry = make_parser(
     fallback=parse_xyz_from_file,
 )
 
+parse_geometry_in_normal_mode_frame = make_parser(
+    parse_method='parse_geometry_in_normal_mode_frame',
+    return_type=dict[str, tuple] | None,
+    error_message='Could not parse a geometry in the frame of the normal modes from {path}.',
+    fallback=parse_xyz_from_file,
+)
+
 parse_frequencies = make_parser(
     parse_method='parse_frequencies',
     return_type=np.ndarray | None,
@@ -379,6 +386,43 @@ def parse_1d_scan_full_result(log_file_path: str) -> dict:
         'zero_energy_reference_hartree': zero_ref,
         'geometries': geometries,
     }
+
+
+def get_normal_mode_displacement(log_file_path: str,
+                                 label: str = '',
+                                 ) -> tuple[np.ndarray, np.ndarray] | None:
+    """
+    Get the frequencies and normal mode displacements reported in a frequency job's output file.
+
+    ``None`` is returned, along with a warning naming the ESS, whenever the file yields no normal mode
+    displacements, so that a caller can skip an analysis that requires them rather than operate on
+    missing data. Only some of ARC's ESS parser adapters report normal mode displacements at all,
+    the rest report none for every output file they are given. A file that cannot be read or parsed at
+    all, an absent one included, yields ``None`` by the same route rather than propagating the error,
+    so that one unreadable frequency output cannot end a run over every other species in it.
+
+    Args:
+        log_file_path (str): The path to the frequency job's output file.
+        label (str, optional): The label of the species the job was run for, used in the warning message.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray] | None: The frequencies and the normal mode displacements,
+                                              ``None`` if they could not be parsed.
+    """
+    label_str = f' for {label}' if label else ''
+    try:
+        parsed = parse_normal_mode_displacement(log_file_path=log_file_path)
+    except Exception as e:
+        logger.warning(f'Parsing normal mode displacements{label_str} from {log_file_path} raised:\n{e}')
+        return None
+    freqs, normal_mode_disp = parsed if parsed is not None else (None, None)
+    if normal_mode_disp is None or not len(normal_mode_disp):
+        ess = determine_ess(log_file_path=log_file_path, raise_error=False) or 'unidentified ESS'
+        logger.warning(f'Could not parse normal mode displacements{label_str} from the {ess} output file '
+                       f'{log_file_path}. Not every ESS parser adapter in ARC reports normal mode '
+                       f'displacements.')
+        return None
+    return freqs, normal_mode_disp
 
 
 def parse_1d_scan_energies_from_specific_angle(log_file_path: str,

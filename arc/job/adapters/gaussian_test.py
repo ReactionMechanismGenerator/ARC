@@ -8,16 +8,15 @@ This module contains unit tests of the arc.job.adapters.gaussian module
 import math
 import os
 import shutil
+import tempfile
 import unittest
 
-from arc.common import ARC_TESTING_PATH, get_test_project_name
+from arc.common import ARC_TESTING_PATH
 from arc.job.adapters.gaussian import GaussianAdapter, get_memory_headroom_fraction
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames, servers, submit_filenames
 from arc.species import ARCSpecies
 import arc.job.trsh as trsh
-
-PROJECT_DIR = os.path.join(ARC_TESTING_PATH, get_test_project_name('test_GaussianAdapter'))
 
 
 class TestGaussianAdapter(unittest.TestCase):
@@ -30,11 +29,13 @@ class TestGaussianAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.project_directory = tempfile.mkdtemp(prefix='test_GaussianAdapter_')
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
         cls.job_1 = GaussianAdapter(execution_type='incore',
                                     job_type='composite',
                                     level=Level(method='cbs-qb3-paraskevas'),
                                     project='test',
-                                    project_directory=PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -46,7 +47,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                                 solvation_method='SMD',
                                                 solvent='Water'),
                                     project='test',
-                                    project_directory=PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3),
                                              ARCSpecies(label='spc2', xyz=['O 0 0 2'], multiplicity=3)],
                                     testing=True,
@@ -58,7 +59,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                                 solvation_method='SMD',
                                                 solvent='Water'),
                                     project='test',
-                                    project_directory=PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     )
@@ -78,7 +79,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     level=Level(method='wb97xd',
                                                 basis='def2-TZVP'),
                                     project='test',
-                                    project_directory=PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[spc_4],
                                     rotor_index=0,
                                     testing=True,
@@ -89,7 +90,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     level=Level(method='wb97xd',
                                                 basis='def2-TZVP'),
                                     project='test',
-                                    project_directory=PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='birad singlet',
                                                         xyz=['O 0 0 1'],
                                                         multiplicity=1,
@@ -101,7 +102,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     level=Level(method='wb97xd',
                                                 basis='def2-TZVP'),
                                     project='test',
-                                    project_directory=PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
                                     testing=True,
                                     )
@@ -110,7 +111,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     level=Level(method='wb97xd',
                                                 basis='def2-TZVP'),
                                     project='test',
-                                    project_directory=PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='IRC', xyz=['O 0 0 1'], is_ts=True, multiplicity=3)],
                                     irc_direction='reverse',
                                     testing=True,
@@ -119,7 +120,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     job_type='composite',
                                     level=Level(method='cbs-qb3-paraskevas'),
                                     project='test',
-                                    project_directory=PROJECT_DIR,
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -129,7 +130,7 @@ class TestGaussianAdapter(unittest.TestCase):
                             level=Level(method='wb97xd',
                                         basis='def2-TZVP'),
                             project='test',
-                            project_directory=PROJECT_DIR,
+                            project_directory=cls.project_directory,
                             species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
                             testing=True,
                             )
@@ -138,7 +139,7 @@ class TestGaussianAdapter(unittest.TestCase):
                             level=Level(method='wb97xd'),
                             fine=True,
                             project='test',
-                            project_directory=PROJECT_DIR,
+                            project_directory=cls.project_directory,
                             species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
                             testing=True,
                             args={'trsh': {'trsh': ['int=(Acc2E=14)']}},
@@ -147,7 +148,7 @@ class TestGaussianAdapter(unittest.TestCase):
                             job_type='opt',
                             level=Level(method='uff'),
                             project='test',
-                            project_directory=PROJECT_DIR,
+                            project_directory=cls.project_directory,
                             species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                             testing=True,
                             )
@@ -158,7 +159,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                         solvation_method='SMD',
                                         solvent='Water'),
                             project='test',
-                            project_directory=PROJECT_DIR,
+                            project_directory=cls.project_directory,
                             species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multi_species='mltspc1', multiplicity=3),
                                     ARCSpecies(label='spc2', xyz=['O 0 0 2'], multi_species='mltspc1', multiplicity=3),
                                     ARCSpecies(label='ethanol', xyz=["""C	1.1658210	-0.4043550	0.0000000
@@ -214,7 +215,7 @@ class TestGaussianAdapter(unittest.TestCase):
                             fine=True,
                             ess_trsh_methods=ess_trsh_methods,
                             project='test',
-                            project_directory=PROJECT_DIR,
+                            project_directory=cls.project_directory,
                             species=[spc_11],
                             testing=True,
                             args=args
@@ -236,7 +237,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -258,7 +259,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -280,7 +281,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -303,7 +304,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -325,7 +326,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -348,7 +349,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -370,7 +371,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -392,7 +393,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -414,7 +415,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -436,7 +437,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -459,7 +460,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -483,7 +484,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -508,7 +509,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=PROJECT_DIR,
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -541,7 +542,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                 job_type='opt',
                                 level=Level(method='wb97xd', basis='def2tzvp'),
                                 project='test',
-                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                project_directory=self.project_directory,
                                 species=[ARCSpecies(label='spc_headroom', xyz=['O 0 0 1'], multiplicity=3)],
                                 testing=True,
                                 ess_trsh_methods=ess_trsh_methods,
@@ -557,7 +558,7 @@ class TestGaussianAdapter(unittest.TestCase):
                               job_type='opt',
                               level=Level(method='wb97xd', basis='def2tzvp'),
                               project='test',
-                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                              project_directory=self.project_directory,
                               species=[ARCSpecies(label='spc_headroom_marker', xyz=['O 0 0 1'], multiplicity=3)],
                               testing=True,
                               ess_trsh_methods=['memory_headroom_0.6'],
@@ -1240,7 +1241,7 @@ H       0.04768200    1.19305700   -0.88359100
                               job_type='opt',
                               level=rebuilt_level,
                               project='test',
-                              project_directory=PROJECT_DIR,
+                              project_directory=self.project_directory,
                               species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                               testing=True,
                               )
@@ -1250,14 +1251,6 @@ H       0.04768200    1.19305700   -0.88359100
         route_section = [line for line in content.splitlines() if line.startswith('#')]
         self.assertEqual(len(route_section), 1)
         self.assertIn('verytight', route_section[0])
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests.
-        """
-        shutil.rmtree(PROJECT_DIR, ignore_errors=True)
 
 
 class TestGaussianAdapterNoXqc(unittest.TestCase):

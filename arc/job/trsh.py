@@ -25,18 +25,18 @@ from arc.exceptions import InputError, SpeciesError, TrshError
 from arc.imports import settings
 from arc.level import Level
 from arc.job.local import execute_command
-from arc.job.ssh import SSHClient
+from arc.job.ssh_pool import borrow_ssh_client
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_smallest_atom_index_in_scan
 from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
-from arc.parser.parser import (parse_1d_scan_coords,
+from arc.parser.parser import (determine_ess,
+                               get_normal_mode_displacement,
+                               parse_1d_scan_coords,
                                parse_geometry,
-                               parse_normal_mode_displacement,
                                parse_scan_args,
                                parse_scan_conformers,
-                               determine_ess
                                )
 
 
@@ -651,10 +651,11 @@ def trsh_negative_freq(label: str,
     factors = [0.25, 0.50, 0.75, 1.0, 1.5, 2.5]
     factor = factors[0]
     max_times_to_trsh_neg_freq = len(factors) + 1
-    freqs, normal_modes_disp = parse_normal_mode_displacement(log_file_path=log_file, raise_error=False)
-    if not len(normal_modes_disp):
+    parsed_modes = get_normal_mode_displacement(log_file_path=log_file, label=label)
+    if parsed_modes is None:
         logger.error(f'Could not troubleshoot negative frequency for species {label}.')
         return [], [], output_errors, []
+    freqs, normal_modes_disp = parsed_modes
     if len(neg_freqs_trshed) > max_times_to_trsh_neg_freq:
         logger.error(f'Species {label} was troubleshooted for negative frequencies too many times.')
         if 'rotors' not in job_types:
@@ -1617,13 +1618,13 @@ def trsh_job_on_server(server: str,
         execute_command(cmd)
         return None, True
     else:
-        with SSHClient(server) as ssh:
+        with borrow_ssh_client(server) as ssh:
             ssh.delete_job(job_id)
 
     # find available node
     logger.error('Troubleshooting by changing node.')
-    ssh = SSHClient(server)
-    nodes = ssh.list_available_nodes()
+    with borrow_ssh_client(server) as ssh:
+        nodes = ssh.list_available_nodes()
     for node in nodes:
         if node not in server_nodes:
             server_nodes.append(node)
@@ -1636,7 +1637,7 @@ def trsh_job_on_server(server: str,
 
     # modify the submit file
     remote_submit_file = os.path.join(remote_path, submit_filenames[cluster_soft])
-    with SSHClient(server) as ssh:
+    with borrow_ssh_client(server) as ssh:
         content = ssh.read_remote_file(remote_file_path=remote_submit_file)
     if cluster_soft.lower() == 'oge':
         node_assign = '#$ -l h='
@@ -1646,19 +1647,19 @@ def trsh_job_on_server(server: str,
         insert_line_num = 5
     else:
         # Other software?
-        logger.denug(f'Unknown cluster software {cluster_soft} is encountered when '
+        logger.debug(f'Unknown cluster software {cluster_soft} is encountered when '
                      f'troubleshooting by changing node.')
         return None, False
     for i, line in enumerate(content):
         if node_assign in line:
             content[i] = node_assign + node
-        break
+            break
     else:
         content.insert(insert_line_num, node_assign + node)
     content = ''.join(content)  # convert list into a single string, not to upset paramiko
 
     # resubmit
-    with SSHClient(server) as ssh:
+    with borrow_ssh_client(server) as ssh:
         ssh.upload_file(remote_file_path=os.path.join(remote_path,
                         submit_filenames[cluster_soft]), file_string=content)
     return node, True

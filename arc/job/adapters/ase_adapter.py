@@ -7,7 +7,7 @@ import os
 import subprocess
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-from arc.common import get_logger, read_yaml_file, save_yaml_file
+from arc.common import get_logger, read_yaml_file, save_yaml_file, torsions_to_scans
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
@@ -188,6 +188,28 @@ class ASEAdapter(JobAdapter):
             
         return ARC_PYTHON or 'python'
 
+    def set_scan_torsions(self) -> None:
+        """
+        Resolve the torsion(s) a 'scan' job should sweep, and store them in ``self.torsions``.
+
+        A scan job may be given either an explicit ``torsions`` list (the pipe path) or a species
+        ``rotors_dict`` together with a ``rotor_index`` (the scheduler path, which leaves
+        ``torsions`` None). This resolves whichever was supplied, mirroring the other ESS adapters,
+        so that ``self.torsions`` is always populated for both the input file and the scheduler,
+        which reads ``job.torsions[0]`` when the job returns.
+
+        Raises:
+            ValueError: If neither a rotor nor a torsion was supplied.
+        """
+        if self.torsions is not None and len(self.torsions):
+            return
+        if self.rotor_index is not None and self.species[0].rotors_dict:
+            scans = self.species[0].rotors_dict[self.rotor_index]['scan']
+            scans = [scans] if not isinstance(scans[0], list) else scans
+            self.torsions = torsions_to_scans(scans, direction=-1)
+            return
+        raise ValueError(f'Could not determine scan parameters for scan job {self.job_name}')
+
     def write_input_file(self) -> None:
         """
         Write the input file for ase_script.py.
@@ -202,6 +224,15 @@ class ASEAdapter(JobAdapter):
             'irc_direction': self.irc_direction,
             'settings': self.determine_settings(),
         }
+        if self.job_type == 'scan':
+            # A 'scan' job sweeps a whole rotor in one process: pass the torsion(s) and the
+            # scan resolution so ase_script.py can run the relaxed torsional scan itself.
+            # The scheduler dispatches a rotor with rotors_dict + rotor_index and leaves torsions
+            # None, so resolve the scan the same way Gaussian/QChem/TeraChem/Psi4 do and back-fill
+            # self.torsions, which the scheduler later reads directly (as job.torsions[0]).
+            self.set_scan_torsions()
+            input_dict['torsions'] = self.torsions
+            input_dict['scan_res'] = self.scan_res
         save_yaml_file(os.path.join(self.local_path, 'input.yml'), input_dict)
 
     def warn_if_unreliable_uma_sp(self) -> bool:
@@ -301,6 +332,8 @@ class ASEAdapter(JobAdapter):
             self.normal_modes = results.get('modes')
             self.reduced_masses = results.get('reduced_masses')
             self.force_constants = results.get('force_constants')
+            for warning in results.get('warnings') or list():
+                logger.warning(f"ASE job warning: {warning}")
             if 'error' in results:
                 logger.error(f"ASE job error: {results['error']}")
 

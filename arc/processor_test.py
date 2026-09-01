@@ -11,7 +11,8 @@ import unittest
 from unittest import mock
 
 import arc.processor as processor
-from arc.common import ARC_TESTING_PATH, TS_IRC_FAILED_MARKER, read_yaml_file
+from arc.checks.common import TS_IRC_FAILED_MARKER
+from arc.common import ARC_TESTING_PATH, read_yaml_file
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 
@@ -62,8 +63,15 @@ class TestProcessor(unittest.TestCase):
                                                        output_directory=output_directory,
                                                        )
         self.assertEqual(len(reactions_to_compare), 2)
-        self.assertEqual(len(reactions_to_compare[0].rmg_kinetics), 3)
-        self.assertEqual(len(reactions_to_compare[1].rmg_kinetics), 1)
+        # Library matches plus every family estimate are reported: both the training-set
+        # depository hits and the rate-rule estimate (the old 'training' comment filter used
+        # to drop them, and the rule tree that produces the rate-rule estimate was not built).
+        self.assertEqual(len(reactions_to_compare[0].rmg_kinetics), 5)
+        self.assertEqual(len(reactions_to_compare[1].rmg_kinetics), 3)
+        comments_0 = [entry['comment'] for entry in reactions_to_compare[0].rmg_kinetics]
+        self.assertTrue(any(comment.startswith('Library:') for comment in comments_0))
+        self.assertTrue(any('source: rate rules' in comment for comment in comments_0))
+        self.assertTrue(any('training' in comment for comment in comments_0))
         self.assertTrue(os.path.isfile(os.path.join(output_directory, 'rate_plots.pdf')))
         kinetics_yml_path = os.path.join(output_directory, 'RMG_kinetics.yml')
         self.assertTrue(os.path.isfile(kinetics_yml_path))

@@ -34,11 +34,13 @@ ENV MAMBA_USER=mambauser
 # which then dies with NoChannelsConfiguredError (non-fatally) and silently drops that pin.
 RUN printf 'channels:\n  - conda-forge\n' > /home/mambauser/.condarc
 
-# Set JuliaUp PATH and install Julia 1.10 as req. by RMG (mirrors RMG-Py's own Dockerfile)
+# Set JuliaUp PATH and install Julia as req. by RMG (mirrors RMG-Py's own Dockerfile).
+# Pinned to a patch version, not the 1.10 channel: juliacall segfaults on import under 1.10.12,
+# and the channel floats to the newest patch. RMG-Py pinned the same version in 62eb728c0.
 ENV PATH="/home/mambauser/.juliaup/bin:$PATH"
-RUN wget -qO- https://install.julialang.org | sh -s -- --yes --default-channel 1.10 && \
-    juliaup add 1.10 && \
-    juliaup default 1.10 && \
+RUN wget -qO- https://install.julialang.org | sh -s -- --yes --default-channel 1.10.11 && \
+    juliaup add 1.10.11 && \
+    juliaup default 1.10.11 && \
     juliaup list && \
     rm -rf /home/mambauser/.juliaup/downloads /home/mambauser/.juliaup/tmp
 
@@ -153,7 +155,7 @@ ENV PYTHON_JULIAPKG_EXE=/home/mambauser/.juliaup/bin/julia
 # any --entrypoint override) lands on root with HOME=/root rather than going through
 # entrywrapper.sh's `runuser -u mambauser`. juliaup then finds no config, falls back to the
 # `release` channel, and downloads a newer Julia over the network - silently bypassing the pinned
-# 1.10 and every pkgimage baked above, or hard-failing when the host is offline. Pinning the depot
+# 1.10.11 and every pkgimage baked above, or hard-failing when the host is offline. Pinning the depot
 # explicitly makes resolution HOME-independent. Note this is JULIAUP_DEPOT_PATH, not
 # JULIA_DEPOT_PATH; juliaup does not read the latter for channel lookup.
 ENV JULIAUP_DEPOT_PATH=/home/mambauser/.julia
@@ -166,7 +168,14 @@ RUN apt-get update && \
         ca-certificates \
         nano \
         make \
+        openssh-client \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Drop the vestigial 'ubuntu' account the base image ships at 1000:1000. Nothing here uses it
+# (micromamba runs as mambauser, uid 57439), but it occupies exactly the IDs that the documented
+# `-e PUID=$(id -u) -e PGID=$(id -g)` asks for on a typical Linux desktop, where the entrypoint
+# would then refuse to remap mambauser and abort the container.
+RUN if getent passwd ubuntu >/dev/null; then userdel -r ubuntu 2>/dev/null || userdel ubuntu; fi && \
+    if getent group ubuntu >/dev/null; then groupdel ubuntu; fi
 USER mambauser
 
 COPY --from=builder --chown=mambauser:mambauser /opt/conda /opt/conda
@@ -187,6 +196,13 @@ COPY --chmod=755  dockerfiles/entrywrapper.sh  /usr/local/bin/entrywrapper.sh
 COPY --chmod=644  dockerfiles/aliases.sh       /etc/profile.d/aliases.sh
 COPY --chmod=755  dockerfiles/job_helpers.sh   /usr/local/bin/arc_job_helpers.sh
 COPY --chmod=755  dockerfiles/aliases_print.sh /usr/local/bin/aliases
+COPY --chmod=755  dockerfiles/arc_preflight.py /usr/local/bin/arc_preflight.py
+# Mount points for the user's SSH material (agent socket or read-only key/known_hosts mounts)
+# and for the personal ARC settings overlay, so both bind mounts land on an existing path
+# owned by mambauser.
+RUN mkdir -p /home/mambauser/.ssh && chmod 700 /home/mambauser/.ssh && \
+    mkdir -p /home/mambauser/.arc && chown mambauser:mambauser /home/mambauser/.arc
+
 RUN touch /home/mambauser/.bashrc && \
     grep -qxF 'source /etc/profile.d/aliases.sh' /home/mambauser/.bashrc || \
     echo 'source /etc/profile.d/aliases.sh' >> /home/mambauser/.bashrc

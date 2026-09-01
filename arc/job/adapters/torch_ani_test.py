@@ -10,11 +10,16 @@ import shutil
 import tempfile
 import unittest
 
+import numpy as np
+from ase.data import atomic_masses, atomic_numbers
+
 from arc.common import almost_equal_coords, almost_equal_lists, read_yaml_file
 from arc.job.adapters.torch_ani import TorchANIAdapter
 from arc.settings.settings import TANI_PYTHON, tani_default_options_dict
 from arc.species import ARCSpecies
 from arc.species.vectors import calculate_distance, calculate_angle, calculate_dihedral_angle
+
+TANI_SCHEMA_VERSION = 2
 
 
 @unittest.skipUnless(TANI_PYTHON is not None,
@@ -160,17 +165,35 @@ class TestTorchANIAdapter(unittest.TestCase):
         self.assertEqual(self.job_4.opt_xyz['symbols'], ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H'))
 
     def test_run_vibrational_analysis(self):
-        """Test the run_vibrational_analysis() method."""
+        """Test the run_vibrational_analysis() method.
+
+        The modes are checked by value and not only by shape, since a mass deweighted unnormalized
+        mode set has the very same shape as the mass deweighted normalized one written here.
+        """
         self.job_10.execute()
         results = read_yaml_file(path=self.job_10.local_path_to_output_file)
-        self.assertEqual(list(results.keys()), ['force_constants', 'freqs', 'hessian', 'modes', 'reduced_masses'])
-        self.assertEqual(len(results['force_constants']), 3*self.job_10.species[0].mol.get_num_atoms())
-        self.assertEqual(len(results['freqs']), 3*self.job_10.species[0].mol.get_num_atoms())
-        self.assertEqual(len(results['hessian'][0][0]), 3*self.job_10.species[0].mol.get_num_atoms())
-        self.assertEqual(len(results['hessian'][0]), 3*self.job_10.species[0].mol.get_num_atoms())
-        self.assertEqual(len(results['modes'][0][0]), 3)
-        self.assertEqual(len(results['modes'][0]), 3**2)
-        self.assertEqual(len(results['reduced_masses']), 3*self.job_10.species[0].mol.get_num_atoms())
+        self.assertEqual(sorted(results.keys()), ['force_constants', 'freqs', 'hessian', 'modes',
+                                                  'reduced_masses', 'schema_version', 'xyz'])
+        num_atoms = self.job_10.species[0].mol.get_num_atoms()
+        self.assertEqual(results['schema_version'], TANI_SCHEMA_VERSION)
+        self.assertEqual(len(results['force_constants']), 3 * num_atoms)
+        self.assertEqual(len(results['freqs']), 3 * num_atoms)
+        self.assertEqual(len(results['hessian'][0][0]), 3 * num_atoms)
+        self.assertEqual(len(results['hessian'][0]), 3 * num_atoms)
+        self.assertEqual(len(results['reduced_masses']), 3 * num_atoms)
+        symbols = results['xyz']['symbols']
+        self.assertEqual(len(symbols), num_atoms)
+
+        modes = np.array(results['modes'], dtype=np.float64)
+        self.assertEqual(modes.shape, (3 * num_atoms, num_atoms, 3))
+        norms = np.linalg.norm(modes.reshape(modes.shape[0], -1), axis=1)
+        self.assertTrue(np.allclose(norms, 1.0, rtol=0, atol=1e-8),
+                        msg=f'The modes are not of a unit Euclidean norm, got {norms}')
+        masses = np.array([atomic_masses[atomic_numbers[symbol]] for symbol in symbols], dtype=np.float64)
+        reduced_masses = np.einsum('a,kax,kax->k', masses, modes, modes)
+        self.assertTrue(np.allclose(reduced_masses, np.array(results['reduced_masses']), rtol=1e-3, atol=0),
+                        msg=f'sum(m*|d|^2) is {reduced_masses}, while the file reports '
+                            f'reduced masses of {results["reduced_masses"]}')
 
     def test_run_freq(self):
         """Test the run_freq() method."""

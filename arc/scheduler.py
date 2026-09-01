@@ -47,7 +47,8 @@ from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
-from arc.job.ssh import SSHClient, reset_queue_query_history
+from arc.job.ssh import reset_queue_query_history
+from arc.job.ssh_pool import borrow_ssh_client
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
                           trsh_ess_job,
@@ -263,6 +264,8 @@ class Scheduler(object):
     Attributes:
         project (str): The project's name. Used for naming the working directory.
         servers (list): A list of servers used for the present project.
+        remote_project_paths (dict): Keys are servers used for the present project, values are the respective
+                                     remote paths of the project's directory on that server.
         species_list (list): Contains input :ref:`ARCSpecies <species>` objects (both species and TSs).
         species_dict (dict): Keys are labels, values are :ref:`ARCSpecies <species>` objects.
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
@@ -354,6 +357,7 @@ class Scheduler(object):
                  fine_only: bool | None = False,
                  trsh_ess_jobs: bool | None = True,
                  trsh_rotors: bool | None = True,
+                 rotor_scan_resolution: float | None = None,
                  kinetics_adapter: str = 'arkane',
                  freq_scale_factor: float = 1.0,
                  ts_adapters: list[str] = None,
@@ -389,6 +393,7 @@ class Scheduler(object):
         self.fine_only = fine_only
         self.trsh_ess_jobs = trsh_ess_jobs
         self.trsh_rotors = trsh_rotors
+        self.rotor_scan_resolution = rotor_scan_resolution
         self.kinetics_adapter = kinetics_adapter
         self.freq_scale_factor = freq_scale_factor
         self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
@@ -418,6 +423,7 @@ class Scheduler(object):
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self._last_status_payload: dict | None = None
         self.servers = list()
+        self.remote_project_paths = dict()
         self.composite_method = composite_method
         self.conformer_opt_level = conformer_opt_level
         self.conformer_sp_level = conformer_sp_level
@@ -1133,6 +1139,7 @@ class Scheduler(object):
                         args['trsh'][key] = value
             else:
                 args['trsh'] = trsh
+        args = self.set_scan_resolution(args=args, job_type=job_type)
         if shift:
             args['shift'] = shift
         if scan_trsh:
@@ -1201,11 +1208,37 @@ class Scheduler(object):
             if 'tsg' not in self.job_dict[label]:
                 self.job_dict[label]['tsg'] = dict()
             self.job_dict[label]['tsg'][tsg] = job  # save job object
-        if job.server is not None and job.server not in self.servers:
-            self.servers.append(job.server)
+        if job.server is not None:
+            if job.server not in self.servers:
+                self.servers.append(job.server)
+            if job.remote_project_path and not self.remote_project_paths.get(job.server):
+                self.remote_project_paths[job.server] = job.remote_project_path
         self.check_max_simultaneous_jobs_limit(job.server)
         job.execute()
         self.save_restart_dict()
+
+    def set_scan_resolution(self, args: dict, job_type: str) -> dict:
+        """
+        Inject the run-level rotor scan resolution into a scan job's troubleshooting args.
+
+        The value set via the ``rotor_scan_resolution`` input key is threaded through
+        ``args['trsh']['scan_res']`` (the same channel a per-job troubleshooting override uses),
+        so a run may state its 1D rotor scan resolution once instead of relying on the launching
+        host's settings value. Only ``'scan'`` jobs are affected, and a ``scan_res`` already present
+        in ``args`` (e.g. from troubleshooting) is never overridden. When ``self.rotor_scan_resolution``
+        is ``None`` the args are returned unchanged, so behaviour is identical to today's settings default.
+
+        Args:
+            args (dict): The job arguments dictionary.
+            job_type (str): The job type.
+
+        Returns: dict
+            The (possibly updated) job arguments dictionary.
+        """
+        if job_type == 'scan' and self.rotor_scan_resolution is not None \
+                and 'scan_res' not in args.get('trsh', dict()):
+            args.setdefault('trsh', dict())['scan_res'] = self.rotor_scan_resolution
+        return args
 
     def deduce_job_adapter(self, level: Level, job_type: str) -> str:
         """
@@ -3383,43 +3416,6 @@ class Scheduler(object):
                                           )
                 self.process_irc_verdict(ts_label=ts_label, rxn=rxn)
 
-    @staticmethod
-    def report_irc_verdict(ts_label: str,
-                           rxn: ARCReaction | None,
-                           ts_checks: dict | None = None,
-                           ) -> bool | None:
-        """
-        Report the verdict of the IRC check of a TS species.
-
-        This method only reports, it does not act on the verdict; ``process_irc_verdict()`` acts on it.
-
-        Args:
-            ts_label (str): The label of the TS species the IRC check was performed for.
-            rxn (ARCReaction, optional): The reaction the TS species belongs to.
-            ts_checks (dict, optional): The TS checks dictionary to read the verdict from,
-                                        taken from ``rxn.ts_species`` if not given.
-
-        Returns:
-            Optional[bool]: The reported IRC verdict.
-        """
-        if ts_checks is None:
-            ts_checks = getattr(getattr(rxn, 'ts_species', None), 'ts_checks', None)
-        verdict = ts_checks.get('IRC', None) if isinstance(ts_checks, dict) else None
-        rxn_label = getattr(rxn, 'label', None) or 'unknown reaction'
-        if verdict is True:
-            logger.info(f'The optimized IRC endpoints of TS {ts_label} correspond to the reactants and products '
-                        f'of reaction {rxn_label}.')
-        elif verdict is False:
-            logger.error(f'The optimized IRC endpoints of TS {ts_label} do NOT correspond to the reactants and '
-                         f'products of reaction {rxn_label}. This TS does not connect the requested wells, '
-                         f'therefore any rate coefficient computed from it does not describe this reaction.\n'
-                         f'Status is:\n{ts_checks}\n'
-                         f'Searching for a better TS conformer...')
-        else:
-            logger.debug(f'The IRC check for TS {ts_label} of reaction {rxn_label} was not performed, '
-                         f'or its result could not be determined.')
-        return verdict
-
     def process_irc_verdict(self,
                             ts_label: str,
                             rxn: ARCReaction | None,
@@ -3430,9 +3426,8 @@ class Scheduler(object):
         The verdict is three-valued: ``True`` means the optimized IRC endpoints correspond to the
         requested wells, ``False`` means they positively do not, and ``None`` means the check was not
         performed or its result could not be determined (e.g., IRC jobs were not requested).
-        Only a ``False`` verdict rejects the TS, in which case a different TS guess is sought,
-        mirroring the treatment of a failed normal mode displacement check.
-        Reporting the verdict is delegated to ``report_irc_verdict()``.
+        Only a ``False`` verdict rejects the TS, in which case a different TS guess is sought.
+        Once every guess was tried, the TS is marked unconverged and the verdict is restored.
 
         Args:
             ts_label (str): The label of the TS species the IRC check was performed for.
@@ -3440,15 +3435,23 @@ class Scheduler(object):
         """
         ts_species = self.species_dict.get(ts_label, None)
         ts_checks = getattr(ts_species, 'ts_checks', None)
-        verdict = self.report_irc_verdict(ts_label=ts_label,
-                                          rxn=rxn,
-                                          ts_checks=ts_checks if isinstance(ts_checks, dict) else dict(),
-                                          )
-        if verdict is not False:
+        verdict = ts_checks.get('IRC', None) if isinstance(ts_checks, dict) else None
+        rxn_label = getattr(rxn, 'label', None) or 'unknown reaction'
+        if verdict is True:
+            logger.info(f'The optimized IRC endpoints of TS {ts_label} correspond to the reactants and products '
+                        f'of reaction {rxn_label}.')
             return
+        if verdict is not False:
+            logger.debug(f'The IRC check for TS {ts_label} of reaction {rxn_label} was not performed, '
+                         f'or its result could not be determined.')
+            return
+        logger.error(f'The optimized IRC endpoints of TS {ts_label} do NOT correspond to the reactants and '
+                     f'products of reaction {rxn_label}. This TS does not connect the requested wells, '
+                     f'therefore any rate coefficient computed from it does not describe this reaction.\n'
+                     f'Status is:\n{ts_checks}\n'
+                     f'Searching for a better TS conformer...')
         self.switch_ts(ts_label)
         if ts_species.ts_guesses_exhausted or ts_species.chosen_ts is None:
-            rxn_label = getattr(rxn, 'label', None) or 'unknown reaction'
             logger.error(f'Could not find a TS conformer for {ts_label} of reaction {rxn_label} '
                          f'that passes the IRC check. Marking as unconverged.')
             self.output[ts_label]['convergence'] = False
@@ -3679,7 +3682,7 @@ class Scheduler(object):
                 if rotor_dict['pivots'] == job.pivots:
                     key = tuple(f'{dihedral:.2f}' for dihedral in job.dihedrals)
                     rotor_dict['directed_scan'][key] = {'energy': parser.parse_e_elect(
-                        path=job.local_path_to_output_file),
+                        log_file_path=job.local_path_to_output_file),
                         'xyz': xyz,
                         'is_isomorphic': is_isomorphic,
                         'trsh': job.ess_trsh_methods,
@@ -3773,7 +3776,7 @@ class Scheduler(object):
         for server in self.servers:
             if specific_server is None or server == specific_server:
                 if server != 'local':
-                    with SSHClient(server) as ssh:
+                    with borrow_ssh_client(server) as ssh:
                         job_ids = ssh.check_running_jobs_ids()
                 else:
                     job_ids = check_running_jobs_ids()

@@ -41,6 +41,7 @@ from arc.species.species import (ARCSpecies,
                                  colliding_atoms,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 process_run_time,
                                  rmg_mol_from_dict_repr,
                                  rmg_mol_to_dict_repr,
                                  split_mol,
@@ -287,27 +288,67 @@ class TestARCSpecies(unittest.TestCase):
         n_rad = ARCSpecies(label='N', smiles='[N]')
         self.assertTrue(n_rad.is_monoatomic())
 
-    def test_init_monoatomic_geometry_sets_final_xyz(self):
+    def test_set_final_xyz_for_monoatomic_generates_a_geometry(self):
         """Test that a monoatomic species gets a final_xyz at initialization."""
         for label, smiles in [('H', '[H]'), ('O', '[O]'), ('Cl', '[Cl]')]:
             spc = ARCSpecies(label=label, smiles=smiles)
             self.assertIsNotNone(spc.final_xyz)
             self.assertEqual(spc.final_xyz['symbols'], (label,))
             self.assertEqual(spc.final_xyz['coords'], ((0.0, 0.0, 0.0),))
+            self.assertEqual(spc.initial_xyz, spc.final_xyz)
+            self.assertEqual(spc.cheap_conformer, spc.final_xyz)
 
-    def test_init_monoatomic_geometry_preserves_user_xyz(self):
+    def test_set_final_xyz_for_monoatomic_preserves_user_xyz(self):
         """Test that a user-supplied monoatomic geometry is used as-is, from any input route."""
         xyz = {'symbols': ('O',), 'isotopes': (16,), 'coords': ((1.5, -2.5, 3.5),)}
-        for kwargs in [{'smiles': '[O]', 'xyz': xyz}, {'xyz': xyz}]:
+        adjlist = """multiplicity 3
+1 O u2 p2 c0"""
+        for kwargs in [{'smiles': '[O]', 'xyz': xyz}, {'adjlist': adjlist, 'xyz': xyz}, {'xyz': xyz}]:
             spc = ARCSpecies(label='O', **kwargs)
             self.assertEqual(spc.final_xyz['coords'], ((1.5, -2.5, 3.5),))
+            self.assertIsNone(spc.initial_xyz)
 
-    def test_init_monoatomic_geometry_skips_ts(self):
+    def test_set_final_xyz_for_monoatomic_from_adjlist(self):
+        """Test that a monoatomic species given only an adjlist gets a final_xyz."""
+        adjlist = """multiplicity 3
+1 O u2 p2 c0"""
+        spc = ARCSpecies(label='O', adjlist=adjlist)
+        self.assertEqual(spc.final_xyz, {'symbols': ('O',), 'isotopes': (16,), 'coords': ((0.0, 0.0, 0.0),)})
+
+    def test_set_final_xyz_for_monoatomic_from_species_dict(self):
+        """Test that a monoatomic species restored from a dictionary gets a final_xyz."""
+        xyz_dict = {'label': 'tst_atom_1', 'xyz': 'C 0.1 0.5 0.0'}
+        initial_xyz_dict = {'label': 'tst_atom_2', 'initial_xyz': 'C 0.2 0.5 0.0'}
+        final_xyz_dict = {'label': 'tst_atom_3', 'final_xyz': 'C 0.3 0.5 0.0'}
+        conformers_dict = {'label': 'tst_atom_4', 'xyz': ['C 0.4 0.5 0.0', 'C 0.5 0.5 0.0']}
+        smiles_dict = {'label': 'tst_atom_5', 'smiles': '[H]'}
+
+        spc1 = ARCSpecies(species_dict=xyz_dict)
+        spc2 = ARCSpecies(species_dict=initial_xyz_dict)
+        spc3 = ARCSpecies(species_dict=final_xyz_dict)
+        spc4 = ARCSpecies(species_dict=conformers_dict)
+        spc5 = ARCSpecies(species_dict=smiles_dict)
+
+        self.assertEqual(spc1.final_xyz, {'coords': ((0.1, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertIsNone(spc1.initial_xyz)
+        self.assertEqual(spc2.final_xyz, {'coords': ((0.2, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertEqual(spc3.final_xyz, {'coords': ((0.3, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertEqual(spc4.final_xyz, {'coords': ((0.4, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertEqual(spc5.final_xyz, {'coords': ((0.0, 0.0, 0.0),), 'isotopes': (1,), 'symbols': ('H',)})
+
+    def test_set_final_xyz_for_monoatomic_feeds_get_xyz_without_generating(self):
+        """Test that run_sp_job's get_xyz(generate=False) call returns a geometry for a standalone atom."""
+        self.assertEqual(ARCSpecies(label='H', smiles='[H]').get_xyz(generate=False),
+                         {'symbols': ('H',), 'isotopes': (1,), 'coords': ((0.0, 0.0, 0.0),)})
+        xyz = {'symbols': ('O',), 'isotopes': (16,), 'coords': ((1.5, -2.5, 3.5),)}
+        self.assertEqual(ARCSpecies(label='O', smiles='[O]', xyz=xyz).get_xyz(generate=False), xyz)
+
+    def test_set_final_xyz_for_monoatomic_skips_ts(self):
         """Test that a TS is not assigned a monoatomic final_xyz."""
         ts = ARCSpecies(label='TS0', is_ts=True, smiles='[H]')
         self.assertIsNone(ts.final_xyz)
 
-    def test_init_monoatomic_geometry_ignores_polyatomic(self):
+    def test_set_final_xyz_for_monoatomic_ignores_polyatomic(self):
         """Test that a polyatomic species is unaffected."""
         for smiles in ['C', '[H][H]', 'O']:
             self.assertIsNone(ARCSpecies(label='spc', smiles=smiles).final_xyz)
@@ -845,6 +886,56 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         restored = ARCSpecies(species_dict=spc_dict)
         self.assertTrue(restored.thermo_at_own_level)
         self.assertEqual(restored.adaptive_lot_n_heavy, 8)
+
+    def test_run_time_coercion(self):
+        """Test that run_time is coerced to a timedelta at construction and round-trips."""
+        # None stays None.
+        spc_none = ARCSpecies(label='x', smiles='C')
+        self.assertIsNone(spc_none.run_time)
+
+        # A plain number is interpreted as seconds and coerced to a timedelta.
+        spc = ARCSpecies(label='x', smiles='C', run_time=12.5)
+        self.assertEqual(spc.run_time, datetime.timedelta(seconds=12.5))
+        restored = ARCSpecies(species_dict=spc.as_dict())
+        self.assertEqual(restored.run_time, datetime.timedelta(seconds=12.5))
+
+        # An int is likewise seconds.
+        self.assertEqual(ARCSpecies(label='x', smiles='C', run_time=90).run_time,
+                         datetime.timedelta(seconds=90))
+
+        # A timedelta is stored unchanged.
+        td = datetime.timedelta(hours=1, seconds=5)
+        self.assertEqual(ARCSpecies(label='x', smiles='C', run_time=td).run_time, td)
+
+        # An unacceptable type raises immediately at construction.
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='x', smiles='C', run_time='12.5')
+        self.assertIn('run_time', str(cm.exception))
+        self.assertIn('str', str(cm.exception))
+
+        # A boolean is a caller mistake, not 1 second.
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='x', smiles='C', run_time=True)
+
+        # A non-finite number cannot be a duration.
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='x', smiles='C', run_time=float('inf'))
+        self.assertIn('finite', str(cm.exception))
+
+    def test_process_run_time(self):
+        """Test the process_run_time() coercion helper directly."""
+        self.assertIsNone(process_run_time(None))
+        self.assertEqual(process_run_time(12.5), datetime.timedelta(seconds=12.5))
+        self.assertEqual(process_run_time(90), datetime.timedelta(seconds=90))
+        td = datetime.timedelta(minutes=3)
+        self.assertIs(process_run_time(td), td)
+        with self.assertRaises(SpeciesError):
+            process_run_time('12.5')
+        with self.assertRaises(SpeciesError):
+            process_run_time(True)
+        for non_finite in [float('inf'), float('-inf'), float('nan')]:
+            with self.assertRaises(SpeciesError):
+                process_run_time(non_finite)
 
     def test_from_dict(self):
         """Test Species.from_dict()"""
@@ -1933,7 +2024,7 @@ H       1.32129900    0.71837500    0.38017700
                                                            'Number was not determined, default value is 2')
 
     def test_xyz_from_dict(self):
-        """Test correctly assigning xyz from dictionary"""
+        """Test correctly assigning xyz from a dictionary for a polyatomic species"""
         species_dict1 = {'label': 'tst_spc_1', 'xyz': 'C 0.1 0.5 0.0\nH 1.2 0.5 0.0'}
         species_dict2 = {'label': 'tst_spc_2', 'initial_xyz': 'C 0.2 0.5 0.0\nH 1.3 0.5 0.0'}
         species_dict3 = {'label': 'tst_spc_3', 'final_xyz': 'C 0.3 0.5 0.0\nH 1.4 0.5 0.0'}

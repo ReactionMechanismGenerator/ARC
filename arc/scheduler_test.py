@@ -301,6 +301,69 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertIsNone(self.sched1.species_dict[label].freqs)
         self.assertFalse(os.path.isfile(freq_path))
 
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_check_freq_job_does_not_switch_ts_when_nmd_cannot_be_run(self, mock_switch_ts):
+        """
+        Test that a TS is not discarded when the normal mode displacement check cannot be performed.
+
+        The forming and breaking bond indices are indices into the concatenated reactant atoms, so a
+        TS geometry spanning a different number of atoms cannot be analyzed at all. Reporting that as
+        a failed check calls switch_ts() and throws away a TS that was never examined, and switching
+        to another guess cannot change the atom count that made the analysis impossible.
+        """
+        oh_xyz = str_to_xyz("""O       0.48890387    0.00000000    0.00000000
+H      -0.48890387    0.00000000    0.00000000""")
+        h2o_xyz = str_to_xyz("""O      -0.00032832    0.39781490    0.00000000
+H      -0.76330345   -0.19953755    0.00000000
+H       0.76363177   -0.19827735    0.00000000""")
+        ch4_xyz = str_to_xyz("""C      -0.00000000    0.00000000    0.00000000
+H      -0.65055201   -0.77428020   -0.41251879
+H      -0.34927558    0.98159583   -0.32768232
+H      -0.02233792   -0.04887375    1.09087665
+H       1.02216551   -0.15844188   -0.35067554""")
+        ts_xyz = ch4_xyz
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=ch4_xyz),
+                                     ARCSpecies(label='OH', smiles='[OH]', xyz=oh_xyz)],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=str_to_xyz(
+                              """C       0.00000000    0.00000001   -0.00000000
+H       1.06690511   -0.17519582    0.05416493
+H      -0.68531716   -0.83753536   -0.02808565
+H      -0.38158795    1.01273118   -0.02607927""")),
+                                     ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz)])
+        ts_label = 'TS_short'
+        ts_spc = ARCSpecies(label=ts_label, is_ts=True, xyz=ts_xyz, multiplicity=3, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, energy=0.0, xyz=ts_xyz,
+                                     execution_time='0:00:01')]
+        ts_spc.ts_guesses[0].opt_xyz = ts_xyz
+        ts_spc.chosen_ts = 0
+        ts_spc.rxn_index = 0
+        rxn.ts_species = ts_spc
+        rxn.ts_label = ts_label
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_nmd_no_switch_ts')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_nmd_no_switch', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.rxn_dict[0] = rxn
+
+        job = job_factory(job_adapter='gaussian', project='test_nmd_no_switch', ess_settings=self.ess_settings,
+                          species=[ts_spc], job_type='freq',
+                          level=Level(repr=default_levels_of_theory['freq']),
+                          project_directory=project_directory, job_num=105)
+        job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'CHO_neg_freq.out')
+        job.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
+        sched.check_freq_job(label=ts_label, job=job)
+        self.assertIsNone(sched.species_dict[ts_label].ts_checks['NMD'])
+        mock_switch_ts.assert_not_called()
+
     def test_determine_adaptive_level(self):
         """Test the determine_adaptive_level() method"""
         # adaptive_levels get converted to ``Level`` objects in main, but here we skip main and test Scheduler directly
@@ -359,6 +422,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
 
     def test_initialize_output_dict(self):
         """Test Scheduler.initialize_output_dict"""
+        self.sched1.output['C2H6']['info'] = 'some text'
         self.assertTrue(self.sched1._does_output_dict_contain_info())
         self.sched1.output = dict()
         self.assertEqual(self.sched1.output, dict())
@@ -412,6 +476,49 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(self.sched1.species_dict['CtripCO'].rotors_dict[0]['invalidation_reason'],
                          'not a torsional mode (angles = 0.20, 13.03 degrees)')
         self.assertFalse(self.sched1.species_dict['CtripCO'].rotors_dict[0]['success'])
+
+    def test_set_scan_resolution(self):
+        """Test that set_scan_resolution() routes the run-level value only for scan jobs."""
+        # Absent a run-level value (default None), args are untouched: the settings default applies.
+        args = self.sched1.set_scan_resolution(args={'keyword': {}, 'block': {}}, job_type='scan')
+        self.assertNotIn('trsh', args)
+        sched = Scheduler(project='project_test_scan_res', ess_settings=self.ess_settings,
+                          species_list=[self.spc1], scan_level=Level(repr=default_levels_of_theory['scan']),
+                          project_directory=self.project_directory, testing=True, job_types=self.job_types1,
+                          rotor_scan_resolution=6.0)
+        self.assertEqual(sched.rotor_scan_resolution, 6.0)
+        # With a run-level value, a scan job receives it through args['trsh']['scan_res'].
+        args = sched.set_scan_resolution(args={'keyword': {}, 'block': {}}, job_type='scan')
+        self.assertEqual(args['trsh']['scan_res'], 6.0)
+        # Non-scan jobs are never affected.
+        args = sched.set_scan_resolution(args={'keyword': {}, 'block': {}}, job_type='opt')
+        self.assertNotIn('trsh', args)
+        # An explicit troubleshooting scan_res is never overridden.
+        args = sched.set_scan_resolution(args={'keyword': {}, 'block': {}, 'trsh': {'scan_res': 2.0}},
+                                         job_type='scan')
+        self.assertEqual(args['trsh']['scan_res'], 2.0)
+
+    def test_rotor_scan_resolution_reaches_scan_job(self):
+        """Test that a run-level rotor_scan_resolution reaches a real scan job's scan_res attribute."""
+        sched = Scheduler(project='project_test_scan_res_job', ess_settings=self.ess_settings,
+                          species_list=[self.spc1], scan_level=Level(repr=default_levels_of_theory['scan']),
+                          project_directory=self.project_directory, testing=True, job_types=self.job_types1,
+                          rotor_scan_resolution=6.0)
+        args = sched.set_scan_resolution(args={'keyword': {}, 'block': {}}, job_type='scan')
+        job = job_factory(job_adapter='gaussian', project='project_test_scan_res_job',
+                          ess_settings=self.ess_settings, species=[self.spc1], xyz=self.spc1.get_xyz(),
+                          job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0, args=args,
+                          level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
+                          project_directory=self.project_directory, job_num=201)
+        self.assertEqual(job.scan_res, 6.0)
+        # Absent the run-level value, the job falls back to the settings resolution (byte-identical).
+        args_default = self.sched1.set_scan_resolution(args={'keyword': {}, 'block': {}}, job_type='scan')
+        job_default = job_factory(job_adapter='gaussian', project='project_test_scan_res_job',
+                                  ess_settings=self.ess_settings, species=[self.spc1], xyz=self.spc1.get_xyz(),
+                                  job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0, args=args_default,
+                                  level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
+                                  project_directory=self.project_directory, job_num=202)
+        self.assertEqual(job_default.scan_res, settings['rotor_scan_resolution'])
 
     def test_deduce_job_adapter(self):
         """Test the deduce_job_adapter() method."""
@@ -1849,6 +1956,197 @@ H      -1.82570782    0.42754384   -0.56130718"""
             self.assertIsNone(tsg.opt_xyz)
         self.assertEqual([tsg.index for tsg in sched.species_dict[ts_label].ts_guesses], [5, 2])
 
+    def make_irc_scheduler(self,
+                           ts_label: str,
+                           project_directory_name: str,
+                           num_guesses: int = 2,
+                           chosen_ts_list: list | None = None,
+                           ) -> Scheduler:
+        """
+        A helper for generating a Scheduler instance with a single TS species that has several TS guesses,
+        simulating the state right after the first chosen guess completed its opt/freq/sp jobs.
+
+        Args:
+            ts_label (str): The TS species label.
+            project_directory_name (str): The name of the testing project directory.
+            num_guesses (int, optional): The number of TS guesses to generate.
+            chosen_ts_list (list, optional): The indices of the TS guesses that were already tried.
+
+        Returns:
+            Scheduler: The Scheduler instance.
+        """
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        chosen_ts_list = chosen_ts_list if chosen_ts_list is not None else [0]
+        ts_spc = ARCSpecies(label=ts_label, is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=i, method='heuristics', success=True, energy=100.0 + 10 * i,
+                                     xyz=ts_xyz, execution_time='0:00:01')
+                             for i in range(num_guesses)]
+        for tsg in ts_spc.ts_guesses:
+            tsg.opt_xyz = ts_xyz
+            tsg.imaginary_freqs = [-500.0]
+        ts_spc.chosen_ts = chosen_ts_list[-1]
+        ts_spc.chosen_ts_list = list(chosen_ts_list)
+        ts_spc.ts_guesses_exhausted = False
+        project_directory = os.path.join(ARC_PATH, 'Projects', project_directory_name)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=project_directory_name, ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.output[ts_label]['job_types']['opt'] = True
+        sched.output[ts_label]['job_types']['freq'] = True
+        sched.output[ts_label]['job_types']['sp'] = True
+        sched.output[ts_label]['convergence'] = True
+        sched.job_dict[ts_label] = {'opt': {}, 'freq': {}, 'sp': {}}
+        sched.running_jobs[ts_label] = list()
+        return sched
+
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_process_irc_verdict_false_switches_ts(self, mock_switch_ts):
+        """Test that a positively failed IRC check rejects the TS and searches for a different TS guess."""
+        ts_label = 'TS_irc_false'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_1')
+        sched.species_dict[ts_label].ts_checks['IRC'] = False
+        with self.assertLogs('arc', level='ERROR') as log_records:
+            sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        mock_switch_ts.assert_called_once_with(ts_label)
+        self.assertTrue(any('do NOT correspond' in record for record in log_records.output))
+
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_process_irc_verdict_none_does_not_switch_ts(self, mock_switch_ts):
+        """Test that an IRC check which was not performed does not reject the TS."""
+        ts_label = 'TS_irc_none'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_2')
+        self.assertIsNone(sched.species_dict[ts_label].ts_checks['IRC'])
+        with self.assertNoLogs('arc', level='ERROR'):
+            sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        mock_switch_ts.assert_not_called()
+        self.assertTrue(sched.output[ts_label]['convergence'])
+
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_process_irc_verdict_true_does_not_switch_ts(self, mock_switch_ts):
+        """Test that a passed IRC check does not reject the TS."""
+        ts_label = 'TS_irc_true'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_3')
+        sched.species_dict[ts_label].ts_checks['IRC'] = True
+        with self.assertNoLogs('arc', level='ERROR'):
+            sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        mock_switch_ts.assert_not_called()
+        self.assertTrue(sched.output[ts_label]['convergence'])
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_process_irc_verdict_false_terminates_when_guesses_are_exhausted(self, mock_run_opt):
+        """Test that rejecting a TS by the IRC check terminates once all TS guesses were tried."""
+        ts_label = 'TS_irc_exhausted'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_4',
+                                        num_guesses=1,
+                                        chosen_ts_list=[0],
+                                        )
+        sched.species_dict[ts_label].ts_checks['IRC'] = False
+        sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        mock_run_opt.assert_not_called()
+        self.assertTrue(sched.species_dict[ts_label].ts_guesses_exhausted
+                        or sched.species_dict[ts_label].chosen_ts is None)
+        self.assertFalse(sched.output[ts_label]['convergence'])
+        self.assertIs(sched.species_dict[ts_label].ts_checks['IRC'], False)
+        for job_type in sched.output[ts_label]['job_types']:
+            sched.output[ts_label]['job_types'][job_type] = True
+        sched.check_all_done(ts_label)
+        self.assertFalse(sched.output[ts_label]['convergence'])
+
+    @patch('arc.scheduler.check_irc_species_and_rxn')
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_check_irc_species_rejects_a_ts_with_a_failed_irc(self, mock_run_opt, mock_check_irc_species_and_rxn):
+        """Test that check_irc_species rejects a TS whose IRC endpoints do not match the requested wells."""
+        ts_label = 'TS_irc_reject'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_5',
+                                        num_guesses=2,
+                                        )
+        ts_spc = sched.species_dict[ts_label]
+
+        def fail_irc(**kwargs):
+            """Simulate an IRC check the TS did not pass."""
+            ts_spc.ts_checks['IRC'] = False
+
+        mock_check_irc_species_and_rxn.side_effect = fail_irc
+        irc_label_1, irc_label_2 = f'IRC_{ts_label}_1', f'IRC_{ts_label}_2'
+        for irc_label in [irc_label_1, irc_label_2]:
+            irc_spc = ARCSpecies(label=irc_label, xyz=ts_spc.get_xyz(), compute_thermo=False, irc_label=ts_label)
+            sched.species_dict[irc_label] = irc_spc
+            sched.species_list.append(irc_spc)
+            sched.unique_species_labels.append(irc_label)
+            sched.job_dict[irc_label] = {'opt': {}}
+            sched.running_jobs[irc_label] = list()
+            sched.initialize_output_dict(label=irc_label)
+            sched.output[irc_label]['paths']['geo'] = f'{irc_label}_geo.out'
+        ts_spc.irc_label = f'{irc_label_1} {irc_label_2}'
+        sched.output[ts_label]['paths']['irc'] = ['irc_f.out', 'irc_r.out']
+
+        sched.check_irc_species(label=irc_label_1)
+
+        mock_check_irc_species_and_rxn.assert_called_once()
+        self.assertEqual(sched.species_dict[ts_label].chosen_ts, 1)
+        self.assertIn(1, sched.species_dict[ts_label].chosen_ts_list)
+        self.assertNotIn(irc_label_1, sched.species_dict)
+        self.assertNotIn(irc_label_2, sched.species_dict)
+        self.assertNotIn(irc_label_1, sched.running_jobs)
+        self.assertNotIn(irc_label_2, sched.output)
+        self.assertIsNone(sched.species_dict[ts_label].irc_label)
+        self.assertIsNone(sched.species_dict[ts_label].ts_checks['IRC'])
+        mock_run_opt.assert_called_once()
+
+    @patch('arc.scheduler.Scheduler.generate_final_ts_guess_report')
+    @patch('arc.scheduler.Scheduler.spawn_ts_jobs')
+    @patch('arc.scheduler.Scheduler.run_conformer_jobs')
+    def test_schedule_jobs_tolerates_a_label_deleted_while_it_is_iterated(self,
+                                                                         mock_run_conformer_jobs,
+                                                                         mock_spawn_ts_jobs,
+                                                                         mock_generate_report):
+        """
+        Test that the main loop survives a species label being removed from running_jobs mid-iteration.
+
+        Rejecting a TS by its IRC verdict calls switch_ts(), which calls delete_all_species_jobs()
+        on the TS, which in turn deletes the running_jobs entries of the very IRC species labels the
+        main loop is iterating over. The main loop must therefore not assume that a label it started
+        the iteration with is still a key of running_jobs by the time it reaches the cleanup below.
+        """
+        ts_label = 'TS_irc_deleted_label'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_irc_6')
+        irc_label = f'IRC_{ts_label}_1'
+        irc_spc = ARCSpecies(label=irc_label, xyz=sched.species_dict[ts_label].get_xyz(),
+                             compute_thermo=False, irc_label=ts_label)
+        sched.species_dict[irc_label] = irc_spc
+        sched.species_list.append(irc_spc)
+        sched.job_dict[irc_label] = {'opt': {}}
+        sched.initialize_output_dict(label=irc_label)
+        del sched.running_jobs[ts_label]
+        sched.running_jobs[irc_label] = list()
+        sched.unique_species_labels = [irc_label]
+
+        def delete_the_iterated_label(label):
+            """Delete the label being iterated, as delete_all_species_jobs() does for an IRC species."""
+            del sched.running_jobs[label]
+
+        with patch.object(sched, 'check_all_done', side_effect=delete_the_iterated_label) as mock_check_all_done:
+            sched.schedule_jobs()
+        mock_check_all_done.assert_called_once_with(irc_label)
+        self.assertEqual(sched.running_jobs, dict())
+
     @patch('arc.scheduler.Scheduler.run_job')
     def test_run_sp_monoatomic_dlpno(self, mock_run_job):
         """Monoatomic H falls back to HF; heavier atoms (O) keep DLPNO intact."""
@@ -1915,6 +2213,47 @@ H      -1.82570782    0.42754384   -0.56130718"""
         mock_iso.assert_not_called()
         recorded = sched.species_dict['TS_dirscan'].rotors_dict[0]['directed_scan'][('45.00',)]
         self.assertTrue(recorded['is_isomorphic'])
+
+    def test_check_directed_scan_job_parses_energy_from_a_real_log(self):
+        """check_directed_scan_job must record a float energy parsed from the real ESS output file.
+
+        The parsers made by parser.make_parser() take a ``log_file_path`` argument; calling one with
+        ``path=`` raises a TypeError that leaves every rotor unsuccessful, so no HinderedRotor block
+        reaches Arkane and the thermo silently degrades to RRHO. No parser is mocked here.
+        """
+        h2o2_xyz = str_to_xyz("""O       0.68416100    0.00000000    0.02026600
+        O      -0.68416100    0.00000000    0.02026600
+        H       0.87768200    0.75828100   -0.44584400
+        H      -0.87768200   -0.75828100   -0.44584400""")
+        ts_spc = ARCSpecies(label='TS_dirscan_e', is_ts=True, xyz=h2o2_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'directed_scan': {}}}
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_dirscan_e_elect')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_dirscan_e_elect', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+
+        job_mock = MagicMock()
+        job_mock.job_status = [None, {'status': 'done'}]
+        job_mock.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2.out')
+        job_mock.pivots = [1, 2]
+        job_mock.dihedrals = [45.0]
+        job_mock.ess_trsh_methods = []
+
+        sched.check_directed_scan_job(label='TS_dirscan_e', job=job_mock)
+
+        recorded = sched.species_dict['TS_dirscan_e'].rotors_dict[0]['directed_scan'][('45.00',)]
+        self.assertIsInstance(recorded['energy'], float)
+        self.assertAlmostEqual(recorded['energy'], -398031.18523281615, places=3)
 
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_troubleshoot_scan_job_skips_isomorphism_for_ts(self, mock_run_opt):
@@ -2110,6 +2449,39 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertIsNot(args['keyword'], level.args['keyword'])
         args['keyword']['dft_grid'] = 'defgrid2'
         self.assertEqual(level.args, {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()})
+
+    @patch('arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit')
+    @patch('arc.scheduler.job_factory')
+    def test_run_job_records_the_remote_project_path_of_each_server(self, mock_job_factory, mock_limit):
+        """Test that run_job() records where the project lives on every server it spawns a job on."""
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_run_job_remote_paths')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_run_job_remote_paths', ess_settings=self.ess_settings,
+                          species_list=[ARCSpecies(label='C2H6', smiles='CC')],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        self.assertEqual(sched.remote_project_paths, dict())
+
+        for job_name, server, remote_project_path in [('opt_a0000', 'server1', 'runs/ARC_Projects/a_project'),
+                                                      ('opt_a0001', 'server1', 'a_later_job_does_not_overwrite'),
+                                                      ('opt_a0002', 'server2', 'runs/ARC_Projects/a_project'),
+                                                      ('opt_a0003', 'local', None),
+                                                      ('opt_a0004', None, 'no_server_is_not_recorded')]:
+            job_mock = MagicMock()
+            job_mock.job_name, job_mock.server = job_name, server
+            job_mock.remote_project_path = remote_project_path
+            mock_job_factory.return_value = job_mock
+            sched.run_job(label='C2H6', job_type='opt',
+                          level_of_theory=Level(repr=default_levels_of_theory['opt']), job_adapter='gaussian')
+
+        self.assertEqual(sched.remote_project_paths, {'server1': 'runs/ARC_Projects/a_project',
+                                                      'server2': 'runs/ARC_Projects/a_project'})
 
     @classmethod
     def tearDownClass(cls):
@@ -2387,9 +2759,9 @@ class TestSchedulerStaleServerJobIds(unittest.TestCase):
         self.sched.job_dict['C2H6']['opt']['opt_a102'] = remote_job
         self.sched.running_jobs = {'C2H6': ['opt_a101', 'opt_a102']}
         self.sched.servers = ['local', 'server1']
-        ssh_client = MagicMock()
-        ssh_client.return_value.__enter__.return_value.check_running_jobs_ids.return_value = list()
-        with patch('arc.scheduler.SSHClient', ssh_client):
+        borrow = MagicMock()
+        borrow.return_value.__enter__.return_value.check_running_jobs_ids.return_value = list()
+        with patch('arc.scheduler.borrow_ssh_client', borrow):
             end_job = self._run_scheduling_cycle(([], ['qstat: cannot connect to server'], 1))
         self.assertEqual(self.sched.stale_servers, {'local'})
         end_job.assert_called_once()
@@ -2477,47 +2849,8 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
 class TestSchedulerTSReporting(unittest.TestCase):
     """
     Contains unit tests for the TS validation reporting of the Scheduler
-    (Scheduler.report_irc_verdict and Scheduler.report_omitted_ts_guesses).
+    (Scheduler.report_omitted_ts_guesses).
     """
-
-    @staticmethod
-    def make_rxn(irc_verdict):
-        """Return a reaction with a TS species whose IRC check has the given verdict."""
-        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
-                                     ARCSpecies(label='CH4', smiles='C')],
-                          p_species=[ARCSpecies(label='H2', smiles='[H][H]'),
-                                     ARCSpecies(label='CH3', smiles='[CH3]')])
-        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True)
-        rxn.ts_species.populate_ts_checks()
-        rxn.ts_species.ts_checks['IRC'] = irc_verdict
-        return rxn
-
-    def test_report_irc_verdict_failed(self):
-        """A failed IRC check is reported as an error naming the reaction and the TS."""
-        with self.assertLogs('arc', level='DEBUG') as cm:
-            Scheduler.report_irc_verdict(ts_label='TS0', rxn=self.make_rxn(False))
-        errors = [record for record in cm.records if record.levelname == 'ERROR']
-        self.assertEqual(len(errors), 1)
-        self.assertIn('do NOT correspond', errors[0].getMessage())
-        self.assertIn('TS0', errors[0].getMessage())
-        self.assertIn('CH4', errors[0].getMessage())
-
-    def test_report_irc_verdict_passed(self):
-        """A passed IRC check is reported at the info level and not as an error."""
-        with self.assertLogs('arc', level='DEBUG') as cm:
-            Scheduler.report_irc_verdict(ts_label='TS0', rxn=self.make_rxn(True))
-        self.assertNotIn('ERROR', [record.levelname for record in cm.records])
-        infos = [record for record in cm.records if record.levelname == 'INFO']
-        self.assertEqual(len(infos), 1)
-        self.assertIn('correspond to the reactants and products', infos[0].getMessage())
-
-    def test_report_irc_verdict_undetermined(self):
-        """An undetermined IRC check, and a missing reaction, are reported at the debug level only."""
-        for rxn in [self.make_rxn(None), None]:
-            with self.assertLogs('arc', level='DEBUG') as cm:
-                Scheduler.report_irc_verdict(ts_label='TS0', rxn=rxn)
-            self.assertEqual([record.levelname for record in cm.records], ['DEBUG'])
-            self.assertIn('not performed', cm.records[0].getMessage())
 
     def test_report_omitted_ts_guesses(self):
         """The TS guesses that are omitted from the reported guess list are named along with the reason."""
@@ -3218,6 +3551,59 @@ class TestSchedulerTSGuessReportAlignment(unittest.TestCase):
         self.assertEqual(self.column_cells(first, 2), ['110.00', '120.00'])
         self.assertEqual(self.column_cells(second, 2), self.column_cells(first, 2))
         self.assertEqual([tsg.energy for tsg in scheduler.species_dict['TS0'].ts_guesses], [110.0, 120.0, 0.0])
+
+
+class TestGetServerJobIds(unittest.TestCase):
+    """The status poll runs every cycle for every job, so it is the hottest SSH caller there is."""
+
+    @staticmethod
+    def _sched(servers):
+        """A stand-in carrying only what get_server_job_ids() reads."""
+        return SimpleNamespace(servers=servers, server_job_ids=None, stale_servers=set())
+
+    def test_a_remote_server_is_polled_through_a_pooled_client(self):
+        """Opening a connection per poll is what the pool exists to stop."""
+        sched = self._sched(['zeus'])
+        client = MagicMock()
+        client.check_running_jobs_ids.return_value = ['101', '102']
+        with patch('arc.scheduler.borrow_ssh_client') as borrow:
+            borrow.return_value.__enter__.return_value = client
+            Scheduler.get_server_job_ids(sched)
+        borrow.assert_called_once_with('zeus')
+        self.assertEqual(sched.server_job_ids, ['101', '102'])
+
+    def test_the_borrowed_client_is_released(self):
+        """A borrow that is not exited would hold the pool's client for the rest of the run."""
+        sched = self._sched(['zeus'])
+        with patch('arc.scheduler.borrow_ssh_client') as borrow:
+            borrow.return_value.__enter__.return_value = MagicMock()
+            Scheduler.get_server_job_ids(sched)
+        borrow.return_value.__exit__.assert_called_once()
+
+    def test_every_poll_of_one_server_goes_through_one_borrow(self):
+        """Each cycle borrows once per server, which is one pooled client for the whole run."""
+        sched = self._sched(['zeus'])
+        with patch('arc.scheduler.borrow_ssh_client') as borrow:
+            borrow.return_value.__enter__.return_value = MagicMock()
+            for _ in range(50):
+                Scheduler.get_server_job_ids(sched)
+        self.assertEqual(borrow.call_count, 50)
+
+    def test_a_local_server_is_not_polled_over_ssh(self):
+        """The local queue is read with a local command, and must not touch the pool."""
+        sched = self._sched(['local'])
+        with patch('arc.scheduler.borrow_ssh_client') as borrow, \
+                patch('arc.scheduler.check_running_jobs_ids', return_value=['7']):
+            Scheduler.get_server_job_ids(sched)
+        borrow.assert_not_called()
+        self.assertEqual(sched.server_job_ids, ['7'])
+
+    def test_a_specific_server_limits_the_poll_to_it(self):
+        sched = self._sched(['zeus', 'atlas'])
+        with patch('arc.scheduler.borrow_ssh_client') as borrow:
+            borrow.return_value.__enter__.return_value = MagicMock()
+            Scheduler.get_server_job_ids(sched, specific_server='atlas')
+        borrow.assert_called_once_with('atlas')
 
 
 if __name__ == '__main__':

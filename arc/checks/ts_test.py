@@ -549,6 +549,100 @@ class TestTSChecks(unittest.TestCase):
         ts.check_normal_mode_displacement(reaction=self.rxn_3, job=self.job1)
         self.assertTrue(self.rxn_3.ts_species.ts_checks['NMD'])
 
+    def make_c3h7_intra_h_rxn(self):
+        """A helper for building the C[CH]C <=> [CH2]CC reaction with a fresh TS species."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=self.r_xyz_2a)],
+                          p_species=[ARCSpecies(label='[CH2]CC', smiles='[CH2]CC', xyz=self.p_xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=self.ts_xyz_2)
+        rxn.ts_species.mol_from_xyz()
+        return rxn
+
+    def test_check_normal_mode_displacement_only_defaults_a_none_amplitude(self):
+        """Test that only ``None`` selects the default amplitude, while other values reach the analysis as given."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite',
+                                                           'TS_intra_H_migration_CBS-QB3.out')
+        requested_amplitudes = [None, 0, 0.0, [], [0.25, 0.5]]
+        forwarded = list()
+
+        def record_amplitude(reaction, job, amplitude):
+            forwarded.append(amplitude)
+            return None
+
+        with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', side_effect=record_amplitude):
+            for requested in requested_amplitudes:
+                rxn = self.make_c3h7_intra_h_rxn()
+                rxn.ts_species.populate_ts_checks()
+                ts.check_normal_mode_displacement(reaction=rxn, job=self.job1, amplitude=requested)
+        self.assertEqual(forwarded, [ts.DEFAULT_AMPLITUDE, 0, 0.0, [], [0.25, 0.5]])
+
+    def test_check_normal_mode_displacement_with_an_amplitude_that_probes_nothing(self):
+        """Test that an amplitude leaving no displacement to probe does not fall through to the default."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite',
+                                                           'TS_intra_H_migration_CBS-QB3.out')
+        rxn = self.make_c3h7_intra_h_rxn()
+        rxn.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
+        rxn.ts_species.populate_ts_checks()
+        ts.check_normal_mode_displacement(reaction=rxn, job=self.job1)
+        self.assertIs(rxn.ts_species.ts_checks['NMD'], True)
+        for amplitude in [0, []]:
+            rxn.ts_species.populate_ts_checks()
+            ts.check_normal_mode_displacement(reaction=rxn, job=self.job1, amplitude=amplitude)
+            self.assertIs(rxn.ts_species.ts_checks['NMD'], False, msg=f'amplitude {amplitude}')
+
+    def test_check_ts_does_not_promote_an_unknown_nmd_verdict_when_skipping(self):
+        """Test that skip_nmd promotes a failed NMD check and leaves an unperformed one unknown."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        rxn = self.make_c3h7_intra_h_rxn()
+        rxn.ts_species.populate_ts_checks()
+        ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=True)
+        self.assertIsNone(rxn.ts_species.ts_checks['NMD'])
+
+        def fail_the_check(reaction, job, amplitude):
+            return False
+
+        rxn = self.make_c3h7_intra_h_rxn()
+        rxn.ts_species.populate_ts_checks()
+        with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', side_effect=fail_the_check):
+            ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=True)
+        self.assertIs(rxn.ts_species.ts_checks['NMD'], True)
+
+    def test_check_ts_reaches_the_rotor_block_for_an_ess_reporting_no_normal_modes(self):
+        """Test that a TS whose ESS reports no normal mode displacements does not end the run."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        for skip_nmd in [True, False]:
+            rxn = self.make_c3h7_intra_h_rxn()
+            rxn.ts_species.populate_ts_checks()
+            for check in ['E0', 'e_elect', 'freq']:
+                rxn.ts_species.ts_checks[check] = True
+            ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=skip_nmd)
+            self.assertIsNone(rxn.ts_species.ts_checks['NMD'], msg=f'skip_nmd={skip_nmd}')
+            self.assertTrue(ts.ts_passed_checks(species=rxn.ts_species, exemptions=['E0', 'warnings']))
+
+    def test_get_rxn_zone_atom_indices_for_an_ess_reporting_no_normal_modes(self):
+        """Test that a log file yielding no normal mode displacements yields an empty reaction zone."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        rxn = self.make_c3h7_intra_h_rxn()
+        self.assertEqual(ts.get_rxn_zone_atom_indices(reaction=rxn, job=self.job1), list())
+        ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(rxn, self.job1)
+        self.assertEqual([key for key, rotor in rxn.ts_species.rotors_dict.items()
+                          if 'pivTS' in rotor['invalidation_reason']], list())
+
+    def test_ts_passed_checks_nmd(self):
+        """Test that ts_passed_checks() treats the three-valued NMD check correctly."""
+        spc = ARCSpecies(label='TS', is_ts=True)
+        spc.populate_ts_checks()
+        for key in ['E0', 'e_elect', 'IRC', 'freq']:
+            spc.ts_checks[key] = True
+
+        spc.ts_checks['NMD'] = True
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
+        spc.ts_checks['NMD'] = None
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
+        spc.ts_checks['NMD'] = False
+        self.assertFalse(ts.ts_passed_checks(spc, exemptions=['warnings']))
+
     def test_invalidate_rotors_with_both_pivots_in_a_reactive_zone(self):
         """Test the invalidate_rotors_with_both_pivots_in_a_reactive_zone() function."""
         ts_spc_1 = ARCSpecies(label='TS', is_ts=True, xyz=self.ts_xyz_1, multiplicity=2)
@@ -639,16 +733,6 @@ class TestTSChecks(unittest.TestCase):
                                                  0.9804112316882941,     # 14 * (the abstracted H)
                                                  0.12176444538905733,    # 15
                                                  0.12462988320468919]))  # 16
-
-    def test_get_index_of_abs_largest_neg_freq(self):
-        """Test the get_index_of_abs_largest_neg_freq() function."""
-        self.assertIsNone(ts.get_index_of_abs_largest_neg_freq(np.array([], np.float64)))
-        self.assertIsNone(ts.get_index_of_abs_largest_neg_freq(np.array([1, 320.5], np.float64)))
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-1], np.float64)), 0)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-1, 320.5], np.float64)), 0)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([320.5, -1], np.float64)), 1)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([320.5, -1, -80, -90, 5000], np.float64)), 3)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-320.5, -1, -80, -90, 5000], np.float64)), 0)
 
     def test_get_expected_num_atoms_with_largest_normal_mode_disp(self):
         """Test the get_expected_num_atoms_with_largest_normal_mode_disp() function"""
@@ -867,7 +951,82 @@ class TestTSChecks(unittest.TestCase):
                           p_species=[ARCSpecies(label='P_wrong', smiles='O=C(O)C[O]', multiplicity=2)])
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
         ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
-        self.assertFalse(rxn.ts_species.ts_checks['IRC'])
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], False)
+
+    def test_check_irc_bond_list_tier_does_not_bond_a_dissociated_atom(self):
+        """
+        Test that the bond-list tier does not bond a dissociated fragment to its nearest neighbor.
+
+        The bond-list tier is the only tier allowed to reject a TS, so it must perceive bonds
+        without assuming a single connected molecule. Otherwise a bare H in an endpoint is bonded
+        to whatever atom happens to be closest, no matter how far away, and correct IRC endpoints
+        are rejected. Both reactions below reach the bond-list tier because the triplet atom is
+        not perceived as a triplet, so the isomorphism tier cannot match it.
+        """
+        for r_smiles, r_multiplicity, p_smiles, symbols, coords_r, coords_p in [
+                ('[O]', 3, '[OH]', ('O', 'H', 'H'),
+                 ((0.0, 0.0, 0.0), (5.0, 0.0, 0.0), (5.0, 0.0, 0.74)),
+                 ((0.0, 0.0, 0.0), (3.2, 0.0, 0.0), (0.0, 0.0, 0.97))),
+                ('[S]', 3, '[SH]', ('S', 'H', 'H'),
+                 ((0.0, 0.0, 0.0), (5.0, 0.0, 0.0), (5.0, 0.0, 0.74)),
+                 ((0.0, 0.0, 0.0), (4.0, 0.0, 0.0), (0.0, 0.0, 1.34)))]:
+            with self.subTest(r_smiles=r_smiles):
+                rxn = ARCReaction(r_species=[ARCSpecies(label='X', smiles=r_smiles, multiplicity=r_multiplicity),
+                                             ARCSpecies(label='H2', smiles='[H][H]')],
+                                  p_species=[ARCSpecies(label='XH', smiles=p_smiles),
+                                             ARCSpecies(label='H', smiles='[H]')])
+                rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+                xyz_1 = xyz_from_data(coords=coords_r, symbols=symbols)
+                xyz_2 = xyz_from_data(coords=coords_p, symbols=symbols)
+                ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+                self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+
+    def test_check_irc_identical_endpoints(self):
+        """
+        Test that two identical IRC endpoints are a positive IRC failure (False, not None).
+
+        Both endpoints re-perceive as the product, i.e., the "TS" connects P <=> P.
+        """
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts.check_irc_species_and_rxn(xyz_1=xyz_2, xyz_2=xyz_2, rxn=rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], False)
+
+    def test_check_irc_unknown_if_no_comparison_was_performed(self):
+        """
+        Test that the IRC check is None (unknown), not False, if no comparison could be performed.
+
+        Neither the isomorphism check nor the bond-list fallback can be carried out here.
+        """
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        with patch.object(ts, '_perceive_irc_fragments', return_value=None), \
+                patch.object(rxn, 'get_bonds', side_effect=ReactionError('Cannot get bonds without an atom map.')):
+            ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+        self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
+
+    def test_check_irc_isomorphism_mismatch_alone_is_not_a_failure(self):
+        """
+        Test that a negative isomorphism result alone leaves the IRC check undetermined.
+
+        The isomorphism check is only the first tier, and the code falls back to the bond-list
+        comparison whenever it does not match. If that fallback cannot run, nothing was
+        conclusively compared, so the verdict must stay None rather than reject the TS.
+        """
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        with patch.object(rxn, 'get_bonds', side_effect=ReactionError('Cannot get bonds without an atom map.')):
+            ts.check_irc_species_and_rxn(xyz_1=xyz_2, xyz_2=xyz_2, rxn=rxn)
+        self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
 
     def test_check_irc_identical_endpoints(self):
         """Test that two identical IRC endpoints are a positive IRC failure (False, not None)."""

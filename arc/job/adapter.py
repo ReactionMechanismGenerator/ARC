@@ -17,8 +17,9 @@ import os
 import shutil
 import time
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ContextManager
 
 import numpy as np
 
@@ -34,6 +35,7 @@ from arc.job.local import (change_mode,
                            )
 from arc.job.trsh import trsh_job_on_server, trsh_job_queue
 from arc.job.ssh import SSHClient
+from arc.job.ssh_pool import borrow_ssh_client, get_default_pool
 from arc.job.trsh import determine_ess_status
 from arc.species.vectors import calculate_dihedral_angle
 
@@ -41,6 +43,8 @@ if TYPE_CHECKING:
     from arc.species import ARCSpecies
 
 logger = get_logger()
+
+_SERVERS_WARNED_ABOUT_A_RELATIVE_REMOTE_PATH = set()
 
 default_job_settings, servers, submit_filenames, t_max_format, input_filenames, output_filenames = \
     settings['default_job_settings'], settings['servers'], settings['submit_filenames'], settings['t_max_format'], \
@@ -242,7 +246,7 @@ class JobAdapter(ABC):
         """The electronic-structure software used to interpret this adapter's output."""
         return self.job_adapter
 
-    def execute(self):
+    def execute(self) -> None:
         """
         Execute a job.
         The execution type could be 'incore', 'queue', or 'pipe'.
@@ -277,7 +281,6 @@ class JobAdapter(ABC):
             and not self.testing
         )
         if use_shared_ssh:
-            from arc.job.ssh_pool import get_default_pool
             with get_default_pool().borrow(self.server) as ssh:
                 self._shared_ssh = ssh
                 try:
@@ -293,43 +296,30 @@ class JobAdapter(ABC):
         if not self.restarted:
             self._write_initiated_job_to_csv_file()
 
-    def _open_or_borrow_ssh(self):
-        """Yield an :class:`SSHClient` for ``self.server``, in priority order:
+    def _open_or_borrow_ssh(self) -> ContextManager[SSHClient]:
+        """Return a context manager yielding an :class:`SSHClient` for ``self.server``,
+        in priority order:
 
-        1. ``self._shared_ssh`` if set — the per-call client opened by
-           :meth:`execute`. Available within the upload+submit window.
-        2. The process-global pool (:mod:`arc.job.ssh_pool`) — keeps
-           one client alive across jobs for the run's lifetime, so the
-           hot status-poll loop reuses connections.
-        3. A fresh ``SSHClient`` opened just for this call — only hit
-           when the pool can't construct one (testing, exotic env).
+        1. ``self._shared_ssh`` if set — the per-call client :meth:`execute` leased.
+           Available within the upload+submit window.
+        2. The process-global pool, through
+           :func:`arc.job.ssh_pool.borrow_ssh_client` — the single borrow path every
+           SSH caller in ARC shares, which keeps one client alive across jobs for the
+           run's lifetime so the hot status-poll loop reuses connections, and which
+           falls back to a one-shot client when the lease itself fails.
 
-        Returns a context manager that does NOT close the underlying
-        client on exit; the pool retains ownership in case (2), and
-        case (3) opens-and-closes inline.
+        Exiting the context does not close a client obtained either way; the pool
+        retains ownership, and the fallback closes only the client it opened itself.
+
+        Returns: ContextManager[SSHClient]
+            A context manager yielding a connected client for ``self.server``.
         """
-        from contextlib import contextmanager
         shared = getattr(self, '_shared_ssh', None)
         if shared is not None:
-            @contextmanager
-            def _shared_cm():
-                yield shared
-            return _shared_cm()
-        try:
-            from arc.job.ssh_pool import get_default_pool
-            return get_default_pool().borrow(self.server)
-        except Exception:
-            # Pool refused (e.g., factory failed). Fall back to a
-            # one-shot client so we degrade gracefully — the caller
-            # gets correctness at the cost of one connection.
-            logger.debug("ssh pool unavailable; opening one-shot client", exc_info=True)
-            @contextmanager
-            def _fresh_cm():
-                with SSHClient(self.server) as fresh:
-                    yield fresh
-            return _fresh_cm()
+            return nullcontext(shared)
+        return borrow_ssh_client(self.server)
 
-    def _dispatch_execution(self, execution_type: 'JobExecutionTypeEnum') -> None:
+    def _dispatch_execution(self, execution_type: JobExecutionTypeEnum) -> None:
         """Inner body of :meth:`execute`, factored out so the SSH-share
         wrapper around it stays small and readable."""
         self.upload_files()
@@ -348,7 +338,7 @@ class JobAdapter(ABC):
                              'JobAdapters inside a pipe must be executed by the worker '
                              "with execution_type='incore'.")
 
-    def legacy_queue_execution(self, ssh: 'SSHClient | None' = None):
+    def legacy_queue_execution(self, ssh: SSHClient | None = None) -> None:
         """
         Execute a job to the server's queue.
         The server could be either "local" or remote.
@@ -451,9 +441,15 @@ class JobAdapter(ABC):
         with open(os.path.join(self.local_path, submit_filenames[servers[self.server]['cluster_soft']]), 'w') as f:
             f.write(submit_script)
 
-    def set_file_paths(self):
+    def set_file_paths(self) -> None:
         """
         Set local and remote job file paths.
+
+        The remote path is rooted at the server's ``path`` setting, joined with the user name,
+        and is used verbatim: a path is a path on the server, and the case it is written in is
+        the case it has there. A server with no ``path`` gets a path relative to the SSH login
+        directory, which is where both the remote shell and SFTP resolve it, and which
+        :meth:`_warn_about_a_relative_remote_path` reports once per server.
         """
         folder_name = 'TS_guesses' if self.reactions is not None else 'TSs' if self.species[0].is_ts else 'Species'
         if self.run_multi_species == False:
@@ -474,14 +470,34 @@ class JobAdapter(ABC):
             # Parentheses don't play well in folder names:
             species_name_remote = self.species_label if isinstance(self.species_label, str) else self.species[0].multi_species
             species_name_remote = species_name_remote.replace('(', '_').replace(')', '_')
-            path = servers[self.server].get('path', '').lower()
-            path = os.path.join(path, servers[self.server]['un']) if path else ''
-            self.remote_path = os.path.join(path, 'runs', 'ARC_Projects', self.project,
-                                            species_name_remote, self.job_name)
+            path = servers[self.server].get('path') or ''
+            if path:
+                path = os.path.join(path, servers[self.server]['un'])
+            elif self.server != 'local':
+                self._warn_about_a_relative_remote_path(self.server)
+            self.remote_project_path = os.path.join(path, 'runs', 'ARC_Projects', self.project)
+            self.remote_path = os.path.join(self.remote_project_path, species_name_remote, self.job_name)
 
         self.set_additional_file_paths()
 
-    def upload_files(self, ssh: 'SSHClient | None' = None):
+    @staticmethod
+    def _warn_about_a_relative_remote_path(server: str) -> None:
+        """
+        Report, once per server per run, that the server's remote job paths are not absolute.
+
+        Args:
+            server (str): The server name.
+        """
+        if server in _SERVERS_WARNED_ABOUT_A_RELATIVE_REMOTE_PATH:
+            return
+        _SERVERS_WARNED_ABOUT_A_RELATIVE_REMOTE_PATH.add(server)
+        logger.warning(f'Server "{server}" has no "path" entry in the settings, so its remote job '
+                       f'directories are relative to the SSH login directory. Jobs whose input '
+                       f'file must name a path on the server, such as Orca NEB, cannot run that '
+                       f'way and will refuse. Set "path" for this server to the directory holding '
+                       f'the user directories, e.g. "/home".')
+
+    def upload_files(self, ssh: SSHClient | None = None) -> None:
         """
         Upload the relevant files for the job.
 
@@ -509,7 +525,7 @@ class JobAdapter(ABC):
                             pass
             self.initial_time = datetime.datetime.now()
 
-    def _upload_with_ssh(self, ssh) -> None:
+    def _upload_with_ssh(self, ssh: SSHClient) -> None:
         """SFTP-put every entry in ``self.files_to_upload`` over an open client.
 
         Factored out of :meth:`upload_files` so the with-shared vs.
@@ -528,7 +544,7 @@ class JobAdapter(ABC):
             if up_file['make_x']:
                 ssh.change_mode(mode='+x', file_name=up_file['file_name'], remote_path=self.remote_path)
 
-    def download_files(self):
+    def download_files(self) -> None:
         """
         Download the relevant files.
         """
@@ -544,10 +560,11 @@ class JobAdapter(ABC):
                 self.set_initial_and_final_times()
         self.final_time = self.final_time or datetime.datetime.now()
 
-    def remove_remote_files(self):
+    def remove_remote_files(self) -> None:
         """
         Remove the job's remote work directory after a successful run, to keep cluster quota in check.
-        No-op for local servers or when no remote_path is set.
+
+        Does nothing for a local server or when no remote path has been set.
         """
         if self.server is None or self.server == 'local' or not self.remote_path:
             return

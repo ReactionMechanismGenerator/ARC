@@ -31,7 +31,8 @@ from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.level import Level, assign_frequency_scale_factor
 from arc.job.factory import _registered_job_adapters
-from arc.job.ssh import SSHClient
+from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
+from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
 from arc.output import write_output_yml
 from arc.processor import process_arc_project, resolve_neb_level
 from arc.reaction import ARCReaction
@@ -257,6 +258,7 @@ class ARC(object):
                  project: str | None = None,
                  project_directory: str | None = None,
                  reactions: list[ARCReaction] | None = None,
+                 rotor_scan_resolution: float | None = None,
                  running_jobs: dict | None = None,
                  scan_level: str | dict | Level | None = None,
                  sp_level: str | dict | Level | None = None,
@@ -316,11 +318,13 @@ class ARC(object):
         self.job_types = job_types or default_job_types
         self.job_types = initialize_job_types(job_types, specific_job_type=self.specific_job_type)
         self.bath_gas = bath_gas
+        self.rotor_scan_resolution = check_rotor_scan_resolution(rotor_scan_resolution)
         self.n_confs = n_confs
         self.e_confs = e_confs
         self.adaptive_levels = process_adaptive_levels(adaptive_levels)
         initialize_log(log_file=os.path.join(self.project_directory, 'arc.log'), project=self.project,
                        project_directory=self.project_directory, verbose=self.verbose)
+        check_servers_known_hosts()
         self.dont_gen_confs = dont_gen_confs or list()
         self.t0 = time.time()  # init time
         self.execution_time = None
@@ -398,7 +402,8 @@ class ARC(object):
 
         if self.adaptive_levels is not None:
             logger.info(f'Using the following adaptive levels of theory:\n{self.adaptive_levels}')
-        self.ess_settings = check_ess_settings(ess_settings or global_ess_settings)
+        self.ess_settings = check_ess_settings(ess_settings or global_ess_settings,
+                                               ts_adapters=self.ts_adapters)
         if not self.ess_settings:
             # Use the "radar" feature if ess_settings are still unavailable.
             self.determine_ess_settings()
@@ -510,6 +515,8 @@ class ARC(object):
             restart_dict['reactions'] = [rxn.as_dict() for rxn in self.reactions]
         if self.running_jobs:
             restart_dict['running_jobs'] = self.running_jobs
+        if self.rotor_scan_resolution is not None:
+            restart_dict['rotor_scan_resolution'] = self.rotor_scan_resolution
         if self.scan_level is not None and len(self.scan_level.method) \
                 and str(self.scan_level).split()[0] != default_levels_of_theory['scan']:
             restart_dict['scan_level'] = self.scan_level.as_dict() \
@@ -561,7 +568,24 @@ class ARC(object):
 
     def execute(self) -> dict:
         """
-        Execute ARC.
+        Execute ARC, releasing the SSH connections the run opened once it ends.
+
+        The pooled connections (:mod:`arc.job.ssh_pool`) are held open for the lifetime of the
+        run and closed here, in a ``finally``, so they are also released when the run raises or
+        is interrupted, and so a consumer that drives ARC in-process rather than through
+        ``ARC.py`` -- a library caller, a test, a pipe worker -- releases them too.
+
+        Returns: dict
+            Status dictionary indicating which species converged successfully.
+        """
+        try:
+            return self._execute()
+        finally:
+            reset_default_pool()
+
+    def _execute(self) -> dict:
+        """
+        Run the project: schedule every job, process the results and write the output.
 
         Returns: dict
             Status dictionary indicating which species converged successfully.
@@ -607,6 +631,7 @@ class ARC(object):
                                    dont_gen_confs=self.dont_gen_confs,
                                    trsh_ess_jobs=self.trsh_ess_jobs,
                                    trsh_rotors=self.trsh_rotors,
+                                   rotor_scan_resolution=self.rotor_scan_resolution,
                                    fine_only=self.fine_only,
                                    ts_adapters=self.ts_adapters,
                                    report_e_elect=self.report_e_elect,
@@ -617,8 +642,7 @@ class ARC(object):
         self.output = self.scheduler.output
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.output)
 
-        if not self.keep_checks:
-            delete_check_files(self.project_directory)
+        self.clean_check_files(remote_project_paths=self.scheduler.remote_project_paths)
         self.delete_leftovers()
 
         self.save_project_info_file()
@@ -794,7 +818,7 @@ class ARC(object):
         if `diagnostics` is True, this method will not raise errors, and will print its findings.
         """
         if self.ess_settings and not diagnostics:
-            self.ess_settings = check_ess_settings(self.ess_settings)
+            self.ess_settings = check_ess_settings(self.ess_settings, ts_adapters=self.ts_adapters)
             return
 
         if diagnostics:
@@ -845,7 +869,7 @@ class ARC(object):
                 continue
             if diagnostics:
                 logger.info('\nTrying {0}'.format(server))
-            with SSHClient(server) as ssh:
+            with borrow_ssh_client(server) as ssh:
 
                 g03 = ssh.find_package('g03')
                 g09 = ssh.find_package('g09')
@@ -949,6 +973,20 @@ class ARC(object):
 
         logger.info(f'Using harmonic frequencies scaling factor: {self.freq_scale_factor} '
                     f'(source: {factor_source}).')
+
+    def clean_check_files(self, remote_project_paths: dict | None = None) -> None:
+        """
+        Delete ESS checkfiles, both locally and on the servers this project ran jobs on.
+        Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
+
+        Args:
+            remote_project_paths (dict, optional): Keys are server names, values are the respective remote
+                                                   paths of the project's directory on that server.
+        """
+        if self.keep_checks:
+            return
+        delete_check_files(self.project_directory)
+        delete_check_files_on_servers(remote_project_paths or dict())
 
     def delete_leftovers(self):
         """
@@ -1273,6 +1311,37 @@ class ARC(object):
             logger.debug(f'output dictionary successfully parsed:\n{self.output}')
         elif self.output is None:
             self.output = dict()
+
+
+def check_rotor_scan_resolution(rotor_scan_resolution: float | None) -> float | None:
+    """
+    Validate the user-facing ``rotor_scan_resolution`` input key (a 1D rotor scan degree increment).
+
+    A resolution coarser than 20 degrees is refused rather than warned: it yields fewer than 18
+    points per rotor, below which RMG-Py's Fourier fitter never runs and ``get_potential()`` reads
+    an uninitialised C double, so a coarse value is not a preference but a silent wrong answer.
+
+    Args:
+        rotor_scan_resolution (float | None): The requested rotor scan resolution in degrees,
+                                              or ``None`` to fall back to the settings default.
+
+    Returns: float | None
+        The validated resolution, or ``None`` if none was provided.
+    """
+    if rotor_scan_resolution is None:
+        return None
+    if isinstance(rotor_scan_resolution, bool) or not isinstance(rotor_scan_resolution, (int, float)):
+        raise InputError(f'The rotor_scan_resolution must be a number (e.g., 4.0), '
+                         f'got {rotor_scan_resolution} which is a {type(rotor_scan_resolution)}.')
+    if rotor_scan_resolution <= 0 or rotor_scan_resolution > 20:
+        raise InputError(f'The rotor_scan_resolution must be a positive value no coarser than 20 degrees '
+                         f'(coarser resolutions give fewer than 18 points per rotor, below which the '
+                         f'Fourier fit is invalid and returns a silent wrong answer). Got: {rotor_scan_resolution}')
+    if divmod(360, rotor_scan_resolution)[1]:
+        raise InputError(f'The rotor_scan_resolution must divide 360 evenly so a full rotor is an integer '
+                         f'number of steps. Got: {rotor_scan_resolution}, which leaves a remainder of '
+                         f'{divmod(360, rotor_scan_resolution)[1]}.')
+    return rotor_scan_resolution
 
 
 def process_adaptive_levels(adaptive_levels: list | None) -> dict | None:

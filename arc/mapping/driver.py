@@ -61,7 +61,7 @@ def map_reaction(rxn: ARCReaction,
         except ValueError:
             return None
     if flip:
-        raw_map = try_mapping(rxn.flip_reaction())
+        raw_map = try_mapping(prepare_flipped_reaction(rxn))
         if raw_map is None:
             return None
         return check_atom_map_and_return(flip_map(raw_map))
@@ -78,6 +78,52 @@ def map_reaction(rxn: ARCReaction,
     if raw_map is None:
         return map_reaction(rxn, backend=backend, flip=True)
     return check_atom_map_and_return(raw_map)
+
+
+def prepare_flipped_reaction(rxn: ARCReaction) -> ARCReaction:
+    """
+    Build the flipped reaction and give it a usable, forward-discovered family template.
+
+    ``ARCReaction.flip_reaction`` resets the family, so the flipped copy re-derives its product dictionaries
+    lazily with the *default* family set. When the original reaction was matched only by a broader set - the
+    usual situation for a template discovered in reverse - that rederivation comes back empty and the flip
+    retry has nothing to map with. Widen the search in that case, and prefer a template that describes the
+    flipped reaction forward.
+
+    Args:
+        rxn (ARCReaction): The reaction to flip.
+
+    Returns:
+        ARCReaction: The flipped reaction, seeded with a family and product dictionaries where possible.
+    """
+    flipped = rxn.flip_reaction()
+    try:
+        product_dicts = flipped.product_dicts or list()
+    except (ValueError, KeyError, AttributeError):
+        product_dicts = list()
+    if all(pd.get('discovered_in_reverse') for pd in product_dicts):
+        try:
+            widened = flipped.get_product_dicts(rmg_family_set='all')
+        except (ValueError, KeyError, AttributeError):
+            widened = list()
+        logger.debug(f'Widened the family search for {flipped.label} to all families, '
+                     f'got {len(widened)} product dictionaries.')
+        product_dicts = widened or product_dicts
+    forward_dicts = [pd for pd in product_dicts if not pd.get('discovered_in_reverse')]
+    product_dicts = forward_dicts or product_dicts
+    if product_dicts:
+        # Keep only the chosen family's dictionaries. get_reaction_family_products() concatenates matches
+        # across every family without grouping them, while ``family`` can only name one, so leaving the
+        # whole list in place lets map_rxn's product_dict_index retry pair one family's recipe with
+        # another's label map. Every family labels its atoms *1/*2/*3, so that mispairing resolves against
+        # the wrong atoms and still yields a permutation, which is all check_atom_map_and_return verifies.
+        # TODO: replace with ARCReaction.restrict_product_dicts_to_family() once #978 lands.
+        family = product_dicts[0]['family']
+        product_dicts = [pd for pd in product_dicts if pd['family'] == family]
+        flipped.product_dicts = product_dicts
+        flipped.family = family
+        flipped.family_own_reverse = product_dicts[0]['own_reverse']
+    return flipped
 
 
 def check_atom_map_and_return(atom_map: list[int] | None) -> list[int] | None:
@@ -306,10 +352,7 @@ def map_rxn(rxn: ARCReaction,
         p_label_map = rxn.product_dicts[pdi]['p_label_map']
         template_products = rxn.product_dicts[pdi]['products']
     except (IndexError, KeyError) as e:
-        # A failed orientation is recoverable: map_reaction() retries via its flip fallback.
-        # Log at debug level so a benign first-orientation failure is not a false alarm; the genuine
-        # double-failure is surfaced once by ARCReaction.atom_map ("could not be atom mapped").
-        logger.debug(f"No valid template maps for reaction {rxn} ({rxn.family}), cannot atom map. Got:\n{e}")
+        logger.debug(f"No valid template maps for reaction {rxn} ({rxn.family}) in this orientation. Got:\n{e}")
         return None
     try:
         template_order = get_template_product_order(rxn, template_products)
@@ -317,11 +360,7 @@ def map_rxn(rxn: ARCReaction,
         if rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < MAX_PDI:
             return map_rxn(rxn, backend=backend, product_dict_index_to_try=pdi + 1)
         else:
-            # A failed orientation is recoverable: map_reaction() retries via its flip fallback
-            # (e.g. reactions whose family was discovered in the reverse direction). Log at debug so
-            # this benign first-orientation failure is not a false alarm; the genuine double-failure is
-            # surfaced once by ARCReaction.atom_map ("could not be atom mapped").
-            logger.debug(f'No valid template order for reaction {rxn} ({rxn.family}), cannot atom map.')
+            logger.debug(f'No valid template order for reaction {rxn} ({rxn.family}) in this orientation.')
             return None
 
     updated_p_label_map = reorder_p_label_map(p_label_map=p_label_map,
@@ -330,7 +369,7 @@ def map_rxn(rxn: ARCReaction,
                                               actual_products=rxn.get_reactants_and_products()[1])
     try:
         make_bond_changes(rxn, r_cuts, r_label_map)
-    except (ValueError, IndexError, ActionError, AtomTypeError) as e:
+    except (KeyError, ValueError, IndexError, ActionError, AtomTypeError) as e:
         logger.warning(e)
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
     pairs = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)

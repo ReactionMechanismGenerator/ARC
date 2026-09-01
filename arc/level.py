@@ -489,7 +489,7 @@ def plain_level_dict(level: Level | None) -> dict | None:
     return level_dict
 
 
-def assign_frequency_scale_factor(level: str | Level) -> int | None:
+def assign_frequency_scale_factor(level: str | Level) -> float | None:
     """
     Assign a frequency scaling factor to a level of theory.
 
@@ -497,14 +497,18 @@ def assign_frequency_scale_factor(level: str | Level) -> int | None:
         level (str | Level): The level of theory.
 
     Returns:
-        int | None: The frequency scaling factor.
+        float | None: The frequency scaling factor.
     """
     freq_scale_factors = read_yaml_file(os.path.join(ARC_PATH, 'data', 'freq_scale_factors.yml'))['freq_scale_factors']
     if isinstance(level, str):
         entry = freq_scale_factors.get(level)
         if entry is not None:
             return entry['factor'] if isinstance(entry, dict) else entry
-        level = Level(repr=level)
+        try:
+            level = Level(repr=level)
+        except ValueError:
+            # A string ARC cannot parse as a level has no scale factor on file.
+            return None
     level_str = str(level)
     entry = freq_scale_factors.get(level_str)
     if entry is not None:

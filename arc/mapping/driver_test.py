@@ -540,12 +540,10 @@ class TestMappingDriver(unittest.TestCase):
                        ARCSpecies(label='P2', smiles='C=CC=C', multiplicity=1)],
             multiplicity=1,
         )
-        # The forward orientation genuinely fails (returns None) but must do so quietly (no ERROR log).
         with self.assertNoLogs(logger, level='ERROR'):
             raw_map = map_rxn(rxn)
         self.assertIsNone(raw_map)
 
-        # map_reaction recovers via the flip fallback and returns a valid map (result unchanged by the fix).
         atom_map = map_reaction(rxn=rxn, backend='ARC')
         self.assertIsNotNone(atom_map)
         rxn.atom_map = atom_map
@@ -861,6 +859,49 @@ class TestMappingDriver(unittest.TestCase):
         self.assertIn(rxn_4.atom_map[:5], [[0, 1, 2, 8, 7], [0, 1, 2, 7, 8]])
         self.assertIn(tuple(rxn_4.atom_map[5: 8]), list(permutations([3, 4, 5])))
         self.assertEqual(rxn_4.atom_map[8:], [6, 9])
+
+    def test_prepare_flipped_reaction_seeds_a_forward_template(self):
+        """Test that the flipped reaction is given a family that matches it in the forward direction.
+
+        ``flip_reaction`` resets the family, so the flipped copy would otherwise re-derive its product
+        dictionaries with the default family set, come back empty, and leave the flip retry with nothing.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5Cl', smiles='CCCl')],
+                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                     ARCSpecies(label='HCl', smiles='Cl')])
+        rxn.product_dicts = rxn.get_product_dicts(rmg_family_set='all')
+        flipped = prepare_flipped_reaction(rxn)
+        self.assertEqual(flipped.family, 'XY_Addition_MultipleBond')
+        self.assertTrue(flipped.product_dicts)
+        self.assertFalse(flipped.product_dicts[0]['discovered_in_reverse'])
+        # Only the chosen family's dictionaries survive, so a recipe can never be paired with another
+        # family's label map.
+        self.assertEqual({pd['family'] for pd in flipped.product_dicts}, {'XY_Addition_MultipleBond'})
+        # The template products of a forward discovery are isomorphic to that reaction's own products.
+        template_products = flipped.product_dicts[0]['products']
+        self.assertEqual(len(template_products), len(flipped.p_species))
+        self.assertTrue(any(flipped.p_species[0].is_isomorphic(mol) for mol in template_products))
+
+    def test_map_reaction_with_a_reverse_discovered_template(self):
+        """Test mapping an elimination whose family only matches it in the addition direction.
+
+        ``XY_Addition_MultipleBond`` matches HX elimination only in reverse, so the template's 'products'
+        are isomorphic to the reaction's reactants. Both ``get_template_product_order`` and
+        ``reorder_p_label_map`` compare against the reaction's products, so the forward attempt fails until
+        the reaction is flipped first.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5Cl', smiles='CCCl')],
+                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                     ARCSpecies(label='HCl', smiles='Cl')])
+        rxn.product_dicts = rxn.get_product_dicts(rmg_family_set='all')
+        rxn.family = rxn.product_dicts[0]['family']
+        rxn.family_own_reverse = rxn.product_dicts[0]['own_reverse']
+        self.assertEqual(rxn.family, 'XY_Addition_MultipleBond')
+        self.assertTrue(rxn.product_dicts[0]['discovered_in_reverse'])
+        atom_map = map_reaction(rxn=rxn, backend='ARC')
+        self.assertIsNotNone(atom_map)
+        self.assertEqual(sorted(atom_map), list(range(len(atom_map))))
+        self.assertTrue(check_atom_map(rxn))
 
     def test_map_flipped_reaction(self):
         """Test the map_flipped_reaction() function."""

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 import arc.parser.parser as parser
 from arc.common import get_logger
 from arc.imports import settings
+from arc.job.adapters.common import resolve_job_server
 from arc.level import Level
 
 from arc.job.factory import job_factory
@@ -90,7 +91,9 @@ class PipeCoordinator:
         Returns ``True`` only if:
           1. Pipe mode is enabled.
           2. There are at least ``min_tasks`` tasks.
-          3. All tasks are homogeneous in engine, task_family, owner_type,
+          3. The tasks' server resolves to this machine
+             (:meth:`_pipe_server_is_this_machine`).
+          4. All tasks are homogeneous in engine, task_family, owner_type,
              level, required_cores, and required_memory_mb.
         """
         if not pipe_settings.get('enabled', True):
@@ -100,20 +103,7 @@ class PipeCoordinator:
         min_tasks = pipe_settings.get('min_tasks', 10)
         if len(tasks) < min_tasks:
             return False
-        # PipeRun.submit_to_scheduler invokes qsub/sbatch on the orchestrator
-        # machine and the worker (`python -m arc.scripts.pipe_worker`) reads
-        # pipe_root from the local filesystem. If this engine's resolved
-        # server is remote, that submission silently errors and the run
-        # deadlocks. Refuse pipe so the planner falls back to per-job queue
-        # submissions over SSH (scheduler.py:546-554). Remote pipe support
-        # tracked separately on the pipe-ssh-support branch.
-        ess_settings = getattr(self.sched, 'ess_settings', None) or {}
-        servers_dict = settings['servers']
-        server_list = ess_settings.get(tasks[0].engine, [])
-        if isinstance(server_list, str):
-            server_list = [server_list]
-        first_server = next((s for s in server_list if s in servers_dict), None)
-        if first_server is not None and first_server != 'local':
+        if not self._pipe_server_is_this_machine(tasks[0]):
             return False
         ref = tasks[0]
         return all(t.engine == ref.engine
@@ -123,6 +113,65 @@ class PipeCoordinator:
                    and t.required_cores == ref.required_cores
                    and t.required_memory_mb == ref.required_memory_mb
                    for t in tasks[1:])
+
+    def _pipe_server_is_this_machine(self, task: TaskSpec) -> bool:
+        """
+        Determine whether a task's server is the machine ARC is running on.
+
+        ``PipeRun.submit_to_scheduler`` invokes qsub/sbatch on the orchestrator machine, and the
+        worker (``python -m arc.scripts.pipe_worker``) reads ``pipe_root`` from the local
+        filesystem. A pipe therefore only works when the tasks would have gone to the local
+        server; sent anywhere else the submission errors and the run deadlocks waiting for
+        results that are never produced.
+
+        An engine the ESS settings do not name at all is not sent to a server. It is a TS-guess
+        method or another adapter that runs in this process, which is why
+        :func:`arc.job.adapters.common._initialize_adapter` resolves a server only for an engine
+        the ESS settings do name and leaves every other one with none. In process is this
+        machine, so those tasks may be piped.
+
+        An engine the ESS settings do name is resolved the same way the job adapter resolves its
+        own (:func:`arc.job.adapters.common.resolve_job_server`), so the answer is about the
+        server the tasks would actually be sent to. It is compared case-insensitively, because a
+        server name is a settings key the user chose the casing of, while ``'local'`` is spelled
+        in lower case throughout ARC.
+
+        Such an engine that resolves to nothing, or to a server that is not configured, is not
+        known to run on this machine and so refuses the pipe. Refusing costs the run only the
+        bundling: the planner falls back to submitting the tasks as individual queue jobs, which
+        works for a local and for a remote server alike.
+
+        Args:
+            task (TaskSpec): The task whose server decides the whole bundle's, the bundle being
+                             homogeneous in engine.
+
+        Returns: bool
+            Whether the pipe may be used for this task's server.
+        """
+        ess_settings = getattr(self.sched, 'ess_settings', None) or dict()
+        if task.engine not in ess_settings:
+            return True
+        server = resolve_job_server(ess_settings=ess_settings,
+                                    job_adapter=task.engine,
+                                    args=getattr(task, 'args', None))
+        fallback = 'Falling back to per-job queue submission.'
+        if not server:
+            logger.info(f'Not using the pipe for {task.engine} jobs: the ESS settings name '
+                        f'{task.engine} but no server for it, so the tasks cannot be shown to '
+                        f'run on this machine, which is the only place a pipe worker can read '
+                        f'its payload from. {fallback}')
+            return False
+        if server.casefold() not in {name.casefold() for name in settings['servers']}:
+            logger.info(f'Not using the pipe for {task.engine} jobs: the resolved server '
+                        f'{server!r} is not among the configured servers, so it cannot be shown '
+                        f'to be this machine. {fallback}')
+            return False
+        if server.casefold() != 'local':
+            logger.info(f'Not using the pipe for {task.engine} jobs: server {server!r} is '
+                        f'remote, and the pipe worker reads its job payload from the '
+                        f'orchestrator\'s local filesystem. {fallback}')
+            return False
+        return True
 
     def _compute_pipe_root(self, run_id: str, tasks: list[TaskSpec]) -> str:
         """

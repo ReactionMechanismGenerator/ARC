@@ -55,11 +55,7 @@ EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 
 FULL_CIRCLE = 360.0
 HALF_CIRCLE = 180.0
 
-# A marker stamped onto any reported kinetics of a TS that was checked against its IRC endpoints and failed.
-TS_IRC_FAILED_MARKER = 'INVALID TS (failed IRC validation)'
-
 default_job_types, servers, supported_ess = settings['default_job_types'], settings['servers'], settings['supported_ess']
-
 
 def initialize_job_types(job_types: dict | None = None,
                          specific_job_type: str = '',
@@ -125,7 +121,9 @@ def initialize_job_types(job_types: dict | None = None,
     return job_types
 
 
-def check_ess_settings(ess_settings: dict | None = None) -> dict:
+def check_ess_settings(ess_settings: dict | None = None,
+                       ts_adapters: list[str] | None = None,
+                       ) -> dict:
     """
     A helper function to convert servers in the ess_settings dict to lists
     Assists in troubleshooting job and trying a different server
@@ -133,9 +131,15 @@ def check_ess_settings(ess_settings: dict | None = None) -> dict:
 
     Args:
         ess_settings (dict, optional): ARC's ESS settings dictionary.
+        ts_adapters (list, optional): The TS search adapters this run will use, used to check the
+                                      remote paths of the servers they will run on. ``None``
+                                      selects the default set from the settings.
 
     Returns: dict
         An updated ARC ESS dictionary.
+
+    Raises:
+        SettingsError: If an ESS, a server, or the remote path of a server is unusable.
     """
     if ess_settings is None or not ess_settings:
         return dict()
@@ -159,8 +163,53 @@ def check_ess_settings(ess_settings: dict | None = None) -> dict:
             if not isinstance(server, bool) and server.lower() not in [s.lower() for s in servers.keys()]:
                 server_names = [name for name in servers.keys()]
                 raise SettingsError(f'Recognized servers are {server_names}. Got: {server}')
+    check_remote_paths_of_path_naming_adapters(ess_settings=settings_dict, ts_adapters=ts_adapters)
     logger.info(f'\nUsing the following ESS settings:\n{pprint.pformat(settings_dict)}\n')
     return settings_dict
+
+
+def check_remote_paths_of_path_naming_adapters(ess_settings: dict,
+                                               ts_adapters: list[str] | None = None,
+                                               ) -> None:
+    """
+    Check that every server an adapter which names a path on the server will run on has an
+    absolute ``path``.
+
+    Reported here, before any calculation is spawned, because the alternative is reaching it when
+    the first reaction gets to its TS search: the adapter cannot build a usable input file for
+    such a server, so the failure arrives once per run either way, and arriving at startup is the
+    difference between a settings error the reader can act on and a run that has already spent
+    time on jobs it will not be able to use.
+
+    A server that is not in the ``servers`` settings is not reported here, since
+    :func:`check_ess_settings` has already rejected it by name.
+
+    Args:
+        ess_settings (dict): ARC's ESS settings dictionary, each ESS mapped to a list of servers.
+        ts_adapters (list, optional): The TS search adapters this run will use. ``None`` selects
+                                      the default set from the settings.
+
+    Raises:
+        SettingsError: If such an adapter would run on a server whose ``path`` is missing or not
+                       absolute.
+    """
+    adapters = settings.get('ts_adapters', list()) if ts_adapters is None else ts_adapters
+    adapters = [adapter.lower() for adapter in adapters if isinstance(adapter, str)]
+    if 'orca_neb' not in adapters:
+        return
+    for server in ess_settings.get('orca', list()):
+        if not isinstance(server, str) or server.lower() == 'local':
+            continue
+        server_key = next((key for key in servers.keys() if key.lower() == server.lower()), None)
+        if server_key is None:
+            continue
+        path = servers[server_key].get('path')
+        if not path or not os.path.isabs(path):
+            raise SettingsError(f'Server "{server}" has no absolute "path" entry in the settings, '
+                                f'got {path!r}, but the "orca_neb" adapter will run on it and its '
+                                f'input file must name a path on the server. Set "path" for this '
+                                f'server to the absolute directory holding the user directories, '
+                                f'e.g. "/home", or remove "orca_neb" from "ts_adapters".')
 
 
 def initialize_log(log_file: str,
@@ -603,8 +652,9 @@ def get_test_project_directory(base_name: str) -> str:
 
 def delete_check_files(project_directory: str):
     """
-    Delete ESS checkfiles. They usually take up lots of space and are not needed after ARC terminates.
+    Delete local ESS checkfiles. They usually take up lots of space and are not needed after ARC terminates.
     Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
+    The remote counterpart of this function is ``arc.job.ssh.delete_check_files_on_servers()``.
 
     Args:
         project_directory (str): The path to the ARC project folder.
@@ -1776,20 +1826,22 @@ def is_xyz_linear(xyz: dict | None) -> bool | None:
     return True
 
 
-def get_angle_in_180_range(angle: float,
+def get_angle_in_180_range(angle: int | float | str,
                            round_to: int | None = 2,
                            ) -> float:
     """
     Get the corresponding angle in the -180 to +180 degree range, [-180, 180)
 
     Args:
-        angle (float): An angle in degrees.
+        angle (int | float | str): An angle in degrees. Accepts a string too, since the Scheduler
+                                   stores rotor dihedrals as ':.2f' strings for YAML restart serialization.
         round_to (int, optional): The number of decimal figures to round the result to.
                                   ``None`` to not round. Default: 2.
 
     Returns:
         float: The corresponding angle in the -180 to +180 degree range.
     """
+    angle = float(angle)
     wrapped = (angle + HALF_CIRCLE) % FULL_CIRCLE - HALF_CIRCLE
     return round(wrapped, round_to) if round_to is not None else wrapped
 
@@ -2109,39 +2161,6 @@ def convert_to_hours(time_str:str) -> float:
     """
     h, m, s = map(int, time_str.split(':'))
     return h + m / 60 + s / 3600
-
-
-def get_ts_validation_comment(ts_species: 'ARCSpecies | None') -> str | None:
-    """
-    Get a human-readable marker describing a positively-failed TS validation.
-
-    A rate coefficient computed for a TS whose IRC check failed does not describe the intended
-    reaction: the IRC endpoints were optimized and re-perceived, and they do not correspond to the
-    reactants and products. Such a rate is still reported by ARC (it is diagnostically valuable),
-    but every artifact that carries it must also carry this marker so that it cannot be mistaken
-    for a validated rate coefficient.
-
-    Only a ``ts_checks['IRC']`` value of ``False`` (checked and failed) produces a marker.
-    A value of ``None`` means the IRC check was not performed (e.g., IRC was not requested,
-    or the reaction connectivity was unavailable) and is treated as unknown, not as a failure.
-
-    Args:
-        ts_species (ARCSpecies, optional): The TS species of the reaction the rate was computed for.
-
-    Returns:
-        str | None: The marker, or ``None`` if the TS did not positively fail the IRC check.
-    """
-    ts_checks = getattr(ts_species, 'ts_checks', None) or dict()
-    if ts_checks.get('IRC', None) is not False:
-        return None
-    comment = f'{TS_IRC_FAILED_MARKER}: the optimized IRC endpoints of this TS do not correspond to the ' \
-              f'reactants and products of this reaction, therefore this rate coefficient does not describe ' \
-              f'this reaction and must not be used.'
-    other_failed_checks = sorted(key for key, val in ts_checks.items()
-                                 if key not in ['IRC', 'warnings'] and val is False)
-    if other_failed_checks:
-        comment += f' Additional TS checks that failed: {", ".join(other_failed_checks)}.'
-    return comment
 
 
 def calculate_arrhenius_rate_coefficient(A: int | float | Sequence[float] | np.ndarray,

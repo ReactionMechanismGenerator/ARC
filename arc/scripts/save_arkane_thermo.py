@@ -133,6 +133,54 @@ def _load_thermo_entries_from_output_py(output_path, local_context):
     return entries
 
 
+def _iter_thermo_calls(content):
+    """Return the :class:`ast.Call` node of each ``thermo(...)`` call in ``content``.
+
+    Selects calls to the bare name ``thermo`` only, so the ``thermo=`` keyword nested inside each
+    call is not mistaken for one. If ``content`` is not parseable Python, a message is written to
+    stderr and an empty list is returned.
+    """
+    try:
+        tree = ast.parse(content)
+    except SyntaxError as e:
+        sys.stderr.write(f'Could not parse an Arkane output.py as Python: {e}\n')
+        return []
+    return [node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == 'thermo']
+
+
+def _load_thermo_entries_from_output_py(output_path, local_context):
+    """Reconstruct a ``{label: NASA}`` mapping directly from an Arkane ``output.py``.
+
+    Used as a fallback when ``RMG_libraries/thermo.py`` is absent because Arkane's
+    ``save_thermo_lib`` crashed *after* writing ``output.py`` (e.g. it rejects the two
+    identical reactants of an A+A reaction such as OH + OH, or a singlet-carbene
+    multiplicity clash). ``output.py`` holds one ``thermo(label=..., thermo=NASA(...))``
+    call per species; each is evaluated with the real rmgpy thermo classes in scope —
+    exactly the context Arkane itself uses to read these files back — so no thermo data
+    is lost to the library-save failure. A block that fails to evaluate is reported on
+    stderr and the remaining blocks are still parsed.
+    """
+    with open(output_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    entries = dict()
+
+    def _capture(label=None, thermo=None, *args, **kwargs):
+        if label is not None:
+            entries[label] = thermo
+
+    eval_context = dict(local_context)
+    eval_context['thermo'] = _capture
+    for node in _iter_thermo_calls(content):
+        try:
+            eval(compile(ast.Expression(body=node), '<arkane_output>', 'eval'), eval_context)
+        except Exception as e:
+            sys.stderr.write(f'Could not parse an Arkane thermo() block from {output_path}: {e}\n')
+    return entries
+
+
 def main():
     """
     Run this script from an Arkane project folder.

@@ -36,6 +36,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             h_abstraction,
                                             check_dao_angle,
                                             check_ts_bonds,
+                                            h_abstraction,
                                             )
 from arc.job.adapters.common import ts_adapters_by_rmg_family
 from arc.job.adapters.ts.seed_hub import get_ts_seeds, get_wrapper_constraints
@@ -577,6 +578,17 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                        )
         heuristics.execute_incore()  # Must not raise IndexError.
         self.assertGreater(len(rxn.ts_species.ts_guesses), 0)
+
+    def test_h_abstraction_with_empty_product_dicts(self):
+        """
+        Test that h_abstraction() does not raise and returns an empty list of TS guesses
+        when reaction.product_dicts is empty (rather than crashing on an unguarded [0] index).
+        """
+        rxn1 = ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh])
+        self.assertEqual(rxn1.family, 'H_Abstraction')
+        rxn1.product_dicts = []
+        xyz_guesses = h_abstraction(reaction=rxn1)
+        self.assertEqual(xyz_guesses, [])
 
     def test_heuristics_for_h_abstraction_2(self):
         # C3H8 + HO2 <=> C3H7 + H2O2

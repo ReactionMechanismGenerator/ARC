@@ -937,9 +937,15 @@ def h_abstraction(reaction: ARCReaction,
 
     Returns: list[dict]
         Entries hold Cartesian coordinates of TS guesses and the generating method label.
+        Returns an empty list if ``reaction.product_dicts`` is empty (i.e., no matching
+        H_Abstraction family products were identified).
     """
     xyz_guesses = list()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
+    if not reaction.product_dicts:
+        logger.warning(f'Could not generate H_Abstraction TS guesses for reaction {reaction}: '
+                       f'no product_dicts were identified for this reaction. Other TS search methods will be attempted.')
+        return xyz_guesses
     for product_dict in reaction.product_dicts:
         reactive_atoms = {
             'A': product_dict['r_label_map']['*1'],

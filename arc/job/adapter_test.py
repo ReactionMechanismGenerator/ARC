@@ -16,6 +16,7 @@ import unittest
 from unittest.mock import patch
 
 from arc.common import ARC_TESTING_PATH, get_test_project_name
+from arc.exceptions import ServerError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter, JobEnum, JobTypeEnum, JobExecutionTypeEnum
 from arc.job.adapters.gaussian import GaussianAdapter
@@ -290,6 +291,9 @@ class TestJobAdapter(unittest.TestCase):
                                                              self.job_1.species_label, self.job_1.job_name))
         self.assertEqual(self.job_1.remote_path, os.path.join('runs', 'ARC_Projects', self.job_1.project,
                                                               self.job_1.species_label, self.job_1.job_name))
+        # The project's remote path is the one the check file cleanup is scoped to, it must contain the job:
+        self.assertEqual(self.job_1.remote_project_path, os.path.join('runs', 'ARC_Projects', self.job_1.project))
+        self.assertTrue(self.job_1.remote_path.startswith(self.job_1.remote_project_path))
 
     def test_format_max_job_time(self):
         """Test that the maximum job time can be formatted properly, including days, minutes, and seconds"""
@@ -682,18 +686,17 @@ class TestSSHConnectionSharing(unittest.TestCase):
         # in this user's settings (e.g., 'server2').
         self._stub_pool = _StubFactoryPool()
         set_default_pool(self._stub_pool)
-        # Also stub the legacy-direct path: bare
-        # ``legacy_queue_execution()`` (called outside execute()) uses
-        # the SSHClient class in ``arc.job.adapter`` directly, so patch
-        # that name with a context-manager wrapper around our stub.
+        # Also stub the one-shot fallback: when a lease fails,
+        # ssh_pool.borrow_ssh_client() opens an SSHClient itself, so
+        # patch that name with a context-manager wrapper around our stub.
         self._direct_patch = patch(
-            'arc.job.adapter.SSHClient',
+            'arc.job.ssh_pool.SSHClient',
             _SSHClientStub,
         )
         self._direct_patch.start()
 
     def tearDown(self):
-        set_default_pool(None)
+        reset_default_pool()
         self._direct_patch.stop()
 
     def test_remote_queue_opens_one_ssh_per_job(self):
@@ -746,6 +749,38 @@ class TestSSHConnectionSharing(unittest.TestCase):
         self.assertEqual(len(client.submits), 1)
 
 
+class TestSSHConnectionDefaultPool(unittest.TestCase):
+    """Remote-queue jobs borrow from the process-global pool that ARC.py resets on exit."""
+
+    def setUp(self):
+        reset_default_pool()
+        self.addCleanup(reset_default_pool)
+
+    def test_execute_borrows_from_the_process_global_pool(self):
+        """With no pool passed in, execute() uses the instance get_default_pool() returns."""
+        set_default_pool(SSHConnectionPool(factory=_SSHClientStub))
+        _MinimalAdapter(server='server2', execution_type='queue').execute()
+        pool = get_default_pool()
+        self.assertEqual(pool.opens, 1)
+        self.assertEqual(sorted(pool._clients.keys()), ['server2'])
+
+    def test_reset_default_pool_closes_clients_opened_by_execute(self):
+        """ARC.py's exit hook must close the connections the adapters opened."""
+        set_default_pool(SSHConnectionPool(factory=_SSHClientStub))
+        _MinimalAdapter(server='server2', execution_type='queue').execute()
+        client = get_default_pool()._clients['server2']
+        reset_default_pool()
+        self.assertTrue(client._closed)
+
+    def test_the_default_pool_is_recreated_empty_after_a_reset(self):
+        """A reset must leave a usable pool behind, not a closed one."""
+        set_default_pool(SSHConnectionPool(factory=_SSHClientStub))
+        _MinimalAdapter(server='server2', execution_type='queue').execute()
+        reset_default_pool()
+        self.assertEqual(get_default_pool().opens, 0)
+        self.assertEqual(get_default_pool()._clients, {})
+
+
 class TestSSHConnectionPoolReuse(unittest.TestCase):
     """The process-lifetime pool reuses one SSHClient across many jobs."""
 
@@ -754,7 +789,7 @@ class TestSSHConnectionPoolReuse(unittest.TestCase):
         set_default_pool(self._stub_pool)
 
     def tearDown(self):
-        set_default_pool(None)
+        reset_default_pool()
 
     def test_one_open_for_many_jobs_same_server(self):
         """100 jobs against one server → 1 SSHClient, 100 borrows."""
@@ -857,30 +892,138 @@ class TestSSHConnectionPoolReuse(unittest.TestCase):
         self.assertEqual(self._stub_pool.borrows, 54)
 
 
-class TestSSHPoolDefaultLifecycle(unittest.TestCase):
-    """The module-level default pool is lazy and resettable."""
+class TestSSHPoolFallback(unittest.TestCase):
+    """When the pool itself cannot lease a client, the job still gets one."""
 
     def setUp(self):
+        """Start from a clean pool, with every one-shot SSHClient stubbed and recorded."""
         reset_default_pool()
+        self.addCleanup(reset_default_pool)
+        self.opened = list()
 
-    def tearDown(self):
-        reset_default_pool()
+        def _factory(server):
+            client = _SSHClientStub(server)
+            self.opened.append(client)
+            return client
+        client_patch = patch('arc.job.ssh_pool.SSHClient', side_effect=_factory)
+        client_patch.start()
+        self.addCleanup(client_patch.stop)
 
-    def test_get_default_pool_is_idempotent(self):
-        p1 = get_default_pool()
-        p2 = get_default_pool()
-        self.assertIs(p1, p2)
+    def _borrow(self, adapter):
+        """Return the client the adapter's SSH context manager yields."""
+        with adapter._open_or_borrow_ssh() as client:
+            return client
 
-    def test_reset_default_pool_drops_the_instance(self):
-        p1 = get_default_pool()
-        reset_default_pool()
-        p2 = get_default_pool()
-        self.assertIsNot(p1, p2)
+    def test_a_factory_failure_falls_back_to_a_one_shot_client(self):
+        """The pool builds its client on the first borrow, which is where a dead server shows."""
+        def _factory(server):
+            raise ServerError(f'Could not connect to server {server}')
+        set_default_pool(SSHConnectionPool(factory=_factory))
+        client = self._borrow(_MinimalAdapter(server='server2', execution_type='queue'))
+        self.assertEqual(len(self.opened), 1)
+        self.assertIs(client, self.opened[0])
+        self.assertEqual(client.server, 'server2')
 
-    def test_set_default_pool_replaces_instance(self):
-        replacement = _StubFactoryPool()
-        set_default_pool(replacement)
-        self.assertIs(get_default_pool(), replacement)
+    def test_an_unusable_pool_falls_back_too(self):
+        """Any failure to lease is a failure to lease, whatever the pool object is."""
+        class _PoolWithoutBorrow:
+            """A process-global pool object that cannot lease a client."""
+
+            def close_all(self):
+                """Tear down nothing, since nothing was ever leased."""
+        set_default_pool(_PoolWithoutBorrow())
+        client = self._borrow(_MinimalAdapter(server='server2', execution_type='queue'))
+        self.assertEqual(len(self.opened), 1)
+        self.assertIs(client, self.opened[0])
+
+    def test_a_leased_client_is_still_yielded(self):
+        """A working pool is used as it was, without opening anything private."""
+        set_default_pool(_StubFactoryPool())
+        client = self._borrow(_MinimalAdapter(server='server2', execution_type='queue'))
+        self.assertIsInstance(client, _SSHClientStub)
+        self.assertEqual(client.server, 'server2')
+        self.assertEqual(self.opened, list())
+
+    @staticmethod
+    def _borrow_and_raise(adapter):
+        """Borrow a client for ``adapter`` and fail inside the with-block, as a job would."""
+        with adapter._open_or_borrow_ssh():
+            raise ValueError('the job, not the connection, went wrong')
+
+    def test_an_error_raised_by_the_caller_is_not_treated_as_a_pool_failure(self):
+        """The fallback covers leasing only: the caller's own failure must reach the caller."""
+        set_default_pool(_StubFactoryPool())
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        self.assertRaises(ValueError, self._borrow_and_raise, adapter)
+        self.assertEqual(self.opened, list())
+
+    def test_the_pool_stays_usable_after_a_caller_raised(self):
+        """A borrow that ended in an exception must not leave the pool holding a lease."""
+        pool = _StubFactoryPool()
+        set_default_pool(pool)
+        adapter = _MinimalAdapter(server='server2', execution_type='queue')
+        self.assertRaises(ValueError, self._borrow_and_raise, adapter)
+        with adapter._open_or_borrow_ssh() as client:
+            self.assertIsInstance(client, _SSHClientStub)
+        self.assertEqual(pool.opens, 1)
+        self.assertEqual(pool.borrows, 2)
+
+
+class TestRemoteJobPaths(unittest.TestCase):
+    """set_file_paths() decides where a job's files live on the server."""
+
+    def setUp(self):
+        """Work in a temporary project directory, with no server warned about yet."""
+        self.tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+        warned = patch('arc.job.adapter._SERVERS_WARNED_ABOUT_A_RELATIVE_REMOTE_PATH', set())
+        warned.start()
+        self.addCleanup(warned.stop)
+
+    def _remote_path(self, server_cfg, server='srv'):
+        """Return the remote path set_file_paths() builds for a job on ``server``."""
+        adapter = _MinimalAdapter(server=server, execution_type='queue')
+        adapter.reactions = None
+        adapter.species = [ARCSpecies(label='spc', smiles='C')]
+        adapter.run_multi_species = False
+        adapter.project = 'proj'
+        adapter.project_directory = self.tmp_dir
+        adapter.species_label = 'spc'
+        adapter.job_name = 'job_1'
+        with patch('arc.job.adapter.servers', {server: server_cfg}):
+            adapter.set_file_paths()
+        return adapter.remote_path
+
+    def test_a_configured_path_is_used_verbatim(self):
+        """Remote file systems are case-sensitive, so the configured path must not be lowercased."""
+        remote_path = self._remote_path({'cluster_soft': 'PBS', 'un': 'MyUser', 'path': '/Home/Users'})
+        self.assertEqual(remote_path,
+                         os.path.join('/Home/Users', 'MyUser', 'runs', 'ARC_Projects', 'proj',
+                                      'spc', 'job_1'))
+        self.assertTrue(os.path.isabs(remote_path))
+
+    def test_a_server_without_a_path_stays_relative_to_the_login_directory(self):
+        """That is where the remote shell and SFTP resolve it, and it is reported as such."""
+        with self.assertLogs('arc', level='WARNING') as logged:
+            remote_path = self._remote_path({'cluster_soft': 'PBS', 'un': 'user'})
+        self.assertEqual(remote_path,
+                         os.path.join('runs', 'ARC_Projects', 'proj', 'spc', 'job_1'))
+        self.assertFalse(os.path.isabs(remote_path))
+        self.assertEqual(len(logged.output), 1)
+        self.assertIn('srv', logged.output[0])
+        self.assertIn('path', logged.output[0])
+
+    def test_the_report_is_made_once_per_server(self):
+        """One line per run, not one per job, or a large run buries its own log."""
+        with self.assertLogs('arc', level='WARNING'):
+            self._remote_path({'cluster_soft': 'PBS', 'un': 'user'})
+        with self.assertNoLogs('arc', level='WARNING'):
+            self._remote_path({'cluster_soft': 'PBS', 'un': 'user'})
+
+    def test_the_local_server_is_not_reported(self):
+        """The local server runs in the project directory and has no remote path to configure."""
+        with self.assertNoLogs('arc', level='WARNING'):
+            self._remote_path({'cluster_soft': 'local', 'un': 'user'}, server='local')
 
 
 if __name__ == '__main__':

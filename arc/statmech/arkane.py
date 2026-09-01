@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING
 from mako.template import Template
 
 import arc.plotter as plotter
-from arc.common import ARC_PATH, get_logger, get_ts_validation_comment, read_yaml_file
+from arc.checks.common import get_ts_validation_comment
+from arc.common import ARC_PATH, get_logger, read_yaml_file
 from arc.exceptions import AtomTypeError, InputError
 from arc.imports import incore_commands, settings
 from arc.molecule.molecule import Molecule
@@ -19,6 +20,8 @@ from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
 from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
+
+from arc.species.species import ThermoData
 
 if TYPE_CHECKING:
     from arc.level import Level
@@ -351,9 +354,18 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
             e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0. Default: ``False``.
         """
+        reaction_species_labels = set()
+        for rxn in self.reactions or list():
+            reactants, products = rxn.get_reactants_and_products(return_copies=False)
+            rxn.reactants = [spc.label for spc in reactants]
+            rxn.products = [spc.label for spc in products]
+            reaction_species_labels.update(rxn.reactants + rxn.products)
         species_list = list()
         for spc in self.species:
-            if e0_only or spc.compute_thermo:
+            # A species named by a reaction must be declared even when its thermo is not being
+            # computed: Arkane's reaction() references species by label from the declared-species
+            # dict, so an undeclared reactant/product raises KeyError and no rate is produced.
+            if e0_only or spc.compute_thermo or spc.label in reaction_species_labels:
                 smiles = spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else ''
                 adjlist = ''
                 if smiles:
@@ -395,11 +407,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         freq_scale_factor = f'\nfrequencyScaleFactor = {self.freq_scale_factor}' \
             if self.freq_scale_factor is not None else ''
-        if self.reactions is not None:
-            for rxn in self.reactions:
-                reactants, products = rxn.get_reactants_and_products()
-                rxn.reactants = [spc.label for spc in reactants]
-                rxn.products = [spc.label for spc in products]
         calc_type = 'kinetics' if self.reactions else 'thermo'
         return Template(main_input_template).render(
             title=f'Arkane {calc_type} calculation',
@@ -522,6 +529,24 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                 logger.info(header)
                 for lbl in valid_labels:
                     spc = self.species_dict[lbl]
+                    if spc.thermo is None:
+                        # ``ARCSpecies.__init__`` sets ``self.thermo = ThermoData()`` unconditionally,
+                        # so no species ARC builds itself can reach this loop with ``None``. A caller's
+                        # subclass can, though, by re-assigning the attribute after ``super().__init__()``
+                        # -- which is exactly how T3's ``T3Species`` produced the crash this guards
+                        # (fixed at the source in T3 PR #187). Other call sites across the codebase
+                        # (e.g., ``ArkaneAdapter.set_reaction_dh_rxn``, ``processor.process_arc_project``,
+                        # ``output.get_species_output_dict``) already tolerate ``None`` here.
+                        #
+                        # Supply the container rather than crash: the Arkane results being assigned are
+                        # real and already computed, and losing them means discarding converged QM jobs
+                        # at the reporting stage. Warn rather than repair silently, so a caller
+                        # re-introducing this stays visible instead of being absorbed.
+                        logger.warning(f'Species {lbl} reached the Arkane thermo assignment loop with '
+                                       f'.thermo set to None, instead of the ThermoData() instance '
+                                       f'ARCSpecies.__init__() assigns. Supplying an empty ThermoData() '
+                                       f'container so the computed results are not lost.')
+                        spc.thermo = ThermoData()
                     spc.thermo.H298 = content[lbl]['H298']
                     spc.thermo.S298 = content[lbl]['S298']
                     spc.thermo.data = content[lbl]['data']
@@ -1349,11 +1374,9 @@ def mark_ts_validation_in_kinetics(reaction, kinetics: dict) -> None:
     """
     Stamp the TS validation verdict onto a parsed kinetics dictionary.
 
-    The rate coefficient itself is never suppressed nor modified: a TS that positively failed the
-    IRC check still yields a number (which is diagnostically valuable), it is only labeled as such
-    via a dedicated ``ts_validation`` key and an addition to the Arrhenius ``comment``, so that the
-    rate cannot silently be mistaken for a validated one. A TS for which the IRC check was not
-    performed (``None``) or was passed (``True``) is left untouched.
+    Adds a ``ts_validation`` key and appends the marker to the Arrhenius ``comment``. The rate
+    coefficient values are not modified. A TS for which the IRC check was not performed
+    (``None``) or was passed (``True``) leaves ``kinetics`` untouched.
 
     Args:
         reaction: The reaction object the kinetics were computed for.

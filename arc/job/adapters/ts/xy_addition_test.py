@@ -33,7 +33,8 @@ class TestXYAdditionSeed(unittest.TestCase):
             {'*2': 0, '*1': 1, '*3': 7, '*4': 6},
             {'*2': 1, '*1': 0, '*3': 7, '*4': 6},
         ]
-        rxn.product_dicts = [{'r_label_map': label_map} for label_map in label_maps]
+        rxn.product_dicts = [{'r_label_map': label_map, 'family': 'XY_Addition_MultipleBond'}
+                             for label_map in label_maps]
         rxn.family = 'XY_Addition_MultipleBond'
 
         seeds = xy_addition(reaction=rxn)

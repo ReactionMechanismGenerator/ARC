@@ -20,19 +20,18 @@ import py3Dmol as p3D
 from rdkit import Chem
 
 from arc.common import (NUMBER_BY_SYMBOL,
-                        TS_IRC_FAILED_MARKER,
                         calculate_arrhenius_rate_coefficient,
                         extremum_list,
                         get_angle_in_180_range,
                         get_close_tuple,
                         get_logger,
-                        get_ts_validation_comment,
                         is_notebook,
                         is_str_float,
                         read_yaml_file,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
                         )
+from arc.checks.common import TS_IRC_FAILED_MARKER, get_ts_validation_comment
 from arc.exceptions import InputError, InvalidAdjacencyListError
 from arc.level import Level
 from arc.molecule.molecule import Molecule

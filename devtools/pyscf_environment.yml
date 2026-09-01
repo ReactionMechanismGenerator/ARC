@@ -10,3 +10,4 @@ dependencies:
   - pip:
       - pyscf==2.14.0
       - pyscf-dispersion==1.5.0
+      - geometric==1.1.1

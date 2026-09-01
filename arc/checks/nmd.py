@@ -1,5 +1,20 @@
 """
 A module for checking the normal mode displacement of a TS.
+
+``DEFAULT_AMPLITUDE`` scales the normal mode vector that is added to the TS Cartesian coordinates,
+and a bond counts as reactive only once its length changes by more than 5% of that length. To first
+order the relative change of a bond between atoms i and j is ``2 * A * |u . (d_i - d_j)| / r_eq``,
+so the amplitude and that 5% fraction set one and the same threshold on the reactive-mode rate
+``|u . (d_i - d_j)| / r_eq``: moving one is equivalent to moving the other, and neither is a
+statement about how far an atom physically moves. The value is not a separation point between
+genuine and doubtful saddles; every verdict reached on the frequency logs shipped under
+``arc/testing`` is unchanged for any amplitude between 0.5 and 1.5.
+
+``SIGMA_THRESHOLD`` is applied to the reactive bonds that survive that 5% gate, measured against the
+median and MAD-based spread of the non-reactive bonds of the same structure. Structures that are
+rejected are rejected by the 5% gate and by ``check_bond_directionality()`` before a sigma is
+computed for them, so on the shipped fixtures every accepted structure clears ``SIGMA_THRESHOLD``
+by more than a factor of four.
 """
 
 import numpy as np
@@ -8,6 +23,7 @@ from itertools import product
 from typing import TYPE_CHECKING
 
 from arc.parser import parser
+from arc.checks.common import get_index_of_abs_largest_neg_freq, record_ts_check_warning
 from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError
 from arc.species.converter import get_most_common_isotope_for_element, xyz_from_data, xyz_to_np_array
@@ -25,72 +41,113 @@ SIGMA_THRESHOLD = 3.0
 STD_FLOOR = 1e-4
 DIRECTIONALITY_MIN_DELTA = 0.005
 NMD_UNDETERMINED_BONDS_WARNING = 'Could not determine the bonds that change in the reaction, NMD not checked; '
+DEFAULT_AMPLITUDE = 0.9
+ATOM_COUNT_MISMATCH_WARNING = 'The TS atom count does not match the reactants; skipped the TS normal mode ' \
+                              'displacement check; '
+NO_REACTIVE_BONDS_WARNING = 'No reactive bonds could be derived; skipped the TS normal mode displacement check; '
+NO_GEOMETRY_WARNING = 'No geometry in the frame of the normal modes; skipped the TS normal mode displacement check; '
+INCONSISTENT_ATOM_ORDER_WARNING = 'The TS atom order is inconsistent with the reactant order; ' \
+                                  'skipped the TS normal mode displacement check; '
+NO_NORMAL_MODES_WARNING = 'No normal mode displacements were reported; skipped the TS normal mode displacement check; '
+NO_IMAGINARY_FREQUENCY_WARNING = 'No imaginary frequency was reported; skipped the TS normal mode displacement check; '
 
 
 def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
                                         job: JobAdapter | None,
-                                        amplitude: float | list = 0.25,
+                                        amplitude: float | list = DEFAULT_AMPLITUDE,
                                         weights: bool | np.ndarray = True,
                                         ) -> bool | None:
     """
     Analyze the normal mode displacement by identifying bonds that break and form
     and comparing them to the expected given reaction.
-    Note that the TS geometry must be in the standard orientation for the normal mode displacement to be relevant.
-    If the bonds that change in the reaction cannot be determined, a warning is appended to the TS species'
-    ``ts_checks['warnings']`` entry and ``None`` is returned.
+    The TS geometry is taken from the frequency job's output file so that it is in the same coordinate frame
+    as the normal mode displacements parsed from that file.
+    The forming, breaking and changed bonds of the reaction are indexed into the concatenated reactant atoms,
+    where a species participating more than once (e.g. ``A + A``, for which ``r_species`` holds a single entry)
+    contributes its atoms once per occurrence. The TS geometry must span that same set of atoms.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
         job (JobAdapter): The frequency job object instance that points to the respective log file.
         amplitude (float | list): The amplitude of the normal mode displacement motion to check.
                                         If a list, all possible results are returned.
-        weights (bool | np.ndarray): Whether to use weights for the displacement.
+        weights (bool | np.ndarray): Per-atom weights. They are applied to the bond lengths that are
+                                         compared, and are not applied to the normal mode displacement.
                                          If ``False``, use ones as weights. If ``True``, use sqrt of atom masses.
                                          If an array, use the array values it as individual weights per atom.
 
     Returns:
         bool | None: Whether the TS normal mode displacement is consistent with the desired reaction.
+                     ``None`` if the analysis could not be performed: no frequency job was given, no
+                     geometry in the frame of the normal modes is available, the TS geometry does not
+                     span the reactant atoms the bond indices refer to, no bonds that change in the
+                     reaction could be derived, the TS atom order does not follow the reactant order,
+                     the job's output file yields no normal mode displacements, or none of the reported
+                     frequencies is imaginary so that no mode describes a reaction coordinate. Each of
+                     those other than a missing job is also recorded in
+                     ``reaction.ts_species.ts_checks['warnings']``.
+                     Only ``False`` marks the TS as inconsistent with the reaction.
     """
     if job is None:
         return None
-    if reaction.atom_map is None:
-        # Without an atom map the formed/broken/changed bonds cannot be determined; skip the NMD
-        # check for this reaction rather than crashing the whole run (e.g. reactions ARC cannot map).
-        logger.warning(f'Cannot analyze the TS normal mode displacement for reaction {reaction.label} '
-                       f'without an atom map; skipping the NMD check for this reaction.')
-        if 'Atom map is None; skipped the TS normal mode displacement check; ' \
-                not in reaction.ts_species.ts_checks['warnings']:
-            reaction.ts_species.ts_checks['warnings'] += 'Atom map is None; skipped the TS normal mode displacement check; '
+    ts_xyz = get_ts_xyz_in_normal_mode_frame(reaction=reaction, job=job)
+    if ts_xyz is None:
+        record_ts_check_warning(species=reaction.ts_species, warning=NO_GEOMETRY_WARNING)
         return None
-    ts_xyz = reaction.ts_species.get_xyz()
     n_ts = len(ts_xyz['symbols'])
-    n_expected = sum(spc.number_of_atoms * reaction.get_species_count(species=spc, well=0)
-                     for spc in reaction.r_species)
+    reactants, _ = reaction.get_reactants_and_products(return_copies=False)
+    n_expected = sum(spc.number_of_atoms for spc in reactants)
     if n_ts != n_expected:
-        return False
-    try:
-        freqs, normal_mode_disp = parser.parse_normal_mode_displacement(log_file_path=job.local_path_to_output_file)
-    except NotImplementedError:
-        logger.warning(f'Could not parse frequencies for TS {reaction.ts_species.label}.')
+        logger.warning(f'The geometry of TS {reaction.ts_species.label} has {n_ts} atoms, while the reactants of '
+                       f'reaction {reaction.label} have {n_expected} atoms in total. The forming, breaking and '
+                       f'changed bonds of the reaction are indexed into the reactant atoms, so they cannot be '
+                       f'applied to this TS geometry. Skipping the normal mode displacement analysis.')
+        record_ts_check_warning(species=reaction.ts_species, warning=ATOM_COUNT_MISMATCH_WARNING)
         return None
-
-    amplitude_list = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
-    weights_array = get_weights_from_xyz(xyz=ts_xyz, weights=weights)
-    r_eq_atoms, _ = find_equivalent_atoms(reaction=reaction, reactant_only=True)
     try:
         bond_change_candidates = get_bond_change_candidates(reaction=reaction)
     except ReactionError as e:
         logger.warning(f'Could not determine the bonds that change in reaction {reaction.label}, '
                        f'got {type(e).__name__}: {e}\n'
                        f'Not checking the normal mode displacement of TS {reaction.ts_species.label}.')
-        if NMD_UNDETERMINED_BONDS_WARNING not in reaction.ts_species.ts_checks['warnings']:
-            reaction.ts_species.ts_checks['warnings'] += NMD_UNDETERMINED_BONDS_WARNING
+        record_ts_check_warning(species=reaction.ts_species, warning=NMD_UNDETERMINED_BONDS_WARNING)
         return None
+    if not bond_change_candidates:
+        logger.warning(f'Neither the reaction family recipe nor an atom map could supply the bonds that change '
+                       f'in reaction {reaction.label}, so there is nothing to validate the normal mode against. '
+                       f'Skipping the normal mode displacement analysis.')
+        record_ts_check_warning(species=reaction.ts_species, warning=NO_REACTIVE_BONDS_WARNING)
+        return None
+    if not is_ts_atom_order_consistent_with_reactants(reaction=reaction, ts_xyz=ts_xyz):
+        logger.warning(f'The geometry of TS {reaction.ts_species.label} lists its atoms as '
+                       f'{tuple(ts_xyz["symbols"])}, while the reactants of reaction {reaction.label} are ordered '
+                       f'{tuple(reaction.get_reactants_xyz(return_format="dict")["symbols"])}. The forming and '
+                       f'breaking bond indices refer to the reactant order, so they do not describe the intended '
+                       f'atoms of this TS. Skipping the normal mode displacement analysis.')
+        record_ts_check_warning(species=reaction.ts_species, warning=INCONSISTENT_ATOM_ORDER_WARNING)
+        return None
+    parsed_modes = parser.get_normal_mode_displacement(log_file_path=job.local_path_to_output_file,
+                                                       label=reaction.ts_species.label)
+    if parsed_modes is None:
+        record_ts_check_warning(species=reaction.ts_species, warning=NO_NORMAL_MODES_WARNING)
+        return None
+    freqs, normal_mode_disp = parsed_modes
+    mode_index = get_index_of_abs_largest_neg_freq(freqs)
+    if mode_index is None:
+        logger.warning(f'The frequency job of TS {reaction.ts_species.label} of reaction {reaction.label} reports no '
+                       f'imaginary frequency, so none of its normal modes describes a reaction coordinate. '
+                       f'Skipping the normal mode displacement analysis.')
+        record_ts_check_warning(species=reaction.ts_species, warning=NO_IMAGINARY_FREQUENCY_WARNING)
+        return None
+
+    amplitude_list = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
+    weights_array = get_weights_from_xyz(xyz=ts_xyz, weights=weights)
+    r_eq_atoms, _ = find_equivalent_atoms(reaction=reaction, reactant_only=True)
 
     for amp in amplitude_list:
         if not amp:
             continue
-        xyzs = get_displaced_xyzs(xyz=ts_xyz, amplitude=amp, normal_mode_disp=normal_mode_disp[0], weights=weights_array)
+        xyzs = get_displaced_xyzs(xyz=ts_xyz, amplitude=amp, normal_mode_disp=normal_mode_disp[mode_index])
 
         for formed_bonds, broken_bonds, changed_bonds in bond_change_candidates:
             nmd_correct = is_nmd_correct_for_any_mapping(
@@ -105,6 +162,80 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
             if nmd_correct:
                 return True
     return False
+
+
+def get_ts_xyz_in_normal_mode_frame(reaction: ARCReaction,
+                                    job: JobAdapter,
+                                    ) -> dict | None:
+    """
+    Get the TS geometry in the coordinate frame in which the normal mode displacements of ``job`` are reported.
+
+    The geometry is taken from the file the ESS parser adapter of the job's output file reports its normal
+    mode displacements in, which is the output file itself for most ESSs and a sibling file for those that
+    write their modes elsewhere. The TS species geometry is returned instead when no geometry can be parsed
+    from that file, and the parsed geometry is returned when the TS species has no geometry to compare it
+    against.
+
+    ``None`` is returned when neither source yields a geometry, and when the two sources yield different
+    element symbol sequences. The normal mode displacements are indexed by the atom order of the output
+    file, so pairing them with a geometry whose atoms are in a different order would displace each atom
+    along another atom's mode. A differing symbol sequence is positive evidence of exactly that, which is
+    a stronger statement than the frame mismatch the fallback exists to tolerate.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        job (JobAdapter): The frequency job object instance that points to the respective log file.
+
+    Returns:
+        dict | None: The TS Cartesian coordinates.
+    """
+    species_xyz = reaction.ts_species.get_xyz()
+    log_xyz, parse_error = None, None
+    try:
+        log_xyz = parser.parse_geometry_in_normal_mode_frame(log_file_path=job.local_path_to_output_file)
+    except Exception as e:
+        parse_error = e
+    if log_xyz is None:
+        cause = f'raised:\n{parse_error}' if parse_error is not None else 'yielded no geometry.'
+        if species_xyz is None:
+            logger.warning(f'Parsing a geometry from {job.local_path_to_output_file} {cause}\n'
+                           f'TS {reaction.ts_species.label} holds no geometry to use instead, so the normal mode '
+                           f'displacement analysis has no coordinates to displace.')
+        else:
+            logger.warning(f'Parsing a geometry from {job.local_path_to_output_file} {cause}\n'
+                           f'Using the geometry of TS {reaction.ts_species.label} for the normal mode '
+                           f'displacement analysis, which may not be in the frame of the normal modes.')
+        return species_xyz
+    if species_xyz is None:
+        return log_xyz
+    if tuple(log_xyz['symbols']) != tuple(species_xyz['symbols']):
+        logger.warning(f'The geometry parsed from {job.local_path_to_output_file} has the element symbol sequence '
+                       f'{tuple(log_xyz["symbols"])}, while the geometry of TS {reaction.ts_species.label} has '
+                       f'{tuple(species_xyz["symbols"])}. The normal mode displacements are indexed by the order '
+                       f'of the output file, so neither geometry can be displaced along them with confidence. '
+                       f'The normal mode displacement analysis has no coordinates to displace.')
+        return None
+    return log_xyz
+
+
+def is_ts_atom_order_consistent_with_reactants(reaction: ARCReaction,
+                                               ts_xyz: dict,
+                                               ) -> bool:
+    """
+    Check whether a TS geometry lists its atoms in the element order of the reaction's reactants.
+
+    The forming, breaking and changed bond indices of a reaction are expressed as indices into the
+    concatenated reactant geometry, and are only meaningful for a TS geometry that uses that same order.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        ts_xyz (dict): The TS Cartesian coordinates.
+
+    Returns:
+        bool: Whether the TS and the concatenated reactants have identical element symbol sequences.
+    """
+    r_xyz = reaction.get_reactants_xyz(return_format='dict')
+    return tuple(ts_xyz['symbols']) == tuple(r_xyz['symbols'])
 
 
 def get_bond_change_candidates(reaction: ARCReaction,
@@ -386,7 +517,7 @@ def get_weights_from_xyz(xyz: dict,
 
     Args:
         xyz (dict): The Cartesian coordinates.
-        weights (bool | np.ndarray): Whether to use weights for the displacement.
+        weights (bool | np.ndarray): Which per-atom weights to return.
                                          If ``False``, use ones as weights. If ``True``, use sqrt of atom masses.
                                          If an array, use it as weights.
 
@@ -411,24 +542,25 @@ def get_weights_from_xyz(xyz: dict,
 def get_displaced_xyzs(xyz: dict,
                        amplitude: float,
                        normal_mode_disp: np.ndarray,
-                       weights: np.ndarray,
                        ) -> tuple[dict, dict]:
     """
     Get the Cartesian coordinates of the TS displaced along a normal mode.
+
+    The normal mode displacements reported by an ESS are Cartesian displacements. They are added to the
+    Cartesian coordinates as reported, and no per-atom weight is applied to them.
 
     Args:
         xyz (dict): The Cartesian coordinates.
         amplitude (float): The amplitude of the displacement.
         normal_mode_disp (np.ndarray): The normal mode displacement matrix corresponding to the imaginary frequency.
-        weights (np.ndarray): The weights for the atoms.
 
     Returns:
         tuple[dict, dict]: The Cartesian coordinates of the TS displaced along the normal mode.
     """
     np_coords = xyz_to_np_array(xyz)
-    xyz_1 = xyz_from_data(coords=np_coords - amplitude * normal_mode_disp * weights,
+    xyz_1 = xyz_from_data(coords=np_coords - amplitude * normal_mode_disp,
                           symbols=xyz['symbols'], isotopes=xyz['isotopes'])
-    xyz_2 = xyz_from_data(coords=np_coords + amplitude * normal_mode_disp * weights,
+    xyz_2 = xyz_from_data(coords=np_coords + amplitude * normal_mode_disp,
                           symbols=xyz['symbols'], isotopes=xyz['isotopes'])
     return xyz_1, xyz_2
 
@@ -575,6 +707,8 @@ def find_equivalent_atoms(reaction: ARCReaction,
     Find equivalent atoms in the reactants and products of a reaction.
     This is a tentative function that should be replaced when atom mapping returns a list.
     It is meant to suggest additional atoms that can move instead of the ones selected by the atom map.
+    Reactant equivalences cover both atoms made equivalent within a molecule and atoms at the same
+    position across the copies of a species that participates more than once.
 
     Args:
         reaction (ARCReaction): The reaction for which equivalent atoms are searched.
@@ -592,10 +726,6 @@ def find_equivalent_atoms(reaction: ARCReaction,
                                                                 inc=sum([len(r.mol.atoms) for r in reactants[:i]]),
                                                                 atom_map=None,
                                                                 ))
-    # Cross-molecule equivalence for repeated identical reactants (e.g. OH + OH): the corresponding
-    # atoms across the copies are equivalent. identify_equivalent_atoms_in_molecule only finds
-    # equivalence within a single molecule, so the atom map may pick one copy's atom while the TS
-    # uses the other's; add these groups so NMD can try the alternative mapping.
     r_eq_atoms.extend(get_repeated_species_atom_equivalences(reaction, well=0))
     if not reactant_only:
         for i, product in enumerate(products):

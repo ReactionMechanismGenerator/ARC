@@ -9,7 +9,8 @@ import numpy as np
 from typing import TYPE_CHECKING
 
 from arc.parser import parser
-from arc.checks.nmd import analyze_ts_normal_mode_displacement
+from arc.checks.common import get_index_of_abs_largest_neg_freq, is_ts_check_exempt, record_ts_check_warning
+from arc.checks.nmd import DEFAULT_AMPLITUDE, analyze_ts_normal_mode_displacement
 from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
                         extremum_list,
@@ -91,7 +92,7 @@ def check_ts(reaction: ARCReaction,
 
     if 'NMD' in checks and not reaction.ts_species.ts_checks['NMD']:
         check_normal_mode_displacement(reaction, job=job)
-        if skip_nmd and not reaction.ts_species.ts_checks['NMD']:
+        if skip_nmd and reaction.ts_species.ts_checks['NMD'] is False:
             logger.warning(f'Skipping failed normal mode displacement check for TS {reaction.ts_species.label}')
             reaction.ts_species.ts_checks['NMD'] = True
 
@@ -108,9 +109,14 @@ def ts_passed_checks(species: ARCSpecies,
     """
     Check whether the TS species passes all checks other than ones specified in ``exemptions``.
 
-    The 'IRC' check is three-valued: ``True`` means the IRC endpoints correspond to the requested wells,
-    ``False`` means they positively do not, and ``None`` means the check was not performed
-    (e.g., IRC jobs were not requested). Only a ``False`` IRC verdict is considered a failure here.
+    The 'IRC' and 'NMD' checks are three-valued: ``True`` means the check was performed and passed,
+    ``False`` means it was performed and positively failed, and ``None`` means it was not performed
+    (IRC jobs were not requested; the ESS reported no normal mode displacements; the TS atom order does
+    not follow the reactant order). Only a ``False`` verdict is considered a failure for those two, so
+    that a check which could not run does not silently withhold the actions a passing TS receives.
+
+    A failed 'e_elect' check is excused once 'E0' passed, as determined by
+    ``checks.common.is_ts_check_exempt()``.
 
     Args:
         species (ARCSpecies): The TS species.
@@ -122,9 +128,9 @@ def ts_passed_checks(species: ARCSpecies,
     """
     exemptions = exemptions or list()
     for check, value in species.ts_checks.items():
-        if check in exemptions or (check == 'IRC' and value is None):
+        if check in exemptions or (check in ['IRC', 'NMD'] and value is None):
             continue
-        if not value and not (check == 'e_elect' and species.ts_checks['E0']):
+        if not value and not is_ts_check_exempt(check, species.ts_checks):
             if verbose:
                 logger.warning(f'TS {species.label} did not pass the all checks, status is:\n{species.ts_checks}')
             return False
@@ -166,8 +172,8 @@ def check_rxn_e_elect(reaction: ARCReaction,
         logger.info('\n')
         logger.warning(f"Could not get electronic energy for all species in reaction {reaction.label}.\n")
     reaction.ts_species.ts_checks['e_elect'] = None
-    if 'Could not determine TS e_elect relative to the wells; ' not in reaction.ts_species.ts_checks['warnings']:
-        reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
+    record_ts_check_warning(species=reaction.ts_species,
+                            warning='Could not determine TS e_elect relative to the wells; ')
 
 
 def compute_rxn_e0(reaction: ARCReaction,
@@ -290,7 +296,7 @@ def report_ts_and_wells_energy(r_e: float,
 def check_normal_mode_displacement(reaction: ARCReaction,
                                    job: JobAdapter | None,
                                    amplitude: float | list | None = None,
-                                   ):
+                                   ) -> None:
     """
     Check the normal mode displacement by identifying bonds that break and form
     and comparing them to the expected RMG template, if available.
@@ -298,10 +304,13 @@ def check_normal_mode_displacement(reaction: ARCReaction,
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
         job (JobAdapter): The frequency job object instance.
-        amplitude (float | list): The amplitude of the normal mode displacement motion to check.
+        amplitude (float | list | None): The amplitude of the normal mode displacement motion to check.
                                         If a list, all possible results are returned.
+                                        ``None`` selects ``DEFAULT_AMPLITUDE``; any other value is passed
+                                        through as given, including ``0`` and an empty list, which both
+                                        leave no amplitude to probe.
     """
-    amplitude = amplitude or 0.25
+    amplitude = DEFAULT_AMPLITUDE if amplitude is None else amplitude
     reaction.ts_species.ts_checks['NMD'] = analyze_ts_normal_mode_displacement(reaction=reaction,
                                                                                job=job,
                                                                                amplitude=amplitude,
@@ -350,6 +359,11 @@ def invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction: ARCReaction,
                                                      as the reaction zone. Automatically determined if not given.
     """
     rxn_zone_atom_indices = rxn_zone_atom_indices or get_rxn_zone_atom_indices(reaction, job)
+    if not rxn_zone_atom_indices:
+        logger.warning(f'No reaction zone could be determined for TS {reaction.ts_species.label}, so no rotor of '
+                       f'it was invalidated for having both pivots in the reaction zone. A rotor along the '
+                       f'reaction coordinate, if there is one, is treated as an ordinary hindered rotor.')
+        return
     if not reaction.ts_species.rotors_dict:
         reaction.ts_species.determine_rotors()
     rxn_zone_atom_indices_1 = convert_list_index_0_to_1(rxn_zone_atom_indices)
@@ -374,9 +388,14 @@ def get_rxn_zone_atom_indices(reaction: ARCReaction,
     Returns:
         list[int]: The indices of the atoms participating in the reaction.
                    The indices are 0-indexed and sorted in an increasing order.
+                   An empty list is returned when the output file yields no normal mode displacements,
+                   since the reaction zone is derived from them alone.
     """
-    freqs, normal_mode_disp = parser.parse_normal_mode_displacement(log_file_path=job.local_path_to_output_file,
-                                                                    raise_error=False)
+    parsed_modes = parser.get_normal_mode_displacement(log_file_path=job.local_path_to_output_file,
+                                                       label=reaction.ts_species.label)
+    if parsed_modes is None:
+        return list()
+    freqs, normal_mode_disp = parsed_modes
     normal_mode_disp_rms = get_rms_from_normal_mode_disp(normal_mode_disp, freqs, reaction=reaction)
     num_of_atoms = get_expected_num_atoms_with_largest_normal_mode_disp(normal_mode_disp_rms=normal_mode_disp_rms,
                                                                         ts_guesses=reaction.ts_species.ts_guesses,
@@ -409,21 +428,6 @@ def get_rms_from_normal_mode_disp(normal_mode_disp: np.ndarray,
     for i, entry in enumerate(nmd):
         rms.append(((entry[0] ** 2 + entry[1] ** 2 + entry[2] ** 2) ** 0.5) * masses[i] ** 0.55)
     return rms
-
-
-def get_index_of_abs_largest_neg_freq(freqs: np.ndarray) -> int | None:
-    """
-    Get the index of the |largest| negative frequency.
-
-    Args:
-        freqs (np.ndarray): Entries are frequency values.
-
-    Returns:
-        int | None: The 0-index of the largest absolute negative frequency.
-    """
-    if not len(freqs) or all(freq > 0 for freq in freqs):
-        return None
-    return list(freqs).index(min(freqs))
 
 
 def get_expected_num_atoms_with_largest_normal_mode_disp(normal_mode_disp_rms: list[float],
@@ -515,8 +519,8 @@ def check_irc_species_and_rxn(xyz_1: dict,
     Sets ``rxn.ts_species.ts_checks['IRC']`` to ``True`` if the endpoints match the reactants
     and products, to ``False`` only if a comparison was actually performed and the endpoints
     did not match, and leaves it as ``None`` (unknown) if no comparison could be performed
-    (e.g., the expected connectivity of the reaction is unavailable). Downstream consumers
-    rely on this distinction: ``False`` means "checked and failed", never "could not check".
+    (e.g., the expected connectivity of the reaction is unavailable). ``False`` means
+    "checked and failed", never "could not check".
 
     A negative isomorphism result alone does not set ``False``: it is treated as inconclusive
     and the bond-list comparison decides. The verdict remains ``None`` if that comparison

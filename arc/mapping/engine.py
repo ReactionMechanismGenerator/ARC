@@ -14,14 +14,17 @@ from itertools import product
 from typing import TYPE_CHECKING
 
 from arc.common import extremum_list, get_angle_in_180_range, is_angle_linear, logger, signed_angular_diff
-from arc.exceptions import AtomTypeError, ConformerError, InputError, SpeciesError
+from arc.exceptions import AtomTypeError, ConformerError, InputError, SpeciesError, VectorsError
 from arc.family import ReactionFamily
 from arc.molecule import Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, xyz_from_data
-from arc.species.vectors import apply_rodrigues_rotation, calculate_angle, calculate_dihedral_angle, get_delta_angle
+from arc.species.vectors import (apply_rodrigues_rotation, calculate_angle, calculate_dihedral_angle, get_angle,
+                                 get_delta_angle, get_perpendicular_axes, get_vector, get_vector_length,
+                                 unit_vector)
+from arc.species.zmat import TOL_180
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom
@@ -44,6 +47,9 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
     All indices are 0-indexed.
     If a dict type atom map is returned, it could conveniently be used to map ``spc_2`` -> ``spc_1`` by doing::
         ordered_spc1.atoms = [spc_2.atoms[atom_map[i]] for i in range(len(spc_2.atoms))]
+
+    A ``ValueError`` is raised if the resulting map is not a permutation of the atoms of the two
+    species.
 
     When several superimposable backbone candidates are identified, each is scored by the RMSD
     between the two backbone distance matrices, so candidates tie within ``RMSD_TIE_TOLERANCE``
@@ -139,6 +145,11 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
             atom_maps = dict()
             for i in tied_indices:
                 atom_maps[i] = map_hydrogens(fixed_spcs[i][0], fixed_spcs[i][1], candidates[i])
+                if sorted(atom_maps[i].keys()) != list(range(spc_1.number_of_atoms)) \
+                        or sorted(atom_maps[i].values()) != list(range(spc_2.number_of_atoms)):
+                    raise ValueError(f'The atom map of {spc_1.label} and {spc_2.label} is not a permutation of their '
+                                     f'{spc_1.number_of_atoms} and {spc_2.number_of_atoms} atoms, '
+                                     f'got:\n{atom_maps[i]}')
             if len(tied_indices) > 1:
                 displacements = {i: fixed_spcs[i][0].kabsch(fixed_spcs[i][1],
                                                             [v for k, v in sorted(atom_maps[i].items(),
@@ -822,8 +833,9 @@ def _anchors_define_a_plane(center_index: int,
     """
     Check whether two anchors span a well-defined plane through a central atom.
 
-    This applies exactly the criterion used by ``_construct_local_axes``, so an anchor pair
-    accepted here is guaranteed not to make ``_construct_local_axes`` raise.
+    The A-X-B angle must not be linear within ``TOL_180``, and the pair must additionally pass
+    the cross-product test that ``_construct_local_axes`` applies internally, so an anchor pair
+    accepted here can never make ``_construct_local_axes`` raise.
 
     Args:
         center_index (int): Index of the central atom X.
@@ -832,21 +844,23 @@ def _anchors_define_a_plane(center_index: int,
         coords (list[tuple[float, float, float]]): 3D coordinates for all atoms.
 
     Returns: bool
-        Whether the X->A and X->B vectors are both non-degenerate and non-colinear.
+        Whether the X->A and X->B vectors are both non-degenerate and span a plane.
+        ``False`` is returned if any index is ``None``, negative, or out of range for ``coords``.
     """
     if center_index is None or anchor_1_index is None or anchor_2_index is None:
         return False
-    if any(index >= len(coords) for index in [center_index, anchor_1_index, anchor_2_index]):
+    if any(index < 0 or index >= len(coords) for index in [center_index, anchor_1_index, anchor_2_index]):
         return False
     if anchor_1_index == anchor_2_index or center_index in [anchor_1_index, anchor_2_index]:
         return False
-    x = np.array(coords[center_index], dtype=float)
-    v_xa = np.array(coords[anchor_1_index], dtype=float) - x
-    v_xb = np.array(coords[anchor_2_index], dtype=float) - x
-    norm_xa, norm_xb = np.linalg.norm(v_xa), np.linalg.norm(v_xb)
-    if norm_xa < 1e-8 or norm_xb < 1e-8:
+    xyz = {'coords': coords}
+    v_xa = get_vector(pivot=center_index, anchor=anchor_1_index, xyz=xyz)
+    v_xb = get_vector(pivot=center_index, anchor=anchor_2_index, xyz=xyz)
+    if get_vector_length(v_xa) < 1e-8 or get_vector_length(v_xb) < 1e-8:
         return False
-    return bool(np.linalg.norm(np.cross(v_xa / norm_xa, v_xb)) >= 1e-8)
+    if is_angle_linear(get_angle(v1=v_xa, v2=v_xb, units='degs'), tolerance=TOL_180):
+        return False
+    return bool(get_vector_length(np.cross(unit_vector(v_xa), v_xb)) >= 1e-8)
 
 
 def _select_ch3_anchors(heavy_index: int,
@@ -859,17 +873,15 @@ def _select_ch3_anchors(heavy_index: int,
       - B is a second anchor forming a non-linear angle B-X-A
 
     Candidates for B are considered in the following priority order, and the first candidate
-    that is not colinear with the X→A axis is returned:
+    that spans a plane with the X→A axis, as judged by ``_anchors_define_a_plane``, is returned:
       1) The preferably-heavy neighbor of A other than X.
       2) Any other neighbor of A other than X.
-      3) Any atom bonded to X other than A (i.e., one of the XH3 hydrogens, which are
-         guaranteed to be off-axis for a genuine XH3 center).
-      4) Any remaining atom in the molecule.
+      3) Any atom bonded to X other than A, i.e., one of the XH3 hydrogens.
 
-    The colinearity criterion is identical to the one enforced by ``_construct_local_axes``,
-    so a returned anchor pair can never make that function raise. Molecules with a linear
-    heavy-atom skeleton (e.g., propyne, where X→A and every heavy candidate B are colinear)
-    are therefore resolved via the hydrogen fallbacks.
+    A returned anchor pair can never make ``_construct_local_axes`` raise. A molecule with a
+    linear heavy-atom skeleton (e.g., propyne) resolves to a tier-3 anchor, in which case the
+    azimuthal phase of the resulting local frame is undetermined while the azimuthal cyclic
+    order of the three hydrogens about the X→A axis is retained.
 
     Args:
         heavy_index: index of the XH3 carbon in spc.mol.atoms
@@ -895,11 +907,12 @@ def _select_ch3_anchors(heavy_index: int,
         atom_index = spc.mol.atoms.index(atom)
         if atom_index != heavy_index:
             candidates.append(atom_index)
+    own_neighbors = set()
     for atom in spc.mol.atoms[heavy_index].edges:
         atom_index = spc.mol.atoms.index(atom)
         if atom_index != A_index:
             candidates.append(atom_index)
-    candidates.extend(range(len(spc.mol.atoms)))
+            own_neighbors.add(atom_index)
     seen = set()
     for B_index in candidates:
         if B_index in seen:
@@ -907,6 +920,9 @@ def _select_ch3_anchors(heavy_index: int,
         seen.add(B_index)
         if _anchors_define_a_plane(center_index=heavy_index, anchor_1_index=A_index,
                                    anchor_2_index=B_index, coords=coords):
+            if B_index in own_neighbors:
+                logger.debug(f'Anchoring the XH3 center {heavy_index} of {spc.label} on its own hydrogen '
+                             f'{B_index}, the azimuthal phase of this XH3 group is undetermined.')
             return A_index, B_index
     return None, None
 
@@ -971,8 +987,8 @@ def _construct_local_axes(center_idx: int,
 def _compute_azimuthal_angles(center_idx: int,
                               hydrogen_indices: list[int],
                               coords: list[tuple[float, float, float]],
-                              e_y: np.ndarray,
-                              e_z: np.ndarray
+                              e_y: list[float] | np.ndarray,
+                              e_z: list[float] | np.ndarray
                               ) -> dict[int, float]:
     """
     Compute the azimuthal angles (in degrees) of hydrogen atoms around a principal axis.
@@ -984,8 +1000,8 @@ def _compute_azimuthal_angles(center_idx: int,
         center_idx (int): Index of the central atom C.
         hydrogen_indices (list[int]): List of hydrogen atom indices.
         coords (list[tuple[float, float, float]]): 3D coordinates for all atoms.
-        e_y (np.ndarray): Local unit y-axis.
-        e_z (np.ndarray): Local unit z-axis.
+        e_y (list, np.ndarray): Local unit y-axis.
+        e_z (list, np.ndarray): Local unit z-axis.
 
     Returns:
         Dict mapping each hydrogen index to its azimuthal angle in [0, 360).
@@ -1090,6 +1106,92 @@ def _map_xh3_group(heavy_idx_1: int,
     angles_2 = _compute_azimuthal_angles(heavy_index_2, hydrogens_2, coords_2, e_y2, e_z2)
 
     return _determine_cyclic_shift(angles_1, angles_2)
+
+
+def _map_xh3_group_by_azimuthal_order(heavy_index_1: int,
+                                      heavy_index_2: int,
+                                      spc_1: ARCSpecies,
+                                      spc_2: ARCSpecies,
+                                      backbone_map: dict[int, int],
+                                      ) -> dict[int, int]:
+    """
+    Map hydrogens of a XH3 group by their azimuthal cyclic order about the X->A axis.
+
+    Only the bond from the XH3 center X to its mapped neighbor A is required. Each frame is
+    built by ``vectors.get_perpendicular_axes()`` about the X->A axis, whose azimuthal origin
+    is arbitrary, so the common phase of the returned mapping is undetermined while the cyclic
+    order of the three hydrogens is retained.
+
+    Args:
+        heavy_index_1 (int): Index of the XH3 center in species 1.
+        heavy_index_2 (int): Index of the XH3 center in species 2.
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        backbone_map (dict[int, int]): Existing backbone atom mapping.
+
+    Returns:
+        dict[int, int]: Mapping from hydrogen indices in ``spc_1`` to hydrogen indices in ``spc_2``,
+                        or an empty dict if no mapped neighbor or no 3D coordinates are available,
+                        or if X and A coincide in either species.
+    """
+    a_index_1 = _find_preferably_heavy_neighbor(heavy_index=heavy_index_1, spc=spc_1, partial_atom_map=backbone_map)
+    a_index_2 = backbone_map.get(a_index_1, None) if a_index_1 is not None else None
+    if a_index_1 is None or a_index_2 is None:
+        return dict()
+    xyz_1, xyz_2 = spc_1.get_xyz(), spc_2.get_xyz()
+    if xyz_1 is None or xyz_2 is None:
+        return dict()
+    coords_1, coords_2 = xyz_1['coords'], xyz_2['coords']
+    try:
+        axes_1 = get_perpendicular_axes(get_vector(pivot=heavy_index_1, anchor=a_index_1, xyz=xyz_1))
+        axes_2 = get_perpendicular_axes(get_vector(pivot=heavy_index_2, anchor=a_index_2, xyz=xyz_2))
+    except VectorsError as e:
+        logger.debug(f"Could not construct an azimuthal reference frame for the XH3 group refinement: {e}")
+        return dict()
+    angles_1 = _compute_azimuthal_angles(heavy_index_1, _find_hydrogen_neighbors(heavy_index_1, spc_1.mol.atoms),
+                                         coords_1, axes_1[0], axes_1[1])
+    angles_2 = _compute_azimuthal_angles(heavy_index_2, _find_hydrogen_neighbors(heavy_index_2, spc_2.mol.atoms),
+                                         coords_2, axes_2[0], axes_2[1])
+    return _determine_cyclic_shift(angles_1, angles_2)
+
+
+def _map_xh3_hydrogens(heavy_index_1: int,
+                       heavy_index_2: int,
+                       spc_1: ARCSpecies,
+                       spc_2: ARCSpecies,
+                       backbone_map: dict[int, int],
+                       h_indices_1: list[int],
+                       h_indices_2: list[int],
+                       ) -> dict[int, int]:
+    """
+    Map the three hydrogens of a XH3 group, always returning an assignment for all three.
+
+    The anchored local frames of ``_map_xh3_group`` are used when a secondary anchor is available.
+    Otherwise the hydrogens are matched by their azimuthal cyclic order about the X->A axis, which
+    leaves only their common phase undetermined. Without a mapped neighbor or 3D coordinates the
+    hydrogens are assigned in the order they appear in the two species.
+
+    Args:
+        heavy_index_1 (int): Index of the XH3 center in species 1.
+        heavy_index_2 (int): Index of the XH3 center in species 2.
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        backbone_map (dict[int, int]): Existing backbone atom mapping.
+        h_indices_1 (list[int]): The three hydrogen indices in species 1.
+        h_indices_2 (list[int]): The three hydrogen indices in species 2.
+
+    Returns:
+        dict[int, int]: Mapping from the hydrogen indices in ``spc_1`` to those in ``spc_2``.
+    """
+    mapped = _map_xh3_group(heavy_index_1, heavy_index_2, spc_1, spc_2, backbone_map)
+    if mapped:
+        return mapped
+    mapped = _map_xh3_group_by_azimuthal_order(heavy_index_1, heavy_index_2, spc_1, spc_2, backbone_map)
+    if mapped:
+        return mapped
+    logger.debug(f'Assigning the hydrogens of the XH3 center {heavy_index_1} of {spc_1.label} by their order, '
+                 f'no local frame could be constructed.')
+    return dict(zip(h_indices_1, h_indices_2))
 
 
 def _compute_ch2_pair_dihedrals(coords_1, coords_2,
@@ -1209,8 +1311,10 @@ def map_hydrogens(spc_1: ARCSpecies,
     """
     Atom map hydrogen atoms between two species with a known mapped heavy atom backbone.
     If only a single hydrogen atom is bonded to a given heavy atom, it is straight-forwardly mapped.
-    If the geometric refinement of an XH3 group fails (e.g., no local frame can be defined),
-    its three equivalent hydrogens are assigned in order, so that the resulting map remains complete.
+    The three hydrogens of an XH3 group are always assigned, and their azimuthal cyclic order about
+    the bond to the mapped heavy neighbor is retained whenever 3D coordinates are available.
+    Every hydrogen of every heavy atom in ``backbone_map`` is assigned, falling back to the order in
+    which the hydrogens appear in the two species when no geometric refinement applies to them.
 
     Args:
         spc_1 (ARCSpecies): Species 1.
@@ -1241,23 +1345,18 @@ def map_hydrogens(spc_1: ARCSpecies,
             continue
         elif len(h_indices_1) == 2:
             mapped = _map_xh2_group(heavy_index_1, heavy_index_2, spc_1, spc_2, atom_map)
-            if mapped:
-                atom_map.update(mapped)
-                continue
+            if not mapped:
+                logger.debug(f'Assigning the hydrogens of the XH2 center {heavy_index_1} of {spc_1.label} by '
+                             f'their order, their dihedrals could not be compared.')
+                mapped = dict(zip(h_indices_1, h_indices_2))
+            atom_map.update(mapped)
         elif len(h_indices_1) == 3:
-            if len(spc_1.mol.atoms) <= 5:
-                # A-XH3 should be a trivial assignment:
-                atom_map[h_indices_1[0]] = h_indices_2[0]
-                atom_map[h_indices_1[1]] = h_indices_2[1]
-                atom_map[h_indices_1[2]] = h_indices_2[2]
-            else:
-                mapped = _map_xh3_group(heavy_index_1, heavy_index_2, spc_1, spc_2, atom_map)
-                if mapped:
-                    atom_map.update(mapped)
-                else:
-                    atom_map[h_indices_1[0]] = h_indices_2[0]
-                    atom_map[h_indices_1[1]] = h_indices_2[1]
-                    atom_map[h_indices_1[2]] = h_indices_2[2]
+            atom_map.update(_map_xh3_hydrogens(heavy_index_1, heavy_index_2, spc_1, spc_2, atom_map,
+                                               h_indices_1, h_indices_2))
+        else:
+            logger.debug(f'Assigning the {len(h_indices_1)} hydrogens of the heavy atom {heavy_index_1} of '
+                         f'{spc_1.label} by their order, no geometric refinement is available for them.')
+            atom_map.update(dict(zip(h_indices_1, h_indices_2)))
     return atom_map
 
 
@@ -1362,6 +1461,10 @@ def make_bond_changes(rxn: ARCReaction, r_cuts: list[ARCSpecies], r_label_dict: 
     """
     Makes bond changes before matching the reactants and products.
 
+    A charge-separating bond change is only applied if it leaves a valid electron count, i.e., if the
+    donor atom has a lone pair to give and the accepting atom has the two radical electrons that the
+    new bond consumes. Otherwise, that cut is left unchanged.
+
     Args:
         rxn (ARCReaction): An ARCReaction object
         r_cuts (list[ARCSpecies]): The cut products
@@ -1383,12 +1486,22 @@ def make_bond_changes(rxn: ARCReaction, r_cuts: list[ARCSpecies], r_label_dict: 
                     if atom1.radical_electrons == 0 and atom2.radical_electrons == 0: # Both atoms do not have any radicals, but their bond is changing. There probably is resonance, so this will not affect the isomorphism check.
                         return
                     elif atom1.radical_electrons == 0 and atom2.radical_electrons != 0:
+                        if atom1.lone_pairs < 1 or atom2.radical_electrons < 2:
+                            logger.debug(f'Not applying a charge-separating {action} of the {rxn.family} family '
+                                         f'to atoms {indices} of reaction {rxn.label}: '
+                                         f'it would result in a negative electron count.')
+                            continue
                         atom1.lone_pairs -= 1
                         atom2.lone_pairs += 1
                         atom1.charge += 1
                         atom2.charge -= 1
                         atom2.radical_electrons -= 2
                     elif atom2.radical_electrons == 0 and atom1.radical_electrons != 0:
+                        if atom2.lone_pairs < 1 or atom1.radical_electrons < 2:
+                            logger.debug(f'Not applying a charge-separating {action} of the {rxn.family} family '
+                                         f'to atoms {indices} of reaction {rxn.label}: '
+                                         f'it would result in a negative electron count.')
+                            continue
                         atom2.lone_pairs -= 1
                         atom1.lone_pairs += 1
                         atom2.charge += 1

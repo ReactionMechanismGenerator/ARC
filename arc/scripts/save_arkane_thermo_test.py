@@ -15,6 +15,7 @@ only the standalone module + ``common`` are imported:
 Under arc_env pytest the file collects and skips cleanly (no rmgpy), so CI is unaffected.
 """
 
+import importlib.util
 import os
 import sys
 import tempfile
@@ -22,11 +23,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-try:
-    import rmgpy.thermo
-    HAS_RMG = True
-except ImportError:
-    HAS_RMG = False
+HAS_RMG = importlib.util.find_spec('rmgpy') is not None
 
 
 OUTPUT_PY_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

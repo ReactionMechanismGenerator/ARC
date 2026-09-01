@@ -6,14 +6,19 @@ This module contains unit tests for the arc.main module
 """
 
 import inspect
+import logging
 import os
 import shutil
+import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from arc.common import ARC_PATH, get_test_project_directory, get_test_project_name
+from arc.common import ARC_PATH, get_logger, get_test_project_directory, get_test_project_name
 from arc.exceptions import InputError
 from arc.imports import settings
+from arc.job.adapters.gaussian import GaussianAdapter
+from arc.job.ssh import SSHClient
 from arc.level import Level
 from arc.main import ARC, process_adaptive_levels
 from arc.scheduler import Scheduler
@@ -286,6 +291,38 @@ class TestARC(unittest.TestCase):
         with open(os.path.join(arc0.project_directory, f'{arc0.project}_info.yml'), 'r') as f:
             yml_content = f.read()
         self.assertNotIn('IRC_TS0_1', yml_content)
+    def test_rotor_scan_resolution_input_key(self):
+        """Test the rotor_scan_resolution input key is parsed, stored, and round-tripped."""
+        arc0 = ARC(project='arc_test_scan_res', rotor_scan_resolution=4.0)
+        self.assertEqual(arc0.rotor_scan_resolution, 4.0)
+        self.assertEqual(arc0.as_dict()['rotor_scan_resolution'], 4.0)
+        # Absent the key, the attribute is None and it is not written to the restart dict,
+        # so an existing project's restart file is byte-identical to before this change.
+        arc1 = ARC(project='arc_test_no_scan_res')
+        self.assertIsNone(arc1.rotor_scan_resolution)
+        self.assertNotIn('rotor_scan_resolution', arc1.as_dict())
+
+    def test_rotor_scan_resolution_guard(self):
+        """Test that a rotor scan resolution coarser than 20 degrees is refused."""
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_coarse_scan_res', rotor_scan_resolution=30.0)
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_nonpositive_scan_res', rotor_scan_resolution=0.0)
+        # A non-numeric type (e.g. a quoted YAML value) is refused with a consistent InputError
+        # rather than raising a raw TypeError from the numeric comparison.
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_str_scan_res', rotor_scan_resolution='4.0')
+        # A bool is an int subclass; it must be refused rather than silently read as 1 or 0.
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_true_scan_res', rotor_scan_resolution=True)
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_false_scan_res', rotor_scan_resolution=False)
+        # A value that does not divide 360 evenly leaves a fractional final step and is refused.
+        with self.assertRaises(InputError):
+            ARC(project='arc_test_indivisible_scan_res', rotor_scan_resolution=7.0)
+        # Exactly 20 degrees (18 points) is the coarsest still accepted.
+        arc0 = ARC(project='arc_test_boundary_scan_res', rotor_scan_resolution=20.0)
+        self.assertEqual(arc0.rotor_scan_resolution, 20.0)
 
     def test_check_project_name(self):
         """Test project name invalidity"""
@@ -616,6 +653,247 @@ class TestARC(unittest.TestCase):
             project_directory = get_test_project_directory(project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestExecuteReleasesPooledConnections(unittest.TestCase):
+    """The SSH connections a run holds open must be released by the run, not by interpreter exit."""
+
+    @staticmethod
+    def _arc():
+        """An ARC object without the project setup __init__ does, which this does not need."""
+        return ARC.__new__(ARC)
+
+    def test_the_pool_is_released_when_the_run_finishes(self):
+        """A consumer that never goes through ARC.py must still release its connections."""
+        with patch.object(ARC, '_execute', return_value={'spc': 'converged'}), \
+                patch('arc.main.reset_default_pool') as released:
+            status = self._arc().execute()
+        self.assertEqual(status, {'spc': 'converged'})
+        released.assert_called_once()
+
+    def test_the_pool_is_released_when_the_run_raises(self):
+        """An interrupted or failed run is exactly when connections would otherwise be left open."""
+        with patch.object(ARC, '_execute', side_effect=ValueError('the run went wrong')), \
+                patch('arc.main.reset_default_pool') as released:
+            self.assertRaises(ValueError, self._arc().execute)
+        released.assert_called_once()
+
+    def test_the_pool_is_released_on_a_keyboard_interrupt(self):
+        """Ctrl-C is how a long run usually ends, and it is not an Exception."""
+        with patch.object(ARC, '_execute', side_effect=KeyboardInterrupt), \
+                patch('arc.main.reset_default_pool') as released:
+            self.assertRaises(KeyboardInterrupt, self._arc().execute)
+        released.assert_called_once()
+
+
+class TestServerMappingBorrowsItsConnection(unittest.TestCase):
+    """The connection the ESS survey opens is the one the run's jobs then need."""
+
+    REMOTE = {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'}}
+
+    def _map_servers(self, found):
+        """Survey the remote servers with every find_package() answering ``found``."""
+        arc_object = ARC.__new__(ARC)
+        arc_object.ess_settings = dict()
+        with patch('arc.main.servers', self.REMOTE), \
+                patch('arc.main.borrow_ssh_client') as borrow:
+            borrow.return_value.__enter__.return_value.find_package.return_value = found
+            arc_object.determine_ess_settings()
+        return arc_object, borrow
+
+    def test_one_connection_is_borrowed_per_server(self):
+        """The survey asks after five packages, and used to open one connection for all of them."""
+        _, borrow = self._map_servers(found=[])
+        borrow.assert_called_once_with('zeus')
+
+    def test_the_borrowed_connection_is_released(self):
+        _, borrow = self._map_servers(found=[])
+        borrow.return_value.__exit__.assert_called_once()
+
+    def test_what_the_survey_finds_is_unchanged(self):
+        """Borrowing instead of opening must not change the answer the survey gives."""
+        arc_object, _ = self._map_servers(found=['/usr/bin/g16'])
+        self.assertEqual(arc_object.ess_settings['gaussian'], ['zeus'])
+        self.assertEqual(arc_object.ess_settings['orca'], ['zeus'])
+
+
+class ReachedTheCleanup(Exception):
+    """Raised to stop a run right after its check file cleanup, so the rest of the run is not needed."""
+
+
+class SchedulerStub(object):
+    """Stands in for a Scheduler that has finished running a project's jobs on a server."""
+
+    def __init__(self, remote_project_paths: dict):
+        self.remote_project_paths = remote_project_paths
+        self.output = dict()
+        self.species_dict = dict()
+        self.rxn_list = list()
+
+
+class TestCheckFileCleanup(unittest.TestCase):
+    """
+    Contains unit tests for deleting ESS checkfiles when ARC terminates, both locally and on the servers.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.project = 'arc_check_file_cleanup_test'
+        cls.other_project = 'an_unrelated_arc_project'
+        cls.server = 'server2'
+        cls.server_settings = {'cluster_soft': 'Slurm',
+                               'address': 'server2.host.edu',
+                               'un': 'test_user',
+                               'key': 'path_to_rsa_key',
+                               }
+
+    def setUp(self):
+        """
+        A method that is run before each unit test in this class.
+        Set up a fake remote server: a temporary directory in which the commands ARC would have sent
+        to a server are actually executed, so that the real cleanup code path is exercised.
+        The server definition is pinned so that neither a user settings file nor a missing 'server2'
+        entry can change the remote path this test builds and cleans.
+        """
+        self.remote_root = tempfile.mkdtemp()
+        self.project_directory = os.path.join(tempfile.mkdtemp(), self.project)
+        for patcher in [patch.dict('arc.job.adapter.servers', {self.server: self.server_settings}),
+                        patch.dict('arc.job.ssh.servers', {self.server: self.server_settings}),
+                        patch.object(SSHClient, 'connect', lambda ssh_client: None),
+                        patch.object(SSHClient, '_send_command_to_server',
+                                     lambda ssh_client, command, remote_path='':
+                                     self.send_command_to_fake_server(command, remote_path))]:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def send_command_to_fake_server(self, command: str, remote_path: str = '') -> tuple:
+        """
+        Execute a command in the fake remote server directory instead of sending it to a server.
+
+        Args:
+            command (str): The command to execute.
+            remote_path (str, optional): The directory path at which the command will be executed.
+
+        Returns: tuple[list, list]
+            The lines of the standard output and of the standard error streams.
+        """
+        result = subprocess.run(command, shell=True, capture_output=True, text=True,
+                                cwd=os.path.join(self.remote_root, remote_path))
+        return result.stdout.splitlines(True), result.stderr.splitlines(True)
+
+    def get_remote_project_path(self, project: str) -> str:
+        """
+        Get the remote path of a project's directory, as spawning a job on the server determines it.
+
+        Args:
+            project (str): The ARC project name.
+
+        Returns: str
+            The remote path of the project's directory.
+        """
+        job = GaussianAdapter(execution_type='queue',
+                              job_type='opt',
+                              level=Level(method='b3lyp', basis='6-31g'),
+                              project=project,
+                              project_directory=self.project_directory,
+                              species=[ARCSpecies(label='spc1', smiles='C')],
+                              server=self.server,
+                              testing=True,
+                              )
+        return job.remote_project_path
+
+    def set_up_arc_and_check_files(self, keep_checks: bool) -> ARC:
+        """
+        Create an ARC object running Gaussian on the fake remote server, along with the check files
+        it would have left behind locally and remotely.
+
+        Args:
+            keep_checks (bool): Whether to keep ESS checkfiles when ARC terminates.
+
+        Returns: ARC
+            The ARC object.
+        """
+        arc0 = ARC(project=self.project,
+                   project_directory=self.project_directory,
+                   species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)],
+                   level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
+                   ess_settings={'gaussian': ['local', self.server]},
+                   keep_checks=keep_checks,
+                   )
+        self.remote_project_paths = {self.server: self.get_remote_project_path(self.project)}
+        self.local_check_path = os.path.join(arc0.project_directory, 'calcs', 'Species', 'spc1',
+                                             'opt_a1', 'check.chk')
+        self.remote_check_path = os.path.join(self.remote_root, self.remote_project_paths[self.server],
+                                              'spc1', 'opt_a1', 'check.chk')
+        self.remote_output_path = os.path.join(self.remote_root, self.remote_project_paths[self.server],
+                                               'spc1', 'opt_a1', 'input.log')
+        self.other_project_check_path = os.path.join(self.remote_root,
+                                                     self.get_remote_project_path(self.other_project),
+                                                     'spc2', 'opt_a1', 'check.chk')
+        for path in [self.local_check_path, self.remote_check_path,
+                     self.remote_output_path, self.other_project_check_path]:
+            if not os.path.isdir(os.path.dirname(path)):
+                os.makedirs(os.path.dirname(path))
+            with open(path, 'w') as f:
+                f.write('dummy file content')
+        return arc0
+
+    def test_check_files_are_deleted_locally_and_remotely(self):
+        """Test that check files are deleted on the server as well as locally when keep_checks is False,
+        and that only check files, and only those under this project's own remote directory, are deleted"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=False)
+        arc0.clean_check_files(remote_project_paths=self.remote_project_paths)
+        self.assertFalse(os.path.isfile(self.local_check_path))
+        self.assertFalse(os.path.isfile(self.remote_check_path))
+        self.assertTrue(os.path.isfile(self.remote_output_path))
+        self.assertTrue(os.path.isfile(self.other_project_check_path))
+
+    def test_check_files_are_kept_locally_and_remotely(self):
+        """Test that check files are kept on the server as well as locally when keep_checks is True"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=True)
+        arc0.clean_check_files(remote_project_paths=self.remote_project_paths)
+        self.assertTrue(os.path.isfile(self.local_check_path))
+        self.assertTrue(os.path.isfile(self.remote_check_path))
+        self.assertTrue(os.path.isfile(self.remote_output_path))
+        self.assertTrue(os.path.isfile(self.other_project_check_path))
+
+    def test_check_files_are_deleted_locally_when_no_server_was_used(self):
+        """Test that a project which only ran locally still has its local check files deleted"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=False)
+        arc0.clean_check_files()
+        self.assertFalse(os.path.isfile(self.local_check_path))
+        self.assertTrue(os.path.isfile(self.remote_check_path))
+
+    def test_a_run_reaches_the_remote_cleanup_with_the_scheduler_remote_paths(self):
+        """Test that executing a project actually deletes the server's check files, the cleanup is wired"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=False)
+        scheduler = SchedulerStub(remote_project_paths=self.remote_project_paths)
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch.object(ARC, 'delete_leftovers', side_effect=ReachedTheCleanup):
+            with self.assertRaises(ReachedTheCleanup):
+                arc0.execute()
+        self.assertFalse(os.path.isfile(self.local_check_path))
+        self.assertFalse(os.path.isfile(self.remote_check_path))
+        self.assertTrue(os.path.isfile(self.remote_output_path))
+        self.assertTrue(os.path.isfile(self.other_project_check_path))
+
+    def tearDown(self):
+        """
+        A method that is run after each unit test in this class.
+        Detach ARC's log file handler before removing the directory it writes into,
+        so that a later test logging through it does not hit a deleted file.
+        """
+        arc_logger = get_logger()
+        for handler in arc_logger.handlers[:]:
+            if isinstance(handler, logging.FileHandler):
+                handler.close()
+                arc_logger.removeHandler(handler)
+        shutil.rmtree(self.remote_root, ignore_errors=True)
+        shutil.rmtree(os.path.dirname(self.project_directory), ignore_errors=True)
 
 
 class TestRestartRoundTrip(unittest.TestCase):
