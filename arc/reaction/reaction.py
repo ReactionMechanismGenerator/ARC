@@ -4,7 +4,11 @@ A module for representing a reaction.
 
 from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError
-from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
+from arc.family.family import (ReactionFamily,
+                               get_families_from_product_dicts,
+                               get_reaction_family_products,
+                               is_family_available,
+                               )
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species.converter import (check_xyz_dict,
                                    sort_xyz_using_indices,
@@ -111,10 +115,11 @@ class ARCReaction(object):
         self.long_kinetic_description = ''
         self._family = None
         self._family_determined = False
+        self._family_pinned = False
         self._family_own_reverse = None
         self._product_dicts = None
         if family is not None:
-            if check_family_name(family):
+            if is_family_available(family):
                 self.family = family
             else:
                 raise ValueError(f"Invalid family name: {family}")
@@ -227,12 +232,14 @@ class ARCReaction(object):
         """
         Allow setting family. Product dictionaries that were already generated are restricted to the
         new family, and are discarded so that they are regenerated on demand if none of them belong
-        to it.
+        to it. A family set here is a pinned family: it becomes the family set that ``get_product_dicts()``
+        loads, while a family that was determined lazily by the ``family`` property does not.
         """
         if value is not None and not isinstance(value, str):
             raise InputError(f'Reaction family must be a string, got {value} which is a {type(value)}.')
         self._family = value
         self._family_determined = True
+        self._family_pinned = value is not None
         self._family_own_reverse = None
         if self._product_dicts is not None and value is not None:
             self._product_dicts = [product_dict for product_dict in self._product_dicts
@@ -556,23 +563,54 @@ class ARCReaction(object):
               'discovered_in_reverse': bool: Whether the reaction was discovered in reverse},
              ]
 
+        A family pinned on this reaction is used as the family set to generate from, so that a family
+        which the configured ``settings['rmg_family_set']`` does not contain still generates its
+        products. Both an RMG family and an ARC family are reached this way. A family the ``family``
+        property determined lazily is not a pinned family and does not narrow anything. The narrowing
+        is applied only when no set is named at the call site and both family sources are considered.
+
         Args:
             rmg_family_set (list[str] | str, optional): The RMG family set to use.
-                                                        ``None`` (the default) means ``settings['rmg_family_set']``,
-                                                        read on every call.
+                                                        ``None`` (the default) means this reaction's family if one
+                                                        is pinned, otherwise ``settings['rmg_family_set']``, read on
+                                                        every call.
             consider_rmg_families (bool, optional): Whether to consider RMG's families in addition to ARC's.
             consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
 
+        Raises:
+            ReactionError: If a family pinned on this reaction is either not an available family,
+                           or generates no products for this reaction.
+
         Returns:
             list[dict]: A list of dictionaries with the RMG reaction family products.
         """
+        use_pinned_family = rmg_family_set is None and self._family_pinned \
+            and consider_rmg_families and consider_arc_families
+        if use_pinned_family:
+            self.check_family()
+            rmg_family_set = [self._family]
+            logger.info(f'Reaction {self.label} was assigned the {self._family} family, '
+                        f'so only that family is searched for it.')
         product_dicts = get_reaction_family_products(rxn=self,
                                                      rmg_family_set=rmg_family_set,
                                                      consider_rmg_families=consider_rmg_families,
                                                      consider_arc_families=consider_arc_families,
                                                      discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
                                                      )
+        if use_pinned_family and not len(product_dicts):
+            families = get_families_from_product_dicts(
+                get_reaction_family_products(rxn=self,
+                                             rmg_family_set='all',
+                                             consider_rmg_families=consider_rmg_families,
+                                             consider_arc_families=consider_arc_families,
+                                             discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
+                                             ))
+            if len(families):
+                raise ReactionError(f'Reaction {self.label} was assigned the {self._family} family, but it does not '
+                                    f'match this family. The families it does match are: {families}.')
+            raise ReactionError(f'Reaction {self.label} was assigned the {self._family} family, but it does not '
+                                f'match this family, nor any other available reaction family.')
         return product_dicts
 
     def restrict_product_dicts_to_family(self,
@@ -596,10 +634,7 @@ class ARCReaction(object):
         """
         if not len(product_dicts):
             return product_dicts
-        families = list()
-        for product_dict in product_dicts:
-            if product_dict['family'] not in families:
-                families.append(product_dict['family'])
+        families = get_families_from_product_dicts(product_dicts)
         family = self._family if self._family is not None else families[0]
         restricted = [product_dict for product_dict in product_dicts if product_dict['family'] == family]
         if not len(restricted):
@@ -641,15 +676,21 @@ class ARCReaction(object):
         """
         Determine the RMG reaction family.
         When all arguments are left at their defaults, the cached ``product_dicts`` property is used
-        instead of generating a new product dicts list.
+        instead of generating a new product dicts list. Product dicts are otherwise generated through
+        ``get_product_dicts()``, so a family pinned on this reaction narrows what is loaded here too.
 
         Args:
             rmg_family_set (list[str] | str, optional): The RMG family set to use.
-                                                        ``None`` (the default) means ``settings['rmg_family_set']``,
-                                                        read on every call.
+                                                        ``None`` (the default) means this reaction's family if one
+                                                        is pinned, otherwise ``settings['rmg_family_set']``, read on
+                                                        every call.
             consider_rmg_families (bool, optional): Whether to consider RMG's families in addition to ARC's.
             consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
+
+        Raises:
+            ReactionError: If a family pinned on this reaction is either not an available family,
+                           or generates no products for this reaction.
 
         Returns:
             tuple[str | None, bool | None]: The reaction family label,
@@ -658,20 +699,31 @@ class ARCReaction(object):
         if rmg_family_set is None and consider_rmg_families and consider_arc_families and not discover_own_reverse_rxns_in_reverse:
             product_dicts = self.product_dicts
         else:
-            product_dicts = get_reaction_family_products(rxn=self,
-                                                         rmg_family_set=rmg_family_set,
-                                                         consider_rmg_families=consider_rmg_families,
-                                                         consider_arc_families=consider_arc_families,
-                                                         discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
-                                                         )
+            product_dicts = self.get_product_dicts(rmg_family_set=rmg_family_set,
+                                                   consider_rmg_families=consider_rmg_families,
+                                                   consider_arc_families=consider_arc_families,
+                                                   discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
+                                                   )
         if len(product_dicts):
             family, family_own_reverse = product_dicts[0]['family'], product_dicts[0]['own_reverse']
             return family, family_own_reverse
         return None, None
 
+    def check_family(self):
+        """
+        Check that a family pinned on this reaction can be loaded by label.
+
+        Raises:
+            ReactionError: If the pinned family is not an available family.
+        """
+        if self._family_pinned and not is_family_available(self._family):
+            raise ReactionError(f'Reaction {self.label} was assigned the {self._family} family, '
+                                f'which is not an available RMG or ARC reaction family.')
+
     def check_attributes(self):
         """Check that the Reaction object is defined correctly"""
         self.set_label_reactants_products()
+        self.check_family()
         if not self.label:
             raise ReactionError('A reaction seems to not be defined correctly')
         if self.arrow not in self.label:
