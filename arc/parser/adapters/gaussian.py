@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import re
 
-from arc.common import SYMBOL_BY_NUMBER, is_same_pivot
+from arc.common import SYMBOL_BY_NUMBER, get_angle_in_180_range, is_same_pivot
 from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import str_to_xyz, xyz_from_data
 from arc.parser.adapter import ESSAdapter
@@ -326,6 +326,13 @@ class GaussianParser(ESSAdapter, ABC):
         """
         Parse the 1D torsion scan energies from an ESS log file.
 
+        The reported angles are the cumulative rotation relative to the first scan point,
+        accumulated from the per-step displacements of the raw dihedral values.
+        They start at zero, retain the sign of the scan direction (negative for a scan with a
+        negative step size), and are not folded into the 0-360 degree range, so a sweep that
+        completes a full turn ends at +/-360 degrees. Consecutive scan points recorded in the log
+        are assumed to be less than 180 degrees apart.
+
         Returns: tuple[list[float] | None, list[float] | None]
             The electronic energy in kJ/mol and the dihedral scan angle in degrees.
         """
@@ -376,11 +383,8 @@ class GaussianParser(ESSAdapter, ABC):
             angle = np.array(angle, float)
             if len(angle) != len(vlist):
                 return None, None
-            angle -= angle[0]
-            angle[angle < 0] += 360.0
-            if len(angle) > 1 and angle[-1] < 2 * (angle[1] - angle[0]):
-                angle[-1] += 360.0
-            angle = angle.tolist()
+            steps = [get_angle_in_180_range(step, round_to=None) for step in np.diff(angle)]
+            angle = np.concatenate(([0.0], np.cumsum(steps))).tolist() if len(steps) else [0.0]
 
         vlist = np.array(vlist, float)
         vlist -= np.min(vlist)

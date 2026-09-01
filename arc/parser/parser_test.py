@@ -1031,6 +1031,39 @@ H      -1.69381305    0.40788834    0.90078104"""
                                       -205.51540006, -205.52742038, -205.53811826, -205.5472153 ,
                                       -205.55449977, -205.55981412, -205.56304759, -205.56413261])
 
+    def test_parse_1d_scan_energies_gaussian_scan_direction(self):
+        """Test that Gaussian 1D scan angles stay monotonic and keep the scan direction"""
+        forward_wrapping_path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2.out')
+        energies, angles = parser.parse_1d_scan_energies(log_file_path=forward_wrapping_path)
+        self.assertEqual(len(angles), len(energies))
+        self.assertEqual(len(angles), 37)
+        np.testing.assert_almost_equal(angles, np.arange(0.0, 360.1, 10.0), 3)
+        self.assertGreater(min(np.diff(angles)), 0)
+
+        reverse_path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2_reverse_scan.out')
+        energies_rev, angles_rev = parser.parse_1d_scan_energies(log_file_path=reverse_path)
+        self.assertEqual(len(angles_rev), len(energies_rev))
+        self.assertEqual(len(angles_rev), 37)
+        np.testing.assert_almost_equal(angles_rev, np.arange(0.0, -360.1, -10.0), 3)
+        self.assertLess(max(np.diff(angles_rev)), 0)
+        self.assertAlmostEqual(angles_rev[-1], -360.0, 3)
+
+        two_point_path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2_two_point_scan.out')
+        energies_2, angles_2 = parser.parse_1d_scan_energies(log_file_path=two_point_path)
+        self.assertEqual(len(angles_2), 2)
+        np.testing.assert_almost_equal(angles_2, [0.0, 10.0], 3)
+
+        short_forward_path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'TS_errored.out')
+        energies_3, angles_3 = parser.parse_1d_scan_energies(log_file_path=short_forward_path)
+        self.assertEqual(len(angles_3), 3)
+        np.testing.assert_almost_equal(angles_3, [0.0, 30.0, 60.0], 3)
+
+        non_uniform_path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'l103_err.out')
+        energies_4, angles_4 = parser.parse_1d_scan_energies(log_file_path=non_uniform_path)
+        self.assertEqual(len(angles_4), len(energies_4))
+        np.testing.assert_almost_equal(angles_4, [0.0, 24.0, 32.0, 40.0], 3)
+        self.assertGreater(min(np.diff(angles_4)), 0)
+
     def test_parse_nd_scan_energies(self):
         """Test parsing an ND scan output file"""
         path1 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'scan_2D_relaxed_OCdOO.log')
