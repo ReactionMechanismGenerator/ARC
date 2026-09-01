@@ -471,6 +471,8 @@ class TestParser(unittest.TestCase):
         """Test that the frequencies and normal mode displacements are returned unchanged."""
         for log_file_path in [os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log'),
                               os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml'),
+                              os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out'),
+                              os.path.join(ARC_TESTING_PATH, 'freq', 'orca_example_freq.log'),
                               os.path.join(ARC_TESTING_PATH, 'normal_mode', 'TS_0', 'output.out')]:
             expected_freqs, expected_disp = parser.parse_normal_mode_displacement(log_file_path=log_file_path)
             parsed_modes = parser.get_normal_mode_displacement(log_file_path=log_file_path, label='TS')
@@ -480,8 +482,8 @@ class TestParser(unittest.TestCase):
 
     def test_get_normal_mode_displacement_returns_none_when_no_modes_are_reported(self):
         """Test that an output file yielding no normal mode displacements returns None, not the (None, None) sentinel."""
-        for file_name in ['orca_neg_freq_ts.out', 'orca_example_freq.log', 'orca6_example.out',
-                          'CH2O_freq_molpro.out', 'C2H6_freq_QChem.out', 'CH2O_freq_terachem.dat',
+        for file_name in ['orca6_example.out', 'CH2O_freq_molpro.out', 'C2H6_freq_QChem.out',
+                          'CH2O_freq_terachem.dat',
                           'yml_no_freqs.yml']:
             log_file_path = os.path.join(ARC_TESTING_PATH, 'freq', file_name)
             self.assertEqual(parser.parse_normal_mode_displacement(log_file_path=log_file_path), (None, None))
@@ -534,6 +536,26 @@ class TestParser(unittest.TestCase):
         )
         mass_weighted_sum = (masses[:, np.newaxis] * normal_modes_disp[0]).sum(axis=0)
         np.testing.assert_allclose(mass_weighted_sum, np.zeros(3), atol=1e-3)
+
+    def test_parse_truncated_orca_normal_mode_displacement(self):
+        """Test that a truncated Orca normal-mode block returns no modes instead of raising an IndexError."""
+        import tempfile
+
+        path = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'n_cetane', 'output.log')
+        with open(path, 'r') as f:
+            lines = f.readlines()
+        normal_modes_start = next(i for i, line in enumerate(lines) if line.strip() == 'NORMAL MODES')
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+            truncated_path = f.name
+            f.writelines(lines[:normal_modes_start + 10])
+        try:
+            self.assertEqual(
+                parser.parse_normal_mode_displacement(log_file_path=truncated_path),
+                (None, None),
+            )
+        finally:
+            os.remove(truncated_path)
 
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""

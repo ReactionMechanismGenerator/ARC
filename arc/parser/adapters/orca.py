@@ -203,9 +203,16 @@ class OrcaParser(ESSAdapter, ABC):
                     continue
                 i += 1
                 for row in range(n_dof):
+                    if i >= len(lines):
+                        return None, None
                     vals = lines[i].split()[1:]
+                    if len(vals) < len(col_indices):
+                        return None, None
                     for k, col in enumerate(col_indices):
-                        full_matrix[row][col] = float(vals[k])
+                        try:
+                            full_matrix[row][col] = float(vals[k])
+                        except (IndexError, ValueError):
+                            return None, None
                     i += 1
                 n_cols_parsed += len(col_indices)
             else:

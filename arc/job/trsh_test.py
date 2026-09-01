@@ -987,10 +987,28 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(output_errors, list())
         self.assertEqual(output_warnings, list())
 
+    def test_trsh_negative_freq_orca(self):
+        """Test troubleshooting a negative frequency using Orca normal-mode displacements."""
+        log_file = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        current_neg_freqs_trshed, conformers, output_errors, output_warnings = \
+            trsh.trsh_negative_freq(label='orca_ts', log_file=log_file)
+
+        self.assertEqual(current_neg_freqs_trshed, [-1271.62])
+        self.assertEqual(len(conformers), 2)
+        xyz = parse_geometry(log_file_path=log_file)
+        freqs, modes = parse_normal_mode_displacement(log_file_path=log_file)
+        mode_index = int(np.argmin(freqs))
+        coords = np.array(xyz['coords'], np.float64)
+        mode = np.array(modes[mode_index], np.float64)
+        np.testing.assert_allclose(np.array(conformers[0]['coords']) - coords, 0.25 * mode, atol=1e-10)
+        np.testing.assert_allclose(np.array(conformers[1]['coords']) - coords, -0.25 * mode, atol=1e-10)
+        self.assertEqual(output_errors, list())
+        self.assertEqual(output_warnings, list())
+
     def test_trsh_negative_freq_for_an_ess_without_normal_mode_displacements(self):
         """Test that an ESS output file reporting no normal mode displacements is reported, not indexed."""
-        for file_name in ['orca_neg_freq_ts.out', 'orca_example_freq.log', 'orca6_example.out',
-                          'CH2O_freq_molpro.out', 'C2H6_freq_QChem.out', 'CH2O_freq_terachem.dat']:
+        for file_name in ['orca6_example.out', 'CH2O_freq_molpro.out', 'C2H6_freq_QChem.out',
+                          'CH2O_freq_terachem.dat']:
             log_file = os.path.join(ARC_TESTING_PATH, 'freq', file_name)
             self.assertEqual(parse_normal_mode_displacement(log_file_path=log_file), (None, None))
             current_neg_freqs_trshed, conformers, output_errors, output_warnings = \
