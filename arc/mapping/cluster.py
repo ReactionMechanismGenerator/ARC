@@ -106,6 +106,13 @@ class MapCluster:
         key (tuple): The canonical ``Aut(R)``-invariant form of the changed-bond set.
         signature (tuple): A human-readable orbit-level signature of the reaction center.
         truncated (bool): Whether the automorphism group used to build ``key`` was truncated.
+        recipe_validated (bool): Whether this channel's reaction center is one the family recipe actually
+                                 predicts. ``False`` means no recipe reference was available, or that it
+                                 rejected every enumerated map and the relative minimal-center heuristic
+                                 was used instead; the channel is then only as good as the enumeration
+                                 behind it. ``False`` alongside an implausibly large center - 13 changed
+                                 bonds for a recombination that forms one - marks a scrambled enumeration
+                                 rather than a real reaction channel.
     """
     representative: list[int]
     members: list[list[int]] = field(default_factory=list)
@@ -114,6 +121,7 @@ class MapCluster:
     key: tuple = ()
     signature: tuple = ()
     truncated: bool = False
+    recipe_validated: bool = True
 
     @property
     def enumerated_degeneracy(self) -> int:
@@ -206,9 +214,9 @@ def effective_adjacency(graph: ComplexGraph, ignore_bond_orders: bool = True) ->
     order-sensitive group under-counts the symmetry and splits clusters that are genuinely equivalent.
     This must agree with the ``ignore_bond_orders`` setting used by :func:`changed_bonds`.
 
-    Note that this normalizes bond orders only. Per-atom radical and lone-pair counts are still part of
-    ``graph.invariant`` and remain resonance-form dependent, so a delocalized radical can still be seen as
-    less symmetric than it physically is.
+    Note that this normalizes bond orders only. The matching treatment of the resonance-mobile per-atom
+    attributes - radical electrons, lone pairs, formal charge - lives in :func:`effective_invariant`, and
+    the two must be used with the same ``ignore_bond_orders`` setting.
 
     Args:
         graph (ComplexGraph): The complex graph.
@@ -220,6 +228,34 @@ def effective_adjacency(graph: ComplexGraph, ignore_bond_orders: bool = True) ->
     if not ignore_bond_orders:
         return graph.adj
     return {v: {u: 1 for u in neighbors} for v, neighbors in graph.adj.items()}
+
+
+def effective_invariant(graph: ComplexGraph, ignore_bond_orders: bool = True) -> dict[int, tuple]:
+    """
+    The per-core-atom colour seeding the symmetry search.
+
+    ``ignore_bond_orders`` exists because RMG stores one Kekule structure of what is physically a
+    delocalized system. Resonance moves more than bond orders, though - it also moves radical electrons,
+    lone pairs and formal charges between atoms that are physically equivalent. Seeding the colouring with
+    those makes a delocalized species look less symmetric than it is: allyl's two terminal carbons are
+    distinguished only by which one the stored Lewis structure happens to carry the radical on, which
+    halves every degeneracy computed through it. They are therefore dropped alongside the bond orders,
+    leaving the element and the attached-hydrogen count, both of which resonance preserves.
+
+    The trade-off is that two fragments differing *only* in charge or radical count - and not in element,
+    connectivity or hydrogen count - are then seen as interchangeable. That is the correct reading for
+    resonance forms of one species, and the price paid for it elsewhere.
+
+    Args:
+        graph (ComplexGraph): The complex graph.
+        ignore_bond_orders (bool, optional): Whether resonance-mobile attributes are dropped.
+
+    Returns:
+        dict[int, tuple]: The colour seed per core atom.
+    """
+    if not ignore_bond_orders:
+        return graph.invariant
+    return {v: (graph.invariant[v][0], graph.invariant[v][-1]) for v in graph.core}
 
 
 def refine_colors(graph: ComplexGraph, ignore_bond_orders: bool = True) -> dict[int, int]:
@@ -235,7 +271,7 @@ def refine_colors(graph: ComplexGraph, ignore_bond_orders: bool = True) -> dict[
         dict[int, int]: The stable colour per core atom.
     """
     adj = effective_adjacency(graph, ignore_bond_orders=ignore_bond_orders)
-    labels = {v: graph.invariant[v] for v in graph.core}
+    labels = effective_invariant(graph, ignore_bond_orders=ignore_bond_orders)
     colors = _compress(labels)
     while True:
         signatures = {v: (colors[v], tuple(sorted((colors[u], order) for u, order in adj[v].items())))
@@ -739,11 +775,25 @@ def cluster_atom_maps(atom_maps: list[list[int]],
             continue
         scored.append((atom_map, changed_bonds(r_graph, p_graph, atom_map,
                                                ignore_bond_orders=ignore_bond_orders)))
+    if ignore_bond_orders and scored and not any(center for _, center in scored):
+        # Every center is empty, which means no bond was made or broken and the reaction is a pure
+        # bond-order change: 1,2-Birad_to_alkene, Singlet_Val6_to_triplet. Ignoring orders erases the whole
+        # reaction center for those, leaving nothing to cluster on, nothing for either validity filter to
+        # judge, and a degenerate answer. Retry honoring orders, which is the only setting that can
+        # describe them. Note the recipe-based reference is unavailable there (it predicts only breaking
+        # and formation), so validation falls back to the relative minimal-center filter.
+        logger.debug(f'Every enumerated atom map for {rxn} changes only bond orders; re-clustering with '
+                     f'bond orders honored.')
+        return cluster_atom_maps(atom_maps, rxn, ignore_bond_orders=False,
+                                 validate_centers=validate_centers)
+
+    recipe_validated = False
     if validate_centers and scored:
         expected = expected_reaction_centers(rxn, ignore_bond_orders=ignore_bond_orders)
         validated = filter_expected_centers(scored, expected, rxn) if expected else list()
         if validated:
             scored = validated
+            recipe_validated = True
         else:
             # Either no recipe reference was available, or it rejected every enumerated map - which would
             # mean returning no channels at all. Fall back to the relative filter rather than that.
@@ -763,10 +813,35 @@ def cluster_atom_maps(atom_maps: list[list[int]],
                                        key=key,
                                        degeneracy=center_degeneracy(center, r_graph, automorphisms),
                                        signature=center_signature(collapsed, orbits, r_graph.symbols),
-                                       truncated=truncated)
+                                       truncated=truncated,
+                                       recipe_validated=recipe_validated)
         clusters[key].members.append(list(atom_map))
         clusters[key].centers.add(center)
     return sorted(clusters.values(), key=lambda cluster: (-cluster.degeneracy, cluster.key))
+
+
+def resolve_duplicate_label(index: int, r_label_map: dict) -> int | None:
+    """
+    Recover the second site of a recipe action that names one template label twice.
+
+    ``R_Recombination``'s recipe is ``FORM_BOND(*, *)``: one label, two distinct atoms.
+    ``ARCReaction.get_expected_changing_bonds`` reads the base label only, so both endpoints resolve to the
+    same index and the bond looks degenerate. The label map does carry the second site, under a suffixed
+    key (``{'*': 0, '*_2': 4}``), so it can be recovered instead of discarding the reference entirely -
+    which previously left every ``R_Recombination`` reaction with no absolute validity reference at all.
+
+    Args:
+        index (int): The index both endpoints resolved to.
+        r_label_map (dict): The product dictionary's label map.
+
+    Returns:
+        int | None: The sibling index, or ``None`` if the map carries no suffixed variant.
+    """
+    bases = {key.split('_')[0] for key, value in r_label_map.items() if value == index}
+    for key, value in sorted(r_label_map.items()):
+        if value != index and key.split('_')[0] in bases:
+            return value
+    return None
 
 
 def expected_reaction_centers(rxn, ignore_bond_orders: bool = True) -> set[frozenset] | None:
@@ -791,9 +866,9 @@ def expected_reaction_centers(rxn, ignore_bond_orders: bool = True) -> set[froze
       some product dictionaries lack a label the actions reference and raise ``KeyError``. Only 6 of the 32
       product dictionaries of one benchmark reaction are readable this way.
     - **A degenerate self-bond.** An action naming the same label twice (``R_Recombination``'s
-      ``* + * -> *-*``) resolves both endpoints to one index. ``find_all_breaking_bonds`` disambiguates
-      those through suffixed label keys; that logic is not reproduced here, so the affected dictionary is
-      skipped instead of contributing a wrong center.
+      ``* + * -> *-*``) resolves both endpoints to one index. :func:`resolve_duplicate_label` recovers the
+      second site from the suffixed label key the map carries (``*_2``); only when no such sibling exists
+      is the dictionary skipped, rather than contributing a wrong center.
 
     Returns ``None``, meaning "no usable reference at all", when the reaction has no family or no product
     dictionaries, when ``ignore_bond_orders`` is ``False`` (the recipe describes only bond breaking and
@@ -830,8 +905,10 @@ def expected_reaction_centers(rxn, ignore_bond_orders: bool = True) -> set[froze
         for pairs, orders in ((breaking or list(), (1, 0)), (forming or list(), (0, 1))):
             for i, j in pairs:
                 if i == j:
-                    center = None
-                    break
+                    j = resolve_duplicate_label(i, r_label_map)
+                    if j is None or j == i:
+                        center = None
+                        break
                 center.add((min(i, j), max(i, j)) + orders)
             if center is None:
                 break
@@ -907,6 +984,47 @@ def filter_minimal_centers(scored: list[tuple[list[int], frozenset]],
     return kept
 
 
+def warn_if_atom_map_is_unclustered(rxn, clusters: list, ignore_bond_orders: bool = True) -> bool:
+    """
+    Warn when the single map ``ARCReaction.atom_map`` returns is in none of the enumerated channels.
+
+    That disagreement is worth surfacing: the clusters are filtered against the family recipe, so a map
+    outside all of them usually means the single-map pipeline returned a scrambled result rather than that
+    a channel is missing. It shows up as a wildly oversized reaction center - 11 changed bonds against a
+    recipe predicting 3, for ``C2H5OO <=> C2H4 + HO2``.
+
+    The atom map is only inspected when it has *already* been computed. Reading ``rxn.atom_map`` here would
+    run the whole single-map pipeline as a side effect of clustering, which this module deliberately never
+    does.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+        clusters (list): The clusters just computed for it.
+        ignore_bond_orders (bool, optional): Must match the setting the clusters were built with.
+
+    Returns:
+        bool: Whether a warning was issued.
+    """
+    atom_map = getattr(rxn, '_atom_map', None)
+    if not atom_map or not clusters:
+        return False
+    try:
+        reactants, products = rxn.get_reactants_and_products(return_copies=True)
+        r_graph, p_graph = build_complex_graph(reactants), build_complex_graph(products)
+    except (KeyError, ValueError, AttributeError):
+        return False
+    if not is_permutation_map(atom_map, r_graph.n_atoms, p_graph.n_atoms):
+        return False
+    center = changed_bonds(r_graph, p_graph, atom_map, ignore_bond_orders=ignore_bond_orders)
+    if any(center in cluster.centers for cluster in clusters):
+        return False
+    sizes = sorted({len(known) for cluster in clusters for known in cluster.centers})
+    logger.warning(f'The atom map of {rxn} is in none of its {len(clusters)} enumerated reaction '
+                   f'channels: it changes {len(center)} bonds, against {sizes} for the channels. '
+                   f'atom_map is most likely scrambled for this reaction.')
+    return True
+
+
 def map_reaction_clusters(rxn,
                           backend: str = 'ARC',
                           include_flipped: bool = True,
@@ -924,6 +1042,9 @@ def map_reaction_clusters(rxn,
     Returns:
         list[MapCluster]: The clusters, ordered by descending degeneracy.
     """
-    return cluster_atom_maps(enumerate_atom_maps(rxn, backend=backend, include_flipped=include_flipped),
-                             rxn,
-                             ignore_bond_orders=ignore_bond_orders)
+    clusters = cluster_atom_maps(enumerate_atom_maps(rxn, backend=backend,
+                                                     include_flipped=include_flipped),
+                                 rxn,
+                                 ignore_bond_orders=ignore_bond_orders)
+    warn_if_atom_map_is_unclustered(rxn, clusters, ignore_bond_orders=ignore_bond_orders)
+    return clusters

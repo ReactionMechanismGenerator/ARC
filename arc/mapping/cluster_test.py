@@ -539,6 +539,81 @@ class TestHydrogenStabilizer(unittest.TestCase):
         self.assertEqual(cluster.hydrogen_stabilizer(frozenset({(0, 1, 1, 0)}), [1]), 1)
 
 
+class TestResonanceInsensitiveColoring(unittest.TestCase):
+    """
+    Contains unit tests for symmetry detection across resonance forms.
+    """
+
+    @staticmethod
+    def _abstraction_degeneracy(radical_smiles):
+        """CH4 + R. -> CH3. + RH, abstracting onto the radical site of R."""
+        radical = ARCSpecies(label='R', smiles=radical_smiles)
+        methane = ARCSpecies(label='CH4', smiles='C')
+        graph = cluster.build_complex_graph([radical, methane])
+        site = [i for i, atom in enumerate(radical.mol.atoms) if atom.radical_electrons][0]
+        carbon = [v for v in graph.core
+                  if graph.symbols[v] == 'C' and v >= len(radical.mol.atoms)][0]
+        hydrogen = [h for h, parent in graph.parent.items() if parent == carbon][0]
+        center = frozenset({(min(carbon, hydrogen), max(carbon, hydrogen), 1, 0),
+                            (min(site, hydrogen), max(site, hydrogen), 0, 1)})
+        automorphisms, _ = cluster.core_automorphisms(graph)
+        return cluster.center_degeneracy(center, graph, automorphisms)
+
+    def test_delocalized_radicals_match_rmg(self):
+        """Test that a radical spread over equivalent sites is as symmetric as it physically is.
+
+        The stored Lewis structure puts the radical on one particular atom, which made allyl's two terminal
+        carbons look inequivalent and halved every degeneracy computed through it. Expected values are
+        RMG's own reaction path degeneracies for these abstractions.
+        """
+        self.assertEqual(self._abstraction_degeneracy('[CH2]C=C'), 8)
+        self.assertEqual(self._abstraction_degeneracy('[O]N=O'), 8)
+        self.assertEqual(self._abstraction_degeneracy('[CH]1C=CC=C1'), 20)
+
+    def test_a_genuinely_unique_site_is_not_inflated(self):
+        """Test that benzyl, whose radical carbon is genuinely unique, still gives 4 and not more."""
+        self.assertEqual(self._abstraction_degeneracy('[CH2]c1ccccc1'), 4)
+
+    def test_effective_invariant_drops_only_resonance_mobile_attributes(self):
+        """Test that the colour seed keeps element and hydrogen count but drops radical placement."""
+        graph = cluster.build_complex_graph([ARCSpecies(label='allyl', smiles='[CH2]C=C')])
+        insensitive = cluster.effective_invariant(graph, ignore_bond_orders=True)
+        terminals = [v for v in graph.core
+                     if graph.symbols[v] == 'C' and sum(1 for q in graph.parent.values() if q == v) == 2]
+        self.assertEqual(len(terminals), 2)
+        self.assertEqual(insensitive[terminals[0]], insensitive[terminals[1]])
+        self.assertEqual(cluster.effective_invariant(graph, ignore_bond_orders=False), graph.invariant)
+        self.assertNotEqual(graph.invariant[terminals[0]], graph.invariant[terminals[1]])
+
+
+class TestDuplicateTemplateLabels(unittest.TestCase):
+    """
+    Contains unit tests for recipes naming one template label twice, as R_Recombination does.
+    """
+
+    def test_resolve_duplicate_label(self):
+        """Test that the suffixed sibling of a duplicated label is recovered."""
+        self.assertEqual(cluster.resolve_duplicate_label(0, {'*': 0, '*_2': 4}), 4)
+        self.assertEqual(cluster.resolve_duplicate_label(4, {'*': 0, '*_2': 4}), 0)
+
+    def test_resolve_duplicate_label_without_a_sibling(self):
+        """Test that a label map carrying no suffixed variant yields nothing to recover."""
+        self.assertIsNone(cluster.resolve_duplicate_label(3, {'*': 3}))
+        self.assertIsNone(cluster.resolve_duplicate_label(3, {'*1': 3, '*2': 7}))
+
+    def test_recombination_recipe_yields_a_center(self):
+        """Test that R_Recombination now has an absolute reference instead of none at all.
+
+        Its recipe is FORM_BOND(*, *): get_expected_changing_bonds resolves both endpoints to the base
+        label's index, so the bond looked degenerate and every R_Recombination reaction fell back to the
+        relative minimal-center filter, which cannot reject a uniformly scrambled enumeration.
+        """
+        rxn = _StubReaction(family='R_Recombination',
+                            product_dicts=[{'r_label_map': {'*': 0, '*_2': 4}}],
+                            breaking=list(), forming=[(0, 0)])
+        self.assertEqual(cluster.expected_reaction_centers(rxn), {frozenset({(0, 4, 0, 1)})})
+
+
 class TestPermutationValidation(unittest.TestCase):
     """
     Contains unit tests for the guard that keeps malformed atom maps out of changed_bonds().
@@ -832,6 +907,88 @@ class TestClusteringIntegration(unittest.TestCase):
         # Attempted once, reported once, then served from the cache.
         self.assertEqual(mocked_map.call_count, 1)
         self.assertEqual(mocked_logger.error.call_count, 1)
+
+    def test_order_only_reaction_is_reclustered_with_orders_honored(self):
+        """Test that a reaction changing only bond orders still yields a real channel.
+
+        1,2-Birad_to_alkene and Singlet_Val6_to_triplet make and break nothing; they only change orders.
+        With orders ignored their whole reaction center vanishes, which left nothing to cluster on, nothing
+        for either validity filter to judge, and a degenerate answer. Clustering now detects that every
+        center came out empty and retries with orders honored.
+        """
+        reactant = ARCSpecies(label='birad', smiles='[CH2][CH2]')
+        product = ARCSpecies(label='ethene', smiles='C=C')
+        rxn = ARCReaction(r_species=[reactant], p_species=[product])
+        identity = list(range(len(reactant.mol.atoms)))
+        r_graph = cluster.build_complex_graph([reactant])
+        p_graph = cluster.build_complex_graph([product])
+        # Ignoring orders erases the center entirely.
+        self.assertEqual(cluster.changed_bonds(r_graph, p_graph, identity, ignore_bond_orders=True),
+                         frozenset())
+        clusters = cluster.cluster_atom_maps([identity], rxn)
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(clusters[0].degeneracy, 1)
+        centers = list(clusters[0].centers)
+        self.assertEqual(len(centers), 1)
+        # The C-C bond going from single to double is the reaction center.
+        self.assertEqual(sorted(centers[0]), [(0, 1, 1.0, 2.0)])
+
+    def test_warns_when_the_atom_map_is_in_no_cluster(self):
+        """Test that a single-map answer outside every enumerated channel is reported."""
+        rxn = ARCReaction(r_species=[spc.copy() for spc in self.rxn.r_species],
+                          p_species=[spc.copy() for spc in self.rxn.p_species])
+        clusters = cluster.cluster_atom_maps(self.atom_maps, rxn)
+        self.assertTrue(clusters)
+        scrambled = list(reversed(range(7)))
+        self.assertEqual(sorted(scrambled), list(range(7)))
+        rxn._atom_map = scrambled
+        with mock.patch('arc.mapping.cluster.logger') as mocked_logger:
+            self.assertTrue(cluster.warn_if_atom_map_is_unclustered(rxn, clusters))
+        self.assertEqual(mocked_logger.warning.call_count, 1)
+
+    def test_does_not_warn_when_the_atom_map_matches_a_cluster(self):
+        """Test that agreement between the single map and the channels is silent."""
+        rxn = ARCReaction(r_species=[spc.copy() for spc in self.rxn.r_species],
+                          p_species=[spc.copy() for spc in self.rxn.p_species])
+        clusters = cluster.cluster_atom_maps(self.atom_maps, rxn)
+        rxn._atom_map = clusters[0].representative
+        with mock.patch('arc.mapping.cluster.logger') as mocked_logger:
+            self.assertFalse(cluster.warn_if_atom_map_is_unclustered(rxn, clusters))
+        mocked_logger.warning.assert_not_called()
+
+    def test_does_not_compute_the_atom_map_just_to_check_it(self):
+        """Test that the check never triggers the single-map pipeline as a side effect of clustering."""
+        rxn = ARCReaction(r_species=[spc.copy() for spc in self.rxn.r_species],
+                          p_species=[spc.copy() for spc in self.rxn.p_species])
+        clusters = cluster.cluster_atom_maps(self.atom_maps, rxn)
+        self.assertIsNone(rxn._atom_map)
+        self.assertFalse(cluster.warn_if_atom_map_is_unclustered(rxn, clusters))
+        self.assertIsNone(rxn._atom_map)
+
+    def test_recipe_validated_marks_channels_backed_by_the_family_recipe(self):
+        """Test that a channel the recipe predicts is marked validated."""
+        clusters = cluster.cluster_atom_maps(self.atom_maps, self.rxn)
+        self.assertTrue(clusters[0].recipe_validated)
+
+    def test_recipe_validated_is_false_when_the_recipe_rejects_everything(self):
+        """Test that a channel built only from the relative heuristic is flagged as unvalidated.
+
+        CH3 + CH3 <=> C2H6 enumerates a single scrambled map whose center changes 13 bonds, against the
+        recipe's one forming C-C bond. The recipe now rejects it, and the fallback channel must not be
+        presented as recipe-backed.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='a', smiles='[CH3]'),
+                                     ARCSpecies(label='b', smiles='[CH3]')],
+                          p_species=[ARCSpecies(label='c', smiles='CC')])
+        scrambled = [1, 2, 3, 4, 0, 5, 6, 7]
+        clusters = cluster.cluster_atom_maps([scrambled], rxn)
+        self.assertEqual(len(clusters), 1)
+        self.assertFalse(clusters[0].recipe_validated)
+        # The correct map is accepted by the recipe and yields a one-bond center.
+        clusters = cluster.cluster_atom_maps([[0, 2, 3, 4, 1, 5, 6, 7]], rxn)
+        self.assertTrue(clusters[0].recipe_validated)
+        self.assertEqual(sorted(list(clusters[0].centers)[0]), [(0, 4, 0, 1)])
+        self.assertEqual(clusters[0].degeneracy, 1)
 
     def test_arc_reaction_atom_map_clusters_not_persisted(self):
         """Test that as_dict carries the atom map but never the derived clusters."""
