@@ -15,6 +15,22 @@ CONFORMER_JOB_TYPES = ('conf_opt', 'conf_sp')
 TS_IRC_FAILED_MARKER = 'INVALID TS (failed IRC validation)'
 
 
+def get_conformer_job_name(job_type: str, i: int) -> str:
+    """
+    Get the name of a conformer job, the inverse of ``get_i_from_job_name()``.
+    This is the single definition of the conformer job name format,
+    used both when spawning a job and when restoring one from a restart file.
+
+    Args:
+        job_type (str): The conformer job type, e.g., 'conf_opt' or 'conf_sp'.
+        i (int): The conformer index.
+
+    Returns:
+        str: The conformer job name, e.g., 'conf_opt_3'.
+    """
+    return f'{job_type}_{i}'
+
+
 def is_conformer_job(job_name: str) -> bool:
     """
     Check whether a job name represents a conformer job.
@@ -50,7 +66,7 @@ def get_i_from_job_name(job_name: str) -> int | None:
     Get the conformer or tsg index from the job name.
 
     Args:
-        job_name (str): The job name, e.g., 'conformer12' or 'tsg5'.
+        job_name (str): The job name, e.g., 'conf_opt_12', 'conf_sp_3', or 'tsg5'.
 
     Returns:
         int | None: The corresponding conformer or tsg index.

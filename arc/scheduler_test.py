@@ -240,6 +240,73 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(lines[11], '\n')
         self.assertEqual(lines[12], 'SMILES: CC\n')
 
+    def test_restore_running_jobs_conformer_reconnects(self):
+        """Restarting with a live conformer job must reconnect to it, not crash.
+
+        Regression for the restore-path job-name contract. During normal operation a running
+        conformer job is stored in ``running_jobs`` as ``'{job_type}_{i}'`` (e.g. ``'conf_opt_0'``),
+        and every consumer of ``running_jobs`` parses that format. ``restore_running_jobs`` used to
+        emit the fossil ``'conformer{i}'`` instead, which ``get_i_from_job_name`` returns ``None``
+        for; the first scheduling sweep after a restart (``get_completed_incore_jobs``) then fell
+        into its fallback branch, derived an empty job-type from the underscore-less name, and died
+        with ``KeyError: ''``. This drives a restart payload carrying a live conformer job through
+        the real restore + sweep path and asserts the reconnection instead of the crash.
+        """
+        label = 'methylamine'
+        xyz = """C      -0.57422867   -0.01669771    0.01229213
+N       0.82084044    0.08279104   -0.37769346
+H      -1.05737005   -0.84067772   -0.52007494
+H      -1.10211468    0.90879867   -0.23383011
+H      -0.66133128   -0.19490562    1.08785111
+H       0.88047852    0.26966160   -1.37780789
+H       1.27889520   -0.81548721   -0.22940984"""
+        spc = ARCSpecies(label=label, smiles='CN', xyz=xyz)
+        sched = Scheduler(project='project_test_restore_conf', ess_settings=self.ess_settings,
+                          species_list=[spc], composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=self.project_directory, testing=True,
+                          job_types=self.job_types1,
+                          orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+        # Two live conformer jobs -- a conf_opt and a conf_sp -- serialized exactly as ARC writes
+        # them into the restart file. conf_sp jobs can equally be in flight during a restart, and are
+        # routed differently on read-back (get_completed_incore_jobs reads job_dict[label]['conf_sp']).
+        conf_opt_job = job_factory(job_adapter='gaussian', project='project_test_restore_conf',
+                                   ess_settings=self.ess_settings, species=[spc], xyz=xyz,
+                                   job_type='conf_opt', conformer=0,
+                                   level=Level(repr={'method': 'wb97xd', 'basis': 'def2svp'}),
+                                   project_directory=self.project_directory, job_num=901)
+        conf_sp_job = job_factory(job_adapter='gaussian', project='project_test_restore_conf',
+                                  ess_settings=self.ess_settings, species=[spc], xyz=xyz,
+                                  job_type='conf_sp', conformer=0,
+                                  level=Level(repr={'method': 'wb97xd', 'basis': 'def2svp'}),
+                                  project_directory=self.project_directory, job_num=902)
+        sched.restart_dict = {'running_jobs': {label: [conf_opt_job.as_dict(), conf_sp_job.as_dict()]}}
+        sched.running_jobs = dict()
+        sched.job_dict = dict()
+
+        sched.restore_running_jobs()
+        # Each conformer job is filed under its own job_type keyed by its integer index -- a conf_sp
+        # job under 'conf_sp', not 'conf_opt'. Filing conf_sp under 'conf_opt' would crash the sweep
+        # below with KeyError: 'conf_sp'.
+        self.assertIn('conf_opt', sched.job_dict[label])
+        self.assertIn(0, sched.job_dict[label]['conf_opt'])
+        self.assertIn('conf_sp', sched.job_dict[label])
+        self.assertIn(0, sched.job_dict[label]['conf_sp'])
+
+        # The first scheduling sweep after a restart reproduces the production crash on the unfixed
+        # code: get_i_from_job_name('conformer0') is None, the fallback derives an empty job-type
+        # from the underscore-less name, and self.job_dict[label][''] raises KeyError: ''.
+        sched.get_completed_incore_jobs()
+        self.assertEqual(sched.completed_incore_jobs, list())
+
+        # And the restored names are the live '{job_type}_{i}' format, not the fossil 'conformer{i}'.
+        self.assertEqual(sched.running_jobs[label], ['conf_opt_0', 'conf_sp_0'])
+
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
         label = 'C2H6'
