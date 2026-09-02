@@ -20,16 +20,68 @@ Two modes are supported:
        python gcn_script.py --yml_in_path input.yml
 
    where the YAML file contains the keys ``reactant_path``, ``product_path``,
-   ``local_path``, ``yml_out_path``, and ``repetitions``.
+   ``local_path``, ``yml_out_path``, ``repetitions``, and (optionally) ``seed``.
+
+GCN inference is stochastic, so both modes seed python-random, NumPy and PyTorch
+before every inference call. The base seed crosses the subprocess boundary
+explicitly -- via ``--seed`` in the direct mode and via the ``seed`` key of the
+YAML input file in the batch mode -- because ARC's process-level seeding cannot
+reach a child interpreter. Each repetition uses ``base seed + repetition index``,
+so repetitions still sample different starting points while the whole set of TS
+guesses is reproducible between runs.
 """
 
 import argparse
 import datetime
 import os
+import random
 import sys
 import traceback
 
 import yaml
+
+DEFAULT_RANDOM_SEED = 1
+
+
+def set_random_seeds(seed: int) -> None:
+    """
+    Seed every random number generator GCN inference draws from.
+
+    Seeds python-random, NumPy and PyTorch (both the CPU and, when compiled in,
+    the CUDA generators), and asks cuDNN for deterministic kernel selection.
+    ``torch.use_deterministic_algorithms`` is deliberately NOT enabled: several
+    graph-network primitives (scatter-add in particular) have no deterministic
+    CUDA implementation and would raise instead of running.
+
+    NumPy and PyTorch are optional here only so that this script keeps working
+    in an environment where they are absent; in a working ``ts_gcn`` environment
+    both are installed and both get seeded.
+
+    ``PYTHONHASHSEED`` is not set here: it only takes effect before the
+    interpreter starts, so ARC exports it into the child's environment instead
+    (see ``arc.job.adapters.ts.gcn_ts.run_subprocess_locally``).
+
+    Args:
+        seed (int): The random seed to use.
+    """
+    random.seed(seed)
+    try:
+        import numpy as np
+    except ImportError as e:
+        print(f'Could not seed NumPy, GCN results may not be reproducible: {e}', file=sys.stderr)
+    else:
+        np.random.seed(seed)
+    try:
+        import torch
+    except ImportError as e:
+        print(f'Could not seed PyTorch, GCN results may not be reproducible: {e}', file=sys.stderr)
+        return
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    if hasattr(torch.backends, 'cudnn'):
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 
 def import_inference():
@@ -78,21 +130,25 @@ def initialize_gcn_run(input_dict: dict):
 
     Args:
         input_dict (dict): The input dictionary with keys ``reactant_path``, ``product_path``,
-                           ``local_path``, ``yml_out_path``, and ``repetitions``.
+                           ``local_path``, ``yml_out_path``, ``repetitions``, and optionally ``seed``.
     """
     ts_fwd_path = os.path.join(input_dict['local_path'], "TS_fwd.xyz")
     ts_rev_path = os.path.join(input_dict['local_path'], "TS_rev.xyz")
+    base_seed = input_dict.get('seed')
+    base_seed = DEFAULT_RANDOM_SEED if base_seed is None else int(base_seed)
     tsgs = list()
     for i in range(input_dict['repetitions']):
         tsg_f = run_gcn_locally(direction='F',
                                 reactant_path=input_dict['reactant_path'],
                                 product_path=input_dict['product_path'],
                                 ts_path=ts_fwd_path,
+                                seed=base_seed + i,
                                 )
         tsg_r = run_gcn_locally(direction='R',
                                 reactant_path=input_dict['product_path'],
                                 product_path=input_dict['reactant_path'],
                                 ts_path=ts_rev_path,
+                                seed=base_seed + i,
                                 )
         tsgs.extend([tsg_f, tsg_r])
     save_yaml_file(path=input_dict['yml_out_path'], content=tsgs)
@@ -102,6 +158,7 @@ def run_gcn_locally(direction: str,
                     reactant_path: str,
                     product_path: str,
                     ts_path: str,
+                    seed: int = DEFAULT_RANDOM_SEED,
                     ) -> dict:
     """
     Run GCN in a single direction and package the result as a TS guess dictionary.
@@ -111,6 +168,7 @@ def run_gcn_locally(direction: str,
         reactant_path (str): The path to the reactant SDF file.
         product_path (str): The path to the product SDF file.
         ts_path (str): The path to the resulting TS guess file.
+        seed (int, optional): The random seed to use for this inference.
 
     Returns:
         dict: The TS guess dictionary.
@@ -125,6 +183,7 @@ def run_gcn_locally(direction: str,
     success = run_gcn(r_sdf_path=reactant_path,
                       p_sdf_path=product_path,
                       ts_xyz_path=ts_path,
+                      seed=seed,
                       )
     if success and os.path.isfile(ts_path):
         with open(ts_path, 'r') as f:
@@ -139,19 +198,26 @@ def run_gcn_locally(direction: str,
 def run_gcn(r_sdf_path: str,
             p_sdf_path: str,
             ts_xyz_path: str,
+            seed: int = DEFAULT_RANDOM_SEED,
             ) -> bool:
     """
     Run a single GCN inference: read the reactant and product SDF files
     and write the TS guess to ``ts_xyz_path``.
 
+    The random number generators are (re)seeded immediately before the inference
+    call so that this specific inference is reproducible regardless of how many
+    inferences preceded it in the same interpreter.
+
     Args:
         r_sdf_path (str): The path to the reactant SDF file.
         p_sdf_path (str): The path to the product SDF file.
         ts_xyz_path (str): The path to write the TS guess to.
+        seed (int, optional): The random seed to use for this inference.
 
     Returns:
         bool: Whether the inference completed without raising.
     """
+    set_random_seeds(seed)
     from rdkit import Chem
     inference = import_inference()
     r_mols = Chem.SDMolSupplier(r_sdf_path, removeHs=False, sanitize=True)
@@ -219,6 +285,10 @@ def parse_command_line_arguments(command_line_args=None):
                         help='A path to the product SDF file (direct mode)')
     parser.add_argument('--ts_xyz_path', metavar='ts', type=str, default=None,
                         help='A path to write the TS guess XYZ file to (direct mode)')
+    parser.add_argument('--seed', metavar='seed', type=int, default=DEFAULT_RANDOM_SEED,
+                        help='The random seed to use, making the TS guess reproducible '
+                             '(ARC passes arc.settings.settings.TS_SEARCH_RANDOM_SEED '
+                             'plus the repetition index)')
     args = parser.parse_args(command_line_args)
     return args
 
@@ -229,11 +299,15 @@ def main():
     """
     args = parse_command_line_arguments()
     if args.yml_in_path is not None:
-        initialize_gcn_run(input_dict=read_yaml_file(str(args.yml_in_path)))
+        input_dict = read_yaml_file(str(args.yml_in_path))
+        if isinstance(input_dict, dict) and input_dict.get('seed') is None:
+            input_dict['seed'] = args.seed
+        initialize_gcn_run(input_dict=input_dict)
     elif args.r_sdf_path is not None and args.p_sdf_path is not None and args.ts_xyz_path is not None:
         success = run_gcn(r_sdf_path=str(args.r_sdf_path),
                           p_sdf_path=str(args.p_sdf_path),
                           ts_xyz_path=str(args.ts_xyz_path),
+                          seed=int(args.seed),
                           )
         if not success or not os.path.isfile(str(args.ts_xyz_path)):
             sys.exit(1)

@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.checks.nmd module
 """
 
+import copy
 import unittest
 import math
 import os
@@ -15,7 +16,8 @@ import numpy as np
 
 import arc.checks.nmd as nmd
 from arc.checks.ts import check_ts
-from arc.common import ARC_PATH, ARC_TESTING_PATH, get_element_mass
+from arc.common import ARC_PATH, ARC_TESTING_PATH, get_element_mass, get_test_project_directory
+from arc.exceptions import ReactionError
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.molecule import Molecule
@@ -37,12 +39,13 @@ class TestNMD(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.project_directory = get_test_project_directory('tmp_nmd_project')
         cls.generic_job = job_factory(job_adapter='gaussian',
                                       species=[ARCSpecies(label='SPC', smiles='C')],
                                       job_type='composite',
                                       level=Level(method='CBS-QB3'),
                                       project='test_project',
-                                      project_directory=os.path.join(ARC_PATH, 'Projects', 'tmp_nmd_project'),
+                                      project_directory=cls.project_directory,
                                       )
         cls.xyz_1 = {'symbols': ('C', 'N', 'H', 'H', 'H', 'H'),
                      'isotopes': (13, 14, 1, 1, 1, 1),
@@ -651,11 +654,17 @@ class TestNMD(unittest.TestCase):
         self.assertNotIn('frame of the normal modes', warning)
 
     def test_get_ts_xyz_in_normal_mode_frame_falls_back_when_parsing_fails(self):
-        """Test that a log file the geometry parser cannot handle falls back to the species geometry."""
+        """Test that a geometry parser which raises falls back to the species geometry.
+
+        The parser is made to raise rather than being fed a log that happens to break it, so that
+        this branch stays covered as parser support for more ESS log formats is added.
+        """
         log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
         self.generic_job.local_path_to_output_file = log_path
         rxn = self.make_ch4_oh_rxn(ts_xyz=self.ts_1_xyz)
-        with self.assertLogs('arc', level='WARNING') as captured:
+        with patch.object(nmd.parser, 'parse_geometry_in_normal_mode_frame',
+                          side_effect=NotImplementedError('no parser adapter for this log')), \
+                self.assertLogs('arc', level='WARNING') as captured:
             frame_xyz = nmd.get_ts_xyz_in_normal_mode_frame(reaction=rxn, job=self.generic_job)
         self.assertEqual(frame_xyz['symbols'], self.ts_1_xyz['symbols'])
         np.testing.assert_allclose(np.array(frame_xyz['coords']),
@@ -753,6 +762,25 @@ class TestNMD(unittest.TestCase):
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_file_paths['TS7'])
         valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=amplitude)
         self.assertFalse(valid)
+
+    def test_analyze_ts_normal_mode_displacement_when_the_bonds_are_undetermined(self):
+        """Test analyze_ts_normal_mode_displacement() when the bonds that change cannot be determined."""
+        def raise_reaction_error():
+            raise ReactionError('Cannot get bonds without an atom map.')
+
+        def raise_value_error():
+            raise ValueError('11 is not in list')
+
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        rxn = copy.deepcopy(self.rxn_1)
+        rxn.get_formed_and_broken_bonds = raise_reaction_error
+        valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
+        self.assertIsNone(valid)
+        self.assertIn(nmd.NMD_UNDETERMINED_BONDS_WARNING, rxn.ts_species.ts_checks['warnings'])
+
+        rxn.get_formed_and_broken_bonds = raise_value_error
+        with self.assertRaises(ValueError):
+            nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
 
     def test_analyze_ts_normal_mode_displacement_for_hypervalence_nitrogen(self):
         """Test the analyze_ts_normal_mode_displacement() function for a hypervalence nitrogen."""
@@ -1492,10 +1520,7 @@ class TestNMD(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['tmp_nmd_project']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
+        shutil.rmtree(cls.project_directory, ignore_errors=True)
         file_paths = [os.path.join(ARC_PATH, 'arc', 'checks', 'nul'), os.path.join(ARC_PATH, 'arc', 'checks', 'run.out')]
         for file_path in file_paths:
             if os.path.isfile(file_path):

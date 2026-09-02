@@ -10,11 +10,14 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
                         almost_equal_coords_lists,
                         check_that_all_entries_are_in_list,
+                        get_test_project_directory,
+                        read_yaml_file,
                         save_yaml_file,
                         )
 from arc.species.converter import check_xyz_dict
@@ -384,6 +387,17 @@ class TestARCSpecies(unittest.TestCase):
         xyz = n3.get_xyz(return_format='str')
         self.assertIsInstance(xyz, str)
         self.assertEqual(xyz, xyz_to_str(expected_xyz))
+
+    def test_set_dihedral_linear_segment(self):
+        """Test that set_dihedral() no-ops (returns None) without a WARNING when the torsion spans a linear segment."""
+        # Methylketene (CC=C=O) has a collinear C=C=O cumulene segment, so the torsion [0, 1, 2, 3]
+        # contains a linear segment (the [1, 2, 3] triplet is ~180 degrees).
+        spc = ARCSpecies(label='methylketene', smiles='CC=C=O')
+        xyz = spc.get_xyz()
+        with self.assertNoLogs(logger='arc', level='WARNING'):
+            result = spc.set_dihedral(scan=[0, 1, 2, 3], index=0, deg_abs=90.0,
+                                      count=False, chk_rotor_list=False, xyz=xyz)
+        self.assertIsNone(result)
 
     def test_conformers(self):
         """Test conformer generation"""
@@ -1523,6 +1537,21 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         spc = ARCSpecies(species_dict=species_dict)
         self.assertTrue(spc.is_ts)
 
+    def test_from_dict_reconciles_spin_ambiguous_multiplicity(self):
+        """from_dict() must reconcile a SMILES-perceived mol to the declared multiplicity, so a
+        singlet carbene [CH2] (multiplicity 1) becomes u0 p1 rather than the perceived triplet u2.
+        Without this, graph-based logic (RMG family determination) sees a triplet and fails to
+        classify the reaction (see BENCHMARK_ERRORS.md reaction_01)."""
+        singlet = ARCSpecies(species_dict={'label': 'R2', 'smiles': '[CH2]', 'multiplicity': 1})
+        self.assertEqual(singlet.multiplicity, 1)
+        self.assertEqual(singlet.mol.multiplicity, 1)
+        self.assertIn('C u0 p1', singlet.mol.to_adjacency_list())
+        # The triplet carbene and ordinary spin-ambiguous species must be untouched.
+        triplet = ARCSpecies(species_dict={'label': 'T', 'smiles': '[CH2]', 'multiplicity': 3})
+        self.assertEqual(triplet.mol.multiplicity, 3)
+        o2 = ARCSpecies(species_dict={'label': 'O2', 'smiles': '[O][O]', 'multiplicity': 3})
+        self.assertEqual(o2.mol.multiplicity, 3)
+
     def test_label_atoms(self):
         """Test the label_atoms method"""
         spc_copy = self.spc6.copy()
@@ -1873,7 +1902,7 @@ H      -1.99779884    0.76292039   -1.08682170"""
 
     def test_append_conformers(self):
         """Test that ARC correctly parses its own conformer files"""
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage4')
+        project_directory = get_test_project_directory('arc_project_for_testing_delete_after_usage4')
         xyzs = [{'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
                  'coords': ((1.090687, 0.265168, -0.167063), (2.922041, -1.183357, -0.388849),
                             (2.276555, -0.003739, 0.085435), (2.365448, -1.88781, -0.999146),
@@ -2643,6 +2672,16 @@ H       1.11582953    0.94384729   -0.10134685"""
         ts_doublet.determine_multiplicity_from_xyz()
         self.assertEqual(ts_doublet.multiplicity, 2)
 
+    def test_process_completed_tsg_queue_jobs_attributes_method(self):
+        """A queue TS-guess job that emits a .log must attribute its guess to the adapter that ran it
+        (e.g. 'qst2'), not a hard-coded 'orca_neb' — several queue adapters (orca_neb, qst2) emit a
+        .log, so the method label must be passed through, not assumed."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        log = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        ts.process_completed_tsg_queue_jobs(path=log, method='qst2')
+        self.assertTrue(any(tsg.method == 'qst2' for tsg in ts.ts_guesses))
+        self.assertFalse(any(tsg.method == 'orca_neb' for tsg in ts.ts_guesses))
+
     def test_cluster_tsgs(self):
         """Test the cluster_tsgs() method."""
         xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
@@ -2727,6 +2766,176 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(len(spc_3.ts_guesses), 12)
         spc_3.cluster_tsgs()
         self.assertEqual(len(spc_3.ts_guesses), 6)
+
+    def test_cluster_tsgs_preserves_path_search_source_log(self):
+        """A geometry-only guess (GCN) that wins dedup must retain a merged
+        path-search source's log path in ``method_source_paths`` so
+        path-search provenance survives clustering (benchmark reaction_06).
+        Selection is unchanged: the winner is still GCN."""
+        xyz_a = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_b = """N       0.9177905899     0.5194617794     0.0000000010
+                   H       1.8140204898     1.0381941417     0.0000000055
+                   H      -0.4763167868     0.7509348792     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000010
+                   N      -1.4430010939     0.0274543357     0.0000000055
+                   H      -0.6371484821    -0.7497769124     0.0000000020
+                   H      -2.0093636433     0.0331190312    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # ~equal to xyz_a
+        gsm_log = '/tmp/arc_test/TS0/xtb_gsm/stringfile.xyz0000'
+        # Use the exact string the xtb_gsm adapter sets (method='xTB-GSM').
+        gsm_guess = TSGuess(index=1, method='xTB-GSM', success=True, xyz=xyz_b)
+        # Production shape: the xtb_gsm/orca_neb/qst2 adapters assign log_path
+        # *after* construction, so method_source_paths is empty until cluster_tsgs
+        # seeds it from the live attributes.
+        gsm_guess.log_path = gsm_log
+        self.assertEqual(gsm_guess.method_source_paths, {})
+        spc = ARCSpecies(label='TS_ms', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=0, method='GCN', success=True, xyz=xyz_a),
+                          gsm_guess]
+        for tsg in spc.ts_guesses:
+            tsg.execution_time = '00:00:02'
+        spc.cluster_tsgs()
+        self.assertEqual(len(spc.ts_guesses), 1)
+        winner = spc.ts_guesses[0]
+        self.assertEqual(winner.method, 'gcn')  # selection unchanged
+        self.assertIn('xtb-gsm', winner.method_sources)
+        self.assertEqual(winner.method_source_paths.get('xtb-gsm'), gsm_log)
+        # Round-trips through as_dict/from_dict (restart persistence).
+        restored = TSGuess(ts_dict=winner.as_dict())
+        self.assertEqual(restored.method_source_paths.get('xtb-gsm'), gsm_log)
+
+    def test_cluster_tsgs_representative_is_order_independent(self):
+        """The surviving representative of a cluster must be its lowest-index member, regardless of
+        the order in which the guesses were appended. Queue TS-search jobs (orca_neb / qst2 / GCN)
+        complete in whatever order PBS returns them, and the survivor's geometry is what gets
+        DFT-optimized, so a first-seen rule made the optimized geometry queue-order dependent."""
+        xyz_a = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_b = """N       0.9177905899     0.5194617794     0.0000000010
+                   H       1.8140204898     1.0381941417     0.0000000055
+                   H      -0.4763167868     0.7509348792     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000010
+                   N      -1.4430010939     0.0274543357     0.0000000055
+                   H      -0.6371484821    -0.7497769124     0.0000000020
+                   H      -2.0093636433     0.0331190312    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # Near-duplicate of xyz_a.
+        xyz_c = """N       9.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # Distinct from xyz_a / xyz_b.
+
+        def make_guesses():
+            """The same four guesses (same indices, same geometries) on every call."""
+            return {0: TSGuess(index=0, method='gcn', success=True, xyz=xyz_a),
+                    1: TSGuess(index=1, method='kinbot', success=True, xyz=xyz_b),
+                    2: TSGuess(index=2, method='autotst', success=True, xyz=xyz_b),
+                    3: TSGuess(index=3, method='heuristics', success=True, xyz=xyz_c),
+                    }
+
+        results = list()
+        for arrival_order in ([0, 1, 2, 3], [2, 1, 3, 0], [3, 2, 1, 0], [1, 3, 0, 2]):
+            guesses = make_guesses()
+            spc = ARCSpecies(label='TS_order', is_ts=True)
+            spc.ts_guesses = [guesses[index] for index in arrival_order]
+            for tsg in spc.ts_guesses:
+                tsg.execution_time = '00:00:01'
+            spc.cluster_tsgs()
+            results.append(([tsg.index for tsg in spc.ts_guesses],
+                            [tsg.method for tsg in spc.ts_guesses],
+                            [sorted(tsg.cluster) for tsg in spc.ts_guesses],
+                            ))
+        # Two clusters: {0, 1, 2} represented by index 0, and {3} represented by index 3.
+        self.assertEqual(results[0], ([0, 3], ['gcn', 'heuristics'], [[0, 1, 2], [3]]))
+        # Every arrival order gives the identical outcome.
+        for result in results[1:]:
+            self.assertEqual(result, results[0])
+
+    def test_cluster_tsgs_logs_absorbed_duplicates(self):
+        """The clustering log message must name which guesses were absorbed into which survivor."""
+        xyz_a = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_b = """N       0.9177905899     0.5194617794     0.0000000010
+                   H       1.8140204898     1.0381941417     0.0000000055
+                   H      -0.4763167868     0.7509348792     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000010
+                   N      -1.4430010939     0.0274543357     0.0000000055
+                   H      -0.6371484821    -0.7497769124     0.0000000020
+                   H      -2.0093636433     0.0331190312    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # Near-duplicate of xyz_a.
+        spc = ARCSpecies(label='TS_log', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=2, method='autotst', success=True, xyz=xyz_b),
+                          TSGuess(index=0, method='gcn', success=True, xyz=xyz_a),
+                          TSGuess(index=1, method='kinbot', success=True, xyz=xyz_b),
+                          ]
+        for tsg in spc.ts_guesses:
+            tsg.execution_time = '00:00:01'
+        with self.assertLogs('arc', level='INFO') as captured:
+            spc.cluster_tsgs()
+        message = '\n'.join(captured.output)
+        self.assertIn('Clustered 3 TS guesses for TS_log into 1 unique conformers', message)
+        self.assertIn('absorbed duplicates: 1, 2 into 0', message)
+        self.assertEqual(spc.ts_guesses[0].index, 0)
+        self.assertEqual(spc.ts_guesses[0].cluster, [0, 1, 2])
+
+    def test_cluster_tsgs_accumulates_absorbed_indices_over_passes(self):
+        """cluster_tsgs() runs once per arriving queue TS-guess job, so a survivor's absorbed
+        indices must accumulate rather than reset on every pass."""
+        xyz_a = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_b = """N       0.9177905899     0.5194617794     0.0000000010
+                   H       1.8140204898     1.0381941417     0.0000000055
+                   H      -0.4763167868     0.7509348792     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000010
+                   N      -1.4430010939     0.0274543357     0.0000000055
+                   H      -0.6371484821    -0.7497769124     0.0000000020
+                   H      -2.0093636433     0.0331190312    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""  # Near-duplicate of xyz_a.
+        spc = ARCSpecies(label='TS_passes', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=0, method='gcn', success=True, xyz=xyz_a),
+                          TSGuess(index=1, method='kinbot', success=True, xyz=xyz_b),
+                          ]
+        for tsg in spc.ts_guesses:
+            tsg.execution_time = '00:00:01'
+        spc.cluster_tsgs()
+        self.assertEqual([tsg.index for tsg in spc.ts_guesses], [0])
+        self.assertEqual(spc.ts_guesses[0].cluster, [0, 1])
+        # A later queue job reports back, and clustering runs again.
+        late = TSGuess(index=spc.next_ts_guess_index(), method='orca_neb', success=True, xyz=xyz_b)
+        late.execution_time = '00:00:01'
+        self.assertEqual(late.index, 2)
+        spc.ts_guesses.append(late)
+        spc.cluster_tsgs()
+        self.assertEqual([tsg.index for tsg in spc.ts_guesses], [0])
+        self.assertEqual(spc.ts_guesses[0].cluster, [0, 1, 2])
 
     def test_cluster_tsgs_with_coordinate_less_guesses(self):
         """Clustering must tolerate coordinate-less TS guesses (e.g. failed kinbot/queue guesses
@@ -3396,16 +3605,31 @@ H      -1.47626400   -0.10694600   -1.88883800"""
                          }
         self.assertEqual(representation, expected_repr)
 
+
+    def test_mol_from_xyz_failed_perception_is_a_warning(self):
+        """Test that a failed 2D graph perception is reported as a recoverable warning, not as an error."""
+        spc = ARCSpecies(label='IRC_TS0_1', smiles='CO')
+        xyz = spc.get_xyz()
+        spc.mol = None
+        with patch('arc.species.species.perceive_molecule_from_xyz', return_value=None):
+            with self.assertLogs('arc', level='WARNING') as cm:
+                spc.mol_from_xyz(xyz=xyz, get_cheap=False)
+        self.assertTrue(all(record.levelname == 'WARNING' for record in cm.records))
+        message = '\n'.join(cm.output)
+        self.assertIn('IRC_TS0_1', message)
+        self.assertIn('Could not perceive a 2D graph', message)
+        self.assertIn('may still succeed', message)
+        self.assertIsNone(spc.mol)
+
     @classmethod
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage4',
-                    os.path.join(ARC_TESTING_PATH, 'gcn_tst')]
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        project_directories = [get_test_project_directory('arc_project_for_testing_delete_after_usage4'),
+                               os.path.join(ARC_TESTING_PATH, 'gcn_tst')]
+        for project_directory in project_directories:
             shutil.rmtree(project_directory, ignore_errors=True)
 
         file_paths = [os.path.join(ARC_PATH, 'nul'), os.path.join(ARC_PATH, 'run.out'),
@@ -3617,6 +3841,54 @@ class TestTSGuess(unittest.TestCase):
         ts_dict_for_report = self.tsg1.as_dict(for_report=True)
         self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_sources', 'method_index', 'success', 'index',
                                                            'conformer_index', 'initial_xyz', 'opt_xyz'])
+
+    def test_level_round_trip(self):
+        """Test that the TSGuess.level attribute survives an as_dict()/from_dict() round trip"""
+        level = {'method': 'wb97x-d3', 'basis': 'def2-tzvp', 'software': 'orca'}
+        tsg = TSGuess(method='orca_neb', success=True, level=level)
+        tsg_dict = tsg.as_dict()
+        self.assertEqual(tsg_dict['level'], level)
+        tsg_restored = TSGuess(ts_dict=tsg_dict)
+        self.assertEqual(tsg_restored.level, level)
+        # A guess without a level round-trips to None and omits the key.
+        tsg_no_level = TSGuess(method='gcn', success=True)
+        self.assertIsNone(tsg_no_level.level)
+        tsg_no_level_dict = tsg_no_level.as_dict()
+        self.assertNotIn('level', tsg_no_level_dict)
+        self.assertIsNone(TSGuess(ts_dict=tsg_no_level_dict).level)
+
+    def test_execution_time_survives_the_dict_round_trip(self):
+        """Test that a non-zero execution time is not zeroed by an as_dict()/from_dict() restart round trip"""
+        for execution_time in [datetime.timedelta(seconds=3, microseconds=420000),
+                               datetime.timedelta(days=2, hours=3),
+                               datetime.timedelta(0),
+                               ]:
+            tsg = TSGuess(method='KinBot', family='H_Abstraction', xyz=self.xyz_3, success=True)
+            tsg.execution_time = execution_time
+            tsg_dict = tsg.as_dict()
+            self.assertEqual(tsg_dict['execution_time'], str(execution_time))
+            restored = TSGuess(ts_dict=tsg_dict)
+            self.assertEqual(restored.execution_time, execution_time,
+                             msg=f'execution time {str(execution_time)!r} was not preserved by the round trip')
+
+    def test_a_user_guess_execution_time_is_overwritten_without_being_parsed(self):
+        """Test that restoring a user guess does not warn about an execution time it then discards"""
+        restart_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '2_restart_rate', 'restart.yml')
+        ts_dicts = [ts_dict for spc_dict in read_yaml_file(restart_path)['species']
+                    for ts_dict in spc_dict.get('ts_guesses') or list()]
+        self.assertTrue(any(ts_dict.get('execution_time') == '0' for ts_dict in ts_dicts),
+                        msg='the fixture no longer holds an unparseable execution time, so this test is vacuous')
+        with self.assertNoLogs('arc', level='WARNING'):
+            restored = [TSGuess(ts_dict=ts_dict) for ts_dict in ts_dicts]
+        for tsg in restored:
+            self.assertIn('user guess', tsg.method)
+            self.assertEqual(tsg.execution_time, datetime.timedelta(0))
+
+    def test_an_unparseable_execution_time_still_warns_when_it_is_kept(self):
+        """Test that an unparseable execution time of a guess that keeps it is still reported"""
+        with self.assertLogs('arc', level='WARNING'):
+            tsg = TSGuess(ts_dict={'method': 'kinbot', 'execution_time': '0', 'initial_xyz': self.xyz_3})
+        self.assertIsNone(tsg.execution_time)
 
     def test_process_xyz(self):
         """Test the process_xyz() method"""

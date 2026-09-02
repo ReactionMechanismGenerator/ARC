@@ -254,7 +254,8 @@ def check_rxn_e0(reaction: ARCReaction,
         if r_e0 >= ts_e0 or p_e0 >= ts_e0:
             reaction.ts_species.ts_checks['E0'] = False
         if r_e0 + 1 >= ts_e0 or p_e0 + 1 >= ts_e0:
-            logger.warning('TS energy gas relative to one fo the wells is lower than 1 kJ/mol, skipping this TS')
+            logger.warning(f'The TS energy of {reaction.ts_label} is less than 1 kJ/mol above one of the wells '
+                           f'of {reaction.label}, skipping this TS')
             reaction.ts_species.ts_checks['E0'] = False
         else:
             reaction.ts_species.ts_checks['E0'] = True

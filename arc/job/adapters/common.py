@@ -27,13 +27,13 @@ logger = get_logger()
 default_job_settings, global_ess_settings, rotor_scan_resolution = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['rotor_scan_resolution']
 
-ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', 'linear'],
+ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              '1,2_Insertion_CO': ['kinbot', 'goflow', 'rits', 'linear'],
                              '1,2_Insertion_carbene': ['kinbot', 'goflow', 'rits', 'linear'],
                              '1,2_NH3_elimination': ['goflow', 'rits', 'linear'],
                              '1,2_XY_interchange': ['orca_neb', 'goflow', 'rits', 'linear'],
-                             '1,2_shiftC': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
-                             '1,2_shiftS': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             '1,2_shiftC': ['gcn', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
+                             '1,2_shiftS': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
                              '1,3_Insertion_CO2': ['kinbot', 'goflow', 'rits', 'linear'],
                              '1,3_Insertion_ROR': ['kinbot', 'goflow', 'rits', 'linear'],
                              '1,3_Insertion_RSR': ['kinbot', 'goflow', 'rits', 'linear'],
@@ -49,8 +49,9 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', '
                              'Cyclic_Ether_Formation': ['kinbot', 'goflow', 'rits', 'linear'],
                              'Cyclic_Thioether_Formation': ['goflow', 'rits', 'linear'],
                              'Cyclopentadiene_scission': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
-                             'Diels_alder_addition': ['kinbot', 'goflow', 'rits', 'linear'],
+                             'Diels_alder_addition': ['kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'Diels_alder_addition_Aromatic': ['goflow', 'rits', 'linear'],
+                             'Disproportionation': ['autotst'],
                              'HO2_Elimination_from_PeroxyRadical': ['kinbot', 'goflow', 'rits', 'linear'],
                              'H_Abstraction': ['heuristics', 'autotst', 'crest'],
                              'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
@@ -65,29 +66,30 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', '
                              'Intra_R_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'Intra_Retro_Diels_alder_bicyclic': ['kinbot', 'goflow', 'rits', 'linear'],
                              'Intra_ene_reaction': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
-                             'Ketoenol': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'Ketoenol': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
                              'Korcek_step1': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'Korcek_step2': ['kinbot', 'goflow', 'rits', 'linear'],
                              'R_Addition_COm': ['kinbot', 'goflow', 'rits', 'linear'],
                              'R_Addition_CSm': ['kinbot', 'goflow', 'rits', 'linear'],
                              'R_Addition_MultipleBond': ['autotst', 'kinbot', 'goflow', 'rits', 'linear'],
-                             'Retroene': ['kinbot', 'goflow', 'rits', 'linear'],
+                             'Retroene': ['kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'Singlet_Carbene_Intra_Disproportionation': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
-                             'XY_Addition_MultipleBond': ['goflow', 'rits', 'linear'],
-                             'XY_elimination_hydroxyl': ['goflow', 'rits', 'linear'],
+                             'XY_Addition_MultipleBond': ['heuristics', 'crest', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
+                             'XY_elimination_hydroxyl': ['xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'carbonyl_based_hydrolysis': ['heuristics'],
                              'ether_hydrolysis': ['heuristics'],
                              'halocarbene_recombination': ['goflow', 'rits', 'linear'],
                              'halocarbene_recombination_double': ['goflow', 'rits', 'linear'],
-                             'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
-                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
-                             'intra_OH_migration': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
-                             'intra_halogen_migration': ['goflow', 'rits', 'linear'],
+                             'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
+                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear', 'crest'],
+                             'intra_OH_migration': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
+                             'intra_halogen_migration': ['xtb_gsm', 'orca_neb', 'qst2', 'goflow', 'rits', 'linear'],
                              'intra_substitutionCS_cyclization': ['goflow', 'rits', 'linear'],
                              'intra_substitutionCS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'intra_substitutionS_cyclization': ['goflow', 'rits', 'linear'],
                              'intra_substitutionS_isomerization': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'lone_electron_pair_bond': ['goflow', 'rits', 'linear'],
+
                              'nitrile_hydrolysis': ['heuristics']
                              }
 
@@ -158,7 +160,7 @@ def _initialize_adapter(obj: JobAdapter,
     obj.project = project
     obj.project_directory = project_directory
     if obj.project_directory and not os.path.isdir(obj.project_directory):
-        os.makedirs(obj.project_directory)
+        os.makedirs(obj.project_directory, exist_ok=True)
 
     obj.additional_job_info = None
     obj.args = args or dict()
@@ -554,9 +556,10 @@ def set_job_args(args: dict | None,
     """
     Set the job args considering args from ``level`` and from ``trsh``.
 
-    The args of ``level`` are adopted when ``args`` carries no options. When ``args`` does carry
-    options it is used as given, and a warning reports the options of ``level`` which it does not
-    carry, i.e., only the options which are actually being dropped.
+    The args of ``level`` are adopted when ``args`` carries no options, deep-copied so that keywords
+    which the adapters later inject into the returned dictionary do not reach the ``Level`` object
+    itself. When ``args`` does carry options it is used as given, and a warning reports the options
+    of ``level`` which it does not carry, i.e., only the options which are actually being dropped.
 
     Args:
         args (dict): The job specific arguments.

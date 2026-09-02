@@ -31,6 +31,8 @@ done
 # where "$(pwd)" is the path to the AutoTST repository.
 write_hook () {
     local env="$1" repo_path="$2"            # repo_path="$(pwd)" in AutoTST
+    local repo_path_escaped
+    repo_path_escaped=$(printf '%q' "$repo_path")
     $COMMAND_PKG env list | awk '{print $1}' | grep -qx "$env" || return 0
 
     # env prefix
@@ -50,16 +52,37 @@ write_hook () {
     # --- activation --------------------------------------------------------
     cat >"$act" <<EOF
 # AutoTST hook – $(date +%F)
-export AUTOTST_ROOT="$repo_path"
+export AUTOTST_ROOT=$repo_path_escaped
+export AUTOTST_OLD_PATH="\$PATH"
+export AUTOTST_OLD_PYTHONPATH="\${PYTHONPATH:-}"
+
+_strip_path () { local needle=":\$1:"; local haystack=":\$2:"; echo "\${haystack//\$needle/:}" | sed 's/^://;s/:$//'; }
+EOF
+
+    if [[ "$env" == "tst_env" ]]; then
+        cat >>"$act" <<'EOF'
+# Remove RMG-Py from PATH/PYTHONPATH to avoid clashes while AutoTST is active.
+if [[ -n "${RMG_PY_PATH:-}" ]]; then
+    export PATH="$(_strip_path "$RMG_PY_PATH" "$PATH")"
+    export PYTHONPATH="$(_strip_path "$RMG_PY_PATH" "${PYTHONPATH:-}")"
+fi
+EOF
+    fi
+
+    cat >>"$act" <<'EOF'
 case ":\$PYTHONPATH:" in *":\$AUTOTST_ROOT:"*) ;; \
   *) export PYTHONPATH="\$AUTOTST_ROOT:\${PYTHONPATH:-}" ;; esac
 EOF
 
     # --- de-activation -----------------------------------------------------
     cat >"$deact" <<'EOF'
-_strip () { local n=":$1:"; local s=":$2:"; echo "${s//$n/:}" | sed 's/^://;s/:$//'; }
-export PYTHONPATH=$(_strip "$AUTOTST_ROOT" ":${PYTHONPATH:-}:")
-unset AUTOTST_ROOT
+export PATH="${AUTOTST_OLD_PATH:-$PATH}"
+if [[ -n "${AUTOTST_OLD_PYTHONPATH+x}" ]]; then
+    export PYTHONPATH="$AUTOTST_OLD_PYTHONPATH"
+else
+    unset PYTHONPATH
+fi
+unset AUTOTST_ROOT AUTOTST_OLD_PATH AUTOTST_OLD_PYTHONPATH
 EOF
     echo "🔗  AutoTST hook refreshed in $env"
 }
@@ -115,12 +138,53 @@ fi
 
 if [[ $MODE == "path" ]]; then
 
-    AUTO_PATH_LINE="export PYTHONPATH=\"\$PYTHONPATH:$(pwd)\""
-    if ! grep -Fqx "$AUTO_PATH_LINE" ~/.bashrc; then
-        echo "$AUTO_PATH_LINE" >> ~/.bashrc
-        echo "✔️ Added AutoTST path to ~/.bashrc"
+    HOOK_SENTINEL="# AutoTST path-mode hook"
+    if ! grep -Fqx "$HOOK_SENTINEL" ~/.bashrc; then
+        cat <<'EOF' >> ~/.bashrc
+# AutoTST path-mode hook
+_strip_path () {
+    local needle=":$1:"
+    local haystack=":$2:"
+    echo "${haystack//$needle/:}" | sed 's/^://;s/:$//'
+}
+
+autotst_on () {
+    export AUTOTST_ROOT="__AUTOTST_PATH__"
+    export AUTOTST_OLD_PATH="$PATH"
+    export AUTOTST_OLD_PYTHONPATH="${PYTHONPATH:-}"
+    if [[ -n "${RMG_PY_PATH:-}" ]]; then
+        PATH="$(_strip_path "$RMG_PY_PATH" "$PATH")"
+        PYTHONPATH="$(_strip_path "$RMG_PY_PATH" "${PYTHONPATH:-}")"
+    fi
+
+    case ":$PYTHONPATH:" in *":$AUTOTST_ROOT:"*) ;; \
+      *) PYTHONPATH="$AUTOTST_ROOT:${PYTHONPATH:-}" ;; esac
+    export PATH PYTHONPATH
+}
+
+autotst_off () {
+    export PATH="${AUTOTST_OLD_PATH:-$PATH}"
+    if [[ -n "${AUTOTST_OLD_PYTHONPATH+x}" ]]; then
+        export PYTHONPATH="$AUTOTST_OLD_PYTHONPATH"
     else
-        echo "ℹ️ AutoTST path already exists in ~/.bashrc"
+        unset PYTHONPATH
+    fi
+    unset AUTOTST_ROOT AUTOTST_OLD_PATH AUTOTST_OLD_PYTHONPATH
+}
+
+# Enable AutoTST by default in new shells and keep RMG-Py out of the way.
+autotst_on
+EOF
+        # replace placeholder with actual path (portable across GNU/BSD sed)
+        AUTOTST_ESCAPED_PATH="$(printf '%q' "$(pwd)" | sed 's#/#\\\\/#g')"
+        if sed --version >/dev/null 2>&1; then
+            sed -i "s#__AUTOTST_PATH__#${AUTOTST_ESCAPED_PATH}#" ~/.bashrc
+        else
+            sed -i '' "s#__AUTOTST_PATH__#${AUTOTST_ESCAPED_PATH}#" ~/.bashrc
+        fi
+        echo "✔️ Added AutoTST path-mode hook to ~/.bashrc"
+    else
+        echo "ℹ️ AutoTST path-mode hook already exists in ~/.bashrc"
     fi
 elif [[ $MODE == "conda" ]]; then
     write_hook tst_env   "$(pwd)"

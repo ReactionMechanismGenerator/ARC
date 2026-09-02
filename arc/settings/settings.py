@@ -9,6 +9,12 @@ import glob
 import os
 import string
 import sys
+import shutil
+from arc.settings.crest import (
+    find_crest_executable,
+    find_highest_version_in_directory,
+    parse_version,
+)
 
 from arc.settings.external_paths import (
     find_goflow_ckpt,
@@ -108,6 +114,7 @@ global_ess_settings = {
     'torchani': 'local',
     'openbabel': 'local',
     'orca_neb': 'local',
+    'qst2': 'local',
     'ase': 'local',
     'pyscf': 'local',
 }
@@ -119,7 +126,7 @@ supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'ter
 # Note: 'goflow' and 'rits' are intentionally NOT in the default — their envs
 # (goflow_env / rits_env + pretrained checkpoints) are heavyweight, so users
 # opt in explicitly via ``ts_adapters: ['goflow', ...]`` in their input.yml.
-ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
+ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb', 'qst2', 'crest']
 
 # List here job types to execute by default
 default_job_types = {'conf_opt': True,        # defaults to True if not specified
@@ -198,6 +205,7 @@ input_filenames = {'ase': 'input.yml',
                    'onedmin': 'input.in',
                    'orca': 'input.in',
                    'orca_neb': 'input.in',
+                   'qst2': 'input.gjf',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
                    'xtb': 'input.sh',
@@ -214,6 +222,7 @@ output_filenames = {'ase': 'output.yml',
                     'onedmin': 'output.out',
                     'orca': 'input.log',
                     'orca_neb': 'input.log',
+                    'qst2': 'input.log',
                     'qchem': 'output.out',
                     'rits': 'output.yml',
                     'terachem': 'output.out',
@@ -294,8 +303,12 @@ orca_neb_settings = {'keyword': {
                         'nnodes': 15,
                         'preopt': 'true',
                     },
-                    'level': 'wb97xd/def2tzvp',
+                    'level': 'wb97x-d3/def2tzvp',  # ORCA spelling; it does not accept Gaussian's 'wb97xd'
                     }
+
+qst2_settings = {'maxcycle': 150,
+                 'level': 'wb97xd/def2svp',  # match the TS-guess opt level; the guess is refined later
+                 }
 
 ase_default_options_dict = {'optimizer': 'BFGS',
                             'fmax': 0.001,
@@ -315,6 +328,17 @@ ASE_CALCULATORS_ENV = {'torchani': 'TANI_PYTHON',
 UMA_LATEST_MODEL = 'uma-s-1p2'
 
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
+
+# The base random seed for the stochastic TS-search guess generators, so that a run with
+# identical inputs reproduces the same set of TS guesses. ARC derives a per-repetition seed
+# from it (base seed + repetition index), so repetitions still explore different starting
+# points while the overall set stays reproducible. This matches the RDKit ``randomSeed=1``
+# convention already used in arc/species/conformers.py and arc/molecule/draw.py, and can be
+# overridden in ~/.arc/settings.py to sample a different (but equally reproducible) set.
+# Currently honored by GCN (passed into the ts_gcn subprocess, which seeds python-random,
+# NumPy and PyTorch). CREST 2.12 exposes no seed flag of any kind, so its GFN2-xTB
+# metadynamics cannot be seeded from ARC and remains non-reproducible.
+TS_SEARCH_RANDOM_SEED = 1
 
 # A scan with better resolution (lower number here) takes more time to compute,
 # but the automatically-derived rotor symmetry number is more likely to be correct.
@@ -587,3 +611,57 @@ for path in rmg_db_candidates:
     if path and os.path.isdir(path):
         RMG_DB_PATH = path
         break
+
+CREST_PATH, CREST_ENV_PATH = find_crest_executable()
+
+__all__ = [
+    "servers",
+    "global_ess_settings",
+    "supported_ess",
+    "ts_adapters",
+    "default_job_types",
+    "levels_ess",
+    "check_status_command",
+    "submit_command",
+    "delete_command",
+    "list_available_nodes_command",
+    "submit_filenames",
+    "t_max_format",
+    "input_filenames",
+    "output_filenames",
+    "default_levels_of_theory",
+    "orca_default_options_dict",
+    "tani_default_options_dict",
+    "ob_default_settings",
+    "xtb_gsm_settings",
+    "valid_chars",
+    "rotor_scan_resolution",
+    "maximum_barrier",
+    "minimum_barrier",
+    "inconsistency_az",
+    "inconsistency_ab",
+    "max_rotor_trsh",
+    "preserve_params_in_scan",
+    "workers_coeff",
+    "default_job_settings",
+    "ARC_FAMILIES_PATH",
+    "home",
+    "TANI_PYTHON",
+    "OB_PYTHON",
+    "TS_GCN_PYTHON",
+    "AUTOTST_PYTHON",
+    "ARC_PYTHON",
+    "RMG_ENV_NAME",
+    "RMG_PYTHON",
+    "XTB",
+    "exported_rmg_path",
+    "exported_rmg_db_path",
+    "gw",
+    "find_executable",
+    "add_rmg_db_candidates",
+    "parse_version",
+    "find_highest_version_in_directory",
+    "find_crest_executable",
+    "CREST_PATH",
+    "CREST_ENV_PATH",
+]

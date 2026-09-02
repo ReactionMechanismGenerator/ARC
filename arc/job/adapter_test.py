@@ -15,7 +15,7 @@ import shutil
 import unittest
 from unittest.mock import patch
 
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_TESTING_PATH, get_test_project_name
 from arc.exceptions import ServerError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter, JobEnum, JobTypeEnum, JobExecutionTypeEnum
@@ -30,6 +30,10 @@ from arc.level import Level
 from arc.species import ARCSpecies
 
 servers, submit_filenames = settings['servers'], settings['submit_filenames']
+
+JOB_ADAPTER_DIRS = tuple(os.path.join(ARC_TESTING_PATH, get_test_project_name(f'test_JobAdapter{suffix}'))
+                         for suffix in ('', '_scan', '_ServerTimeLimit'))
+JOB_ADAPTER_DIR, JOB_ADAPTER_SCAN_DIR, JOB_ADAPTER_STL_DIR = JOB_ADAPTER_DIRS
 
 
 class TestEnumerationClasses(unittest.TestCase):
@@ -96,16 +100,13 @@ class TestJobAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        # Register project-dir cleanups before any fixture creation so they
-        # still fire if a constructor below raises mid-setUpClass — that's
-        # how leftover scratch files end up committed to the repo.
-        for subdir in ('test_JobAdapter', 'test_JobAdapter_scan', 'test_JobAdapter_ServerTimeLimit'):
-            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH, subdir), ignore_errors=True)
+        for dir_path in JOB_ADAPTER_DIRS:
+            cls.addClassCleanup(shutil.rmtree, dir_path, ignore_errors=True)
         cls.job_1 = GaussianAdapter(execution_type='queue',
                                     job_type='conf_opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                    project_directory=JOB_ADAPTER_DIR,
                                     species=[ARCSpecies(label='spc1',
                                                         xyz=['O 0 0 1',
                                                              'O 0 0 2',
@@ -134,7 +135,7 @@ class TestJobAdapter(unittest.TestCase):
                                     job_type='opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                    project_directory=JOB_ADAPTER_DIR,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
@@ -161,7 +162,7 @@ class TestJobAdapter(unittest.TestCase):
                                     torsions=[[1, 2, 3, 4]],
                                     level=Level(method='wb97xd', basis='def2-tzvp'),
                                     project='test_scans',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_scan'),
+                                    project_directory=JOB_ADAPTER_SCAN_DIR,
                                     species=[cls.spc_3a, cls.spc_3b, cls.spc_3c, cls.spc_3d, cls.spc_3e, cls.spc_3f],
                                     testing=True,
                                     )
@@ -169,12 +170,12 @@ class TestJobAdapter(unittest.TestCase):
                                     job_type='opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                    project_directory=JOB_ADAPTER_DIR,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
         # Copy the PBS time limit fixture into the directory structure the adapter expects.
-        stl_dir = os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit')
+        stl_dir = JOB_ADAPTER_STL_DIR
         err_dest = os.path.join(stl_dir, 'calcs', 'Species', 'spc1', 'opt_101')
         os.makedirs(err_dest, exist_ok=True)
         shutil.copy(os.path.join(ARC_TESTING_PATH, 'server', 'pbs', 'timelimit', 'err.txt'),
@@ -192,6 +193,12 @@ class TestJobAdapter(unittest.TestCase):
                                     server='server3',
                                     testing=True,
                                     )
+        os.makedirs(cls.job_5.local_path, exist_ok=True)
+        fixture_path = os.path.join(ARC_TESTING_PATH, 'trsh', 'wall_exceeded.txt')
+        with open(fixture_path, 'r') as f:
+            log_content = f.read()
+        with open(os.path.join(cls.job_5.local_path, 'out.txt'), 'w') as f:
+            f.write(log_content)
         cls.job_6 = GaussianAdapter(execution_type='queue',
                                     job_name='opt_101',
                                     job_type='opt',
@@ -260,6 +267,24 @@ class TestJobAdapter(unittest.TestCase):
         self.assertEqual(self.job_4.submit_script_memory, expected_memory)
         self.job_4.server = 'local'
 
+    def test_set_cpu_and_mem_marks_max_total_job_memory(self):
+        """Test tagging jobs whose requested memory is clipped to the node cap."""
+        job = GaussianAdapter(execution_type='queue',
+                              job_type='opt',
+                              level=Level(method='cbs-qb3'),
+                              project='test',
+                              project_directory=JOB_ADAPTER_DIR,
+                              species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                              server='server2',
+                              job_memory_gb=300,
+                              testing=True,
+                              )
+
+        job.set_cpu_and_mem()
+
+        self.assertAlmostEqual(job.job_memory_gb, 256 * 0.95)
+        self.assertIn('max_total_job_memory', job.job_status[1]['keywords'])
+
     def test_set_file_paths(self):
         """Test setting up the job's paths"""
         self.assertEqual(self.job_1.local_path, os.path.join(self.job_1.project_directory, 'calcs', 'Species',
@@ -298,7 +323,7 @@ class TestJobAdapter(unittest.TestCase):
                                         job_type='opt',
                                         level=Level(method='cbs-qb3'),
                                         project='test',
-                                        project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                                        project_directory=JOB_ADAPTER_DIR,
                                         species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                         testing=True,
                                         args={'keyword': {'general': 'val_tst_1 val_tst_2     val_tst_3'},
@@ -329,12 +354,50 @@ class TestJobAdapter(unittest.TestCase):
                                        'source': 'input_files',
                                        'make_x': True})
 
-    def test_determine_job_status(self):
+    @patch('arc.job.adapter.check_job_status', return_value='done')
+    def test_determine_job_status(self, mock_check_job_status):
         """Test determining the job status"""
         self.job_5.determine_job_status()
+        mock_check_job_status.assert_called_once_with('123456')
         self.assertEqual(self.job_5.job_status[0], 'done')
         self.assertEqual(self.job_5.job_status[1]['status'], 'errored')
         self.assertEqual(self.job_5.job_status[1]['keywords'], ['ServerTimeLimit'])
+
+    @patch('arc.job.adapter.determine_ess_status')
+    def test_preserve_max_total_job_memory_keyword(self, mock_determine_ess_status):
+        """Test preserving the max_total_job_memory marker across ESS status parsing."""
+        self.job_4.job_status[1]['keywords'] = ['max_total_job_memory']
+        self.job_4.initial_time = datetime.datetime.now() - datetime.timedelta(minutes=2)
+        self.job_4.final_time = datetime.datetime.now() - datetime.timedelta(minutes=1)
+        os.makedirs(self.job_4.local_path, exist_ok=True)
+        with open(self.job_4.local_path_to_output_file, 'w') as f:
+            f.write('dummy output')
+        mock_determine_ess_status.return_value = (
+            'errored',
+            ['MDCI', 'Memory'],
+            'Insufficient job memory.',
+            'Please increase MaxCore',
+        )
+
+        self.job_4._check_job_ess_status()
+
+        self.assertEqual(self.job_4.job_status[1]['status'], 'errored')
+        self.assertEqual(self.job_4.job_status[1]['keywords'], ['MDCI', 'Memory', 'max_total_job_memory'])
+
+    def test_check_job_ess_status_without_output_uses_job_log_memory_error(self):
+        """Test detecting server-reported memory errors even when the output file is absent."""
+        if os.path.isfile(self.job_4.local_path_to_output_file):
+            os.remove(self.job_4.local_path_to_output_file)
+        self.job_4.initial_time = datetime.datetime.now() - datetime.timedelta(minutes=2)
+        self.job_4.final_time = datetime.datetime.now() - datetime.timedelta(minutes=1)
+        self.job_4.additional_job_info = '\tMEMORY EXCEEDED\n'
+
+        with patch.object(self.job_4, '_get_additional_job_info'):
+            self.job_4._check_job_ess_status()
+
+        self.assertEqual(self.job_4.job_status[1]['status'], 'errored')
+        self.assertEqual(self.job_4.job_status[1]['keywords'], ['Memory'])
+        self.assertEqual(self.job_4.job_status[1]['error'], 'Insufficient job memory.')
 
     @patch(
         "arc.job.trsh.servers",
@@ -354,6 +417,55 @@ class TestJobAdapter(unittest.TestCase):
         # We do not do assert equal because a user may have different queues from the settings.py originally during cls
         self.assertIn('short_queue', self.job_6.attempted_queues)
         self.assertIn('middle_queue', self.job_6.attempted_queues)
+
+    def test_repr(self):
+        """Test the string representation of a job"""
+        for job in [self.job_1, self.job_2, self.job_5]:
+            representation = repr(job)
+            self.assertNotIn(' object at 0x', representation)
+            self.assertEqual(len(representation.splitlines()), 1)
+            self.assertIn('GaussianAdapter(', representation)
+            self.assertIn('adapter=gaussian', representation)
+            self.assertIn(f'name={job.job_name}', representation)
+            self.assertIn(f'type={job.job_type}', representation)
+            self.assertIn(f'label={job.species_label}', representation)
+        self.assertIn('execution=incore', repr(self.job_2))
+        self.assertIn('id=123456', repr(self.job_5))
+        self.assertIn('server=server3', repr(self.job_5))
+        self.assertNotIn('=None', repr(self.job_2))
+
+    def test_repr_of_a_minimally_populated_adapter(self):
+        """Test that the string representation does not raise when attributes were not set"""
+        job = GaussianAdapter.__new__(GaussianAdapter)
+        representation = repr(job)
+        self.assertEqual(representation, 'GaussianAdapter()')
+        self.assertNotIn(' object at 0x', representation)
+        job.job_name = 'opt_a1234'
+        job.job_status = ['running', {'status': 'running'}]
+        self.assertEqual(repr(job), 'GaussianAdapter(name=opt_a1234, status=running)')
+
+    def test_set_cpu_and_mem_capping_warning(self):
+        """Test that the memory capping warning is well-phrased when no server is defined"""
+        job = GaussianAdapter(execution_type='incore',
+                              job_type='opt',
+                              job_memory_gb=42,
+                              level=Level(method='cbs-qb3'),
+                              project='test',
+                              project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
+                              species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                              testing=True,
+                              )
+        self.assertIsNone(job.server)
+        job.job_memory_gb = 42
+        with self.assertLogs('arc', level='WARNING') as cm:
+            job.set_cpu_and_mem()
+        message = '\n'.join(cm.output)
+        self.assertIn('exceeds', message)
+        self.assertIn('Setting it to 30.40 GB.', message)
+        self.assertNotIn('the the', message)
+        self.assertNotIn('on None', message)
+        self.assertAlmostEqual(job.job_memory_gb, 30.4)
+
 
 
 class TestRotateCSV(unittest.TestCase):

@@ -113,6 +113,7 @@ class JobEnum(str, Enum):
     autotst = 'autotst'  # AutoTST, 10.1021/acs.jpca.7b07361, 10.26434/chemrxiv.13277870.v2
     gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
     heuristics = 'heuristics'  # ARC's heuristics
+    crest = 'crest'  # CREST conformer/TS search
     kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
     linear = 'linear'  # ARC's linear TS search
     goflow = 'goflow'  # GoFlow, flow-matching E(3)-equivariant TS generator (Galustian et al., Digital Discovery 2025, 10.1039/D5DD00283D); https://github.com/heid-lab/goflow_lean
@@ -120,6 +121,7 @@ class JobEnum(str, Enum):
     user = 'user'  # user guesses
     xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
     orca_neb = 'orca_neb'
+    qst2 = 'qst2'  # Gaussian synchronous-transit-guided quasi-Newton TS search (opt=qst2)
 
 
 class JobTypeEnum(str, Enum):
@@ -157,6 +159,34 @@ class JobAdapter(ABC):
     """
     An abstract class for job adapters.
     """
+
+    def __repr__(self) -> str:
+        """
+        A concise single-line representation of the job, used whenever a job instance is
+        interpolated into a log message. Only attributes that are set by ``_initialize_adapter``
+        are considered, all attributes are accessed defensively so that this method never raises,
+        and attributes which were not set are omitted rather than reported as ``None``.
+
+        Returns:
+            str: The string representation of the job.
+        """
+        descriptors = list()
+        for attribute, key in [('job_name', 'name'),
+                               ('job_num', 'num'),
+                               ('job_id', 'id'),
+                               ('job_adapter', 'adapter'),
+                               ('job_type', 'type'),
+                               ('execution_type', 'execution'),
+                               ('species_label', 'label'),
+                               ('server', 'server'),
+                               ]:
+            value = getattr(self, attribute, None)
+            if value is not None:
+                descriptors.append(f'{key}={value}')
+        status = getattr(self, 'job_status', None)
+        if isinstance(status, (list, tuple)) and len(status):
+            descriptors.append(f'status={status[0]}')
+        return f'{self.__class__.__name__}({", ".join(descriptors)})'
 
     @abstractmethod
     def write_input_file(self) -> None:
@@ -210,6 +240,11 @@ class JobAdapter(ABC):
         Execute a job to the server's queue.
         """
         pass
+
+    @property
+    def ess_software(self) -> str:
+        """The electronic-structure software used to interpret this adapter's output."""
+        return self.job_adapter
 
     def execute(self) -> None:
         """
@@ -429,7 +464,7 @@ class JobAdapter(ABC):
         self.local_path_to_xyz = None
 
         if not os.path.isdir(self.local_path):
-            os.makedirs(self.local_path)
+            os.makedirs(self.local_path, exist_ok=True)
 
         if self.server is not None:
             # Parentheses don't play well in folder names:
@@ -527,11 +562,7 @@ class JobAdapter(ABC):
 
     def remove_remote_files(self) -> None:
         """
-        Remove the job's remote work directory, to keep cluster quota in check.
-
-        This is the remote-cleanup entry point for a job. ARC's own job flow does not call it:
-        no job removes its remote work directory today, and the caller that will is added
-        separately, which is why a run still leaves its remote directories behind.
+        Remove the job's remote work directory after a successful run, to keep cluster quota in check.
 
         Does nothing for a local server or when no remote path has been set.
         """
@@ -719,9 +750,10 @@ class JobAdapter(ABC):
         max_mem = servers[self.server].get('memory', None) if self.server is not None else 32.0  # Max memory per node in GB.
         job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
         if max_mem is not None and self.job_memory_gb > max_mem * job_max_server_node_memory_allocation:
+            node_str = f' on {self.server}' if self.server is not None else ''
             logger.warning(f'The memory for job {self.job_name} using {self.job_adapter} ({self.job_memory_gb} GB) '
-                           f'exceeds {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
-                           f'{self.server}. Setting it to {job_max_server_node_memory_allocation * max_mem:.2f} GB.')
+                           f'exceeds {100 * job_max_server_node_memory_allocation}% of the maximum node memory'
+                           f'{node_str}. Setting it to {job_max_server_node_memory_allocation * max_mem:.2f} GB.')
             self.job_memory_gb = job_max_server_node_memory_allocation * max_mem
             total_submit_script_memory_mib = math.ceil(self.job_memory_gb * MEMORY_GB_TO_MIB * CAPPED_JOB_MEMORY_OVERHEAD)
             self.job_status[1]['keywords'].append('max_total_job_memory')  # Useful info when troubleshooting.
@@ -929,8 +961,7 @@ class JobAdapter(ABC):
                     content += '\n'
         else:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
-        if content:
-            self.additional_job_info = content.lower()
+        self.additional_job_info = content.lower() if content else None
 
     def _check_job_server_status(self) -> str:
         """
@@ -950,6 +981,10 @@ class JobAdapter(ABC):
         Raises:
             IOError: If the output file and any additional server information cannot be found.
         """
+        existing_keywords = list(self.job_status[1].get('keywords', list()))
+        # Refresh scheduler-side logs before ESS parsing so server-reported OOMs
+        # can be detected even when the output file is absent or incomplete.
+        self._get_additional_job_info()
         if self.server != 'local' and self.execution_type != 'incore':
             if os.path.exists(self.local_path_to_output_file):
                 os.remove(self.local_path_to_output_file)
@@ -974,7 +1009,7 @@ class JobAdapter(ABC):
                                                                  species_label=self.species_label,
                                                                  job_type=self.job_type,
                                                                  job_log=self.additional_job_info,
-                                                                 software=self.job_adapter,
+                                                                 software=self.ess_software,
                                                                  )
             if status != 'done' and self.final_time is not None \
                     and datetime.datetime.now() - self.final_time < datetime.timedelta(seconds=30):
@@ -984,11 +1019,26 @@ class JobAdapter(ABC):
                                                                      species_label=self.species_label,
                                                                      job_type=self.job_type,
                                                                      job_log=self.additional_job_info,
-                                                                     software=self.job_adapter,
+                                                                     software=self.ess_software,
                                                                      )
         else:
             status, keywords, error, line = '', '', '', ''
+            if self.additional_job_info:
+                try:
+                    status, keywords, error, line = determine_ess_status(
+                        output_path=self.local_path_to_output_file,
+                        species_label=self.species_label,
+                        job_type=self.job_type,
+                        job_log=self.additional_job_info,
+                        software=self.ess_software,
+                    )
+                except FileNotFoundError:
+                    status, keywords, error, line = '', '', '', ''
         self.job_status[1]['status'] = status
+        if 'max_total_job_memory' in existing_keywords and status == 'errored' \
+                and isinstance(keywords, list) and 'Memory' in keywords \
+                and 'max_total_job_memory' not in keywords:
+            keywords.append('max_total_job_memory')
         self.job_status[1]['keywords'] = keywords
         self.job_status[1]['error'] = error
         self.job_status[1]['line'] = line.rstrip()

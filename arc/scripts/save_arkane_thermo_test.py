@@ -153,7 +153,7 @@ thermo(
         self.assertAlmostEqual(content['P1']['H298'], -241.8, delta=3.0)
         self.assertAlmostEqual(content['P1']['S298'], 188.8, delta=2.0)
         self.assertLess(content['P1']['H298'], content['R1']['H298'])
-        self.assertTrue(all(cp['cp_j_mol_k'] > 0 for cp in content['P1']['cp_data']))
+        self.assertTrue(all(point['cp_j_mol_k'] > 0 for point in content['P1']['thermo_points']))
         h_increment = (entries['P1'].get_enthalpy(2000.0) - entries['P1'].get_enthalpy(298.15)) / 1000.0
         self.assertAlmostEqual(h_increment, 72.79, delta=3.0)
         self.assertAlmostEqual(entries['P1'].get_entropy(2000.0), 264.77, delta=3.0)

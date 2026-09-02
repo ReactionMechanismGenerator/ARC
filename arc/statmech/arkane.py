@@ -41,6 +41,13 @@ MBAC_SECTION_START = "mbac = {"
 MBAC_SECTION_END = "freq_dict ="
 FREQ_SECTION_START = "freq_dict = {"
 
+# Tunneling method ARC uses for every reaction kinetics fit. Single source
+# of truth: the Arkane input template renders this constant, and output.yml
+# / the TCKDB adapter both read it back so downstream consumers know which
+# correction was applied.
+ARKANE_TUNNELING_METHOD = 'Eckart'
+
+
 main_input_template = """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
@@ -83,7 +90,7 @@ reaction(
     reactants=${rxn.reactants},
     products=${rxn.products},
     transitionState='${rxn.ts_species.label}',
-    tunneling='Eckart',
+    tunneling='${tunneling_method}',
 )
 % endfor
 
@@ -223,7 +230,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                                            delete_existing_subdir=True)
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors, e0_only=e0_only)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=not e0_only)
-        run_arkane(statmech_dir)
+        if not run_arkane(statmech_dir):
+            # No output.py was produced — parsing would either error or
+            # silently miss data. Skip cleanly; matches the kinetics
+            # caller's gate.
+            return
         self.parse_arkane_thermo_output(statmech_dir)
 
     def compute_high_p_rate_coefficient(self,
@@ -251,10 +262,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=False)
         self.generate_ts_files(statmech_dir, skip_rotors)
-        success = run_arkane(statmech_dir)
-        if not success:
+        if run_arkane(statmech_dir):
+            self.parse_arkane_kinetics_output(statmech_dir)
+        if not any(reaction.kinetics for reaction in self.reactions):
             return
-        self.parse_arkane_kinetics_output(statmech_dir)
         for reaction in self.reactions:
             plotter.log_kinetics(reaction.ts_species.label, path=statmech_dir)
             ts_validation = get_ts_validation_comment(reaction.ts_species)
@@ -414,6 +425,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             t_min=self.T_min,
             t_max=self.T_max,
             t_count=self.T_count,
+            tunneling_method=ARKANE_TUNNELING_METHOD,
         )
 
     def generate_species_files(self,
@@ -540,7 +552,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     spc.thermo.data = content[lbl]['data']
                     spc.thermo.nasa_low = content[lbl].get('nasa_low')
                     spc.thermo.nasa_high = content[lbl].get('nasa_high')
-                    spc.thermo.cp_data = content[lbl].get('cp_data')
+                    spc.thermo.thermo_points = content[lbl].get('thermo_points')
 
                     line = (
                         f"   {lbl:<{label_width}}  "

@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from arc.parser import parser
 from arc.checks.common import get_index_of_abs_largest_neg_freq, record_ts_check_warning
 from arc.common import get_element_mass, get_logger
+from arc.exceptions import ReactionError
 from arc.species.converter import get_most_common_isotope_for_element, xyz_from_data, xyz_to_np_array
 from arc.species.vectors import calculate_distance, VectorsError
 
@@ -39,6 +40,7 @@ logger = get_logger()
 SIGMA_THRESHOLD = 3.0
 STD_FLOOR = 1e-4
 DIRECTIONALITY_MIN_DELTA = 0.005
+NMD_UNDETERMINED_BONDS_WARNING = 'Could not determine the bonds that change in the reaction, NMD not checked; '
 DEFAULT_AMPLITUDE = 0.9
 ATOM_COUNT_MISMATCH_WARNING = 'The TS atom count does not match the reactants; skipped the TS normal mode ' \
                               'displacement check; '
@@ -102,7 +104,14 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
                        f'applied to this TS geometry. Skipping the normal mode displacement analysis.')
         record_ts_check_warning(species=reaction.ts_species, warning=ATOM_COUNT_MISMATCH_WARNING)
         return None
-    bond_change_candidates = get_bond_change_candidates(reaction=reaction)
+    try:
+        bond_change_candidates = get_bond_change_candidates(reaction=reaction)
+    except ReactionError as e:
+        logger.warning(f'Could not determine the bonds that change in reaction {reaction.label}, '
+                       f'got {type(e).__name__}: {e}\n'
+                       f'Not checking the normal mode displacement of TS {reaction.ts_species.label}.')
+        record_ts_check_warning(species=reaction.ts_species, warning=NMD_UNDETERMINED_BONDS_WARNING)
+        return None
     if not bond_change_candidates:
         logger.warning(f'Neither the reaction family recipe nor an atom map could supply the bonds that change '
                        f'in reaction {reaction.label}, so there is nothing to validate the normal mode against. '
