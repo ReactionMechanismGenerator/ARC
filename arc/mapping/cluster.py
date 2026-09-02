@@ -48,6 +48,7 @@ happened to produce. It is the orbit size of the reaction center under the *full
 core group extended by permutations of the hydrogens on each core atom - see :func:`center_degeneracy`.
 """
 
+import itertools
 import operator
 from dataclasses import dataclass, field
 
@@ -445,6 +446,32 @@ def _endpoint(graph: ComplexGraph, index: int) -> tuple:
     return CORE, index
 
 
+def hydrogen_stabilizer(center: frozenset, hydrogens: list[int]) -> int:
+    """
+    How many permutations of ``hydrogens`` leave the changed-bond set unchanged.
+
+    The changed-bond set is a *set*, so two hydrogens on the same parent that play the same role in it are
+    interchangeable: swapping them reproduces the same center rather than describing a second reaction path.
+    :func:`center_degeneracy` divides the ordered count by this to recover the orbit of the set.
+
+    Args:
+        center (frozenset): The changed-bond set, not hydrogen-collapsed.
+        hydrogens (list[int]): The named hydrogens of one parent core atom.
+
+    Returns:
+        int: The size of the stabilizer, at least 1.
+    """
+    hydrogens = sorted(hydrogens)
+    stabilizer = 0
+    for permutation in itertools.permutations(hydrogens):
+        relabel = dict(zip(hydrogens, permutation))
+        image = frozenset(tuple(sorted((relabel.get(i, i), relabel.get(j, j)))) + (before, after)
+                          for i, j, before, after in center)
+        if image == center:
+            stabilizer += 1
+    return stabilizer or 1
+
+
 def center_degeneracy(center: frozenset,
                       graph: ComplexGraph,
                       automorphisms: list[dict[int, int]],
@@ -464,8 +491,16 @@ def center_degeneracy(center: frozenset,
                      * product over core atoms p of  n_p! / (n_p - k_p)!
 
     where ``n_p`` is how many hydrogens hang off core atom ``p`` and ``k_p`` how many distinct ones the
-    center actually names. The falling factorial counts the ordered choices of which hydrogens play the
-    named roles. For CH4 + OH the core group is trivial and one of methane's four hydrogens is named, giving
+    center actually names. The falling factorial counts the *ordered* choices of which hydrogens play the
+    named roles, so it is divided by :func:`hydrogen_stabilizer` to recover the orbit of the center as a
+    set - see there for why.
+
+    The result is the orbit size and is deliberately *not* halved when the two reactants are the same
+    species. RMG halves it in that case (``reduce_same_reactant_degeneracy``, after Bishop and Laidler
+    1965) so a rate expression does not double count indistinguishable colliding partners:
+    ``C2H5 + C2H5 <=> C4H10`` is 1 here and 0.5 in RMG. Which convention is correct depends on how the
+    number is consumed, and a caller folding it into a rate coefficient for identical reactants has to
+    apply that factor itself. For CH4 + OH the core group is trivial and one of methane's four hydrogens is named, giving
     4; for C2H6 + OH the core group swaps the two carbons and one of three hydrogens is named, giving 6.
 
     Args:
@@ -477,7 +512,11 @@ def center_degeneracy(center: frozenset,
         int: The reaction path degeneracy.
     """
     if not center:
-        return 0
+        # The orbit of the empty set is itself, so the answer is one path, never zero. An empty center
+        # means this map changes no bonds *under the current bond-order setting* - families such as
+        # 1,2-Birad_to_alkene only change orders, so ignore_bond_orders=True erases their whole center.
+        # cluster_atom_maps() detects that case and retries with orders honored.
+        return 1
     collapsed = collapse_hydrogens(center, graph)
     images = set()
     for alpha in automorphisms:
@@ -502,9 +541,16 @@ def center_degeneracy(center: frozenset,
 
     hydrogen_factor = 1
     for parent, hydrogens in named.items():
-        available = hydrogen_counts.get(parent, 0)
+        # named[parent] is a subset of the hydrogens on that parent, so available >= len(hydrogens) and
+        # each factor below is >= 1; no clamping is needed.
+        available = hydrogen_counts[parent]
         for offset in range(len(hydrogens)):
-            hydrogen_factor *= max(available - offset, 1)
+            hydrogen_factor *= available - offset
+        # The falling factorial counts *ordered* assignments of hydrogens to the named roles, but the
+        # center is a set. Interchangeable hydrogens on one parent therefore have to be divided out, or a
+        # single path is counted once per ordering: both C-H bonds of CH2O breaking is one path to H2, not
+        # two. Dividing by the stabilizer turns the ordered count into the orbit of the set.
+        hydrogen_factor //= hydrogen_stabilizer(center, list(hydrogens))
     return core_orbit * hydrogen_factor
 
 

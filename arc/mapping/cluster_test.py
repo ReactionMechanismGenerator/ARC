@@ -473,10 +473,70 @@ class TestCenterDegeneracy(unittest.TestCase):
         self.assertEqual(cluster.center_degeneracy(primary, graph, automorphisms), 6)
         self.assertEqual(cluster.center_degeneracy(secondary, graph, automorphisms), 2)
 
-    def test_empty_center(self):
-        """Test that a center with no changed bonds has zero degeneracy."""
+    def test_empty_center_is_one_path_not_zero(self):
+        """Test that an empty center has degeneracy 1.
+
+        The orbit of the empty set under any group is the empty set itself, so the count is one. A
+        degeneracy of zero is not a meaningful answer for a reaction that exists. An empty center means
+        only that no bond was made or broken under the current bond-order setting; see
+        test_order_only_reaction_is_reclustered_with_orders_honored for the case that produces one.
+        """
         degeneracy, _ = self._degeneracy(['C'], frozenset())
-        self.assertEqual(degeneracy, 0)
+        self.assertEqual(degeneracy, 1)
+
+    def test_interchangeable_hydrogens_count_as_one_path(self):
+        """Test that two hydrogens leaving the same carbon in the same role is one path, not two.
+
+        The hydrogen factor counts ordered assignments of hydrogens to the roles the center names, but the
+        center is a set. For CH2O losing both hydrogens to H2 the two C-H bonds are interchangeable, so the
+        ordered count of 2!/0! = 2 must be divided by the stabilizer of size 2. RMG reports 1 for
+        1,2_Insertion_CO on CH2O, and a direct orbit count agrees.
+        """
+        graph = cluster.build_complex_graph([ARCSpecies(label='CH2O', smiles='C=O')])
+        automorphisms, _ = cluster.core_automorphisms(graph)
+        hydrogens = sorted(graph.parent)
+        carbon = graph.parent[hydrogens[0]]
+        both = frozenset({(min(carbon, h), max(carbon, h), 1, 0) for h in hydrogens})
+        self.assertEqual(cluster.center_degeneracy(both, graph, automorphisms), 1)
+        one = frozenset({(min(carbon, hydrogens[0]), max(carbon, hydrogens[0]), 1, 0)})
+        self.assertEqual(cluster.center_degeneracy(one, graph, automorphisms), 2)
+
+    def test_distinguishable_hydrogens_on_one_parent_stay_separate_paths(self):
+        """Test that two hydrogens on one carbon in *different* roles remain two paths.
+
+        The stabilizer division must not collapse hydrogens the center tells apart: here one C-H breaks and
+        the other changes order, so swapping them yields a different center.
+        """
+        graph = cluster.build_complex_graph([ARCSpecies(label='CH2O', smiles='C=O')])
+        automorphisms, _ = cluster.core_automorphisms(graph)
+        h1, h2 = sorted(graph.parent)[:2]
+        carbon = graph.parent[h1]
+        center = frozenset({(min(carbon, h1), max(carbon, h1), 1, 0),
+                            (min(carbon, h2), max(carbon, h2), 1, 2)})
+        self.assertEqual(cluster.center_degeneracy(center, graph, automorphisms), 2)
+
+
+class TestHydrogenStabilizer(unittest.TestCase):
+    """
+    Contains unit tests for the stabilizer that turns an ordered hydrogen count into a set orbit.
+    """
+
+    def test_identical_roles_are_interchangeable(self):
+        """Test that hydrogens playing the same role give a stabilizer of their factorial."""
+        self.assertEqual(cluster.hydrogen_stabilizer(frozenset({(0, 1, 1, 0), (0, 2, 1, 0)}), [1, 2]), 2)
+
+    def test_different_roles_are_not_interchangeable(self):
+        """Test that hydrogens the center tells apart give a trivial stabilizer."""
+        self.assertEqual(cluster.hydrogen_stabilizer(frozenset({(0, 1, 1, 0), (0, 2, 1, 2)}), [1, 2]), 1)
+
+    def test_three_identical_roles(self):
+        """Test that three interchangeable hydrogens give 3! = 6."""
+        center = frozenset({(0, 1, 1, 0), (0, 2, 1, 0), (0, 3, 1, 0)})
+        self.assertEqual(cluster.hydrogen_stabilizer(center, [1, 2, 3]), 6)
+
+    def test_single_hydrogen_is_trivial(self):
+        """Test that one hydrogen can only map to itself."""
+        self.assertEqual(cluster.hydrogen_stabilizer(frozenset({(0, 1, 1, 0)}), [1]), 1)
 
 
 class TestPermutationValidation(unittest.TestCase):
