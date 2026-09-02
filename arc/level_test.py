@@ -255,12 +255,28 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(assign_frequency_scale_factor(Level(method='CCSD(T)-F12', basis='cc-pvtz-F12')), 0.998)
         self.assertEqual(assign_frequency_scale_factor(Level(method='wb97xd', basis='Def2TZVP')), 0.988)
         self.assertEqual(assign_frequency_scale_factor(Level(method='CBS-QB3')), 1.004)
+        self.assertEqual(assign_frequency_scale_factor(Level(method='G4')), 0.9992)
         self.assertEqual(assign_frequency_scale_factor(Level(method='PM6')), 1.093)
+
+    def test_the_g4_frequency_scale_factor_is_curtiss_not_the_truhlar_fit(self):
+        """Test that G4's scale factor is pinned to the value derived from Curtiss' own ZPE scale
+        factor, and not to the superseded 0.994 that a Truhlar-method fit over the 15-species
+        standard set gave. The number is the whole point of the correction, so pin its provenance
+        (the source entry) alongside it"""
+        entry = read_yaml_file(path=os.path.join(ARC_PATH, 'data', 'freq_scale_factors.yml'))
+        g4 = entry['freq_scale_factors']['g4, software: gaussian']
+        self.assertEqual(g4['factor'], 0.9992)
+        self.assertNotEqual(g4['factor'], 0.994)
+        self.assertEqual(g4['source'], 6)
+        self.assertIn('Curtiss', entry['sources'][6])
+        self.assertAlmostEqual(g4['factor'], 0.9854 * 1.014, places=4)
 
     def test_assign_frequency_scale_factor_from_str(self):
         """Test the assign_frequency_scale_factor() method with a string level argument."""
         self.assertEqual(assign_frequency_scale_factor('hf/sto3g, software: gaussian'), 0.817)
         self.assertEqual(assign_frequency_scale_factor('cbs-qb3'), 1.004)
+        self.assertEqual(assign_frequency_scale_factor('g4'), 0.9992)
+        self.assertEqual(assign_frequency_scale_factor('g4, software: gaussian'), 0.9992)
         self.assertIsNone(assign_frequency_scale_factor('g4mp2, software: gaussian'))
         self.assertIsNone(assign_frequency_scale_factor('no/such, software: nonesuch, solvent: water'))
         # Only assign_frequency_scale_factor() tolerates these strings, Level() itself still raises.
