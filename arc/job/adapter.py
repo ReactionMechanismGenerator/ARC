@@ -428,8 +428,9 @@ class JobAdapter(ABC):
         self.local_path_to_hess_file = os.path.join(self.local_path, 'input.hess')
         self.local_path_to_xyz = None
 
-        if not os.path.isdir(self.local_path):
-            os.makedirs(self.local_path)
+        # exist_ok rather than a prior isdir() check: another job being set up concurrently can create
+        # this directory between the check and the call, which raised FileExistsError.
+        os.makedirs(self.local_path, exist_ok=True)
 
         if self.server is not None:
             # Parentheses don't play well in folder names:
