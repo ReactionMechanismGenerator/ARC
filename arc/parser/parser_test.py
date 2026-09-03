@@ -16,6 +16,7 @@ from arc.common import ARC_TESTING_PATH, almost_equal_coords, get_element_mass, 
 from arc.parser.adapters.gaussian import parse_ic_info, parse_ic_values
 from arc.species import ARCSpecies
 from arc.species.converter import str_to_xyz, xyz_to_str
+from arc.species.vectors import calculate_distance
 
 
 class TestParser(unittest.TestCase):
@@ -754,6 +755,22 @@ H      -1.69381305    0.40788834    0.90078104"""
                                      (-0.624513, 0.203027, -0.807493), (0.59, -0.871703, -0.0),
                                      (0.659027, -1.754591, -0.0))}
         self.assertTrue(almost_equal_coords(xyz_5, expected_xyz_5))
+
+    def test_parse_geometry_molpro(self):
+        """Test parse_geometry() of a Molpro log file"""
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
+        xyz = parser.parse_geometry(log_file_path=path)
+        self.assertIsInstance(xyz, dict)
+        self.assertEqual(xyz['symbols'], ('O', 'C', 'H', 'H'))
+        self.assertEqual(len(xyz['coords']), 4)
+
+    def test_parse_geometry_molpro_is_in_angstrom(self):
+        """Test that parse_geometry() converts the Molpro Bohr coordinates to Angstrom"""
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
+        xyz = parser.parse_geometry(log_file_path=path)
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[0, 1]), 1.2116, places=3)
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[1, 2]), 1.1031, places=3)
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[1, 3]), 1.1031, places=3)
 
     def test_parse_geometry_for_ts(self):
         """Test parse_geometry() for Transition States"""
