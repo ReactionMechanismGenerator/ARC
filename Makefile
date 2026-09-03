@@ -68,8 +68,8 @@ install:
 	bash $(DEVTOOLS_DIR)/install_all.sh
 
 install-ci:
-	@echo "Installing all external ARC dependencies for CI (no clean, no GoFlow, no RitS — each runs in its own CI lane)..."
-	bash $(DEVTOOLS_DIR)/install_all.sh --no-clean --no-goflow --no-rits
+	@echo "Installing all external ARC dependencies for CI (no clean, no GoFlow, no RitS, no TS-GCN — the first two run in their own CI lanes; CI never runs the ts_gcn environment)..."
+	bash $(DEVTOOLS_DIR)/install_all.sh --no-clean --no-goflow --no-rits --no-gcn
 
 install-lite:
 	@echo "Installing ARC's lite version (no external dependencies)..."

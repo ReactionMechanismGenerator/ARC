@@ -28,6 +28,7 @@ SKIP_EXT=false
 SKIP_ARC=false
 SKIP_GOFLOW=false
 SKIP_RITS=false
+SKIP_GCN=false
 RMG_ARGS=()
 ARC_ARGS=()
 EXT_ARGS=()
@@ -40,6 +41,7 @@ while [[ $# -gt 0 ]]; do
         --no-arc)    SKIP_ARC=true  ;;
         --no-goflow) SKIP_GOFLOW=true ;;
         --no-rits)   SKIP_RITS=true ;;
+        --no-gcn)    SKIP_GCN=true ;;
         --rmg-*)    RMG_ARGS+=("--${1#--rmg-}") ;;
         --arc-*)    ARC_ARGS+=("--${1#--arc-}") ;;
         --ext-*)    EXT_ARGS+=("--${1#--ext-}") ;;
@@ -50,6 +52,7 @@ Usage: $0 [global-flags] [--rmg-xxx] [--arc-yyy] [--ext-zzz]
   --no-ext            Skip external tools (AutoTST, KinBot, …)
   --no-goflow         Skip the GoFlow installer (heavy ML stack — usually run in its own CI lane)
   --no-rits           Skip the RitS installer (heavy ML stack — usually run in its own CI lane)
+  --no-gcn            Skip the TS-GCN installer (its wheels come from a third-party host that CI does not need)
   --rmg-path          Forward '--path' to RMG installer
   --rmg-pip           Forward '--pip'  to RMG installer
   ...
@@ -118,6 +121,13 @@ if [[ $SKIP_EXT == false ]]; then
     if [[ $SKIP_RITS == true ]]; then
         unset 'EXT_INSTALLERS[RitS]'
         echo "ℹ️  --no-rits: skipping RitS installer (run \`make install-rits\` or the rits CI lane separately)"
+    fi
+
+    # Optionally drop TS-GCN — used by `make install-ci`: its tests mock the ts_gcn interpreter, and the
+    # PyTorch Geometric wheels it pulls are served by a host outside our control
+    if [[ $SKIP_GCN == true ]]; then
+        unset 'EXT_INSTALLERS[GCN CPU]'
+        echo "ℹ️  --no-gcn: skipping TS-GCN installer (run \`make install-gcn\` separately)"
     fi
 
         # installer-specific flag whitelists

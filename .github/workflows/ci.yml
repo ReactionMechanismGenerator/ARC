@@ -101,11 +101,11 @@ jobs:
             bash ARC/devtools/install_rits.sh --cpu
           fi
 
-      - name: Set TS-GCN and AutoTST in PYTHONPATH
+      - name: Set AutoTST in PYTHONPATH
         shell: micromamba-shell {0}
         working-directory: ARC
         run: |
-          echo "PYTHONPATH=$(realpath ../TS-GCN):$(realpath ../AutoTST):$PYTHONPATH" >> $GITHUB_ENV
+          echo "PYTHONPATH=$(realpath ../AutoTST):$PYTHONPATH" >> $GITHUB_ENV
 
       - name: Compile ARC molecule
         shell: micromamba-shell {0}
