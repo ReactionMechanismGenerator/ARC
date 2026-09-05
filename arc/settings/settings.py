@@ -116,9 +116,14 @@ global_ess_settings = {
 supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase', 'pyscf']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-# Note: 'goflow' and 'rits' are intentionally NOT in the default — their envs
-# (goflow_env / rits_env + pretrained checkpoints) are heavyweight, so users
-# opt in explicitly via ``ts_adapters: ['goflow', ...]`` in their input.yml.
+# An adapter runs only if it is both registered for the reaction's family in
+# ts_adapters_by_rmg_family (arc/job/adapters/common.py) and listed here.
+# 'goflow', 'rits' and 'crest' are registered per family but are not in this default list,
+# so they are opt-in via ``ts_adapters: ['crest', ...]`` in the input file.
+# 'heuristics' is in this default list, and it is registered for H_Abstraction,
+# carbonyl_based_hydrolysis, ether_hydrolysis and nitrile_hydrolysis, so it runs by default for
+# those families. The XY_Addition_MultipleBond seed builder is reached only through 'crest',
+# so it never runs unless CREST is requested.
 ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
 
 # List here job types to execute by default
@@ -587,3 +592,14 @@ for path in rmg_db_candidates:
     if path and os.path.isdir(path):
         RMG_DB_PATH = path
         break
+
+# CREST (an opt-in TS-search wrapper, see docs/source/TS_search.rst).
+# CREST_PATH is the crest executable, CREST_ENV_PATH a shell line that activates the environment
+# providing it (either one is sufficient). Leave both as None to have ARC locate CREST when it is
+# first used: it then looks for versioned standalone builds under CREST_STANDALONE_DIR (or the
+# ARC_CREST_STANDALONE_DIR environment variable), then in the common conda/mamba 'crest_env'
+# locations under the home directory, and finally on PATH.
+CREST_PATH = None
+CREST_ENV_PATH = None
+CREST_STANDALONE_DIR = None
+
