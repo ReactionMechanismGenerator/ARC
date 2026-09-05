@@ -157,8 +157,10 @@ def _initialize_adapter(obj: JobAdapter,
 
     obj.project = project
     obj.project_directory = project_directory
-    if obj.project_directory and not os.path.isdir(obj.project_directory):
-        os.makedirs(obj.project_directory)
+    if obj.project_directory:
+        # exist_ok rather than a prior isdir() check: another adapter being initialized concurrently can
+        # create this directory between the check and the call, which raised FileExistsError.
+        os.makedirs(obj.project_directory, exist_ok=True)
 
     obj.additional_job_info = None
     obj.args = args or dict()

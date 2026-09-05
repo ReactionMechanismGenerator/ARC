@@ -12,6 +12,7 @@ from arc.species.converter import (check_xyz_dict,
                                    translate_xyz,
                                    xyz_to_str,
                                    )
+from arc.mapping.cluster import map_reaction_clusters
 from arc.mapping.driver import map_reaction
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
@@ -123,6 +124,7 @@ class ARCReaction(object):
         self.ts_xyz_guess = ts_xyz_guess or xyz or list()
         self.preserve_param_in_scan = preserve_param_in_scan
         self._atom_map = None
+        self._atom_map_clusters = None
         self._charge = charge
         self._multiplicity = multiplicity
         if reaction_dict is not None:
@@ -168,6 +170,43 @@ class ARCReaction(object):
     def atom_map(self, value):
         """Allow setting the atom map"""
         self._atom_map = value
+
+    @property
+    def atom_map_clusters(self):
+        """The distinct reaction channels of this reaction, as clustered atom maps.
+
+        Each entry is an ``arc.mapping.cluster.MapCluster``: one chemically distinct channel, hence one
+        transition state to search for, whose ``degeneracy`` is that channel's reaction path degeneracy.
+        More than one cluster is uncommon - it was seen for 1 of 293 mapped reactions of the benchmark
+        corpus - and marks a reaction for which ``atom_map`` picked one channel by an arbitrary tie-break.
+
+        This is much more expensive than ``atom_map``: it sweeps every RMG template product dictionary, in
+        both reaction directions, and every superimposable backbone candidate per scissored fragment. It is
+        therefore computed lazily, on first access only, and is never triggered by ``atom_map``. The result
+        is cached even when empty, so a failed attempt is not silently repaid on every access; assign
+        ``None`` to force a recomputation.
+
+        Not persisted by ``as_dict``, unlike ``atom_map`` - it is a derived quantity that can always be
+        recomputed from the species.
+        """
+        if self._atom_map_clusters is None:
+            if not all(species.get_xyz(generate=False) is not None
+                       for species in self.r_species + self.p_species):
+                # Not yet computable rather than failed: without geometries no mapping was attempted, so
+                # this must stay distinguishable from a genuine failure and must not be reported as one.
+                logger.debug(f'Not clustering atom maps for {self}: not all species have geometries yet.')
+                return None
+            self._atom_map_clusters = map_reaction_clusters(rxn=self, backend='ARC')
+            if not self._atom_map_clusters:
+                # Logged once, here, immediately after the attempt that failed. The empty result is cached,
+                # so later accesses return it without repeating this.
+                logger.error(f"The requested ARC reaction {self} could not be atom mapped into channels.")
+        return self._atom_map_clusters
+
+    @atom_map_clusters.setter
+    def atom_map_clusters(self, value):
+        """Allow setting or resetting the atom map clusters"""
+        self._atom_map_clusters = value
 
     @property
     def product_dicts(self):
