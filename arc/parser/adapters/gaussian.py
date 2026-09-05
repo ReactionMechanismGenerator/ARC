@@ -781,6 +781,56 @@ class GaussianParser(ESSAdapter, ABC):
                 return m.group(1).rstrip(',')
         return None
 
+    def parse_bond_orders(self) -> np.ndarray | None:
+        """
+        Parse the Mayer bond order matrix from a Gaussian log file.
+
+        Requires ``IOp(6/80=1)`` in the route section, which makes Gaussian print an
+        "Atomic Valencies and Mayer Atomic Bond Orders:" section. The matrix is printed in
+        Fortran-style column blocks of six, each block preceded by a line of column indices.
+        The last such section in the file is used (relevant for multi-step jobs).
+
+        Returns: np.ndarray | None
+            A symmetric NxN matrix of Mayer bond orders in the log file's atom order.
+            The diagonal holds the Mayer atomic valence of each atom.
+            ``None`` if the log file does not contain a Mayer bond order section.
+        """
+        lines = _get_lines_from_file(self.log_file_path)
+        start = None
+        for i in reversed(range(len(lines))):
+            if 'Atomic Valencies and Mayer Atomic Bond Orders' in lines[i]:
+                start = i + 1
+                break
+        if start is None:
+            return None
+        matrix, columns = dict(), list()
+        for line in lines[start:]:
+            splits = line.split()
+            if not splits:
+                continue
+            if all(split.isdigit() for split in splits):
+                # A column index header line, e.g. "   1   2   3   4   5   6".
+                columns = [int(split) - 1 for split in splits]
+                continue
+            # A data line, e.g. "     1  C    3.931186   1.908673   ...".
+            if len(splits) < 3 or not splits[0].isdigit() or not columns:
+                break
+            try:
+                row = int(splits[0]) - 1
+                values = [float(split) for split in splits[2:]]
+            except ValueError:
+                break
+            for column, value in zip(columns, values):
+                matrix[(row, column)] = value
+        if not matrix:
+            return None
+        n = max(max(key) for key in matrix.keys()) + 1
+        bond_orders = np.zeros((n, n), np.float64)
+        for (i, j), value in matrix.items():
+            bond_orders[i, j] = value
+        # Gaussian prints the full square matrix, symmetrizing absorbs print-precision asymmetry.
+        return 0.5 * (bond_orders + bond_orders.T)
+
     def _load_scan_specs(self, letter_spec, get_after_letter_spec=False):
         """
         This method reads the ouptput file for optional parameters
