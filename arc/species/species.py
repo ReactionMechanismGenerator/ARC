@@ -1223,22 +1223,32 @@ class ARCSpecies(object):
         """
         Cheaply (limiting the number of possible conformers) get a reasonable conformer,
         this could very well not be the best (lowest energy) one.
+
+        The 2D graph is taken from ``mol_list`` when ``mol`` is unset, which is the same fallback
+        that ``is_monoatomic()``, ``is_diatomic()`` and the ``generate`` branch of ``get_xyz()``
+        already make. Without it a polyatomic species holding only a ``mol_list`` raises an
+        ``AttributeError`` here rather than getting a conformer.
         """
+        mol = self.mol if self.mol is not None else (self.mol_list[0] if self.mol_list else None)
+        if mol is None:
+            logger.warning(f'Could not generate a cheap conformer for {self.label}, it has no 2D graph.')
+            self.cheap_conformer = None
+            return
         if self.is_monoatomic():
             self.cheap_conformer = \
-                conformers.generate_monoatomic_conformer(symbol=self.mol_list[0].atoms[0].element.symbol)['xyz']
+                conformers.generate_monoatomic_conformer(symbol=mol.atoms[0].element.symbol)['xyz']
             self.initial_xyz = self.final_xyz = self.cheap_conformer
         elif self.is_diatomic():
             self.cheap_conformer = \
-                conformers.generate_diatomic_conformer(symbol_1=self.mol_list[0].atoms[0].element.symbol,
-                                                       symbol_2=self.mol_list[0].atoms[1].element.symbol,
+                conformers.generate_diatomic_conformer(symbol_1=mol.atoms[0].element.symbol,
+                                                       symbol_2=mol.atoms[1].element.symbol,
                                                        multiplicity=self.multiplicity)['xyz']
         else:
-            num_confs = min(500, max(50, len(self.mol.atoms) * 3))
-            rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
+            num_confs = min(500, max(50, len(mol.atoms) * 3))
+            rd_mol = conformers.embed_rdkit(label=self.label, mol=mol, num_confs=num_confs)
             xyzs, energies = conformers.rdkit_force_field(label=self.label,
                                                           rd_mol=rd_mol,
-                                                          mol=self.mol,
+                                                          mol=mol,
                                                           num_confs=num_confs,
                                                           force_field='MMFF94s',
                                                           )
