@@ -21,8 +21,8 @@ import itertools
 import os
 from typing import TYPE_CHECKING, Any
 
-from arc.common import (ARC_PATH, almost_equal_coords, get_angle_in_180_range, get_logger, is_angle_linear,
-                        is_xyz_linear, key_by_val, read_yaml_file)
+from arc.common import (ARC_PATH, almost_equal_coords, get_angle_in_180_range, get_logger, get_single_bond_length,
+                        is_angle_linear, is_xyz_linear, key_by_val, read_yaml_file)
 from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
@@ -45,6 +45,11 @@ FAMILY_SETS = {'hydrolysis_set_1': ['carbonyl_based_hydrolysis', 'ether_hydrolys
                'hydrolysis_set_2': ['nitrile_hydrolysis']}
 
 DIHEDRAL_INCREMENT = 30
+
+H_ABS_BREAKING_BOND_ELONGATION = {'C': 0.22, 'N': 0.19, 'O': 0.23, 'S': 0.14}
+H_ABS_FORMING_BOND_ELONGATION = {'C': 0.28, 'N': 0.26, 'O': 0.30, 'S': 0.23}
+DEFAULT_H_ABS_BREAKING_BOND_ELONGATION = 0.22
+DEFAULT_H_ABS_FORMING_BOND_ELONGATION = 0.28
 
 ELECTRONEGATIVITIES = read_yaml_file(os.path.join(ARC_PATH, 'data', 'electronegativity.yml'))
 
@@ -329,8 +334,8 @@ def combine_coordinates_with_redundant_atoms(xyz_1: dict[str, Any],
                                              h2: int,
                                              c: int | None = None,
                                              d: int | None = None,
-                                             r1_stretch: float = 1.2,
-                                             r2_stretch: float = 1.2,
+                                             r1_stretch: float | None = None,
+                                             r2_stretch: float | None = None,
                                              a2: float = 180.0,
                                              d2: float | None = None,
                                              d3: float | None = None,
@@ -384,10 +389,14 @@ def combine_coordinates_with_redundant_atoms(xyz_1: dict[str, Any],
                            (atom C).
         d (int | None): The 0-index of an atom in ``xyz2`` connected to either B or H2 which is neither B nor H2
                            (atom D).
-        r1_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
-                                      atom ``h1`` in ``xyz1`` (bond A-H1).
-        r2_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
-                                      atom ``h2`` in ``xyz2`` (bond B-H2).
+        r1_stretch (float | None, optional): The factor by which to multiply (stretch/shrink) the bond length to the
+                                             terminal atom ``h1`` in ``xyz1`` (bond A-H1). If ``None``, the bond is
+                                             instead set to the absolute length returned by
+                                             ``get_h_abs_reactive_bond_length()`` for the element of atom A.
+        r2_stretch (float | None, optional): The factor by which to multiply (stretch/shrink) the bond length to the
+                                             terminal atom ``h2`` in ``xyz2`` (bond B-H2). If ``None``, the bond is
+                                             instead set to the absolute length returned by
+                                             ``get_h_abs_reactive_bond_length()`` for the element of atom B.
         a2 (float, optional): The angle (in degrees) in the combined structure between atoms B-H-A (angle B-H-A).
         d2 (float | None): The dihedral angle (in degrees) between atoms B-H-A-C (dihedral B-H-A-C).
                               This argument must be given only if the a2 angle is not linear,
@@ -408,9 +417,17 @@ def combine_coordinates_with_redundant_atoms(xyz_1: dict[str, Any],
     is_a2_linear, is_mol_1_linear, a, b = _validate_combine_coordinates_with_redundant_atoms_args(
         xyz_1, xyz_2, mol_1, mol_2, h1, h2, a2, d2, d3, c, d)
     zmat_1, zmat_2 = generate_the_two_constrained_zmats(xyz_1, xyz_2, mol_1, mol_2, h1, h2, a, b, c, d)
-    # Stretch the A--H1 and B--H2 bonds.
-    stretch_zmat_bond(zmat=zmat_1, indices=(h1, a), stretch=r1_stretch)
-    stretch_zmat_bond(zmat=zmat_2, indices=(b, h2), stretch=r2_stretch)
+    # Set the breaking A--H1 and forming B--H2 bonds.
+    if r1_stretch is None:
+        set_zmat_bond(zmat=zmat_1, indices=(h1, a),
+                      length=get_h_abs_reactive_bond_length(symbol=xyz_1['symbols'][a], bond='breaking'))
+    else:
+        stretch_zmat_bond(zmat=zmat_1, indices=(h1, a), stretch=r1_stretch)
+    if r2_stretch is None:
+        set_zmat_bond(zmat=zmat_2, indices=(b, h2),
+                      length=get_h_abs_reactive_bond_length(symbol=xyz_2['symbols'][b], bond='forming'))
+    else:
+        stretch_zmat_bond(zmat=zmat_2, indices=(b, h2), stretch=r2_stretch)
     add_dummy = is_a2_linear and len(zmat_1['symbols']) > 2 and not is_mol_1_linear
     glue_params = determine_glue_params(zmat=zmat_1,
                                         add_dummy=add_dummy,
@@ -550,6 +567,61 @@ def stretch_zmat_bond(zmat: dict,
     """
     param = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=True)
     zmat['vars'][param] *= stretch
+
+
+def set_zmat_bond(zmat: dict,
+                  indices: tuple[int, int],
+                  length: float):
+    """
+    Set a bond in a zmat to an absolute length.
+
+    Args:
+        zmat (dict): The zmat to process.
+        indices (tuple): A length 2 tuple with the 0-indices of the xyz (not zmat) atoms representing the bond to set.
+        length (float): The bond length to set, in Angstrom.
+    """
+    param = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=True)
+    zmat['vars'][param] = length
+
+
+def get_h_abs_reactive_bond_length(symbol: str,
+                                   bond: str,
+                                   ) -> float:
+    """
+    Get the reactive-core bond length to seed for an H_Abstraction TS guess, A-H(*2)...B.
+
+    The returned length is the equilibrium single bond length between ``symbol`` and H, taken from
+    ``get_single_bond_length()``, plus a per-element elongation. C, N, O and S carry an elongation of
+    their own; every other element, hydrogen included, takes ``DEFAULT_H_ABS_BREAKING_BOND_ELONGATION``
+    or ``DEFAULT_H_ABS_FORMING_BOND_ELONGATION``. An element absent from ``SINGLE_BOND_LENGTH``
+    receives that function's 1.75 Angstrom fallback as its equilibrium length.
+
+    The elongations are medians of d(A-H(*2)) - r_e(A-H) and of d(H(*2)-B) - r_e(B-H) over 1670
+    DFT-optimized H_Abstraction transition states, conditioned on the element of A and of B
+    respectively, with r_e taken from ``get_single_bond_length()`` so that adding it back reproduces the
+    measured distance. The forming elongation exceeds the breaking one because 70% of that reference set
+    is written in the exothermic direction; the asymmetry therefore applies to a reaction written in the
+    RMG template direction and is not a property of the saddle, which is symmetric for a thermoneutral
+    abstraction.
+
+    Args:
+        symbol (str): The atomic symbol of the atom at the far end of the bond, i.e., of the donor A
+                      for a breaking bond and of the acceptor B for a forming bond.
+        bond (str): Either ``'breaking'`` for the A-H(*2) bond or ``'forming'`` for the H(*2)-B bond.
+
+    Returns:
+        float: The bond length to seed, in Angstrom.
+
+    Raises:
+        ValueError: If ``bond`` is neither ``'breaking'`` nor ``'forming'``.
+    """
+    if bond == 'breaking':
+        elongations, default = H_ABS_BREAKING_BOND_ELONGATION, DEFAULT_H_ABS_BREAKING_BOND_ELONGATION
+    elif bond == 'forming':
+        elongations, default = H_ABS_FORMING_BOND_ELONGATION, DEFAULT_H_ABS_FORMING_BOND_ELONGATION
+    else:
+        raise ValueError(f"The bond argument must be either 'breaking' or 'forming', got {bond}")
+    return get_single_bond_length(symbol, 'H') + elongations.get(symbol, default)
 
 
 def determine_glue_params(zmat: dict,
@@ -853,8 +925,8 @@ def are_h_abs_wells_reversed(rxn: ARCReaction,
 
 
 def h_abstraction(reaction: ARCReaction,
-                  r1_stretch: float = 1.2,
-                  r2_stretch: float = 1.2,
+                  r1_stretch: float | None = None,
+                  r2_stretch: float | None = None,
                   a2: float = 180,
                   dihedral_increment: int | None = None,
                   ) -> list[dict]:
@@ -863,10 +935,12 @@ def h_abstraction(reaction: ARCReaction,
 
     Args:
         reaction: An ARCReaction instance.
-        r1_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
-                                      atom ``h1`` in ``xyz1`` (bond A-H1) relative to the respective well.
-        r2_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
-                                      atom ``h2`` in ``xyz2`` (bond B-H2) relative to the respective well.
+        r1_stretch (float | None, optional): The factor by which to multiply (stretch/shrink) the bond length to the
+                                             terminal atom ``h1`` in ``xyz1`` (bond A-H1) relative to the respective
+                                             well. If ``None``, the per-element reactive-core length is set instead.
+        r2_stretch (float | None, optional): The factor by which to multiply (stretch/shrink) the bond length to the
+                                             terminal atom ``h2`` in ``xyz2`` (bond B-H2) relative to the respective
+                                             well. If ``None``, the per-element reactive-core length is set instead.
         a2 (float, optional): The angle (in degrees) in the combined structure between atoms B-H-A (angle B-H-A).
         dihedral_increment (int, optional): The dihedral increment to use for B-H-A-C and D-B-H-C dihedral scans.
 
