@@ -27,6 +27,22 @@ logger = get_logger()
 default_job_settings, global_ess_settings, rotor_scan_resolution = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['rotor_scan_resolution']
 
+REFERENCE_AGNOSTIC_METHOD_TYPES = ['force_field', 'composite', 'semiempirical']
+
+BROKEN_SYMMETRY_METHOD_TYPES = ['dft']
+BROKEN_SYMMETRY_METHODS = ['hf', 'hf3c', 'rhf', 'uhf', 'rohf']
+DOUBLE_HYBRID_METHODS = ['b2plyp', 'b2plypd', 'b2plypd3', 'b2plypd3bj', 'b2gpplyp', 'b2kplyp', 'b2tplyp',
+                         'mpw2plyp', 'mpw2plypd', 'wb2plyp', 'wb2gpplyp',
+                         'pbe0dh', 'pbe02', 'pbeqidh', 'pwpb95', 'ripwpb95', 'ptpss',
+                         'dsdblyp', 'dsdblypd3', 'dsdpbep86', 'dsdpbep86d3', 'dsdpbeb95', 'dsdpbeb95d3',
+                         'dsdpbepbe', 'dsdpbepbed3', 'revdsdpbep86', 'revdsdpbep86d3', 'revdsdpbeb95',
+                         'dodblyp', 'dodpbep86', 'dodpbeb95',
+                         'xyg3', 'xygjos', 'wb97x2', 'wb97m2']
+
+DERIVED_UNRESTRICTED_VERDICT = 'external_instability'
+SPIN_RELAXED_REFERENCE_PREFIX = 'U'
+REFERENCE_CHANGE_AVAILABLE_KEY = 'reference_change_available'
+
 ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', 'linear'],
                              '1,2_Insertion_CO': ['kinbot', 'goflow', 'rits', 'linear'],
                              '1,2_Insertion_carbene': ['kinbot', 'goflow', 'rits', 'linear'],
@@ -165,7 +181,7 @@ def _initialize_adapter(obj: JobAdapter,
     obj.additional_job_info = None
     obj.args = args or dict()
     obj.bath_gas = bath_gas
-    obj.checkfile = checkfile
+    obj.checkfile = obj.readable_checkfile(checkfile)
     obj.conformer = conformer
     obj.constraints = constraints or list()
     obj.cpu_cores = cpu_cores
@@ -318,6 +334,19 @@ def is_restricted(obj: JobAdapter) -> bool | list[bool]:
     Check whether a Job Adapter should be executed as restricted or unrestricted.
     If the job adapter contains a list of species, return True or False per species.
 
+    The decision is also memoized on the job adapter as ``obj.restricted_used``, in the
+    same shape it is returned in. Adapters call this while writing their input file, so
+    the memo is the reference that job's input actually declared, and it is rewritten only
+    when that input is rewritten. A consumer that recomputes the decision instead reports
+    the reference the species would get today, which for a job that has already run is not
+    the same question.
+
+    The memo is written to the restart file by ``JobAdapter.as_dict()`` and restored by
+    ``Scheduler.restore_running_jobs()`` after the adapter is rebuilt, because rebuilding
+    it re-composes the input file and so calls this function again: without the restore, a
+    job that was queued before a reference decision changed would come back from a restart
+    carrying the reference it would be given now rather than the one it is running with.
+
     Args:
         obj: The job adapter object.
 
@@ -325,9 +354,282 @@ def is_restricted(obj: JobAdapter) -> bool | list[bool]:
         bool | list[bool]: Whether to run as restricted (``True``) or not (``False``).
     """
     if not obj.run_multi_species:
-        return is_species_restricted(obj)
+        restricted = is_species_restricted(obj)
     else:
-        return [is_species_restricted(obj, species) for species in obj.species]
+        restricted = [is_species_restricted(obj, species) for species in obj.species]
+    obj.restricted_used = restricted
+    return restricted
+
+
+def job_scf_reference_is_restricted(obj: JobAdapter) -> bool | None:
+    """
+    Report the SCF reference a job declared in the input it ran, or ``None`` where it declared none.
+
+    The value is read off the job adapter's ``restricted_used`` memo, which ``is_restricted()``
+    writes while the input is being composed, so it is the reference that job actually ran with
+    rather than the one the species would be given today. ``None`` is returned for a job carrying
+    no memo, a pipe task among them, for a multi-species job, whose memo is a decision per species
+    rather than a single one, and for the force field, composite and semiempirical method types,
+    for which ARC writes no reference prefix and whose flag is therefore not a reference choice
+    ARC made.
+
+    Args:
+        obj: The job adapter object.
+
+    Returns:
+        bool | None: Whether the job declared a restricted reference, or ``None`` if it declared none.
+    """
+    restricted = getattr(obj, 'restricted_used', None)
+    if not isinstance(restricted, bool):
+        return None
+    level = getattr(obj, 'level', None)
+    if level is None or level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
+        return None
+    return restricted
+
+
+def level_admits_a_broken_symmetry_reference(level: Level | None) -> bool:
+    """
+    Check whether a broken-symmetry SCF reference describes what a level computes.
+
+    A level whose energy IS the energy of its SCF determinant admits one. The determinant is the
+    whole description there, so relaxing its spin symmetry onto the lower solution lowers the
+    number the level reports, and a broken-symmetry determinant is the standard single-reference
+    description of a species whose restricted determinant is not the ground state. Density
+    functional theory and Hartree-Fock are those levels, which
+    ``BROKEN_SYMMETRY_METHOD_TYPES`` and ``BROKEN_SYMMETRY_METHODS`` name between them: the
+    Hartree-Fock methods carry the ``'wavefunction'`` method type they share with the correlated
+    methods, so the method type alone does not separate them and the method name is read as well.
+    ``HF-3c`` is one of them. Its corrections - a geometrical counterpoise term, a dispersion term
+    and a short-range basis term - are additive functions of the nuclear coordinates rather than
+    of the wavefunction, so the level's energy is still the energy of its determinant plus a
+    number the reference does not enter.
+
+    A CORRELATED WAVEFUNCTION METHOD DOES NOT ADMIT ONE. Its SCF determinant is the zeroth-order
+    reference a correlation expansion is built about rather than the answer, and the expansion is
+    parameterized about a spin-adapted reference. Breaking the symmetry of that reference lowers
+    the SCF energy and RAISES the correlated one, because the symmetry-broken orbitals absorb
+    into themselves the static correlation the expansion would otherwise recover, leaving less of
+    it for the expansion to find. It also suppresses the ``T1`` diagnostic ARC reads off a coupled
+    cluster single point, whose purpose is to report a reference the expansion is a poor
+    description about: on a broken-symmetry reference ``T1`` falls below the threshold at which
+    ARC reports multireference character, so the character the stability analysis measured is left
+    both uncorrected and unreported.
+
+    A DOUBLE HYBRID DOES NOT ADMIT ONE EITHER, and ``DOUBLE_HYBRID_METHODS`` is read before the
+    method type because ARC types a double hybrid as density functional theory. Its energy is not
+    the energy of its Kohn-Sham determinant: a perturbative second-order correlation term is added
+    to it, expanded about that determinant, which is the construction the correlated methods are
+    excluded for. The names are matched with their hyphens and underscores dropped, so a level
+    written either way is recognized, and the list is a deny-list rather than a classification of
+    every functional, so a double hybrid it does not name is admitted as ordinary density
+    functional theory.
+
+    A reference-agnostic level, one ARC writes no reference prefix for at all, admits nothing to
+    change and is reported here as admitting no broken-symmetry reference.
+
+    Args:
+        level (Level, optional): The level of theory to check.
+
+    Returns:
+        bool: Whether a broken-symmetry reference describes what the level computes.
+    """
+    if level is None:
+        return False
+    method = (level.method or '').lower().replace('-', '').replace('_', '')
+    if method in DOUBLE_HYBRID_METHODS:
+        return False
+    return level.method_type in BROKEN_SYMMETRY_METHOD_TYPES \
+        or method in BROKEN_SYMMETRY_METHODS
+
+
+def derived_reference_is_unrestricted(species: ARCSpecies | None) -> bool:
+    """
+    Check whether a species' measured wavefunction-stability verdict calls for an unrestricted reference.
+
+    Only an external instability of a restricted reference does. An external instability is
+    a relaxation of a constraint the reference imposes, Gaussian's RHF -> UHF class, so a
+    lower solution exists outside the spin symmetry the restricted reference holds the
+    wavefunction in and that reference is not the ground state. An internal instability lies
+    within the reference's own spin symmetry, so it is not evidence of broken-symmetry
+    character and does not call for a different reference. A ``'stable'`` verdict, an
+    ``'unknown'`` one, an absent verdict, and a verdict whose reference could not be read all
+    return ``False``.
+
+    Args:
+        species (ARCSpecies, optional): The species to check.
+
+    Returns:
+        bool: Whether the measured verdict calls for an unrestricted reference.
+    """
+    verdict = getattr(species, 'derived_stability_verdict', None)
+    if not isinstance(verdict, dict):
+        return False
+    return verdict.get('verdict') == DERIVED_UNRESTRICTED_VERDICT and verdict.get('restricted') is True
+
+
+def derived_instability_breaks_spin_symmetry(species: ARCSpecies | None) -> bool | None:
+    """
+    Report whether a measured instability relaxed the SPIN constraint, or ``None`` where it says nothing.
+
+    An external instability names the constraint it relaxed, which an ESS reports as a pair of
+    reference labels and which the parsers store on the verdict as ``relaxations``. Only a
+    relaxation whose target reference is an unrestricted one, the RHF -> UHF class and its
+    RKS -> UKS equivalent, is evidence of broken-symmetry character: the two electrons of a pair
+    occupy different spatial orbitals in the lower solution, which is what a symmetry-broken real
+    determinant describes. A relaxation to a COMPLEX reference, which Gaussian reports as
+    RHF -> CRHF, relaxes the reality of the orbitals rather than the pairing of the spins, and the
+    lower solution it points to is a complex one that no real determinant reaches, symmetry-broken
+    or otherwise. Forcing an unpaired real determinant onto such a species describes neither the
+    restricted solution nor the complex one it is being compared against.
+
+    ``None`` is returned for a verdict naming no relaxation, which is any verdict that is not an
+    external instability and any verdict reduced to the reference decision it carries, so a caller
+    acting on the relaxation can tell "relaxed something other than spin" from "does not say".
+
+    Args:
+        species (ARCSpecies, optional): The species to check.
+
+    Returns: bool | None
+        Whether the relaxations the verdict names include a spin relaxation.
+    """
+    verdict = getattr(species, 'derived_stability_verdict', None)
+    relaxations = verdict.get('relaxations') if isinstance(verdict, dict) else None
+    if not relaxations:
+        return None
+    return any(str(relaxation).split('->')[-1].strip().upper().startswith(SPIN_RELAXED_REFERENCE_PREFIX)
+               for relaxation in relaxations)
+
+
+def adopted_reference_is_unrestricted(species: ARCSpecies | None) -> bool:
+    """
+    Check whether a species' measured stability verdict is one ARC acts on, and not only reports.
+
+    ARC acts on a verdict for a transition state only. The analysis is run for any species whose
+    tested reference was restricted, and acting on it means re-optimizing the species on the lower
+    solution and running every job that follows there. The energy that produces is a
+    broken-symmetry one, spin-contaminated and unprojected, so adopting a verdict for a well would
+    write a contaminated energy into that species' thermo and into every reaction the species
+    appears in, on the strength of a measurement of the reference alone. A transition state has no
+    thermo of its own, and the reference of its remaining jobs is the decision the analysis
+    informs. A well whose verdict is not adopted is reported instead, and declaring
+    ``number_of_radicals`` for it runs its optimization, frequency and single point unrestricted
+    together.
+
+    A declared ``number_of_radicals`` of any value blocks adoption, since ``is_species_restricted``
+    decides from the declared value alone whenever there is one, so a verdict measured alongside a
+    declaration is reported and never acted on.
+
+    A verdict naming the constraints it relaxed, none of which is the spin constraint, is reported
+    and never acted on. Gaussian's ``RHF -> CRHF`` is such a verdict: it relaxes the reality of the
+    orbitals rather than the pairing of the spins, and the lower solution it points at is a complex
+    one that no real determinant reaches, symmetry-broken or otherwise, so running the species
+    unrestricted describes neither the restricted solution nor the one it is being compared
+    against. ``derived_instability_breaks_spin_symmetry`` reports that, and its ``None``, a verdict
+    naming no relaxation at all, does not block adoption.
+
+    A verdict carrying ``REFERENCE_CHANGE_AVAILABLE_KEY`` set to ``False`` is reported and never
+    acted on either. That key records whether the ESSs that run this species' geometry, its
+    Hessian and its electronic energy can each be given a symmetry-breaking reference, which
+    ``Scheduler.stability_verdict_can_be_honoured`` decides when the verdict is recorded. An
+    unrestricted reference an ESS cannot break the spin symmetry of collapses back to the
+    restricted solution the verdict rejected, so acting on the verdict there would move the
+    geometry onto the broken-symmetry surface while leaving the energy on the restricted one, and
+    the number the run publishes would belong to neither. A verdict carrying the key set to
+    ``True``, and one carrying no such key at all, is adopted on the strength of the measurement
+    alone.
+
+    The energy an adopted verdict produces, where the single point runs at one of the levels the
+    verdict decides and which ``level_admits_a_broken_symmetry_reference`` defines, is a
+    broken-symmetry one: it is spin-contaminated and it
+    is not projected here. A broken-symmetry determinant mixes in the higher multiplicity, so its
+    energy lies ABOVE the spin-pure low-spin energy, and the restricted energy it replaces lies
+    above the broken-symmetry one in turn: E_projected < E_BS < E_restricted. Adoption therefore
+    moves the energy toward the spin-pure value without reaching it, and what remains is a
+    residual of the same sign rather than an overshoot. ``arc/checks/spin.py`` holds the Yamaguchi
+    approximate spin-projection arithmetic that estimates E_projected from the broken-symmetry and
+    high-spin energies and their ``S**2`` values; the residual error after adoption is the
+    contamination, not the reference.
+
+    WHERE THAT ERROR LANDS. Adoption acts for a transition state only, so a TS whose restricted
+    reference was unstable runs unrestricted while the reactants and products it is compared
+    against stay restricted. The adopted TS energy still sits above the spin-pure one while the
+    wells, whose restricted references are stable and carry no such contamination, do not, so the
+    barrier the run reports is systematically OVERestimated, by the residual contamination of the
+    TS alone. Adoption shrinks that overestimate without removing it: the restricted TS energy it
+    replaces sat higher still. The bias is one-sided because the asymmetry is: nothing projects it
+    out and nothing raises the wells to match.
+
+    Args:
+        species (ARCSpecies, optional): The species to check.
+
+    Returns:
+        bool: Whether the measured verdict decides this species' reference.
+    """
+    verdict = getattr(species, 'derived_stability_verdict', None)
+    if isinstance(verdict, dict) and verdict.get(REFERENCE_CHANGE_AVAILABLE_KEY) is False:
+        return False
+    if derived_instability_breaks_spin_symmetry(species) is False:
+        return False
+    return (getattr(species, 'number_of_radicals', None) is None
+            and derived_reference_is_unrestricted(species)
+            and bool(getattr(species, 'is_ts', False)))
+
+
+def species_may_read_previous_orbitals(species: ARCSpecies | None) -> bool:
+    """
+    Check whether a job of this species may start from orbitals the species does not hold.
+
+    Every adapter that reads an orbital guess takes it from the species, and falls back to
+    whatever orbitals file sits in its own job directory where the species holds none. A
+    species carrying an adopted wavefunction-stability verdict and no checkfile is holding
+    none deliberately: the orbitals it dropped describe the restricted reference the verdict
+    rejected, and an unrestricted SCF seeded from them returns to that solution, since a
+    restricted solution is a stationary point of the unrestricted equations too. The job
+    directory of a job whose name a previous job of the same species already carried holds
+    exactly such a file, so the fallback is refused for as long as the species holds no
+    orbitals of the reference it adopted, and the job composes the symmetry-breaking
+    directive that reaches the lower solution instead.
+
+    Args:
+        species (ARCSpecies, optional): The species to check.
+
+    Returns:
+        bool: Whether a job of this species may adopt an orbitals file the species does not hold.
+    """
+    return not (adopted_reference_is_unrestricted(species) and getattr(species, 'checkfile', None) is None)
+
+
+def open_shell_character_source(species: ARCSpecies | None) -> str | None:
+    """
+    Report which source attributed open-shell character to a species beyond its spin multiplicity.
+
+    Returns ``'declared'`` when the user declared a ``number_of_radicals`` greater than one,
+    which is the only declaration that attributes open-shell character beyond the multiplicity
+    and which always wins over a measured verdict; ``'derived'`` when the user declared nothing
+    and a measured wavefunction-stability verdict ARC acts on calls for an unrestricted
+    reference; and ``None`` when neither applies, in which case the spin multiplicity alone
+    decides the reference.
+
+    A declared ``number_of_radicals`` of zero or one is not a source: ``is_species_restricted``
+    turns a declaration into an unrestricted reference only above one, so such a declaration
+    attributes no open-shell character. It still blocks a measured verdict from being adopted,
+    which is why it does not fall through to ``'derived'`` either. A verdict ARC reports without
+    acting on it, which is any verdict measured for a species that is not a transition state,
+    likewise decides nothing and is not credited as the source.
+
+    Args:
+        species (ARCSpecies, optional): The species to check.
+
+    Returns: str | None
+        ``'declared'``, ``'derived'``, or ``None``.
+    """
+    number_of_radicals = getattr(species, 'number_of_radicals', None)
+    if number_of_radicals is not None:
+        return 'declared' if number_of_radicals > 1 else None
+    if adopted_reference_is_unrestricted(species):
+        return 'derived'
+    return None
 
 
 def is_species_restricted(obj: JobAdapter,
@@ -335,6 +637,20 @@ def is_species_restricted(obj: JobAdapter,
                           ) -> bool:
     """
     Check whether a species should be executed as restricted or unrestricted.
+
+    A user-declared ``number_of_radicals`` always decides. Only when the user declared
+    nothing does a measured wavefunction-stability verdict enter, and then only an external
+    instability of a restricted reference measured for a transition state, which makes the
+    species unrestricted. That precedence is written once, in
+    ``adopted_reference_is_unrestricted``, and is not restated here.
+
+    An adopted verdict decides the reference of the levels a broken-symmetry reference describes,
+    which ``level_admits_a_broken_symmetry_reference`` defines: the geometry and the Hessian of an
+    adopted species come from the lower solution, and its correlated single point keeps the
+    spin-adapted reference its correlation expansion is built about. The spin multiplicity and a
+    declared ``number_of_radicals`` are not gated on the level and decide every level alike, so an
+    open-shell species runs unrestricted at a correlated level as it always has; what the level
+    decides is only whether a MEASURED verdict is what breaks the symmetry.
 
     Args:
         obj: The job adapter object.
@@ -344,12 +660,13 @@ def is_species_restricted(obj: JobAdapter,
         bool: Whether to run as restricted (``True``) or not (``False``).
     """
 
-    if obj.level.method_type in ['force_field', 'composite', 'semiempirical']:
+    if obj.level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
         return True
 
     multiplicity = obj.multiplicity if species is None else species.multiplicity
-    number_of_radicals = obj.species[0].number_of_radicals if species is None else species.number_of_radicals
-    species_label = obj.species[0].label if species is None else species.label
+    species_obj = obj.species[0] if species is None else species
+    number_of_radicals = species_obj.number_of_radicals
+    species_label = species_obj.label
     if multiplicity > 1 or (number_of_radicals is not None and number_of_radicals > 1):
         # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one,
         # or if it is one but the number of radicals is greater than one (e.g., bi-rad singlet)
@@ -358,6 +675,17 @@ def is_species_restricted(obj: JobAdapter,
         if number_of_radicals is not None and number_of_radicals > 1:
             logger.info(f'Using an unrestricted method for species {species_label} which has '
                         f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
+        return False
+    if adopted_reference_is_unrestricted(species_obj):
+        if not level_admits_a_broken_symmetry_reference(obj.level):
+            logger.info(f'Composing a restricted reference for the {obj.job_type} job of species {species_label} '
+                        f'at {obj.level}, whose wavefunction stability analysis was adopted: that level reports a '
+                        f'correlation energy expanded about its SCF determinant rather than the energy of the '
+                        f'determinant itself, so a broken-symmetry reference does not describe what it computes.')
+            return True
+        logger.info(f'Using an unrestricted method for species {species_label}, whose wavefunction stability '
+                    f'analysis reported an external instability of its restricted reference and for which no '
+                    f'number_of_radicals was declared.')
         return False
     return True
 

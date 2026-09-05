@@ -109,6 +109,9 @@ class TeraChemAdapter(JobAdapter):
         xyz (dict, optional): The 3D coordinates to use. If not give, species.get_xyz() will be used.
     """
 
+    check_file_name = 'teracheck.chk'
+    guess_file_name = 'teracheck.chk'
+
     def __init__(self,
                  project: str,
                  project_directory: str,
@@ -204,8 +207,8 @@ class TeraChemAdapter(JobAdapter):
 
         if self.is_ts:
             raise ValueError('TeraChem does not perform TS optimization jobs')
-        if self.checkfile is None and os.path.isfile(os.path.join(self.local_path, 'teracheck.chk')):
-            self.checkfile = os.path.join(self.local_path, 'teracheck.chk')
+        if self.checkfile is None:
+            self.checkfile = self.readable_checkfile(os.path.join(self.local_path, self.check_file_name))
 
     def write_input_file(self) -> None:
         """
@@ -221,7 +224,7 @@ class TeraChemAdapter(JobAdapter):
             input_dict[key] = ''
         input_dict['basis'] = self.level.basis or ''
         input_dict['charge'] = self.charge
-        input_dict['checkfile'] = 'teracheck.chk'
+        input_dict['checkfile'] = self.check_file_name
         input_dict['memory'] = self.input_file_memory
         input_dict['method'] = self.level.method
         input_dict['multiplicity'] = self.multiplicity

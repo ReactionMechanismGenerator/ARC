@@ -22,6 +22,8 @@ from arc.output import (
     _level_to_dict,
     _make_rel_path,
     _parse_opt_log,
+    _parse_spin_diagnostic,
+    _parse_wavefunction_stability,
     _parse_zpe,
     _resolve_freq_scale_factor_source,
     _rxn_to_dict,
@@ -419,6 +421,92 @@ class TestParseOptLog(unittest.TestCase):
         self.assertEqual(parse_opt_steps(opt_path), 4)
 
 
+class TestParseSpinDiagnostic(unittest.TestCase):
+    """Tests for _parse_spin_diagnostic (output.yml S**2 plumbing)."""
+
+    def test_open_shell_gaussian_doublet(self):
+        """Test that an open-shell doublet yields s_squared, expected and annihilated"""
+        sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], 0.75)
+
+    def test_expected_recomputed_from_arc_multiplicity(self):
+        """Test that s_squared_expected comes from ARC's multiplicity, a triplet giving 2.0"""
+        sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'TSs', 'TS_freq.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=3, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 2.0153)
+        self.assertAlmostEqual(sd['s_squared_expected'], 2.0)
+
+    def test_closed_shell_returns_none(self):
+        """Test that a restricted log, which prints no <S**2>, yields None"""
+        sp = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
+        self.assertIsNone(_parse_spin_diagnostic(sp, None, None, multiplicity=1, project_directory='/dummy'))
+
+    def test_fallback_to_freq_when_sp_absent(self):
+        """Test that an absent sp log falls back to the freq log"""
+        freq = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = _parse_spin_diagnostic(None, freq, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+
+    def test_no_paths_returns_none(self):
+        """Test that no candidate log yields None"""
+        self.assertIsNone(_parse_spin_diagnostic(None, None, None, multiplicity=2, project_directory='/dummy'))
+
+    def test_orca_open_shell_no_annihilation_key(self):
+        """Test that an ESS reporting no annihilated value omits the key from the block"""
+        sp = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertNotIn('s_squared_annihilated', sd)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+
+    def test_a_stability_log_is_not_read_off_its_eigenvectors(self):
+        """Test that a Stable job's log yields the wavefunction's <S**2>, not a root's"""
+        sp = os.path.join(ARC_TESTING_PATH, 'stability', 'stable_unrestricted_doublet_ts.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7536)
+        restricted = os.path.join(ARC_TESTING_PATH, 'stability', 'stable_restricted_singlet_ts.out')
+        self.assertIsNone(_parse_spin_diagnostic(restricted, None, None, multiplicity=1,
+                                                 project_directory='/dummy'))
+
+    def test_the_sp_log_is_preferred_over_the_freq_and_opt_logs(self):
+        """Test that the sp log wins when several candidate logs exist"""
+        sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        freq = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'TSs', 'TS_freq.out')
+        opt = os.path.join(ARC_TESTING_PATH, 'freq', 'CH3OO_freq_gaussian.out')
+        sd = _parse_spin_diagnostic(sp, freq, opt, multiplicity=2, project_directory=ARC_TESTING_PATH)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+        self.assertNotAlmostEqual(sd['s_squared'], 2.0153)
+        self.assertNotAlmostEqual(sd['s_squared'], 0.7544)
+
+    def test_the_log_the_value_was_read_from_is_recorded(self):
+        """Test that the block names the log its <S**2> came from"""
+        freq = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = _parse_spin_diagnostic(None, freq, None, multiplicity=2, project_directory=ARC_TESTING_PATH)
+        self.assertEqual(sd['log'], os.path.join('restart', '2_restart_rate', 'calcs', 'Species',
+                                                 'NH2_freq.out'))
+
+    def test_an_sp_log_that_holds_no_s_squared_is_not_replaced_by_another_job(self):
+        """Test that a present sp log yielding no <S**2> ends the search rather than falling through"""
+        sp = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
+        freq = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        self.assertIsNone(_parse_spin_diagnostic(sp, freq, None, multiplicity=2,
+                                                 project_directory=ARC_TESTING_PATH))
+
+    def test_the_expected_value_falls_back_to_the_one_the_ess_reported(self):
+        """Test that ORCA's Ideal value S*(S+1) is used when ARC's multiplicity is unknown"""
+        sp = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=None, project_directory=ARC_TESTING_PATH)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+
+
 class TestParseEssVersion(unittest.TestCase):
     """Tests for parse_ess_version across ESS adapters."""
 
@@ -676,6 +764,9 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.rxn_label = 'CHO + CH4 <=> CH2O + CH3'
         spc.chosen_ts_method = 'heuristics'
         spc.successful_methods = ['heuristics']
+        spc.number_of_radicals = None
+        spc.derived_stability_verdict = None
+        spc.scf_references = dict()
         output_dict = {'TS0': {'convergence': True, 'paths': {'irc': []}, 'job_types': {'opt': True, 'irc': True}}}
         result = _spc_to_dict(spc, output_dict, '/abs')
         self.assertIsNone(result['smiles'])
@@ -703,6 +794,9 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.rxn_label = 'A <=> B'
         spc.chosen_ts_method = None
         spc.successful_methods = []
+        spc.number_of_radicals = None
+        spc.derived_stability_verdict = None
+        spc.scf_references = dict()
         output_dict = {'TS1': {'convergence': True, 'paths': {'irc': []}, 'job_types': {}}}
         result = _spc_to_dict(spc, output_dict, '/abs')
         self.assertIsNone(result['smiles'])
@@ -793,6 +887,9 @@ class TestSpcToDict(unittest.TestCase):
         spc.rxn_label = None
         spc.ts_guesses = []
         spc.chosen_ts = None
+        spc.number_of_radicals = None
+        spc.derived_stability_verdict = None
+        spc.scf_references = dict()
         return spc
 
     def test_converged_species(self):
@@ -825,6 +922,157 @@ class TestSpcToDict(unittest.TestCase):
         self.assertIsNone(result['freq_n_imag'])
         self.assertIsNone(result['thermo'])
         self.assertIsNone(result['statmech'])
+
+    def test_a_non_converged_species_carries_no_spin_diagnostic(self):
+        """Test that a readable sp log does not give an unconverged species an sp_spin_diagnostic"""
+        sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        spc = self._make_spc_mock(label='NH2')
+        spc.multiplicity = 2
+        output_dict = {'NH2': {'convergence': True, 'paths': {'sp': sp}, 'job_types': {}}}
+        self.assertIsNotNone(_spc_to_dict(spc, output_dict, ARC_TESTING_PATH)['sp_spin_diagnostic'])
+        output_dict['NH2']['convergence'] = False
+        self.assertIsNone(_spc_to_dict(spc, output_dict, ARC_TESTING_PATH)['sp_spin_diagnostic'])
+
+    def test_scf_reference_records_a_declared_source(self):
+        """Test that a user-declared number_of_radicals is reported as the deciding source"""
+        spc = self._make_spc_mock()
+        spc.number_of_radicals = 2
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+        self.assertEqual(block['source'], 'declared')
+        self.assertEqual(block['declared_number_of_radicals'], 2)
+        self.assertIsNone(block['verdict'])
+
+    def test_scf_reference_records_a_derived_source_and_its_verdict(self):
+        """Test that an adopted measured verdict is reported as the deciding source"""
+        spc = self._make_spc_mock(is_ts=True)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+        self.assertEqual(block['source'], 'derived')
+        self.assertEqual(block['verdict'], 'external_instability')
+        self.assertIs(block['verdict_restricted'], True)
+        self.assertIsNone(block['declared_number_of_radicals'])
+
+    def test_a_well_records_its_verdict_without_being_credited_with_a_decision(self):
+        """Test that a species that is not a TS records the same verdict under no deciding source"""
+        spc = self._make_spc_mock()
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        entry = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertFalse(entry['is_ts'])
+        block = entry['scf_reference']
+        self.assertEqual(block['verdict'], 'external_instability')
+        self.assertIs(block['verdict_restricted'], True)
+        self.assertIsNone(block['source'])
+
+    def test_a_well_records_the_stability_log_it_was_measured_from(self):
+        """Test that the stability diagnostic reaches output.yml for a species that is not a TS"""
+        stability = os.path.join(ARC_TESTING_PATH, 'stability', 'rhf_uhf_instability_singlet_ts.out')
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {'stability': stability}, 'job_types': {}}}
+        entry = _spc_to_dict(spc, output_dict, ARC_TESTING_PATH)
+        self.assertFalse(entry['is_ts'])
+        self.assertEqual(entry['wavefunction_stability']['verdict'], 'external_instability')
+        self.assertEqual(entry['scf_reference']['log'],
+                         os.path.join('stability', 'rhf_uhf_instability_singlet_ts.out'))
+
+    def test_scf_reference_reports_a_declared_source_over_a_contradicting_verdict(self):
+        """Test that a declared value is still the reported source where the verdict disagrees"""
+        spc = self._make_spc_mock(is_ts=True)
+        spc.number_of_radicals = 2
+        spc.derived_stability_verdict = {'verdict': 'stable', 'restricted': True}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+        self.assertEqual(block['source'], 'declared')
+        self.assertEqual(block['verdict'], 'stable')
+
+    def test_a_declaration_attributing_no_open_shell_character_names_no_source(self):
+        """Test that a declared 1 blocks the verdict and is reported without being called the source"""
+        spc = self._make_spc_mock(is_ts=True)
+        spc.number_of_radicals = 1
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+        self.assertIsNone(block['source'])
+        self.assertEqual(block['declared_number_of_radicals'], 1)
+        self.assertEqual(block['verdict'], 'external_instability')
+
+    def test_scf_reference_reports_a_mixed_reference(self):
+        """Test that an electronic energy and a ZPE from different references are recorded as such"""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        spc.scf_references = {'sp': 'unrestricted', 'freq': 'restricted'}
+        block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+        self.assertEqual(block['sp_reference'], 'unrestricted')
+        self.assertEqual(block['freq_reference'], 'restricted')
+        self.assertTrue(block['reference_mismatch'])
+        spc.scf_references = {'sp': 'unrestricted', 'freq': 'unrestricted'}
+        self.assertIs(_spc_to_dict(spc, output_dict, '/abs')['scf_reference']['reference_mismatch'], False)
+
+    def test_an_unrecorded_reference_is_reported_as_unknown_rather_than_consistent(self):
+        """Test that a missing sp or freq reference is None, not the False that means checked and equal"""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        for references in [dict(), {'freq': 'restricted'}, {'sp': 'restricted'}, 'not a dict']:
+            spc.scf_references = references
+            block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+            self.assertIsNone(block['reference_mismatch'], msg=f'{references} reported a mismatch verdict')
+
+    def test_scf_reference_names_the_ts_guess_a_carried_verdict_was_measured_on(self):
+        """Test that a verdict carried over from an abandoned TS guess says which guess it came from"""
+        spc = self._make_spc_mock()
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True,
+                                         'measured_on_ts_guess': 3}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        self.assertEqual(_spc_to_dict(spc, output_dict, '/abs')['scf_reference']['measured_on_ts_guess'], 3)
+
+    def test_a_carried_verdict_still_names_the_analysis_that_decided_the_reference(self):
+        """Test that a TS switch, which resets the stability path, leaves no source without a log"""
+        stability = os.path.join(ARC_TESTING_PATH, 'stability', 'rhf_uhf_instability_singlet_ts.out')
+        spc = self._make_spc_mock(is_ts=True)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True,
+                                         'measured_on_ts_guess': 3, 'log': stability}
+        output_dict = {'CH4': {'convergence': True, 'paths': {'stability': ''}, 'job_types': {}}}
+        entry = _spc_to_dict(spc, output_dict, ARC_TESTING_PATH)
+        self.assertIsNone(entry['wavefunction_stability'])
+        block = entry['scf_reference']
+        self.assertEqual(block['source'], 'derived')
+        self.assertEqual(block['measured_on_ts_guess'], 3)
+        self.assertEqual(block['log'], os.path.join('stability', 'rhf_uhf_instability_singlet_ts.out'))
+
+    def test_a_verdict_carrying_no_log_reports_none_rather_than_raising(self):
+        """Test that a verdict restored from a restart written without a log path is still reported"""
+        spc = self._make_spc_mock(is_ts=True)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, ARC_TESTING_PATH)['scf_reference']
+        self.assertEqual(block['source'], 'derived')
+        self.assertIsNone(block['log'])
+
+    def test_a_non_converged_species_still_carries_its_scf_reference_block(self):
+        """Test that the record of what ARC decided survives the species failing to converge"""
+        spc = self._make_spc_mock(converged=False, is_ts=True)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        spc.scf_references = {'freq': 'restricted', 'sp': 'unrestricted'}
+        output_dict = {'CH4': {'convergence': False, 'paths': {}, 'job_types': {}}}
+        entry = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertFalse(entry['converged'])
+        self.assertIsNone(entry['sp_spin_diagnostic'])
+        block = entry['scf_reference']
+        self.assertEqual(block['source'], 'derived')
+        self.assertEqual(block['verdict'], 'external_instability')
+        self.assertIs(block['reference_mismatch'], True)
+
+    def test_scf_reference_reads_a_verdict_off_the_log_without_calling_it_the_source(self):
+        """Test that a verdict only the log holds is reported but is not credited with the decision"""
+        stability = os.path.join(ARC_TESTING_PATH, 'stability', 'rhf_uhf_instability_singlet_ts.out')
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {'stability': stability}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, ARC_TESTING_PATH)['scf_reference']
+        self.assertEqual(block['verdict'], 'external_instability')
+        self.assertEqual(block['log'], os.path.join('stability', 'rhf_uhf_instability_singlet_ts.out'))
+        self.assertIsNone(block['source'])
 
     def test_monoatomic_species(self):
         spc = self._make_spc_mock(label='Ar', monoatomic=True)
@@ -1020,6 +1268,9 @@ class TestWriteOutputYml(unittest.TestCase):
         spc.freqs = [1300.0, 1500.0, 3000.0]
         spc.rotors_dict = None
         spc.thermo = ThermoData(H298=-74.6, S298=186.3, Tmin=(300, 'K'), Tmax=(3000, 'K'))
+        spc.number_of_radicals = None
+        spc.derived_stability_verdict = None
+        spc.scf_references = dict()
         return spc
 
     @patch('arc.output._compute_point_groups', return_value={})
@@ -1201,6 +1452,56 @@ class TestGetPointGroupsScript(unittest.TestCase):
         finally:
             if added:
                 sys.path.remove(scripts_dir)
+
+
+class TestParseWavefunctionStabilityForOutput(unittest.TestCase):
+    """
+    Contains unit tests for the wavefunction stability entry written to output.yml.
+    """
+
+    def _write_log(self, body: str) -> str:
+        """Write a Gaussian stability log to a temporary file and return its path."""
+        with tempfile.NamedTemporaryFile(suffix='.log', mode='w', delete=False) as f:
+            f.write(' Entering Gaussian System, Link 0=g16\n' + body)
+            return f.name
+
+    def test_freq_validity_reaches_the_output_record(self):
+        """Test that output.yml carries the reference and the frequency-validity verdict"""
+        body = ' SCF Done:  E(UwB97XD) =  -78.5936     A.U.\n' \
+               ' Stability analysis using <AA,BB:AA,BB> singles matrix:\n' \
+               ' Eigenvector   1:      Triplet-?Sym  Eigenvalue=-0.1434007  <S**2>=2.000\n' \
+               ' The wavefunction has an RHF -> UHF instability.\n'
+        path = self._write_log(body)
+        try:
+            result = _parse_wavefunction_stability(path, os.path.dirname(path))
+            self.assertEqual(result['verdict'], 'external_instability')
+            self.assertIn('restricted', result)
+            self.assertIn('invalidates_analytic_freq', result)
+            self.assertFalse(result['restricted'])
+            self.assertTrue(result['invalidates_analytic_freq'])
+            self.assertIsNotNone(result['log'])
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_restricted_external_instability_reaches_output_as_valid(self):
+        """Test that a restricted external instability is recorded as not invalidating the freq"""
+        body = ' SCF Done:  E(RwB97XD) =  -78.5936     A.U.\n' \
+               ' Stability analysis using <AA,BB:AA,BB> singles matrix:\n' \
+               ' The wavefunction has an RHF -> UHF instability.\n'
+        path = self._write_log(body)
+        try:
+            result = _parse_wavefunction_stability(path, os.path.dirname(path))
+            self.assertTrue(result['restricted'])
+            self.assertFalse(result['invalidates_analytic_freq'])
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_no_stability_log_yields_nothing(self):
+        """Test that a species with no stability analysis records no entry"""
+        self.assertIsNone(_parse_wavefunction_stability(None, '/tmp'))
+        self.assertIsNone(_parse_wavefunction_stability('/nonexistent/stability.log', '/tmp'))
 
 
 if __name__ == '__main__':

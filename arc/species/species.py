@@ -212,6 +212,28 @@ class ARCSpecies(object):
                                   Defaults to None. Important, e.g., if a Species is a bi-rad singlet, in which case
                                   the job should be unrestricted, but the multiplicity does not have the required
                                   information to make that decision (r vs. u).
+        derived_stability_verdict (dict): The structured verdict of a wavefunction stability analysis, as parsed from
+                                          the ESS log. Defaults to None. It is a measured property of one SCF
+                                          solution, so it steers only the r vs. u reference decision and never the
+                                          molecular graph perception that number_of_radicals feeds, and a declared
+                                          number_of_radicals overrides it. It is written by the run that measures it
+                                          and read back from a restart file like every other attribute, so a value
+                                          placed there by hand is read the same way: number_of_radicals is the input
+                                          that declares open-shell character.
+        scf_references (dict): Which SCF reference each of this species' jobs declared in the input it ran, keyed by
+                               job type ('sp', 'freq') with values 'restricted' or 'unrestricted'. Two different
+                               values mean the electronic energy and the ZPE were computed on different surfaces.
+        stability_analysis_ran (bool): Whether a wavefunction stability analysis was spawned for this species.
+                                       Defaults to False. One analysis is run per species, and this attribute is
+                                       what says so across a restart, when the job dictionary holds only the jobs
+                                       that were still running.
+        stability_pending_opt_job (str): The name of the optimization job whose frequency, single point and IRC are
+                                         waiting for a wavefunction stability verdict. Defaults to None, and is
+                                         cleared once that work is released or the geometry is abandoned.
+        stability_reoptimized (bool): Whether an adopted wavefunction stability verdict has already re-optimized this
+                                      species on an unrestricted reference. Defaults to False. At most one such
+                                      re-optimization is run per species, and this attribute is what holds that
+                                      across a restart.
         e_elect (float): The total electronic energy (without ZPE) at the chosen sp level, in kJ/mol.
         e0 (float): The 0 Kelvin energy (total electronic energy plus ZPE) at the chosen sp level, in kJ/mol.
         is_ts (bool):  Whether the species represents a transition state. `True` if it does.
@@ -388,6 +410,11 @@ class ARCSpecies(object):
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
         self.ts_checks = dict()
+        self.derived_stability_verdict = None
+        self.scf_references = dict()
+        self.stability_analysis_ran = False
+        self.stability_pending_opt_job = None
+        self.stability_reoptimized = False
         self.project_directory = project_directory
         self.label = label
         self.symmetry_number = None
@@ -798,6 +825,16 @@ class ARCSpecies(object):
             species_dict['run_time'] = self.run_time.total_seconds()
         if self.number_of_radicals is not None:
             species_dict['number_of_radicals'] = self.number_of_radicals
+        if self.derived_stability_verdict is not None:
+            species_dict['derived_stability_verdict'] = self.derived_stability_verdict
+        if self.scf_references:
+            species_dict['scf_references'] = self.scf_references
+        if self.stability_analysis_ran:
+            species_dict['stability_analysis_ran'] = self.stability_analysis_ran
+        if self.stability_pending_opt_job is not None:
+            species_dict['stability_pending_opt_job'] = self.stability_pending_opt_job
+        if self.stability_reoptimized:
+            species_dict['stability_reoptimized'] = self.stability_reoptimized
         if self.opt_level is not None:
             species_dict['opt_level'] = self.opt_level
         if self.directed_rotors:
@@ -931,6 +968,15 @@ class ARCSpecies(object):
         self.include_in_thermo_lib = species_dict['include_in_thermo_lib'] if 'include_in_thermo_lib' in species_dict else True
         self.e0_only = species_dict['e0_only'] if 'e0_only' in species_dict else False
         self.number_of_radicals = species_dict['number_of_radicals'] if 'number_of_radicals' in species_dict else None
+        self.derived_stability_verdict = species_dict['derived_stability_verdict'] \
+            if 'derived_stability_verdict' in species_dict else None
+        self.scf_references = species_dict['scf_references'] if 'scf_references' in species_dict else dict()
+        self.stability_analysis_ran = species_dict['stability_analysis_ran'] \
+            if 'stability_analysis_ran' in species_dict else False
+        self.stability_pending_opt_job = species_dict['stability_pending_opt_job'] \
+            if 'stability_pending_opt_job' in species_dict else None
+        self.stability_reoptimized = species_dict['stability_reoptimized'] \
+            if 'stability_reoptimized' in species_dict else False
         self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else None
         self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
         self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else None
