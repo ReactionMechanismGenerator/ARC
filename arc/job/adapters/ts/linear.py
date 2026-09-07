@@ -28,7 +28,10 @@ Pipeline (per reaction path / ``product_dict``)
     (e.g., which of several equivalent H's migrates, etc.). A reaction-level
     fallback map is used when the per-path call fails; if no map is obtained,
     the per-path strategy pipeline is skipped and the trivial-map fallback
-    (below) takes over.
+    (below) takes over. An atom map set on the reaction beforehand does not
+    take part in this derivation; to ask for guesses for one specific
+    correspondence, pass it (or several) to ``LinearAdapter(atom_map=...)``,
+    which runs the whole pipeline once per requested map instead of deriving one.
 
 2. **Near-attack conformation** (:func:`get_near_attack_xyz`): the reactant
     and product geometries are pre-folded into the ring-like TS shape by
@@ -703,6 +706,83 @@ def _finalize_ts_guesses(ts_xyzs: list,
     return [rec.xyz for rec in deduped]
 
 
+def normalize_atom_maps(atom_map: list[int] | list[list[int]] | None) -> list[list[int]] | None:
+    """
+    Normalize a user-supplied atom map argument into a list of atom maps.
+
+    Accepts either a single map (a list of ints) or several maps (a list of lists of ints),
+    so that a caller may request TS guesses for one or for several specific correspondences.
+
+    Args:
+        atom_map (list[int] | list[list[int]], optional): The requested atom map(s).
+
+    Raises:
+        ValueError: If an entry is not a permutation of ``range(len(entry))``.
+
+    Returns:
+        list[list[int]] | None: The requested maps, or ``None`` if none were given.
+    """
+    if atom_map is None:
+        return None
+    if not isinstance(atom_map, (list, tuple)) or not len(atom_map):
+        raise ValueError(f'atom_map must be a non-empty list of integers or a non-empty list of such lists, '
+                         f'got {atom_map}.')
+    maps = list(atom_map) if isinstance(atom_map[0], (list, tuple)) else [atom_map]
+    normalized = list()
+    for entry in maps:
+        if not isinstance(entry, (list, tuple)) or not len(entry) \
+                or any(not isinstance(index, int) or isinstance(index, bool) for index in entry):
+            raise ValueError(f'Each atom map must be a non-empty list of integers, got {entry}.')
+        if sorted(entry) != list(range(len(entry))):
+            raise ValueError(f'Each atom map must be a permutation of range({len(entry)}), got {entry}.')
+        normalized.append(list(entry))
+    return normalized
+
+
+def get_well_symbols(rxn: ARCReaction, well: int) -> tuple:
+    """
+    Get the chemical element symbols of a reaction well in the well's canonical atom ordering.
+
+    The ordering matches ``rxn.get_reactants_xyz()`` / the unordered product well: a species
+    participating more than once contributes its atoms once per occurrence.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+        well (int): Either ``0`` or ``1`` for the reactants or the products well, respectively.
+
+    Returns:
+        tuple: The element symbols.
+    """
+    symbols = list()
+    for spc in (rxn.r_species if well == 0 else rxn.p_species):
+        for _ in range(rxn.get_species_count(species=spc, well=well)):
+            symbols.extend(spc.get_xyz()['symbols'])
+    return tuple(symbols)
+
+
+def atom_map_fits_rxn(rxn: ARCReaction, atom_map: list[int]) -> bool:
+    """
+    Check that an atom map has the reaction's atom count and maps every atom onto the same element.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+        atom_map (list[int]): The atom map to check, reactant index -> product index.
+
+    Returns:
+        bool: Whether the map is usable for this reaction.
+    """
+    try:
+        r_symbols = get_well_symbols(rxn, well=0)
+        p_symbols = get_well_symbols(rxn, well=1)
+    except Exception as e:
+        logger.debug(f'Linear (rxn={rxn.label}): could not determine well symbols to validate an atom map: {e}.')
+        return False
+    if len(atom_map) != len(r_symbols) or len(r_symbols) != len(p_symbols):
+        return False
+    return all(p_symbols[p_index] == r_symbol for r_symbol, p_index in zip(r_symbols, atom_map))
+
+
+
 class LinearAdapter(JobAdapter):
     """
     A class for executing TS guess jobs based on linear interpolation of internal coordinate values.
@@ -710,10 +790,24 @@ class LinearAdapter(JobAdapter):
     This adapter is incore-only and geometry-generation-only: it produces TS guess Cartesian
     coordinates without submitting any external quantum chemistry calculation.
 
+    Guesses are generated per reaction-family product dictionary (i.e., per reaction path)
+    rather than per atom map: for every path the adapter derives its own atom map via
+    :func:`map_rxn`. An atom map already set on the reaction is therefore *not* used for that
+    derivation (it is only consulted by the degraded fallback paths), and the adapter logs a
+    warning when it encounters one. To request guesses for one specific reactants-to-products
+    correspondence, pass it via the ``atom_map`` argument, which overrides the derived map.
+
     Args:
         project (str): The project's name. Used for setting the remote path.
         project_directory (str): The path to the local project directory.
         job_type (list, str): The job's type, validated against ``JobTypeEnum``. If it's a list, pipe.py will be called.
+        atom_map (list[int] | list[list[int]], optional): One atom map, or several, to generate TS guesses
+                                                          for. Each map is a reactants-to-products atom map
+                                                          (a permutation of the reactant atom indices) that
+                                                          replaces the per-path map the adapter would derive,
+                                                          so that a guess can be requested for a specific
+                                                          correspondence. If not given, the adapter derives a
+                                                          map per reaction path as usual.
         args (dict, optional): Methods (including troubleshooting) to be used in input files.
                                Keys are either 'keyword', 'block', or 'trsh', values are dictionaries with values
                                to be used either as keywords or as blocks in the respective software input file.
@@ -760,6 +854,7 @@ class LinearAdapter(JobAdapter):
                  project_directory: str,
                  job_type: list[str] | str,
                  args: dict | None = None,
+                 atom_map: list[int] | list[list[int]] | None = None,
                  attempted_queues: list[str] | None = None,
                  bath_gas: str | None = None,
                  checkfile: str | None = None,
@@ -799,6 +894,8 @@ class LinearAdapter(JobAdapter):
 
         self.incore_capacity = 50
         self.job_adapter = 'linear'
+        # Explicitly requested atom map(s); ``None`` means "derive a map per reaction path".
+        self.forced_atom_maps = normalize_atom_maps(atom_map)
         self.command = None
         self.execution_type = 'incore'  # incore-only (no server); ignore any execution_type the scheduler passes
 
@@ -863,9 +960,53 @@ class LinearAdapter(JobAdapter):
         """Intentional no-op: LinearAdapter is incore-only (no memory spec)."""
         pass
 
+    def get_forced_atom_maps(self, rxn: ARCReaction) -> list[list[int] | None]:
+        """
+        Determine the atom map(s) to generate TS guesses for.
+
+        When no ``atom_map`` argument was given, a single ``None`` entry is returned, meaning
+        "derive an atom map per reaction path", which is this adapter's default behavior. An atom map
+        that is already set on the reaction is not used for that derivation, so a warning is logged
+        to make that visible to the caller.
+
+        When maps were requested, only those that fit the reaction (right length, element-preserving)
+        are returned; unusable ones are reported and dropped. An empty list means that nothing was
+        requested that this reaction can be mapped by, so no guesses should be generated.
+
+        Args:
+            rxn (ARCReaction): The reaction being processed.
+
+        Returns:
+            list[list[int] | None]: The atom maps to iterate over.
+        """
+        if self.forced_atom_maps is None:
+            if rxn._atom_map is not None:
+                logger.warning(f'The linear TS search adapter generates TS guesses per reaction path, deriving an '
+                               f'atom map for each; the atom map already set on {rxn.label} is not used for that. '
+                               f'Pass atom_map=... to LinearAdapter to request guesses for a specific '
+                               f'reactants-to-products correspondence.')
+            return [None]
+        valid = list()
+        for atom_map in self.forced_atom_maps:
+            if atom_map_fits_rxn(rxn, atom_map):
+                valid.append(atom_map)
+            else:
+                logger.warning(f'The linear TS search adapter was given the atom map {atom_map}, which does not fit '
+                               f'{rxn.label} (wrong number of atoms or mapping atoms onto different elements); '
+                               f'ignoring it.')
+        if not valid:
+            logger.warning(f'The linear TS search adapter was not given any usable atom map for {rxn.label}; '
+                           f'not generating TS guesses for it.')
+        return valid
+
     def execute_incore(self):
         """
         Execute a job incore.
+
+        TS guesses are generated per reaction-family product dictionary (i.e., per reaction path),
+        each with its own atom map derived by :func:`map_rxn`, unless specific atom map(s) were
+        requested via the adapter's ``atom_map`` argument, in which case one pass over the weight
+        grid is made per requested map and that map replaces the derived one.
         """
         self._log_job_execution()
         self.initial_time = self.initial_time if self.initial_time else datetime.datetime.now()
@@ -900,47 +1041,58 @@ class LinearAdapter(JobAdapter):
                                                               )
                 weights = get_weight_grid(rxn)
                 all_xyzs_so_far: list[dict] = []
-                # Per-reaction memo: atom maps and the wider-family-set scan
-                # outcome are weight-invariant, so compute them once per job
-                # instead of once per weight iteration.
-                map_cache: dict = {}
-                for w_i, w in enumerate(weights):
-                    t0 = datetime.datetime.now()
-                    xyzs = interpolate(rxn=rxn, weight=w, existing_xyzs=all_xyzs_so_far, map_cache=map_cache)
-                    t_ex = datetime.datetime.now() - t0
-                    if not xyzs:
-                        continue
-                    all_xyzs_so_far.extend(xyzs)
-
-                    for xyz_i, xyz in enumerate(xyzs):
-                        if colliding_atoms(xyz):
+                # Each requested atom map (or a single None, meaning "derive a map per
+                # reaction path") gets its own pass over the weight grid.
+                forced_atom_maps = self.get_forced_atom_maps(rxn)
+                for map_i, forced_atom_map in enumerate(forced_atom_maps):
+                    if forced_atom_map is not None:
+                        # Consumed by cached_map_rxn(); also set on the reaction itself so that
+                        # the degraded fallback paths honor the requested correspondence too.
+                        rxn._atom_map = list(forced_atom_map)
+                    map_suffix = f', map={map_i}' if len(forced_atom_maps) > 1 else ''
+                    # Per-map memo: atom maps and the wider-family-set scan
+                    # outcome are weight-invariant, so compute them once per map
+                    # instead of once per weight iteration.
+                    map_cache: dict = {}
+                    for w_i, w in enumerate(weights):
+                        t0 = datetime.datetime.now()
+                        xyzs = interpolate(rxn=rxn, weight=w, existing_xyzs=all_xyzs_so_far,
+                                           map_cache=map_cache, forced_atom_map=forced_atom_map)
+                        t_ex = datetime.datetime.now() - t0
+                        if not xyzs:
                             continue
-                        unique = True
-                        for other_tsg in rxn.ts_species.ts_guesses:
-                            if almost_equal_coords(xyz, other_tsg.initial_xyz):
-                                if 'linear' not in other_tsg.method.lower():
-                                    other_tsg.method += f' and Linear (w={w:.2f}, {xyz_i})'
-                                unique = False
-                                break
+                        all_xyzs_so_far.extend(xyzs)
 
-                        if unique:
-                            method = f'Linear (w={w:.2f}, {xyz_i})'
-                            ts_guess = TSGuess(method=method,
-                                               method_index=w_i,
-                                               t0=t0,
-                                               execution_time=t_ex,
-                                               success=True,
-                                               family=rxn.family,
-                                               xyz=xyz,
-                                               )
-                            rxn.ts_species.append_ts_guess(ts_guess)
+                        for xyz_i, xyz in enumerate(xyzs):
+                            if colliding_atoms(xyz):
+                                continue
+                            unique = True
+                            for other_tsg in rxn.ts_species.ts_guesses:
+                                if almost_equal_coords(xyz, other_tsg.initial_xyz):
+                                    if 'linear' not in other_tsg.method.lower():
+                                        other_tsg.method += f' and Linear (w={w:.2f}, {xyz_i}{map_suffix})'
+                                    unique = False
+                                    break
 
-                            save_geo(xyz=xyz,
-                                     path=self.local_path,
-                                     filename=f'Linear w={w:.2f}, {xyz_i}',
-                                     format_='xyz',
-                                     comment=f'Linear w={w:.2f}, {xyz_i}, family: {rxn.family}',
-                                     )
+                            if unique:
+                                method = f'Linear (w={w:.2f}, {xyz_i}{map_suffix})'
+                                ts_guess = TSGuess(method=method,
+                                                   method_index=w_i,
+                                                   t0=t0,
+                                                   execution_time=t_ex,
+                                                   success=True,
+                                                   family=rxn.family,
+                                                   xyz=xyz,
+                                                   )
+                                rxn.ts_species.append_ts_guess(ts_guess)
+
+                                save_geo(xyz=xyz,
+                                         path=self.local_path,
+                                         filename=f'Linear w={w:.2f}, {xyz_i}{map_suffix}',
+                                         format_='xyz',
+                                         comment=f'Linear w={w:.2f}, {xyz_i}{map_suffix}, family: {rxn.family}',
+                                         )
+
             except Exception as e:
                 logger.error(f'Linear TS adapter failed for {rxn.label}: {e}', exc_info=True)
                 continue
@@ -1592,6 +1744,7 @@ def cleanup_after_existing_h_migration(ts_xyz: dict,
 def cached_map_rxn(rxn: ARCReaction,
                    product_dict_index: int,
                    map_cache: dict | None = None,
+                   forced_atom_map: list[int] | None = None,
                    ) -> list[int] | None:
     """
     Call :func:`map_rxn` for a specific product_dict path, memoizing the result.
@@ -1607,10 +1760,15 @@ def cached_map_rxn(rxn: ARCReaction,
         rxn (ARCReaction): The reaction to map.
         product_dict_index (int): Index into ``rxn.product_dicts`` identifying the path.
         map_cache (dict, optional): Per-job memo dict; ``None`` disables caching.
+        forced_atom_map (list[int], optional): An explicitly requested atom map. When given it is
+            returned as-is for every path, and ``map_rxn`` is not called: the caller asked for a
+            guess for one specific reactant-to-product correspondence.
 
     Returns:
         list[int] | None: The atom map for the path, or ``None`` if mapping failed.
     """
+    if forced_atom_map is not None:
+        return list(forced_atom_map)
     key = ('map_rxn', product_dict_index)
     if map_cache is not None and key in map_cache:
         cached = map_cache[key]
@@ -1632,6 +1790,7 @@ def interpolate(rxn: ARCReaction,
                 weight: float = 0.5,
                 existing_xyzs: list[dict] | None = None,
                 map_cache: dict | None = None,
+                forced_atom_map: list[int] | None = None,
                 ) -> list[dict] | None:
     """
     Search for a TS by interpolating internal coords.
@@ -1643,14 +1802,19 @@ def interpolate(rxn: ARCReaction,
             (e.g. from earlier weight iterations) to deduplicate against.
         map_cache (dict, optional): Per-job memo dict shared across weight iterations,
             caching atom maps and the wider-family-set scan outcome; ``None`` disables caching.
+        forced_atom_map (list[int], optional): An explicitly requested reactants-to-products atom map.
+            When given, it replaces the per-path map derived by :func:`map_rxn` for every path, so the
+            guesses describe the requested correspondence rather than the one the adapter would pick.
 
     Returns:
         list[dict] | None: XYZ coordinate guesses in reactant atom ordering.
     """
     if rxn.is_isomerization():
-        return interpolate_isomerization(rxn=rxn, weight=weight, existing_xyzs=existing_xyzs, map_cache=map_cache)
+        return interpolate_isomerization(rxn=rxn, weight=weight, existing_xyzs=existing_xyzs, map_cache=map_cache,
+                                         forced_atom_map=forced_atom_map)
     elif rxn.is_unimolecular():
-        return interpolate_addition(rxn=rxn, weight=weight, existing_xyzs=existing_xyzs, map_cache=map_cache)
+        return interpolate_addition(rxn=rxn, weight=weight, existing_xyzs=existing_xyzs, map_cache=map_cache,
+                                    forced_atom_map=forced_atom_map)
     return None
 
 
@@ -1658,6 +1822,7 @@ def interpolate_addition(rxn: ARCReaction,
                          weight: float = 0.5,
                          existing_xyzs: list[dict] | None = None,
                          map_cache: dict | None = None,
+                         forced_atom_map: list[int] | None = None,
                          ) -> list[dict] | None:
     """
     Search for a TS of a non-isomerization unimolecular reaction where one side
@@ -1698,6 +1863,9 @@ def interpolate_addition(rxn: ARCReaction,
             caching per-path atom maps (keys ``('map_rxn', i)``) and an empty
             wider-family-set scan outcome (key ``'wider_scan_empty'``);
             ``None`` disables caching.
+        forced_atom_map (list[int], optional): An explicitly requested reactants-to-products atom map.
+            When given, it replaces the per-path map derived by :func:`map_rxn` for every path, so the
+            guesses describe the requested correspondence rather than the one the adapter would pick.
 
     Returns:
         list[dict] | None: Validated XYZ coordinate guesses in the unimolecular-species
@@ -1868,7 +2036,8 @@ def interpolate_addition(rxn: ARCReaction,
         # Convert to uni-species ordering.
         if uni_is_product:
             try:
-                atom_map = cached_map_rxn(rxn=rxn, product_dict_index=i, map_cache=map_cache)
+                atom_map = cached_map_rxn(rxn=rxn, product_dict_index=i, map_cache=map_cache,
+                                          forced_atom_map=forced_atom_map)
             except Exception:
                 atom_map = None
             if atom_map is None:
@@ -2126,7 +2295,8 @@ def interpolate_addition(rxn: ARCReaction,
                 try:
                     am = cached_map_rxn(rxn=rxn,
                                         product_dict_index=rxn.product_dicts.index(product_dict),
-                                        map_cache=map_cache)
+                                        map_cache=map_cache,
+                                        forced_atom_map=forced_atom_map)
                 except Exception:
                     am = None
                 if am is None:
@@ -3455,6 +3625,7 @@ def interpolate_isomerization(rxn: ARCReaction,
                               weight: float = 0.5,
                               existing_xyzs: list[dict] | None = None,
                               map_cache: dict | None = None,
+                              forced_atom_map: list[int] | None = None,
                               ) -> list[dict] | None:
     """
     Search for a TS of an A <=> B (1 to 1) isomerization reaction by interpolating internal coords.
@@ -3504,6 +3675,9 @@ def interpolate_isomerization(rxn: ARCReaction,
             duplicate TS guesses across multiple calls with different weights.
         map_cache (dict, optional): Per-job memo dict shared across weight iterations,
             caching per-path atom maps (keys ``('map_rxn', i)``); ``None`` disables caching.
+        forced_atom_map (list[int], optional): An explicitly requested reactants-to-products atom map.
+            When given, it replaces the per-path map derived by :func:`map_rxn` for every path, so the
+            guesses describe the requested correspondence rather than the one the adapter would pick.
 
     Returns:
         list[dict] | None: Validated, deduplicated XYZ coordinate guesses in reactant atom ordering.
@@ -3626,7 +3800,8 @@ def interpolate_isomerization(rxn: ARCReaction,
         # equivalent atoms (e.g., distinct H's in intra_H_migration), so
         # we must not reuse the global rxn.atom_map for all paths.
         try:
-            atom_map = cached_map_rxn(rxn=rxn, product_dict_index=i, map_cache=map_cache)
+            atom_map = cached_map_rxn(rxn=rxn, product_dict_index=i, map_cache=map_cache,
+                                      forced_atom_map=forced_atom_map)
         except Exception as e:
             logger.debug(f'Linear (rxn={rxn.label}, path={i}): map_rxn raised {type(e).__name__}: {e}; skipping path.')
             continue
