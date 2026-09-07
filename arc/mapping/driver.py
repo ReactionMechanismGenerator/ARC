@@ -374,7 +374,10 @@ def map_rxn(rxn: ARCReaction,
     except (KeyError, ValueError, IndexError, ActionError, AtomTypeError) as e:
         logger.warning(e)
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
-    pairs = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
+    pairs = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts,
+                                                       r_label_map=r_label_map,
+                                                       p_label_map=updated_p_label_map,
+                                                       )
     if p_cuts:
         logger.error(f'Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}')
         return None

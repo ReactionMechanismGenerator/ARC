@@ -1711,16 +1711,44 @@ def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies) -> bool:
     return False
 
 
+def tags_on_cut(cut: ARCSpecies, label_map: dict[str, int] | None) -> set:
+    """
+    Return the template tags whose atom lies in a scissored fragment.
+
+    Args:
+        cut (ARCSpecies): A scissored fragment, its atoms labeled with running indices of the whole complex.
+        label_map (dict[str, int] | None): Template tag -> running atom index.
+
+    Returns:
+        set: The tags held by this fragment.
+    """
+    if not label_map:
+        return set()
+    indices = {int(atom.label) for atom in cut.mol.atoms if atom.label is not None}
+    return {tag for tag, index in label_map.items() if index in indices}
+
+
 def pairing_reactants_and_products_for_mapping(r_cuts: list[ARCSpecies],
-                                               p_cuts: list[ARCSpecies]
+                                               p_cuts: list[ARCSpecies],
+                                               r_label_map: dict[str, int] | None = None,
+                                               p_label_map: dict[str, int] | None = None,
                                                )-> list[tuple[ARCSpecies,ARCSpecies]]:
     """
     A function for matching reactants and products in scissored products.
     The matched species are removed from p_cuts.
 
+    When several product cuts are isomorphic to the same reactant cut - two identical fragments, as in a
+    degenerate abstraction - the choice between them is arbitrary on structure alone. Passing the family's
+    label maps breaks that tie in favor of the product cut sharing the most template tags with the reactant
+    cut, so the pairing agrees with the template instead of leaving :func:`glue_maps` to transpose the
+    labeled atoms afterwards and strand the hydrogens that hang off them. Without the label maps the first
+    isomorphic match wins, as before.
+
     Args:
         r_cuts (list[ARCSpecies]): A list of the scissored species in the reactants
         p_cuts (list[ARCSpecies]): A list of the scissored species in the reactants
+        r_label_map (dict[str, int], optional): Template tag -> running reactant atom index.
+        p_label_map (dict[str, int], optional): Template tag -> running product atom index.
 
     Returns:
         list[tuple[ARCSpecies,ARCSpecies]]: A list of paired reactant and products, to be sent to map_two_species.
@@ -1729,16 +1757,20 @@ def pairing_reactants_and_products_for_mapping(r_cuts: list[ARCSpecies],
     r_res = [generate_resonance_structures_safely(react.mol, save_order=True) or [react.mol] for react in r_cuts]
     for i, react in enumerate(r_cuts):
         res1 = r_res[i]
+        matches = list()
         for idx, prod in enumerate(p_cuts):
-            found = False
             for res in res1:
                 if res.fingerprint == prod.mol.fingerprint or prod.mol.is_isomorphic(res, save_order=True):
-                    pairs.append((react, prod))
-                    p_cuts.pop(idx)
-                    found = True
+                    matches.append(idx)
                     break
-            if found:
-                break
+        if not matches:
+            continue
+        react_tags = tags_on_cut(react, r_label_map)
+        # max() keeps the first index among equals, preserving the original first-match behavior both
+        # when no label maps are supplied and when none of the matches shares a tag with the reactant cut.
+        best = max(matches, key=lambda idx: len(react_tags & tags_on_cut(p_cuts[idx], p_label_map)))
+        pairs.append((react, p_cuts[best]))
+        p_cuts.pop(best)
     return pairs
 
 
