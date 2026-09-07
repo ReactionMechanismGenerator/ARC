@@ -38,12 +38,14 @@ import pytest
 from arc.common import almost_equal_coords, get_single_bond_length
 from arc.job.adapters.ts.linear import (GuessRecord,
                                         LinearAdapter,
+                                        atom_map_fits_rxn,
                                         build_ring_scission_ts,
                                         cached_map_rxn,
                                         cleanup_after_existing_h_migration,
                                         interpolate,
                                         interpolate_addition,
                                         interpolate_isomerization,
+                                        normalize_atom_maps,
                                         postprocess_isomerization_records,
                                         trivial_fallback_scaffold_sound,
                                         )
@@ -6275,6 +6277,134 @@ class TestPostprocessIsomerizationRecords(unittest.TestCase):
         )
         self.assertEqual(len(out), 1)
         self.assertIs(out[0], rec)
+
+
+class TestLinearAdapterForcedAtomMap(unittest.TestCase):
+    """Test requesting TS guesses for specific atom maps (issue #1042)."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Determine two distinct atom maps of a butyl intra_H_migration."""
+        cls.maps = [cluster.representative for cluster in cls._make_rxn().atom_map_clusters or list()]
+
+    @staticmethod
+    def _make_rxn() -> ARCReaction:
+        """
+        Construct a fresh sBu <=> nBu intra_H_migration reaction.
+
+        Returns:
+            ARCReaction: The reaction.
+        """
+        return ARCReaction(r_species=[ARCSpecies(label='sBu', smiles='CC[CH]C')],
+                           p_species=[ARCSpecies(label='nBu', smiles='CCC[CH2]')])
+
+    def _run(self, atom_map=None) -> ARCReaction:
+        """
+        Execute the Linear adapter for a fresh reaction, optionally with requested atom map(s).
+
+        Args:
+            atom_map (list[int] | list[list[int]], optional): The atom map(s) to request.
+
+        Returns:
+            ARCReaction: The processed reaction.
+        """
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        LinearAdapter(job_type='tsg',
+                      reactions=[rxn],
+                      testing=True,
+                      project='test',
+                      project_directory=project_directory,
+                      atom_map=atom_map,
+                      ).execute()
+        return rxn
+
+    def test_normalize_atom_maps(self):
+        """Test normalizing the atom_map argument."""
+        self.assertIsNone(normalize_atom_maps(None))
+        self.assertEqual(normalize_atom_maps([1, 0]), [[1, 0]])
+        self.assertEqual(normalize_atom_maps([[1, 0], [0, 1]]), [[1, 0], [0, 1]])
+        for invalid in ([0, 1, 5], [0, 0], [], 'abc', [[0, 1], [0, 0]], [0, None]):
+            with self.assertRaises(ValueError):
+                normalize_atom_maps(invalid)
+
+    def test_atom_map_fits_rxn(self):
+        """Test validating an atom map against a reaction."""
+        rxn = self._make_rxn()
+        n_atoms = len(rxn.r_species[0].get_xyz()['symbols'])
+        self.assertTrue(atom_map_fits_rxn(rxn, list(range(n_atoms))))
+        self.assertFalse(atom_map_fits_rxn(rxn, list(range(n_atoms - 1))))
+        # C and H cannot be interchanged (indices 0-3 are C, 4-12 are H).
+        swapped = list(range(n_atoms))
+        swapped[0], swapped[-1] = swapped[-1], swapped[0]
+        self.assertFalse(atom_map_fits_rxn(rxn, swapped))
+
+    def test_different_atom_maps_give_different_guesses(self):
+        """Test that requesting two distinct atom maps yields distinct TS guesses."""
+        if len(self.maps) < 2:
+            self.skipTest('could not determine two distinct atom maps in this env')
+        geometries = list()
+        for atom_map in self.maps[:2]:
+            rxn = self._run(atom_map=list(atom_map))
+            guesses = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and tsg.initial_xyz]
+            self.assertGreater(len(guesses), 0)
+            geometries.append(guesses[0].initial_xyz)
+        self.assertFalse(almost_equal_coords(geometries[0], geometries[1]))
+
+    def test_several_atom_maps_in_one_job(self):
+        """Test that guesses of several requested atom maps are labeled by their map."""
+        if len(self.maps) < 2:
+            self.skipTest('could not determine two distinct atom maps in this env')
+        rxn = self._run(atom_map=[list(atom_map) for atom_map in self.maps[:2]])
+        methods = [tsg.method for tsg in rxn.ts_species.ts_guesses]
+        self.assertGreater(len(methods), 0)
+        self.assertTrue(any('map=0' in method for method in methods))
+        self.assertTrue(any('map=1' in method for method in methods))
+
+    def test_single_atom_map_is_not_labeled(self):
+        """Test that a single requested map does not add a map index to the guess method."""
+        if not self.maps:
+            self.skipTest('could not determine an atom map in this env')
+        rxn = self._run(atom_map=list(self.maps[0]))
+        self.assertTrue(all('map=' not in tsg.method for tsg in rxn.ts_species.ts_guesses))
+
+    def test_unusable_atom_map_is_reported(self):
+        """Test that an atom map which does not fit the reaction is reported and no guess is generated."""
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                atom_map=[0, 1, 2, 3, 4],
+                                )
+        with self.assertLogs(logger='arc', level='WARNING') as cm:
+            adapter.execute()
+        self.assertTrue(any('does not fit' in line for line in cm.output))
+        self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
+
+    def test_preset_atom_map_is_reported_as_unused(self):
+        """Test that a pre-set atom map is reported as not taking part in the per-path derivation."""
+        if not self.maps:
+            self.skipTest('could not determine an atom map in this env')
+        rxn = self._make_rxn()
+        rxn.atom_map = list(self.maps[0])
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                )
+        with self.assertLogs(logger='arc', level='WARNING') as cm:
+            adapter.execute()
+        self.assertTrue(any('is not used for that' in line for line in cm.output))
+        self.assertEqual(rxn._atom_map, list(self.maps[0]))
+
 
 
 if __name__ == '__main__':
