@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from arc.common import logger
 from arc.exceptions import ActionError, AtomTypeError
 from arc.mapping.engine import (are_adj_elements_in_agreement,
+                                build_pair_constraints,
                                 copy_species_list_for_mapping,
                                 cut_species_based_on_atom_indices,
                                 find_all_breaking_bonds,
@@ -382,7 +383,11 @@ def map_rxn(rxn: ARCReaction,
         logger.error(f'Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}')
         return None
 
-    fragment_maps = map_pairs(pairs)
+    constraints = build_pair_constraints(pairs=pairs,
+                                         r_label_map=r_label_map,
+                                         p_label_map=updated_p_label_map,
+                                         )
+    fragment_maps = map_pairs(pairs, constraints=constraints)
     if any(m is None for m in fragment_maps):
         logger.debug(f'map_rxn (rxn={rxn}, pdi={pdi}): one or more fragment maps failed; returning None.')
         return None

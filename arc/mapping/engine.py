@@ -39,6 +39,7 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
                     backend: str = 'ARC',
                     consider_chirality: bool = True,
                     inc_vals: int | None = None,
+                    constraint: dict[int, int] | None = None,
                     verbose: bool = False,
                     ) -> list[int] | dict[int, int] | None:
     """
@@ -65,6 +66,10 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
         backend (str, optional): Currently only ``ARC``'s method is implemented as the backend.
         consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
         inc_vals (int, optional): An optional integer by which all values in the atom map list will be incremented.
+        constraint (dict[int, int], optional): Atom correspondences the map must satisfy, as ``spc_1`` index
+                                               -> ``spc_2`` index. Lets a reaction family's labeled-atom
+                                               assignment be honored while the candidates are still being
+                                               chosen, rather than patched into the assembled map afterwards.
         verbose (bool, optional): Whether to use logging.
 
     Returns:
@@ -91,6 +96,10 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
         candidates = identify_backbone_candidates(spc_1, spc_2, consider_chirality=consider_chirality)
         if not candidates:
             return None
+        candidates = filter_candidates_by_constraint(candidates=candidates,
+                                                     constraint=constraint,
+                                                     label=f'{spc_1.label} -> {spc_2.label}',
+                                                     )
         rmsds, fixed_spcs = list(), list()
         for candidate in candidates:
             rmsd, fixed_spc_1, fixed_spc_2 = score_backbone_candidate(spc_1, spc_2, candidate)
@@ -285,6 +294,41 @@ def identify_backbone_candidates(spc_1: ARCSpecies,
             logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
             return None
     return candidates
+
+
+def filter_candidates_by_constraint(candidates: list[dict[int, int]],
+                                    constraint: dict[int, int] | None,
+                                    label: str = '',
+                                    ) -> list[dict[int, int]]:
+    """
+    Keep only the backbone candidates that honor a required set of atom correspondences.
+
+    A reaction family's labeled atoms fix part of the correspondence up front. Honoring that while the
+    candidates are still being chosen keeps a symmetric species from being mapped onto an orientation the
+    template then has to overrule in :func:`glue_maps`, which would transpose the labeled atoms without
+    carrying their hydrogens along. Constraints on atoms outside the backbone (a labeled hydrogen, say)
+    cannot be expressed here and are skipped.
+
+    Args:
+        candidates (list[dict[int, int]]): The superimposable backbone candidates.
+        constraint (dict[int, int] | None): Required species-1 index -> species-2 index correspondences.
+        label (str, optional): A label used for logging.
+
+    Returns:
+        list[dict[int, int]]: The candidates satisfying the constraint, or all of them if none does.
+    """
+    if not constraint or not candidates:
+        return candidates
+    backbone_constraint = {k: v for k, v in constraint.items() if any(k in c for c in candidates)}
+    if not backbone_constraint:
+        return candidates
+    filtered = [c for c in candidates if all(c.get(k) == v for k, v in backbone_constraint.items())]
+    if not filtered:
+        # Falling back to the unconstrained list keeps this from turning a suboptimal map into no map at all.
+        logger.debug(f'No superimposable candidate for {label} satisfies the template constraint '
+                     f'{backbone_constraint}, using all {len(candidates)} candidates.')
+        return candidates
+    return filtered
 
 
 def check_atom_map_is_a_permutation(atom_map: dict[int, int],
@@ -1774,19 +1818,57 @@ def pairing_reactants_and_products_for_mapping(r_cuts: list[ARCSpecies],
     return pairs
 
 
-def map_pairs(pairs: list[tuple[ARCSpecies, ARCSpecies]]) -> list[list[int]]:
+def build_pair_constraints(pairs: list[tuple[ARCSpecies, ARCSpecies]],
+                           r_label_map: dict[str, int],
+                           p_label_map: dict[str, int],
+                           ) -> list[dict[int, int]]:
+    """
+    Translate a family's labeled-atom assignment into a per-pair, fragment-local constraint.
+
+    ``r_label_map`` and ``p_label_map`` are keyed by template tag ('*1', '*2', ...) and hold running atom
+    indices of the whole reactant and product complexes, while the scissored fragments carry those running
+    indices in ``atom.label``. A tag constrains a pair only when both of its atoms landed in that pair.
+
+    Args:
+        pairs (list[tuple[ARCSpecies, ARCSpecies]]): The paired reactant and product cuts.
+        r_label_map (dict[str, int]): Template tag -> running reactant atom index.
+        p_label_map (dict[str, int]): Template tag -> running product atom index.
+
+    Returns:
+        list[dict[int, int]]: Per pair, the required reactant-cut index -> product-cut index correspondences.
+    """
+    constraints = list()
+    for r_cut, p_cut in pairs:
+        r_local = {int(atom.label): i for i, atom in enumerate(r_cut.mol.atoms) if atom.label is not None}
+        p_local = {int(atom.label): i for i, atom in enumerate(p_cut.mol.atoms) if atom.label is not None}
+        constraint = dict()
+        for tag, r_global in r_label_map.items():
+            if tag not in p_label_map:
+                continue
+            p_global = p_label_map[tag]
+            if r_global in r_local and p_global in p_local:
+                constraint[r_local[r_global]] = p_local[p_global]
+        constraints.append(constraint)
+    return constraints
+
+
+def map_pairs(pairs: list[tuple[ARCSpecies, ARCSpecies]],
+              constraints: list[dict[int, int]] | None = None,
+              ) -> list[list[int]]:
     """
     A function that maps the matched species together
 
     Args:
-         (list[tuple[ARCSpecies, ARCSpecies]]): A list of the pairs of reactants and species.
+         pairs (list[tuple[ARCSpecies, ARCSpecies]]): A list of the pairs of reactants and species.
+         constraints (list[dict[int, int]], optional): Per pair, atom correspondences the map must satisfy.
 
     Returns:
         list[list[int]]: A list of the mapped species
     """
     maps = list()
-    for pair in pairs:
-        maps.append(map_two_species(pair[0], pair[1]))
+    for i, pair in enumerate(pairs):
+        constraint = constraints[i] if constraints is not None and i < len(constraints) else None
+        maps.append(map_two_species(pair[0], pair[1], constraint=constraint))
     return maps
 
 
