@@ -93,7 +93,8 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
     atom_map = None
 
     if backend.lower() == 'arc':
-        candidates = identify_backbone_candidates(spc_1, spc_2, consider_chirality=consider_chirality)
+        candidates = identify_backbone_candidates(spc_1, spc_2, consider_chirality=consider_chirality,
+                                                  constraint=constraint)
         if not candidates:
             return None
         candidates = filter_candidates_by_constraint(candidates=candidates,
@@ -269,6 +270,7 @@ def trivial_atom_map(spc_1: ARCSpecies,
 def identify_backbone_candidates(spc_1: ARCSpecies,
                                  spc_2: ARCSpecies,
                                  consider_chirality: bool = True,
+                                 constraint: dict[int, int] | None = None,
                                  ) -> list[dict[int, int]] | None:
     """
     Fingerprint both species and identify all superimposable heavy-atom backbone candidates.
@@ -278,18 +280,19 @@ def identify_backbone_candidates(spc_1: ARCSpecies,
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
         consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
+        constraint (dict[int, int], optional): Correspondences the candidates must contain, in species indices.
 
     Returns:
         list[dict[int, int]] | None: The backbone candidates, or ``None`` if none could be identified.
     """
     fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
     fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
-    candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
+    candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2, constraint=constraint)
     if candidates is None or len(candidates) == 0:
         consider_chirality = not consider_chirality
         fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
         fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
-        candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
+        candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2, constraint=constraint)
         if candidates is None or len(candidates) == 0:
             logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
             return None
@@ -519,6 +522,7 @@ def fingerprint(spc: ARCSpecies,
 
 def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | list[int]]],
                                        fingerprint_2: dict[int, dict[str, str | list[int]]],
+                                       constraint: dict[int, int] | None = None,
                                        ) -> list[dict[int, int]]:
     """
     Identify candidate ordering of heavy atoms (only) that could potentially be superimposed.
@@ -526,6 +530,9 @@ def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | 
     Args:
         fingerprint_1 (dict[int, dict[str, str | list[int]]]): Adjacent element dict for species 1.
         fingerprint_2 (dict[int, dict[str, str | list[int]]]): Adjacent element dict for species 2.
+        constraint (dict[int, int], optional): Correspondences the candidates must contain. Enforced during the
+                                               search and additionally used to re-anchor it, so that a compatible
+                                               map the unconstrained enumeration cannot reach is still found.
 
     Returns:
         list[dict[int, int]]: Entries are superimposable candidate dicts. Keys are atom indices of heavy atoms
@@ -541,9 +548,20 @@ def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | 
     # benzene it lost the best candidate in half of the trials, by up to 0.04 A.
     candidates: list[dict[int, int]] = []
     for key_2 in fingerprint_2.keys():
-        result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
+        result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2, constraint=constraint)
         if result is not None and result not in candidates:
             candidates.append(result)
+    if constraint:
+        # One completion is returned per anchor image, so a constraint-compatible map reachable only by a
+        # different branch choice is never generated -- benzene has 12 automorphisms but yields 6 candidates.
+        # Re-anchoring on a constrained pair puts that correspondence in the seed instead of leaving it to
+        # the search, which surfaces the compatible map when the unconstrained enumeration misses it.
+        for c_1, c_2 in constraint.items():
+            if c_1 not in fingerprint_1 or c_2 not in fingerprint_2:
+                continue
+            result = iterative_dfs(fingerprint_1, fingerprint_2, c_1, c_2, constraint=constraint)
+            if result is not None and result not in candidates:
+                candidates.append(result)
     return candidates
 
 
@@ -573,11 +591,45 @@ def are_adj_elements_in_agreement(fingerprint_1: dict[str, str | list[int]],
     return True
 
 
+def is_assignment_consistent(fingerprint_1: dict[int, dict[str, list[int]]],
+                             fingerprint_2: dict[int, dict[str, list[int]]],
+                             mapping: dict[int, int],
+                             k_1: int,
+                             k_2: int,
+                             ) -> bool:
+    """
+    Check that mapping ``k_1`` onto ``k_2`` agrees with the correspondences already fixed.
+
+    Every heavy-atom neighbour of ``k_1`` that is already mapped must land on a neighbour of ``k_2``,
+    and the two atoms' adjacent elements must agree.
+
+    Args:
+        fingerprint_1 (dict[int, dict[str, list[int]]]): Adjacent elements dictionary 1 (graph 1).
+        fingerprint_2 (dict[int, dict[str, list[int]]]): Adjacent elements dictionary 2 (graph 2).
+        mapping (dict[int, int]): The correspondences fixed so far.
+        k_1 (int): The graph 1 atom index being assigned.
+        k_2 (int): The graph 2 atom index it would be assigned to.
+
+    Returns:
+        bool: Whether the assignment is consistent.
+    """
+    if not are_adj_elements_in_agreement(fingerprint_1[k_1], fingerprint_2[k_2]):
+        return False
+    for symbol in fingerprint_1[k_1].keys():
+        if symbol in RESERVED_FINGERPRINT_KEYS + ['H']:
+            continue
+        for nbr_1 in fingerprint_1[k_1][symbol]:
+            if nbr_1 in mapping and mapping[nbr_1] not in fingerprint_2[k_2].get(symbol, []):
+                return False
+    return True
+
+
 def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
                   fingerprint_2: dict[int, dict[str, list[int]]],
                   key_1: int,
                   key_2: int,
                   allow_first_key_pair_to_disagree: bool = False,
+                  constraint: dict[int, int] | None = None,
                   ) -> dict[int, int] | None:
     """
     A depth first search (DFS) graph traversal algorithm to determine possible superimposable ordering of heavy atoms.
@@ -590,6 +642,10 @@ def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
         key_2 (int): The starting index for graph 2.
         allow_first_key_pair_to_disagree (bool, optional): ``True`` to not enforce agreement between the fingerprint
                                                            of ``key_1`` and ``key_2``.
+        constraint (dict[int, int], optional): Correspondences the mapping must contain. They are seeded into the
+                                               mapping before the search starts and enforced at every step, so the
+                                               backtracking returns a completion consistent with all of them rather
+                                               than whichever completion it happens to reach first.
 
     Returns:
         dict[int, int] | None: ``None`` if this is an invalid superimposable candidate. Keys are atom indices of
@@ -606,6 +662,16 @@ def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
 
     mapping = {key_1: key_2}
     mapped_2 = {key_2}
+    constraint = constraint or dict()
+    if constraint.get(key_1, key_2) != key_2:
+        return None
+    for c_1, c_2 in constraint.items():
+        if c_1 in mapping:
+            continue
+        if c_2 in mapped_2:
+            return None
+        mapping[c_1] = c_2
+        mapped_2.add(c_2)
 
     traversal_order = []
     visited = set()
@@ -628,22 +694,19 @@ def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
         if idx_1 == len(traversal_order):
             return True
         k1 = traversal_order[idx_1]
+        if k1 in mapping:
+            # Seeded by the constraint: its value is fixed, but it still has to hold up as a mapping.
+            if not is_assignment_consistent(fingerprint_1, fingerprint_2, mapping, k1, mapping[k1]):
+                return False
+            return backtrack(idx_1 + 1)
         for k2 in keys_2:
             if k2 in mapped_2:
                 continue
+            if constraint.get(k1, k2) != k2:
+                continue
             if not are_adj_elements_in_agreement(fingerprint_1[k1], fingerprint_2[k2]):
                 continue
-            consistent = True
-            for symbol in fingerprint_1[k1].keys():
-                if symbol not in RESERVED_FINGERPRINT_KEYS + ['H']:
-                    for nbr1 in fingerprint_1[k1][symbol]:
-                        if nbr1 in mapping:
-                            if mapping[nbr1] not in fingerprint_2[k2].get(symbol, []):
-                                consistent = False
-                                break
-                if not consistent:
-                    break
-            if not consistent:
+            if not is_assignment_consistent(fingerprint_1, fingerprint_2, mapping, k1, k2):
                 continue
             mapping[k1] = k2
             mapped_2.add(k2)
