@@ -273,6 +273,12 @@ parse_ess_version = make_parser(
     error_message='Could not parse ESS version from {path}',
 )
 
+parse_bond_orders = make_parser(
+    parse_method='parse_bond_orders',
+    return_type=np.ndarray | None,
+    error_message='Could not parse bond orders from {path}',
+)
+
 
 def get_normal_mode_displacement(log_file_path: str,
                                  label: str = '',

@@ -226,6 +226,20 @@ class ESSAdapter(ABC):
         """
         return None
 
+    def parse_bond_orders(self) -> np.ndarray | None:
+        """
+        Parse the Mayer bond order matrix from the log file.
+
+        The Mayer bond order is a density-derived bond index, useful for inferring connectivity
+        (including partial bonds at a TS) without relying on interatomic distances.
+
+        Returns: np.ndarray | None
+            A symmetric NxN matrix of Mayer bond orders in the log file's atom order.
+            The diagonal holds the Mayer atomic valence of each atom.
+            ``None`` if the log file does not contain a Mayer population analysis.
+        """
+        return None
+
     def check_logfile_exists(self,
                              counter: int = 5,
                              sleep_time: int = 5,
