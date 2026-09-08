@@ -194,6 +194,52 @@ class TestLevel(unittest.TestCase):
                 self.assertIsInstance(method, str)
         self.assertIn('gaussian', list(ess_methods.keys()))
 
+    def test_deduce_method_type(self):
+        """Test deducing the method type of a level of theory"""
+        def method_type(method: str) -> str:
+            """Deduce a method type without also deducing a software for the method."""
+            level = object.__new__(Level)
+            level.method, level.method_type = method.lower(), None
+            level.deduce_method_type()
+            return level.method_type
+
+        # Trivial cases, one per type.
+        self.assertEqual(method_type('b3lyp'), 'dft')
+        self.assertEqual(method_type('ccsd(t)'), 'wavefunction')
+        self.assertEqual(method_type('am1'), 'semiempirical')
+        self.assertEqual(method_type('uff'), 'force_field')
+        self.assertEqual(method_type('cbs-qb3'), 'composite')
+
+        # Common cases.
+        for method in ['wb97xd', 'm06-2x', 'b2plyp', 'wb97m-v', 'pbe0']:
+            self.assertEqual(method_type(method), 'dft', msg=f'{method} should be dft')
+        for method in ['hf', 'mp2', 'dlpno-ccsd(t)', 'caspt2', 'nevpt2']:
+            self.assertEqual(method_type(method), 'wavefunction', msg=f'{method} should be a wavefunction method')
+        for method in ['pm3', 'pm6', 'pm7', 'xtb', 'zindo', 'mndo']:
+            self.assertEqual(method_type(method), 'semiempirical', msg=f'{method} should be semiempirical')
+        for method in ['mmff94', 'gaff', 'amber', 'ghemical', 'torchani']:
+            self.assertEqual(method_type(method), 'force_field', msg=f'{method} should be a force field')
+
+        # A marker must not match inside an unrelated name: 'am' sits inside every Coulomb-attenuated
+        # functional, and 'ic' inside 'ghemical'. Typing a functional as semiempirical makes ARC run a
+        # radical restricted and drop the TS keywords from a Gaussian optimization.
+        for method in ['cam-b3lyp', 'camb3lyp', 'camh-b3lyp', 'cam-qtp00', 'lc-camb3lyp', 'am05']:
+            self.assertEqual(method_type(method), 'dft', msg=f'{method} should be dft')
+
+        # A marker that legitimately sits inside a longer name must still match.
+        for method in ['bccd(t)', 'qcisd(t)', 'fci', 'lccsd', 'lt-df-lcc2', 'uccsd(t)-f12', 'rohf']:
+            self.assertEqual(method_type(method), 'wavefunction', msg=f'{method} should be a wavefunction method')
+
+        # Every method ARC registers types as something, and the composite list wins over the markers
+        # ('g3mp2' contains 'mp2', 'rocbs-qb3' contains 'cbs').
+        ess_methods = read_yaml_file(path=os.path.join(ARC_PATH, 'data', 'ess_methods.yml'))
+        for methods in ess_methods.values():
+            for method in methods:
+                self.assertIn(method_type(method),
+                              ['dft', 'wavefunction', 'semiempirical', 'force_field', 'composite'])
+        self.assertEqual(method_type('g3mp2'), 'composite')
+        self.assertEqual(method_type('rocbs-qb3'), 'composite')
+
     def test_copy(self):
         """Test copying the object"""
         level_1 = Level(repr='wB97xd/def2-tzvp')

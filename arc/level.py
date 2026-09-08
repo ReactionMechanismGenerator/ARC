@@ -346,9 +346,13 @@ class Level(object):
         Determine the model chemistry type:
         DFT, wavefunction, force field, semi-empirical, or composite
         """
+        # Markers are matched as substrings, so a short one fires inside an unrelated name.
+        # The wave function markers are the shortest and are matched last for that reason;
+        # the semi-empirical ones are spelled out in full ('am1' rather than 'am', which also
+        # matches 'cam-b3lyp' and 'amber').
         wave_function_methods = ['hf', 'cc', 'ci', 'mp2', 'mp3', 'cp', 'cep', 'nevpt', 'dmrg', 'ri', 'cas', 'ic', 'mr',
                                  'bd', 'mbpt']
-        semiempirical_methods = ['am', 'pm', 'zindo', 'mndo', 'xtb', 'nddo']
+        semiempirical_methods = ['am1', 'pm3', 'pm6', 'pm7', 'zindo', 'mndo', 'xtb', 'nddo']
         force_field_methods = ['amber', 'mmff', 'dreiding', 'uff', 'qmdff', 'gfn', 'gaff', 'ghemical', 'charmm', 'ani']
         # all composite methods supported by Gaussian
         composite_methods = ['cbs-4m', 'cbs-qb3', 'cbs-qb3-paraskevas', 'rocbs-qb3', 'cbs-apno', 'w1u', 'w1ro', 'w1bd',
@@ -360,12 +364,12 @@ class Level(object):
         elif self.method in ['m06hf', 'm06-hf']:
             self.method_type = 'dft'
         # General cases
-        elif any(wf_method in self.method for wf_method in wave_function_methods):
-            self.method_type = 'wavefunction'
-        elif any(sm_method in self.method for sm_method in semiempirical_methods):
-            self.method_type = 'semiempirical'
         elif any(ff_method in self.method for ff_method in force_field_methods):
             self.method_type = 'force_field'
+        elif any(sm_method in self.method for sm_method in semiempirical_methods):
+            self.method_type = 'semiempirical'
+        elif any(wf_method in self.method for wf_method in wave_function_methods):
+            self.method_type = 'wavefunction'
         else:
             # assume DFT
             self.method_type = 'dft'
