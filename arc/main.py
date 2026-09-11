@@ -29,7 +29,7 @@ from arc.common import (VERSION,
                         )
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
-from arc.level import Level, assign_frequency_scale_factor
+from arc.level import Level, assign_frequency_scale_factor, get_freq_level_for_composite_method
 from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
 from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
@@ -1061,13 +1061,23 @@ class ARC(object):
             logger.info(f'Composite method: {self.composite_method}')
             self.opt_level, self.sp_level = None, None
 
-            if not self.freq_level:
-                self.freq_level = default_levels_of_theory['freq_for_composite']
-                default_flag = ' (composite default)'
+            if self.job_types['freq'] or self.job_types['irc']:
+                if not self.freq_level:
+                    # Prescribed by the composite protocol, not a global default: the scale factor
+                    # stored for a composite is that protocol's own ZPE factor (see level.py). Asked for
+                    # only where this level is actually used, since a composite ARC has no level for must
+                    # not abort a run that never reaches a job it could mispair. Beyond freq jobs that is
+                    # the IRC path: opt_level is None for a composite run, so spawn_post_irc_jobs() opts
+                    # its endpoint species at freq_level.
+                    self.freq_level = get_freq_level_for_composite_method(self.composite_method)
+                    default_flag = ' (composite default)'
+                else:
+                    default_flag = ''
+                logger.info(f'Frequencies:{default_flag} {self.freq_level}')
             else:
-                default_flag = ''
-            self.freq_level = Level(repr=self.freq_level)
-            logger.info(f'Frequencies:{default_flag} {self.freq_level}')
+                logger.warning('Not performing frequency calculation, since it was not requested by the user.')
+            if self.freq_level:
+                self.freq_level = Level(repr=self.freq_level)
 
             if self.job_types['rotors']:
                 if not self.scan_level:
