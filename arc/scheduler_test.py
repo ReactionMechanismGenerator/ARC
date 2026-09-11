@@ -23,7 +23,7 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
-from arc.level import Level
+from arc.level import Level, get_freq_level_for_composite_method
 from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
                            MIXED_SCF_REFERENCE_MESSAGE, SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
@@ -175,8 +175,8 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                species_list=[cls.spc1],
                                composite_method=Level(repr='CBS-QB3'),
                                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
-                               opt_level=Level(repr=default_levels_of_theory['freq_for_composite']),
-                               freq_level=Level(repr=default_levels_of_theory['freq_for_composite']),
+                               opt_level=Level(repr=get_freq_level_for_composite_method('cbs-qb3')),
+                               freq_level=Level(repr=get_freq_level_for_composite_method('cbs-qb3')),
                                scan_level=Level(repr=default_levels_of_theory['scan_for_composite']),
                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
                                project_directory=cls.project_directory,

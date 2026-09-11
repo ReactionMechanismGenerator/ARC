@@ -7,9 +7,10 @@ This module contains unit tests for the arc.lot module
 
 import os
 import unittest
+from unittest import mock
 
 from arc.common import ARC_PATH, read_yaml_file
-from arc.level import Level, assign_frequency_scale_factor
+from arc.level import Level, assign_frequency_scale_factor, get_freq_level_for_composite_method
 
 
 class TestLevel(unittest.TestCase):
@@ -255,6 +256,44 @@ class TestLevel(unittest.TestCase):
                       'no/such, software: nonesuch, solvent: water']:
             with self.assertRaises(ValueError):
                 Level(repr=repr_)
+
+    # Patched rather than read live: a local ~/.arc/settings.py overlays default_levels_of_theory
+    # (see arc/imports.py), so an unpatched test would assert against whatever the developer's
+    # machine happens to carry -- passing in CI and failing locally, or worse, the reverse.
+    MAPPING = {'cbs-qb3': 'B3LYP/CBSB7',
+               'cbs-qb3-paraskevas': 'B3LYP/CBSB7',
+               'g4': 'B3LYP/6-31G(2df,p)',
+               }
+
+    def test_get_freq_level_for_composite_method(self):
+        """Test that each composite method resolves to the frequency level it prescribes."""
+        with mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': self.MAPPING}):
+            # G4 prescribes B3LYP/6-31G(2df,p); its scale factor (0.9854 * 1.014) is defined against it.
+            self.assertEqual(get_freq_level_for_composite_method('g4'), 'B3LYP/6-31G(2df,p)')
+            # CBS-QB3 prescribes B3LYP/CBSB7, unchanged by this mapping.
+            self.assertEqual(get_freq_level_for_composite_method('cbs-qb3'), 'B3LYP/CBSB7')
+            self.assertEqual(get_freq_level_for_composite_method('cbs-qb3-paraskevas'), 'B3LYP/CBSB7')
+            # Case-insensitive, and a Level is accepted as well as a string.
+            self.assertEqual(get_freq_level_for_composite_method('G4'), 'B3LYP/6-31G(2df,p)')
+            self.assertEqual(get_freq_level_for_composite_method(Level(repr='CBS-QB3')), 'B3LYP/CBSB7')
+
+    def test_get_freq_level_for_composite_method_raises(self):
+        """Test that a composite with no prescribed frequency level raises instead of defaulting.
+
+        Falling back would pair the composite's own ZPE-derived scale factor with another
+        protocol's frequencies -- wrong, and silent, since such a job converges normally.
+        """
+        with mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': self.MAPPING}):
+            for method in ['g3', 'cbs-4m', 'w1bd']:
+                with self.assertRaises(ValueError):
+                    get_freq_level_for_composite_method(method)
+
+    def test_get_freq_level_for_composite_method_legacy_str(self):
+        """Test that a pre-mapping local settings override is honored, with a warning, not a crash."""
+        with mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': 'B3LYP/CBSB7'}):
+            with self.assertLogs('arc', level='WARNING') as cm:
+                self.assertEqual(get_freq_level_for_composite_method('g4'), 'B3LYP/CBSB7')
+            self.assertIn('predates per-composite frequency levels', ' '.join(cm.output))
 
 
 if __name__ == '__main__':

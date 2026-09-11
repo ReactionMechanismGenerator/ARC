@@ -13,6 +13,7 @@ from arc.imports import settings
 logger = get_logger()
 
 levels_ess, supported_ess = settings['levels_ess'], settings['supported_ess']
+default_levels_of_theory = settings['default_levels_of_theory']
 
 
 class Level(object):
@@ -462,6 +463,50 @@ class Level(object):
             for ess in supported_ess:
                 if ess in ess_methods and self.method in ess_methods[ess]:
                     self.compatible_ess.append(ess)
+
+
+def get_freq_level_for_composite_method(composite_method: str | Level) -> str:
+    """
+    Get the frequency level of theory prescribed by a composite method.
+
+    Each composite protocol defines its own frequency level, and the scale factor stored for it in
+    ``data/freq_scale_factors.yml`` is that protocol's own ZPE scale factor times 1.014. Computing
+    the frequencies at some other level therefore applies a factor fitted against a different
+    basis, in a job that converges and terminates normally, so this mapping raises on an unknown
+    composite rather than falling back to an arbitrary default.
+
+    Args:
+        composite_method (str | Level): The composite method.
+
+    Raises:
+        ValueError: If the prescribed frequency level for ``composite_method`` is not known.
+
+    Returns:
+        str: The frequency level of theory to use with this composite method.
+    """
+    method = composite_method.method if isinstance(composite_method, Level) else str(composite_method).lower()
+    freq_levels = default_levels_of_theory['freq_for_composite']
+    if isinstance(freq_levels, str):
+        # A local ~/.arc/settings.py that overrides default_levels_of_theory predates this mapping
+        # and still carries a single level for every composite. Honor it rather than breaking the
+        # user's run, but say plainly what it costs: this is the mispairing the mapping exists to
+        # prevent, and it cannot be detected from the output of the job it corrupts.
+        logger.warning(f'Your local ~/.arc/settings.py sets default_levels_of_theory["freq_for_composite"] '
+                       f'to the single level {freq_levels!r}, which predates per-composite frequency '
+                       f'levels. Using it for {method!r}.\nIf {method!r} does not prescribe that level, its '
+                       f'frequency scale factor is being applied to frequencies from a different basis. '
+                       f'Update ~/.arc/settings.py to a {{composite: level}} mapping, or set `freq_level` '
+                       f'explicitly in the input file.')
+        return freq_levels
+    if method not in freq_levels:
+        raise ValueError(f'Cannot determine the frequency level prescribed by the composite method '
+                         f'{method!r}: it is not in default_levels_of_theory["freq_for_composite"] '
+                         f'(known: {sorted(freq_levels.keys())}).\n'
+                         f'ARC will not guess one, since the frequency scale factor stored for a composite '
+                         f'method is that protocol\'s own ZPE scale factor and pairing it with another '
+                         f'protocol\'s frequency level fails silently.\n'
+                         f'Specify `freq_level` explicitly in the input file to proceed.')
+    return freq_levels[method]
 
 
 def assign_frequency_scale_factor(level: str | Level) -> float | None:
