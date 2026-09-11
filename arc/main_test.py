@@ -20,6 +20,7 @@ from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
 from arc.main import ARC, process_adaptive_levels
+from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 from arc.species.species import ARCSpecies
 
 servers = settings['servers']
@@ -272,6 +273,22 @@ class TestARC(unittest.TestCase):
                    sp_level='ccsd(t)-f12/cc-pvtz-f12', opt_level='wb97xd/def2tzvp')
         self.assertEqual(str(arc3.arkane_level_of_theory), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro')
         self.assertEqual(arc3.freq_scale_factor, 0.988)
+
+    def test_g4_composite_takes_its_prescribed_freq_level_and_scale_factor(self):
+        """Test that ARC pairs the G4 composite with the level the shipped settings prescribe.
+
+        Patched with the repository's own mapping rather than read live: ``arc/imports.py`` overlays
+        ``~/.arc/settings.py``, which may still carry the pre-mapping ``'B3LYP/CBSB7'`` string, and
+        G4 would then silently take CBS-QB3's frequency level. Asserting against the repository
+        default is what makes this a check on the shipped data instead of on local configuration.
+        """
+        with patch.dict('arc.level.default_levels_of_theory',
+                        {'freq_for_composite': repo_default_levels_of_theory['freq_for_composite']}):
+            arc_g4 = ARC(project='test', composite_method='g4')
+        self.assertEqual(arc_g4.composite_method.simple(), 'g4')
+        self.assertEqual(arc_g4.freq_level.simple(), 'b3lyp/6-31g(2df,p)')
+        self.assertEqual(arc_g4.freq_scale_factor, 0.9992)
+        self.assertIsNone(arc_g4.sp_level)
 
     def test_determine_model_chemistry_for_job_types(self):
         """Test determining the model chemistry specification dictionary for job types"""
