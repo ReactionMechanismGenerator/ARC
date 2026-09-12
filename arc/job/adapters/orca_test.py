@@ -13,6 +13,7 @@ import tempfile
 import unittest
 
 from arc.job.adapter import JobTypeEnum
+from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.adapters.orca import (MULTIREFERENCE_METHOD_TOKENS,
                                    ORBITALS_DOWNLOAD_JOB_TYPES,
                                    ORBITALS_GUESS_JOB_TYPES,
@@ -25,6 +26,8 @@ from arc.job.adapters.orca import (MULTIREFERENCE_METHOD_TOKENS,
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames
 from arc.species import ARCSpecies
+from arc.species.converter import str_to_xyz
+from arc.species.vectors import calculate_dihedral_angle
 
 
 class TestOrcaAdapter(unittest.TestCase):
@@ -1154,6 +1157,185 @@ H      -1.30000    0.94000    0.00000"""
         content = self._input_file(self._job(job_type='stability', species=species))
         self.assertIn('\n%scf\nMaxIter 999\nSTABPerform true\nSTABRestartUHFifUnstable true\nend', content)
         self.assertNotIn('BrokenSym', content)
+
+
+class TestOrcaScanJob(unittest.TestCase):
+    """
+    Contains unit tests for the ORCA torsion (rotor) scan input file.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_orca_scan_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
+        cls.xyz = """H       0.86000   -0.03000    0.62000
+O       0.10000    0.00000    0.00000
+O      -1.10000    0.00000    0.00000
+H      -1.30000    0.94000    0.00000"""
+        cls.torsion = [0, 1, 2, 3]
+        cls.dihedral = calculate_dihedral_angle(coords=str_to_xyz(cls.xyz), torsion=cls.torsion)
+        cls.ethanol_xyz = """C      -1.16800000    0.27500000    0.00000000
+C       0.10600000   -0.55400000    0.00000000
+O       1.26300000    0.25900000    0.00000000
+H       1.59740256    0.19883055   -0.90125167
+H      -2.05100000   -0.37000000    0.00000000
+H      -1.19300000    0.91500000    0.88500000
+H      -1.19300000    0.91500000   -0.88500000
+H       0.14300000   -1.20300000    0.88100000
+H       0.14300000   -1.20300000   -0.88100000"""
+        cls.ethanol_torsions = [[4, 0, 1, 2], [0, 1, 2, 3]]
+        cls.ethanol_dihedrals = [calculate_dihedral_angle(coords=str_to_xyz(cls.ethanol_xyz), torsion=torsion)
+                                 for torsion in cls.ethanol_torsions]
+
+    def _job(self,
+             torsions: list | None = None,
+             scan_res: float = 8.0,
+             xyz: str | None = None,
+             is_ts: bool = False,
+             adapter: type = OrcaAdapter,
+             ):
+        """Build a testing scan job of the requested adapter over the requested torsions."""
+        species = ARCSpecies(label='HOOH', xyz=xyz if xyz is not None else self.xyz, is_ts=is_ts)
+        return adapter(execution_type='queue',
+                       job_type='scan',
+                       level=Level(method='b3lyp', basis='def2tzvp'),
+                       project='test',
+                       project_directory=os.path.join(self.scratch_dir, 'test_OrcaScanJob'),
+                       species=[species],
+                       torsions=torsions if torsions is not None else [self.torsion],
+                       args={'trsh': {'scan_res': scan_res}},
+                       testing=True,
+                       )
+
+    def _input_file(self, job) -> str:
+        """Write a job's input file and return its content."""
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return f.read()
+
+    def _scan_lines(self, content: str) -> list:
+        """Return the ``D`` lines of the ``%geom Scan`` block of a rendered input file."""
+        return [line for line in content.splitlines() if line.startswith('D ')]
+
+    def _scan_arguments(self, line: str) -> tuple:
+        """Return the start, the end and the point count of a rendered ``D`` line."""
+        start, end, points = line.split('=')[1].split(',')
+        return float(start), float(end), float(points)
+
+    def test_write_scan_input_file(self):
+        """Test the input file a one-torsion rotor scan writes"""
+        job = self._job()
+        expected_input_file = f"""!rKS b3lyp def2-tzvp  tightscf defgrid2
+!Opt 
+
+%maxcore {job.input_file_memory}
+%pal nprocs {job.cpu_cores} end
+
+* xyz 0 1
+H       0.86000000   -0.03000000    0.62000000
+O       0.10000000    0.00000000    0.00000000
+O      -1.10000000    0.00000000    0.00000000
+H      -1.30000000    0.94000000    0.00000000
+*
+
+%scf
+MaxIter 999
+end
+%geom Scan
+D 0 1 2 3 = 92.8, 452.8, 46
+end
+end
+
+"""
+        self.assertEqual(self._input_file(job), expected_input_file)
+
+    def test_the_third_scan_argument_is_a_point_count_not_a_step(self):
+        """Test that the third ``Scan`` argument counts points rather than sizing a step"""
+        start, end, points = self._scan_arguments(self._scan_lines(self._input_file(self._job()))[0])
+        self.assertEqual(points, 46)
+        self.assertAlmostEqual(end - start, 360.0, places=6)
+
+    def test_the_scan_starts_at_the_current_dihedral_and_turns_once(self):
+        """Test that the scan starts at the species' own dihedral and spans a full rotation"""
+        start, end, points = self._scan_arguments(self._scan_lines(self._input_file(self._job()))[0])
+        self.assertAlmostEqual(start, self.dihedral, delta=0.05)
+        self.assertAlmostEqual(end, self.dihedral + 360.0, delta=0.05)
+
+    def test_the_sweep_runs_in_the_positive_direction(self):
+        """Test that the scan ends above the dihedral it starts at"""
+        start, end, points = self._scan_arguments(self._scan_lines(self._input_file(self._job()))[0])
+        self.assertGreater(end, start)
+
+    def test_the_implied_step_is_the_scan_resolution(self):
+        """Test that the point count and the span imply a step of ``scan_res`` degrees"""
+        job = self._job()
+        start, end, points = self._scan_arguments(self._scan_lines(self._input_file(job))[0])
+        self.assertAlmostEqual((end - start) / (points - 1), job.scan_res, places=6)
+
+    def test_the_point_count_follows_the_scan_resolution(self):
+        """Test that a troubleshooting resolution changes the point count and not the span"""
+        for scan_res, expected_points in [(8.0, 46), (4.0, 91), (2.0, 181), (1.0, 361)]:
+            job = self._job(scan_res=scan_res)
+            self.assertAlmostEqual(job.scan_res, scan_res, places=6)
+            start, end, points = self._scan_arguments(self._scan_lines(self._input_file(job))[0])
+            self.assertEqual(points, expected_points)
+            self.assertAlmostEqual(end - start, 360.0, places=6)
+            self.assertAlmostEqual((end - start) / (points - 1), scan_res, places=6)
+
+    def test_the_point_count_is_rendered_as_an_integer(self):
+        """Test that no rendered point count carries a decimal part"""
+        for scan_res in [8.0, 5.0, 4.0, 3.0, 2.0, 1.0]:
+            line = self._scan_lines(self._input_file(self._job(scan_res=scan_res)))[0]
+            self.assertNotIn('.', line.split(',')[-1])
+
+    def test_every_torsion_gets_its_own_dihedral_and_a_full_rotation(self):
+        """Test that each ``D`` line of a multi-torsion scan turns about that torsion's own dihedral"""
+        content = self._input_file(self._job(torsions=self.ethanol_torsions, xyz=self.ethanol_xyz))
+        lines = self._scan_lines(content)
+        self.assertEqual(len(lines), 2)
+        self.assertNotAlmostEqual(self.ethanol_dihedrals[0], self.ethanol_dihedrals[1], delta=1.0)
+        self.assertEqual(lines, ['D 4 0 1 2 = 180.0, 540.0, 46',
+                                 'D 0 1 2 3 = 255.0, 615.0, 46'])
+        for line, dihedral in zip(lines, self.ethanol_dihedrals):
+            start, end, points = self._scan_arguments(line)
+            self.assertAlmostEqual(start, dihedral, delta=0.05)
+            self.assertAlmostEqual(end - start, 360.0, places=6)
+            self.assertEqual(points, 46)
+
+    def test_a_dihedral_above_180_degrees_is_not_folded(self):
+        """Test that a starting dihedral ORCA is handed is the 0-360 value, carried to its end"""
+        line = self._scan_lines(self._input_file(self._job(torsions=[[0, 1, 2, 3]],
+                                                           xyz=self.ethanol_xyz)))[0]
+        start, end, points = self._scan_arguments(line)
+        self.assertGreater(start, 180.0)
+        self.assertAlmostEqual(start, 255.0, delta=0.05)
+        self.assertAlmostEqual(end, 615.0, delta=0.05)
+
+    def test_both_the_scan_and_the_geom_block_are_closed(self):
+        """Test that the ``Scan`` block and the ``%geom`` block enclosing it are both terminated"""
+        for torsions, xyz in [([[0, 1, 2, 3]], None), (self.ethanol_torsions, self.ethanol_xyz)]:
+            content = self._input_file(self._job(torsions=torsions, xyz=xyz))
+            self.assertIn('\n%geom Scan\n', content)
+            self.assertEqual(content.rstrip('\n').split('\n')[-2:], ['end', 'end'])
+
+    def test_a_transition_state_scan_holds_the_same_block(self):
+        """Test that the scan of a transition state requests the same full rotation"""
+        content = self._input_file(self._job(is_ts=True))
+        self.assertIn('!OptTs', content)
+        self.assertIn('D 0 1 2 3 = 92.8, 452.8, 46', content)
+
+    def test_the_orca_scan_samples_the_gaussian_angles(self):
+        """Test that the scan visits the angles the Gaussian adapter renders for the same torsion"""
+        gaussian_line = self._scan_lines(self._input_file(self._job(adapter=GaussianAdapter)))[0]
+        gaussian_steps, gaussian_step = int(gaussian_line.split()[-2]), float(gaussian_line.split()[-1])
+        start, end, points = self._scan_arguments(self._scan_lines(self._input_file(self._job()))[0])
+        self.assertEqual(points, gaussian_steps + 1)
+        self.assertAlmostEqual(end - start, gaussian_steps * gaussian_step, places=6)
+        self.assertAlmostEqual((end - start) / (points - 1), gaussian_step, places=6)
 
 
 if __name__ == '__main__':
