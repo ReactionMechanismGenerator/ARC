@@ -9,6 +9,7 @@ import os
 from typing import TYPE_CHECKING
 
 from arc.common import almost_equal_coords, ARC_PATH, get_logger, read_yaml_file
+from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
@@ -215,7 +216,7 @@ class AutoTSTAdapter(JobAdapter):
         participates in its well, so a well with a repeated species stays atom-balanced.
         """
         if not AUTOTST_PYTHON or not os.path.isfile(AUTOTST_PYTHON):
-            raise FileNotFoundError('AutoTST python executable was not found. '
+            raise DependencyError('AutoTST python executable was not found. '
                                     'Make sure the tst_env exists and AUTOTST_PYTHON is configured. '
                                     f'See {self.url} for more information, or use the Makefile provided with ARC.')
         self._log_job_execution()
