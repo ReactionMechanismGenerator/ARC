@@ -770,6 +770,12 @@ class ARC(object):
         """
         Report status and data of all species / reactions.
 
+        A converged species reports its warnings alongside its wavefunction stability verdict,
+        as a species that failed reports them. A warning raised about a species that converged
+        describes the number the run reports rather than the reason it has none: a mixed SCF
+        reference, an analytic Hessian outside the range in which it is defined and a
+        spin-contaminated wavefunction are all raised on a species that converges.
+
         Returns: dict
             Status dictionary indicating which species converged successfully.
         """
@@ -778,7 +784,12 @@ class ARC(object):
         for label, output in self.output.items():
             if output['convergence']:
                 status_dict[label] = True
-                logger.info(f'Species {label} converged successfully\n')
+                logger.info(f'Species {label} converged successfully')
+                if output.get('wavefunction_stability'):
+                    logger.info(f'  Wavefunction stability: {output["wavefunction_stability"]}')
+                if output.get('warnings'):
+                    logger.info(f'  with warnings: {output["warnings"]}')
+                logger.info('\n')
             elif not label.startswith('IRC_'):
                 status_dict[label] = False
                 job_type_status = {key: val for key, val in self.output[label]['job_types'].items()

@@ -217,6 +217,55 @@ class ESSAdapter(ABC):
         """
         return None
 
+    def parse_s_squared(self) -> dict[str, float | None] | None:
+        """
+        Parse the S**2 spin-contamination diagnostic from an unrestricted-reference ESS output.
+
+        Only meaningful for unrestricted/open-shell calculations (restricted/closed-shell
+        references do not print an ``<S**2>`` value). Adapters that don't implement this
+        (or restricted/closed-shell logs) return ``None`` — the caller treats ``None`` as
+        "no spin diagnostic available for this calc" and omits the block entirely.
+
+        ``None`` therefore covers three situations that this method does not distinguish:
+        an ESS with no reader here, a log holding no readable value, and a restricted
+        reference, whose determinant is an exact eigenfunction of S**2 with
+        ``<S**2> = S(S+1)`` by construction. A consumer that wants the restricted value
+        computes it from the species' multiplicity rather than reading it off a log.
+
+        Returns: dict[str, float | None] | None
+            ``{'s_squared': float, 's_squared_expected': float | None,
+               's_squared_annihilated': float | None}`` when an ``<S**2>`` value was parsed,
+            else ``None``. ``s_squared`` is always present (and finite) when the dict is
+            returned; the other two are ``None`` when the ESS doesn't report them.
+        """
+        return None
+
+    def parse_wavefunction_stability(self) -> dict | None:
+        """
+        Parse the verdict of a wavefunction stability analysis.
+
+        Only meaningful for an ESS that offers the analysis and for a log that ran it.
+        Adapters that don't implement this return ``None``, which the caller records as
+        no stability verdict for that calc, so an ESS with no reader here is
+        indistinguishable from a log that holds no analysis.
+
+        An adapter that does implement it returns the keys documented on
+        ``GaussianParser.parse_wavefunction_stability``: ``verdict``, one of
+        ``'stable'``, ``'internal_instability'``, ``'external_instability'``,
+        ``'unattributed_instability'`` or ``'unknown'``, the ``internal_instability`` /
+        ``external_instability`` flags, the ``relaxations`` an external verdict names, the
+        ``negative_eigenvectors`` of the stability matrix and the ``lowest_eigenvalue``
+        among the roots it reported, the ``restricted`` reference tested, and whether the
+        verdict ``invalidates_analytic_freq``. ``'unattributed_instability'`` reports a
+        wavefunction the ESS found unstable without saying which sector the instability
+        lies in; only an adapter whose ESS leaves that open returns it. An adapter may add
+        keys of its own for behaviour peculiar to its ESS.
+
+        Returns: dict | None
+            The structured verdict, or ``None``.
+        """
+        return None
+
     def parse_ess_version(self) -> str | None:
         """
         Parse the ESS software version string from the log file header.
