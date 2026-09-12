@@ -4151,5 +4151,61 @@ class TestGetServerJobIds(unittest.TestCase):
         borrow.assert_called_once_with('atlas')
 
 
+class TestParseCompositeGeoMonoatomic(unittest.TestCase):
+    """A monoatomic species has no frequencies to parse, and must not take the whole run down."""
+
+    @staticmethod
+    def _sched(is_monoatomic):
+        """A stand-in carrying only what the frequency branch of parse_composite_geo() reads."""
+        species = MagicMock()
+        species.is_monoatomic.return_value = is_monoatomic
+        species.is_ts = False
+        species.rxn_label = None
+        return SimpleNamespace(species_dict={'spc': species},
+                               output={'spc': {'job_types': {}, 'paths': {}, 'info': ''}},
+                               job_dict={'spc': {}},
+                               project_directory='',
+                               composite_method=None,
+                               job_types={'fine': False, 'orbitals': False, 'onedmin': False, 'rotors': False},
+                               save_restart_dict=MagicMock(),
+                               post_sp_actions=MagicMock(),
+                               check_negative_freq=MagicMock(return_value=(True, None)),
+                               )
+
+    def _run(self, is_monoatomic):
+        """Drive parse_composite_geo() over a converged composite job and return the parser mock."""
+        sched = self._sched(is_monoatomic)
+        job = MagicMock(is_ts=False, local_path_to_output_file='does_not_exist.log')
+        # The whole body is gated on this; without it nothing under test is reached at all.
+        job.job_status = [None, {'status': 'done'}]
+        with patch('arc.scheduler.parser') as parser_mock, \
+                patch('arc.scheduler.plotter'), \
+                patch('arc.scheduler.xyz_to_str', return_value=''):
+            parser_mock.parse_frequencies.return_value = [1000.0, 2000.0]
+            try:
+                Scheduler.parse_composite_geo(sched, label='spc', job=job)
+            except Exception:
+                # Downstream of the frequency branch this stand-in is deliberately thin; these
+                # tests assert only on whether the parser was consulted.
+                pass
+        return parser_mock
+
+    def test_monoatomic_does_not_parse_frequencies(self):
+        """[C] has 3N-6 = 0 modes, so parse_frequencies() must never be reached for it.
+
+        Before the guard it WAS reached, raised ParserError, and the exception escaped
+        Scheduler.__init__ -- killing the whole run rather than one species.
+        """
+        self._run(is_monoatomic=True).parse_frequencies.assert_not_called()
+
+    def test_polyatomic_still_parses_frequencies(self):
+        """Control: the guard must not silence the check for species that do have modes.
+
+        This is what proves the monoatomic assertion above means something -- without it, a
+        stand-in that never reaches the branch at all would pass that test for the wrong reason.
+        """
+        self._run(is_monoatomic=False).parse_frequencies.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
