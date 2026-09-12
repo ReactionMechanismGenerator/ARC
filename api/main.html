@@ -1008,6 +1008,11 @@ is interrupted, and so a consumer that drives ARC in-process rather than through
 <dt class="sig sig-object py" id="arc.main.ARC.summary">
 <span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/main.html#ARC.summary"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.main.ARC.summary" title="Link to this definition"></a></dt>
 <dd><p>Report status and data of all species / reactions.</p>
+<p>A converged species reports its warnings alongside its wavefunction stability verdict,
+as a species that failed reports them. A warning raised about a species that converged
+describes the number the run reports rather than the reason it has none: a mixed SCF
+reference, an analytic Hessian outside the range in which it is defined and a
+spin-contaminated wavefunction are all raised on a species that converges.</p>
 <dl class="simple">
 <dt>Returns: dict</dt><dd><p>Status dictionary indicating which species converged successfully.</p>
 </dd>

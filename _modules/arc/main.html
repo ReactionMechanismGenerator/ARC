@@ -883,6 +883,12 @@
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Report status and data of all species / reactions.</span>
 
+<span class="sd">        A converged species reports its warnings alongside its wavefunction stability verdict,</span>
+<span class="sd">        as a species that failed reports them. A warning raised about a species that converged</span>
+<span class="sd">        describes the number the run reports rather than the reason it has none: a mixed SCF</span>
+<span class="sd">        reference, an analytic Hessian outside the range in which it is defined and a</span>
+<span class="sd">        spin-contaminated wavefunction are all raised on a species that converges.</span>
+
 <span class="sd">        Returns: dict</span>
 <span class="sd">            Status dictionary indicating which species converged successfully.</span>
 <span class="sd">        """</span>
@@ -891,7 +897,12 @@
         <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">output</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
             <span class="k">if</span> <span class="n">output</span><span class="p">[</span><span class="s1">'convergence'</span><span class="p">]:</span>
                 <span class="n">status_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> converged successfully</span><span class="se">\n</span><span class="s1">'</span><span class="p">)</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> converged successfully'</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">output</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'wavefunction_stability'</span><span class="p">):</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">'  Wavefunction stability: </span><span class="si">{</span><span class="n">output</span><span class="p">[</span><span class="s2">"wavefunction_stability"</span><span class="p">]</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">output</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'warnings'</span><span class="p">):</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">'  with warnings: </span><span class="si">{</span><span class="n">output</span><span class="p">[</span><span class="s2">"warnings"</span><span class="p">]</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">'</span><span class="se">\n</span><span class="s1">'</span><span class="p">)</span>
             <span class="k">elif</span> <span class="ow">not</span> <span class="n">label</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'IRC_'</span><span class="p">):</span>
                 <span class="n">status_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
                 <span class="n">job_type_status</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">val</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="s1">'job_types'</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>

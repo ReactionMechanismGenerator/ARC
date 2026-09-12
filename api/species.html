@@ -70,6 +70,11 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.multiplicity"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.multiplicity</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.charge"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.charge</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.number_of_radicals"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.number_of_radicals</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.derived_stability_verdict"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.derived_stability_verdict</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.scf_references"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.scf_references</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.stability_analysis_ran"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.stability_analysis_ran</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.stability_pending_opt_job"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.stability_pending_opt_job</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.stability_reoptimized"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.stability_reoptimized</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.e_elect"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.e_elect</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.e0"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.e0</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.is_ts"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.is_ts</span></code></a></li>
@@ -492,6 +497,78 @@ information to make that decision (r vs. u).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.derived_stability_verdict">
+<span class="sig-name descname"><span class="pre">derived_stability_verdict</span></span><a class="headerlink" href="#arc.species.species.ARCSpecies.derived_stability_verdict" title="Link to this definition"></a></dt>
+<dd><p>The structured verdict of a wavefunction stability analysis, as parsed from
+the ESS log. Defaults to None. It is a measured property of one SCF
+solution, so it steers only the r vs. u reference decision and never the
+molecular graph perception that number_of_radicals feeds, and a declared
+number_of_radicals overrides it. It is written by the run that measures it
+and read back from a restart file like every other attribute, so a value
+placed there by hand is read the same way: number_of_radicals is the input
+that declares open-shell character.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.scf_references">
+<span class="sig-name descname"><span class="pre">scf_references</span></span><a class="headerlink" href="#arc.species.species.ARCSpecies.scf_references" title="Link to this definition"></a></dt>
+<dd><p>Which SCF reference each of this species’ jobs declared in the input it ran, keyed by
+job type (‘sp’, ‘freq’) with values ‘restricted’ or ‘unrestricted’. Two different
+values mean the electronic energy and the ZPE were computed on different surfaces.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.stability_analysis_ran">
+<span class="sig-name descname"><span class="pre">stability_analysis_ran</span></span><a class="headerlink" href="#arc.species.species.ARCSpecies.stability_analysis_ran" title="Link to this definition"></a></dt>
+<dd><p>Whether a wavefunction stability analysis was spawned for this species.
+Defaults to False. One analysis is run per species, and this attribute is
+what says so across a restart, when the job dictionary holds only the jobs
+that were still running.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.stability_pending_opt_job">
+<span class="sig-name descname"><span class="pre">stability_pending_opt_job</span></span><a class="headerlink" href="#arc.species.species.ARCSpecies.stability_pending_opt_job" title="Link to this definition"></a></dt>
+<dd><p>The name of the optimization job whose frequency, single point and IRC are
+waiting for a wavefunction stability verdict. Defaults to None, and is
+cleared once that work is released or the geometry is abandoned.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.stability_reoptimized">
+<span class="sig-name descname"><span class="pre">stability_reoptimized</span></span><a class="headerlink" href="#arc.species.species.ARCSpecies.stability_reoptimized" title="Link to this definition"></a></dt>
+<dd><p>Whether an adopted wavefunction stability verdict has already re-optimized this
+species on an unrestricted reference. Defaults to False. At most one such
+re-optimization is run per species, and this attribute is what holds that
+across a restart.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
 </dd>
 </dl>
 </dd></dl>

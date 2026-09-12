@@ -70,6 +70,7 @@
 <li class="toctree-l2"><a class="reference internal" href="zmat.html">arc.species.zmat</a></li>
 <li class="toctree-l2"><a class="reference internal" href="reaction.html">arc.reaction</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">arc.scheduler</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.SYMMETRY_BREAKING_ADAPTERS"><code class="docutils literal notranslate"><span class="pre">SYMMETRY_BREAKING_ADAPTERS</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.Scheduler"><code class="docutils literal notranslate"><span class="pre">Scheduler</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.project"><code class="docutils literal notranslate"><span class="pre">Scheduler.project</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.servers"><code class="docutils literal notranslate"><span class="pre">Scheduler.servers</span></code></a></li>
@@ -78,6 +79,8 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.species_dict"><code class="docutils literal notranslate"><span class="pre">Scheduler.species_dict</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.rxn_list"><code class="docutils literal notranslate"><span class="pre">Scheduler.rxn_list</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.unique_species_labels"><code class="docutils literal notranslate"><span class="pre">Scheduler.unique_species_labels</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.stability_unimplemented_ess"><code class="docutils literal notranslate"><span class="pre">Scheduler.stability_unimplemented_ess</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.unbreakable_reference_ess"><code class="docutils literal notranslate"><span class="pre">Scheduler.unbreakable_reference_ess</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.job_dict"><code class="docutils literal notranslate"><span class="pre">Scheduler.job_dict</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.running_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.running_jobs</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.server_job_ids"><code class="docutils literal notranslate"><span class="pre">Scheduler.server_job_ids</span></code></a></li>
@@ -117,6 +120,8 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.report_e_elect"><code class="docutils literal notranslate"><span class="pre">Scheduler.report_e_elect</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.skip_nmd"><code class="docutils literal notranslate"><span class="pre">Scheduler.skip_nmd</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.add_label_to_unique_species_labels"><code class="docutils literal notranslate"><span class="pre">Scheduler.add_label_to_unique_species_labels()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.adopt_stability_orbitals"><code class="docutils literal notranslate"><span class="pre">Scheduler.adopt_stability_orbitals()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.carry_stability_verdict_across_ts_switch"><code class="docutils literal notranslate"><span class="pre">Scheduler.carry_stability_verdict_across_ts_switch()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.check_all_done"><code class="docutils literal notranslate"><span class="pre">Scheduler.check_all_done()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.check_directed_scan"><code class="docutils literal notranslate"><span class="pre">Scheduler.check_directed_scan()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.check_directed_scan_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.check_directed_scan_job()</span></code></a></li>
@@ -126,7 +131,10 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.check_negative_freq"><code class="docutils literal notranslate"><span class="pre">Scheduler.check_negative_freq()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.check_rxn_e0_by_spc"><code class="docutils literal notranslate"><span class="pre">Scheduler.check_rxn_e0_by_spc()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.check_scan_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.check_scan_job()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.check_scf_reference_consistency"><code class="docutils literal notranslate"><span class="pre">Scheduler.check_scf_reference_consistency()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.check_sp_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.check_sp_job()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.check_spin_contamination"><code class="docutils literal notranslate"><span class="pre">Scheduler.check_spin_contamination()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.check_stability_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.check_stability_job()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.deduce_job_adapter"><code class="docutils literal notranslate"><span class="pre">Scheduler.deduce_job_adapter()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.delete_all_species_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.delete_all_species_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.determine_adaptive_level"><code class="docutils literal notranslate"><span class="pre">Scheduler.determine_adaptive_level()</span></code></a></li>
@@ -140,6 +148,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.get_server_job_ids"><code class="docutils literal notranslate"><span class="pre">Scheduler.get_server_job_ids()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.has_pending_pipe_work"><code class="docutils literal notranslate"><span class="pre">Scheduler.has_pending_pipe_work()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.initialize_output_dict"><code class="docutils literal notranslate"><span class="pre">Scheduler.initialize_output_dict()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.log_open_shell_character_sources"><code class="docutils literal notranslate"><span class="pre">Scheduler.log_open_shell_character_sources()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.make_reaction_labels_info_file"><code class="docutils literal notranslate"><span class="pre">Scheduler.make_reaction_labels_info_file()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.parse_composite_geo"><code class="docutils literal notranslate"><span class="pre">Scheduler.parse_composite_geo()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.parse_conformer"><code class="docutils literal notranslate"><span class="pre">Scheduler.parse_conformer()</span></code></a></li>
@@ -151,7 +160,9 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.process_conformers"><code class="docutils literal notranslate"><span class="pre">Scheduler.process_conformers()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.process_directed_scans"><code class="docutils literal notranslate"><span class="pre">Scheduler.process_directed_scans()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.process_irc_verdict"><code class="docutils literal notranslate"><span class="pre">Scheduler.process_irc_verdict()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.record_scf_reference"><code class="docutils literal notranslate"><span class="pre">Scheduler.record_scf_reference()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.record_tsg_job_error"><code class="docutils literal notranslate"><span class="pre">Scheduler.record_tsg_job_error()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.release_held_stability_work"><code class="docutils literal notranslate"><span class="pre">Scheduler.release_held_stability_work()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.report_running_jobs_snapshot"><code class="docutils literal notranslate"><span class="pre">Scheduler.report_running_jobs_snapshot()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.restore_running_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.restore_running_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_composite_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_composite_job()</span></code></a></li>
@@ -164,6 +175,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_orbitals_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_orbitals_job()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_scan_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_scan_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_sp_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_sp_job()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_stability_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_stability_job()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_ts_conformer_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_ts_conformer_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.save_e_elect"><code class="docutils literal notranslate"><span class="pre">Scheduler.save_e_elect()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.save_restart_dict"><code class="docutils literal notranslate"><span class="pre">Scheduler.save_restart_dict()</span></code></a></li>
@@ -172,13 +184,16 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.spawn_directed_scan_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.spawn_directed_scan_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.spawn_post_irc_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.spawn_post_irc_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.spawn_post_opt_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.spawn_post_opt_jobs()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.spawn_post_stability_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.spawn_post_stability_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.spawn_ts_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.spawn_ts_jobs()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.stability_verdict_can_be_honoured"><code class="docutils literal notranslate"><span class="pre">Scheduler.stability_verdict_can_be_honoured()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.switch_ts"><code class="docutils literal notranslate"><span class="pre">Scheduler.switch_ts()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.troubleshoot_conformer_isomorphism"><code class="docutils literal notranslate"><span class="pre">Scheduler.troubleshoot_conformer_isomorphism()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.troubleshoot_ess"><code class="docutils literal notranslate"><span class="pre">Scheduler.troubleshoot_ess()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.troubleshoot_negative_freq"><code class="docutils literal notranslate"><span class="pre">Scheduler.troubleshoot_negative_freq()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.troubleshoot_opt_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.troubleshoot_opt_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.troubleshoot_scan_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.troubleshoot_scan_job()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.warn_on_collapsible_unrestricted_reference"><code class="docutils literal notranslate"><span class="pre">Scheduler.warn_on_collapsible_unrestricted_reference()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.species_has_freq"><code class="docutils literal notranslate"><span class="pre">species_has_freq()</span></code></a></li>
@@ -240,6 +255,26 @@
 <span id="arc-scheduler"></span><span id="scheduler"></span><h1>arc.scheduler<a class="headerlink" href="#module-arc.scheduler" title="Link to this heading"></a></h1>
 <p>A module for scheduling ARC jobs
 Includes spawning, terminating, checking, and troubleshooting various jobs</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="arc.scheduler.SYMMETRY_BREAKING_ADAPTERS">
+<span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">SYMMETRY_BREAKING_ADAPTERS</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'gaussian',</span> <span class="pre">'orca'}</span></span><a class="headerlink" href="#arc.scheduler.SYMMETRY_BREAKING_ADAPTERS" title="Link to this definition"></a></dt>
+<dd><p>The two sets above are statements about ARC’S ADAPTERS and not about what the ESSs can do.</p>
+<p><code class="docutils literal notranslate"><span class="pre">STABILITY_ANALYSIS_ADAPTERS</span></code> holds the adapters that compose a wavefunction stability
+analysis input and whose parser reads the verdict back. Whether an ESS absent from it offers
+the analysis at all is a separate question and is not what the set answers.</p>
+<p><code class="docutils literal notranslate"><span class="pre">SYMMETRY_BREAKING_ADAPTERS</span></code> holds the adapters that compose a reference an unrestricted SCF
+cannot collapse out of, which is an orbital guess taken from a broken-symmetry solution or a
+symmetry-breaking directive. An adapter absent from it composes one spin-symmetric determinant
+however its ESS is asked, so an unrestricted SCF it writes converges back to the restricted
+solution. Molpro is the case worth naming: Molpro itself has a <code class="docutils literal notranslate"><span class="pre">{uhf}</span></code> program and takes a
+<code class="docutils literal notranslate"><span class="pre">ROTATE</span></code> directive that mixes two starting orbitals, which is how a broken-symmetry singlet
+is requested of it, but ARC’s Molpro adapter writes <code class="docutils literal notranslate"><span class="pre">{hf}</span></code> in every input it composes and
+spends the unrestricted decision on the <code class="docutils literal notranslate"><span class="pre">u</span></code> prefix of the correlation method instead. Naming
+the orbitals a <code class="docutils literal notranslate"><span class="pre">ROTATE</span></code> would mix needs their index and irreducible representation, which
+that adapter has neither at the point it writes its input nor a <code class="docutils literal notranslate"><span class="pre">nosym</span></code> geometry to make
+unambiguous.</p>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">Scheduler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_settings</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project_directory</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">composite_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conformer_opt_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conformer_sp_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sp_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ts_guess_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">irc_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orbitals_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adaptive_levels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_types</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rxn_list</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bath_gas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">restart_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_job_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_nonisomorphic_2d</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">memory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">testing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dont_gen_confs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_confs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">e_confs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fine_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_ess_jobs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_rotors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rotor_scan_resolution</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kinetics_adapter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'arkane'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_scale_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ts_adapters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">report_e_elect</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">skip_nmd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler" title="Link to this definition"></a></dt>
@@ -277,6 +312,7 @@ Each species in <cite>species_list</cite> has to have a unique label.</p>
                               <span class="s1">'sp'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">sp</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
                               <span class="s1">'composite'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">composite</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
                               <span class="s1">'irc'</span><span class="p">:</span> <span class="p">[</span><span class="nb">list</span> <span class="n">of</span> <span class="n">two</span> <span class="n">IRC</span> <span class="n">paths</span><span class="p">],</span>
+                              <span class="s1">'stability'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">path</span> <span class="n">to</span> <span class="n">wavefunction</span> <span class="n">stability</span> <span class="n">analysis</span> <span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span><span class="p">,</span>
                              <span class="p">},</span>
                     <span class="s1">'conformers'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
                     <span class="s1">'isomorphism'</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">comments</span><span class="o">&gt;</span><span class="p">,</span>
@@ -416,6 +452,31 @@ remote paths of the project’s directory on that server.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.stability_unimplemented_ess">
+<span class="sig-name descname"><span class="pre">stability_unimplemented_ess</span></span><a class="headerlink" href="#arc.scheduler.Scheduler.stability_unimplemented_ess" title="Link to this definition"></a></dt>
+<dd><p>ESS names already reported as having no wavefunction stability
+analysis implemented in ARC, reported once per ESS per run.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>set</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.unbreakable_reference_ess">
+<span class="sig-name descname"><span class="pre">unbreakable_reference_ess</span></span><a class="headerlink" href="#arc.scheduler.Scheduler.unbreakable_reference_ess" title="Link to this definition"></a></dt>
+<dd><p>Names of adapters already reported as writing no symmetry-broken
+reference, so that an adopted unrestricted reference collapses in
+the jobs they compose. Reported once per adapter per run.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>set</p>
 </dd>
 </dl>
 </dd></dl>
@@ -868,6 +929,94 @@ Modifies the label if it is not unique.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.adopt_stability_orbitals">
+<span class="sig-name descname"><span class="pre">adopt_stability_orbitals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.adopt_stability_orbitals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.adopt_stability_orbitals" title="Link to this definition"></a></dt>
+<dd><p>Hand a species the orbitals its wavefunction stability analysis relaxed into, or none.</p>
+<p>A verdict reporting <code class="docutils literal notranslate"><span class="pre">followed_to_stable</span></code> was measured by an ESS that rotated the unstable
+orbitals, re-converged the SCF and reached a stable solution, and wrote that solution to
+the analysis job’s own orbitals file. That file is the broken-symmetry reference, so it
+becomes the species’ checkfile and seeds the SCF of the job that follows. Any other verdict
+was measured without relaxing anything, so the file the species holds describes the
+reference the analysis rejected and is dropped rather than passed on.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>label</strong> (<em>str</em>) – The species label.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.carry_stability_verdict_across_ts_switch">
+<span class="sig-name descname"><span class="pre">carry_stability_verdict_across_ts_switch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.carry_stability_verdict_across_ts_switch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.carry_stability_verdict_across_ts_switch" title="Link to this definition"></a></dt>
+<dd><p>Reduce a TS’s stability verdict to what still holds once its geometry is abandoned.</p>
+<p>An adopted external instability is kept, and it is kept because carrying it is cheap rather
+than because it is known to transfer. Distinct saddles of one reaction do NOT always agree:
+the campaign behind this feature found one reaction whose three lowest-energy saddles are
+unstable while its only stable one is the highest, and another whose unstable saddles sit
+61 kcal/mol above its stable ones. What makes carrying it safe is that forcing an
+unrestricted reference on a guess that is in fact stable costs nothing but SCF effort: a
+stable restricted solution IS the unrestricted minimum, so E(UKS) = E(RKS) exactly there.
+What it buys is that the next guess is unrestricted from its very first optimization,
+which is the reference the discovering guess reached only by being optimized a second
+time: a carried verdict spares the next guess that second optimization and the analysis
+that would have prompted it. Every other verdict is dropped rather than carried: a
+‘stable’, ‘unknown’ or internal-instability verdict has no consumer, and leaving it would
+attribute a bill of health to a geometry that was never tested. A verdict ARC would not
+act on is dropped too, so a TS whose user declared a <code class="docutils literal notranslate"><span class="pre">number_of_radicals</span></code> carries
+nothing: the declaration decides its reference, and carrying a verdict that will never be
+adopted would promise the next guess a reference change that is not coming.</p>
+<p>DROPPING A VERDICT CLEARS <code class="docutils literal notranslate"><span class="pre">stability_analysis_ran</span></code> with it, so the surviving guess is
+measured in its turn. The dropped verdict describes a wavefunction that is gone, and the
+next guess comes from a different search and is a different saddle: leaving the flag set
+would have ARC publish that guess’ restricted energy with no verdict of its own and
+nothing to say whether it was measured stable or never measured at all.</p>
+<p>The geometry-specific detail is dropped in either case. The negative-eigenvector labels
+and eigenvalues, and whether the analytic frequencies are invalidated, all describe the
+abandoned wavefunction and its Hessian, and no measurement of them exists for the new
+guess: a CARRIED verdict keeps <code class="docutils literal notranslate"><span class="pre">stability_analysis_ran</span></code> set, so no second analysis runs
+for the guess it is carried to and the carried verdict is never contradicted by a later
+one. Its reference is already decided, and a fresh analysis of the unrestricted reference
+the next guess runs on measures a different question than the one that was adopted. The
+guess the carried verdict was measured on is recorded alongside it.</p>
+<p>THE RELAXED CONSTRAINTS ARE CARRIED, unlike the rest of the detail, because they name the
+CLASS of the instability rather than its size at one geometry, and that class is what the
+reference decision reads: a relaxation of the spin constraint calls for a symmetry-broken
+determinant, which <code class="docutils literal notranslate"><span class="pre">derived_instability_breaks_spin_symmetry</span></code> reports and the ORCA
+adapter acts on, while a relaxation of the reality of the orbitals calls for a reference
+ARC does not write. Dropping them would leave the surviving guess carrying a verdict whose
+class is unknown, which is read as no evidence of broken-symmetry character at all.</p>
+<p>The per-job SCF reference records are cleared outright, and so is any mixed-reference
+warning they raised: opt, freq and sp all re-run for the new guess, so the references of
+the abandoned guess’ jobs describe nothing and a warning about them would outlive its
+subject in the species’ permanent output entry. The invalid-Hessian and spin-contamination
+warnings go with them, for the same reason and about the same jobs. The optimization job
+whose post-opt work an analysis was holding is released too, since <code class="docutils literal notranslate"><span class="pre">switch_ts</span></code> abandons
+that job along with the geometry it converged to.</p>
+<p>The unreachable-reference warning is cleared with them, and it is always cleared. It is
+raised only on a verdict stamped <code class="docutils literal notranslate"><span class="pre">REFERENCE_CHANGE_AVAILABLE_KEY</span></code> <code class="docutils literal notranslate"><span class="pre">False</span></code>, which
+<code class="docutils literal notranslate"><span class="pre">adopted_reference_is_unrestricted</span></code> reads as well, so such a verdict is never one this
+method carries over: it is dropped here along with the geometry it was measured on, and
+the warning would otherwise name a reference change the surviving guess was never offered.
+The next guess is measured in its turn and raises the warning again where its own verdict
+cannot be honoured.</p>
+<p>THE TWO RECORDS ARE REDUCED TOGETHER. The verdict summary the run summary prints, and the
+sentence it added to the species’ info, describe the abandoned geometry down to the
+stability-matrix root, so they are cleared alongside the detail this drops from the species
+object. <code class="docutils literal notranslate"><span class="pre">delete_all_species_jobs</span></code> resets the stability path the same switch, so leaving
+them would have <code class="docutils literal notranslate"><span class="pre">output.yml</span></code> report no verdict for the surviving geometry while the run
+summary printed the abandoned guess’ root against it. The log the carried verdict was read
+from stays with it, so a carried decision still names the analysis that made it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>label</strong> (<em>str</em>) – The TS species label.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.check_all_done">
 <span class="sig-name descname"><span class="pre">check_all_done</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_all_done"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_all_done" title="Link to this definition"></a></dt>
 <dd><p>Check that we have all required data for the species/TS.</p>
@@ -916,6 +1065,12 @@ This method differs from check_directed_scan_job(), since here we consider the e
 <span class="sig-name descname"><span class="pre">check_freq_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_freq_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_freq_job" title="Link to this definition"></a></dt>
 <dd><p>Check that a freq job converged successfully. Also checks (QA) that no imaginary frequencies were assigned for
 stable species, and that exactly one imaginary frequency was assigned for a TS.</p>
+<p>The SCF reference this job declared is recorded only if its geometry survives the check. A
+TS whose normal mode displacement fails is switched to a different guess inside
+<code class="docutils literal notranslate"><span class="pre">post_freq_actions</span></code>, which clears the per-job reference records of the abandoned guess
+along with everything else that described it; recording afterwards would write one of them
+straight back, and the next guess’ sp job would then be compared against the reference of a
+geometry that is gone.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1003,6 +1158,33 @@ Recommends whether to use this rotor using the ‘successful_rotors’ and ‘un
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.check_scf_reference_consistency">
+<span class="sig-name descname"><span class="pre">check_scf_reference_consistency</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_scf_reference_consistency"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_scf_reference_consistency" title="Link to this definition"></a></dt>
+<dd><p>Warn when a species’ electronic energy and its ZPE were computed on different SCF references.</p>
+<p>Its E0 is then the sum of an energy and a zero-point correction taken from two different
+potential energy surfaces, so it is not a point on either of them. ARC does not re-run the
+species, so the mismatch is reported in the log, in the species’ output warnings and in
+output.yml, and nothing is invalidated.</p>
+<p>AN ADOPTED STABILITY VERDICT REACHES THIS CHECK THROUGH ITS SINGLE POINT. The verdict
+decides the reference of the levels a broken-symmetry one describes, which
+<code class="docutils literal notranslate"><span class="pre">level_admits_a_broken_symmetry_reference</span></code> defines, so a species whose freq is a DFT one
+and whose sp is a correlated wavefunction one takes the broken-symmetry reference for its
+ZPE and keeps the spin-adapted one for its electronic energy. That is the mismatch this
+reports, and the alternative it is chosen over is a correlated energy expanded about a
+symmetry-broken reference, which is a worse number reported by a quieter run. A species
+whose freq and sp are both at levels the verdict decides, and one whose sp is at its own
+DFT level, run on one reference throughout and are not reported.</p>
+<p>What reaches this check besides is a pair of jobs composed on either side of some other
+change to the species’ state: an sp resubmitted by troubleshooting, an sp deferred past its
+freq, or a species restored from a restart.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>label</strong> (<em>str</em>) – The species label.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.check_sp_job">
 <span class="sig-name descname"><span class="pre">check_sp_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_sp_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_sp_job" title="Link to this definition"></a></dt>
 <dd><p>Check that a single point job converged successfully.</p>
@@ -1012,6 +1194,115 @@ Recommends whether to use this rotor using the ‘successful_rotors’ and ‘un
 <li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
 <li><p><strong>job</strong> (<em>JobAdapter</em>) – The single point job object.</p></li>
 </ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.check_spin_contamination">
+<span class="sig-name descname"><span class="pre">check_spin_contamination</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sp_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_spin_contamination"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_spin_contamination" title="Link to this definition"></a></dt>
+<dd><p>Warn when the wavefunction the electronic energy came from is spin-contaminated.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">&lt;S**2&gt;</span></code> of an unrestricted determinant exceeds the spin-pure <code class="docutils literal notranslate"><span class="pre">S(S+1)</span></code> of the
+state it is meant to describe by the weight of the higher multiplicities mixed into
+it, so the deviation between the two IS the contamination. An energy carrying it is
+not the energy of the state ARC reports it for, and it reaches the thermo and the
+rates unchanged: nothing here re-runs the job, changes its reference or projects the
+contamination out. The species’ output warnings and the log are where it is reported.</p>
+<p><code class="docutils literal notranslate"><span class="pre">MAX_S_SQUARED_DEVIATION</span></code> is the largest deviation reported without a warning. It is
+an absolute deviation rather than a fraction of the spin-pure value because a singlet’s
+spin-pure value is zero, and the broken-symmetry singlet is exactly the case that most
+needs reporting, so a fraction is undefined where it matters most. Its size follows
+from what a deviation means: the nearest contaminant of a state of spin S is the state
+of spin S+1, whose <code class="docutils literal notranslate"><span class="pre">S(S+1)</span></code> lies <code class="docutils literal notranslate"><span class="pre">2S+2</span></code>, at least 2, above it, so a deviation of
+0.1 is at most a five percent admixture of that state. Below it an unrestricted energy
+and the Hessian taken at it are customarily used as the state’s own.</p>
+<p>A restricted reference prints no <code class="docutils literal notranslate"><span class="pre">&lt;S**2&gt;</span></code>, and an ESS with no reader for it reports
+none either, so both are passed over rather than reported uncontaminated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>sp_path</strong> (<em>str</em><em> | </em><em>None</em>) – The path to the log the electronic energy was read from.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.check_stability_job">
+<span class="sig-name descname"><span class="pre">check_stability_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_stability_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_stability_job" title="Link to this definition"></a></dt>
+<dd><p>Parse and record the verdict of a wavefunction stability analysis job.</p>
+<p>Stores a summary of the verdict under the species’ output entry, where the run summary
+reads it, stores the structured verdict together with the path of the log it was read
+from on the species object, where the reference decision reads it, and logs it. A job
+that left no log, and a log holding no stability analysis, record nothing. Nothing here
+is troubleshooted or re-run: a job that died with its analysis already printed is read
+for the verdict it printed, since the analysis precedes whatever killed it and its
+blocks are complete or absent rather than truncated into a different verdict.</p>
+<p>A verdict calling for an unrestricted reference is stamped with whether the ESSs this
+species runs in can be given one, which <code class="docutils literal notranslate"><span class="pre">stability_verdict_can_be_honoured</span></code> decides
+and <code class="docutils literal notranslate"><span class="pre">adopted_reference_is_unrestricted</span></code> reads. A verdict that cannot be honoured is
+recorded, logged and reported in the species’ output warnings as
+<code class="docutils literal notranslate"><span class="pre">UNREACHABLE_REFERENCE_MESSAGE</span></code>, and decides nothing.</p>
+<p>A verdict that invalidates the analytic frequencies also writes
+<code class="docutils literal notranslate"><span class="pre">INVALID_ANALYTIC_FREQ_MESSAGE</span></code> into the species’ output warnings, which is what
+carries it into <code class="docutils literal notranslate"><span class="pre">output.yml</span></code> and into the run summary. Nothing is re-run on it: the
+frequencies, the ZPE they give and the E0 built from them are reported as they were
+computed, with the warning attached.</p>
+<p>A verdict already on the species, which can only be one carried over from an abandoned
+TS guess, is replaced by the one parsed here: a measurement on the live geometry
+supersedes one carried from a geometry that is gone.</p>
+<p>An instability is logged as a warning and a stable wavefunction as an info message,
+and a verdict carrying a negative stability-matrix root also reports that root’s
+label and eigenvalue, which name the perturbation the wavefunction broke along and
+how far.</p>
+<p>Whether an instability bears on the validity of the analytic frequencies depends on
+the reference. Gaussian’s rule, which both ESS readers apply so that the same physical
+situation gets the same answer whichever ESS measured it, is that for a restricted
+wavefunction it suffices that no singlet (internal) instability exists, while for an
+unrestricted one any instability, internal or external, invalidates them. Neither ESS
+computes a spin-flip root for an unrestricted reference, so both readers report an
+undetermined <code class="docutils literal notranslate"><span class="pre">external_instability</span></code> there and the external half of that rule is
+never reached: a stable verdict on an unrestricted reference covers the spin-conserving
+sector alone, which is the sector the analytic Hessian is taken in. So the
+frequency-validity warning is raised for an internal instability of either reference,
+and additionally for an external instability of an unrestricted one. An instability
+whose sector the ESS did not report leaves the question undetermined rather than
+answered either way, and is warned about as such. An external instability of a
+restricted reference is reported without that warning: a lower symmetry-broken
+solution exists, which for a TS with stretched partial bonds is expected, and the
+analytic Hessian remains a correct second derivative of the surface that was
+computed. That surface is not the ground state, though. Near an RHF -&gt; UHF
+instability onset the restricted surface is spuriously stiff along the
+bond-stretching coordinate, which for a TS is the reaction coordinate, so the
+imaginary frequency and the barrier curvature are wrong in a known direction,
+too large and too high.</p>
+<p>Adopting the verdict replaces one biased number with another rather than with the right
+one. A broken-symmetry solution is not a spin eigenfunction: it is contaminated by the
+higher multiplicity it mixes in, so its energy lies ABOVE the spin-pure low-spin energy,
+and the restricted energy it replaces lies above the broken-symmetry one in turn. The
+ordering is E_projected &lt; E_BS &lt; E_restricted, so adoption is a step toward the spin-pure
+energy that stops short of it, and the residual error keeps the sign and direction it had
+before. ARC does not project the contamination out. <code class="docutils literal notranslate"><span class="pre">arc/checks/spin.py</span></code> holds the
+Yamaguchi approximate spin-projection arithmetic that estimates the projected energy from
+the broken-symmetry and high-spin energies and their <code class="docutils literal notranslate"><span class="pre">S**2</span></code> values.</p>
+<p>A spin contamination larger than <code class="docutils literal notranslate"><span class="pre">MAX_S_SQUARED_DEVIATION</span></code> is warned about where the
+electronic energy is read, in <code class="docutils literal notranslate"><span class="pre">check_spin_contamination</span></code>, and not here: the analysis
+log this verdict comes from describes the wavefunction that was tested, or for an ESS
+that follows an instability the solution it relaxed into, and neither is the wavefunction
+the published energy belongs to.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>job</strong> (<em>JobAdapter</em>) – The stability analysis job object instance.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1095,6 +1386,12 @@ Save the resulting xyz as <cite>initial_xyz</cite>.</p>
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.end_job">
 <span class="sig-name descname"><span class="pre">end_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.end_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.end_job" title="Link to this definition"></a></dt>
 <dd><p>A helper function for checking job status, saving in csv file, and downloading output files if needed.</p>
+<p>A completed geometry job hands the species its converged orbitals, which the jobs that
+follow read as an initial guess. The file is ESS-specific, a <code class="docutils literal notranslate"><span class="pre">check.chk</span></code> for Gaussian
+and an <code class="docutils literal notranslate"><span class="pre">input.gbw</span></code> for ORCA, and is adopted under the name the job adapter declares.
+A zero-byte file is refused: paramiko creates the local file before it opens the remote
+one, so a download that failed leaves an empty file behind that <code class="docutils literal notranslate"><span class="pre">os.path.isfile</span></code> cannot
+tell from a real one, and adopting it would hand every subsequent job an unreadable guess.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1209,6 +1506,32 @@ If <code class="docutils literal notranslate"><span class="pre">label</span></co
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>label</strong> (<em>str</em><em>, </em><em>optional</em>) – A species label.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.log_open_shell_character_sources">
+<span class="sig-name descname"><span class="pre">log_open_shell_character_sources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verdict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">restricted</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.log_open_shell_character_sources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.log_open_shell_character_sources" title="Link to this definition"></a></dt>
+<dd><p>Log how a species’ declared open-shell character and its measured stability verdict stand to each other.</p>
+<p>A user-declared <code class="docutils literal notranslate"><span class="pre">number_of_radicals</span></code> always decides the reference and is never
+overwritten here, so a conflict with the measured verdict is reported and nothing
+else. When the user declared nothing and the verdict calls for an unrestricted
+reference, that verdict is what subsequent jobs for a transition state will run on,
+and that adoption is logged as such; for any other species, and for a transition state
+whose verdict no ESS of the run can be given a symmetry-broken reference for, the
+verdict is reported as measured but not acted on, together with what would let it be
+acted on. Every branch logs; none raises.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>verdict</strong> (<em>str</em>) – The stability verdict that was parsed.</p></li>
+<li><p><strong>restricted</strong> (<em>bool</em><em> | </em><em>None</em>) – Whether the tested wavefunction used a restricted reference.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1354,14 +1677,27 @@ or <code class="docutils literal notranslate"><span class="pre">None</span></cod
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.post_sp_actions">
-<span class="sig-name descname"><span class="pre">post_sp_actions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sp_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.post_sp_actions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.post_sp_actions" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">post_sp_actions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sp_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.post_sp_actions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.post_sp_actions" title="Link to this definition"></a></dt>
 <dd><p>Perform post-sp actions.</p>
+<p><code class="docutils literal notranslate"><span class="pre">job</span></code> is the job whose log the electronic energy is read from, which is the sp job
+where one ran and the optimization job where the sp level equals the opt level and no
+sp job was submitted. Its SCF reference is recorded here, under ‘sp’, because it is the
+job that supplied the energy whichever of the two it is. A caller that has no job to
+name, a species restored from a restart among them, records nothing.</p>
+<p>THE ONE CALLER THAT NAMES NO JOB is <code class="docutils literal notranslate"><span class="pre">run_sp_job</span></code>’s path for a project restarted with no
+opt job left in its job dictionary, which reaches the optimization log through
+<code class="docutils literal notranslate"><span class="pre">output[label]['paths']['geo']</span></code> and has no job object to hand over. It is reached only
+where the sp level equals the opt level, where one job supplied both the geometry and the
+energy and the two therefore share one SCF reference by construction, so the reference
+comparison that record feeds has nothing to find. What it costs is that <code class="docutils literal notranslate"><span class="pre">output.yml</span></code>
+reports a null <code class="docutils literal notranslate"><span class="pre">reference_mismatch</span></code> for such a project rather than <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
 <li><p><strong>sp_path</strong> (<em>str</em>) – The path to ‘output.out’ for the single point job.</p></li>
 <li><p><strong>level</strong> (<a class="reference internal" href="level.html#arc.level.Level" title="arc.level.Level"><em>Level</em></a><em>, </em><em>optional</em>) – The level of theory used for the sp job.</p></li>
+<li><p><strong>job</strong> (<em>JobAdapter</em><em>, </em><em>optional</em>) – The job whose log the electronic energy is read from.</p></li>
 </ul>
 </dd>
 </dl>
@@ -1413,6 +1749,42 @@ Once every guess was tried, the TS is marked unconverged and the verdict is rest
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.record_scf_reference">
+<span class="sig-name descname"><span class="pre">record_scf_reference</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.record_scf_reference"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.record_scf_reference" title="Link to this definition"></a></dt>
+<dd><p>Record which SCF reference a completed job declared in the input it ran.</p>
+<p>Only the two job types an E0 is built from are recorded, under the two keys
+SCF_REFERENCE_JOB_TYPES maps them to: ‘sp’, which supplies the electronic energy, and
+‘freq’ or the combined ‘optfreq’, which supply the ZPE. Every other job type decides
+neither term, so recording it would compare references that are never summed.</p>
+<p><code class="docutils literal notranslate"><span class="pre">reference_key</span></code> names the term the job supplies where the job type does not say it.
+A species whose sp level equals its opt level runs no sp job at all and reads its
+electronic energy out of the optimization’s log, so it is the opt job that supplied
+the energy and its memo is recorded under ‘sp’. Without that the most common
+single-level configuration would record no energy reference at all, and the
+mixed-reference check would have nothing to compare for the whole run.</p>
+<p>The value is read off the job adapter’s own memo of the decision it made while writing
+that input, not recomputed, so a species whose reference decision changed after the job
+ran still reports what the job did. Jobs whose level carries no reference prefix, the
+force field, composite and semiempirical methods, are not recorded: their ‘restricted’
+flag is not a reference choice ARC made, and comparing it against a DFT job’s would
+report a mismatch that does not exist. Anything that is not a submitted ESS job, pipe
+tasks among them, carries no memo and is skipped.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>job</strong> (<em>JobAdapter</em>) – The completed job object.</p></li>
+<li><p><strong>reference_key</strong> (<em>str</em><em>, </em><em>optional</em>) – The term the job supplied, ‘sp’ or ‘freq’. Taken
+from the job type when not given.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.record_tsg_job_error">
 <span class="sig-name descname"><span class="pre">record_tsg_job_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_error</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.record_tsg_job_error"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.record_tsg_job_error" title="Link to this definition"></a></dt>
 <dd><p>Record an unrecoverable TS-search job error on the TS guesses that job produced.</p>
@@ -1434,6 +1806,23 @@ generated so far. Match on the adapter that produced each guess instead.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.release_held_stability_work">
+<span class="sig-name descname"><span class="pre">release_held_stability_work</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.release_held_stability_work"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.release_held_stability_work" title="Link to this definition"></a></dt>
+<dd><p>Release the post-optimization work of every species held for an analysis that is not running.</p>
+<p>A species holds a <code class="docutils literal notranslate"><span class="pre">stability_pending_opt_job</span></code> from the moment its wavefunction stability
+analysis is spawned until <code class="docutils literal notranslate"><span class="pre">spawn_post_stability_jobs</span></code> releases it, and both of those are
+written to the restart file. A run resumed in between finds the record but not the job,
+since a finished job is not restored into <code class="docutils literal notranslate"><span class="pre">running_jobs</span></code>, so this is what reaches
+<code class="docutils literal notranslate"><span class="pre">spawn_post_stability_jobs</span></code> for it. A species whose analysis is still queued is left
+alone; the main loop reaches it when that job ends.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>label</strong> (<em>str</em><em>, </em><em>optional</em>) – A single species label to release, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for all of them.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.report_running_jobs_snapshot">
 <span class="sig-name descname"><span class="pre">report_running_jobs_snapshot</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.report_running_jobs_snapshot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.report_running_jobs_snapshot" title="Link to this definition"></a></dt>
 <dd><p>Overwrite <code class="docutils literal notranslate"><span class="pre">&lt;project&gt;/running_jobs.yml</span></code> with a timestamped snapshot of
@@ -1447,6 +1836,10 @@ heartbeat is logged to ARC.log.</p>
 <span class="sig-name descname"><span class="pre">restore_running_jobs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.restore_running_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.restore_running_jobs" title="Link to this definition"></a></dt>
 <dd><p>Make Job objects for jobs which were running in the previous session.
 Important for the restart feature so long jobs won’t run twice.</p>
+<p>Rebuilding a job adapter re-composes its input file, which recomputes the SCF reference
+from the species’ state as it is now. The reference the queued job actually ran with is
+therefore restored onto the rebuilt adapter from the restart file, so that a job which was
+submitted before a stability verdict was adopted still reports the reference it declared.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -1600,6 +1993,54 @@ If the method is MRCI, first spawn a simple CCSD(T) job, and use orbital determi
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.run_stability_job">
+<span class="sig-name descname"><span class="pre">run_stability_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_job</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.run_stability_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.run_stability_job" title="Link to this definition"></a></dt>
+<dd><p>Spawn a wavefunction stability analysis job for a TS or for a species that optimized restricted.</p>
+<p>The analysis is spawned from the optimization, before the frequency job, the single point
+and the IRC of that species, so the reference every one of them would be computed on is
+measured while it can still be changed. Its level comes from the optimization job, its
+geometry is the one that optimization converged to, and its orbitals are the ones that
+optimization wrote, so its SCF reproduces the wavefunction under test rather than whichever
+solution a fresh SCF reaches: without them Gaussian falls back to <code class="docutils literal notranslate"><span class="pre">guess=mix</span></code>, whose
+deliberately symmetry-broken SCF is a different wavefunction, and ORCA converges from its
+own initial guess.</p>
+<p>It is spawned at most once per species, recorded on the species as
+<code class="docutils literal notranslate"><span class="pre">stability_analysis_ran</span></code> so a restart does not spawn a second one, and only where every
+one of the following holds: the species is a TS or its optimization declared a restricted
+reference, which is the only reference the analysis can inform, since a restricted solution
+gives the same energy as an unrestricted one if and only if it is stable; the optimization
+is a submitted ESS job, which a pipe task is not; that job’s ESS is in
+<code class="docutils literal notranslate"><span class="pre">STABILITY_ANALYSIS_ADAPTERS</span></code>; its level is DFT or Hartree-Fock, the only ones either of those
+ESSs offers the analysis for; and the species still holds the checkfile that optimization
+wrote, which is ESS-specific, a <code class="docutils literal notranslate"><span class="pre">.chk</span></code> for Gaussian and a <code class="docutils literal notranslate"><span class="pre">.gbw</span></code> for ORCA. Each refusal
+is logged and the caller runs the jobs that follow unchanged.</p>
+<p>A job that ran in an ESS for which ARC has not implemented the analysis is reported as a
+warning once per ESS per run, rather than once per species: the condition holds for every
+species that ESS runs, so it is a statement about the run and not about the species that
+happened to reach it first.</p>
+<p>WHAT THE ANALYSIS IS FOR ON A SPECIES THAT IS NOT A TS, given that it is expected to return
+‘stable’ nearly every time: well under a few per cent of closed-shell equilibrium
+geometries are RHF -&gt; UHF unstable, and a well is not where instabilities are looked for.
+Its value is what a ‘stable’ verdict licenses rather than what an unstable one reports. A
+well verified stable has identical restricted and unrestricted energies, so comparing it
+against a TS that ARC has made unrestricted is a comparison on one surface rather than
+across two; without the verdict that cannot be asserted. It also catches an undeclared
+singlet biradical, whose restricted energy is wrong and which nothing else in ARC detects.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>opt_job</strong> (<em>JobAdapter</em>) – The optimization job whose wavefunction is tested.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: bool</dt><dd><p>Whether a stability analysis job was spawned.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.run_ts_conformer_jobs">
 <span class="sig-name descname"><span class="pre">run_ts_conformer_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.run_ts_conformer_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.run_ts_conformer_jobs" title="Link to this definition"></a></dt>
 <dd><p>Spawn opt jobs at the ts_guesses level of theory for the TS guesses.</p>
@@ -1632,6 +2073,12 @@ It will append if the file already exists.</p>
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.schedule_jobs">
 <span class="sig-name descname"><span class="pre">schedule_jobs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.schedule_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.schedule_jobs" title="Link to this definition"></a></dt>
 <dd><p>The main job scheduling block</p>
+<p>A species whose post-optimization work was held for a wavefunction stability verdict is
+released here when no analysis of its is still running, which is the state a run resumed
+after its analysis ended leaves behind: the job it was waiting on is gone, so nothing else
+would reach <code class="docutils literal notranslate"><span class="pre">spawn_post_stability_jobs</span></code> for it and the species would hold that work for
+the rest of the run. A verdict recorded before the interruption still decides what the
+release does, and one that never arrived releases the held jobs unchanged.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -1702,6 +2149,15 @@ The differentiation between <code class="docutils literal notranslate"><span cla
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.spawn_post_opt_jobs">
 <span class="sig-name descname"><span class="pre">spawn_post_opt_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.spawn_post_opt_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.spawn_post_opt_jobs" title="Link to this definition"></a></dt>
 <dd><p>Spawn additional jobs after opt has converged.</p>
+<p>A wavefunction stability analysis, where <code class="docutils literal notranslate"><span class="pre">run_stability_job</span></code> finds the species eligible
+for one, is the single job spawned from here and everything else waits for its verdict:
+the frequency job, the single point, the IRC and the rotor scans all inherit the SCF
+reference and the geometry of the optimization, so computing them before the reference is
+measured spends them on a surface that may be about to change. The optimization job’s name
+is recorded on the species as <code class="docutils literal notranslate"><span class="pre">stability_pending_opt_job</span></code> before the analysis is spawned,
+so that a run interrupted between the two finds the record in its restart file, and
+<code class="docutils literal notranslate"><span class="pre">spawn_post_stability_jobs</span></code> re-enters this method with it once the verdict is in. The
+analysis runs at most once per species, so the re-entry spawns none and proceeds.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1713,11 +2169,96 @@ The differentiation between <code class="docutils literal notranslate"><span cla
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.spawn_post_stability_jobs">
+<span class="sig-name descname"><span class="pre">spawn_post_stability_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.spawn_post_stability_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.spawn_post_stability_jobs" title="Link to this definition"></a></dt>
+<dd><p>Resume the work a wavefunction stability analysis was holding, once its verdict is in.</p>
+<p><code class="docutils literal notranslate"><span class="pre">spawn_post_opt_jobs</span></code> records the optimization job it was called for on the species as
+<code class="docutils literal notranslate"><span class="pre">stability_pending_opt_job</span></code> and returns without enqueueing anything whenever it spawns a
+stability analysis, so that no Hessian, energy or reaction path is computed on a reference
+that is still under test. This method is what releases that work, and it is reached for
+every stability job that leaves <code class="docutils literal notranslate"><span class="pre">running_jobs</span></code>, whether it converged, errored or was
+never parsed, so a species is not held by an analysis that produced no verdict.</p>
+<p>A verdict ARC acts on, which <code class="docutils literal notranslate"><span class="pre">adopted_reference_is_unrestricted</span></code> defines, re-optimizes the
+species instead of releasing the held work. The re-optimization runs at the optimization
+level, starts from the geometry the first optimization converged to, and is unrestricted,
+because <code class="docutils literal notranslate"><span class="pre">is_species_restricted</span></code> reads the adopted verdict off the species. Re-optimizing
+is what makes an adoption correct: the restricted geometry is a stationary point of the
+restricted surface only, so a Hessian computed there on the broken-symmetry reference sits
+at a non-stationary point and can report imaginary modes that belong to the mismatch rather
+than to the molecule. Its own completion re-enters <code class="docutils literal notranslate"><span class="pre">spawn_post_opt_jobs</span></code>, which spawns no
+second analysis and releases the frequency, single point and IRC onto the geometry and the
+reference they belong with.</p>
+<p>AT MOST ONE RE-OPTIMIZATION per species, recorded on the species as
+<code class="docutils literal notranslate"><span class="pre">stability_reoptimized</span></code> and written to the restart file, so a run resumed between the
+analysis and the re-optimization cannot spawn a second one.</p>
+<p>THE ORBITALS THE RE-OPTIMIZATION STARTS FROM are the analysis’ own where the ESS relaxed
+into the lower solution, which its verdict reports as <code class="docutils literal notranslate"><span class="pre">followed_to_stable</span></code>, and none
+otherwise. ORCA follows an instability it finds and writes the relaxed orbitals to the
+analysis job’s <code class="docutils literal notranslate"><span class="pre">input.gbw</span></code>, which is the broken-symmetry solution the re-optimization is
+meant to sit on. Gaussian’s <code class="docutils literal notranslate"><span class="pre">stable=(rext,noopt)</span></code> reports an instability without
+following it, so its checkfile still holds the restricted orbitals; handing those to an
+unrestricted SCF returns it to the very solution the analysis rejected, since a restricted
+solution is a stationary point of the unrestricted equations too. Dropping the checkfile
+sends the job to <code class="docutils literal notranslate"><span class="pre">guess=mix</span></code>, whose deliberately symmetry-broken guess is what finds the
+lower solution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>label</strong> (<em>str</em>) – The species label.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.spawn_ts_jobs">
 <span class="sig-name descname"><span class="pre">spawn_ts_jobs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.spawn_ts_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.spawn_ts_jobs" title="Link to this definition"></a></dt>
 <dd><p>Check if any new reaction has all of its reactants and products optimized,
 and if so spawn the respective TSG jobs.
 Don’t spawn TS jobs if the multiplicity of the reaction could not be determined.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.stability_verdict_can_be_honoured">
+<span class="sig-name descname"><span class="pre">stability_verdict_can_be_honoured</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.stability_verdict_can_be_honoured"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.stability_verdict_can_be_honoured" title="Link to this definition"></a></dt>
+<dd><p>Check whether every ESS this species’ E0 is built from can be given a broken-symmetry reference.</p>
+<p>Acting on a wavefunction-stability verdict re-optimizes the species and computes its
+Hessian and its electronic energy on the lower, symmetry-broken solution. An unrestricted
+SCF reaches that solution only from a reference composed to break the spin symmetry, which
+the adapters in <code class="docutils literal notranslate"><span class="pre">SYMMETRY_BREAKING_ADAPTERS</span></code> compose and the rest do not: an adapter
+absent from that set writes one spin-symmetric determinant, whose SCF converges back to
+the restricted solution the verdict rejected. A geometry composed by one adapter and an
+energy by another is the standard arrangement, so a verdict adopted with only the first of
+them composing a symmetry-broken reference moves the geometry and the Hessian onto the
+lower solution and leaves the energy on the restricted one, and the E0 the run publishes
+sums terms from two surfaces rather than being the lower solution’s E0 or the restricted
+one’s. The job that could not compose the reference also records an unrestricted memo for
+an SCF that reached the restricted solution, which <code class="docutils literal notranslate"><span class="pre">check_scf_reference_consistency</span></code>
+then reads as agreement.</p>
+<p>The three levels tested are the ones those terms come from: the optimization, which
+supplies the geometry, the frequency job, which supplies the ZPE, and the single point,
+which supplies the electronic energy. A job type the run does not compute is not tested,
+and a species whose single point runs at its optimization level tests that one level twice
+rather than none.</p>
+<p>A LEVEL AN ADOPTED VERDICT DOES NOT REACH IS NOT TESTED, since its adapter is asked for no
+symmetry-broken reference and so can neither honour a verdict nor fail to. Two kinds of
+level are outside the verdict’s reach. A reference-agnostic one, for which ARC writes no
+reference prefix at all, is one; a correlated wavefunction level, whose energy is an
+expansion about a spin-adapted reference rather than the energy of that reference, is the
+other, and <code class="docutils literal notranslate"><span class="pre">level_admits_a_broken_symmetry_reference</span></code> tells both from the levels a
+verdict does decide. A single point at a correlated level therefore keeps its restricted
+reference in every adapter alike, and what it costs is a mismatch against the ZPE rather
+than a collapse, which <code class="docutils literal notranslate"><span class="pre">check_scf_reference_consistency</span></code> reports.</p>
+<p>What this reports is that every level the verdict does reach is composed by an adapter
+writing a symmetry-broken reference; anything less is reported as not honourable and the
+verdict is measured and logged without being acted on.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>label</strong> (<em>str</em>) – The species label.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: bool</dt><dd><p>Whether adopting the verdict would give this species one reference throughout.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -1813,6 +2354,58 @@ Using the following methods:
 <dt>Returns: tuple[bool, dict]:</dt><dd><ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">True</span></code> if the troubleshooting is valid.</p></li>
 <li><p>The actions are applied in the troubleshooting.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.warn_on_collapsible_unrestricted_reference">
+<span class="sig-name descname"><span class="pre">warn_on_collapsible_unrestricted_reference</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.warn_on_collapsible_unrestricted_reference"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.warn_on_collapsible_unrestricted_reference" title="Link to this definition"></a></dt>
+<dd><p>Report a job running an adopted unrestricted reference its adapter cannot keep from collapsing.</p>
+<p>A species carrying an adopted wavefunction-stability verdict runs every job that follows
+it unrestricted, and an unrestricted SCF started from a spin-symmetric guess converges, in
+all but pathological cases, back to the restricted solution the verdict rejected: a
+restricted solution is a stationary point of the unrestricted equations too, so a
+gradient-following SCF sits on it. The job then reports the restricted energy under an
+unrestricted label, which is the energy the analysis found a lower solution than.</p>
+<p>TWO MECHANISMS PREVENT THAT, and the adapters in <code class="docutils literal notranslate"><span class="pre">SYMMETRY_BREAKING_ADAPTERS</span></code> write them:
+an orbital guess taken from the broken-symmetry solution, which is Gaussian’s
+<code class="docutils literal notranslate"><span class="pre">guess=read</span></code> and ORCA’s <code class="docutils literal notranslate"><span class="pre">!MORead</span></code>, and a symmetry-breaking directive that needs no
+guess, which is Gaussian’s <code class="docutils literal notranslate"><span class="pre">guess=mix</span></code> and ORCA’s <code class="docutils literal notranslate"><span class="pre">BrokenSym</span></code>. Those two adapters
+write whichever of the pair the job admits.</p>
+<p>EVERY OTHER ADAPTER WRITES NEITHER. An adopted verdict was measured by an optimization
+composed by one of the adapters in <code class="docutils literal notranslate"><span class="pre">STABILITY_ANALYSIS_ADAPTERS</span></code>, so whatever
+broken-symmetry orbitals a later job could start from were written in that ESS’s own
+format; a third adapter writes no keyword that reads them, and no symmetry-breaking
+directive either. Whether its ESS could be asked for one is a separate question: this
+reports what ARC composes. The standard arrangement of a geometry from one adapter and an
+energy from another is exactly where this lands, and what it costs is the electronic
+energy the run publishes.</p>
+<p>WHAT REACHES THIS AT ALL. A verdict is adopted only where the adapters composing every
+level of the species the verdict decides write a symmetry-breaking reference, which
+<code class="docutils literal notranslate"><span class="pre">stability_verdict_can_be_honoured</span></code> decides, so the geometry, the Hessian and an
+electronic energy at such a level do not reach this. An electronic energy at a correlated
+level does not either: the verdict decides no reference there, so the job composes a
+restricted one and is not a collapse. What does reach this is a job type that decision
+does not cover, the IRC and the rotor scans of an adopted species, composed at a level
+whose adapter writes neither mechanism.</p>
+<p>WHAT IS REPORTED WHERE. The species’ output warnings carry
+<code class="docutils literal notranslate"><span class="pre">COLLAPSED_REFERENCE_MESSAGE</span></code>, once per species, so <code class="docutils literal notranslate"><span class="pre">output.yml</span></code> names every species
+the condition was reached for rather than only the first. The log carries the full
+message once per adapter per run, as <code class="docutils literal notranslate"><span class="pre">run_stability_job</span></code> reports an adapter with no
+analysis implemented, since the statement is the same for every species that adapter
+composes a job for.</p>
+<p>WHAT THIS DOES NOT REACH. The ESS name is what decides whether a mechanism exists, so a
+Gaussian job whose SCF troubleshooting replaced its guess keyword with <code class="docutils literal notranslate"><span class="pre">guess=INDO</span></code>
+carries neither <code class="docutils literal notranslate"><span class="pre">guess=read</span></code> nor <code class="docutils literal notranslate"><span class="pre">guess=mix</span></code> and is not reported. A single point
+batched through the pipe is spawned by the pipe planner rather than by <code class="docutils literal notranslate"><span class="pre">run_job</span></code>, and is
+not reported either.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>job</strong> (<em>JobAdapter</em>) – The job that was spawned.</p></li>
 </ul>
 </dd>
 </dl>

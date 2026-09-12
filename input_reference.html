@@ -59,6 +59,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#reaction-entries">Reaction Entries</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#level-dictionaries">Level Dictionaries</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#job-types">Job Types</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#wavefunction-stability-analysis">Wavefunction Stability Analysis</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#ess-settings">ESS Settings</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#complete-example">Complete Example</a></li>
 </ul>
@@ -319,6 +320,7 @@ see the API reference pages for <a class="reference internal" href="api/main.htm
 <li><p><code class="docutils literal notranslate"><span class="pre">rotors</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">irc</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">orbitals</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">stability</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">onedmin</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">bde</span></code></p></li>
 </ul>
@@ -335,8 +337,43 @@ see the API reference pages for <a class="reference internal" href="api/main.htm
 <span class="w">  </span><span class="nt">freq</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <span class="w">  </span><span class="nt">sp</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <span class="w">  </span><span class="nt">rotors</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">  </span><span class="nt">stability</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
 </pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">conf_opt</span></code>, <code class="docutils literal notranslate"><span class="pre">opt</span></code>, <code class="docutils literal notranslate"><span class="pre">fine</span></code>, <code class="docutils literal notranslate"><span class="pre">freq</span></code>, <code class="docutils literal notranslate"><span class="pre">sp</span></code>, <code class="docutils literal notranslate"><span class="pre">rotors</span></code> and <code class="docutils literal notranslate"><span class="pre">irc</span></code> default to
+<code class="docutils literal notranslate"><span class="pre">true</span></code> when omitted; <code class="docutils literal notranslate"><span class="pre">conf_sp</span></code>, <code class="docutils literal notranslate"><span class="pre">orbitals</span></code>, <code class="docutils literal notranslate"><span class="pre">stability</span></code>, <code class="docutils literal notranslate"><span class="pre">onedmin</span></code> and <code class="docutils literal notranslate"><span class="pre">bde</span></code>
+default to <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p>
+</section>
+<section id="wavefunction-stability-analysis">
+<h2>Wavefunction Stability Analysis<a class="headerlink" href="#wavefunction-stability-analysis" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">stability</span></code> is off by default and is opt-in through <code class="docutils literal notranslate"><span class="pre">job_types</span></code>. ARC has implemented
+the analysis for Gaussian and for ORCA so far; other ESSs are not wired up yet, and a run
+whose optimization jobs go to another ESS is told so once per ESS in the log rather than
+silently producing nothing. The two ESSs test the same space and agree on the verdict; in
+ORCA the analysis always follows an instability it finds, since ORCA 6.0.0 aborts rather
+than merely reporting one, and the sector of a restricted reference’s instability is read
+off the solution it relaxes into.</p>
+<p>It runs once per species, as soon as that species’ optimization converges and before the
+frequency job, the single point, the IRC and the rotor scans, so that those jobs inherit
+the reference and the geometry the verdict settles on. It runs only for a transition state
+or for a species whose optimization actually ran with a restricted reference - a restricted
+reference is the only one the analysis can inform, since a restricted solution gives the
+same energy as an unrestricted one if and only if it is stable. It is further limited to
+DFT and Hartree-Fock optimization levels, and needs the checkfile the optimization job
+wrote, so that the SCF under test is the converged one the later jobs build on.</p>
+<p>What it buys you: a verdict recorded in the log and in <code class="docutils literal notranslate"><span class="pre">output.yml</span></code> saying whether the
+converged wavefunction is a genuine minimum in the space of orbital rotations, together
+with the label and eigenvalue of any negative stability-matrix root, and whether the
+analytic frequencies are invalidated by it. For a transition state the verdict can also
+decide the restricted-versus-unrestricted reference of the jobs that follow. See
+<a class="reference internal" href="advanced.html#advanced"><span class="std std-ref">Advanced Features</span></a> for the full treatment, including which instabilities
+invalidate analytic frequencies and what an adopted verdict does and does not correct.</p>
+<p><code class="docutils literal notranslate"><span class="pre">specific_job_type</span></code> cannot be used to request it. That key replaces <code class="docutils literal notranslate"><span class="pre">job_types</span></code>
+wholesale with a dictionary in which only the named job type is <code class="docutils literal notranslate"><span class="pre">true</span></code>, so
+<code class="docutils literal notranslate"><span class="pre">specific_job_type:</span> <span class="pre">stability</span></code> switches off the <code class="docutils literal notranslate"><span class="pre">opt</span></code>, <code class="docutils literal notranslate"><span class="pre">freq</span></code> and <code class="docutils literal notranslate"><span class="pre">sp</span></code> jobs the
+analysis is spawned from and nothing runs at all (<code class="docutils literal notranslate"><span class="pre">bde</span></code> is special-cased to re-enable
+them; <code class="docutils literal notranslate"><span class="pre">stability</span></code> is not). Any other value of <code class="docutils literal notranslate"><span class="pre">specific_job_type</span></code> likewise sets
+<code class="docutils literal notranslate"><span class="pre">stability</span></code> to <code class="docutils literal notranslate"><span class="pre">false</span></code>. Request it through <code class="docutils literal notranslate"><span class="pre">job_types</span></code>.</p>
 </section>
 <section id="ess-settings">
 <h2>ESS Settings<a class="headerlink" href="#ess-settings" title="Link to this heading"></a></h2>

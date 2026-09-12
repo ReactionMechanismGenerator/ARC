@@ -173,6 +173,8 @@
 </li>
       <li><a href="api/ssh.html#arc.job.ssh.SSHClient.address">address (arc.job.ssh.SSHClient attribute)</a>
 </li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.adopt_stability_orbitals">adopt_stability_orbitals() (arc.scheduler.Scheduler method)</a>
+</li>
       <li><a href="api/main.html#arc.main.ARC.allow_nonisomorphic_2d">allow_nonisomorphic_2d (arc.main.ARC attribute)</a>
 
       <ul>
@@ -397,6 +399,8 @@
 </li>
       <li><a href="api/scale.html#arc.utils.scale.calculate_truhlar_scaling_factors">calculate_truhlar_scaling_factors() (in module arc.utils.scale)</a>
 </li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.carry_stability_verdict_across_ts_switch">carry_stability_verdict_across_ts_switch() (arc.scheduler.Scheduler method)</a>
+</li>
       <li><a href="api/conformers.html#arc.species.conformers.change_dihedrals_and_force_field_it">change_dihedrals_and_force_field_it() (in module arc.species.conformers)</a>
 </li>
       <li><a href="api/ssh.html#arc.job.ssh.SSHClient.change_mode">change_mode() (arc.job.ssh.SSHClient method)</a>
@@ -475,6 +479,8 @@
 </li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.check_scan_job">check_scan_job() (arc.scheduler.Scheduler method)</a>
 </li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.check_scf_reference_consistency">check_scf_reference_consistency() (arc.scheduler.Scheduler method)</a>
+</li>
       <li><a href="api/ssh.html#arc.job.ssh.check_servers_known_hosts">check_servers_known_hosts() (in module arc.job.ssh)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.check_smiles">check_smiles() (in module arc.species.species)</a>
@@ -483,14 +489,18 @@
 </li>
       <li><a href="api/conformers.html#arc.species.conformers.check_special_non_rotor_cases">check_special_non_rotor_cases() (in module arc.species.conformers)</a>
 </li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.check_spin_contamination">check_spin_contamination() (arc.scheduler.Scheduler method)</a>
+</li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.check_stability_job">check_stability_job() (arc.scheduler.Scheduler method)</a>
+</li>
       <li><a href="api/common.html#arc.common.check_that_all_entries_are_in_list">check_that_all_entries_are_in_list() (in module arc.common)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/common.html#arc.common.check_torsion_change">check_torsion_change() (in module arc.common)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.check_xyz">check_xyz() (in module arc.species.species)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/converter.html#arc.species.converter.check_xyz_dict">check_xyz_dict() (in module arc.species.converter)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.check_xyz_isomorphism">check_xyz_isomorphism() (arc.species.species.ARCSpecies method)</a>
@@ -643,6 +653,8 @@
 </li>
       <li><a href="api/ssh.html#arc.job.ssh.SSHClient.delete_remote_check_files">delete_remote_check_files() (arc.job.ssh.SSHClient method)</a>
 </li>
+      <li><a href="api/species.html#arc.species.species.ARCSpecies.derived_stability_verdict">derived_stability_verdict (arc.species.species.ARCSpecies attribute)</a>
+</li>
       <li><a href="api/zmat.html#arc.species.zmat.determine_a_atoms">determine_a_atoms() (in module arc.species.zmat)</a>
 </li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.determine_adaptive_level">determine_adaptive_level() (arc.scheduler.Scheduler method)</a>
@@ -671,10 +683,10 @@
 </li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.determine_most_stable_conformer">determine_most_stable_conformer() (arc.scheduler.Scheduler method)</a>
 </li>
-      <li><a href="api/species.html#arc.species.species.ARCSpecies.determine_multiplicity">determine_multiplicity() (arc.species.species.ARCSpecies method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api/species.html#arc.species.species.ARCSpecies.determine_multiplicity">determine_multiplicity() (arc.species.species.ARCSpecies method)</a>
+</li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.determine_multiplicity_from_descriptors">determine_multiplicity_from_descriptors() (arc.species.species.ARCSpecies method)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.determine_multiplicity_from_xyz">determine_multiplicity_from_xyz() (arc.species.species.ARCSpecies method)</a>
@@ -1189,6 +1201,8 @@
 </li>
       <li><a href="api/plotter.html#arc.plotter.log_kinetics">log_kinetics() (in module arc.plotter)</a>
 </li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.log_open_shell_character_sources">log_open_shell_character_sources() (arc.scheduler.Scheduler method)</a>
+</li>
       <li><a href="api/species.html#arc.species.species.TSGuess.log_path">log_path (arc.species.species.TSGuess attribute)</a>
 </li>
       <li><a href="api/plotter.html#arc.plotter.log_thermo">log_thermo() (in module arc.plotter)</a>
@@ -1494,9 +1508,13 @@
 </li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.reconcile_mol_multiplicity">reconcile_mol_multiplicity() (arc.species.species.ARCSpecies method)</a>
 </li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.record_scf_reference">record_scf_reference() (arc.scheduler.Scheduler method)</a>
+</li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.record_tsg_job_error">record_tsg_job_error() (arc.scheduler.Scheduler method)</a>
 </li>
       <li><a href="api/ssh.html#arc.job.ssh.RejectUnknownHostKeyPolicy">RejectUnknownHostKeyPolicy (class in arc.job.ssh)</a>
+</li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.release_held_stability_work">release_held_stability_work() (arc.scheduler.Scheduler method)</a>
 </li>
       <li><a href="api/converter.html#arc.species.converter.relocate_zmat_dummy_atoms_to_the_end">relocate_zmat_dummy_atoms_to_the_end() (in module arc.species.converter)</a>
 </li>
@@ -1570,6 +1588,8 @@
 </li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.run_sp_job">run_sp_job() (arc.scheduler.Scheduler method)</a>
 </li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.run_stability_job">run_stability_job() (arc.scheduler.Scheduler method)</a>
+</li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.run_time">run_time (arc.species.species.ARCSpecies attribute)</a>
 </li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.run_ts_conformer_jobs">run_ts_conformer_jobs() (arc.scheduler.Scheduler method)</a>
@@ -1632,6 +1652,8 @@
       </ul></li>
       <li><a href="api/trsh.html#arc.job.trsh.scan_quality_check">scan_quality_check() (in module arc.job.trsh)</a>
 </li>
+      <li><a href="api/species.html#arc.species.species.ARCSpecies.scf_references">scf_references (arc.species.species.ARCSpecies attribute)</a>
+</li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.schedule_jobs">schedule_jobs() (arc.scheduler.Scheduler method)</a>
 </li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler">Scheduler (class in arc.scheduler)</a>
@@ -1674,14 +1696,14 @@
         <li><a href="api/scheduler.html#arc.scheduler.Scheduler.skip_nmd">(arc.scheduler.Scheduler attribute)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/common.html#arc.common.sort_atoms_in_descending_label_order">sort_atoms_in_descending_label_order() (in module arc.common)</a>
 </li>
       <li><a href="api/common.html#arc.common.sort_two_lists_by_the_first">sort_two_lists_by_the_first() (in module arc.common)</a>
 </li>
       <li><a href="api/converter.html#arc.species.converter.sort_xyz_using_indices">sort_xyz_using_indices() (in module arc.species.converter)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/converter.html#arc.species.converter.sorted_distances_of_atom">sorted_distances_of_atom() (in module arc.species.converter)</a>
 </li>
       <li><a href="api/main.html#arc.main.ARC.sp_level">sp_level (arc.main.ARC attribute)</a>
@@ -1695,6 +1717,8 @@
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.spawn_post_irc_jobs">spawn_post_irc_jobs() (arc.scheduler.Scheduler method)</a>
 </li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.spawn_post_opt_jobs">spawn_post_opt_jobs() (arc.scheduler.Scheduler method)</a>
+</li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.spawn_post_stability_jobs">spawn_post_stability_jobs() (arc.scheduler.Scheduler method)</a>
 </li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.spawn_ts_jobs">spawn_ts_jobs() (arc.scheduler.Scheduler method)</a>
 </li>
@@ -1721,6 +1745,16 @@
       <li><a href="api/converter.html#arc.species.converter.split_str_zmat">split_str_zmat() (in module arc.species.converter)</a>
 </li>
       <li><a href="api/ssh.html#arc.job.ssh.SSHClient">SSHClient (class in arc.job.ssh)</a>
+</li>
+      <li><a href="api/species.html#arc.species.species.ARCSpecies.stability_analysis_ran">stability_analysis_ran (arc.species.species.ARCSpecies attribute)</a>
+</li>
+      <li><a href="api/species.html#arc.species.species.ARCSpecies.stability_pending_opt_job">stability_pending_opt_job (arc.species.species.ARCSpecies attribute)</a>
+</li>
+      <li><a href="api/species.html#arc.species.species.ARCSpecies.stability_reoptimized">stability_reoptimized (arc.species.species.ARCSpecies attribute)</a>
+</li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.stability_unimplemented_ess">stability_unimplemented_ess (arc.scheduler.Scheduler attribute)</a>
+</li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.stability_verdict_can_be_honoured">stability_verdict_can_be_honoured() (arc.scheduler.Scheduler method)</a>
 </li>
       <li><a href="api/main.html#arc.main.ARC.standardize_output_paths">standardize_output_paths() (arc.main.ARC method)</a>
 </li>
@@ -1753,6 +1787,8 @@
       <li><a href="api/main.html#arc.main.ARC.summary">summary() (arc.main.ARC method)</a>
 </li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.switch_ts">switch_ts() (arc.scheduler.Scheduler method)</a>
+</li>
+      <li><a href="api/scheduler.html#arc.scheduler.SYMMETRY_BREAKING_ADAPTERS">SYMMETRY_BREAKING_ADAPTERS (in module arc.scheduler)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.symmetry_number">symmetry_number (arc.species.species.ARCSpecies attribute)</a>
 </li>
@@ -1914,6 +1950,8 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/ssh.html#arc.job.ssh.SSHClient.un">un (arc.job.ssh.SSHClient attribute)</a>
 </li>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.unbreakable_reference_ess">unbreakable_reference_ess (arc.scheduler.Scheduler attribute)</a>
+</li>
       <li><a href="api/scheduler.html#arc.scheduler.Scheduler.unique_species_labels">unique_species_labels (arc.scheduler.Scheduler attribute)</a>
 </li>
       <li><a href="api/vectors.html#arc.species.vectors.unit_vector">unit_vector() (in module arc.species.vectors)</a>
@@ -1944,10 +1982,12 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/level.html#arc.level.Level.warn_if_year_set">warn_if_year_set() (arc.level.Level method)</a>
 </li>
-      <li><a href="api/local.html#arc.job.local.write_file">write_file() (in module arc.job.local)</a>
+      <li><a href="api/scheduler.html#arc.scheduler.Scheduler.warn_on_collapsible_unrestricted_reference">warn_on_collapsible_unrestricted_reference() (arc.scheduler.Scheduler method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api/local.html#arc.job.local.write_file">write_file() (in module arc.job.local)</a>
+</li>
       <li><a href="api/main.html#arc.main.ARC.write_input_file">write_input_file() (arc.main.ARC method)</a>
 </li>
       <li><a href="api/processor.html#arc.processor.write_unconverged_log">write_unconverged_log() (in module arc.processor)</a>

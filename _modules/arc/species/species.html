@@ -311,6 +311,28 @@
 <span class="sd">                                  Defaults to None. Important, e.g., if a Species is a bi-rad singlet, in which case</span>
 <span class="sd">                                  the job should be unrestricted, but the multiplicity does not have the required</span>
 <span class="sd">                                  information to make that decision (r vs. u).</span>
+<span class="sd">        derived_stability_verdict (dict): The structured verdict of a wavefunction stability analysis, as parsed from</span>
+<span class="sd">                                          the ESS log. Defaults to None. It is a measured property of one SCF</span>
+<span class="sd">                                          solution, so it steers only the r vs. u reference decision and never the</span>
+<span class="sd">                                          molecular graph perception that number_of_radicals feeds, and a declared</span>
+<span class="sd">                                          number_of_radicals overrides it. It is written by the run that measures it</span>
+<span class="sd">                                          and read back from a restart file like every other attribute, so a value</span>
+<span class="sd">                                          placed there by hand is read the same way: number_of_radicals is the input</span>
+<span class="sd">                                          that declares open-shell character.</span>
+<span class="sd">        scf_references (dict): Which SCF reference each of this species' jobs declared in the input it ran, keyed by</span>
+<span class="sd">                               job type ('sp', 'freq') with values 'restricted' or 'unrestricted'. Two different</span>
+<span class="sd">                               values mean the electronic energy and the ZPE were computed on different surfaces.</span>
+<span class="sd">        stability_analysis_ran (bool): Whether a wavefunction stability analysis was spawned for this species.</span>
+<span class="sd">                                       Defaults to False. One analysis is run per species, and this attribute is</span>
+<span class="sd">                                       what says so across a restart, when the job dictionary holds only the jobs</span>
+<span class="sd">                                       that were still running.</span>
+<span class="sd">        stability_pending_opt_job (str): The name of the optimization job whose frequency, single point and IRC are</span>
+<span class="sd">                                         waiting for a wavefunction stability verdict. Defaults to None, and is</span>
+<span class="sd">                                         cleared once that work is released or the geometry is abandoned.</span>
+<span class="sd">        stability_reoptimized (bool): Whether an adopted wavefunction stability verdict has already re-optimized this</span>
+<span class="sd">                                      species on an unrestricted reference. Defaults to False. At most one such</span>
+<span class="sd">                                      re-optimization is run per species, and this attribute is what holds that</span>
+<span class="sd">                                      across a restart.</span>
 <span class="sd">        e_elect (float): The total electronic energy (without ZPE) at the chosen sp level, in kJ/mol.</span>
 <span class="sd">        e0 (float): The 0 Kelvin energy (total electronic energy plus ZPE) at the chosen sp level, in kJ/mol.</span>
 <span class="sd">        is_ts (bool):  Whether the species represents a transition state. `True` if it does.</span>
@@ -487,6 +509,11 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">rxn_zone_atom_indices</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_checks</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">derived_stability_verdict</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scf_references</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stability_analysis_ran</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stability_pending_opt_job</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stability_reoptimized</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span> <span class="o">=</span> <span class="n">project_directory</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">label</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">symmetry_number</span> <span class="o">=</span> <span class="kc">None</span>
@@ -905,6 +932,16 @@
             <span class="n">species_dict</span><span class="p">[</span><span class="s1">'run_time'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">run_time</span><span class="o">.</span><span class="n">total_seconds</span><span class="p">()</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">number_of_radicals</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">species_dict</span><span class="p">[</span><span class="s1">'number_of_radicals'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">number_of_radicals</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">derived_stability_verdict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">species_dict</span><span class="p">[</span><span class="s1">'derived_stability_verdict'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">derived_stability_verdict</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">scf_references</span><span class="p">:</span>
+            <span class="n">species_dict</span><span class="p">[</span><span class="s1">'scf_references'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scf_references</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">stability_analysis_ran</span><span class="p">:</span>
+            <span class="n">species_dict</span><span class="p">[</span><span class="s1">'stability_analysis_ran'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stability_analysis_ran</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">stability_pending_opt_job</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">species_dict</span><span class="p">[</span><span class="s1">'stability_pending_opt_job'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stability_pending_opt_job</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">stability_reoptimized</span><span class="p">:</span>
+            <span class="n">species_dict</span><span class="p">[</span><span class="s1">'stability_reoptimized'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stability_reoptimized</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">opt_level</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">species_dict</span><span class="p">[</span><span class="s1">'opt_level'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">opt_level</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">directed_rotors</span><span class="p">:</span>
@@ -1041,6 +1078,15 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">include_in_thermo_lib</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'include_in_thermo_lib'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'include_in_thermo_lib'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">True</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">e0_only</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'e0_only'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'e0_only'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">False</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">number_of_radicals</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'number_of_radicals'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'number_of_radicals'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">derived_stability_verdict</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'derived_stability_verdict'</span><span class="p">]</span> \
+            <span class="k">if</span> <span class="s1">'derived_stability_verdict'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scf_references</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'scf_references'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'scf_references'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stability_analysis_ran</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'stability_analysis_ran'</span><span class="p">]</span> \
+            <span class="k">if</span> <span class="s1">'stability_analysis_ran'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stability_pending_opt_job</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'stability_pending_opt_job'</span><span class="p">]</span> \
+            <span class="k">if</span> <span class="s1">'stability_pending_opt_job'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stability_reoptimized</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'stability_reoptimized'</span><span class="p">]</span> \
+            <span class="k">if</span> <span class="s1">'stability_reoptimized'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">False</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">opt_level</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'opt_level'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'opt_level'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">number_of_rotors</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'number_of_rotors'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'number_of_rotors'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="mi">0</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">external_symmetry</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'external_symmetry'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'external_symmetry'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
