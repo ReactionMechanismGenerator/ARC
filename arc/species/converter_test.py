@@ -7,6 +7,7 @@ This module contains unit tests of the arc.species.converter module
 
 import math
 import os
+import shutil
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -19,6 +20,7 @@ from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 import arc.species.converter as converter
 from arc.common import (ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists,
                         almost_equal_lists, distance_matrix)
+import arc.constants as constants
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
 from arc.species.perceive import perceive_molecule_from_xyz
@@ -700,6 +702,139 @@ H      3.654100    0.340300    0.057100"""
                                    (3.6541, 0.3403, 0.0571))}
         xyz = converter.str_to_xyz(xyz_format)
         self.assertEqual(xyz, expected_xyz)
+
+    def test_reorder_xyz_string_atom_first(self):
+        """Test reordering atom-first XYZ strings with unit conversion"""
+        xyz_format = "C 0.0 1.0 2.0\nH -1.0 0.5 0.0"
+        converted = converter.reorder_xyz_string(xyz_str=xyz_format, reverse_atoms=True, convert_to="bohr")
+        converted_lines = converted.splitlines()
+        self.assertEqual(len(converted_lines), 2)
+
+        x1, y1, z1, s1 = converted_lines[0].split()
+        self.assertEqual(s1, "C")
+        self.assertAlmostEqual(float(x1), 0.0)
+        self.assertAlmostEqual(float(y1), 1.0 * constants.angstrom_to_bohr)
+        self.assertAlmostEqual(float(z1), 2.0 * constants.angstrom_to_bohr)
+
+        x2, y2, z2, s2 = converted_lines[1].split()
+        self.assertEqual(s2, "H")
+        self.assertAlmostEqual(float(x2), -1.0 * constants.angstrom_to_bohr)
+        self.assertAlmostEqual(float(y2), 0.5 * constants.angstrom_to_bohr)
+        self.assertAlmostEqual(float(z2), 0.0)
+
+    def test_reorder_xyz_string_coordinate_first(self):
+        """
+        Test reordering coordinate-first XYZ strings back to atom-last order with conversion.
+
+        The converted coordinate is compared numerically rather than as a byte-exact string, to the full
+        precision of ``bohr_to_angstrom``.
+        """
+        xyz_format = "0.0 0.0 0.0 N\n1.0 0.0 0.0 H"
+        converted = converter.reorder_xyz_string(
+            xyz_str=xyz_format,
+            reverse_atoms=False,
+            units="bohr",
+            convert_to="angstrom",
+        )
+        lines = converted.splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0], "0.0 0.0 0.0 N")
+        x, y, z, symbol = lines[1].split()
+        self.assertEqual(symbol, 'H')
+        self.assertAlmostEqual(float(x), constants.bohr_to_angstrom, places=8)
+        self.assertAlmostEqual(float(y), 0.0, places=8)
+        self.assertAlmostEqual(float(z), 0.0, places=8)
+
+    def test_reorder_xyz_string_all_ordering_branches(self):
+        """Test all four combinations of input order and reverse_atoms"""
+        atom_first_str = "C 1.0 2.0 3.0\nH 4.0 5.0 6.0"
+        coord_first_str = "1.0 2.0 3.0 C\n4.0 5.0 6.0 H"
+        expected_symbols = ['C', 'H']
+        expected_coords = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+
+        atom_first_kept = converter.reorder_xyz_string(xyz_str=atom_first_str, reverse_atoms=False)
+        coord_first_flipped = converter.reorder_xyz_string(xyz_str=coord_first_str, reverse_atoms=True)
+        for converted in [atom_first_kept, coord_first_flipped]:
+            lines = converted.splitlines()
+            self.assertEqual(len(lines), 2)
+            for line, symbol, coords in zip(lines, expected_symbols, expected_coords):
+                tokens = line.split()
+                self.assertEqual(len(tokens), 4)
+                self.assertEqual(tokens[0], symbol)
+                for token, coord in zip(tokens[1:], coords):
+                    self.assertAlmostEqual(float(token), coord, places=8)
+
+        atom_first_flipped = converter.reorder_xyz_string(xyz_str=atom_first_str, reverse_atoms=True)
+        coord_first_kept = converter.reorder_xyz_string(xyz_str=coord_first_str, reverse_atoms=False)
+        for converted in [atom_first_flipped, coord_first_kept]:
+            lines = converted.splitlines()
+            self.assertEqual(len(lines), 2)
+            for line, symbol, coords in zip(lines, expected_symbols, expected_coords):
+                tokens = line.split()
+                self.assertEqual(len(tokens), 4)
+                self.assertEqual(tokens[3], symbol)
+                for token, coord in zip(tokens[:3], coords):
+                    self.assertAlmostEqual(float(token), coord, places=8)
+
+    def test_reorder_xyz_string_identity_unit_conversions(self):
+        """Test that angstrom to angstrom and bohr to bohr leave the coordinates unchanged"""
+        xyz_format = "C 1.5 -2.25 3.125\nH -4.0 5.5 0.75"
+        expected_coords = [[1.5, -2.25, 3.125], [-4.0, 5.5, 0.75]]
+        for units in ['angstrom', 'bohr']:
+            converted = converter.reorder_xyz_string(xyz_str=xyz_format, units=units, convert_to=units)
+            lines = converted.splitlines()
+            self.assertEqual(len(lines), 2)
+            for line, coords in zip(lines, expected_coords):
+                tokens = line.split()
+                for token, coord in zip(tokens[1:], coords):
+                    self.assertAlmostEqual(float(token), coord, places=8)
+
+    def test_reorder_xyz_string_errors_and_contracts(self):
+        """Test the documented error cases, the blank line contract, and tuple/list inputs"""
+        with self.assertRaises(ConverterError):
+            converter.reorder_xyz_string(xyz_str="C 0.0 0.0 0.0", convert_to="furlong")
+        with self.assertRaises(ConverterError):
+            converter.reorder_xyz_string(xyz_str="C 0.0 0.0 0.0", units="furlong")
+        with self.assertRaises(ConverterError):
+            converter.reorder_xyz_string(xyz_str="C 0.0 0.0 0.0\nH 0.0 0.0")
+        with self.assertRaises(ConverterError):
+            converter.reorder_xyz_string(xyz_str="C 0.0 0.0 spam")
+        with self.assertRaises(ConverterError):
+            converter.reorder_xyz_string(xyz_str=5)
+        with self.assertRaises(ConverterError):
+            converter.reorder_xyz_string(xyz_str={'symbols': ('C',)})
+        with self.assertRaises(ConverterError):
+            converter.reorder_xyz_string(xyz_str='')
+        with self.assertRaises(ConverterError):
+            converter.reorder_xyz_string(xyz_str='\n  \n')
+
+        blank_line_input = 'C 0.0 0.0 0.0\n\nH 0.0 0.0 1.0'
+        self.assertEqual(converter.reorder_xyz_string(xyz_str=blank_line_input).splitlines(),
+                         ['C 0.0 0.0 0.0', 'H 0.0 0.0 1.0'])
+
+        joined_from_tuple = converter.reorder_xyz_string(xyz_str=('C 0.0 0.0 0.0', 'H 0.0 0.0 1.0'))
+        joined_from_list = converter.reorder_xyz_string(xyz_str=['C 0.0 0.0 0.0', 'H 0.0 0.0 1.0'])
+        self.assertEqual(joined_from_tuple, 'C 0.0 0.0 0.0\nH 0.0 0.0 1.0')
+        self.assertEqual(joined_from_list, joined_from_tuple)
+
+    def test_reorder_xyz_string_reads_from_project_directory(self):
+        """Test that a file name relative to the project directory is read, and a plain xyz string is not"""
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_reorder')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        os.makedirs(project_directory, exist_ok=True)
+        file_name = 'coords.xyz'
+        with open(os.path.join(project_directory, file_name), 'w') as f:
+            f.write('C 1.0 2.0 3.0\nH 4.0 5.0 6.0\n')
+        self.assertEqual(converter.reorder_xyz_string(xyz_str=file_name, project_directory=project_directory),
+                         'C 1.0 2.0 3.0\nH 4.0 5.0 6.0')
+        self.assertEqual(converter.reorder_xyz_string(xyz_str='O 0.0 0.0 0.0', project_directory=project_directory),
+                         'O 0.0 0.0 0.0')
+
+    def test_angstrom_bohr_conversion_constants(self):
+        """Test the angstrom/bohr conversion constants against known values, independently of the code that uses them"""
+        self.assertAlmostEqual(constants.angstrom_to_bohr, 1.8897261246, places=8)
+        self.assertAlmostEqual(constants.bohr_to_angstrom, 0.5291772109, places=8)
+        self.assertAlmostEqual(constants.angstrom_to_bohr * constants.bohr_to_angstrom, 1.0, places=12)
 
     def test_xyz_to_str(self):
         """Test converting an ARC xyz format to a string xyz format"""
