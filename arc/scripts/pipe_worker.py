@@ -274,10 +274,15 @@ def _get_family_extra_kwargs(spec: TaskSpec) -> dict:
     elif spec.task_family == 'rotor_scan_1d':
         torsions = payload.get('torsions')
         rotor_index = payload.get('rotor_index')
+        scan_res = payload.get('scan_res')
         if torsions is not None:
             kwargs['torsions'] = torsions
         if rotor_index is not None:
             kwargs['rotor_index'] = rotor_index
+        if scan_res is not None:
+            # Carry the staging-time resolution into the reconstructed job the way trsh does, so the
+            # ASE scan runs ARC's intended resolution and not the worker node's settings default.
+            kwargs['args'] = {'trsh': {'scan_res': scan_res}}
 
     return kwargs
 
