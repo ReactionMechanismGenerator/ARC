@@ -35,6 +35,15 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
     settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
     settings['output_filenames'], settings['servers'], settings['submit_filenames']
 
+MOLPRO_OPEN_SHELL_METHOD_NAMES = {'mp2': 'rmp2',
+                                  'df-mp2': 'df-rmp2',
+                                  'mp2-f12': 'rmp2-f12',
+                                  'df-mp2-f12': 'df-rmp2-f12',
+                                  'casscf': 'casscf',
+                                  }
+
+MOLPRO_SUFFIX_WITHOUT_AN_OPEN_SHELL_FORM = '-f12c'
+
 input_template = """***,${label}
 memory,Total=${memory},m;
 
@@ -52,7 +61,7 @@ int;
  wf,spin=${spin},charge=${charge};
 }
 
-${restricted}${method}
+${method}
 
 ${job_type_1}
 ${job_type_2}${block}
@@ -214,7 +223,6 @@ class MolproAdapter(JobAdapter):
                     'keywords',
                     'memory',
                     'method',
-                    'restricted',
                     ]:
             input_dict[key] = ''
         input_dict['auxiliary_basis'] = self.level.auxiliary_basis or ''
@@ -230,8 +238,10 @@ class MolproAdapter(JobAdapter):
         input_dict['xyz'] = xyz_to_str(self.xyz)
         input_dict['orbitals'] = '\ngprint,orbitals;\n'
 
-        if not is_restricted(self):
-            input_dict['restricted'] = 'u'
+        restricted = is_restricted(self)
+        multireference = 'mrci' in self.level.method or 'rs2' in self.level.method
+        if not restricted and not multireference:
+            input_dict['method'] = f'{get_open_shell_method(self.level.method)};'
 
         # Job type specific options
         if self.job_type in ['opt', 'optfreq', 'conf_opt']:
@@ -252,9 +262,8 @@ class MolproAdapter(JobAdapter):
         if 'IGNORE_ERROR in the ORBITAL directive' in self.args['trsh'].keys():
             keywords.append(' ORBITAL,IGNORE_ERROR;')
 
-        if 'mrci' in self.level.method or 'rs2' in self.level.method:
+        if multireference:
             active = self.species[0].active
-            input_dict['restricted'] = ''
             if '_' in self.level.method:
                 methods = self.level.method.split('_')
                 input_dict['method'] = ''
@@ -370,6 +379,33 @@ class MolproAdapter(JobAdapter):
         Execute a job to the server's queue.
         """
         self.legacy_queue_execution()
+
+
+def get_open_shell_method(method: str) -> str:
+    """
+    Get the Molpro command that computes ``method`` for an open-shell species on top of the
+    spin-restricted Hartree-Fock reference this adapter writes.
+
+    Args:
+        method (str): The method of the requested level of theory.
+
+    Returns:
+        str: The corresponding open-shell Molpro command.
+
+    Raises:
+        NotImplementedError: If Molpro has no open-shell implementation of ``method``.
+    """
+    method = method.lower()
+    if method.endswith(MOLPRO_SUFFIX_WITHOUT_AN_OPEN_SHELL_FORM):
+        raise NotImplementedError(f'Molpro does not implement {method} for open-shell species, its F12c '
+                                  f'(CCSD(F12*)) programs are closed-shell only. Either request {method} only '
+                                  f'for closed-shell species, or use {method[:-1]} instead.')
+    if method not in MOLPRO_OPEN_SHELL_METHOD_NAMES:
+        return f'u{method}'
+    open_shell_method = MOLPRO_OPEN_SHELL_METHOD_NAMES[method]
+    logger.warning(f'Molpro has no "u{method}" command. Writing "{open_shell_method}" instead, '
+                   f'which is the Molpro command for {method} with an open-shell reference.')
+    return open_shell_method
 
 
 register_job_adapter('molpro', MolproAdapter)
