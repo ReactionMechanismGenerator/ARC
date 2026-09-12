@@ -3479,8 +3479,18 @@ class Scheduler(object):
                 plotter.draw_structure(species=self.species_dict[label],
                                        project_directory=self.project_directory,
                                        method='draw_3d')
-            frequencies = parser.parse_frequencies(job.local_path_to_output_file, job.job_adapter)
-            freq_ok, _ = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
+            if self.species_dict[label].is_monoatomic():
+                # A single atom's 3 degrees of freedom are all translational -- it has no
+                # rotational and no vibrational modes -- so there are no frequencies in the log
+                # to parse and nothing for check_negative_freq() to judge. (The 3N-6 / 3N-5 mode
+                # counts do not apply here: they presuppose a polyatomic with rotations.)
+                # Without this guard parse_frequencies() raises ParserError, which escapes
+                # Scheduler.__init__ and takes down the entire run rather than one species.
+                # Monoatomics are already special-cased elsewhere in this file.
+                freq_ok = True
+            else:
+                frequencies = parser.parse_frequencies(job.local_path_to_output_file, job.job_adapter)
+                freq_ok, _ = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
             if freq_ok:
                 # Update restart dictionary and save a restart file:
                 self.save_restart_dict()
