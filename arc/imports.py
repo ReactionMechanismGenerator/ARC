@@ -12,7 +12,7 @@ from arc.settings.external_paths import (find_goflow_ckpt,
                                           find_rits_ckpt,
                                           queue_deferred_warning)
 from arc.settings.inputs import input_files
-from arc.settings.submit import incore_commands, pipe_submit, submit_scripts
+from arc.settings.submit import ase_submit, incore_commands, pipe_submit, submit_scripts
 
 logger = logging.getLogger('arc')
 
@@ -124,6 +124,7 @@ if os.path.isfile(local_arc_settings_path):
 local_arc_submit_path = os.path.join(local_arc_path, 'submit.py')
 if os.path.isfile(local_arc_submit_path):
     local_incore_commands, local_pipe_submit, local_submit_scripts = dict(), dict(), dict()
+    local_ase_submit = dict()
     if local_arc_path not in sys.path:
         sys.path.insert(1, local_arc_path)
     try:
@@ -135,6 +136,10 @@ if os.path.isfile(local_arc_submit_path):
     except ImportError as e:
         _report_unusable_overlay(local_arc_submit_path, 'submit', e, 'pipe_submit')
     try:
+        from submit import ase_submit as local_ase_submit
+    except ImportError as e:
+        _report_unusable_overlay(local_arc_submit_path, 'submit', e, 'ase_submit')
+    try:
         from submit import submit_scripts as local_submit_scripts
     except ImportError as e:
         _report_unusable_overlay(local_arc_submit_path, 'submit', e, 'submit_scripts')
@@ -142,6 +147,8 @@ if os.path.isfile(local_arc_submit_path):
         incore_commands.update(local_incore_commands)
     if local_pipe_submit:
         pipe_submit.update(local_pipe_submit)
+    if local_ase_submit:
+        ase_submit.update(local_ase_submit)
     if local_submit_scripts:
         submit_scripts.update(local_submit_scripts)
 
