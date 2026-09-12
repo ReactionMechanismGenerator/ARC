@@ -17,9 +17,10 @@ from arc.exceptions import ReactionError
 from arc.family.family import get_all_families, get_rmg_recommended_family_sets
 from arc.imports import settings
 from arc.main import ARC
-from arc.reaction.reaction import ARCReaction, remove_dup_species
+from arc.reaction.reaction import ARCReaction, _get_atom_balance_entry, remove_dup_species
 from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
+from arc.species.converter import xyz_to_str
 from arc.mapping.engine import check_atom_map
 
 
@@ -191,10 +192,6 @@ class TestARCReaction(unittest.TestCase):
                            'label': 'CH4 + OH <=> CH3 + H2O',
                            'multiplicity': 2,
                            'p_species': [{'bond_corrections': {'C-H': 3},
-                                          'cheap_conformer': 'C       0.00000000    0.00000001   -0.00000000\n'
-                                                             'H       1.06690511   -0.17519582    0.05416493\n'
-                                                             'H      -0.68531716   -0.83753536   -0.02808565\n'
-                                                             'H      -0.38158795    1.01273118   -0.02607927',
                                           'label': 'CH3',
                                           'long_thermo_description': "Bond corrections: {'C-H': 3}\n",
                                           'mol': {'atom_order': rxn_dict_1['p_species'][0]['mol']['atom_order'],
@@ -204,9 +201,6 @@ class TestARCReaction(unittest.TestCase):
                                           'multiplicity': 2,
                                           'number_of_rotors': 0},
                                          {'bond_corrections': {'H-O': 2},
-                                          'cheap_conformer': 'O      -0.00032832    0.39781490    0.00000000\n'
-                                                             'H      -0.76330345   -0.19953755    0.00000000\n'
-                                                             'H       0.76363177   -0.19827735    0.00000000',
                                           'label': 'H2O',
                                           'long_thermo_description': "Bond corrections: {'H-O': 2}\n",
                                           'mol': {'atom_order': rxn_dict_1['p_species'][1]['mol']['atom_order'],
@@ -217,11 +211,6 @@ class TestARCReaction(unittest.TestCase):
                                           'number_of_rotors': 0}],
                            'products': ['CH3', 'H2O'],
                            'r_species': [{'bond_corrections': {'C-H': 4},
-                                          'cheap_conformer': 'C      -0.00000000   -0.00000000    0.00000000\n'
-                                                             'H      -0.63306457   -0.78034118   -0.42801448\n'
-                                                             'H      -0.38919244    0.98049560   -0.28294367\n'
-                                                             'H       0.00329661   -0.09013273    1.08846898\n'
-                                                             'H       1.01896040   -0.11002169   -0.37751083',
                                           'label': 'CH4',
                                           'long_thermo_description': "Bond corrections: {'C-H': 4}\n",
                                           'mol': {'atom_order': rxn_dict_1['r_species'][0]['mol']['atom_order'],
@@ -231,8 +220,6 @@ class TestARCReaction(unittest.TestCase):
                                           'multiplicity': 1,
                                           'number_of_rotors': 0},
                                          {'bond_corrections': {'H-O': 1},
-                                          'cheap_conformer': 'O       0.00000000    0.00000000    0.61310000\n'
-                                                             'H       0.00000000    0.00000000   -0.61310000',
                                           'label': 'OH',
                                           'long_thermo_description': "Bond corrections: {'H-O': 1}\n",
                                           'mol': {'atom_order': rxn_dict_1['r_species'][1]['mol']['atom_order'],
@@ -251,10 +238,6 @@ class TestARCReaction(unittest.TestCase):
                            'family': 'Disproportionation',
                            'multiplicity': 1,
                            'p_species': [{'bond_corrections': {'H-N': 3},
-                                          'cheap_conformer': 'N       0.00064924   -0.00099698    0.29559292\n'
-                                                             'H      -0.41786606    0.84210396   -0.09477452\n'
-                                                             'H      -0.52039228   -0.78225292   -0.10002797\n'
-                                                             'H       0.93760911   -0.05885406   -0.10079043',
                                           'label': 'NH3',
                                           'long_thermo_description': "Bond corrections: {'H-N': 3}\n",
                                           'mol': {'atom_order': rxn_dict_6['p_species'][0]['mol']['atom_order'],
@@ -269,10 +252,6 @@ class TestARCReaction(unittest.TestCase):
 3 H u0 p0 c0 {1,S}
 4 H u0 p0 c0 {1,S}""",
                                           'bond_corrections': {'H-N': 2, 'N=N': 1},
-                                          'cheap_conformer': 'N      -0.09608641    0.00717098   -0.00429305\n'
-                                                             'N       1.31984473   -0.09850040   -0.31487335\n'
-                                                             'H      -0.59122841   -0.74658751    0.47254546\n'
-                                                             'H      -0.63252990    0.83791693   -0.25485633',
                                           'label': 'H2NN[S]',
                                           'long_thermo_description': rxn_dict_6['p_species'][1]['long_thermo_description'],
                                           'mol': {'atom_order': rxn_dict_6['p_species'][1]['mol']['atom_order'],
@@ -284,9 +263,6 @@ class TestARCReaction(unittest.TestCase):
                                           'original_label': 'H2NN(S)'}],
                            'products': ['H2NN[S]', 'NH3'],
                            'r_species': [{'bond_corrections': {'H-N': 2},
-                                          'cheap_conformer': 'N       0.00016375    0.40059499    0.00000000\n'
-                                                             'H      -0.83170922   -0.19995756    0.00000000\n'
-                                                             'H       0.83154548   -0.20063742    0.00000000',
                                           'label': 'NH2',
                                           'long_thermo_description': "Bond corrections: {'H-N': 2}\n",
                                           'mol': {'atom_order': rxn_dict_6['r_species'][0]['mol']['atom_order'],
@@ -296,11 +272,6 @@ class TestARCReaction(unittest.TestCase):
                                           'multiplicity': 2,
                                           'number_of_rotors': 0},
                                          {'bond_corrections': {'H-N': 3, 'N-N': 1},
-                                          'cheap_conformer': 'N      -0.46751749    0.03795671    0.31180026\n'
-                                                             'N       0.79325823   -0.46038094   -0.24114357\n'
-                                                             'H      -1.19307188   -0.63034971    0.05027053\n'
-                                                             'H      -0.69753009    0.90231202   -0.17907452\n'
-                                                             'H       1.56486123    0.15046192    0.05814730',
                                           'label': 'N2H3',
                                           'long_thermo_description': rxn_dict_6['r_species'][1]['long_thermo_description'],
                                           'mol': {'atom_order': rxn_dict_6['r_species'][1]['mol']['atom_order'],
@@ -729,6 +700,206 @@ class TestARCReaction(unittest.TestCase):
                                    ARCSpecies(label='OH', smiles='[OH]')],
                         p_species=[ARCSpecies(label='CH4', smiles='C'),
                                    ARCSpecies(label='H2O', smiles='O')])
+
+    def test_check_atom_balance_does_not_generate_conformers(self):
+        """Test that the Reaction check_atom_balance method does not generate a 3D conformer"""
+        def explode(*args, **kwargs):
+            raise AssertionError('check_atom_balance generated a 3D conformer')
+
+        original_get_cheap_conformer = ARCSpecies.get_cheap_conformer
+        original_generate_conformers = ARCSpecies.generate_conformers
+        ARCSpecies.get_cheap_conformer, ARCSpecies.generate_conformers = explode, explode
+        try:
+            ch4 = ARCSpecies(label='CH4', smiles='C')
+            oh = ARCSpecies(label='OH', smiles='[OH]')
+            ch3 = ARCSpecies(label='CH3', smiles='[CH3]')
+            h2o = ARCSpecies(label='H2O', smiles='O')
+            rxn = ARCReaction(r_species=[ch4, oh], p_species=[ch3, h2o])
+            self.assertTrue(rxn.check_atom_balance())
+            # None of the species were given coordinates, and none were generated either.
+            for spc in [ch4, oh, ch3, h2o]:
+                self.assertIsNone(spc.cheap_conformer)
+                self.assertIsNone(spc.get_xyz(generate=False))
+            # An imbalance is still detected without any coordinates.
+            with self.assertRaises(ReactionError):
+                ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                            p_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='H2O', smiles='O')])
+        finally:
+            ARCSpecies.get_cheap_conformer = original_get_cheap_conformer
+            ARCSpecies.generate_conformers = original_generate_conformers
+
+    def test_check_atom_balance_when_conformer_generation_fails(self):
+        """Test that an imbalance is caught even for a species no conformer can be generated for.
+
+        A species whose graph is valid but which the force field cannot embed, e.g. a strained cage,
+        leaves get_xyz(generate=True) returning None. The check used to empty the well and pass such
+        a reaction silently; it now reads the element symbols off the 2D graph, which is what they
+        were going to be counted from anyway, and catches the imbalance.
+        """
+        def fail_to_generate(*args, **kwargs):
+            return None
+
+        original_get_cheap_conformer = ARCSpecies.get_cheap_conformer
+        original_generate_conformers = ARCSpecies.generate_conformers
+        ARCSpecies.get_cheap_conformer, ARCSpecies.generate_conformers = fail_to_generate, fail_to_generate
+        try:
+            unembeddable = ARCSpecies(label='CH4', smiles='C')
+            self.assertIsNone(unembeddable.get_xyz(generate=True))
+            with self.assertRaises(ReactionError):
+                ARCReaction(r_species=[unembeddable, ARCSpecies(label='OH', smiles='[OH]')],
+                            p_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='H2O', smiles='O')])
+            # A balanced reaction built from the same unembeddable species is still accepted.
+            rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                              p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+            self.assertTrue(rxn.check_atom_balance())
+        finally:
+            ARCSpecies.get_cheap_conformer = original_get_cheap_conformer
+            ARCSpecies.generate_conformers = original_generate_conformers
+
+    def test_check_atom_balance_species_shapes(self):
+        """Test the Reaction check_atom_balance method for all species shapes that reach it"""
+        h2o_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                   'coords': ((0.0, 0.0, 0.1), (0.0, 0.8, -0.5), (0.0, -0.8, -0.5))}
+        ch4_adjlist = """1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}
+2 H u0 p0 c0 {1,S}
+3 H u0 p0 c0 {1,S}
+4 H u0 p0 c0 {1,S}
+5 H u0 p0 c0 {1,S}"""
+
+        # 1. Species with a 2D graph and no coordinates (the common case, e.g., from SMILES).
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+        self.assertTrue(rxn.check_atom_balance())
+
+        # 2. Species defined by an adjacency list.
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', adjlist=ch4_adjlist),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+        self.assertTrue(rxn.check_atom_balance())
+
+        # 3. A species defined only by coordinates, with no 2D graph at all.
+        h2o_no_mol = ARCSpecies(label='H2O', xyz=h2o_xyz)
+        h2o_no_mol.mol, h2o_no_mol.mol_list = None, None
+        self.assertIsNone(h2o_no_mol.mol)
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), h2o_no_mol])
+        self.assertTrue(rxn.check_atom_balance())
+        h2o_no_mol_2 = ARCSpecies(label='H2O', xyz=h2o_xyz)
+        h2o_no_mol_2.mol, h2o_no_mol_2.mol_list = None, None
+        with self.assertRaises(ReactionError):
+            ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                        p_species=[ARCSpecies(label='CH4', smiles='C'), h2o_no_mol_2])
+
+        # 4. A species with neither coordinates nor a 2D graph: the check is skipped, as before.
+        empty = ARCSpecies(label='H2O', xyz=h2o_xyz)
+        empty.mol, empty.mol_list, empty.final_xyz, empty.initial_xyz, empty.conformers = None, None, None, None, list()
+        empty.most_stable_conformer, empty.cheap_conformer = None, None
+        self.assertEqual(empty.get_xyz(generate=False), None)
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH4', smiles='C'), empty])
+        self.assertTrue(rxn.check_atom_balance())
+
+        # 5. A species with resonance structures: element counts are invariant under resonance.
+        c4h7 = ARCSpecies(label='C4H7', smiles='[CH2]C=CC')
+        self.assertGreater(len(c4h7.mol_list), 1)
+        for mol in c4h7.mol_list:
+            self.assertEqual(len(mol.atoms), len(c4h7.mol.atoms))
+        rxn = ARCReaction(r_species=[c4h7, ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='C4H6', smiles='C=CC=C'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        self.assertTrue(rxn.check_atom_balance())
+
+        # 6. A TS species, both with and without coordinates.
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+        ts_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H', 'O', 'H'), 'isotopes': (12, 1, 1, 1, 1, 16, 1),
+                  'coords': ((0.0, 0.0, 0.0), (1.09, 0.0, 0.0), (-0.36, 1.03, 0.0), (-0.36, -0.51, 0.89),
+                             (-0.36, -0.51, -0.89), (0.0, 0.0, 2.5), (0.0, 0.0, 3.5))}
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=ts_xyz)
+        self.assertTrue(rxn.check_atom_balance())
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        self.assertTrue(rxn.check_atom_balance())
+
+        # 7. A TS species in a well: it reports no coordinates, and its graph is not used as a
+        #    fallback, so the well is empty and the check is skipped even though the graph would
+        #    have made the reaction unbalanced. This mirrors ARCSpecies.get_xyz(generate=True).
+        ts_in_well = ARCSpecies(label='ts_in_well', is_ts=True, smiles='CC')
+        self.assertIsNone(ts_in_well.get_xyz(generate=False))
+        rxn = ARCReaction(r_species=[ts_in_well, ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='H2O', smiles='O')])
+        self.assertTrue(rxn.check_atom_balance())
+
+        # 8. Species carrying coordinates use them, not the graph.
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz),
+                                     ARCSpecies(label='OH', smiles='[OH]', xyz=self.oh_xyz)],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=self.ch3_xyz),
+                                     ARCSpecies(label='H2O', xyz=h2o_xyz)])
+        self.assertTrue(rxn.check_atom_balance())
+
+    def test_get_atom_balance_entry(self):
+        """Test the _get_atom_balance_entry() function"""
+        # From a 2D graph, without generating a conformer.
+        ch4 = ARCSpecies(label='CH4', smiles='C')
+        entry = _get_atom_balance_entry(species=ch4)
+        self.assertEqual(sorted(line.split()[0] for line in entry.splitlines()), ['C', 'H', 'H', 'H', 'H'])
+        self.assertIsNone(ch4.cheap_conformer)
+
+        # From available coordinates.
+        ch4_with_xyz = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        self.assertEqual(_get_atom_balance_entry(species=ch4_with_xyz),
+                         xyz_to_str(ch4_with_xyz.get_xyz(generate=False)))
+
+        # From ``mol_list`` when ``mol`` was cleared, mirroring the
+        # ``self.mol is not None or self.mol_list is not None`` guard of ARCSpecies.get_xyz().
+        mol_list_only = ARCSpecies(label='CH4', smiles='C')
+        mol_list_only.mol = None
+        self.assertIsNotNone(mol_list_only.mol_list)
+        self.assertEqual(sorted(line.split()[0] for line in
+                                _get_atom_balance_entry(species=mol_list_only).splitlines()),
+                         ['C', 'H', 'H', 'H', 'H'])
+        # The same state on a monoatomic, which reaches check_atom_balance() through a whole
+        # reaction. A monoatomic is served from its coordinates rather than from its graph, since
+        # ARCSpecies populates final_xyz for one on construction, so only the element is asserted.
+        h_mol_list_only = ARCSpecies(label='H', smiles='[H]')
+        h_mol_list_only.mol = None
+        self.assertEqual([line.split()[0] for line in
+                          _get_atom_balance_entry(species=h_mol_list_only).splitlines()], ['H'])
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), h_mol_list_only],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2', smiles='[H][H]')])
+        self.assertTrue(rxn.check_atom_balance())
+
+        # Neither coordinates nor a graph.
+        empty = ARCSpecies(label='CH4', smiles='C')
+        empty.mol, empty.mol_list = None, None
+        self.assertEqual(_get_atom_balance_entry(species=empty), '')
+
+        # A TS without coordinates never falls back to its graph.
+        ts = ARCSpecies(label='ts_no_xyz', is_ts=True, smiles='C')
+        self.assertEqual(_get_atom_balance_entry(species=ts), '')
+
+    def test_check_atom_balance_does_not_seed_coordinates(self):
+        """Test that constructing a reaction leaves its graph-only species without coordinates.
+
+        check_atom_balance() used to call get_xyz(generate=True) on every species, so every
+        reaction species silently acquired a force field geometry on construction. The scheduler
+        reads exactly that state through get_xyz(generate=False) when deciding whether to run
+        conformer jobs or to go straight to freq/sp, so the absence of the side effect is a
+        contract rather than an implementation detail.
+        """
+        r_species = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')]
+        p_species = [ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        self.assertTrue(rxn.check_atom_balance())
+        for species in r_species + p_species:
+            self.assertIsNone(species.get_xyz(generate=False), msg=f'{species.label} got coordinates')
+            self.assertIsNone(species.cheap_conformer, msg=f'{species.label} got a cheap conformer')
+            self.assertEqual(species.conformers, list(), msg=f'{species.label} got conformers')
+
+        # A monoatomic is the documented exception: ARCSpecies populates its final_xyz on
+        # construction, before any reaction exists, since an atom has nothing to optimize.
+        h = ARCSpecies(label='H', smiles='[H]')
+        self.assertIsNotNone(h.get_xyz(generate=False))
 
     def test_get_species_count(self):
         """Test the get_species_count() method"""
