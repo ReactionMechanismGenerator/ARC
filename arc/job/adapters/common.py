@@ -29,6 +29,13 @@ default_job_settings, global_ess_settings, rotor_scan_resolution = \
 
 REFERENCE_AGNOSTIC_METHOD_TYPES = ['force_field', 'composite', 'semiempirical']
 
+# Reference-agnostic method types that accept no r/u prefix at all. A composite method is
+# reference-agnostic too, yet it does accept an explicit prefix (uCBS-QB3, uG4), which a bi-rad
+# singlet needs; a force field has no electronic wavefunction and a semiempirical method is
+# emitted bare, so prefixing either composes input no ESS accepts (e.g. 'uuff', 'uamber').
+# Note ARC types 'amber' as semiempirical rather than force_field, so both types are listed.
+PREFIX_FREE_METHOD_TYPES = ['force_field', 'semiempirical']
+
 BROKEN_SYMMETRY_METHOD_TYPES = ['dft']
 BROKEN_SYMMETRY_METHODS = ['hf', 'hf3c', 'rhf', 'uhf', 'rohf']
 DOUBLE_HYBRID_METHODS = ['b2plyp', 'b2plypd', 'b2plypd3', 'b2plypd3bj', 'b2gpplyp', 'b2kplyp', 'b2tplyp',
@@ -660,21 +667,35 @@ def is_species_restricted(obj: JobAdapter,
         bool: Whether to run as restricted (``True``) or not (``False``).
     """
 
-    if obj.level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
-        return True
-
     multiplicity = obj.multiplicity if species is None else species.multiplicity
     species_obj = obj.species[0] if species is None else species
     number_of_radicals = species_obj.number_of_radicals
     species_label = species_obj.label
-    if multiplicity > 1 or (number_of_radicals is not None and number_of_radicals > 1):
-        # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one,
-        # or if it is one but the number of radicals is greater than one (e.g., bi-rad singlet)
-        # don't run unrestricted for composite methods such as CBS-QB3, it'll be done automatically if the
-        # multiplicity is greater than one, but do specify uCBS-QB3 for example for bi-rad singlets.
-        if number_of_radicals is not None and number_of_radicals > 1:
-            logger.info(f'Using an unrestricted method for species {species_label} which has '
-                        f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
+
+    if number_of_radicals is not None and number_of_radicals > 1 \
+            and obj.level.method_type not in PREFIX_FREE_METHOD_TYPES \
+            and (multiplicity == 1 or obj.level.method_type not in REFERENCE_AGNOSTIC_METHOD_TYPES):
+        # A declared number_of_radicals > 1 with multiplicity 1 (e.g., a bi-rad singlet) always
+        # needs an unrestricted reference, *even for a reference-agnostic method type* such as a
+        # composite method (e.g., CBS-QB3, G4): for those, an unrestricted reference is applied
+        # automatically when the multiplicity is greater than one, but a bi-rad singlet's
+        # multiplicity of one gives the method no such signal, so ARC must still specify it
+        # explicitly (e.g., uCBS-QB3, uG4). This check must therefore run before the
+        # REFERENCE_AGNOSTIC_METHOD_TYPES early return below, not after it. Above singlet
+        # multiplicity a reference-agnostic method does have that signal, so it keeps the bare
+        # method ARC wrote for it before this check existed; a reference-bearing method type still
+        # takes this branch there, which only preserves the log message, since the multiplicity
+        # check below answers identically. The types in PREFIX_FREE_METHOD_TYPES are excluded
+        # throughout because they accept no prefix to specify.
+        logger.info(f'Using an unrestricted method for species {species_label} which has '
+                    f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
+        return False
+
+    if obj.level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
+        return True
+
+    if multiplicity > 1:
+        # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one
         return False
     if adopted_reference_is_unrestricted(species_obj):
         if not level_admits_a_broken_symmetry_reference(obj.level):
