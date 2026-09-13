@@ -170,8 +170,16 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
     Returns:
         list: The sorted 0-indexed atoms of the rotating group.
     """
+    # skin=0.0 is load-bearing, not tidying. ASE's default skin is 0.3 Angstrom PER ATOM, a
+    # rebuild buffer that is nonetheless added to the neighbour test, so a pair counts as bonded
+    # at d < mult * sum_r + 0.6 rather than the d < mult * sum_r this function reasons in and the
+    # pivot check below applies literally. On 1,1-dimethylhydrazine that 0.6 was the difference
+    # between a correct graph and one where every 1-3 pair around the central N (C-C at 2.38 A,
+    # C-N at 2.33 A) became a bond: the three heavy neighbours fused into a spurious ring and
+    # every rotor in the molecule was rejected as "part of a ring". Real bonds here sit at
+    # d/sum_r <= 1.03 against a 1.2 threshold, so the tolerance was never the tight part.
     nl = build_neighbor_list(atoms, natural_cutoffs(atoms, mult=mult),
-                             self_interaction=False, bothways=True)
+                             self_interaction=False, bothways=True, skin=0.0)
     adj = {i: set(nl.get_neighbors(i)[0]) for i in range(len(atoms))}
     if pivot_2 not in adj[pivot_1]:
         numbers = atoms.get_atomic_numbers()
