@@ -263,7 +263,40 @@ class ASEAdapter(JobAdapter):
             self.set_scan_torsions()
             input_dict['torsions'] = self.torsions
             input_dict['scan_res'] = self.scan_res
+            # The script runs without ARC or RMG-Py and otherwise rebuilds connectivity from the
+            # geometry alone, which cannot distinguish a bond stretched past the cutoff from two
+            # atoms that merely sit close together. Hand it the real graph whenever there is one.
+            bonds = self.determine_bonds()
+            if bonds is not None:
+                input_dict['bonds'] = bonds
         save_yaml_file(os.path.join(self.local_path, 'input.yml'), input_dict)
+
+    def determine_bonds(self) -> list | None:
+        """
+        The scanned species' bond graph, as the 0-indexed atom pairs ``ase_script.py`` expects.
+
+        Returns:
+            list | None: Sorted ``[i, j]`` pairs, or ``None`` when no usable graph exists - no
+                         species, no perceived ``mol``, or a ``mol`` whose atom count disagrees
+                         with the geometry (in which case its indices would not refer to the same
+                         atoms, and a wrong graph is worse than none).
+        """
+        if not self.species or self.species[0].mol is None or self.species[0].mol.atoms is None:
+            return None
+        mol = self.species[0].mol
+        n_atoms = len(self.xyz['symbols']) if self.xyz and self.xyz.get('symbols') else None
+        if n_atoms is not None and len(mol.atoms) != n_atoms:
+            logger.warning(f'The bond graph of {self.species[0].label} has {len(mol.atoms)} atoms '
+                           f'but its geometry has {n_atoms}; letting the ASE script infer '
+                           f'connectivity from the geometry instead.')
+            return None
+        indices = {id(atom): index for index, atom in enumerate(mol.atoms)}
+        bonds = set()
+        for atom in mol.atoms:
+            for other in atom.bonds.keys():
+                i, j = indices[id(atom)], indices[id(other)]
+                bonds.add((min(i, j), max(i, j)))
+        return [list(bond) for bond in sorted(bonds)]
 
     def warn_if_unreliable_uma_sp(self) -> bool:
         """
