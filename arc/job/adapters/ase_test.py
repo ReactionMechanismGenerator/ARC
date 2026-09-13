@@ -269,6 +269,34 @@ class TestASEAdapter(unittest.TestCase):
         with self.assertRaises(ValueError):
             rotor_top(ts_like, 0, 1, pivot_mult=1.0)
 
+    def test_rotor_top_does_not_invent_a_ring_from_1_3_neighbours(self):
+        """A branched centre must not fuse its own substituents into a ring.
+
+        1,1-dimethylhydrazine at its UMA geometry: three heavy atoms hang off the central N, and
+        their mutual 1-3 distances are 2.33-2.38 A against covalent-radii sums of 1.47-1.52. ASE's
+        default 0.3 A per-atom `skin` adds 0.6 A to the pair cutoff on top of `mult`, which was
+        just enough to call every one of those pairs a bond -- fusing C-N-C into a triangle and
+        rejecting EVERY rotor in the molecule as "part of a ring". Ethane above cannot catch this;
+        it has no branched centre and so no 1-3 heavy-atom pair at all.
+        """
+        dimethylhydrazine = Atoms(symbols=('C', 'N', 'C', 'N', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                  positions=((-1.118847, -0.669646, -0.028393),
+                                             (-0.009246, 0.167280, -0.447017),
+                                             (1.247329, -0.422511, -0.022045),
+                                             (-0.142324, 1.426467, 0.275443),
+                                             (-1.185280, -0.789891, 1.055869),
+                                             (-2.055637, -0.216790, -0.352617),
+                                             (-1.038689, -1.652379, -0.494636),
+                                             (1.377564, -1.399658, -0.494636),
+                                             (2.086537, 0.213596, -0.334188),
+                                             (1.293624, -0.549481, 1.069229),
+                                             (0.602477, 2.019935, -0.081734),
+                                             (-0.994088, 1.851965, -0.082191)))
+        # the C-N pivot: the rotating top is that methyl, and nothing else
+        self.assertEqual(rotor_top(dimethylhydrazine, 1, 0), [0, 4, 5, 6])
+        # and the N-N pivot, the one the whole probe exists to scan
+        self.assertEqual(rotor_top(dimethylhydrazine, 1, 3), [3, 10, 11])
+
     def test_relaxed_torsion_scan(self):
         """Test a full 1D relaxed torsional scan on the machinery (EMT keeps it hermetic)"""
         atoms = Atoms(symbols=ETHANE_XYZ['symbols'], positions=ETHANE_XYZ['coords'])
