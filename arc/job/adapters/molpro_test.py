@@ -7,6 +7,7 @@ This module contains unit tests of the arc.job.adapters.molpro module
 
 import os
 import shutil
+import tempfile
 import unittest
 
 from arc.common import ARC_TESTING_PATH
@@ -471,6 +472,137 @@ int;
         for attr in vars(cls).values():
             if isinstance(attr, MolproAdapter):
                 shutil.rmtree(attr.project_directory, ignore_errors=True)
+
+
+class TestMolproAdapterOpenShellMethodNames(unittest.TestCase):
+    """
+    Contains unit tests for the Molpro command name written for open-shell species.
+    """
+
+    OPEN_SHELL_XYZ = ['O       0.00000000    0.00000000    1.00000000']
+    CLOSED_SHELL_XYZ = ["""O       0.00000000    0.00000000    0.11779000
+H       0.00000000    0.75545000   -0.47116000
+H       0.00000000   -0.75545000   -0.47116000"""]
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.project_directory = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
+
+    def render(self, method, basis='cc-pVTZ-f12', multiplicity=3):
+        """
+        Instantiate a Molpro job for a species of the given multiplicity and return its input file content.
+
+        Args:
+            method (str): The method of the level of theory.
+            basis (str, optional): The basis set of the level of theory.
+            multiplicity (int, optional): The spin multiplicity of the species.
+
+        Returns:
+            str: The content of the rendered Molpro input file.
+        """
+        job = MolproAdapter(execution_type='queue',
+                            job_type='sp',
+                            level=Level(method=method, basis=basis),
+                            project='test',
+                            project_directory=self.project_directory,
+                            species=[ARCSpecies(label='spc',
+                                                xyz=self.OPEN_SHELL_XYZ if multiplicity > 1 else self.CLOSED_SHELL_XYZ,
+                                                multiplicity=multiplicity)],
+                            testing=True,
+                            )
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return f.read()
+
+    def test_open_shell_coupled_cluster_methods_get_the_u_prefix(self):
+        """Test that open-shell coupled cluster methods are written with Molpro's u prefix"""
+        for method, command in [('CCSD(T)-F12', 'uccsd(t)-f12'),
+                                ('CCSD-F12', 'uccsd-f12'),
+                                ('DCSD-F12', 'udcsd-f12'),
+                                ('CCSD(T)', 'uccsd(t)'),
+                                ]:
+            content = self.render(method=method)
+            self.assertIn(f'\n{command};\n', content)
+
+    def test_open_shell_mp2_is_written_as_rmp2(self):
+        """Test that open-shell MP2 is written as Molpro's RMP2 command, which uses the RHF reference"""
+        with self.assertLogs('arc', level='WARNING') as cm:
+            content = self.render(method='MP2', basis='cc-pVTZ')
+        self.assertIn('\nrmp2;\n', content)
+        self.assertNotIn('ump2', content)
+        substitutions = [record for record in cm.output if 'Molpro has no' in record]
+        self.assertEqual(len(substitutions), 1)
+        self.assertIn('ump2', substitutions[0])
+        self.assertIn('rmp2', substitutions[0])
+
+    def test_open_shell_mp2_f12_is_written_as_rmp2_f12(self):
+        """Test that open-shell MP2-F12 is written as Molpro's RMP2-F12 command"""
+        with self.assertLogs('arc', level='WARNING') as cm:
+            content = self.render(method='MP2-F12')
+        self.assertIn('\nrmp2-f12;\n', content)
+        self.assertNotIn('ump2-f12', content)
+        substitutions = [record for record in cm.output if 'Molpro has no' in record]
+        self.assertEqual(len(substitutions), 1)
+        self.assertIn('ump2-f12', substitutions[0])
+        self.assertIn('rmp2-f12', substitutions[0])
+
+    def test_open_shell_df_mp2_f12_is_written_as_df_rmp2_f12(self):
+        """Test that open-shell DF-MP2-F12 is written as Molpro's DF-RMP2-F12 command"""
+        with self.assertLogs('arc', level='WARNING') as cm:
+            content = self.render(method='DF-MP2-F12')
+        self.assertIn('\ndf-rmp2-f12;\n', content)
+        self.assertNotIn('udf-mp2-f12', content)
+        substitutions = [record for record in cm.output if 'Molpro has no' in record]
+        self.assertEqual(len(substitutions), 1)
+        self.assertIn('udf-mp2-f12', substitutions[0])
+        self.assertIn('df-rmp2-f12', substitutions[0])
+
+    def test_open_shell_casscf_is_written_without_a_prefix(self):
+        """Test that open-shell CASSCF is written as Molpro's CASSCF command"""
+        with self.assertLogs('arc', level='WARNING') as cm:
+            content = self.render(method='CASSCF', basis='aug-cc-pVTZ')
+        self.assertIn('\ncasscf;\n', content)
+        self.assertNotIn('ucasscf', content)
+        substitutions = [record for record in cm.output if 'Molpro has no' in record]
+        self.assertEqual(len(substitutions), 1)
+        self.assertIn('ucasscf', substitutions[0])
+
+    def test_open_shell_f12c_methods_are_refused(self):
+        """Test that methods Molpro has no open-shell implementation of raise NotImplementedError"""
+        for method in ['CCSD(T)-F12c', 'CCSD-F12c', 'DF-CCSD(T)-F12c', 'MP2-F12c']:
+            with self.assertRaises(NotImplementedError):
+                self.render(method=method)
+
+    def test_unrecognized_open_shell_methods_keep_the_u_prefix(self):
+        """Test that a method with no entry in the open-shell table keeps the u prefix"""
+        content = self.render(method='DCSD', basis='cc-pVTZ')
+        self.assertIn('\nudcsd;\n', content)
+
+    def test_closed_shell_methods_are_not_modified(self):
+        """Test that the method of a closed-shell species is written as requested"""
+        for method in ['CCSD(T)-F12', 'MP2', 'MP2-F12', 'DF-MP2-F12', 'CASSCF', 'CCSD(T)-F12c', 'CCSD-F12c', 'DCSD']:
+            content = self.render(method=method, multiplicity=1)
+            self.assertIn(f'\n{method.lower()};\n', content)
+
+    def test_multireference_methods_are_not_prefixed(self):
+        """Test that the multireference branch is unaffected by the open-shell method decision"""
+        content = self.render(method='MRCI-F12', basis='aug-cc-pVTZ-F12')
+        self.assertIn('{mrci-f12;\n', content)
+        self.assertNotIn('umrci', content)
+
+        content = self.render(method='MP2_CASSCF_RS2C', basis='aug-cc-pVTZ')
+        self.assertIn('{mp2;\n', content)
+        self.assertIn('{rs2c;\n', content)
+        self.assertNotIn('ump2', content)
+
+    def test_multireference_methods_do_not_reach_the_open_shell_table(self):
+        """Test that a multireference method is neither substituted nor refused by the open-shell table"""
+        content = self.render(method='MRCI-F12c', basis='aug-cc-pVTZ-F12')
+        self.assertIn('{mrci-f12;\n', content)
 
 
 if __name__ == '__main__':
