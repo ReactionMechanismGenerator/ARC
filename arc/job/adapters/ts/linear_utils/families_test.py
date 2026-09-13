@@ -6,6 +6,7 @@ Unit tests for arc.job.adapters.ts.linear_utils.families
 """
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -28,6 +29,7 @@ from arc.job.adapters.ts.linear_utils.families import (
 )
 from arc.job.adapters.ts.linear_utils.geom_utils import bfs_fragment
 from arc.species.species import colliding_atoms
+from arc.species.vectors import calculate_angle
 
 
 class TestGeometryHelpers(unittest.TestCase):
@@ -608,41 +610,147 @@ H       4.03739144    3.33548500   -1.50498669
 H       3.50375149    4.67779028   -2.52219673
 H       3.11088096    4.66875130   -0.79438064""")
         cls.r = ARCSpecies(label='R', smiles='CC(=O)OCC(C)C', xyz=cls.r_xyz)
+        cls.bb = [(3, 4), (5, 13)]
+        cls.fb = [(2, 13)]
+        cls.pentene_xyz = str_to_xyz("""C       2.59641195    0.02702193    0.35517849
+C       1.55649266   -0.45011185   -0.34019100
+C       0.28007233    0.30645401   -0.57170725
+C       0.04468782    0.55537225   -2.06168554
+C      -1.25397601    1.30979243   -2.30079594
+H       3.49268046   -0.56997648    0.49329893
+H       2.58045167    1.01722396    0.79978111
+H       1.61937159   -1.45105923   -0.76272287
+H       0.29443842    1.26323448   -0.03540148
+H      -0.54969821   -0.27814213   -0.15664760
+H       0.87715349    1.13263575   -2.48220230
+H       0.00910731   -0.39828344   -2.60239249
+H      -1.23835041    2.28510111   -1.80393815
+H      -2.11144789    0.74437291   -1.92214689
+H      -1.40347894    1.47681937   -3.37209501""")
+        cls.pentene = ARCSpecies(label='pentene', smiles='C=CCCC', xyz=cls.pentene_xyz)
 
     def test_returns_xyz_dict(self):
         """The builder returns a valid XYZ dict for the retroene 6-membered ring motif."""
         ts = build_retroene_ts(self.r_xyz, self.r.mol,
-                               breaking_bonds=[(3, 4), (5, 13)], forming_bonds=[(3, 13)])
+                               breaking_bonds=self.bb, forming_bonds=self.fb)
         self.assertIsNotNone(ts)
         self.assertEqual(ts['symbols'], self.r_xyz['symbols'])
         self.assertEqual(len(ts['coords']), len(self.r_xyz['coords']))
         self.assertFalse(colliding_atoms(ts), 'TS has colliding atoms')
 
     def test_ring_distances(self):
-        """The 6-membered ring TS has stretched breaking bonds and a migrating H."""
+        """The migrating H bridges the donor C5 and the recipe acceptor O2, not the ester O3."""
         ts = build_retroene_ts(self.r_xyz, self.r.mol,
-                               breaking_bonds=[(3, 4), (5, 13)], forming_bonds=[(3, 13)])
+                               breaking_bonds=self.bb, forming_bonds=self.fb)
         self.assertIsNotNone(ts)
         coords = np.array(ts['coords'], dtype=float)
-        # O3-C4 sigma is stretched (breaking): target ~2.5 Å.
+        d_ch = get_single_bond_length('C', 'H') + PAULING_DELTA
+        d_oh = get_single_bond_length('O', 'H') + PAULING_DELTA
+
         d_o3c4 = float(np.linalg.norm(coords[3] - coords[4]))
-        self.assertGreater(d_o3c4, 1.8,
-                           msg=f'O3-C4 sigma not stretched: {d_o3c4:.3f}')
-        # Migrating H13 sits between donor C5 and ester O3 at Pauling-like distances.
+        self.assertGreater(d_o3c4, 1.9, msg=f'O3-C4 sigma not stretched: {d_o3c4:.3f}')
+        d_c4c5 = float(np.linalg.norm(coords[4] - coords[5]))
+        self.assertAlmostEqual(d_c4c5, 1.40, delta=0.05,
+                               msg=f'C4-C5 pi bond not contracted to 1.40: {d_c4c5:.3f}')
+
         d_c5h13 = float(np.linalg.norm(coords[5] - coords[13]))
+        self.assertAlmostEqual(d_c5h13, d_ch, delta=0.05,
+                               msg=f'breaking C5-H13 is {d_c5h13:.3f}, expected {d_ch:.3f}')
+        d_o2h13 = float(np.linalg.norm(coords[2] - coords[13]))
+        self.assertAlmostEqual(d_o2h13, d_oh, delta=0.05,
+                               msg=f'forming O2-H13 is {d_o2h13:.3f}, expected {d_oh:.3f}')
+
         d_o3h13 = float(np.linalg.norm(coords[3] - coords[13]))
-        self.assertLess(d_c5h13, 1.8,
-                        msg=f'migrating C5-H13 too long: {d_c5h13:.3f}')
-        self.assertLess(d_o3h13, 2.5,
-                        msg=f'forming O3-H13 too long: {d_o3h13:.3f}')
+        self.assertGreater(d_o3h13, 2.0,
+                           msg=f'H13 was bonded to the ester O3 instead of the carbonyl O2: {d_o3h13:.3f}')
+        d_o2c4 = float(np.linalg.norm(coords[2] - coords[4]))
+        self.assertGreater(d_o2c4, 2.4,
+                           msg=f'a spurious O2-C4 contact was fabricated: {d_o2c4:.3f}')
+
+    def test_bridge_angle(self):
+        """The C5-H13...O2 bridge is bent to the relaxed 6-ring interior angle."""
+        ts = build_retroene_ts(self.r_xyz, self.r.mol,
+                               breaking_bonds=self.bb, forming_bonds=self.fb)
+        self.assertIsNotNone(ts)
+        angle = calculate_angle(coords=ts, atoms=[5, 13, 2])
+        self.assertAlmostEqual(angle, 126.0, delta=5.0,
+                               msg=f'C5-H13...O2 bridge angle is {angle:.1f}, expected ~126')
+
+    def test_migrating_h_closes_the_ring(self):
+        """The migrating H sits opposite the rest of the ring, in the ring plane."""
+        ts = build_retroene_ts(self.r_xyz, self.r.mol,
+                               breaking_bonds=self.bb, forming_bonds=self.fb)
+        self.assertIsNotNone(ts)
+        coords = np.array(ts['coords'], dtype=float)
+        ring = [2, 1, 3, 4, 5, 13]
+        axis = coords[2] - coords[5]
+        axis /= np.linalg.norm(axis)
+        mid = 0.5 * (coords[2] + coords[5])
+
+        def perpendicular(point):
+            v = point - mid
+            return v - axis * np.dot(v, axis)
+
+        h_perp = perpendicular(coords[13])
+        path_perp = perpendicular(coords[[1, 3, 4]].mean(axis=0))
+        cos_sep = np.dot(h_perp, path_perp) / (np.linalg.norm(h_perp) * np.linalg.norm(path_perp))
+        separation = float(np.degrees(np.arccos(np.clip(cos_sep, -1.0, 1.0))))
+        self.assertGreater(separation, 150.0,
+                           msg=f'H13 is {separation:.1f} deg from opposite the ring path, not closing the ring')
+
+        centered = coords[ring] - coords[ring].mean(axis=0)
+        normal = np.linalg.svd(centered)[2][-1]
+        h_out_of_plane = abs(float(np.dot(centered[5], normal)))
+        self.assertLess(h_out_of_plane, 0.15,
+                        msg=f'H13 sits {h_out_of_plane:.3f} A out of the ring plane')
+
+    def test_returns_none_when_the_ring_does_not_close(self):
+        """The builder returns None rather than emitting a guess whose forming bond never formed."""
+        with patch('arc.job.adapters.ts.linear_utils.families.ring_closure_xyz', return_value=None):
+            ts = build_retroene_ts(self.r_xyz, self.r.mol,
+                                   breaking_bonds=self.bb, forming_bonds=self.fb)
+        self.assertIsNone(ts)
+
+    def test_returns_none_when_acceptor_is_not_two_bonds_from_sigma_partner(self):
+        """The builder returns None when the acceptor cannot close the *1-*2-*3 ring path."""
+        ts = build_retroene_ts(self.r_xyz, self.r.mol,
+                               breaking_bonds=self.bb, forming_bonds=[(6, 13)])
+        self.assertIsNone(ts)
+
+    def test_non_ester_retroene(self):
+        """The builder handles an all-carbon retro-ene, where the acceptor *1 is a carbon."""
+        ts = build_retroene_ts(self.pentene_xyz, self.pentene.mol,
+                               breaking_bonds=[(4, 12), (2, 3)], forming_bonds=[(0, 12)])
+        self.assertIsNotNone(ts)
+        self.assertFalse(colliding_atoms(ts), 'TS has colliding atoms')
+        coords = np.array(ts['coords'], dtype=float)
+        d_ch = get_single_bond_length('C', 'H') + PAULING_DELTA
+
+        d_forming = float(np.linalg.norm(coords[0] - coords[12]))
+        self.assertAlmostEqual(d_forming, d_ch, delta=0.05,
+                               msg=f'forming C0-H12 is {d_forming:.3f}, expected the C-H value {d_ch:.3f}')
+        d_breaking = float(np.linalg.norm(coords[4] - coords[12]))
+        self.assertAlmostEqual(d_breaking, d_ch, delta=0.05,
+                               msg=f'breaking C4-H12 is {d_breaking:.3f}, expected {d_ch:.3f}')
+        d_sigma = float(np.linalg.norm(coords[2] - coords[3]))
+        self.assertGreater(d_sigma, 1.9, msg=f'C2-C3 sigma not stretched: {d_sigma:.3f}')
+        angle = calculate_angle(coords=ts, atoms=[4, 12, 0])
+        self.assertAlmostEqual(angle, 126.0, delta=5.0,
+                               msg=f'C4-H12...C0 bridge angle is {angle:.1f}, expected ~126')
 
     def test_returns_none_when_bond_counts_wrong(self):
         """The builder returns None when bb has != 2 entries or fb has != 1."""
         ts = build_retroene_ts(self.r_xyz, self.r.mol,
-                               breaking_bonds=[(3, 4)], forming_bonds=[(3, 13)])
+                               breaking_bonds=[(3, 4)], forming_bonds=self.fb)
         self.assertIsNone(ts)
         ts = build_retroene_ts(self.r_xyz, self.r.mol,
-                               breaking_bonds=[(3, 4), (5, 13)], forming_bonds=[(3, 13), (2, 4)])
+                               breaking_bonds=self.bb, forming_bonds=[(2, 13), (2, 4)])
+        self.assertIsNone(ts)
+
+    def test_returns_none_when_acceptor_is_hydrogen(self):
+        """The builder returns None when the forming bond does not name a heavy acceptor."""
+        ts = build_retroene_ts(self.r_xyz, self.r.mol,
+                               breaking_bonds=self.bb, forming_bonds=[(12, 13)])
         self.assertIsNone(ts)
 
 
