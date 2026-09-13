@@ -36,13 +36,14 @@ from arc.job.adapters.ts.linear_utils.geom_utils import (
     bond_order_map,
     canonical_bond,
     dihedral_deg,
+    bond_path_length,
     mol_to_adjacency,
     rotate_atoms,
     two_sphere_intersection,
     xyz_with_coords,
 )
 from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
-from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA
+from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA, h_bridge_target_distances
 from arc.species.species import colliding_atoms
 
 if TYPE_CHECKING:
@@ -755,7 +756,7 @@ def build_singlet_carbene_intra_disproportionation_ts(r_xyz: dict,
     In this reaction, a singlet carbene C (divalent, lone pair) on a
     ring accepts an H from an adjacent CH₂ center. The TS has the
     migrating H between the donor C and the carbene C at
-    Pauling-triangulated distances.
+    bridging-hydrogen distances.
 
     Motif identification (from molecular graph):
 
@@ -809,8 +810,9 @@ def build_singlet_carbene_intra_disproportionation_ts(r_xyz: dict,
     if not donor_h_list:
         return None
 
-    sbl_ch = get_single_bond_length('C', 'H') or 1.09
-    d_target = sbl_ch + PAULING_DELTA  # ~1.51 Å
+    d_target, _ = h_bridge_target_distances(
+        'C', 'C', float(np.linalg.norm(coords[carbene_c] - coords[donor_c])),
+        bond_path_length(mol_to_adjacency(r_mol), donor_c, carbene_c))
 
     donor_pos = coords[donor_c]
     carbene_pos = coords[carbene_c]
@@ -946,16 +948,17 @@ def build_korcek_step1_ts(r_xyz: dict,
     if colliding_atoms(rc_xyz):
         return None
 
-    # Step 5: Place the peroxide H equidistant (~1.39 Å) between o_term and o_dbl
+    # Step 5: Place the peroxide H between o_term and o_dbl
     # via two-sphere intersection (it is transferring from o_term to o_dbl).
     coords = np.array(rc_xyz['coords'], dtype=float)
-    sbl_oh = get_single_bond_length('O', 'H') or 0.97
-    d_h_target = sbl_oh + PAULING_DELTA  # ~1.39 Å
     o_term_pos = coords[o_term]
     o_dbl_pos = coords[best_o_dbl]
     h_pos = coords[h_peroxide]
+    d_h_donor, d_h_acceptor = h_bridge_target_distances(
+        'O', 'O', float(np.linalg.norm(o_dbl_pos - o_term_pos)),
+        bond_path_length(adj, o_term, best_o_dbl))
 
-    new_h_pos = two_sphere_intersection(o_term_pos, d_h_target, o_dbl_pos, d_h_target, h_pos)
+    new_h_pos = two_sphere_intersection(o_term_pos, d_h_donor, o_dbl_pos, d_h_acceptor, h_pos)
     if new_h_pos is not None:
         coords[h_peroxide] = new_h_pos
 
@@ -1326,10 +1329,9 @@ def build_retroene_ts(r_xyz: dict,
         coords = np.array(rc_xyz['coords'], dtype=float)
 
     # Step 3: Place migrating H between C5 and O3.
-    sbl_ch = get_single_bond_length('C', 'H') or 1.09
-    sbl_oh = get_single_bond_length('O', 'H') or 0.97
-    d_ch = sbl_ch + PAULING_DELTA  # ~1.51 Å
-    d_oh = sbl_oh + PAULING_DELTA  # ~1.39 Å
+    d_ch, d_oh = h_bridge_target_distances(
+        'C', 'O', float(np.linalg.norm(coords[ester_o] - coords[donor])),
+        bond_path_length(mol_to_adjacency(r_mol), donor, ester_o))
     new_h_pos = two_sphere_intersection(
         coords[donor], d_ch, coords[ester_o], d_oh, coords[mig_h])
     if new_h_pos is None:

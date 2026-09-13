@@ -75,6 +75,7 @@ from arc.mapping.driver import map_rxn
 from arc.molecule import Molecule
 from arc.reaction import ARCReaction
 from arc.species.converter import compare_zmats, order_mol_by_atom_map, order_xyz_by_atom_map, str_to_xyz, xyz_to_str, zmat_from_xyz
+from arc.species.vectors import calculate_angle
 from arc.species.species import ARCSpecies, colliding_atoms
 
 
@@ -1226,14 +1227,14 @@ H      -0.58902376   -0.50657502    2.07187062"""
         self.assertGreaterEqual(len(ts_xyzs), 1)
         # Check 3-membered ring distances in the TS guess.
         # Product ordering: P[4]=CO carbon (*1, ins), P[1]=quaternary C (*2, sub),
-        # P[15]=migrating H (*3, mig). Targets: C-C ~ sbl+0.42 = 1.96, C-H ~ 1.51.
+        # P[15]=migrating H (*3, mig). Targets: C-C ~ sbl+PAULING_DELTA = 1.96, C-H ~ 1.34.
         ts_coords = np.array(ts_xyzs[0]['coords'])
         d_cc = float(np.linalg.norm(ts_coords[4] - ts_coords[1]))   # *1-*2 C-C forming
         d_ch1 = float(np.linalg.norm(ts_coords[4] - ts_coords[15]))  # *1-*3 C-H forming
         d_ch2 = float(np.linalg.norm(ts_coords[1] - ts_coords[15]))  # *2-*3 C-H breaking
         self.assertAlmostEqual(d_cc, 1.96, delta=0.05)
-        self.assertAlmostEqual(d_ch1, 1.51, delta=0.05)
-        self.assertAlmostEqual(d_ch2, 1.51, delta=0.05)
+        self.assertAlmostEqual(d_ch1, 1.34, delta=0.05)
+        self.assertAlmostEqual(d_ch2, 1.34, delta=0.05)
         # Verify the TS guess also works through the main interpolate() dispatcher.
         ts_xyzs_dispatch = interpolate(rxn, weight=0.5)
         self.assertIsNotNone(ts_xyzs_dispatch)
@@ -1253,7 +1254,7 @@ H       2.19094503    0.35635213   -0.37050110
 H       0.73390517   -1.58346878   -1.32345883
 H       0.40195890   -2.11601880    0.33323885
 H      -0.93707925   -1.76281070   -0.75913154
-H       0.11567616   -0.67766058    1.34266988"""
+H      -0.01773334   -0.52002285    1.22575722"""
         self.assertTrue(almost_equal_coords(ts_xyzs_dispatch[0], str_to_xyz(expected_ts)))
 
     def test_interpolate_1_2_insertion_carbene(self):
@@ -1295,19 +1296,19 @@ H      -0.58767904   -1.85093188    0.22577726"""
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p])
         self.assertTrue(any(pd['family'] == '1,2_Insertion_carbene' for pd in rxn.product_dicts))
         ts_xyzs = interpolate_addition(rxn, weight=0.5)
-        expected_ts = """ C                  1.97753426   -0.34691463   -0.12195850
- C                  0.96032171    0.45485914   -0.46215363
- C                 -0.43629664    0.27157147   -0.09968556
- C                 -1.35584640    1.15966116   -0.51269091
- C                 -1.01062785   -1.43028901    1.10007048
- H                  2.98719352   -0.11575642   -0.44772907
- H                  1.84910220   -1.24076974    0.47792776
- H                  1.19368072    1.33006788   -1.06832846
- H                 -2.40510842    1.04750710   -0.25687679
- H                 -1.09525737    2.02366247   -1.11636739
- H                 -0.50299705   -1.41014794    2.07047336
- H                 -2.08819756   -1.44598384    1.29850705
- H                 -0.26777988   -1.39577664   -0.43976256"""
+        expected_ts = """C       1.97753426   -0.34691463   -0.12195850
+ C       0.96032171    0.45485914   -0.46215363
+ C      -0.43629664    0.27157147   -0.09968556
+ C      -1.35584640    1.15966116   -0.51269091
+ C      -1.01062785   -1.43028901    1.10007048
+ H       2.98719352   -0.11575642   -0.44772907
+ H       1.84910220   -1.24076974    0.47792776
+ H       1.19368072    1.33006788   -1.06832846
+ H      -2.40510842    1.04750710   -0.25687679
+ H      -1.09525737    2.02366247   -1.11636739
+ H      -0.50299705   -1.41014794    2.07047336
+ H      -2.08819756   -1.44598384    1.29850705
+ H      -0.26777988   -1.39577664   -0.43976256"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
         for ts in ts_xyzs:
             coords = np.array(ts['coords'], dtype=float)
@@ -1351,7 +1352,7 @@ H       0.93760911   -0.05885406   -0.10079043"""
         ts_xyzs = interpolate_addition(rxn, weight=0.5)
         self.assertIsNotNone(ts_xyzs)
         self.assertGreaterEqual(len(ts_xyzs), 1)
-        # Targets: N-N breaking ~ 1.87 Å, migrating N-H bonds ~ 1.46 Å each.
+        # Targets: N-N breaking ~ 1.87 Å, migrating N-H bonds ~ 1.29 Å each.
         # Checks are element-based to be agnostic to symmetric atom-map choices.
         ts_coords = np.array(ts_xyzs[0]['coords'])
         ts_syms = ts_xyzs[0]['symbols']
@@ -1361,8 +1362,8 @@ H       0.93760911   -0.05885406   -0.10079043"""
         nh_dists = [float(np.linalg.norm(ts_coords[i] - ts_coords[j])) for i in n_idx for j in h_idx]
         self.assertTrue(any(abs(d - 1.87) <= 0.05 for d in nn_dists),
                         msg=f'No N-N distance near 1.87; found: {sorted(nn_dists)}')
-        self.assertGreaterEqual(sum(1 for d in nh_dists if abs(d - 1.46) <= 0.05), 2,
-                                msg=f'Expected ≥2 N-H distances near 1.46; found: {sorted(nh_dists)}')
+        self.assertGreaterEqual(sum(1 for d in nh_dists if abs(d - 1.29) <= 0.05), 2,
+                                msg=f'Expected ≥2 N-H distances near 1.29; found: {sorted(nh_dists)}')
         # Verify the dispatcher routes correctly.
         ts_xyzs_dispatch = interpolate(rxn, weight=0.5)
         self.assertIsNotNone(ts_xyzs_dispatch)
@@ -1372,7 +1373,7 @@ N      -0.00831159    0.62912211   -0.22607923
 N      -0.04578555    2.00661712    1.03804228
 H      -1.36396603   -0.52480010    0.69598616
 H      -1.33497366   -0.72150540   -0.90528855
-H       0.20944918    2.06247116   -0.39838925
+H       0.15989085    1.90643919   -0.22983258
 H       0.00589419    1.63067767    1.98481623
 H      -0.94141747    2.49625864    0.98628387"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts_1)) for ts in ts_xyzs))
@@ -2442,7 +2443,7 @@ C       1.98480797   -0.63419881    1.11326670
 C       2.89460169   -0.97770151    2.03563992
 C       4.29204937   -1.25631974    1.79961635
 C       4.92103178   -1.21988996    0.61918910
-H       2.12504139   -0.23109108   -1.76747526
+H       2.20865236   -0.27471550   -1.60325852
 H       0.97240698   -0.46160558    1.47844588
 H       2.59583552   -1.06787309    3.08000952
 H       4.91203689   -1.52458145    2.65504088
@@ -3089,26 +3090,26 @@ H       1.69266033   -2.46579510   -0.55597779"""
         p = ARCSpecies(label='P', smiles='C=C1CCC2=C1C=CC=C2', xyz=p_xyz)
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
-        expected_ts = """C      -0.58774421   -0.86950721    2.63194231
-C      -0.58774421   -0.86950721    1.29403214
-C      -0.58952820   -2.08017911    0.49379930
-C      -0.45729633   -1.74899326   -0.96181761
-C      -0.12535369   -0.28971609   -0.97015576
-C       0.65939956    0.36132863   -1.84283691
-C       1.11449884    1.69981068   -1.52783610
-C       0.97158794    2.21611489   -0.29562157
-C       0.27050202    1.49082421    0.74624400
-C      -0.57692212    0.31372713    0.34526007
-H      -0.58774421    0.05552675    3.19964356
-H      -0.58785136   -1.79508467    3.19726799
-H      -0.66085240   -3.08094831    0.89043651
-H      -1.40566432   -1.93678516   -1.47484489
-H       0.33134177   -2.35084298   -1.42324989
-H       1.04547189   -0.11798246   -2.73605523
-H       1.64252956    2.24915027   -2.30122663
-H       1.37243859    3.19513137   -0.05266282
-H       0.14206110    1.96105425    1.71281136
-H      -1.77466057   -0.87821251   -0.07728816"""
+        expected_ts = """C      -0.58774422   -0.86950720    2.63194234
+C      -0.58774422   -0.86950720    1.29403216
+C      -0.58952820   -2.08017915    0.49379940
+C      -0.45729633   -1.74899326   -0.96181750
+C      -0.12535370   -0.28971609   -0.97015567
+C       0.65939956    0.36132853   -1.84283689
+C       1.11449881    1.69981057   -1.52783603
+C       0.97158797    2.21611488   -0.29562189
+C       0.27050205    1.49082443    0.74624385
+C      -0.57692215    0.31372715    0.34526011
+H      -0.58774422    0.05552677    3.19964358
+H      -0.58785138   -1.79508464    3.19726806
+H      -0.66085241   -3.08094829    0.89043676
+H      -1.40566434   -1.93678518   -1.47484474
+H       0.33134179   -2.35084300   -1.42324972
+H       1.04547190   -0.11798256   -2.73605520
+H       1.64252953    2.24915004   -2.30122665
+H       1.37243865    3.19513137   -0.05266329
+H       0.14206121    1.96105474    1.71281109
+H      -1.47957749   -0.89065621    0.22371156"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
     def test_interpolate_intra_rh_add_endocyclic(self):
@@ -3211,8 +3212,8 @@ C       1.02784361   -1.57835621    1.17626773
 C       2.36484309   -2.03834764    1.74819711
 C       3.50408935   -1.61952543    0.87973604
 O       4.36546469   -0.72181688    1.21157095
-H       1.56422743   -0.09701856   -0.79062545
-H       2.09115810    0.99539655    0.50054197
+H       1.68417194   -0.44580003   -0.71317147
+H       1.89123885    1.06362994    0.19064516
 H       3.53132429    0.21665884    0.80480632
 H       1.02736061    0.55104643    1.50934439
 H       0.23918280    0.06065247    0.01999661
@@ -3720,7 +3721,7 @@ H      -0.75612115    0.91309122   -0.33892602
 H      -2.15639522   -1.27161736   -1.23186705
 H      -3.00922579    0.01645873   -0.34766873
 H      -1.97255720    0.42567634   -1.73551809
-H       1.60421902    1.70916992    1.40821236"""
+H       1.48729600    1.49629175    1.22632102"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
     def test_interpolate_korcek_step2(self):
@@ -3791,7 +3792,7 @@ H       3.54727149   -0.08890978   -0.67544945
 H       2.62277112    0.06434082    1.34585278
 H      -0.09844973   -0.43616204    1.68554384
 H       0.18774256   -1.65691471    0.41684740
-H       0.32780493   -0.78747574   -0.84507611
+H       0.24678821   -0.69217359   -0.68602000
 H      -2.30557569    0.51236113    1.05290855
 H      -2.48665452   -0.83141064   -0.10098054
 H      -2.65275729    0.85777810   -0.63272727"""
@@ -4396,26 +4397,26 @@ H       1.80251143    1.03132880   -1.10238169"""
             break
         self.assertTrue(found_ring, msg='No TS guess has 6-membered ring retroene characteristics: O3-C4 stretched '
                                         '(breaking), O2-C4 contracted (ring), H13 migrating from C5 toward O3')
-        expected_ts = """C                  3.35667786   -0.45750645    0.53734155
- C                  2.24637997    0.53978750    0.40948895
- O                  1.25975689    0.57306185    1.13089404
- O                  1.90798055    1.60139464   -0.37185519
- C                 -0.25465664    2.12528094    0.76768134
- C                 -0.03131089    3.04259438   -0.26607527
- C                 -1.40160640    3.23262677    0.38080580
- C                  0.80777963    4.31367617   -0.11759400
- H                  3.43291583   -1.04518301   -0.37749397
- H                  4.29490197    0.05808884    0.74227330
- H                  3.14278867   -1.13176712    1.36663279
- H                 -0.88551430    1.24137878    0.67368347
- H                 -0.03778772    2.29994313    1.82151292
- H                  0.87654037    2.16543158   -1.09462311
- H                 -1.31181604    3.41929928    1.45094180
- H                 -1.92716397    4.07668244   -0.06580283
- H                 -2.02058432    2.34596864    0.24367923
- H                  1.76588869    4.21544196   -0.62796354
- H                  0.29073745    5.16969147   -0.55118965
- H                  1.00524898    4.53585118    0.93109285"""
+        expected_ts = """C       3.35667786   -0.45750645    0.53734155
+ C       2.24637997    0.53978750    0.40948895
+ O       1.25975689    0.57306185    1.13089404
+ O       1.90798055    1.60139464   -0.37185519
+ C      -0.25465664    2.12528094    0.76768134
+ C      -0.03131089    3.04259438   -0.26607527
+ C      -1.40160640    3.23262677    0.38080580
+ C       0.80777963    4.31367617   -0.11759400
+ H       3.43291583   -1.04518301   -0.37749397
+ H       4.29490197    0.05808884    0.74227330
+ H       3.14278867   -1.13176712    1.36663279
+ H      -0.88551430    1.24137878    0.67368347
+ H      -0.03778772    2.29994313    1.82151292
+ H       0.87654037    2.16543158   -1.09462311
+ H      -1.31181604    3.41929928    1.45094180
+ H      -1.92716397    4.07668244   -0.06580283
+ H      -2.02058432    2.34596864    0.24367923
+ H       1.76588869    4.21544196   -0.62796354
+ H       0.29073745    5.16969147   -0.55118965
+ H       1.00524898    4.53585118    0.93109285"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
     def test_interpolate_singlet_carbene_intra_disproportionation(self):
@@ -4456,16 +4457,16 @@ H       0.06681877   -2.19837465    0.09887848"""
         for ts_xyz in ts_xyzs:
             coords = np.array(ts_xyz['coords'], dtype=float)
             d_h10_h11 = float(np.linalg.norm(coords[10] - coords[11]))
-            # Check if one H is at Pauling distance from both C4 and C5.
+            # Check if one H is at the bridging-H distance from both C4 and C5.
             for hi in [10, 11]:
                 d_c4 = float(np.linalg.norm(coords[4] - coords[hi]))
                 d_c5 = float(np.linalg.norm(coords[5] - coords[hi]))
-                if abs(d_c4 - 1.51) < 0.15 and abs(d_c5 - 1.51) < 0.15:
+                if abs(d_c4 - 1.34) < 0.15 and abs(d_c5 - 1.34) < 0.15:
                     found_good = True
                     break
             if found_good:
                 break
-        self.assertTrue(found_good, msg='No TS guess has a Pauling-triangulated H between carbene and donor')
+        self.assertTrue(found_good, msg='No TS guess has a bridge-triangulated H between carbene and donor')
         # The two H's should be well separated (opposite faces).
         self.assertGreater(d_h10_h11, 2.0, msg=f'H10-H11 distance {d_h10_h11:.3f} Å indicates same-side placement')
         expected_ts = """C      -1.75380171    0.48873088   -0.19068706
@@ -4479,7 +4480,7 @@ H      -2.54598297   -0.24449127   -0.30238247
 H       0.56818218    2.09730281    0.12230795
 H       2.80053789    0.73996491    0.34529891
 H      -0.15810977   -1.84238058   -0.97429551
-H       0.49026533   -0.61960200    1.22593576"""
+H       0.53006247   -0.70383622    1.04891837"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
     def test_interpolate_family_none_unimolecular(self):
@@ -4601,15 +4602,15 @@ O       1.37316735   -0.34819332    0.00000000"""
         self.assertTrue(d_cc_break > d_cc_form, 'C-C breaking > C-C forming')
         expected_ts = """C      -1.37170024    0.17370802    0.12747389
 C      -0.17943385   -0.58558878   -0.10310381
-C       0.07444792   -2.33816244    1.48699984
-O       0.97730152   -3.15342961    1.55831677
-O      -0.94011004   -2.36056172    2.37408508
+C       0.07431608   -2.33725228    1.48617406
+O       0.97765269   -3.15193431    1.55805879
+O      -0.94086828   -2.36041047    2.37252288
 H      -1.13665983    1.22554833    0.32156567
 H      -2.02965631    0.12528004   -0.74559965
-H      -1.68321413   -0.67381831    1.26740259
+H      -1.68361962   -0.67383190    1.26652005
 H      -0.21702502   -1.02774537   -1.10407189
 H       0.69165336    0.07422934   -0.03456899
-H      -1.39287106   -1.33285689    1.69980176"""
+H      -1.39333322   -1.33299036    1.69877452"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
     def test_interpolate_halocarbene_recombination(self):
@@ -4706,14 +4707,14 @@ H      -1.18833722   -0.86211206   -0.54632476"""
             assert_h_migration_quality(self, ts_xyz)
         assert_unique_guesses(self, ts_xyzs)
         self.assertGreaterEqual(len(ts_xyzs), 1)
-        expected_ts = """C      -0.41865872    1.21447395   -0.16611224
-H      -0.67018571    1.94949404    0.56967272
-H      -0.67018574    1.32368640   -1.20037860
-C      -0.41865872   -0.23745201    0.34722104
-H      -0.41865872   -0.23745201    1.41722109
-H      -1.29230999   -0.74185488   -0.00944557
-O       0.74893138   -0.91156055   -0.12944556
-H       0.88979859    0.45040550   -0.69723648"""
+        expected_ts = """C      -0.41865873    1.21447391   -0.16611227
+H      -0.67018574    1.94949392    0.56967275
+H      -0.67018575    1.32368629   -1.20037864
+C      -0.41865873   -0.23745204    0.34722107
+H      -0.41865873   -0.23745204    1.41722112
+H      -1.29231003   -0.74185484   -0.00944556
+O       0.74893141   -0.91156049   -0.12944555
+H       0.76705416    0.38587864   -0.59925752"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
     def test_interpolate_intra_h_migration_ccoo(self):  # TODO: some could converge, H's incorrect
@@ -4777,37 +4778,18 @@ H       0.88979859    0.45040550   -0.69723648"""
                         f'd(H,O[2])={d_backbone_O:.3f} vs d(H,O[3])={d_acceptor:.3f}\n'
                         f'{xyz_to_str(ts_xyz)}')
         assert_unique_guesses(self, ts_xyzs)
-        found_good_migrating = False
-        for ts_xyz in ts_xyzs:
-            coords = np.array(ts_xyz['coords'], dtype=float)
-            d_h4_c0 = float(np.linalg.norm(coords[4] - coords[0]))
-            d_h4_o3 = float(np.linalg.norm(coords[4] - coords[3]))
-            if abs(d_h4_c0 - 1.47) < 0.15 and abs(d_h4_o3 - 1.37) < 0.15:
-                found_good_migrating = True
-                break
-        self.assertTrue(found_good_migrating, msg='No TS guess has migrating H4 at Pauling distances from both C0 and O3')
-        # CH₂ on C1: H7-C1-H8 angle should be proper sp³ (~109°).
-        coords_best = np.array(ts_xyzs[0]['coords'], dtype=float)
-        v1 = coords_best[7] - coords_best[1]
-        v2 = coords_best[8] - coords_best[1]
-        cos_a = float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
-        h_c_h_angle = float(np.degrees(np.arccos(np.clip(cos_a, -1, 1))))
-        self.assertAlmostEqual(h_c_h_angle, 109.5, delta=10.0, msg=f'H7-C1-H8 angle {h_c_h_angle:.1f}° is not sp³')
-        # H5-C0-H6 angle on the donor should be proper sp³.
-        v1 = coords_best[5] - coords_best[0]
-        v2 = coords_best[6] - coords_best[0]
-        cos_a = float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
-        h_c_h_donor = float(np.degrees(np.arccos(np.clip(cos_a, -1, 1))))
-        self.assertAlmostEqual(h_c_h_donor, 109.5, delta=10.0, msg=f'H5-C0-H6 angle {h_c_h_donor:.1f}° is not sp³')
-        # Both donor H's (H5, H6) should point AWAY from acceptor O3
-        # (angle > 90° from C0→O3).
-        co = coords_best[3] - coords_best[0]
-        co_d = float(np.linalg.norm(co))
-        for hi in [5, 6]:
-            ch = coords_best[hi] - coords_best[0]
-            cos_a = float(np.dot(ch, co) / (np.linalg.norm(ch) * co_d))
-            angle_from_o3 = float(np.degrees(np.arccos(np.clip(cos_a, -1, 1))))
-            self.assertGreater(angle_from_o3, 90.0, msg=f'H{hi} at {angle_from_o3:.1f}° from C0→O3 (should be >90° — pointing away from acceptor)')
+        # The best-ranked guess must carry the whole reactive-core geometry: migrating
+        # H4 at bridging distances from C0 and O3, sp3 CH2 groups on C0 and C1, and both
+        # donor H atoms pointing away from the acceptor.
+        best = ts_xyzs[0]
+        coords = np.array(best['coords'], dtype=float)
+        self.assertAlmostEqual(float(np.linalg.norm(coords[4] - coords[0])), 1.34, delta=0.15)
+        self.assertAlmostEqual(float(np.linalg.norm(coords[4] - coords[3])), 1.21, delta=0.15)
+        self.assertAlmostEqual(calculate_angle(coords=best, atoms=[7, 1, 8]), 109.5, delta=10.0)
+        self.assertAlmostEqual(calculate_angle(coords=best, atoms=[5, 0, 6]), 109.5, delta=10.0)
+        for hi in (5, 6):
+            self.assertGreater(calculate_angle(coords=best, atoms=[hi, 0, 3]), 90.0,
+                               msg=f'H{hi} does not point away from the acceptor')
 
     def test_interpolate_intra_h_migration_cccoo(self):
         """Test the interpolate_isomerization() function for intra H migration: CCCOO (6-membered ring): CCCO[O] <=> [CH2]CCOO"""
@@ -4848,18 +4830,18 @@ H       0.88979859    0.45040550   -0.69723648"""
         for i in range(len(ts_xyzs)):
             for j in range(i + 1, len(ts_xyzs)):
                 self.assertFalse(almost_equal_coords(ts_xyzs[i], ts_xyzs[j]), msg=f'Dedup failed: guesses {i} and {j} are near-identical.')
-        expected_ts = """C       0.47409326    0.59770509    1.10290571
-C       0.47409326   -0.85422084    0.58957212
-O       0.47409326   -0.85422084   -0.84042783
-O      -0.54534795   -0.14040038   -1.28042795
-H       1.38779179    1.07650792    0.81864710
-H       0.38755877    0.59894437    2.16940001
-H      -0.43960528   -1.33302357    0.87383085
-H       1.30125719   -1.38298436    1.01514096
-C      -0.80643171    1.30979943    0.62879906
-H      -0.53394636    2.36241421    0.55228849
-H      -1.42091238    0.67945072   -0.59805628
-H      -1.77954418    0.97859120    0.99136386"""
+        expected_ts = """C       0.47409327    0.59770515    1.10290557
+C       0.47409327   -0.85422085    0.58957221
+O       0.47409327   -0.85422085   -0.84042774
+O      -0.54534797   -0.14040037   -1.28042776
+H       1.38779180    1.07650793    0.81864686
+H       0.38755881    0.59894458    2.16939988
+H      -0.43960522   -1.33302365    0.87383099
+H       1.30125722   -1.38298428    1.01514111
+C      -0.80643172    1.30979939    0.62879881
+H      -0.51375909    2.34878352    0.47729064
+H      -1.05555129    0.61616805   -0.48833818
+H      -1.77316547    1.02523063    1.04418595"""
         self.assertTrue(any(almost_equal_coords(ts, str_to_xyz(expected_ts)) for ts in ts_xyzs))
 
     def test_interpolate_intra_no2_ono_conversion(self):
