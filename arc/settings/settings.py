@@ -235,7 +235,17 @@ default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended t
                             'irc': 'wb97xd/def2tzvp',  # should be the same level as opt
                             'orbitals': 'wb97x-d3/def2tzvp',  # save orbitals for visualization
                             'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
-                            'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
+                            # Keyed by composite method. Each composite protocol prescribes its own
+                            # frequency level, and data/freq_scale_factors.yml stores that protocol's
+                            # own ZPE scale factor x 1.014 (see the 'note' fields there). Pairing a
+                            # composite with another protocol's frequency level therefore applies a
+                            # factor fitted against a different basis -- silently, in a job that
+                            # converges and terminates normally. A composite absent from this mapping
+                            # raises rather than defaulting; set `freq_level` explicitly to override.
+                            'freq_for_composite': {'cbs-qb3': 'B3LYP/CBSB7',
+                                                   'cbs-qb3-paraskevas': 'B3LYP/CBSB7',
+                                                   'g4': 'B3LYP/6-31G(2df,p)',  # G4's prescribed level
+                                                   },
                             'irc_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
                             'orbitals_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
                             }
