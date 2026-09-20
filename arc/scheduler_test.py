@@ -306,6 +306,9 @@ H       1.27889520   -0.81548721   -0.22940984"""
         self.assertIn(0, sched.job_dict[label]['conf_opt'])
         self.assertIn('conf_sp', sched.job_dict[label])
         self.assertIn(0, sched.job_dict[label]['conf_sp'])
+        # And no container is created for a job type that was not restored: a 'tsg' key here would be
+        # a phantom TS-guess entry for a species that has no TS guess job at all.
+        self.assertEqual(set(sched.job_dict[label].keys()), {'conf_opt', 'conf_sp'})
 
         # The first scheduling sweep after a restart reproduces the production crash on the unfixed
         # code: get_i_from_job_name('conformer0') is None, the fallback derives an empty job-type

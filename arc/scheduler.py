@@ -5149,16 +5149,13 @@ class Scheduler(object):
                         job.restricted_used = restricted_used
                     if spc_label not in self.job_dict.keys():
                         self.job_dict[spc_label] = dict()
-                    if job_description['job_type'] not in self.job_dict[spc_label].keys():
-                        if ('conformer' not in job_description or job_description['conformer'] is None) \
-                                and ('tsg' not in job_description or job_description['tsg'] is None):
-                            self.job_dict[spc_label][job_description['job_type']] = dict()
-                        elif 'conf_opt' not in self.job_dict[spc_label].keys():
-                            self.job_dict[spc_label]['conf_opt'] = dict()
-                        elif 'tsg' not in self.job_dict[spc_label].keys():
-                            self.job_dict[spc_label]['tsg'] = dict()
                     if ('conformer' not in job_description or job_description['conformer'] is None) \
                             and ('tsg' not in job_description or job_description['tsg'] is None):
+                        # Each branch below creates only the container its own job needs. Deciding the
+                        # container by a chain that ignores the job's job_type used to file the second
+                        # conformer job of a species under a phantom 'tsg' key.
+                        if job_description['job_type'] not in self.job_dict[spc_label].keys():
+                            self.job_dict[spc_label][job_description['job_type']] = dict()
                         self.job_dict[spc_label][job_description['job_type']][job_description['job_name']] = job
                     elif 'conformer' in job_description and job_description['conformer'] is not None:
                         # File the job under its actual job_type ('conf_opt' or 'conf_sp'), the same
