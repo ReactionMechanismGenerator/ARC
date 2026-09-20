@@ -966,6 +966,34 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(restored.stability_pending_opt_job, 'opt_a7')
         self.assertTrue(restored.stability_reoptimized)
 
+    def test_from_dict_reads_multiplicity_from_the_given_structure(self):
+        """Test that from_dict() and the keyword constructor agree on multiplicity and charge.
+
+        Both constructors replace .mol with a molecule perceived from the coordinates so that atom
+        orders match, and neither may read the multiplicity off that perceived molecule: perception
+        picks an electronic state, and for an open-shell species it routinely picks a different one
+        from the structure that was given. 'C[C]C#N' is a triplet, and these same atoms perceive as
+        the closed-shell 'C[C][C][N]'. Reading the multiplicity after the override therefore ran a
+        triplet as a singlet with no warning anywhere - a wrong answer rather than a failure.
+        """
+        xyz = """C       1.83783800   -0.00006500   -0.00024000
+                 C       0.39175700    0.00019900    0.00069900
+                 C      -0.89358800    0.00004200    0.00009600
+                 N      -2.10264600   -0.00008000   -0.00026000
+                 H       2.23488200    0.14322800    1.01178500
+                 H       2.23365500   -0.94854900   -0.38246700
+                 H       2.23394500    0.80482700   -0.63082500"""
+        kwargs_spc = ARCSpecies(label='CCCN_triplet', smiles='C[C]C#N', xyz=xyz)
+        dict_spc = ARCSpecies(species_dict={'label': 'CCCN_triplet', 'smiles': 'C[C]C#N', 'xyz': xyz})
+        self.assertEqual(kwargs_spc.multiplicity, 3)
+        self.assertEqual(dict_spc.multiplicity, kwargs_spc.multiplicity)
+        self.assertEqual(dict_spc.charge, kwargs_spc.charge)
+
+        # An explicitly declared multiplicity still wins over the structure.
+        explicit = ARCSpecies(species_dict={'label': 'CCCN_triplet', 'smiles': 'C[C]C#N',
+                                            'xyz': xyz, 'multiplicity': 3})
+        self.assertEqual(explicit.multiplicity, 3)
+
     def test_from_dict(self):
         """Test Species.from_dict()"""
         species_dict = self.spc2.as_dict()
