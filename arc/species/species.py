@@ -3027,6 +3027,15 @@ def determine_occ(xyz, charge):
     electrons -= charge
 
 
+#: Below this barrier the second symmetry criterion (the 10%-of-the-highest-peak test) does not
+#: apply -- a shallow scan's peak spread is noise, not asymmetry. In **kJ/mol**, which is what
+#: ``parse_1d_scan_energies`` returns and what ``determine_rotor_symmetry`` is documented to take.
+#: This was previously written inline as the bare literal ``2000``, i.e. 2 kJ/mol expressed in
+#: J/mol, so ``max_e > 2000`` was false for every realistic torsional barrier and the criterion
+#: never ran.
+SYMMETRY_SECOND_CRITERION_MIN_BARRIER = 2.0  # kJ/mol
+
+
 def determine_rotor_symmetry(label: str,
                              pivots: list[int] | str,
                              rotor_path: str = '',
@@ -3073,9 +3082,11 @@ def determine_rotor_symmetry(label: str,
 
     symmetry = None
     max_e = max(energies)
-    if max_e > 2000:
+    if max_e > SYMMETRY_SECOND_CRITERION_MIN_BARRIER:
         tol = 0.10 * max_e  # tolerance for the second criterion
     else:
+        # The second criterion does not apply to a barrier this shallow, so make the tolerance
+        # unreachable rather than let a tiny ripple decide the symmetry.
         tol = max_e
     min_e = energies[0]
     for i, e in enumerate(energies):
@@ -3155,8 +3166,15 @@ def cyclic_index_i_plus_1(i: int,
 
 
 def cyclic_index_i_minus_1(i: int) -> int:
-    """A helper function for cyclic indexing rotor scans"""
-    return i - 1 if i - 1 > 0 else -1
+    """A helper function for cyclic indexing rotor scans
+
+    ``i - 1`` is already the correct cyclic predecessor for every ``i >= 0``: at ``i = 0`` Python's
+    negative indexing makes ``-1`` the last element, which is what a cyclic scan wants. The former
+    ``i - 1 if i - 1 > 0 else -1`` used a strict ``>``, so ``i = 1`` also returned ``-1`` and
+    element 1 was compared against the *last* scan point instead of element 0 -- which can invent a
+    spurious peak or valley at the start of a scan and trip the "peaks != valleys" guard.
+    """
+    return i - 1
 
 
 def determine_rotor_type(rotor_path: str) -> str:
