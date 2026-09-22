@@ -15,6 +15,7 @@ from arc.job.adapters.ts.linear_utils.geom_utils import (
     atom_index_map,
     bfs_path,
     bond_order_map,
+    bond_path_length,
     canonical_bond,
     dihedral_deg,
     downstream,
@@ -273,6 +274,49 @@ class TestGeomUtils(unittest.TestCase):
             d = dihedral_deg(*points)
             self.assertGreaterEqual(d, -180.0)
             self.assertLessEqual(d, 180.0)
+
+
+class TestBondPathLength(unittest.TestCase):
+    """Tests for the bond_path_length function."""
+
+    @classmethod
+    def setUpClass(cls):
+        """A method that is run before all unit tests in this class."""
+        cls.maxDiff = None
+        cls.mol = Molecule().from_smiles('CCCO')
+        cls.adj = mol_to_adjacency(cls.mol)
+        a2i = {a: i for i, a in enumerate(cls.mol.atoms)}
+        cls.o = next(i for i, a in enumerate(cls.mol.atoms) if a.symbol == 'O')
+        cls.c1 = next(a2i[n] for n in cls.mol.atoms[cls.o].bonds if n.symbol == 'C')
+        cls.c2 = next(a2i[n] for n in cls.mol.atoms[cls.c1].bonds
+                      if n.symbol == 'C' and a2i[n] != cls.c1)
+        cls.c3 = next(a2i[n] for n in cls.mol.atoms[cls.c2].bonds
+                      if n.symbol == 'C' and a2i[n] != cls.c1)
+
+    def test_counts_bonds_along_the_chain(self):
+        """Propanol: O to each carbon in turn is one, two and three bonds."""
+        self.assertEqual(bond_path_length(self.adj, self.o, self.c1), 1)
+        self.assertEqual(bond_path_length(self.adj, self.o, self.c2), 2)
+        self.assertEqual(bond_path_length(self.adj, self.o, self.c3), 3)
+
+    def test_zero_for_the_same_atom(self):
+        """An atom is zero bonds from itself."""
+        self.assertEqual(bond_path_length(self.adj, self.o, self.o), 0)
+
+    def test_agrees_with_bfs_path(self):
+        """The reported length is the length of the path bfs_path finds, for every atom."""
+        for target in range(len(self.mol.atoms)):
+            path = bfs_path(self.adj, self.o, target)
+            self.assertEqual(bond_path_length(self.adj, self.o, target),
+                             None if path is None else len(path) - 1,
+                             msg=f'disagreed for atom {target}')
+
+    def test_none_across_separate_fragments(self):
+        """Atoms in different fragments are never reachable."""
+        mol = Molecule().from_smiles('C')
+        adj = mol_to_adjacency(mol)
+        adj[99] = set()
+        self.assertIsNone(bond_path_length(adj, 0, 99))
 
 
 class TestMolToAdjacency(unittest.TestCase):

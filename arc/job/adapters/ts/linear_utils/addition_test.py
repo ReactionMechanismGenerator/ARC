@@ -10,9 +10,11 @@ import unittest
 
 import numpy as np
 
+from arc.common import get_single_bond_length
 from arc.molecule.molecule import Molecule
 from arc.species import ARCSpecies
 
+from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA
 from arc.job.adapters.ts.linear_utils.addition import (
     _reposition_leaving_groups,
     insertion_ring_extra_stretch,
@@ -735,6 +737,74 @@ class TestMigrateVerifiedAtoms(unittest.TestCase):
             # The migrating H should have moved
             displacement = np.linalg.norm(new_pos - orig_pos)
             self.assertGreater(displacement, 0.01)
+
+    def test_migrating_h_seeded_at_bridge_distances(self):
+        """
+        A migrating H is placed at the bridging-H targets from its donor C and acceptor O.
+
+        The donor C and the acceptor O are three bonds apart, so the transfer is not
+        ring-strained, and they are 2.45 A apart, which the C-H target of 1.3383 A
+        and the O-H target of 1.2084 A span, so both are honoured exactly.
+        """
+        mol = Molecule().from_smiles('CCCO')
+        symbols = tuple(a.symbol for a in mol.atoms)
+        o_idx = next(i for i, a in enumerate(mol.atoms) if a.symbol == 'O')
+        atom_to_idx = {a: i for i, a in enumerate(mol.atoms)}
+        o_nbr_c = next(atom_to_idx[nbr] for nbr in mol.atoms[o_idx].bonds if nbr.symbol == 'C')
+        mid_c = next(atom_to_idx[nbr] for nbr in mol.atoms[o_nbr_c].bonds
+                     if nbr.symbol == 'C' and atom_to_idx[nbr] != o_nbr_c)
+        c_idx = next(atom_to_idx[nbr] for nbr in mol.atoms[mid_c].bonds
+                     if nbr.symbol == 'C' and atom_to_idx[nbr] != o_nbr_c)
+        h_on_c = next(atom_to_idx[nbr] for nbr in mol.atoms[c_idx].bonds if nbr.symbol == 'H')
+        coords = np.zeros((len(symbols), 3))
+        coords[c_idx] = (0.0, 0.0, 0.0)
+        coords[o_idx] = (2.45, 0.0, 0.0)
+        coords[h_on_c] = (1.05, 0.35, 0.0)
+        for k in range(len(symbols)):
+            if k not in (c_idx, o_idx, h_on_c):
+                coords[k] = (10.0 + k, 10.0, 10.0)
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(MASS_NUMBER.get(sym, 12) for sym in symbols),
+               'coords': tuple(tuple(row) for row in coords)}
+        result = migrate_verified_atoms(
+            xyz, mol, migrating_atoms={h_on_c}, core={o_idx},
+            large_prod_atoms={c_idx}, cross_bonds=[(h_on_c, o_idx)])
+        out = np.asarray(result['coords'], dtype=float)
+        self.assertAlmostEqual(float(np.linalg.norm(out[h_on_c] - out[c_idx])), 1.338350, places=4)
+        self.assertAlmostEqual(float(np.linalg.norm(out[h_on_c] - out[o_idx])), 1.208350, places=4)
+
+    def test_heavy_migrating_atom_keeps_the_general_elongation(self):
+        """
+        A migrating atom that is not hydrogen is targeted from its own element, not from H.
+
+        ``migrating_atoms`` is not filtered to hydrogen, so a heavy fragment atom can
+        reach this code. A migrating O between two carbons must be seeded at
+        sbl(C, O) + PAULING_DELTA = 1.85 A, not at the bridging-H distance.
+        """
+        mol = Molecule().from_smiles('CCO')
+        symbols = tuple(a.symbol for a in mol.atoms)
+        c_idx = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
+        o_idx = next(i for i, a in enumerate(mol.atoms) if a.symbol == 'O')
+        atom_to_idx = {a: i for i, a in enumerate(mol.atoms)}
+        donor = next(atom_to_idx[nbr] for nbr in mol.atoms[o_idx].bonds if nbr.symbol == 'C')
+        acceptor = next(i for i in c_idx if i != donor)
+        coords = np.zeros((len(symbols), 3))
+        coords[donor] = (0.0, 0.0, 0.0)
+        coords[acceptor] = (3.20, 0.0, 0.0)
+        coords[o_idx] = (1.40, 0.60, 0.0)
+        for k in range(len(symbols)):
+            if k not in (donor, acceptor, o_idx):
+                coords[k] = (10.0 + k, 10.0, 10.0)
+        xyz = {'symbols': symbols,
+               'isotopes': tuple(MASS_NUMBER.get(sym, 12) for sym in symbols),
+               'coords': tuple(tuple(row) for row in coords)}
+        result = migrate_verified_atoms(
+            xyz, mol, migrating_atoms={o_idx}, core={acceptor},
+            large_prod_atoms={donor}, cross_bonds=[(o_idx, acceptor)])
+        out = np.asarray(result['coords'], dtype=float)
+        expected = get_single_bond_length('C', 'O') + PAULING_DELTA
+        self.assertAlmostEqual(float(np.linalg.norm(out[o_idx] - out[donor])), expected, places=4)
+        self.assertAlmostEqual(float(np.linalg.norm(out[o_idx] - out[acceptor])), expected, places=4)
 
     def test_migrate_preserves_non_migrating_atoms(self):
         """Non-migrating atoms stay at their original positions."""

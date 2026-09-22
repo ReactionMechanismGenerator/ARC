@@ -9,7 +9,7 @@ import numpy as np
 
 from arc.common import get_single_bond_length
 from arc.job.adapters.ts.linear_utils.migration_inference import identify_h_migration_pairs, infer_frag_fallback_h_migration
-from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA
+from arc.job.adapters.ts.linear_utils.postprocess import H_BRIDGE_DELTA
 from arc.species import ARCSpecies
 
 
@@ -261,8 +261,8 @@ class TestInferFragFallbackHMigration(unittest.TestCase):
                'isotopes': sp.get_xyz().get('isotopes', tuple(0 for _ in symbols)),
                'coords': tuple(tuple(float(c) for c in row) for row in coords)}
         # Post: the H has moved to the donor–acceptor TS midpoint.
-        d_dh = get_single_bond_length('O', 'H') + PAULING_DELTA
-        d_ah = get_single_bond_length('C', 'H') + PAULING_DELTA
+        d_dh = get_single_bond_length('O', 'H') + H_BRIDGE_DELTA
+        d_ah = get_single_bond_length('C', 'H') + H_BRIDGE_DELTA
         d_da = float(np.linalg.norm(np.array(coords[c_methyl]) - np.array(coords[o_oh])))
         x = (d_da ** 2 + d_dh ** 2 - d_ah ** 2) / (2.0 * d_da)
         y = float(np.sqrt(max(d_dh ** 2 - x ** 2, 0.0)))
