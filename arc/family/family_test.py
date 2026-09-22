@@ -22,6 +22,8 @@ from arc.family.family import (ReactionFamily,
                                filter_products_by_reaction,
                                get_reaction_family_products,
                                get_all_families,
+                               get_families_from_product_dicts,
+                               is_family_available,
                                get_rmg_family_directories,
                                get_entries,
                                split_entries,
@@ -1809,6 +1811,39 @@ H       1.24252625    0.91583948   -0.84155142"""
         self.assertTrue(check_family_name(None))
         with self.assertRaises(TypeError):
             check_family_name(123)
+
+    def test_check_family_name_against_a_named_family_set(self):
+        """Test that check_family_name() can ask whether a family is available rather than whether
+        the configured family set contains it. XY_Addition_MultipleBond is an available family that
+        only the halogens set lists, so the shipped 'default' set does not reach it."""
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertFalse(check_family_name('XY_Addition_MultipleBond'))
+            self.assertTrue(check_family_name('XY_Addition_MultipleBond', rmg_family_set='all'))
+            self.assertTrue(check_family_name('XY_Addition_MultipleBond', rmg_family_set='halogens'))
+            self.assertTrue(check_family_name('ether_hydrolysis', rmg_family_set='all'))
+            self.assertFalse(check_family_name('Not_A_Family', rmg_family_set='all'))
+            self.assertTrue(check_family_name(None, rmg_family_set='all'))
+
+    def test_is_family_available(self):
+        """Test that a family is available when 'all' reaches it or when the configured set does.
+        XY_Addition_MultipleBond is available although 'default' does not list it, and a surface
+        family is available only under a configured set that lists it, since 'all' skips them."""
+        surface_family = get_rmg_recommended_family_sets()['surface'][0]
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertTrue(is_family_available('H_Abstraction'))
+            self.assertTrue(is_family_available('XY_Addition_MultipleBond'))
+            self.assertTrue(is_family_available('ether_hydrolysis'))
+            self.assertFalse(is_family_available('Not_A_Family'))
+            self.assertFalse(is_family_available(surface_family))
+        with mock.patch.dict(settings, {'rmg_family_set': 'surface'}):
+            self.assertTrue(is_family_available(surface_family))
+            self.assertTrue(is_family_available('H_Abstraction'))
+
+    def test_get_families_from_product_dicts(self):
+        """Test listing the families of a product dicts list without repetitions and in order"""
+        self.assertEqual(get_families_from_product_dicts(list()), list())
+        product_dicts = [{'family': 'H_Abstraction'}, {'family': 'Substitution_O'}, {'family': 'H_Abstraction'}]
+        self.assertEqual(get_families_from_product_dicts(product_dicts), ['H_Abstraction', 'Substitution_O'])
 
 
 class TestFamilyChoiceGates(unittest.TestCase):

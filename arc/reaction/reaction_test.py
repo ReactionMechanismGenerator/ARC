@@ -14,7 +14,7 @@ import unittest.mock as mock
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, read_yaml_file
 from arc.exceptions import ReactionError
-from arc.family.family import get_all_families, get_rmg_recommended_family_sets
+from arc.family.family import get_all_families, get_reaction_family_products, get_rmg_recommended_family_sets
 from arc.imports import settings
 from arc.main import ARC
 from arc.reaction.reaction import ARCReaction, remove_dup_species
@@ -600,6 +600,177 @@ class TestARCReaction(unittest.TestCase):
                           family='intra_H_migration')
         with self.assertRaises(ReactionError):
             _ = rxn.product_dicts
+
+    def test_a_pinned_family_is_the_family_set_that_is_loaded(self):
+        """XY_Addition_MultipleBond requires a halogen at *4, so RMG lists it in the halogens set and
+        the shipped 'default' set does not contain it. Pinning it makes it the family set that is
+        loaded, so C2H4 + HCl <=> C2H5Cl resolves to it without widening the configured setting."""
+        def build_rxn(**kwargs):
+            return ARCReaction(r_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                          ARCSpecies(label='HCl', smiles='Cl')],
+                               p_species=[ARCSpecies(label='C2H5Cl', smiles='CCCl')],
+                               **kwargs)
+        loaded_sets = list()
+
+        def spy(**kwargs):
+            loaded_sets.append(kwargs.get('rmg_family_set'))
+            return get_reaction_family_products(**kwargs)
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertNotIn('XY_Addition_MultipleBond', get_all_families())
+            self.assertEqual(build_rxn().product_dicts, list())
+            self.assertIsNone(build_rxn().family)
+            with mock.patch('arc.reaction.reaction.get_reaction_family_products', side_effect=spy):
+                rxn = build_rxn(family='XY_Addition_MultipleBond')
+                product_dicts = rxn.product_dicts
+                self.assertEqual(rxn.determine_family(), ('XY_Addition_MultipleBond', False))
+            self.assertGreater(len(product_dicts), 0)
+            self.assertEqual({product_dict['family'] for product_dict in product_dicts},
+                             {'XY_Addition_MultipleBond'})
+            self.assertEqual(loaded_sets, [['XY_Addition_MultipleBond']])
+
+    def test_a_family_pinned_in_a_reaction_dictionary_is_the_family_set_that_is_loaded(self):
+        """A family pinned in the input file reaches the reaction through the reaction dictionary
+        rather than through the family argument, and narrows the loaded family set from there too."""
+        r_species = [ARCSpecies(label='C2H4', smiles='C=C'), ARCSpecies(label='HCl', smiles='Cl')]
+        p_species = [ARCSpecies(label='C2H5Cl', smiles='CCCl')]
+        reaction_dict = ARCReaction(r_species=r_species, p_species=p_species).as_dict()
+        reaction_dict['family'] = 'XY_Addition_MultipleBond'
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            rxn = ARCReaction(reaction_dict=reaction_dict)
+            self.assertEqual(rxn.family, 'XY_Addition_MultipleBond')
+            self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts},
+                             {'XY_Addition_MultipleBond'})
+
+    def test_a_pinned_arc_family_is_the_family_set_that_is_loaded(self):
+        """ARC's own families are not RMG families and no recommended family set lists them, so
+        get_all_families() always appends them and a reaction reaches them unpinned. Pinning one
+        narrows the loaded family set to it and it still generates its products."""
+        def build_rxn(**kwargs):
+            return ARCReaction(r_species=[ARCSpecies(label='DME', smiles='COC'),
+                                          ARCSpecies(label='H2O', smiles='O')],
+                               p_species=[ARCSpecies(label='MeOH_a', smiles='CO'),
+                                          ARCSpecies(label='MeOH_b', smiles='CO')],
+                               **kwargs)
+        loaded_sets = list()
+
+        def spy(**kwargs):
+            loaded_sets.append(kwargs.get('rmg_family_set'))
+            return get_reaction_family_products(**kwargs)
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertNotIn('ether_hydrolysis', get_rmg_recommended_family_sets()['default'])
+            self.assertEqual(build_rxn().family, 'ether_hydrolysis')
+            with mock.patch('arc.reaction.reaction.get_reaction_family_products', side_effect=spy):
+                product_dicts = build_rxn(family='ether_hydrolysis').product_dicts
+            self.assertGreater(len(product_dicts), 0)
+            self.assertEqual({product_dict['family'] for product_dict in product_dicts}, {'ether_hydrolysis'})
+            self.assertEqual(loaded_sets, [['ether_hydrolysis']])
+
+    def test_a_pinned_family_outside_the_configured_set_keeps_own_reverse_and_reverse_discovery(self):
+        """Cl_Abstraction is its own reverse and lives in the halogens set, so CH3Cl + H <=> CH3 + HCl
+        has no family under the shipped 'default' set. Pinning it resolves the reaction, keeps the
+        family's own reverse property, and leaves reverse discovery working."""
+        def build_rxn(**kwargs):
+            return ARCReaction(r_species=[ARCSpecies(label='CH3Cl', smiles='CCl'),
+                                          ARCSpecies(label='H', smiles='[H]')],
+                               p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                          ARCSpecies(label='HCl', smiles='Cl')],
+                               **kwargs)
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertIsNone(build_rxn().family)
+            rxn = build_rxn(family='Cl_Abstraction')
+            self.assertTrue(rxn.family_own_reverse)
+            self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts}, {'Cl_Abstraction'})
+            self.assertEqual(rxn.determine_family(discover_own_reverse_rxns_in_reverse=True),
+                             ('Cl_Abstraction', True))
+            reverse_product_dicts = rxn.get_product_dicts(discover_own_reverse_rxns_in_reverse=True)
+            self.assertEqual({product_dict['family'] for product_dict in reverse_product_dicts}, {'Cl_Abstraction'})
+
+    def test_pinning_a_family_on_a_reaction_without_any_family_match_raises(self):
+        """Ethylperoxy <=> OH + oxirane needs an H to move to the terminal oxygen on top of the ring
+        closure, which is two family steps, so no available family matches it. Pinning one names the
+        family in the error rather than yielding no product dicts."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH3CH2OO', smiles='CCO[O]')],
+                          p_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                     ARCSpecies(label='oxirane', smiles='C1CO1')],
+                          family='Cyclic_Ether_Formation')
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            with self.assertRaises(ReactionError) as error:
+                _ = rxn.product_dicts
+        self.assertIn('Cyclic_Ether_Formation', str(error.exception))
+        self.assertIn('nor any other available reaction family', str(error.exception))
+
+    def test_pinning_a_family_that_does_not_match_reports_the_families_that_do(self):
+        """A pinned family narrows what is loaded, so the families the reaction does match are no
+        longer discovered on the way. The error names them anyway, and names them from the available
+        families rather than from the configured set: 1,4-cyclohexadiene <=> benzene + H2 belongs to
+        H2_Loss, which exists only as an RMG database directory and which 'default' does not list."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='1,4-cyclohexadiene', smiles='C1=CCC=CC1')],
+                          p_species=[ARCSpecies(label='benzene', smiles='c1ccccc1'),
+                                     ARCSpecies(label='H2', smiles='[H][H]')],
+                          family='H_Abstraction')
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertNotIn('H2_Loss', get_all_families())
+            with self.assertRaises(ReactionError) as error:
+                _ = rxn.product_dicts
+        self.assertIn('H_Abstraction', str(error.exception))
+        self.assertIn('H2_Loss', str(error.exception))
+
+    def test_a_pinned_surface_family_stays_pinnable(self):
+        """get_all_families('all') skips the surface family sets and directories, so a surface family
+        is available only through a configured family set that lists it, and pinning one is accepted
+        under that setting."""
+        surface_family = get_rmg_recommended_family_sets()['surface'][0]
+        with mock.patch.dict(settings, {'rmg_family_set': 'surface'}):
+            rxn = ARCReaction(r_species=[ARCSpecies(label='C2H4', smiles='C=C')],
+                              p_species=[ARCSpecies(label='C2H4_p', smiles='C=C')],
+                              family=surface_family)
+            self.assertEqual(rxn.family, surface_family)
+            rxn.check_family()
+
+    def test_a_lazily_determined_family_does_not_narrow_the_loaded_family_set(self):
+        """OH + HO2 <=> H2O2 + O matches H_Abstraction and Substitution_O. Reading the family
+        property determines H_Abstraction, and that determined family is not a pinned family, so a
+        later generation still loads the configured family set and still finds both."""
+        def build_rxn():
+            return ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                          ARCSpecies(label='HO2', smiles='[O]O')],
+                               p_species=[ARCSpecies(label='H2O2', smiles='OO'),
+                                          ARCSpecies(label='O', smiles='[O]')])
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            rxn = build_rxn()
+            self.assertEqual(rxn.family, 'H_Abstraction')
+            self.assertEqual({product_dict['family'] for product_dict in rxn.get_product_dicts()},
+                             {'H_Abstraction', 'Substitution_O'})
+            self.assertEqual(build_rxn().get_product_dicts(),
+                             build_rxn().get_product_dicts())
+
+    def test_check_attributes_rejects_an_unavailable_pinned_family(self):
+        """An unavailable family that reached the reaction through a reaction dictionary is reported
+        when the reaction is checked, before any product dicts are generated."""
+        r_species = [ARCSpecies(label='C2H4', smiles='C=C'), ARCSpecies(label='HCl', smiles='Cl')]
+        p_species = [ARCSpecies(label='C2H5Cl', smiles='CCCl')]
+        reaction_dict = ARCReaction(r_species=r_species, p_species=p_species).as_dict()
+        reaction_dict['family'] = 'Not_A_Family'
+        rxn = ARCReaction(reaction_dict=reaction_dict)
+        with self.assertRaises(ReactionError) as error:
+            rxn.check_attributes()
+        self.assertIn('Not_A_Family', str(error.exception))
+        reaction_dict['family'] = 'XY_Addition_MultipleBond'
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            ARCReaction(reaction_dict=reaction_dict).check_attributes()
+
+    def test_pinning_an_unavailable_family_raises(self):
+        """A family name that no RMG or ARC family carries is rejected when it is given as an
+        argument, and is reported when it reaches the reaction through a reaction dictionary."""
+        r_species = [ARCSpecies(label='C2H4', smiles='C=C'), ARCSpecies(label='HCl', smiles='Cl')]
+        p_species = [ARCSpecies(label='C2H5Cl', smiles='CCCl')]
+        with self.assertRaises(ValueError):
+            ARCReaction(r_species=r_species, p_species=p_species, family='Not_A_Family')
+        reaction_dict = ARCReaction(r_species=r_species, p_species=p_species).as_dict()
+        reaction_dict['family'] = 'Not_A_Family'
+        with self.assertRaises(ReactionError) as error:
+            _ = ARCReaction(reaction_dict=reaction_dict).product_dicts
+        self.assertIn('Not_A_Family', str(error.exception))
 
     def test_family_own_reverse_is_derived_from_a_pinned_family(self):
         """Test that pinning a family also determines whether that family is its own reverse"""
