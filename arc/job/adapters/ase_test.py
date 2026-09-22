@@ -16,7 +16,7 @@ from ase import Atoms
 from ase.calculators.emt import EMT
 
 from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
-from arc.job.adapters.ase_adapter import ASEAdapter, servers
+from arc.job.adapters.ase_adapter import ASEAdapter, servers, submit_filenames
 from arc.parser.parser import parse_1d_scan_coords, parse_1d_scan_energies
 from arc.species.species import ARCSpecies
 from arc.job.adapters.scripts.ase_script import (apply_constraints,
@@ -77,6 +77,12 @@ class TestASEAdapter(unittest.TestCase):
                                args={'keyword': {'calculator': 'xtb', 'method': 'GFN2-xTB'}},
                                testing=True)
                                
+        # ``set_files()`` already ran inside the constructor, against the local_path the adapter
+        # resolved for itself. The reassignment below repoints the other tests at a flat scratch
+        # directory, so keep the constructed paths for assertions about what ``set_files()`` wrote.
+        cls.job_1_constructed_local_path = cls.job_1.local_path
+        cls.job_2_constructed_local_path = cls.job_2.local_path
+
         cls.job_1.local_path = os.path.join(cls.project_directory, 'test_1')
         cls.job_2.local_path = os.path.join(cls.project_directory, 'test_2')
         cls.job_2.remote_path = '/path/to/remote'
@@ -157,9 +163,109 @@ class TestASEAdapter(unittest.TestCase):
         self.assertIn('conda activate uma_env', content)
         self.assertIn('/remote/python', content)
 
+    def build_queue_job(self, cluster_soft, project, server='test_server', block=None, **kwargs):
+        """
+        Build a queue-executed ASE job against a fake server, and read back the submit script it
+        wrote. Everything happens inside the ``servers`` patch, since the adapter re-reads
+        ``servers[self.server]['cluster_soft']`` whenever it resolves the submit filename.
+
+        Args:
+            cluster_soft (str): The ``cluster_soft`` entry to give the fake server.
+            project (str): The project name, used to keep the jobs' directories apart.
+            server (str, optional): The server name to register the fake server under.
+            block (dict, optional): The level's ``args['block']`` execution knobs.
+            kwargs: Further keyword arguments for the ``ASEAdapter`` constructor.
+
+        Returns:
+            Tuple[ASEAdapter, str, str]: The job, its submit filename, and the script's content.
+        """
+        xyz = {'symbols': ('O', 'H', 'H'),
+               'isotopes': (16, 1, 1),
+               'coords': ((0.0, 0.0, 0.0), (0.0, 0.75, 0.58), (0.0, -0.75, 0.58))}
+        fake_server = {server: {'cluster_soft': cluster_soft, 'un': 'test_user',
+                                'queues': {'server_default_q': '24:00:00', 'other_q': '48:00:00'}}}
+        with patch.dict(servers, fake_server):
+            job = ASEAdapter(execution_type='queue',
+                             job_type='opt',
+                             project=project,
+                             project_directory=os.path.join(self.project_directory, project),
+                             species=[ARCSpecies(label='H2O', xyz=xyz)],
+                             args={'keyword': {'calculator': 'xtb'}, 'block': block or dict()},
+                             server=server,
+                             testing=True,
+                             **kwargs)
+            submit_filename = job.determine_submit_filename()
+        with open(os.path.join(job.local_path, submit_filename), 'r') as f:
+            content = f.read()
+        return job, submit_filename, content
+
+    def test_submit_filename_is_the_one_the_submission_path_invokes(self):
+        """Test that a queue job's script is written under the filename submit_job() invokes"""
+        # local.submit_job()/ssh.submit_job() name the file to submit as submit_filenames[cluster_soft],
+        # looked up verbatim, so writing 'submit.sh' on a Slurm server submits a file that is not there.
+        for cluster_soft in ('PBS', 'Slurm'):
+            with self.subTest(cluster_soft=cluster_soft):
+                job, submit_filename, _ = self.build_queue_job(cluster_soft, f'test_fname_{cluster_soft}')
+                self.assertEqual(submit_filename, submit_filenames[cluster_soft])
+                self.assertTrue(os.path.isfile(os.path.join(job.local_path, submit_filenames[cluster_soft])))
+                self.assertIn(submit_filenames[cluster_soft], [f['file_name'] for f in job.files_to_upload])
+
+    def test_submit_filename_guard_admits_only_what_the_lookup_can_serve(self):
+        """Test that a cluster_soft spelling settings does not carry falls back instead of raising"""
+        # submit_filenames is keyed by the exact settings spelling ('PBS', 'Slurm'), so a guard that
+        # accepts any casing hands the lookup a key it does not have and raises KeyError mid-construction.
+        for cluster_soft in ('slurm', 'pbs', 'SLURM', 'HTCondor', 'OGE'):
+            with self.subTest(cluster_soft=cluster_soft):
+                job, submit_filename, _ = self.build_queue_job(cluster_soft, f'test_case_{cluster_soft}')
+                self.assertEqual(submit_filename, 'submit.sh')
+
+    def test_write_submit_script_warns_on_a_scheduler_with_no_template(self):
+        """Test that a queue job on a scheduler ase_submit has no template for says so"""
+        # ase_submit covers PBS and Slurm only; HTCondor's submit file is a condor description
+        # file rather than a shell script, so the adapter writes the bare script and warns.
+        with self.assertLogs('arc', level='WARNING') as captured:
+            _, submit_filename, content = self.build_queue_job('HTCondor', 'test_no_template')
+        self.assertEqual(submit_filename, 'submit.sh')
+        self.assertNotIn('#PBS', content)
+        self.assertNotIn('#SBATCH', content)
+        self.assertTrue(any('ASE submit templates exist only for' in line for line in captured.output))
+
+    def test_write_submit_script_enters_the_local_path_of_a_local_server(self):
+        """Test that a queue job on the 'local' server cd's into its local path, not its remote path"""
+        # The shared queue path submits a local job from local_path, while _initialize_adapter() still
+        # constructs a remote_path; a script that cd's into the latter fails before ASE ever runs.
+        job, _, content = self.build_queue_job('PBS', 'test_local_pwd', server='local')
+        self.assertIn(f'cd "{job.local_path}"', content)
+        self.assertNotIn(job.remote_path, content)
+
+    def test_write_submit_script_records_the_resolved_queue(self):
+        """Test that the queue a job is submitted to is recorded in attempted_queues"""
+        # trsh_job_queue() moves a failed job to the next queue by filtering on attempted_queues,
+        # so a queue that never lands there is retried forever.
+        job, _, content = self.build_queue_job('PBS', 'test_queue_default')
+        self.assertEqual(job.attempted_queues, ['server_default_q'])
+        self.assertIn('#PBS -q server_default_q', content)
+
+        job, _, content = self.build_queue_job('PBS', 'test_queue_block', block={'queue': 'block_q'})
+        self.assertEqual(job.attempted_queues, ['block_q'])
+        self.assertIn('#PBS -q block_q', content)
+
+    def test_write_submit_script_requests_the_job_walltime(self):
+        """Test that max_job_time reaches the submit script rather than the queue's own default"""
+        _, _, pbs_content = self.build_queue_job('PBS', 'test_walltime_pbs', max_job_time=12.0)
+        self.assertIn('#PBS -l walltime=12:00:00', pbs_content)
+
+        _, _, slurm_content = self.build_queue_job('Slurm', 'test_walltime_slurm', max_job_time=48.0)
+        self.assertIn('#SBATCH -t 2-0:00:00', slurm_content)  # Slurm's t_max_format is days
+
     def test_set_files_does_not_write_for_an_incore_job(self):
         """Test that an incore job writes no submit script (it writes its input when it executes)"""
-        self.assertFalse(os.path.isfile(os.path.join(self.job_1.local_path, 'submit.sh')))
+        # Assert against the directory set_files() actually wrote to, not the scratch directory
+        # setUpClass repoints local_path at afterwards - there, nothing is ever written and the
+        # assertion cannot fail.
+        self.assertTrue(os.path.isdir(self.job_1_constructed_local_path))
+        self.assertEqual([entry for entry in os.listdir(self.job_1_constructed_local_path)
+                          if entry.startswith('submit.')], list())
         self.assertTrue(all('submit.sh' not in f['local'] for f in self.job_1.files_to_upload))
 
     def test_determine_constraints(self):
