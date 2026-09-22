@@ -42,6 +42,7 @@ from arc.job.adapters.ts.linear_utils.geom_utils import (
     xyz_with_coords,
 )
 from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
+from arc.job.adapters.ts.linear_utils.local_geometry import clean_migrating_h
 from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA
 from arc.species.species import colliding_atoms
 
@@ -63,6 +64,10 @@ _BAEYER_VILLIGER_CO_SHORTEN_TARGET: float = 1.28
 _BAEYER_VILLIGER_H_TRANSFER_TARGET: float = 1.40
 
 _OH_MIGRATION_EARLY_TS_CO_DISTANCE: float = 2.08
+
+# Retro-ene bridging-H interior angle (degrees); the six-ring strain minimum
+# for this builder's seed distances.
+_RETROENE_H_BRIDGE_ANGLE: float = 126.0
 
 
 # ---------------------------------------------------------------------------
@@ -1215,20 +1220,36 @@ def build_retroene_ts(r_xyz: dict,
     """
     Build a 6-membered-ring TS for retro-ene fragmentation.
 
-    In a Retroene reaction, an ester fragments through a concerted 6-membered ring TS::
+    The RMG ``Retroene`` recipe labels the ring ``*1`` … ``*6``. Five of its
+    six bonds are already present in the reactant; the ring is closed by the
+    forming ``*1``···``*6`` bond::
 
-         H(mig)
-        /      \\
-      C(donor)  O(ester)
-      |          |
-      C(leaving) C(carbonyl)
-        \\      /
-         O(C=O)
+           *6 (migrating H)
+          /                \\
+        *5 (donor)          *1 (acceptor)
+        |                   |
+        *4 (leaving)        *2
+          \\                /
+                 *3
 
-    The migrating H leaves the donor C and arrives at the ester O,
-    while the C=O oxygen develops a contact with the leaving C.
+    ``*5``-``*6`` and ``*3``-``*4`` break, ``*1``-``*6`` forms, ``*1``-``*2``
+    loses a bond order and ``*2``-``*3`` / ``*4``-``*5`` each gain one. For an
+    ester ``*1`` is the carbonyl O, ``*2`` the carbonyl C and ``*3`` the ester
+    O; for an all-carbon retro-ene ``*1`` is a carbon.
 
-    Returns ``None`` if the motif cannot be identified.
+    The acceptor ``*1`` is read from ``forming_bonds``; the donor ``*5``,
+    the migrating H ``*6``, the leaving atom ``*4`` and its sigma partner
+    ``*3`` are read from ``breaking_bonds``. ``*4`` is first repositioned by
+    two-sphere triangulation so the ``*3``-``*4`` sigma bond stretches while
+    the ``*4``-``*5`` pi bond contracts, the ring is then folded until the
+    donor-acceptor separation matches a relaxed hydrogen bridge, and the
+    migrating H is finally triangulated between donor and acceptor at
+    element-specific Pauling-elongated distances, on the side of the
+    donor-acceptor axis opposite the rest of the ring.
+
+    Returns ``None`` if the motif cannot be identified, if ``*1`` is not two
+    bonds from ``*3``, or if the fold leaves the donor and acceptor too far
+    apart to place the migrating H between them.
     """
     bb = list(breaking_bonds or [])
     fb = list(forming_bonds or [])
@@ -1255,53 +1276,39 @@ def build_retroene_ts(r_xyz: dict,
     if mig_h is None or other_bb_idx is None:
         return None
 
+    acceptor = fb[0][0] if fb[0][1] == mig_h else fb[0][1]
+    if acceptor == mig_h or not 0 <= acceptor < len(symbols) or symbols[acceptor] == 'H':
+        return None
+
     # The other breaking bond is the sigma bond (e.g. O3-C4).
     sigma_bb = bb[other_bb_idx]
 
     leaving_c = None
-    ester_o = None
+    sigma_partner = None
     for candidate in sigma_bb:
         for nbr in r_mol.atoms[candidate].bonds:
             if atom_to_idx[nbr] == donor:
                 leaving_c = candidate
-                ester_o = sigma_bb[0] if sigma_bb[1] == candidate else sigma_bb[1]
+                sigma_partner = sigma_bb[0] if sigma_bb[1] == candidate else sigma_bb[1]
                 break
         if leaving_c is not None:
             break
-    if leaving_c is None or ester_o is None:
+    if leaving_c is None or sigma_partner is None:
         return None
 
-    # carbonyl_c = non-H, non-leaving-C neighbour of ester_o.
-    carbonyl_c = None
-    for nbr in r_mol.atoms[ester_o].bonds:
-        ni = atom_to_idx[nbr]
-        if ni != leaving_c and symbols[ni] != 'H':
-            carbonyl_c = ni
-            break
-    if carbonyl_c is None:
+    adj = mol_to_adjacency(r_mol)
+    ring_bridge = sorted(adj[acceptor] & adj[sigma_partner])
+    if not ring_bridge:
+        logger.debug(f'Retroene builder: acceptor {acceptor} is not two bonds from {sigma_partner}, '
+                     f'so no *1-*2-*3 ring path exists; skipping.')
         return None
-
-    # carbonyl_o = double-bonded O on carbonyl_c (not ester_o).
-    carbonyl_o = None
-    for nbr, bond in r_mol.atoms[carbonyl_c].bonds.items():
-        ni = atom_to_idx[nbr]
-        if symbols[ni] == 'O' and ni != ester_o and bond.order >= 1.5:
-            carbonyl_o = ni
-            break
-    if carbonyl_o is None:
-        return None
-
-    # The acid fragment and the donor stay at reactant positions; only C4 is
-    # repositioned via two-sphere triangulation so d(O3,C4) stretches and
-    # d(C5,C4) contracts simultaneously. Then ring_closure_xyz folds O2
-    # toward C4, and finally H13 is placed between C5 and O3.
 
     # Step 1: Place C4 at the two-sphere intersection of O3 and C5.
     d_break = 2.5   # O3-C4 (breaking sigma)
     d_pi = 1.40     # C5-C4 (forming pi bond)
 
     new_c4 = two_sphere_intersection(
-        coords[ester_o], d_break, coords[donor], d_pi, coords[leaving_c])
+        coords[sigma_partner], d_break, coords[donor], d_pi, coords[leaving_c])
     if new_c4 is None:
         return None
     c4_displacement = new_c4 - coords[leaving_c]
@@ -1315,28 +1322,28 @@ def build_retroene_ts(r_xyz: dict,
     for k in c4_moving:
         coords[k] += c4_displacement
 
-    # Step 2: Fold O2 toward C4's new position.
-    intermediate_xyz = xyz_with_coords(r_xyz, coords)
-    d_co_target = 2.2
+    d_donor_h = get_single_bond_length(symbols[donor], 'H') + PAULING_DELTA
+    d_acceptor_h = get_single_bond_length(symbols[acceptor], 'H') + PAULING_DELTA
+    d_donor_acceptor = float(np.sqrt(
+        d_donor_h ** 2 + d_acceptor_h ** 2
+        - 2.0 * d_donor_h * d_acceptor_h * np.cos(np.radians(_RETROENE_H_BRIDGE_ANGLE))))
+
     rc_xyz = ring_closure_xyz(
-        intermediate_xyz, r_mol,
-        forming_bond=(carbonyl_o, leaving_c),
-        target_distance=d_co_target)
+        xyz_with_coords(r_xyz, coords), r_mol,
+        forming_bond=(acceptor, donor),
+        target_distance=d_donor_acceptor)
     if rc_xyz is not None:
         coords = np.array(rc_xyz['coords'], dtype=float)
 
-    # Step 3: Place migrating H between C5 and O3.
-    sbl_ch = get_single_bond_length('C', 'H') or 1.09
-    sbl_oh = get_single_bond_length('O', 'H') or 0.97
-    d_ch = sbl_ch + PAULING_DELTA  # ~1.51 Å
-    d_oh = sbl_oh + PAULING_DELTA  # ~1.39 Å
-    new_h_pos = two_sphere_intersection(
-        coords[donor], d_ch, coords[ester_o], d_oh, coords[mig_h])
-    if new_h_pos is None:
+    gap = float(np.linalg.norm(coords[acceptor] - coords[donor]))
+    if not abs(d_donor_h - d_acceptor_h) <= gap <= d_donor_h + d_acceptor_h:
+        logger.debug(f'Retroene builder: the ring did not close -- donor {donor} and acceptor {acceptor} '
+                     f'are {gap:.3f} A apart, outside the triangulable window; skipping.')
         return None
-    coords[mig_h] = new_h_pos
 
-    ts_xyz = xyz_with_coords(r_xyz, coords)
+    ring_interior = coords[[ring_bridge[0], sigma_partner, leaving_c]].mean(axis=0)
+    ts_xyz = clean_migrating_h(xyz_with_coords(r_xyz, coords), donor, acceptor, mig_h,
+                               ref_pos=coords[donor] + coords[acceptor] - ring_interior)
     if colliding_atoms(ts_xyz):
         return None
     return ts_xyz
