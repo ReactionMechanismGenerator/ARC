@@ -35,6 +35,13 @@ DEFAULT_ASE_ENV = {
 # Level methods that select the UMA calculator. 'uma' resolves to UMA_LATEST_MODEL; specific checkpoints named explicitly.
 UMA_METHODS = ('uma', 'uma-s-1', 'uma-s-1p1', 'uma-s-1p2', 'uma-m-1p1')
 
+# Cluster schedulers this adapter carries an ``ase_submit`` template for, spelled exactly as the
+# keys of ``submit_filenames``/``submit_command`` in arc/settings/settings.py. ``submit_job()``
+# looks those dicts up verbatim with the server's ``cluster_soft`` value, so a job's submit script
+# is only found if this adapter resolves the very same key - matching case-insensitively here would
+# name a file that the submission then fails to invoke.
+QUEUE_CLUSTER_SOFT = ('PBS', 'Slurm')
+
 class ASEAdapter(JobAdapter):
     """
     A generic adapter for ASE (Atomic Simulation Environment) jobs.
@@ -373,7 +380,7 @@ class ASEAdapter(JobAdapter):
             str: The submit-script filename.
         """
         cluster_soft = servers.get(self.server, dict()).get('cluster_soft', '') if self.server is not None else ''
-        if self.execution_type != 'incore' and cluster_soft.lower() in ('pbs', 'slurm'):
+        if self.execution_type != 'incore' and cluster_soft in QUEUE_CLUSTER_SOFT:
             return submit_filenames[cluster_soft]
         return 'submit.sh'
 
@@ -424,9 +431,12 @@ class ASEAdapter(JobAdapter):
         path that only exists on the ARC host. See ``determine_submit_config()`` for the knobs.
         """
         config = self.determine_submit_config()
-        cluster_soft = servers.get(self.server, dict()).get('cluster_soft', '').lower() \
-            if self.server is not None else ''
-        queue_job = self.execution_type != 'incore' and cluster_soft in ('pbs', 'slurm')
+        cluster_soft = servers.get(self.server, dict()).get('cluster_soft', '') if self.server is not None else ''
+        queue_job = self.execution_type != 'incore' and cluster_soft in QUEUE_CLUSTER_SOFT
+        if self.execution_type != 'incore' and cluster_soft and not queue_job:
+            logger.warning(f"Job {self.job_name} is queued on {self.server}, whose cluster software is "
+                           f"'{cluster_soft}'; ASE submit templates exist only for {QUEUE_CLUSTER_SOFT}. "
+                           f"Writing a bare shell script with no scheduler directives.")
         if queue_job and not config['python']:
             logger.warning(f"Job {self.job_name} is submitted to {self.server}, but no server-side python "
                            f"was given in args['block']['python']; falling back to {self.python_executable}, "
@@ -439,7 +449,9 @@ class ASEAdapter(JobAdapter):
                 self.attempted_queues.append(config['queue'])
             # The script cd's into the job directory, so address the ASE script relative to it.
             command = f'{python_executable} "$JOB_DIR/ase_script.py" --yml_path "$JOB_DIR"'
-            content = self.get_queue_submit_script(command=command, config=config, cluster_soft=cluster_soft)
+            # ``ase_submit`` is ARC's own dict and is keyed in lower case, unlike settings' scheduler dicts.
+            content = self.get_queue_submit_script(command=command, config=config,
+                                                   cluster_soft=cluster_soft.lower())
         else:
             # A job with no server (and hence no remote path) runs out of its local directory.
             path = self.remote_path or self.local_path
