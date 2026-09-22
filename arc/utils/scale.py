@@ -17,7 +17,8 @@ from arc.common import (ARC_PATH,
                         initialize_log,
                         time_lapse,
                         )
-from arc.level import Level
+from arc.imports import settings
+from arc.level import Level, get_freq_scale_factor_key
 from arc.parser.parser import parse_zpe_correction
 from arc.scheduler import Scheduler
 from arc.species.species import ARCSpecies
@@ -29,6 +30,8 @@ except ImportError:
 
 
 logger = get_logger()
+
+valid_chars = settings['valid_chars']
 
 HEADER = 'FREQ: A PROGRAM FOR OPTIMIZING SCALE FACTORS (Version 1)\n'\
          '                 written by                 \n'\
@@ -241,7 +244,8 @@ def summarize_results(lambda_zpes: list,
             text += f'(execution time: {execution_time})\n'
             logger.info(text)
             f.write(text)
-            database_formats.append(f"""  '{level}': {harmonic_freq_scaling_factor:.3f},  # [4]\n""")
+            database_formats.append(
+                f"""  '{get_freq_scale_factor_key(level)}': {harmonic_freq_scaling_factor:.3f},  # [4]\n""")
         logger.info(database_text)
         f.write(database_text)
         for database_format in database_formats:
@@ -355,4 +359,4 @@ def rename_level(level: str) -> str:
     level = level.replace(')', 'b')
     level = level.replace(' ', '_')
     level = level.replace(':', '..')
-    return level
+    return ''.join([char if char in valid_chars else '_' for char in level])
