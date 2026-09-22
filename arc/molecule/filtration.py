@@ -14,6 +14,8 @@ The rules this module follows are (by order of importance):
 which is quite like http://www.chem.ucla.edu/~harding/IGOC/R/resonance_contributor_preference_rules.html)
 """
 
+import itertools
+
 from arc.common import get_logger
 from arc.exceptions import ResonanceError
 from arc.molecule.element import PeriodicSystem
@@ -206,16 +208,18 @@ def charge_filtration(filtered_list, charge_span_list):
         filtered_list = [filtered_mol for index, filtered_mol in enumerate(filtered_list) if
                          charge_span_list[index] == min_charge_span]  # the minimal charge span layer
         # Find the radical and multiple bond sites in all filtered_list structures:
-        rad_sorting_list = []  # sorting_label for radical sites
-        mul_bond_sorting_list = []  # sorting_label for multiple bond sites in the form of (atom1, atom2) tuples
+        rad_sorting_list = []  # atom indices for radical sites
+        mul_bond_sorting_list = []  # atom indices for multiple bond sites in the form of (atom1, atom2) tuples
         for mol in filtered_list:
-            for atom in mol.vertices:
-                if atom.radical_electrons and int(atom.sorting_label) not in rad_sorting_list:
-                    rad_sorting_list.append(int(atom.sorting_label))
+            indices = get_atom_indices(mol)
+            for index1, atom in enumerate(mol.vertices):
+                if atom.radical_electrons and index1 not in rad_sorting_list:
+                    rad_sorting_list.append(index1)
                 for atom2, bond in atom.bonds.items():
+                    index2 = indices[id(atom2)]
                     # check if bond is multiple, store only from one side (atom1 < atom2) for consistency
-                    if atom2.sorting_label > atom.sorting_label and bond.is_double() or bond.is_triple():
-                        mul_bond_sorting_list.append((int(atom.sorting_label), int(atom2.sorting_label)))
+                    if index2 > index1 and (bond.is_double() or bond.is_triple()):
+                        mul_bond_sorting_list.append((index1, index2))
         # Find unique radical and multiple bond sites in charged_list and append to unique_charged_list:
         unique_charged_list = []
         for mol in charged_list:
@@ -240,16 +244,28 @@ def charge_filtration(filtered_list, charge_span_list):
     return filtered_list
 
 
+def get_atom_indices(mol):
+    """
+    Return a mapping of ``id(atom)`` to the atom's position in ``mol.vertices``.
+
+    The mapping identifies an atom consistently across the structures of a single species only
+    while those structures share a common atom order.
+    """
+    return {id(atom): index for index, atom in enumerate(mol.vertices)}
+
+
 def find_unique_sites_in_charged_list(mol, rad_sorting_list, mul_bond_sorting_list):
     """
     A helper function for reactive site discovery in charged species
     """
-    for atom in mol.vertices:
-        if atom.radical_electrons and int(atom.sorting_label) not in rad_sorting_list:
+    indices = get_atom_indices(mol)
+    for index1, atom in enumerate(mol.vertices):
+        if atom.radical_electrons and index1 not in rad_sorting_list:
             return [mol]
         for atom2, bond in atom.bonds.items():
-            if (atom2.sorting_label > atom.sorting_label and (bond.is_double() or bond.is_triple())
-                    and (int(atom.sorting_label), int(atom2.sorting_label)) not in mul_bond_sorting_list
+            index2 = indices[id(atom2)]
+            if (index2 > index1 and (bond.is_double() or bond.is_triple())
+                    and (index1, index2) not in mul_bond_sorting_list
                     and not (atom.is_sulfur() and atom2.is_sulfur())):
                 # We check that both atoms aren't S, otherwise we get [S.-]=[S.+] as a structure of S2 triplet
                 return [mol]
@@ -301,6 +317,7 @@ def stabilize_charges_by_proximity(mol_list):
     """
     Only keep structures that obey the charge proximity rule.
     Opposite charges will be as close as possible to one another, and vice versa.
+    Charged atoms in different molecular fragments have no path between them and are not counted.
     """
     indices_to_pop = []
     charge_distance_list = []  # indices match mol_list
@@ -308,29 +325,31 @@ def stabilize_charges_by_proximity(mol_list):
         # Try finding well-defined pairs of formally-charged atoms to apply the proximity principle
         # (opposite charges will be as close as possible to one another, and vice versa)
         cumulative_opposite_charge_distance = cumulative_similar_charge_distance = 0
-        for atom1 in mol.vertices:
-            if atom1.charge:
-                for atom2 in mol.vertices:
-                    if atom2.charge and atom2.sorting_label > atom1.sorting_label:
-                        # found two charged atoms
-                        if (atom1.charge > 0) ^ (atom2.charge > 0):  # xor
-                            # they have opposing signs when ONLY one is positive
-                            cumulative_opposite_charge_distance += len(find_shortest_path(atom1, atom2))
-                        else:
-                            # they have similar signs
-                            cumulative_similar_charge_distance += len(find_shortest_path(atom1, atom2))
+        charged_atoms = [atom for atom in mol.vertices if atom.charge]
+        for atom1, atom2 in itertools.combinations(charged_atoms, 2):
+            # found two charged atoms
+            path = find_shortest_path(atom1, atom2)
+            if path is None:
+                continue
+            if (atom1.charge > 0) ^ (atom2.charge > 0):  # xor
+                # they have opposing signs when ONLY one is positive
+                cumulative_opposite_charge_distance += len(path)
+            else:
+                # they have similar signs
+                cumulative_similar_charge_distance += len(path)
         charge_distance_list.append([cumulative_opposite_charge_distance,
                                      cumulative_similar_charge_distance])
-    min_cumulative_opposite_charge_distance = min([distances[0] for distances in charge_distance_list]
-                                                  or [0])  # in Python 3 use `min(list, default=0)`
+    min_cumulative_opposite_charge_distance = min((distances[0] for distances in charge_distance_list),
+                                                  default=0)
     for i, distances in enumerate(charge_distance_list):
         # after generating the charge_distance_list, iterate through it and mark structures to pop
         if distances[0] > min_cumulative_opposite_charge_distance:
             indices_to_pop.append(i)
-    max_cumulative_similar_charge_distance = max([distances[1] for i, distances in
-                                                  enumerate(charge_distance_list) if i not in indices_to_pop] or [0])
+    max_cumulative_similar_charge_distance = max((distances[1] for i, distances in
+                                                  enumerate(charge_distance_list) if i not in indices_to_pop),
+                                                 default=0)
     for i, distances in enumerate(charge_distance_list):
-        if distances[0] < max_cumulative_similar_charge_distance:
+        if distances[1] < max_cumulative_similar_charge_distance:
             indices_to_pop.append(i)
     for i in reversed(range(len(mol_list))):  # pop starting from the end, so indices won't change
         if i in indices_to_pop:

@@ -1,11 +1,29 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
+import inspect
 import unittest
 
 from arc.molecule.molecule import Molecule
-from arc.molecule.resonance import (_clar_optimization, _clar_transformation, generate_clar_structures,
-    generate_kekule_structure, generate_optimal_aromatic_resonance_structures, generate_resonance_structures)
+from arc.molecule.resonance import (_SAVE_ORDER_METHODS, _clar_optimization, _clar_transformation,
+    generate_aromatic_resonance_structure, generate_clar_structures, generate_kekule_structure,
+    generate_optimal_aromatic_resonance_structures, generate_resonance_structures,
+    populate_resonance_algorithms)
+
+
+def resonance_fingerprint(mol):
+    """
+    Return an atom order independent fingerprint of ``mol``, keyed on the atom IDs.
+
+    The fingerprint is a tuple of a sorted tuple of
+    (id, element symbol, charge, radical electrons, lone pairs) per atom,
+    and a sorted tuple of (lower id, higher id, bond order) per bond.
+    """
+    atoms = tuple(sorted((atom.id, atom.element.symbol, atom.charge, atom.radical_electrons, atom.lone_pairs)
+                         for atom in mol.atoms))
+    bonds = tuple(sorted((min(bond.atom1.id, bond.atom2.id), max(bond.atom1.id, bond.atom2.id), bond.order)
+                         for bond in mol.get_all_edges()))
+    return atoms, bonds
 
 
 class ResonanceTest(unittest.TestCase):
@@ -1159,6 +1177,66 @@ multiplicity 2
                 atom1_nb = {nb.id for nb in list(atom1.bonds.keys())}
                 atom2_nb = {nb.id for nb in list(atom2.bonds.keys())}
                 self.assertEqual(atom1_nb, atom2_nb)
+
+    def test_resonance_of_polycyclic_aromatics_without_changing_atom_order(self):
+        """Test that save_order is honored by the Clar structures of polycyclic aromatic molecules"""
+        for smiles, num_structures in [('c1ccc2ccccc2c1', 3), ('C#Cc1ccc2ccccc2c1', 4), ('c1ccc2cc3ccccc3cc2c1', 4)]:
+            mol = Molecule(smiles=smiles)
+            mol.assign_atom_ids()
+            original_order = [atom.id for atom in mol.atoms]
+            neighbors = [{neighbor.id for neighbor in atom.bonds.keys()} for atom in mol.atoms]
+
+            ordered = generate_resonance_structures(mol.copy(deep=True), save_order=True)
+            self.assertEqual(len(ordered), num_structures)
+            for res_mol in ordered:
+                self.assertEqual([atom.id for atom in res_mol.atoms], original_order)
+                for index, atom in enumerate(res_mol.atoms):
+                    self.assertEqual(atom.element.symbol, mol.atoms[index].element.symbol)
+                    self.assertEqual({neighbor.id for neighbor in atom.bonds.keys()}, neighbors[index])
+
+            sorted_ = generate_resonance_structures(mol.copy(deep=True), save_order=False)
+            self.assertEqual(len(sorted_), num_structures)
+            self.assertTrue(any([atom.id for atom in res_mol.atoms] != original_order
+                                for res_mol in sorted_))
+            for res_mol in ordered:
+                self.assertTrue(any(res_mol.copy(deep=True).is_isomorphic(other.copy(deep=True))
+                                    for other in sorted_))
+
+            kept_ordered = generate_resonance_structures(mol.copy(deep=True), keep_isomorphic=True, save_order=True)
+            kept_sorted = generate_resonance_structures(mol.copy(deep=True), keep_isomorphic=True, save_order=False)
+            self.assertEqual({resonance_fingerprint(res_mol) for res_mol in kept_ordered},
+                             {resonance_fingerprint(res_mol) for res_mol in kept_sorted})
+
+    def test_clar_structures_of_charge_separated_polycyclic_aromatics(self):
+        """Test that the Clar structures of a charge separated polycyclic aromatic survive filtration"""
+        mol = Molecule(smiles='[O-][N+](=O)c1cccc2ccccc12')
+        mol.assign_atom_ids()
+
+        non_isomorphic = generate_resonance_structures(mol.copy(deep=True), keep_isomorphic=False)
+        identical = generate_resonance_structures(mol.copy(deep=True), keep_isomorphic=True)
+
+        self.assertEqual(len(non_isomorphic), 4)
+        self.assertEqual(len(identical), 7)
+        self.assertGreaterEqual(len(identical), len(non_isomorphic))
+
+        ordered = generate_resonance_structures(mol.copy(deep=True), keep_isomorphic=True, save_order=True)
+        sorted_ = generate_resonance_structures(mol.copy(deep=True), keep_isomorphic=True, save_order=False)
+        self.assertEqual({resonance_fingerprint(res_mol) for res_mol in ordered},
+                         {resonance_fingerprint(res_mol) for res_mol in sorted_})
+
+
+class SaveOrderMethodsTest(unittest.TestCase):
+    """
+    Contains unit tests for _SAVE_ORDER_METHODS.
+    """
+
+    def test_save_order_aware_algorithms(self):
+        """Test that _SAVE_ORDER_METHODS lists exactly the dispatchable algorithms taking save_order"""
+        dispatchable = set(populate_resonance_algorithms())
+        dispatchable.add(generate_aromatic_resonance_structure)
+        accepts_save_order = {method for method in dispatchable
+                              if 'save_order' in inspect.signature(method).parameters}
+        self.assertEqual(set(_SAVE_ORDER_METHODS), accepts_save_order)
 
 
 class ClarTest(unittest.TestCase):
