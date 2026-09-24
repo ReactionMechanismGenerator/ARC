@@ -38,15 +38,15 @@ class TestOrcaNEB(unittest.TestCase):
         # Mock objects for both orca_neb and orca/adapter modules
         mock_input_filenames = {'orca_neb': 'input.in', 'orca': 'input.in'}
         mock_output_filenames = {'orca_neb': 'input.log', 'orca': 'input.log'}
-        mock_servers = {'local': {'cluster_soft': 'local', 'un': 'user', 'queues': {}},
+        mock_servers = {'local': {'cluster_soft': 'HTCondor', 'un': 'user', 'queues': {}},
                         'remote_server': {'cluster_soft': 'PBS', 'un': 'user', 'path': '/home/user',
                                           'address': 'remote.host.edu', 'queues': {'q': '24:00:00'}},
                         'server_without_a_path': {'cluster_soft': 'PBS', 'un': 'user',
                                                   'address': 'remote.host.edu', 'queues': {'q': '24:00:00'}}}
-        mock_submit_filenames = {'local': 'submit.sub', 'PBS': 'submit.sub'}
+        mock_submit_filenames = {'HTCondor': 'submit.sub', 'PBS': 'submit.sub'}
         mock_orca_neb_settings = {'keyword': {'interpolation': 'IDPP', 'nnodes': 15, 'preopt': 'true'}}
         mock_default_job_settings = {'job_total_memory_gb': 14, 'job_cpu_cores': 8}
-        mock_t_max_format = {'local': 'hours', 'PBS': 'hours'}
+        mock_t_max_format = {'HTCondor': 'hours', 'PBS': 'hours'}
         mock_submit_scripts = {'local': {'orca': 'mock submit script content'},
                                'remote_server': {'orca': 'mock submit script content'},
                                'server_without_a_path': {'orca': 'mock submit script content'}}

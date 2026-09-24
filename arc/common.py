@@ -56,6 +56,94 @@ HALF_CIRCLE = 180.0
 
 default_job_types, servers, supported_ess = settings['default_job_types'], settings['servers'], settings['supported_ess']
 
+CANONICAL_CLUSTER_SOFT = {'oge': 'OGE', 'slurm': 'Slurm', 'pbs': 'PBS', 'htcondor': 'HTCondor', 'local': 'local'}
+CLUSTER_SOFT_ALIASES = {'sge': 'oge'}
+
+
+def canonicalize_cluster_soft_value(raw: str, source: str = 'Cluster software') -> str:
+    """
+    Normalize a scheduler name independently of the user's configured commands.
+
+    ARC parses OGE (including SGE), Slurm, PBS and HTCondor. The documented
+    ``local`` value denotes a server without a queueing system.
+
+    Args:
+        raw (str): The configured scheduler spelling.
+        source (str): Description of the configuration source for diagnostics.
+
+    Returns:
+        str: The canonical scheduler name, or ``local``.
+
+    Raises:
+        ValueError: If ARC does not support the scheduler.
+    """
+    key = raw.strip().lower() if isinstance(raw, str) else None
+    key = CLUSTER_SOFT_ALIASES.get(key, key)
+    if key not in CANONICAL_CLUSTER_SOFT:
+        raise ValueError(f"{source} declared cluster software '{raw}', which ARC does not recognize. "
+                         f"Supported cluster software: {sorted(CANONICAL_CLUSTER_SOFT.values())}.")
+    return CANONICAL_CLUSTER_SOFT[key]
+
+
+def get_canonical_cluster_soft(server: str, server_settings: dict | None = None) -> str:
+    """
+    Normalize the scheduler configured for a server.
+
+    Args:
+        server (str): Server name.
+        server_settings (dict, optional): Server configuration; defaults to ARC's settings.
+
+    Returns:
+        str: The canonical scheduler name.
+
+    Raises:
+        ValueError: If ARC does not support the configured scheduler.
+    """
+    server_settings = servers if server_settings is None else server_settings
+    return canonicalize_cluster_soft_value(server_settings[server]['cluster_soft'], f"Server '{server}'")
+
+
+def get_cluster_soft_key(raw: str, mapping: dict, mapping_name: str, source: str = 'Cluster software',
+                         allow_local: bool = False) -> str:
+    """
+    Resolve a scheduler's key in one configuration dictionary at call time.
+
+    Prefer the direct spelling, then a case-insensitive match, then the SGE/OGE
+    alias. An exact key wins over differently cased duplicates; otherwise an
+    ambiguous match raises an error instead of depending on iteration order.
+    Only the requested dictionary must contain an entry.
+
+    Args:
+        raw (str): Scheduler spelling from the server or an explicit argument.
+        mapping (dict): Scheduler-keyed configuration dictionary.
+        mapping_name (str): Dictionary name for diagnostics.
+        source (str): Configuration source for diagnostics.
+        allow_local (bool): Whether this dictionary supports execution without a queue.
+
+    Returns:
+        str: The exact configured key.
+
+    Raises:
+        ValueError: For unsupported schedulers, queue-less servers, missing
+                    entries, or ambiguous case-insensitive keys.
+    """
+    canonical = canonicalize_cluster_soft_value(raw, source)
+    if canonical == 'local' and not allow_local:
+        raise ValueError(f"{source} ('{raw}') has no queueing system; {mapping_name} is not applicable.")
+    direct = raw.strip()
+    if direct in mapping:
+        return direct
+    normalized = direct.lower()
+    aliases = {'oge', 'sge'} if canonical == 'OGE' else {canonical.lower()}
+    for spellings in ({normalized}, aliases):
+        matches = sorted(key for key in mapping if isinstance(key, str) and key.strip().lower() in spellings)
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ValueError(f"Ambiguous entries in {mapping_name} for cluster software '{raw}': {matches}.")
+    raise ValueError(f"No entry in {mapping_name} for cluster software '{raw}' ({canonical}).")
+
+
 def initialize_job_types(job_types: dict | None = None,
                          specific_job_type: str = '',
                          ) -> dict:
