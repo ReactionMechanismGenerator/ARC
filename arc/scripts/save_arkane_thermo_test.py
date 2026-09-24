@@ -146,6 +146,7 @@ thermo(
             self.assertIsNotNone(entry['nasa_low'])
             self.assertIsNotNone(entry['nasa_high'])
             self.assertEqual(len(entry['nasa_low']['coeffs']), 7)
+            self.assertEqual(entry['standard_state_pressure_pa'], sat.standard_state_pressure_pa())
         self.assertAlmostEqual(content['R1']['H298'], content['R2']['H298'])
         self.assertAlmostEqual(content['R1']['S298'], content['R2']['S298'])
         self.assertEqual(content['R1']['nasa_low'], content['R2']['nasa_low'])
@@ -153,7 +154,8 @@ thermo(
         self.assertAlmostEqual(content['P1']['H298'], -241.8, delta=3.0)
         self.assertAlmostEqual(content['P1']['S298'], 188.8, delta=2.0)
         self.assertLess(content['P1']['H298'], content['R1']['H298'])
-        self.assertTrue(all(cp['cp_j_mol_k'] > 0 for cp in content['P1']['cp_data']))
+        for point in content['P1']['thermo_points']:
+            self.assertGreater(point['cp_j_mol_k'], 0.0)
         h_increment = (entries['P1'].get_enthalpy(2000.0) - entries['P1'].get_enthalpy(298.15)) / 1000.0
         self.assertAlmostEqual(h_increment, 72.79, delta=3.0)
         self.assertAlmostEqual(entries['P1'].get_entropy(2000.0), 264.77, delta=3.0)
@@ -200,6 +202,35 @@ entry(
                 os.chdir(cwd)
         self.assertIn('OnlyFromLibrary', content)
         self.assertNotIn('R1', content)
+
+
+@unittest.skipUnless(HAS_RMG, 'requires rmgpy (rmg_env)')
+class TestStandardStatePressure(unittest.TestCase):
+    """The standard state the reported entropies and free energies belong to."""
+
+    def test_the_recovered_pressure_is_one_atmosphere(self):
+        """RMG divides its translational partition function by a hardcoded 101325 Pa."""
+        import save_arkane_thermo as sat
+        self.assertEqual(sat.standard_state_pressure_pa(), 101325.0)
+
+    def test_the_recovery_is_independent_of_the_probe_mass_and_temperature(self):
+        """Inverting the partition function at other masses and temperatures gives one value."""
+        import rmgpy.constants as constants
+        from rmgpy.statmech import IdealGasTranslation
+        for amu in (1.0, 18.0, 100.0):
+            for temperature in (100.0, 298.15, 2400.0):
+                with self.subTest(amu=amu, temperature=temperature):
+                    mode = IdealGasTranslation(mass=(amu, 'amu'))
+                    mass = mode.mass.value_si
+                    numerator = ((2 * constants.pi * mass) / (constants.h * constants.h)) ** 1.5 \
+                        * (constants.kB * temperature) ** 2.5
+                    recovered = numerator / mode.get_partition_function(temperature)
+                    self.assertAlmostEqual(recovered, 101325.0, places=4)
+
+    def test_the_recovered_pressure_is_not_one_bar(self):
+        """A consumer assuming 1 bar is wrong; the emitted value must say so."""
+        import save_arkane_thermo as sat
+        self.assertNotEqual(sat.standard_state_pressure_pa(), 100000.0)
 
 
 if __name__ == '__main__':
