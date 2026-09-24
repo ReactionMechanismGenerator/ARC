@@ -1359,6 +1359,57 @@ H       0.04768200    1.19305700   -0.88359100
             self.assertNotIn('stable', self._route_for_job_type(job_type).lower())
 
 
+class TestGaussianConstraintBlock(unittest.TestCase):
+    """
+    Contains unit tests for the ModRedundant constraint block the Gaussian adapter writes.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.project_directory = tempfile.mkdtemp(prefix='test_GaussianConstraintBlock_')
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
+
+    def _written_deck(self, constraints: list) -> str:
+        """Return the text of a deck the Gaussian adapter wrote for ``constraints``."""
+        job = GaussianAdapter(execution_type='incore',
+                              job_type='opt',
+                              level=Level(method='wb97xd', basis='def2-TZVP'),
+                              project='test',
+                              project_directory=os.path.join(self.project_directory, str(len(constraints))),
+                              species=[ARCSpecies(label='spc', smiles='CCO')],
+                              constraints=constraints,
+                              testing=True,
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, 'input.gjf'), 'r') as f:
+            return f.read()
+
+    def test_two_constraints_each_get_their_own_line(self):
+        """Test that a deck holding two constraints writes all four directives on separate lines"""
+        deck = self._written_deck([([1, 2], 1.45), ([1, 2, 3], 104.5)])
+        self.assertIn('\nB 1 2 =1.45 B\n', deck)
+        self.assertIn('\nB 1 2 F\n', deck)
+        self.assertIn('\nA 1 2 3 =104.50 B\n', deck)
+        self.assertIn('\nA 1 2 3 F\n', deck)
+        self.assertNotIn('FA', deck)
+        directives = [line for line in deck.splitlines() if re.fullmatch(r'[BAD] [\d ]+(=[\d.]+ B|F)', line)]
+        self.assertEqual(directives, ['B 1 2 =1.45 B', 'B 1 2 F', 'A 1 2 3 =104.50 B', 'A 1 2 3 F'])
+
+    def test_the_constraint_block_is_terminated_by_a_blank_line(self):
+        """Test that the last constraint is newline-terminated, closing the ModRedundant block"""
+        for constraints in ([([1, 2], 1.45)], [([1, 2], 1.45), ([1, 2, 3], 104.5)]):
+            with self.subTest(constraints=constraints):
+                deck = self._written_deck(constraints)
+                last_directive = f'{"A" if len(constraints[-1][0]) == 3 else "B"} ' \
+                                 f'{" ".join(str(i) for i in constraints[-1][0])} F\n'
+                tail = deck.split(last_directive)[-1]
+                self.assertTrue(tail.startswith('\n'))
+                self.assertEqual(tail.strip(), '')
+
+
 class TestGetMemoryHeadroomFraction(unittest.TestCase):
     """
     Contains unit tests for the get_memory_headroom_fraction() function.
