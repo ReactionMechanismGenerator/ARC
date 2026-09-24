@@ -14,7 +14,7 @@ import time
 from arc.common import get_logger
 from arc.exceptions import SettingsError
 from arc.imports import settings
-from arc.job.ssh import check_job_status_in_stdout
+from arc.job.ssh import check_job_status_in_stdout, get_canonical_cluster_soft
 
 
 logger = get_logger()
@@ -151,7 +151,7 @@ def check_job_status(job_id: int) -> str:
         3270.0 P 10 28161 a2728 23
     """
     server = 'local'
-    cmd = check_status_command[servers[server]['cluster_soft']]
+    cmd = check_status_command[get_canonical_cluster_soft(server)]
     stdout = execute_command(cmd)[0]
     return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=server)
 
@@ -160,7 +160,7 @@ def delete_job(job_id: int | str):
     """
     Deletes a running job.
     """
-    cmd = f"{delete_command[servers['local']['cluster_soft']]} {job_id}"
+    cmd = f"{delete_command[get_canonical_cluster_soft('local')]} {job_id}"
     success = not bool(execute_command(cmd, no_fail=True)[1])
     if not success:
         logger.warning(f'Detected possible error when trying to delete job {job_id}. Checking to see if the job is '
@@ -181,16 +181,14 @@ def check_running_jobs_ids() -> list[str]:
     Returns:
         list[str]: List of job IDs.
     """
-    cluster_soft = servers['local']['cluster_soft'].lower()
-    if cluster_soft == 'local':
+    if servers['local']['cluster_soft'].strip().lower() == 'local':
         # This machine has no queueing system, so there are no queue job IDs to report.
         # Jobs here run in-core (e.g., PySCF) or as a local pipe worker pool.
         return list()
-    if cluster_soft not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
-        raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
-    cmd = check_status_command[servers['local']['cluster_soft']]
+    canonical_cluster_soft = get_canonical_cluster_soft('local')
+    cmd = check_status_command[canonical_cluster_soft]
     stdout = execute_command(cmd)[0]
-    running_job_ids = parse_running_jobs_ids(stdout, cluster_soft=cluster_soft)
+    running_job_ids = parse_running_jobs_ids(stdout, cluster_soft=canonical_cluster_soft.lower())
     return running_job_ids
 
 
@@ -240,7 +238,7 @@ def submit_job(path: str,
     Returns:
         tuple[str | None, str | None]: job_status, job_id
     """
-    cluster_soft = cluster_soft or servers['local']['cluster_soft']
+    cluster_soft = cluster_soft or get_canonical_cluster_soft('local')
     job_status, job_id = '', ''
     submit_cmd = submit_cmd or submit_command[cluster_soft]
     submit_filename = submit_filename or submit_filenames[cluster_soft]
@@ -415,13 +413,14 @@ def delete_all_local_arc_jobs(jobs: list[str | int] | None = None) -> None:
     server = 'local'
     if server in servers:
         print('\nDeleting all ARC jobs from local server...')
-        cmd = check_status_command[servers[server]['cluster_soft']]
+        canonical_cluster_soft = get_canonical_cluster_soft(server)
+        cmd = check_status_command[canonical_cluster_soft]
         stdout = execute_command(cmd, no_fail=True)[0]
         for status_line in stdout:
             s = re.search(r' a\d+', status_line)
             if s is not None:
                 job_name = s.group()[1:]
-                cluster_soft = servers[server]['cluster_soft'].lower()
+                cluster_soft = canonical_cluster_soft.lower()
                 server_job_id = None
                 if jobs is None or job_name in jobs:
                     if cluster_soft == 'slurm':
@@ -430,7 +429,7 @@ def delete_all_local_arc_jobs(jobs: list[str | int] | None = None) -> None:
                     elif cluster_soft == 'pbs':
                         server_job_id = status_line.split()[0]
                         delete_job(server_job_id)
-                    elif cluster_soft in ['oge', 'sge']:
+                    elif cluster_soft == 'oge':
                         delete_job(job_name)
                     elif cluster_soft == 'htcondor':
                         server_job_id = status_line.split()[0].split('.')[0]
