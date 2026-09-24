@@ -19,6 +19,8 @@ from unittest.mock import MagicMock, patch
 import paramiko
 
 import arc.job.ssh as ssh
+import arc.settings.settings as default_settings
+from arc.common import CANONICAL_CLUSTER_SOFT, get_canonical_cluster_soft
 from arc.exceptions import ServerError
 
 
@@ -50,6 +52,14 @@ class TestSSH(unittest.TestCase):
     Contains unit tests for the SSH module
     """
 
+    def setUp(self) -> None:
+        """Use repository defaults independently of the user's settings overlay."""
+        for name in ('servers', 'check_status_command', 'delete_command', 'submit_command',
+                     'submit_filenames', 'list_available_nodes_command'):
+            patcher = patch.object(ssh, name, getattr(default_settings, name).copy())
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_check_job_status_in_stdout(self):
         """Test checking the job status in stdout"""
         # OGE
@@ -77,6 +87,13 @@ class TestSSH(unittest.TestCase):
         status1 = ssh.check_job_status_in_stdout(job_id=4000, stdout=stdout_2, server='local')
         self.assertEqual(status1, 'done')
 
+    def test_check_job_status_in_stdout_whitespace_padded_cluster_soft(self):
+        """A cluster_soft value with surrounding whitespace (e.g. ' Slurm ') must still resolve."""
+        stdout = ['             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)',
+                  '          10990729    normal     a207   alongd PD       0:00      1 (None)']
+        with patch.dict(ssh.servers, {'server1': dict(ssh.servers['server1'], cluster_soft=' Slurm ')}):
+            status = ssh.check_job_status_in_stdout(job_id=10990729, stdout=stdout, server='server1')
+        self.assertEqual(status, 'running')
 
 
 class TestSSHConnectHardening(unittest.TestCase):
@@ -1131,6 +1148,207 @@ class TestDeleteCheckFilesOnServers(unittest.TestCase):
                           lambda ssh_client: attempts.append(ssh_client.connection_attempts)):
             ssh.delete_check_files_on_servers({self.server: self.project_path})
         self.assertEqual(attempts, [1])
+
+
+class TestClusterSoftNormalisation(unittest.TestCase):
+    """``get_canonical_cluster_soft()`` and the SSHClient methods that call it must resolve a
+    non-canonical ``cluster_soft`` spelling on both the status and submission paths, alias SGE to
+    OGE, and refuse an unsupported value naming the actual server rather than a hardcoded one."""
+
+    def setUp(self) -> None:
+        """Use repository defaults independently of the user's settings overlay."""
+        for name in ('servers', 'check_status_command', 'delete_command', 'submit_command',
+                     'submit_filenames', 'list_available_nodes_command'):
+            patcher = patch.object(ssh, name, getattr(default_settings, name).copy())
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _server(self, cluster_soft):
+        """Build a minimal server config dict carrying the given cluster_soft spelling."""
+        return {'address': 'host.example.edu', 'un': 'user', 'key': '/dev/null', 'cluster_soft': cluster_soft}
+
+    def _client(self, cluster_soft):
+        """Build an SSHClient without connecting to anything."""
+        with patch.object(ssh, 'servers', {'srv': self._server(cluster_soft)}):
+            return ssh.SSHClient('srv')
+
+    def _call(self, client, cluster_soft, method_name, sender_return, *args, **kwargs):
+        """Invoke a method on client with _send_command_to_server mocked to return sender_return."""
+        sender = MagicMock(return_value=sender_return)
+        with patch.object(ssh, 'servers', {'srv': self._server(cluster_soft)}), \
+                patch.object(client, '_send_command_to_server', sender):
+            return getattr(client, method_name)(*args, **kwargs)
+
+    def test_resolves_one_non_canonical_spelling_per_cluster_software(self):
+        """A lowercase or otherwise differently-cased spelling resolves to the settings-dict key."""
+        cases = {'slurm': 'Slurm', 'SLURM': 'Slurm',
+                 'oge': 'OGE', 'Oge': 'OGE',
+                 'pbs': 'PBS', 'Pbs': 'PBS',
+                 'htcondor': 'HTCondor', 'HTCONDOR': 'HTCondor'}
+        for raw, canonical in cases.items():
+            with self.subTest(raw=raw):
+                with patch.object(ssh, 'servers', {'srv': self._server(raw)}):
+                    self.assertEqual(get_canonical_cluster_soft('srv', ssh.servers), canonical)
+
+    def test_aliases_sge_to_oge(self):
+        """SGE, in any case or with surrounding whitespace, resolves to the OGE settings-dict key."""
+        for raw in ('sge', 'SGE', 'Sge', ' sge '):
+            with self.subTest(raw=raw):
+                with patch.object(ssh, 'servers', {'srv': self._server(raw)}):
+                    self.assertEqual(get_canonical_cluster_soft('srv', ssh.servers), 'OGE')
+
+    def test_canonical_value_passes_through_unchanged(self):
+        """A value already spelled exactly as the settings-dict key resolves to itself."""
+        self.assertEqual(set(CANONICAL_CLUSTER_SOFT.values()), {'OGE', 'Slurm', 'PBS', 'HTCondor', 'local'})
+        for canonical in CANONICAL_CLUSTER_SOFT.values():
+            with self.subTest(canonical=canonical):
+                with patch.object(ssh, 'servers', {'srv': self._server(canonical)}):
+                    self.assertEqual(get_canonical_cluster_soft('srv', ssh.servers), canonical)
+
+    def test_unsupported_value_names_the_server_and_the_value(self):
+        """An unrecognised cluster_soft raises ValueError naming the actual server, not 'local'."""
+        with patch.object(ssh, 'servers', {'srv': self._server('sun grid engine')}):
+            with self.assertRaises(ValueError) as cm:
+                get_canonical_cluster_soft('srv', ssh.servers)
+        self.assertIn('srv', str(cm.exception))
+        self.assertIn('sun grid engine', str(cm.exception))
+
+
+    STATUS_STDOUT = {
+        'slurm': (['             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)',
+                   '          10990729    normal     a207   alongd PD       0:00      1 (None)'], []),
+        'oge': (['header0', 'header1',
+                 '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'], []),
+        'pbs': (['h0', 'h1', 'h2', 'h3', 'h4',
+                 '2016614.zeldo.local     u780444     workq    scan.pbs         75380     1     10       --  730:00:00 R  00:00:20'], []),
+        'htcondor': (['11224.0 R 8 6759 a2495 7'], []),
+    }
+    STATUS_EXPECTED_FIRST_ID = {'slurm': '10990729', 'oge': '540420', 'pbs': '2016614', 'htcondor': '11224'}
+
+    def test_check_running_jobs_ids_resolves_non_canonical_spelling_per_software(self):
+        """The status path resolves a non-canonical spelling for every supported cluster software."""
+        non_canonical = {'slurm': 'SLURM', 'oge': 'Oge', 'pbs': 'Pbs', 'htcondor': 'HTCONDOR'}
+        for canonical_lower, raw in non_canonical.items():
+            with self.subTest(raw=raw):
+                client = self._client(raw)
+                job_ids = self._call(client, raw, 'check_running_jobs_ids', self.STATUS_STDOUT[canonical_lower])
+                self.assertEqual(job_ids[0], self.STATUS_EXPECTED_FIRST_ID[canonical_lower])
+
+    def test_check_running_jobs_ids_aliases_sge_to_oge(self):
+        """The status path treats SGE as OGE."""
+        client = self._client('sge')
+        job_ids = self._call(client, 'sge', 'check_running_jobs_ids', self.STATUS_STDOUT['oge'])
+        self.assertEqual(job_ids[0], self.STATUS_EXPECTED_FIRST_ID['oge'])
+
+    def test_check_running_jobs_ids_rejects_unsupported_value_naming_the_server(self):
+        """The status path refuses an unrecognised cluster_soft, naming the actual server."""
+        client = self._client('sun grid engine')
+        with patch.object(ssh, 'servers', {'srv': self._server('sun grid engine')}), \
+                patch.object(client, '_send_command_to_server', MagicMock(return_value=([], []))):
+            with self.assertRaises(ValueError) as cm:
+                client.check_running_jobs_ids()
+        self.assertIn('srv', str(cm.exception))
+        self.assertIn('sun grid engine', str(cm.exception))
+
+    def test_check_running_jobs_ids_canonical_value_still_works(self):
+        """A canonical spelling on the status path still resolves and parses as before."""
+        client = self._client('PBS')
+        job_ids = self._call(client, 'PBS', 'check_running_jobs_ids', self.STATUS_STDOUT['pbs'])
+        self.assertEqual(job_ids[0], self.STATUS_EXPECTED_FIRST_ID['pbs'])
+
+
+    SUBMIT_STDOUT = {
+        'slurm': (['Submitted batch job 17670585'], []),
+        'oge': (['Your job 540420 ("job") has been submitted'], []),
+        'pbs': (['2016614.zeldo.local'], []),
+        'htcondor': (['Submitting job(s).', '1 job(s) submitted to cluster 5263.'], []),
+    }
+    SUBMIT_EXPECTED_ID = {'slurm': '17670585', 'oge': '540420', 'pbs': '2016614', 'htcondor': '5263'}
+
+    def test_submit_job_resolves_non_canonical_spelling_per_software(self):
+        """The submission path resolves a non-canonical spelling for every supported cluster software."""
+        non_canonical = {'slurm': 'SLURM', 'oge': 'Oge', 'pbs': 'Pbs', 'htcondor': 'HTCONDOR'}
+        for canonical_lower, raw in non_canonical.items():
+            with self.subTest(raw=raw):
+                client = self._client(raw)
+                status, job_id = self._call(client, raw, 'submit_job', self.SUBMIT_STDOUT[canonical_lower],
+                                            remote_path='/tmp')
+                self.assertEqual(status, 'running')
+                self.assertEqual(job_id, self.SUBMIT_EXPECTED_ID[canonical_lower])
+
+    def test_submit_job_aliases_sge_to_oge(self):
+        """The submission path treats SGE as OGE."""
+        client = self._client('sge')
+        status, job_id = self._call(client, 'sge', 'submit_job', self.SUBMIT_STDOUT['oge'], remote_path='/tmp')
+        self.assertEqual(status, 'running')
+        self.assertEqual(job_id, self.SUBMIT_EXPECTED_ID['oge'])
+
+    def test_submit_job_rejects_unsupported_value_naming_the_server(self):
+        """The submission path refuses an unrecognised cluster_soft, naming the actual server."""
+        client = self._client('sun grid engine')
+        with patch.object(ssh, 'servers', {'srv': self._server('sun grid engine')}), \
+                patch.object(client, '_send_command_to_server', MagicMock(return_value=([], []))):
+            with self.assertRaises(ValueError) as cm:
+                client.submit_job(remote_path='/tmp')
+        self.assertIn('srv', str(cm.exception))
+        self.assertIn('sun grid engine', str(cm.exception))
+
+    def test_submit_job_canonical_value_still_works(self):
+        """A canonical spelling on the submission path still resolves and parses as before."""
+        client = self._client('Slurm')
+        status, job_id = self._call(client, 'Slurm', 'submit_job', self.SUBMIT_STDOUT['slurm'], remote_path='/tmp')
+        self.assertEqual(status, 'running')
+        self.assertEqual(job_id, self.SUBMIT_EXPECTED_ID['slurm'])
+
+    def test_status_and_delete_resolve_overlay_keys(self) -> None:
+        """Queue status and deletion use per-dictionary keys and canonical parsing."""
+        for raw, key, stdout, job_id in [(' PBS ', 'pbs', self.STATUS_STDOUT['pbs'][0], 2016614),
+                                        (' SGE ', 'SGE', self.STATUS_STDOUT['oge'][0], 540420),
+                                        (' Slurm ', 'slurm', self.STATUS_STDOUT['slurm'][0], 10990729)]:
+            with self.subTest(raw=raw):
+                client = self._client(raw)
+                with patch.object(ssh, 'servers', {'srv': self._server(raw)}), \
+                        patch.object(ssh, 'check_status_command', {key: 'custom status'}), \
+                        patch.object(ssh, 'delete_command', {key: 'custom delete'}), \
+                        patch.object(client, '_send_command_to_server', return_value=(stdout, [])) as sender:
+                    self.assertEqual(client.check_job_status(job_id), 'running')
+                    sender.assert_called_with('custom status')
+                    client.delete_job(job_id)
+                    sender.assert_called_with(f'custom delete {job_id}')
+                    self.assertEqual(client.check_running_jobs_ids(), [str(job_id)])
+
+    def test_submission_resolves_each_overlay_dictionary(self) -> None:
+        """Submission commands and filenames need not share the same key spelling."""
+        for raw, command_key, file_key, software in [('PBS', 'pbs', 'PBS', 'pbs'),
+                                                    ('SGE', 'SGE', 'oge', 'oge')]:
+            with self.subTest(raw=raw):
+                client = self._client(raw)
+                with patch.object(ssh, 'servers', {'srv': self._server(raw)}), \
+                        patch.object(ssh, 'submit_command', {command_key: 'custom submit'}), \
+                        patch.object(ssh, 'submit_filenames', {file_key: 'custom.sh'}), \
+                        patch.object(client, '_send_command_to_server',
+                                     return_value=self.SUBMIT_STDOUT[software]) as sender:
+                    self.assertEqual(client.submit_job('/tmp'), ('running', self.SUBMIT_EXPECTED_ID[software]))
+                    sender.assert_called_once_with('custom submit custom.sh', '/tmp')
+
+    def test_available_nodes_resolves_spelling_and_sge_overlay(self) -> None:
+        """Node parsing uses scheduler identity even when the configured key is SGE."""
+        for raw, key, stdout, expected in [(' SGE ', 'SGE', ['long1@node01.cluster BIP 0/0/8'], ['node01.cluster']),
+                                         (' Slurm ', 'slurm', ['node01 idle 1.00 none'], ['node01']),
+                                         ('PBS', 'pbs', [], [])]:
+            with self.subTest(raw=raw):
+                client = self._client(raw)
+                with patch.object(ssh, 'servers', {'srv': self._server(raw)}), \
+                        patch.object(ssh, 'list_available_nodes_command', {key: 'custom nodes'}), \
+                        patch.object(client, '_send_command_to_server', return_value=(stdout, [])) as sender:
+                    self.assertEqual(client.list_available_nodes(), expected)
+                    sender.assert_called_once_with(command='custom nodes')
+        client = self._client(' HTCONDOR ')
+        with patch.object(ssh, 'servers', {'srv': self._server(' HTCONDOR ')}), \
+                patch.object(client, '_send_command_to_server') as sender:
+            self.assertEqual(client.list_available_nodes(), [])
+            sender.assert_not_called()
+
 
 
 if __name__ == '__main__':

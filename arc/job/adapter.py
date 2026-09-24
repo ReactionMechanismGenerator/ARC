@@ -24,7 +24,8 @@ from typing import TYPE_CHECKING, ContextManager
 import numpy as np
 
 from arc.checks.common import get_conformer_job_name
-from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans, convert_to_hours
+from arc.common import (ARC_PATH, convert_to_hours, get_canonical_cluster_soft, get_cluster_soft_key,
+                        get_logger, read_yaml_file, save_yaml_file)
 from arc.exceptions import JobError
 from arc.imports import local_arc_path, settings, submit_scripts
 from arc.job.local import (change_mode,
@@ -386,7 +387,7 @@ class JobAdapter(ABC):
             "name": self.job_server_name,
             "un": servers[self.server]['un'],
             "queue": queue,
-            "t_max": self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']]),
+            "t_max": self.format_max_job_time(time_format=t_max_format[get_cluster_soft_key(servers[self.server]['cluster_soft'], t_max_format, 't_max_format')]),
             "memory": int(self.submit_script_memory) if isinstance(self.submit_script_memory, (int, float)) else self.submit_script_memory,
             "cpus": self.cpu_cores,
             "architecture": architecture,
@@ -415,7 +416,7 @@ class JobAdapter(ABC):
                          f'{submit_scripts_for_printing}')
             raise
 
-        with open(os.path.join(self.local_path, submit_filenames[servers[self.server]['cluster_soft']]), 'w') as f:
+        with open(os.path.join(self.local_path, submit_filenames[get_cluster_soft_key(servers[self.server]['cluster_soft'], submit_filenames, 'submit_filenames')]), 'w') as f:
             f.write(submit_script)
 
     def readable_checkfile(self, checkfile: str | None) -> str | None:
@@ -788,7 +789,7 @@ class JobAdapter(ABC):
             total_submit_script_memory_mib = math.ceil(self.job_memory_gb * MEMORY_GB_TO_MIB * DEFAULT_JOB_MEMORY_OVERHEAD)
         self.submit_script_memory_mib = total_submit_script_memory_mib
         # Determine amount of memory in submit script based on cluster job scheduling system.
-        cluster_software = servers[self.server].get('cluster_soft').lower() if self.server is not None else None
+        cluster_software = get_canonical_cluster_soft(self.server, servers).lower() if self.server is not None else None
         if cluster_software in ['oge', 'sge', 'htcondor']:
             # ARC uses MiB internally and passes that integer consistently to scheduler templates.
             self.submit_script_memory = total_submit_script_memory_mib
@@ -909,7 +910,7 @@ class JobAdapter(ABC):
         """
         Determine the Job's status. Updates self.job_status.
         """
-        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        cluster_soft = get_canonical_cluster_soft(self.server, servers).lower()
         if self.job_status[0] == 'errored':
             return
         self.job_status[0] = self._check_job_server_status() if self.execution_type != 'incore' else 'done'
@@ -960,7 +961,7 @@ class JobAdapter(ABC):
         Submission script in submit.py should contain the -o and -e flags.
         """
         content = ''
-        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        cluster_soft = get_canonical_cluster_soft(self.server, servers).lower()
         if cluster_soft == 'local':
             # No queueing system, so there are no scheduler stdout/stderr files to collect.
             return
