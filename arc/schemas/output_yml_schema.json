@@ -13,6 +13,7 @@
     "arkane_git_commit",
     "datetime_started",
     "datetime_completed",
+    "cost_metrics",
     "composite_method",
     "opt_level",
     "freq_level",
@@ -73,6 +74,10 @@
     "parser_evidence": {
       "description": "Omitted (key absent, never null) when the evidence sidecar could not be built or written.",
       "$ref": "#/$defs/parser_evidence_descriptor"
+    },
+    "cost_metrics": {
+      "description": "Run-level computational cost, aggregated from the per-job records the Scheduler collects. Prose reference: docs/output_yml_schema.md.",
+      "$ref": "#/$defs/cost_metrics"
     },
     "composite_method": {
       "$ref": "#/$defs/nullable_level_dict"
@@ -220,6 +225,88 @@
     }
   ],
   "$defs": {
+    "cost_metrics": {
+      "type": "object",
+      "required": [
+        "wall_time_hrs",
+        "total_job_count",
+        "total_execution_time_hrs",
+        "total_core_hours",
+        "jobs_missing_time",
+        "jobs_missing_cores",
+        "per_ess"
+      ],
+      "properties": {
+        "wall_time_hrs": {
+          "description": "Wall-clock duration of the run in hours. Null when ARC has no recorded start time.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "total_job_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_execution_time_hrs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "total_core_hours": {
+          "type": "number",
+          "minimum": 0
+        },
+        "jobs_missing_time": {
+          "description": "Jobs recorded with no run time. They are excluded from both total_execution_time_hrs and total_core_hours.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "jobs_missing_cores": {
+          "description": "Jobs that have a run time but no core count. They count toward total_execution_time_hrs but not total_core_hours.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "per_ess": {
+          "description": "Per-ESS aggregates keyed by the job adapter name; records with no adapter are bucketed under 'unknown'. Null when no jobs were recorded.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/cost_metrics_per_ess"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "cost_metrics_per_ess": {
+      "type": "object",
+      "required": [
+        "job_count",
+        "execution_time_hrs",
+        "core_hours",
+        "jobs_missing_time"
+      ],
+      "properties": {
+        "job_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "execution_time_hrs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "core_hours": {
+          "type": "number",
+          "minimum": 0
+        },
+        "jobs_missing_time": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
     "petersson_bac_table": {
       "description": "The Petersson BAC parameter table: per-bond parameters in kcal/mol, keyed by bond descriptor.",
       "type": "object",
