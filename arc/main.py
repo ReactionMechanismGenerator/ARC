@@ -29,7 +29,7 @@ from arc.common import (VERSION,
                         )
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
-from arc.level import Level, assign_frequency_scale_factor
+from arc.level import Level, assign_frequency_scale_factor, get_freq_level_for_composite_method
 from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
 from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
@@ -1061,7 +1061,9 @@ class ARC(object):
             self.opt_level, self.sp_level = None, None
 
             if not self.freq_level:
-                self.freq_level = default_levels_of_theory['freq_for_composite']
+                # Prescribed by the composite protocol, not a global default: the scale factor
+                # stored for a composite is that protocol's own ZPE factor (see level.py).
+                self.freq_level = get_freq_level_for_composite_method(self.composite_method)
                 default_flag = ' (composite default)'
             else:
                 default_flag = ''
