@@ -660,21 +660,28 @@ def is_species_restricted(obj: JobAdapter,
         bool: Whether to run as restricted (``True``) or not (``False``).
     """
 
-    if obj.level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
-        return True
-
     multiplicity = obj.multiplicity if species is None else species.multiplicity
     species_obj = obj.species[0] if species is None else species
     number_of_radicals = species_obj.number_of_radicals
     species_label = species_obj.label
-    if multiplicity > 1 or (number_of_radicals is not None and number_of_radicals > 1):
-        # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one,
-        # or if it is one but the number of radicals is greater than one (e.g., bi-rad singlet)
-        # don't run unrestricted for composite methods such as CBS-QB3, it'll be done automatically if the
-        # multiplicity is greater than one, but do specify uCBS-QB3 for example for bi-rad singlets.
-        if number_of_radicals is not None and number_of_radicals > 1:
-            logger.info(f'Using an unrestricted method for species {species_label} which has '
-                        f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
+
+    if number_of_radicals is not None and number_of_radicals > 1:
+        # A declared number_of_radicals > 1 with multiplicity 1 (e.g., a bi-rad singlet) always
+        # needs an unrestricted reference, *even for a reference-agnostic method type* such as a
+        # composite method (e.g., CBS-QB3, G4): for those, an unrestricted reference is applied
+        # automatically when the multiplicity is greater than one, but a bi-rad singlet's
+        # multiplicity of one gives the method no such signal, so ARC must still specify it
+        # explicitly (e.g., uCBS-QB3, uG4). This check must therefore run before the
+        # REFERENCE_AGNOSTIC_METHOD_TYPES early return below, not after it.
+        logger.info(f'Using an unrestricted method for species {species_label} which has '
+                    f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
+        return False
+
+    if obj.level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
+        return True
+
+    if multiplicity > 1:
+        # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one
         return False
     if adopted_reference_is_unrestricted(species_obj):
         if not level_admits_a_broken_symmetry_reference(obj.level):
