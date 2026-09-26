@@ -108,6 +108,34 @@ class TestGraph(unittest.TestCase):
         self.assertIsInstance(edges, list)
         self.assertEqual(len(edges), 5)
 
+    def test_get_all_edges_order_is_a_function_of_the_graph(self):
+        """
+        Test that Graph.get_all_edges() returns a deterministic order.
+
+        The order must follow self.vertices, and within a vertex its own edges insertion order.
+        This used to be `list(edge_set)`, whose order depends on the hash values of the edge
+        objects rather than on the graph, so callers that act on the first edge they see -- such
+        as the A* in arc.species.perceive.generate_lewis_structure -- silently returned different
+        answers for the same input across interpreter runs.
+        """
+        expected = []
+        seen = set()
+        for vertex in self.graph.vertices:
+            for edge in vertex.edges.values():
+                if edge not in seen:
+                    seen.add(edge)
+                    expected.append(edge)
+
+        edges = self.graph.get_all_edges()
+        self.assertEqual(edges, expected)
+        # identity, not just equality: these must be the graph's own edge objects, in that order
+        for got, want in zip(edges, expected):
+            self.assertIs(got, want)
+        # repeated calls agree with each other
+        self.assertEqual(self.graph.get_all_edges(), edges)
+        # and every edge is still present exactly once
+        self.assertEqual(len(edges), len(set(id(e) for e in edges)))
+
     def test_has_vertex(self):
         """
         Test the Graph.has_vertex() method.
