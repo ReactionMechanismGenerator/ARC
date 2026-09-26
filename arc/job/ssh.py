@@ -34,6 +34,40 @@ KNOWN_HOSTS_PATH = '~/.ssh/known_hosts'
 PLACEHOLDER_ADDRESS_SUFFIX = '.host.edu'
 PLACEHOLDER_USERNAME = '<username>'
 
+# Spellings accepted in addition to a settings-dict key itself, mapped to the key they mean.
+CLUSTER_SOFT_ALIASES = {'sge': 'oge'}
+
+# The single source of truth for "which cluster software spellings are supported": the
+# intersection of every settings dict that is keyed by cluster software and must not raise a
+# KeyError on the submission path. ``list_available_nodes_command`` is deliberately excluded:
+# it has no 'HTCondor' key by design (list_available_nodes() special-cases HTCondor before
+# reaching that dict), not by omission.
+_CLUSTER_SOFT_DICTS = (check_status_command, submit_command, delete_command, submit_filenames)
+CANONICAL_CLUSTER_SOFT = {name.lower(): name for name in set.intersection(*(set(d) for d in _CLUSTER_SOFT_DICTS))}
+
+
+def get_canonical_cluster_soft(server: str) -> str:
+    """Resolve a server's declared cluster software to the exact spelling used as a key in
+    ``check_status_command``/``submit_command``/``delete_command``/``submit_filenames``.
+
+    Args:
+        server (str): A key into ``servers`` (e.g., ``'local'`` or a remote server name).
+
+    Returns:
+        str: The canonical cluster software name (e.g., ``'OGE'``, ``'Slurm'``), safe to use
+        as a key into any of the four cluster-software settings dicts.
+
+    Raises:
+        ValueError: If ``server``'s declared cluster software is not one ARC recognizes.
+    """
+    raw = servers[server]['cluster_soft']
+    key = raw.strip().lower()
+    key = CLUSTER_SOFT_ALIASES.get(key, key)
+    if key not in CANONICAL_CLUSTER_SOFT:
+        raise ValueError(f"Server '{server}' declared cluster software '{raw}', which ARC does not recognize. "
+                         f"Supported cluster software: {sorted(CANONICAL_CLUSTER_SOFT.values())}.")
+    return CANONICAL_CLUSTER_SOFT[key]
+
 
 class UnknownHostKeyError(ServerError, paramiko.SSHException):
     """
@@ -393,7 +427,7 @@ class SSHClient(object):
             Possible statuses: `before_submission`, `running`, `errored on node xx`,
             `done`, and `errored: ...`
         """
-        cmd = check_status_command[servers[self.server]['cluster_soft']]
+        cmd = check_status_command[get_canonical_cluster_soft(self.server)]
         stdout, stderr = self._send_command_to_server(cmd)
         # Status line formats:
         # OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
@@ -411,7 +445,7 @@ class SSHClient(object):
         Args:
             job_id (int | str): The job's ID.
         """
-        cmd = f"{delete_command[servers[self.server]['cluster_soft']]} {job_id}"
+        cmd = f"{delete_command[get_canonical_cluster_soft(self.server)]} {job_id}"
         self._send_command_to_server(cmd)
 
     def delete_jobs(self,
@@ -439,14 +473,13 @@ class SSHClient(object):
         Returns: list
             A list of job IDs.
         """
-        if servers[self.server]['cluster_soft'].lower() not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
-            raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
         running_job_ids = list()
-        cmd = check_status_command[servers[self.server]['cluster_soft']]
+        canonical_cluster_soft = get_canonical_cluster_soft(self.server)
+        cmd = check_status_command[canonical_cluster_soft]
         stdout = self._send_command_to_server(cmd)[0]
-        i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
-        split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
-        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        i_dict = {'slurm': 0, 'oge': 1, 'pbs': 4, 'htcondor': -1}
+        split_by_dict = {'slurm': ' ', 'oge': ' ', 'pbs': '.', 'htcondor': ' '}
+        cluster_soft = canonical_cluster_soft.lower()
         for i, status_line in enumerate(stdout):
             if i > i_dict[cluster_soft]:
                 job_id = status_line.lstrip().split(split_by_dict[cluster_soft])[0]
@@ -471,7 +504,7 @@ class SSHClient(object):
         """
         job_status = ''
         job_id = 0
-        cluster_soft = servers[self.server]['cluster_soft']
+        cluster_soft = get_canonical_cluster_soft(self.server)
         cmd = f'{submit_command[cluster_soft]} {submit_filenames[cluster_soft]}'
         stdout, stderr = self._send_command_to_server(cmd, remote_path)
         if len(stderr) > 0 or len(stdout) == 0:
@@ -787,23 +820,24 @@ class SSHClient(object):
         Returns:
             list: lines of the node hostnames.
         """
-        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        canonical_cluster_soft = get_canonical_cluster_soft(self.server)
+        cluster_soft = canonical_cluster_soft.lower()
         if cluster_soft == 'htcondor':
             return list()
-        cmd = list_available_nodes_command[servers[self.server]['cluster_soft']]
+        cmd = list_available_nodes_command[canonical_cluster_soft]
         stdout = self._send_command_to_server(command=cmd)[0]
         nodes = list()
-        if cluster_soft.lower() in ['oge', 'sge']:
+        if cluster_soft == 'oge':
             # Stdout line example:
             # long1@node01.cluster           BIP   0/0/8          -NA-     lx24-amd64    aAdu
             nodes = [line.split()[0].split('@')[1]
                      for line in stdout if '0/0/8' in line]
-        elif cluster_soft.lower() == 'slurm':
+        elif cluster_soft == 'slurm':
             # Stdout line example:
             # node01 alloc 1.00 none
             nodes = [line.split()[0] for line in stdout
                      if line.split()[1] in ['mix', 'alloc', 'idle']]
-        elif cluster_soft.lower() in ['pbs', 'htcondor']:
+        elif cluster_soft == 'pbs':
             logger.warning(f'Listing available nodes is not yet implemented for {cluster_soft}.')
         return nodes
 
