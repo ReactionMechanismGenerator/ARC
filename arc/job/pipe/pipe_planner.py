@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 pipe_settings = settings['pipe_settings']
+rotor_scan_resolution = settings['rotor_scan_resolution']
 
 
 class PipePlanner:
@@ -296,19 +297,29 @@ class PipePlanner:
         """
         Batch 1D rotor scan jobs through pipe mode.
 
+        The scan resolution carried in the task payload follows the same precedence the scheduler
+        applies to ESS scans in ``set_scan_resolution()``: the run-level ``rotor_scan_resolution``
+        input key wins, and the launching host's settings value is the fallback when it is unset.
+
+        Args:
+            label (str): The species label.
+            rotor_indices (list[int]): The rotor indices to scan.
+
         Returns:
             set[int]: Rotor indices that were piped (all or empty).
         """
         level = self.sched.scan_level
         if level is None:
             return set()
+        scan_res = self.sched.rotor_scan_resolution or rotor_scan_resolution
         submitted = self._try_pipe_job(
             run_id=f'{label}_scan_1d',
             level=level,
             job_type='scan',
             build_tasks_fn=lambda adapter: build_rotor_scan_1d_tasks(
                 self.sched.species_dict[label], label, rotor_indices,
-                self._level_dict(level), adapter, self._memory_mb),
+                self._level_dict(level), adapter, self._memory_mb,
+                scan_res=scan_res),
             log_msg=f'Routing {len(rotor_indices)} 1D rotor scans for {label} to pipe mode',
         )
         return set(rotor_indices) if submitted else set()

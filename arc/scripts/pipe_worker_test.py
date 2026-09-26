@@ -22,7 +22,8 @@ from arc.job.pipe.pipe_state import (
     read_task_state,
     update_task_state,
 )
-from arc.scripts.pipe_worker import claim_task, run_task, main, logger as worker_logger
+from arc.scripts.pipe_worker import (claim_task, run_task, main, logger as worker_logger,
+                                     _get_family_extra_kwargs)
 from arc.species import ARCSpecies
 
 
@@ -349,6 +350,34 @@ class TestWorkerLoop(unittest.TestCase):
             initialize_task(self.tmpdir, _make_h2o_spec(f'task_log_{i}'))
         main(['--pipe_root', self.tmpdir, '--worker_id', 'worker-log'])
         self.assertLessEqual(len(worker_logger.handlers), 2)
+
+
+class TestFamilyExtraKwargs(unittest.TestCase):
+    """Unit tests for _get_family_extra_kwargs, which maps a task payload to adapter kwargs."""
+
+    def _rotor_spec(self, payload):
+        spc = ARCSpecies(label='ethane', smiles='CC')
+        return TaskSpec(
+            task_id='ethane_scan_r0', task_family='rotor_scan_1d', owner_type='species',
+            owner_key='ethane', input_fingerprint='fp', engine='ase',
+            level={'method': 'uma-s-1p2'}, required_cores=1, required_memory_mb=512,
+            input_payload={'species_dicts': [spc.as_dict()], **payload},
+            ingestion_metadata={'rotor_index': 0})
+
+    def test_rotor_scan_forwards_torsions_and_rotor_index(self):
+        kwargs = _get_family_extra_kwargs(self._rotor_spec({'torsions': [[2, 0, 1, 5]], 'rotor_index': 0}))
+        self.assertEqual(kwargs['torsions'], [[2, 0, 1, 5]])
+        self.assertEqual(kwargs['rotor_index'], 0)
+        self.assertNotIn('args', kwargs)
+
+    def test_rotor_scan_forwards_scan_res_as_trsh_args(self):
+        kwargs = _get_family_extra_kwargs(self._rotor_spec(
+            {'torsions': [[2, 0, 1, 5]], 'rotor_index': 0, 'scan_res': 8.0}))
+        self.assertEqual(kwargs['args'], {'trsh': {'scan_res': 8.0}})
+
+    def test_rotor_scan_omits_args_when_scan_res_absent(self):
+        kwargs = _get_family_extra_kwargs(self._rotor_spec({'torsions': [[2, 0, 1, 5]], 'rotor_index': 0}))
+        self.assertNotIn('args', kwargs)
 
 
 if __name__ == '__main__':
