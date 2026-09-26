@@ -5,7 +5,7 @@ A module for performing various species-related format conversions.
 import math
 import numpy as np
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from collections.abc import Iterable
 
 from ase import Atoms
@@ -48,6 +48,97 @@ logger = get_logger()
 
 DIST_PRECISION = 0.01  # Angstrom
 ANGL_PRECISION = 0.1  # rad (for both bond angle and dihedral)
+
+
+def reorder_xyz_string(xyz_str: str,
+                       reverse_atoms: bool = False,
+                       units: str = 'angstrom',
+                       convert_to: str = 'angstrom',
+                       project_directory: Optional[str] = None
+                       ) -> str:
+    """
+    Reorder an XYZ string between ``ATOM X Y Z`` and ``X Y Z ATOM`` with optional unit conversion.
+
+    The order of the input is detected from its first non-empty line, and is preserved when
+    ``reverse_atoms`` is ``False`` and flipped when it is ``True``. Empty lines are ignored.
+    A tuple or a list input is joined into a single string with newlines.
+
+    Args:
+        xyz_str (str): The string xyz format to be converted.
+        reverse_atoms (bool, optional): Whether to reverse the atoms and coordinates.
+        units (str, optional): Units of the input coordinates ('angstrom' or 'bohr').
+        convert_to (str, optional): The units to convert to (either 'angstrom' or 'bohr').
+        project_directory (str, optional): The path to the project directory.
+
+    Raises:
+        ConverterError: If ``xyz_str`` is not a string, is empty, does not have four space-separated
+                        entries in each of its non-empty lines, has non-float coordinates,
+                        or if ``units`` or ``convert_to`` is neither 'angstrom' nor 'bohr'.
+
+    Returns: str
+        The converted string xyz format.
+    """
+    if isinstance(xyz_str, tuple):
+        xyz_str = '\n'.join(xyz_str)
+    if isinstance(xyz_str, list):
+        xyz_str = '\n'.join(xyz_str)
+    if not isinstance(xyz_str, str):
+        raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
+    if project_directory is not None:
+        file_path = os.path.join(project_directory, xyz_str)
+        if os.path.isfile(file_path):
+            with open(file_path, 'r') as f:
+                xyz_str = f.read()
+
+    if units.lower() == 'angstrom' and convert_to.lower() == 'angstrom':
+        conversion_factor = 1
+    elif units.lower() == 'bohr' and convert_to.lower() == 'bohr':
+        conversion_factor = 1
+    elif units.lower() == 'angstrom' and convert_to.lower() == 'bohr':
+        conversion_factor = constants.angstrom_to_bohr
+    elif units.lower() == 'bohr' and convert_to.lower() == 'angstrom':
+        conversion_factor = constants.bohr_to_angstrom
+    else:
+        raise ConverterError("Invalid target unit. Choose 'angstrom' or 'bohr'.")
+
+    processed_lines = list()
+    lxyz = [line for line in xyz_str.strip().splitlines() if line.strip()]
+    if not lxyz:
+        raise ConverterError(f'xyz_str has an incorrect format, expected at least one non-empty line, '
+                             f'got:\n{xyz_str}')
+    atom_first = not is_str_float(lxyz[0].strip().split()[0])
+
+    for item in lxyz:
+        parts = item.strip().split()
+
+        if len(parts) != 4:
+            raise ConverterError(f'xyz_str has an incorrect format, expected 4 elements in each line, '
+                                 f'got "{item}" in:\n{xyz_str}')
+        if atom_first:
+            atom, x_str, y_str, z_str = parts
+        else:
+            x_str, y_str, z_str, atom = parts
+
+        try:
+            x = float(x_str) * conversion_factor
+            y = float(y_str) * conversion_factor
+            z = float(z_str) * conversion_factor
+
+        except ValueError as e:
+            raise ConverterError(f'Could not convert {x_str}, {y_str}, or {z_str} to floats.') from e
+
+        if reverse_atoms and atom_first:
+            formatted_line = f'{x} {y} {z} {atom}'
+        elif reverse_atoms and not atom_first:
+            formatted_line = f'{atom} {x} {y} {z}'
+        elif not reverse_atoms and atom_first:
+            formatted_line = f'{atom} {x} {y} {z}'
+        elif not reverse_atoms and not atom_first:
+            formatted_line = f'{x} {y} {z} {atom}'
+
+        processed_lines.append(formatted_line)
+
+    return '\n'.join(processed_lines)
 
 
 def str_to_xyz(xyz_str: str,
