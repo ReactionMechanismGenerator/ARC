@@ -1578,6 +1578,7 @@
                                  <span class="s1">'trsh_counter'</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
                                  <span class="s1">'trsh_methods'</span><span class="p">:</span> <span class="nb">list</span><span class="p">(),</span>
                                  <span class="s1">'scan_path'</span><span class="p">:</span> <span class="s1">''</span><span class="p">,</span>
+                                 <span class="s1">'scan_software'</span><span class="p">:</span> <span class="s1">''</span><span class="p">,</span>
                                  <span class="s1">'directed_scan_type'</span><span class="p">:</span> <span class="n">key</span><span class="p">,</span>
                                  <span class="s1">'directed_scan'</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(),</span>
                                  <span class="s1">'dimensions'</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
@@ -2007,6 +2008,17 @@
                     <span class="n">cluster_tsg</span><span class="o">.</span><span class="n">method_sources</span> <span class="o">=</span> <span class="n">TSGuess</span><span class="o">.</span><span class="n">_normalize_method_sources</span><span class="p">(</span>
                         <span class="p">(</span><span class="n">cluster_tsg</span><span class="o">.</span><span class="n">method_sources</span> <span class="ow">or</span> <span class="p">[])</span> <span class="o">+</span> <span class="p">(</span><span class="n">tsg</span><span class="o">.</span><span class="n">method_sources</span> <span class="ow">or</span> <span class="p">[])</span>
                     <span class="p">)</span>
+                    <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">cluster_tsg</span><span class="p">,</span> <span class="s1">'method_source_paths'</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">cluster_tsg</span><span class="o">.</span><span class="n">method_source_paths</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+                    <span class="k">for</span> <span class="n">source_tsg</span> <span class="ow">in</span> <span class="p">(</span><span class="n">cluster_tsg</span><span class="p">,</span> <span class="n">tsg</span><span class="p">):</span>
+                        <span class="k">for</span> <span class="n">source</span><span class="p">,</span> <span class="n">source_log</span> <span class="ow">in</span> <span class="p">(</span>
+                            <span class="nb">getattr</span><span class="p">(</span><span class="n">source_tsg</span><span class="p">,</span> <span class="s1">'method_source_paths'</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+                        <span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                            <span class="n">cluster_tsg</span><span class="o">.</span><span class="n">method_source_paths</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">source_log</span><span class="p">)</span>
+                        <span class="n">source_method</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">source_tsg</span><span class="p">,</span> <span class="s1">'method'</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                        <span class="n">source_log</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">source_tsg</span><span class="p">,</span> <span class="s1">'log_path'</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">source_method</span> <span class="ow">and</span> <span class="n">source_log</span><span class="p">:</span>
+                            <span class="n">cluster_tsg</span><span class="o">.</span><span class="n">method_source_paths</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">source_method</span><span class="p">,</span> <span class="n">source_log</span><span class="p">)</span>
                     <span class="k">break</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">tsg</span><span class="o">.</span><span class="n">cluster</span> <span class="o">=</span> <span class="p">[</span><span class="n">tsg</span><span class="o">.</span><span class="n">index</span><span class="p">]</span>
@@ -2812,6 +2824,9 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">energy</span> <span class="o">=</span> <span class="n">energy</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">cluster</span> <span class="o">=</span> <span class="n">cluster</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span> <span class="o">=</span> <span class="n">log_path</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_source_paths</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">method_source_paths</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span>
             <span class="k">if</span> <span class="s1">'user guess'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">:</span>
                 <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="k">raise</span> <span class="n">TSError</span><span class="p">(</span><span class="s1">'If no method is specified, an xyz guess must be given'</span><span class="p">)</span>
@@ -2921,6 +2936,8 @@
                 <span class="n">ts_dict</span><span class="p">[</span><span class="s1">'errors'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">errors</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">ts_dict</span><span class="p">[</span><span class="s1">'log_path'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_source_paths</span><span class="p">:</span>
+                <span class="n">ts_dict</span><span class="p">[</span><span class="s1">'method_source_paths'</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">method_source_paths</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">ts_dict</span></div>
 
 
@@ -2960,6 +2977,15 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">execution_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">family</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">'family'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'family'</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">'log_path'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'log_path'</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ts_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'method_source_paths'</span><span class="p">),</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_source_paths</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="nb">str</span><span class="p">(</span><span class="n">method</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span> <span class="n">path</span>
+                <span class="k">for</span> <span class="n">method</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">'method_source_paths'</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">method_source_paths</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">method_source_paths</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_path</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">errors</span> <span class="o">=</span> <span class="n">ts_dict</span><span class="p">[</span><span class="s1">'errors'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'errors'</span> <span class="ow">in</span> <span class="n">ts_dict</span> <span class="k">else</span> <span class="s1">''</span></div>
 
 
@@ -3080,7 +3106,7 @@
                  <span class="n">comment</span><span class="o">=</span><span class="s1">''</span><span class="p">,</span>
                  <span class="n">nasa_low</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                  <span class="n">nasa_high</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-                 <span class="n">cp_data</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">thermo_points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                  <span class="p">):</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Args:</span>
@@ -3096,7 +3122,10 @@
 <span class="sd">            comment (str): Additional comments or description</span>
 <span class="sd">            nasa_low (dict): Low-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.</span>
 <span class="sd">            nasa_high (dict): High-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.</span>
-<span class="sd">            cp_data (list): Tabulated Cp: list of {temperature_k, cp_j_mol_k} dicts.</span>
+<span class="sd">            thermo_points (list): Tabulated per-temperature thermochemistry:</span>
+<span class="sd">                list of dicts with ``temperature_k``, ``cp_j_mol_k``,</span>
+<span class="sd">                ``h_kj_mol``, ``s_j_mol_k``, ``g_kj_mol``. Older field</span>
+<span class="sd">                name was ``cp_data`` (Cp-only).</span>
 <span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">H298</span> <span class="o">=</span> <span class="n">H298</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">S298</span> <span class="o">=</span> <span class="n">S298</span>
@@ -3110,7 +3139,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">comment</span> <span class="o">=</span> <span class="n">comment</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">nasa_low</span> <span class="o">=</span> <span class="n">nasa_low</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">nasa_high</span> <span class="o">=</span> <span class="n">nasa_high</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">cp_data</span> <span class="o">=</span> <span class="n">cp_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">thermo_points</span> <span class="o">=</span> <span class="n">thermo_points</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""</span>
@@ -3144,7 +3173,7 @@
         <span class="k">return</span> <span class="p">(</span><span class="n">ThermoData</span><span class="p">,</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">H298</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">S298</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Tdata</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Cpdata</span><span class="p">,</span>
                              <span class="bp">self</span><span class="o">.</span><span class="n">Cp0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">CpInf</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Tmin</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Tmax</span><span class="p">,</span>
                              <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">comment</span><span class="p">,</span>
-                             <span class="bp">self</span><span class="o">.</span><span class="n">nasa_low</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nasa_high</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cp_data</span><span class="p">))</span>
+                             <span class="bp">self</span><span class="o">.</span><span class="n">nasa_low</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nasa_high</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">thermo_points</span><span class="p">))</span>
 
 <div class="viewcode-block" id="ThermoData.update">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ThermoData.update">[docs]</a>
