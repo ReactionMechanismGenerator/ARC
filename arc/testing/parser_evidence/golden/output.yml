@@ -1,0 +1,18 @@
+schema_version: '1.1'
+arc_version: 1.1.0
+arc_git_commit: null
+arkane_version: 3.2.0
+arkane_git_commit: 7f4e9c2a1b3d5e6f708192a3b4c5d6e7f8091a2b
+species:
+- label: H2O
+  freq_log: calcs/Species/H2O/freq/output.out
+transition_states:
+- label: TS0
+  chosen_ts_method: xtb_gsm
+  irc_logs:
+  - calcs/TSs/TS0/irc/irc_f/output.out
+  - calcs/TSs/TS0/irc/irc_r/output.out
+  irc_log_directions:
+  - forward
+  - reverse
+  gsm_log: calcs/TSs/TS0/gsm/stringfile.xyz0000

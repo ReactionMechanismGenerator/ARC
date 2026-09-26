@@ -11,13 +11,31 @@ import sys
 
 from common import save_yaml_file
 
+import rmgpy.constants as constants
 from rmgpy.data.thermo import ThermoLibrary
+from rmgpy.statmech import IdealGasTranslation
 from rmgpy.thermo import NASAPolynomial, NASA, ThermoData, Wilhoit
 
 RT = 298.15  # Room temperature in K
 
 
 _CP_TEMPS = [300.0, 400.0, 500.0, 600.0, 800.0, 1000.0, 1500.0, 2000.0, 2400.0]
+
+
+def standard_state_pressure_pa():
+    """Return the standard-state pressure, in Pa, of RMG's translational partition function.
+
+    ``IdealGasTranslation.get_partition_function(T)`` evaluates
+    ``((2 * pi * m) / h ** 2) ** 1.5 / P0 * (kB * T) ** 2.5``. Evaluating it for a known
+    mass and temperature and dividing that analytic numerator by the result recovers
+    ``P0``, so the pressure reported is the one RMG's own statmech code applied. The
+    quotient is rounded to six decimals, which clears the residue of the division.
+    """
+    mode = IdealGasTranslation(mass=(1.0, 'amu'))
+    mass, temperature = mode.mass.value_si, RT
+    numerator = ((2 * constants.pi * mass) / (constants.h * constants.h)) ** 1.5 \
+        * (constants.kB * temperature) ** 2.5
+    return round(numerator / mode.get_partition_function(temperature), 6)
 
 
 def _extract_nasa(thermo_data):
@@ -36,18 +54,51 @@ def _extract_nasa(thermo_data):
     )
 
 
-def _extract_cp(thermo_data):
-    """Return a list of {temperature_k, cp_j_mol_k} dicts, or None."""
+def _extract_thermo_points(thermo_data):
+    """Return a list of per-temperature thermochemistry dicts, or None.
+
+    Each entry carries explicit thermodynamic values and units:
+
+        ``temperature_k``  - the evaluation temperature in K
+        ``cp_j_mol_k``     - heat capacity        (J/(mol*K))
+        ``h_kj_mol``       - enthalpy             (kJ/mol)
+        ``s_j_mol_k``      - entropy              (J/(mol*K))
+        ``g_kj_mol``       - Gibbs free energy    (kJ/mol)
+
+    RMG's NASA / ThermoData accessors return SI units (J/mol for energies,
+    J/(mol*K) for capacities/entropies); enthalpy and free energy are
+    converted to kJ/mol for a compact, explicit output contract.
+
+    Any per-temperature evaluation that raises (e.g., the polynomial is
+    not valid at that T) is skipped silently — the goal is best-effort
+    enrichment, not failing the whole library extraction over one out-
+    of-range point.
+    """
     try:
         tmin = thermo_data.Tmin.value_si
         tmax = thermo_data.Tmax.value_si
-        return [
-            {'temperature_k': T, 'cp_j_mol_k': float(thermo_data.get_heat_capacity(T))}
-            for T in _CP_TEMPS
-            if tmin <= T <= tmax
-        ]
     except Exception:
         return None
+
+    points = []
+    for T in _CP_TEMPS:
+        if not (tmin <= T <= tmax):
+            continue
+        try:
+            cp = float(thermo_data.get_heat_capacity(T))
+            h_kj = float(thermo_data.get_enthalpy(T)) / 1000.0
+            s = float(thermo_data.get_entropy(T))
+            g_kj = float(thermo_data.get_free_energy(T)) / 1000.0
+        except Exception:
+            continue
+        points.append({
+            'temperature_k': T,
+            'cp_j_mol_k': cp,
+            'h_kj_mol': h_kj,
+            's_j_mol_k': s,
+            'g_kj_mol': g_kj,
+        })
+    return points or None
 
 
 def _iter_thermo_calls(content):
@@ -104,7 +155,8 @@ def main():
     In ARC this is under calcs/statmech/thermo.
     It loads the computed thermo (from the RMG thermo library Arkane wrote, or — when
     that library save failed — straight from ``output.py``), extracts H298, S298, NASA
-    polynomial coefficients, and tabulated Cp data, saving the results in a YAML file.
+    polynomial coefficients, tabulated Cp data, and the standard-state pressure the
+    entropies and free energies belong to, saving the results in a YAML file.
     A species whose thermo cannot be evaluated is reported on stderr and skipped, so the
     remaining species are still written.
     """
@@ -116,6 +168,7 @@ def main():
                      'NASAPolynomial': NASAPolynomial,
                      'NASA': NASA}
     entries = dict()
+    pressure_pa = standard_state_pressure_pa()
     if os.path.isfile(thermo_lib_path):
         library = ThermoLibrary()
         library.load(thermo_lib_path, local_context, {})
@@ -134,7 +187,7 @@ def main():
             S298 = thermo_data.get_entropy(RT)
             data = str(thermo_data)
             nasa_low, nasa_high = _extract_nasa(thermo_data)
-            cp_data = _extract_cp(thermo_data)
+            thermo_points = _extract_thermo_points(thermo_data)
         except Exception as e:
             sys.stderr.write(f'Could not evaluate the computed thermo of {label}: {e}\n')
             continue
@@ -144,7 +197,8 @@ def main():
             'data': data,
             'nasa_low': nasa_low,
             'nasa_high': nasa_high,
-            'cp_data': cp_data,
+            'thermo_points': thermo_points,
+            'standard_state_pressure_pa': pressure_pa,
         }
     if result:
         result_path = os.path.join(cwd, 'thermo.yaml')

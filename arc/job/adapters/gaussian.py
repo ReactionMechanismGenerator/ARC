@@ -391,7 +391,7 @@ class GaussianAdapter(JobAdapter):
             constraint_atom_indices = ' '.join([str(atom_index) for atom_index in constraint_tuple[0]])
             input_dict['scan'] = '\n\n' if not input_dict['scan'] else input_dict['scan']
             input_dict['scan'] += f"{constraint_type} {constraint_atom_indices} ={constraint_tuple[1]:.2f} B\n" \
-                                  f"{constraint_type} {constraint_atom_indices} F"
+                                  f"{constraint_type} {constraint_atom_indices} F\n"
 
         if self.level.solvation_method is not None:
             input_dict['job_type_1'] += f' SCRF=({self.level.solvation_method}, Solvent={self.level.solvent})'

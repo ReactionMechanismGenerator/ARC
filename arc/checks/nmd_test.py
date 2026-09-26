@@ -9,6 +9,7 @@ import unittest
 import math
 import os
 import shutil
+import tempfile
 from unittest.mock import patch
 
 import numpy as np
@@ -650,9 +651,25 @@ class TestNMD(unittest.TestCase):
         self.assertIn('no coordinates to displace', warning)
         self.assertNotIn('frame of the normal modes', warning)
 
-    def test_get_ts_xyz_in_normal_mode_frame_falls_back_when_parsing_fails(self):
-        """Test that a log file the geometry parser cannot handle falls back to the species geometry."""
-        log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
+    def test_get_ts_xyz_in_normal_mode_frame_falls_back_when_parsing_raises(self):
+        """Test that a log file whose geometry parser raises falls back to the species geometry.
+
+        The log is a Gaussian frequency output truncated in the middle of its 'Input orientation:'
+        block, as a job killed while writing one leaves behind.
+        """
+        scratch_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        log_path = os.path.join(scratch_dir, 'truncated_freq.log')
+        with open(log_path, 'w') as f:
+            f.write(' Entering Gaussian System, Link 0=g16\n'
+                    '                          Input orientation:\n'
+                    ' ---------------------------------------------------------------------\n'
+                    ' Center     Atomic      Atomic             Coordinates (Angstroms)\n'
+                    ' Number     Number       Type             X           Y           Z\n'
+                    ' ---------------------------------------------------------------------\n'
+                    '      1          6           0        0.000000    0.000000    0.000000\n')
+        with self.assertRaises(IndexError):
+            parse_geometry(log_file_path=log_path)
         self.generic_job.local_path_to_output_file = log_path
         rxn = self.make_ch4_oh_rxn(ts_xyz=self.ts_1_xyz)
         with self.assertLogs('arc', level='WARNING') as captured:
@@ -662,6 +679,7 @@ class TestNMD(unittest.TestCase):
                                    np.array(self.ts_1_xyz['coords']), atol=1e-8)
         warning = '\n'.join(captured.output)
         self.assertIn(log_path, warning)
+        self.assertIn('raised', warning)
         self.assertIn('frame of the normal modes', warning)
 
     def test_get_ts_xyz_in_normal_mode_frame_uses_the_file_the_modes_are_reported_in(self):
