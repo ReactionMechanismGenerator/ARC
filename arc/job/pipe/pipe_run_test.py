@@ -17,7 +17,8 @@ import arc.job.pipe.pipe_run as pipe_run_module
 from arc.job.adapters.mockter import MockAdapter
 from arc.job.pipe.pipe_state import (TaskState, TaskStateRecord, PipeRunState, TaskSpec, get_task_attempt_dir,
                                      read_task_state, update_task_state)
-from arc.job.pipe.pipe_run import PipeRun, local_cpu_budget, local_worker_limit, worker_cpu_cores
+from arc.job.pipe.pipe_run import (PipeRun, build_rotor_scan_1d_tasks, local_cpu_budget,
+                                   local_worker_limit, worker_cpu_cores)
 import arc.parser.parser as parser
 from arc.common import ARC_TESTING_PATH
 from arc.level import Level
@@ -781,6 +782,32 @@ class TestIngestTsOpt(unittest.TestCase):
             self.assertIsNone(tsg.opt_xyz)
             self.assertIsNone(tsg.energy)
         self.assertEqual(sorted(tsg.index for tsg in self.ts_species.ts_guesses), [3, 7])
+
+
+class TestBuildRotorScan1dTasks(unittest.TestCase):
+    """Unit tests for build_rotor_scan_1d_tasks: one task per rotor and scan_res propagation."""
+
+    def setUp(self):
+        self.spc = ARCSpecies(label='propane', smiles='CCC')
+        # Two rotors, set explicitly to keep the test hermetic (no conformer generation).
+        self.spc.rotors_dict = {0: {'torsion': [3, 0, 1, 2], 'pivots': [1, 2]},
+                                1: {'torsion': [1, 2, 3, 8], 'pivots': [2, 3]}}
+        self.level_dict = {'method': 'uma-s-1p2'}
+
+    def test_one_task_per_rotor(self):
+        tasks = build_rotor_scan_1d_tasks(self.spc, 'propane', [0, 1], self.level_dict, 'ase', 4096)
+        self.assertEqual([t.task_id for t in tasks], ['propane_scan_r0', 'propane_scan_r1'])
+        self.assertTrue(all(t.task_family == 'rotor_scan_1d' and t.engine == 'ase' for t in tasks))
+        self.assertEqual([t.input_payload['rotor_index'] for t in tasks], [0, 1])
+
+    def test_scan_res_carried_into_payload_when_given(self):
+        tasks = build_rotor_scan_1d_tasks(self.spc, 'propane', [0, 1], self.level_dict, 'ase', 4096,
+                                          scan_res=8.0)
+        self.assertTrue(all(t.input_payload['scan_res'] == 8.0 for t in tasks))
+
+    def test_scan_res_omitted_when_none(self):
+        tasks = build_rotor_scan_1d_tasks(self.spc, 'propane', [0], self.level_dict, 'ase', 4096)
+        self.assertNotIn('scan_res', tasks[0].input_payload)
 
 
 if __name__ == '__main__':
