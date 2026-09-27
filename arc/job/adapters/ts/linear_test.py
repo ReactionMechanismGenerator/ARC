@@ -6407,5 +6407,91 @@ class TestLinearAdapterForcedAtomMap(unittest.TestCase):
 
 
 
+class TestLinearAdapterAtomMapWithoutGuesses(unittest.TestCase):
+    """Test reporting a requested atom map for which no TS guess survives (issue #1045)."""
+
+    # Two atom maps of [CH2]C(C)CC <=> CC(C)[CH]C describing the *same* reaction center
+    # (H12 moves from C3 to C0) and differing only in how the spectator hydrogens are
+    # permuted. The second one is the map whose guesses are all rejected by the geometry
+    # validators, so it comes back empty.
+    MAP_WITH_GUESSES = [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 5, 13, 14, 15]
+    MAP_WITHOUT_GUESSES = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 7, 13, 14, 15]
+
+    @staticmethod
+    def _make_rxn() -> ARCReaction:
+        """
+        Construct a fresh 2-methylbutyl intra_H_migration reaction.
+
+        Returns:
+            ARCReaction: The reaction.
+        """
+        return ARCReaction(r_species=[ARCSpecies(label='r', smiles='[CH2]C(C)CC')],
+                           p_species=[ARCSpecies(label='p', smiles='CC(C)[CH]C')])
+
+    def _run(self, atom_map) -> tuple[ARCReaction, LinearAdapter]:
+        """
+        Execute the Linear adapter for a fresh reaction with the given requested atom map(s).
+
+        Args:
+            atom_map (list[int] | list[list[int]]): The atom map(s) to request.
+
+        Returns:
+            tuple[ARCReaction, LinearAdapter]: The processed reaction and the adapter.
+        """
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                atom_map=atom_map,
+                                )
+        adapter.execute()
+        return rxn, adapter
+
+    def test_empty_requested_map_is_reported(self):
+        """Test that a requested map yielding no guess is reported rather than silently dropped."""
+        with self.assertLogs(logger='arc', level='WARNING') as cm:
+            rxn, adapter = self._run(atom_map=list(self.MAP_WITHOUT_GUESSES))
+        self.assertEqual(adapter.atom_maps_without_guesses, [self.MAP_WITHOUT_GUESSES])
+        self.assertTrue(any('generated no TS guess for the requested atom map' in line for line in cm.output))
+        # The reaction itself records the outcome, so it survives into the restart file.
+        self.assertEqual([tsg.success for tsg in rxn.ts_species.ts_guesses], [False])
+        self.assertEqual(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 0)
+
+    def test_successful_map_is_not_reported_as_empty(self):
+        """Test that a requested map which does produce guesses is not reported as empty."""
+        rxn, adapter = self._run(atom_map=list(self.MAP_WITH_GUESSES))
+        self.assertEqual(adapter.atom_maps_without_guesses, list())
+        self.assertGreater(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 0)
+        self.assertTrue(all(tsg.success for tsg in rxn.ts_species.ts_guesses))
+
+    def test_only_the_empty_map_of_several_is_reported(self):
+        """Test that requesting both maps distinguishes the empty one from the successful one."""
+        rxn, adapter = self._run(atom_map=[list(self.MAP_WITH_GUESSES), list(self.MAP_WITHOUT_GUESSES)])
+        self.assertEqual(adapter.atom_maps_without_guesses, [self.MAP_WITHOUT_GUESSES])
+        self.assertGreater(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 0)
+        failed = [tsg for tsg in rxn.ts_species.ts_guesses if not tsg.success]
+        self.assertEqual([tsg.method for tsg in failed], ['linear (map=1)'])
+
+    def test_no_report_without_a_requested_map(self):
+        """Test that the default (derived-map) mode never reports an empty requested map."""
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                )
+        adapter.execute()
+        self.assertEqual(adapter.atom_maps_without_guesses, list())
+        self.assertTrue(all(tsg.success for tsg in rxn.ts_species.ts_guesses))
+
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
