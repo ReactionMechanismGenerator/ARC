@@ -397,14 +397,14 @@ H      -0.36583394   -1.89034834    0.81324667""")
                         continue
                     d_ci = float(np.linalg.norm(coords[ci] - coords[hi]))
                     d_di = float(np.linalg.norm(coords[di] - coords[hi]))
-                    if abs(d_ci - 1.51) < 0.15 and abs(d_di - 1.51) < 0.15:
+                    if abs(d_ci - 1.34) < 0.15 and abs(d_di - 1.34) < 0.15:
                         found_good = True
                         break
                 if found_good:
                     break
             if found_good:
                 break
-        self.assertTrue(found_good, msg='No H at Pauling-triangulated ~1.51 Å from a C-C pair in the TS')
+        self.assertTrue(found_good, msg='No H at bridge-triangulated ~1.34 Å from a C-C pair in the TS')
 
     def test_returns_none_for_non_carbene(self):
         """The builder returns None for a molecule without a carbene center."""
@@ -635,6 +635,22 @@ H       3.11088096    4.66875130   -0.79438064""")
                         msg=f'migrating C5-H13 too long: {d_c5h13:.3f}')
         self.assertLess(d_o3h13, 2.5,
                         msg=f'forming O3-H13 too long: {d_o3h13:.3f}')
+
+    def test_migrating_h_seeded_at_the_strained_ring_targets(self):
+        """
+        The migrating H is triangulated at the general targets, not the bridging-H ones.
+
+        Donor C5 and acceptor O3 are two bonds apart through C4, so the transferring
+        H closes a four-membered ring whose D-H-A angle cannot reach the near-linear
+        geometry H_BRIDGE_DELTA is measured on. C5-H13 is therefore 1.09 + 0.42 and
+        O3-H13 is 0.96 + 0.42.
+        """
+        ts = build_retroene_ts(self.r_xyz, self.r.mol,
+                               breaking_bonds=[(3, 4), (5, 13)], forming_bonds=[(3, 13)])
+        self.assertIsNotNone(ts)
+        coords = np.array(ts['coords'], dtype=float)
+        self.assertAlmostEqual(float(np.linalg.norm(coords[5] - coords[13])), 1.51, places=4)
+        self.assertAlmostEqual(float(np.linalg.norm(coords[3] - coords[13])), 1.38, places=4)
 
     def test_returns_none_when_bond_counts_wrong(self):
         """The builder returns None when bb has != 2 entries or fb has != 1."""
