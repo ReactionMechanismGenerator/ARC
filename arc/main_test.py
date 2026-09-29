@@ -692,13 +692,33 @@ class TestWarnIfArkaneLevelDiffers(unittest.TestCase):
         self.assertTrue(any('bmk/cbsb7' in record and 'apfd/def2svp' in record
                             and 'not formation enthalpies' in record for record in captured.output))
 
+    def test_the_same_method_with_another_basis_is_warned_about(self):
+        """Atom energies depend on the basis set, so the method alone must not decide."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING):
+            self.assertTrue(warn_if_arkane_level_differs(
+                arkane_level=Level(method='wb97xd', basis='def2tzvp'),
+                energy_level=Level(method='wb97xd', basis='def2svp')))
+
+    def test_another_method_with_the_same_basis_is_warned_about(self):
+        """A dispersion-corrected functional is a different method, not a spelling variant."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING):
+            self.assertTrue(warn_if_arkane_level_differs(
+                arkane_level=Level(method='b3lyp', basis='6-31g(d,p)'),
+                energy_level=Level(method='b3lyp-d3bj', basis='6-31g(d,p)')))
+
     def test_the_same_level_is_not_warned_about(self):
-        """A refit year or another software on the same method and basis is not a different level."""
-        self.assertFalse(warn_if_arkane_level_differs(
-            arkane_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian', year=2023),
-            energy_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian')))
-        self.assertFalse(warn_if_arkane_level_differs(arkane_level=Level(method='cbs-qb3'),
-                                                      energy_level=Level(method='cbs-qb3')))
+        """Spelling variants, a refit year, or another software on the same method and basis are the same level."""
+        same_levels = [
+            (Level(method='wb97xd', basis='def2tzvp', software='gaussian', year=2023),
+             Level(method='wb97xd', basis='def2tzvp', software='gaussian')),
+            (Level(method='wb97xd', basis='def2-tzvp'), Level(method='wb97xd', basis='def2tzvp')),
+            (Level(method='wB97X-D', basis='def2-TZVP'), Level(method='wb97xd', basis='def2tzvp')),
+            (Level(method='cbs-qb3'), Level(method='cbs-qb3')),
+        ]
+        for arkane_level, energy_level in same_levels:
+            with self.subTest(arkane_level=arkane_level.simple(), energy_level=energy_level.simple()):
+                self.assertFalse(warn_if_arkane_level_differs(arkane_level=arkane_level, energy_level=energy_level))
+                self.assertFalse(warn_if_arkane_level_differs(arkane_level=energy_level, energy_level=arkane_level))
 
     def test_a_missing_level_is_not_warned_about(self):
         """Without both levels there is nothing to compare."""
@@ -706,6 +726,131 @@ class TestWarnIfArkaneLevelDiffers(unittest.TestCase):
                                                                                              basis='def2svp')))
         self.assertFalse(warn_if_arkane_level_differs(arkane_level=Level(method='bmk', basis='cbsb7'),
                                                       energy_level=None))
+
+    def test_an_adaptive_sp_level_other_than_the_arkane_level_is_warned_about(self):
+        """Each species' sp level is picked by heavy-atom count, but Arkane gets one level for all of them."""
+        adaptive_levels = process_adaptive_levels([
+            {'atom_range': [1, 6], 'levels': {'opt freq': 'wb97xd/def2tzvp', 'sp': 'wb97xd/def2-tzvp'}},
+            {'atom_range': [7, 'inf'], 'levels': {'opt freq': 'b3lyp/6-31g(d,p)', 'sp': 'dlpno-ccsd(t)/def2-tzvp'}},
+        ])
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+            warned = warn_if_arkane_level_differs(arkane_level=Level(method='wb97xd', basis='def2tzvp'),
+                                                  energy_level=Level(method='wb97xd', basis='def2tzvp'),
+                                                  adaptive_levels=adaptive_levels)
+        self.assertTrue(warned)
+        self.assertTrue(any('dlpno-ccsd(t)/def2-tzvp' in record for record in captured.output))
+        self.assertFalse(any('b3lyp' in record for record in captured.output))  # opt/freq levels are not energies
+
+    def test_adaptive_sp_levels_matching_the_arkane_level_are_not_warned_about(self):
+        """Adaptive levels that vary only the opt/freq level, or repeat the Arkane level for sp, are fine."""
+        adaptive_levels = process_adaptive_levels([
+            {'atom_range': [1, 6], 'levels': {'opt freq': 'b3lyp/6-31g(d,p)', 'sp': 'wB97X-D/def2-TZVP'}},
+            {'atom_range': [7, 'inf'], 'levels': {'opt freq': 'b3lyp/cbsb7'}},
+        ])
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=Level(method='wb97xd', basis='def2tzvp'),
+                                                      energy_level=Level(method='wb97xd', basis='def2tzvp'),
+                                                      adaptive_levels=adaptive_levels))
+
+
+    def test_a_refit_year_in_the_method_string_is_not_a_difference(self):
+        """Arkane keys carry refit vintages in the method name, e.g., ``b3lyp2023``."""
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=Level(method='b3lyp2023', basis='def2tzvp'),
+                                                      energy_level=Level(method='b3lyp', basis='def2tzvp')))
+
+    def test_dispersion_spellings_are_one_method(self):
+        """Dispersion carried in the method string or the separate field, in any spelling, is one method."""
+        same_levels = [
+            (Level(method='b3lyp-d3bj', basis='def2tzvp'),
+             Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj')),
+            (Level(method='b3lyp-d3(bj)', basis='def2tzvp'), Level(method='b3lyp-d3bj', basis='def2tzvp')),
+            (Level(method='b3lyp-d3bj', basis='def2tzvp'),
+             Level(method='b3lyp', basis='def2tzvp', dispersion='EmpiricalDispersion=GD3BJ')),
+        ]
+        for arkane_level, energy_level in same_levels:
+            with self.subTest(arkane_level=str(arkane_level), energy_level=str(energy_level)):
+                self.assertFalse(warn_if_arkane_level_differs(arkane_level=arkane_level, energy_level=energy_level))
+
+    def test_dispersion_only_in_the_energy_level_field_is_warned_about(self):
+        """Energies with a D3(BJ) correction are not at the Arkane level that has none."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+            self.assertTrue(warn_if_arkane_level_differs(
+                arkane_level=Level(method='b3lyp', basis='def2tzvp'),
+                energy_level=Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj')))
+        self.assertTrue(any('differs from the level' in record for record in captured.output))
+
+    def test_a_different_dispersion_suffix_is_a_different_method(self):
+        """``wb97xd`` and ``wb97xd3`` are distinct functionals, not spellings of one."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING):
+            self.assertTrue(warn_if_arkane_level_differs(arkane_level=Level(method='wb97xd', basis='def2tzvp'),
+                                                         energy_level=Level(method='wb97xd3', basis='def2tzvp')))
+
+    def test_a_solvated_energy_level_is_warned_about(self):
+        """ARC's Arkane matching ignores solvation_method, so gas-phase corrections are applied to solvated
+        energies, whether or not the Arkane level names the same solvation method."""
+        energy_level = Level(method='b3lyp', basis='def2tzvp', solvation_method='smd', solvent='water')
+        for arkane_level in (Level(method='b3lyp', basis='def2tzvp'),
+                             Level(method='b3lyp', basis='def2tzvp', solvation_method='smd', solvent='water')):
+            with self.subTest(arkane_level=str(arkane_level)):
+                with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+                    self.assertTrue(warn_if_arkane_level_differs(arkane_level=arkane_level,
+                                                                 energy_level=energy_level))
+                self.assertTrue(any('solvation' in record and 'ignoring' in record and 'gas-phase' in record
+                                    for record in captured.output))
+                self.assertFalse(any('differs from the level' in record for record in captured.output))
+
+    def test_an_arkane_level_with_a_separate_dispersion_field_is_warned_about(self):
+        """ARC's Arkane matching ignores the dispersion field, so the Arkane level's own dispersion is dropped from
+        the corrections even when it matches the energy level."""
+        for energy_level in (Level(method='b3lyp-d3bj', basis='def2tzvp'),
+                             Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj')):
+            with self.subTest(energy_level=str(energy_level)):
+                with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+                    self.assertTrue(warn_if_arkane_level_differs(
+                        arkane_level=Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj'),
+                        energy_level=energy_level))
+                self.assertTrue(any('dispersion field' in record and 'ignoring' in record
+                                    for record in captured.output))
+                self.assertFalse(any('differs from the level' in record for record in captured.output))
+
+
+class TestArkaneLevelWarningAtStartup(unittest.TestCase):
+    """
+    Contains unit tests for ARC calling warn_if_arkane_level_differs() when it is initialized.
+    """
+
+    def setUp(self):
+        self.project_directory = tempfile.mkdtemp(prefix='arc_arkane_level_warning_')
+        self.addCleanup(shutil.rmtree, self.project_directory, ignore_errors=True)
+
+    def test_startup_checks_the_arkane_level_against_the_energy_levels(self):
+        """ARC checks the defaulted Arkane level at initialization, before any job runs."""
+        with patch('arc.main.warn_if_arkane_level_differs', return_value=False) as mock_warn:
+            arc0 = ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
+                       level_of_theory='CBS-QB3')
+        mock_warn.assert_called_once_with(arkane_level=arc0.arkane_level_of_theory,
+                                          energy_level=arc0.composite_method,
+                                          adaptive_levels=None)
+        self.assertIsNotNone(arc0.arkane_level_of_theory)
+
+    def test_startup_skips_the_check_without_thermo(self):
+        """Without thermo there is no H298 for the atom energies to go into."""
+        with patch('arc.main.warn_if_arkane_level_differs', return_value=False) as mock_warn:
+            ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
+                level_of_theory='CBS-QB3', compute_thermo=False)
+        mock_warn.assert_not_called()
+
+    def test_startup_warns_about_a_dummy_arkane_level(self):
+        """The examples/Stationary/bde setup warns when ARC is initialized.
+
+        ARC re-initializes its logger's handlers in ``__init__``, which ``assertLogs`` does not survive,
+        so the warning call itself is observed.
+        """
+        with patch('arc.main.logger.warning') as mock_warning:
+            ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
+                level_of_theory='apfd/def2svp', arkane_level_of_theory='bmk/cbsb7', freq_scale_factor=1.0,
+                bac_type=None)
+        messages = [str(call.args[0]) for call in mock_warning.call_args_list if call.args]
+        self.assertTrue(any('bmk/cbsb7' in message and 'apfd/def2svp' in message for message in messages))
 
 
 class TestExecuteReleasesPooledConnections(unittest.TestCase):
