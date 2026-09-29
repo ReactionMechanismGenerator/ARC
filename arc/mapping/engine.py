@@ -1842,7 +1842,7 @@ def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies, strict: b
     Returns:
         bool: ``True`` if they are isomorphic, ``False`` otherwise.
     """
-    res1 = generate_resonance_structures_safely(reactant.mol, save_order=True)
+    res1 = generate_resonance_structures_safely(reactant.mol, save_order=True) or [reactant.mol]
     for res in res1:
         if strict:
             if product_.mol.is_isomorphic(res, save_order=True):

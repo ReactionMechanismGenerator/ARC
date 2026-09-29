@@ -4584,7 +4584,7 @@ class TestComputeCostMetrics(unittest.TestCase):
         self.assertEqual(cm['total_job_count'], 3)
         self.assertEqual(cm['jobs_missing_time'], 0)
         self.assertAlmostEqual(cm['per_ess']['gaussian']['execution_time_hrs'], 2.5)
-        self.assertAlmostEqual(cm['per_ess']['gaussian']['core_hours'], 18.0)  # 2*8 + 0.5*4
+        self.assertAlmostEqual(cm['per_ess']['gaussian']['core_hours'], 18.0)
         self.assertAlmostEqual(cm['per_ess']['orca']['execution_time_hrs'], 1.0)
         self.assertAlmostEqual(cm['per_ess']['orca']['core_hours'], 16.0)
         self.assertAlmostEqual(cm['total_execution_time_hrs'], 3.5)

@@ -2102,6 +2102,15 @@ class TestMappingEngine(unittest.TestCase):
         same_b = ARCSpecies(label='b', smiles='CC[CH]OCC')
         self.assertTrue(engine.r_cut_p_cut_isomorphic(same_a, same_b, strict=True))
 
+    def test_r_cut_p_cut_isomorphic_resonance_failure(self):
+        """A failed resonance generation falls back to the fragment's own graph instead of raising."""
+        spc_a = ARCSpecies(label='a', smiles='CC[CH]OCC')
+        spc_b = ARCSpecies(label='b', smiles='CC[CH]OCC')
+        spc_c = ARCSpecies(label='c', smiles='C[CH]OCCC')
+        with mock.patch.object(engine, 'generate_resonance_structures_safely', return_value=None):
+            self.assertTrue(engine.r_cut_p_cut_isomorphic(spc_a, spc_b, strict=True))
+            self.assertFalse(engine.r_cut_p_cut_isomorphic(spc_a, spc_c, strict=True))
+
     def test_pairing_prefers_strict_match_for_formula_isomers(self):
         """
         H-abstraction where abstractor = same species on both sides and the two
