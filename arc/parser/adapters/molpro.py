@@ -352,14 +352,24 @@ class MolproParser(ESSAdapter, ABC):
     def parse_ess_version(self) -> str | None:
         """
         Parse the Molpro version string, e.g. ``'Molpro 2015.1.37'``.
+
+        Scans the header block, being the first 200 lines of the log file. Returns the value of a
+        ``NAME      : 2015.1.37`` entry if one is present there, otherwise the value taken from a
+        ``Version 2022.3 linked Wed Nov 30 06:40:34 2022`` banner line.
         """
+        banner_version = None
         with open(self.log_file_path, 'r') as f:
-            for line in f:
-                # "NAME      : 2015.1.37"
-                m = re.match(r'\s*NAME\s*:\s*([\d.]+)', line)
-                if m:
-                    return f'Molpro {m.group(1)}'
-        return None
+            for i, line in enumerate(f):
+                if i >= 200:
+                    break
+                match = re.match(r'\s*NAME\s*:\s*([\d.]+)', line)
+                if match:
+                    return f'Molpro {match.group(1)}'
+                if banner_version is None:
+                    match = re.search(r'Version\s+([\d.]+)\s+linked', line)
+                    if match:
+                        banner_version = match.group(1)
+        return f'Molpro {banner_version}' if banner_version is not None else None
 
 
 register_ess_adapter('molpro', MolproParser)

@@ -1858,6 +1858,91 @@ class TestMappingDriver(unittest.TestCase):
         self.assertTrue(check_atom_map(rxn=rxn))
 
 
+
+    def test_hydrogens_stay_on_their_heavy_atom_in_cycloadditions(self):
+        """Test that a cycloaddition map does not move hydrogens between heavy atoms"""
+        # No X-H bond changes in a cycloaddition, so a correct map obeys
+        # parent_P(map[h]) == map[parent_R(h)] for every hydrogen h. Both reactions below add across a
+        # symmetric ethene, where several backbone candidates tie and the family template has to settle
+        # the choice; the template's labeled atoms must carry their hydrogens with them.
+        ch2_adj = """1 *3 C u0 p1 c0 {2,S} {3,S}
+2    H u0 p0 c0 {1,S}
+3    H u0 p0 c0 {1,S}"""
+        c2h4_adj = """1 *1 C u0 p0 c0 {2,D} {3,S} {6,S}
+2 *2 C u0 p0 c0 {1,D} {4,S} {5,S}
+3    H u0 p0 c0 {1,S}
+4    H u0 p0 c0 {2,S}
+5    H u0 p0 c0 {2,S}
+6    H u0 p0 c0 {1,S}"""
+        c3h6_adj = """1 *3 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}
+2 *1 C u0 p0 c0 {1,S} {3,S} {6,S} {9,S}
+3 *2 C u0 p0 c0 {1,S} {2,S} {7,S} {8,S}
+4    H u0 p0 c0 {1,S}
+5    H u0 p0 c0 {1,S}
+6    H u0 p0 c0 {2,S}
+7    H u0 p0 c0 {3,S}
+8    H u0 p0 c0 {3,S}
+9    H u0 p0 c0 {2,S}"""
+        c4h6_adj = """1  *5 C u0 p0 c0 {2,S} {3,D} {5,S}
+2  *4 C u0 p0 c0 {1,S} {4,D} {6,S}
+3  *6 C u0 p0 c0 {1,D} {7,S} {8,S}
+4  *3 C u0 p0 c0 {2,D} {9,S} {10,S}
+5     H u0 p0 c0 {1,S}
+6     H u0 p0 c0 {2,S}
+7     H u0 p0 c0 {3,S}
+8     H u0 p0 c0 {3,S}
+9     H u0 p0 c0 {4,S}
+10    H u0 p0 c0 {4,S}"""
+        c6h10_adj = """1  *2 C u0 p0 c0 {2,S} {3,S} {7,S} {8,S}
+2  *1 C u0 p0 c0 {1,S} {4,S} {9,S} {10,S}
+3  *6 C u0 p0 c0 {1,S} {5,S} {11,S} {12,S}
+4  *3 C u0 p0 c0 {2,S} {6,S} {13,S} {14,S}
+5  *5 C u0 p0 c0 {3,S} {6,D} {15,S}
+6  *4 C u0 p0 c0 {4,S} {5,D} {16,S}
+7     H u0 p0 c0 {1,S}
+8     H u0 p0 c0 {1,S}
+9     H u0 p0 c0 {2,S}
+10    H u0 p0 c0 {2,S}
+11    H u0 p0 c0 {3,S}
+12    H u0 p0 c0 {3,S}
+13    H u0 p0 c0 {4,S}
+14    H u0 p0 c0 {4,S}
+15    H u0 p0 c0 {5,S}
+16    H u0 p0 c0 {6,S}"""
+
+        def hydrogen_parents(species_list):
+            """Return a hydrogen index to parent heavy atom index dict, in running atom indices"""
+            parents, offset = dict(), 0
+            for spc in species_list:
+                atoms = spc.mol.atoms
+                index = {atom: i for i, atom in enumerate(atoms)}
+                for i, atom in enumerate(atoms):
+                    if atom.element.symbol == 'H':
+                        heavy = [index[n] + offset for n in atom.edges if n.element.symbol != 'H']
+                        if len(heavy) == 1:
+                            parents[i + offset] = heavy[0]
+                offset += len(atoms)
+            return parents
+
+        for r_adjlists, p_adjlists, expected_family in [([ch2_adj, c2h4_adj], [c3h6_adj], '1+2_Cycloaddition'),
+                                                        ([c4h6_adj, c2h4_adj], [c6h10_adj], 'Diels_alder_addition')]:
+            rxn = ARCReaction(r_species=[ARCSpecies(label=f'r{i}', adjlist=adj)
+                                         for i, adj in enumerate(r_adjlists)],
+                              p_species=[ARCSpecies(label=f'p{i}', adjlist=adj)
+                                         for i, adj in enumerate(p_adjlists)])
+            self.assertEqual(rxn.family, expected_family)
+            atom_map = map_reaction(rxn)
+            self.assertIsNotNone(atom_map)
+            self.assertTrue(check_atom_map(rxn))
+            reactants, products = rxn.get_reactants_and_products(return_copies=True)
+            r_parents, p_parents = hydrogen_parents(reactants), hydrogen_parents(products)
+            for h, parent in r_parents.items():
+                self.assertEqual(p_parents[atom_map[h]], atom_map[parent],
+                                 msg=f'In {rxn.label}, H {h} sits on heavy atom {parent} but maps to '
+                                     f'H {atom_map[h]}, which sits on {p_parents[atom_map[h]]}, '
+                                     f'while {parent} maps to {atom_map[parent]}.')
+
+
     @classmethod
     def tearDownClass(cls):
         """

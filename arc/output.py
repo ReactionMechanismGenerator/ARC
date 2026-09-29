@@ -12,38 +12,102 @@ file will not exist rather than be partially written.
 import datetime
 import math
 import os
+import re
 import tempfile
-from typing import Any
+from typing import Any, NamedTuple
+import uuid
 
-from arc.common import ARC_PATH, VERSION, get_git_commit, get_logger, read_yaml_file, save_yaml_file
+import yaml
+
+from arc.common import (
+    ARC_PATH,
+    NUMBER_BY_SYMBOL,
+    VERSION,
+    get_git_commit,
+    get_logger,
+    is_str_int,
+    read_yaml_file,
+    save_yaml_file,
+)
 from arc.constants import E_h_kJmol
+from arc.exceptions import InputError
 from arc.imports import settings
+from arc.job.adapters.common import open_shell_character_source
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
+from arc.parser.adapters.gaussian import parse_gaussian_constraints
+from arc.parser.adapters.orca import parse_orca_constraints
 from arc.parser.parser import (
+    determine_ess,
     parse_1d_scan_energies,
-    parse_1d_scan_full_result,
     parse_e_elect,
     parse_ess_version,
-    parse_geometry,
     parse_opt_steps,
     parse_s_squared,
-    parse_scan_args,
+    parse_wavefunction_stability,
     parse_zpe_correction,
     s_squared_expected_from_multiplicity,
+    parse_1d_scan_full_result,
+    parse_geometry,
+    parse_scan_args,
 )
 from arc.species.converter import xyz_to_str
 from arc.species.vectors import calculate_dihedral_angle
 from arc.statmech.arkane import (
     AEC_SECTION_START, AEC_SECTION_END,
-    ARKANE_TUNNELING_METHOD,
     MBAC_SECTION_START, MBAC_SECTION_END,
     PBAC_SECTION_START, PBAC_SECTION_END,
     find_best_across_files, get_qm_corrections_files,
 )
+from arc.parser_evidence import (
+    EVIDENCE_FILENAME,
+    EVIDENCE_SCHEMA_NAME,
+    EVIDENCE_SCHEMA_VERSION,
+    OUTPUT_SCHEMA_VERSION,
+    build_parser_evidence,
+    fsync_directory,
+    write_parser_evidence_atomic,
+)
 
 
 logger = get_logger()
+
+HESSIAN_METHOD_ANALYTIC = 'analytic'
+HESSIAN_METHOD_FD_GRADIENT = 'finite_difference_gradient'
+HESSIAN_METHOD_FD_ENERGY = 'finite_difference_energy'
+
+GAUSSIAN_ANALYTIC_METHODS = frozenset({'hf', 'mp2', 'cis', 'casscf'})
+GAUSSIAN_FD_GRADIENT_METHODS = frozenset({'mp3', 'mp4(sdq)', 'mp4sdq', 'mp4(dq)', 'mp4dq',
+                                          'qcisd', 'ccsd', 'ccd', 'cid', 'cisd', 'bd'})
+GAUSSIAN_FD_ENERGY_METHODS = frozenset({'mp4', 'mp4(sdtq)', 'mp4sdtq', 'mp5',
+                                        'ccsd(t)', 'ccsd-t', 'qcisd(t)', 'qcisd(tq)',
+                                        'bd(t)', 'bd(tq)'})
+GAUSSIAN_RO_FD_ENERGY_METHODS = frozenset({'mp2', 'mp3', 'mp4', 'mp4(sdq)', 'mp4sdq',
+                                           'mp4(sdtq)', 'mp4sdtq',
+                                           'ccd', 'ccsd', 'ccsd(t)', 'ccsd-t'})
+GAUSSIAN_NO_ANALYTIC_HESSIAN_DFT_MARKERS = ('dsd', 'pwpb95', 'qidh', 'pbe0dh', 'pbe0-dh',
+                                            'b2gpplyp', 'wb97x-2')
+GAUSSIAN_CORRELATED_METHOD_REGEX = re.compile(r'^(?:ro|r|u)?(?:mp[3-9]|cc|qci|ci|bd|cas|hf)(?:\b|[a-z]*\()')
+GAUSSIAN_FREQ_KEYWORD_REGEX = re.compile(
+    r'\bfreq(?:uency)?(?![a-z])(?:\s*=?\s*\(([^)]*)\)|\s*=\s*([^\s,]+))?',
+    re.IGNORECASE)
+
+ORCA_ANALYTIC_HESSIAN_HF_METHODS = frozenset({'hf', 'rhf', 'uhf', 'rohf'})
+ORCA_DOUBLE_HYBRID_MARKERS = ('2plyp', 'dsd', 'pwpb95', 'qidh', 'pbe0dh', 'pbe0-dh', 'wb97x-2')
+ORCA_NO_ANALYTIC_HESSIAN_MARKERS = ('ri-jk', 'rijk')
+ORCA_ANALYTIC_HESSIAN_MARKER = 'ORCA SCF HESSIAN'
+ORCA_INPUT_ECHO_END_MARKER = '****END OF INPUT****'
+ORCA_ROUTE_SCAN_LINE_LIMIT = 5000
+ORCA_HESSIAN_MARKER_SCAN_LINE_LIMIT = 50000
+ORCA_FREQ_KEYWORD_REGEX = re.compile(r'(?<![a-z])freq(?![a-z])')
+
+ARKANE_STATMECH_SUBDIRS = ('thermo', 'kinetics')
+ARKANE_LOG_FILENAMES = ('arkane.log', 'stdout.log')
+ARKANE_BANNER_SCAN_LINE_LIMIT = 40
+ARKANE_VERSION_BANNER_REGEX = re.compile(r'^#\s+Version:(.*)$')
+ARKANE_GIT_HEAD_MARKER = 'The current git HEAD for RMG-Py is:'
+ARKANE_GIT_HASH_REGEX = re.compile(r'^[0-9a-f]{7,40}$')
+RMG_PY_VERSION_REGEX = re.compile(r'''^__version__\s*=\s*(['"])([^'"]+)\1''', re.MULTILINE)
 
 
 def write_output_yml(
@@ -60,6 +124,7 @@ def write_output_yml(
     freq_scale_factor: float | None = None,
     freq_scale_factor_user_provided: bool = False,
     bac_type: str | None = None,
+    compute_thermo: bool = True,
     arkane_level_of_theory=None,
     irc_requested: bool = True,
     t0: float | None = None,
@@ -84,7 +149,9 @@ def write_output_yml(
         composite_method (Level, optional): Composite method (e.g., CBS-QB3, G4).
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor used.
         freq_scale_factor_user_provided (bool): Whether the user explicitly set the scale factor.
-        bac_type (str, optional): The BAC type ('p', 'm', or None).
+        bac_type (str, optional): The BAC type ('p', 'm', or None) the run requested.
+        compute_thermo (bool): Whether the run computes thermo, which is the only
+            Arkane run that applies a bond additivity correction.
         arkane_level_of_theory (Level, optional): The composite LOT Arkane uses for energy corrections.
             Recorded only when it differs from sp_level.
         irc_requested (bool): Whether IRC jobs were requested for this run.
@@ -95,12 +162,14 @@ def write_output_yml(
     doc: dict[str, Any] = {}
 
     # ---- header ----------------------------------------------------------------
-    doc['schema_version'] = '1.1'
+    doc['schema_version'] = OUTPUT_SCHEMA_VERSION
     arc_git, _ = get_git_commit(ARC_PATH)
     doc['project'] = project
     doc['arc_version'] = VERSION
     doc['arc_git_commit'] = arc_git or None
-    doc['arkane_git_commit'] = _get_arkane_git_commit()
+    arkane_version, arkane_git_commit = _get_arkane_provenance(project_directory, t0)
+    doc['arkane_version'] = arkane_version
+    doc['arkane_git_commit'] = arkane_git_commit
     doc['datetime_started'] = (
         datetime.datetime.fromtimestamp(t0).strftime('%Y-%m-%d %H:%M') if t0 is not None else None
     )
@@ -118,14 +187,16 @@ def write_output_yml(
         doc['neb_level'] = _level_to_dict(neb_level)
     doc['arkane_level_of_theory'] = _level_to_dict(arkane_level_of_theory)
     doc['freq_scale_factor'] = freq_scale_factor
-    doc['freq_scale_factor_source'] = (
-        None if freq_scale_factor_user_provided
-        else _resolve_freq_scale_factor_source(freq_level)
+    freq_scale_factor_key, freq_scale_factor_source = (
+        (None, None) if freq_scale_factor_user_provided
+        else _resolve_freq_scale_factor_entry(freq_level)
     )
+    doc['freq_scale_factor_key'] = freq_scale_factor_key
+    doc['freq_scale_factor_source'] = freq_scale_factor_source
     doc['bac_type'] = bac_type
-    aec, bac = _get_energy_corrections(arkane_level_of_theory, bac_type)
-    doc['atom_energy_corrections'] = aec
-    doc['bond_additivity_corrections'] = bac
+    corrections = _get_energy_corrections(arkane_level_of_theory, bac_type)
+    doc['atom_energy_corrections'] = corrections.aec
+    doc['bond_additivity_corrections'] = corrections.bac
 
     # ---- per-job software (used for input-deck filename lookup) ----------------
     # freq/sp fall back to opt's software because the runtime falls back
@@ -141,16 +212,19 @@ def write_output_yml(
     # ---- species and TSs --------------------------------------------------------
     point_groups = _compute_point_groups(species_dict, project_directory)
     species_corrections = _compute_species_corrections(
-        species_dict, arkane_level_of_theory, bac_type, project_directory,
+        species_dict, corrections.aec_key, bac_type if compute_thermo else None, project_directory,
     )
     doc['species'] = []
     doc['transition_states'] = []
     for spc in species_dict.values():
         d = _spc_to_dict(spc, output_dict, project_directory, point_groups,
-                         irc_requested=irc_requested, software_by_job=software_by_job)
-        d['applied_energy_corrections'] = _build_applied_corrections_for_species(
-            spc.label, species_corrections, arkane_level_of_theory, bac_type,
-            aec_table=aec, bac_table=bac,
+                         irc_requested=irc_requested, software_by_job=software_by_job,
+                         freq_level=freq_level or opt_level)
+        d['energy_corrections'] = _build_energy_corrections_for_species(
+            spc.label, species_corrections, arkane_level_of_theory,
+            bac_type if _bac_is_applied_to(spc, compute_thermo) else None,
+            aec_table=corrections.aec, bac_table=corrections.bac,
+            aec_key=corrections.aec_key, bac_key=corrections.bac_key,
         )
         if spc.is_ts:
             doc['transition_states'].append(d)
@@ -163,12 +237,49 @@ def write_output_yml(
     # ---- atomic write -----------------------------------------------------------
     out_dir = os.path.join(project_directory, 'output')
     os.makedirs(out_dir, exist_ok=True)
+    document_id = uuid.uuid4().hex
+    try:
+        evidence_doc = build_parser_evidence(
+            output_doc=doc,
+            project_directory=project_directory,
+            document_id=document_id,
+        )
+        evidence_path = write_parser_evidence_atomic(
+            evidence_doc=evidence_doc,
+            output_directory=out_dir,
+        )
+        doc['parser_evidence'] = {
+            'path': EVIDENCE_FILENAME,
+            'schema_name': EVIDENCE_SCHEMA_NAME,
+            'schema_version': EVIDENCE_SCHEMA_VERSION,
+            'document_id': document_id,
+        }
+        evidence_counts = _evidence_status_counts(evidence_doc)
+        logger.info(
+            'Wrote parser evidence to %s '
+            '(freq_hessian: available=%d unavailable=%d; '
+            'irc: available=%d unavailable=%d; '
+            'gsm: available=%d unavailable=%d)',
+            evidence_path,
+            evidence_counts['freq_hessian']['available'],
+            evidence_counts['freq_hessian']['unavailable'],
+            evidence_counts['irc']['available'],
+            evidence_counts['irc']['unavailable'],
+            evidence_counts['gsm']['available'],
+            evidence_counts['gsm']['unavailable'],
+        )
+    except Exception as exc:
+        logger.warning('Could not build/write optional parser evidence: %s', exc)
+        _discard_stale_evidence(out_dir)
     out_path = os.path.join(out_dir, 'output.yml')
     fd, tmp_path = tempfile.mkstemp(dir=out_dir, suffix='.output.yml.tmp')
     try:
         os.close(fd)
         save_yaml_file(path=tmp_path, content=doc)
+        with open(tmp_path, 'rb') as handle:
+            os.fsync(handle.fileno())
         os.replace(tmp_path, out_path)
+        fsync_directory(out_dir)
     except Exception:
         try:
             os.unlink(tmp_path)
@@ -180,26 +291,183 @@ def write_output_yml(
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def _get_arkane_git_commit() -> str | None:
-    """Return the HEAD commit hash of the RMG-Py repo (Arkane lives there), or None."""
+def _discard_stale_evidence(output_directory: str) -> None:
+    """Remove a ``parser_evidence.json`` left behind by an earlier run.
+
+    The sidecar is only trustworthy alongside the ``output.yml`` that names its
+    ``document_id``; that pairing is how a consumer detects a stale or
+    interrupted write. When this run could not produce evidence, the document
+    omits the descriptor, so a sidecar surviving from a previous run would sit
+    beside the new ``output.yml`` with nothing to compare it against and would
+    read as current. Deleting it is what keeps "no descriptor" and "no sidecar"
+    the same statement.
+
+    Args:
+        output_directory (str): The project's ``output`` directory.
+    """
+    stale_path = os.path.join(output_directory, EVIDENCE_FILENAME)
+    if not os.path.isfile(stale_path):
+        return
     try:
-        rmg_path = settings.get('RMG_PATH')
-        if not rmg_path:
-            return None
-        head, _ = get_git_commit(rmg_path)
-        return head or None
-    except Exception:
+        os.unlink(stale_path)
+        fsync_directory(output_directory)
+    except OSError:
+        logger.error(
+            'Could not remove the stale parser evidence sidecar %s. It belongs to an earlier '
+            'run and does not match the output.yml just written; delete it before consuming '
+            'either file.', stale_path, exc_info=True,
+        )
+    else:
+        logger.info('Removed the previous run\'s parser evidence sidecar %s.', stale_path)
+
+
+def _evidence_status_counts(evidence_doc: dict) -> dict[str, dict[str, int]]:
+    """Count available and unavailable envelopes separately by evidence kind."""
+    counts = {
+        evidence_kind: {'available': 0, 'unavailable': 0}
+        for evidence_kind in ('freq_hessian', 'irc', 'gsm')
+    }
+    for record in evidence_doc.get('records') or []:
+        if not isinstance(record, dict):
+            continue
+        for evidence_kind in ('freq_hessian', 'irc', 'gsm'):
+            envelope = record.get(evidence_kind)
+            if not isinstance(envelope, dict):
+                continue
+            status = envelope.get('status')
+            if status in counts[evidence_kind]:
+                counts[evidence_kind][status] += 1
+    return counts
+
+
+class ArkaneProvenance(NamedTuple):
+    """The version and git HEAD commit hash of one Arkane (RMG-Py) install.
+
+    Both fields are read from the same install, so they never describe different
+    software. Either is ``None`` when that install does not expose it.
+    """
+    version: str | None
+    git_commit: str | None
+
+
+def _get_arkane_provenance(project_directory: str | None, t0: float | None = None) -> ArkaneProvenance:
+    """Return the version and git HEAD commit of the Arkane (RMG-Py) that ARC invoked.
+
+    Read from the header Arkane prints at the top of its own log under
+    ``<project_directory>/calcs/statmech/<subdir>/``, skipping a log last modified
+    before ``t0``. When no such log yields a version, both fields come instead from
+    ``RMG_PATH``: ``__version__`` in ``rmgpy/version.py`` and that repository's HEAD.
+
+    Arkane prints its header when it starts, so a run that started and then failed is
+    reported here the same as one that completed.
+    """
+    if isinstance(project_directory, str):
+        for subdir in ARKANE_STATMECH_SUBDIRS:
+            for file_name in ARKANE_LOG_FILENAMES:
+                provenance = _parse_arkane_log_provenance(
+                    os.path.join(project_directory, 'calcs', 'statmech', subdir, file_name), t0)
+                if provenance.version is not None:
+                    return provenance
+    rmg_path = settings.get('RMG_PATH')
+    return ArkaneProvenance(_parse_rmg_py_version(rmg_path), _get_rmg_py_git_commit(rmg_path))
+
+
+def _parse_arkane_log_provenance(log_path: str, t0: float | None = None) -> ArkaneProvenance:
+    """Return the version and RMG-Py HEAD commit Arkane's header reports in ``log_path``.
+
+    Only the first ``ARKANE_BANNER_SCAN_LINE_LIMIT`` lines are read. Both fields are
+    ``None`` when the file is absent, unreadable, last modified before ``t0``, or
+    carries no header; the commit alone is ``None`` when Arkane found no git repository
+    and printed none. When the scanned lines hold more than one header, both fields come
+    from the first one, so an appended log never pairs one run's version with another
+    run's commit.
+    """
+    version, git_commit = None, None
+    try:
+        if not os.path.isfile(log_path) or (t0 is not None and os.path.getmtime(log_path) < t0):
+            return ArkaneProvenance(None, None)
+        with open(log_path, 'r', errors='ignore') as f:
+            hash_line_follows = False
+            for line_number, line in enumerate(f):
+                if line_number >= ARKANE_BANNER_SCAN_LINE_LIMIT:
+                    break
+                if hash_line_follows:
+                    candidate = line.strip()
+                    if git_commit is None and ARKANE_GIT_HASH_REGEX.match(candidate) is not None:
+                        git_commit = candidate
+                    hash_line_follows = False
+                    continue
+                if line.startswith(ARKANE_GIT_HEAD_MARKER):
+                    hash_line_follows = True
+                    continue
+                if version is None:
+                    match = ARKANE_VERSION_BANNER_REGEX.match(line)
+                    if match is not None:
+                        version = match.group(1).rstrip().rstrip('#').strip() or None
+    except OSError as exc:
+        logger.debug("Could not read the Arkane log '%s': %s", log_path, exc)
+        return ArkaneProvenance(None, None)
+    return ArkaneProvenance(version, git_commit)
+
+
+def _get_rmg_py_git_commit(rmg_path: str | None) -> str | None:
+    """Return the HEAD commit hash of the RMG-Py repository at ``rmg_path``, or None.
+
+    ``None`` when ``rmg_path`` is unset or is not a path to a directory, when that
+    directory holds no git repository, and when git's output cannot be read as a hash
+    and a date. A ``rmg_path`` that is set but does not name a directory is logged as a
+    warning.
+    """
+    if not rmg_path:
         return None
+    if not isinstance(rmg_path, str) or not os.path.isdir(rmg_path):
+        logger.warning("RMG_PATH is set to '%s', which is not a directory. The RMG-Py git commit "
+                       "cannot be recorded in output.yml.", rmg_path)
+        return None
+    try:
+        head, _ = get_git_commit(rmg_path)
+    except ValueError:
+        logger.debug("Could not read a git HEAD commit hash for the RMG-Py repository at '%s'",
+                     rmg_path, exc_info=True)
+        return None
+    return head or None
+
+
+def _parse_rmg_py_version(rmg_path: str | None) -> str | None:
+    """Return ``__version__`` from ``rmgpy/version.py`` under ``rmg_path``, or None.
+
+    ``None`` when ``rmg_path`` is unset or is not a path string, and when the version
+    file is absent, unreadable, or holds no quoted ``__version__`` assignment.
+    """
+    if not rmg_path or not isinstance(rmg_path, str):
+        return None
+    version_path = os.path.join(rmg_path, 'rmgpy', 'version.py')
+    if not os.path.isfile(version_path):
+        return None
+    try:
+        with open(version_path, 'r', errors='ignore') as f:
+            content = f.read()
+    except OSError as exc:
+        logger.debug("Could not read the RMG-Py version file '%s': %s", version_path, exc)
+        return None
+    match = RMG_PY_VERSION_REGEX.search(content)
+    return match.group(2) if match is not None else None
 
 
 def _level_to_dict(level) -> dict | None:
-    """Convert a Level object to a dict with all non-None fields, or None."""
+    """Convert a Level object to a dict with all non-None fields, or None.
+
+    ``solvation_scheme_level`` is converted recursively, so the returned dict holds
+    only plain types that ``yaml.safe_load`` accepts.
+    """
     if level is None:
         return None
     if hasattr(level, 'as_dict'):
         d = level.as_dict()
         d.pop('repr', None)
         d.pop('compatible_ess', None)
+        if d.get('solvation_scheme_level') is not None:
+            d['solvation_scheme_level'] = _level_to_dict(d['solvation_scheme_level'])
         return d
     return {
         'method': getattr(level, 'method', None),
@@ -208,43 +476,69 @@ def _level_to_dict(level) -> dict | None:
     }
 
 
-def _resolve_freq_scale_factor_source(freq_level) -> str | None:
+def _resolve_freq_scale_factor_entry(freq_level) -> tuple[str | None, str | None]:
     """
-    Return the full literature citation for the freq scale factor, or None.
+    Return the ``data/freq_scale_factors.yml`` entry key matched for ``freq_level``
+    and the literature source that entry points at.
 
-    Looks up the source index from the entry in data/freq_scale_factors.yml
-    and resolves it against the top-level ``sources`` dict.
-    Returns None when the level is not in the database (scale factor was
-    user-supplied or computed).
+    The key is the ``freq_scale_factors`` mapping key the level resolved to. The
+    source is that entry's ``source`` index resolved against the file's top-level
+    ``sources`` mapping.
+
+    Both are ``None`` when ``freq_level`` is ``None``, when the file cannot be read
+    or parsed, and when the level has no entry in the file. The key is returned with
+    a ``None`` source when the entry carries no ``source`` index or the index is not
+    listed in ``sources``.
     """
     if freq_level is None:
-        return None
+        return None, None
     yml_path = os.path.join(ARC_PATH, 'data', 'freq_scale_factors.yml')
     try:
         data = read_yaml_file(yml_path)
-    except (OSError, Exception):
-        return None
+    except (InputError, OSError, yaml.YAMLError):
+        logger.debug(f'Failed to read the frequency scale factor database {yml_path!r}', exc_info=True)
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
 
-    sources = data.get('sources', {})
-    factors = data.get('freq_scale_factors', {})
-    level_key = str(freq_level) if not isinstance(freq_level, str) else freq_level
+    factors = data.get('freq_scale_factors')
+    if not isinstance(factors, dict):
+        return None, None
+    level_key = freq_level if isinstance(freq_level, str) else str(freq_level)
     entry = factors.get(level_key)
     if not isinstance(entry, dict):
-        return None
+        return None, None
+
     source_key = entry.get('source')
-    if source_key is None:
-        return None
-    return sources.get(source_key)
+    sources = data.get('sources')
+    if source_key is None or not isinstance(sources, dict):
+        return level_key, None
+    return level_key, sources.get(source_key)
 
 
 def _make_rel_path(path: str | None, project_directory: str) -> str | None:
-    """Convert an absolute path to one relative to project_directory, or None."""
+    """Convert a path to one relative to ``project_directory``, or ``None``.
+
+    Returns ``None`` for an empty path and for any path that does not lie
+    inside ``project_directory``. An export is meant to be shared, and a file
+    outside the project directory is not part of it: no relative path to it can
+    be resolved on the reader's machine, and the ``../../..`` walk-up that
+    ``os.path.relpath`` would produce describes the writer's own filesystem
+    layout, home-directory name included. ``None`` is the contract's existing
+    way of saying a log is unavailable.
+    """
     if not path:
         return None
     try:
-        return os.path.relpath(path, project_directory)
+        relative = os.path.relpath(path, project_directory)
     except ValueError:
-        return path  # Windows: relpath can fail across drives
+        logger.debug(f'Cannot relate {path!r} to the project directory {project_directory!r}.')
+        return None
+    if relative == os.pardir or relative.startswith(os.pardir + os.sep):
+        logger.debug(f'Omitting {path!r} from the export: it lies outside the project '
+                     f'directory {project_directory!r}.')
+        return None
+    return relative
 
 
 # TS-guess method strings → output.yml log-field name. Mirror of
@@ -367,48 +661,6 @@ def _compute_cost_metrics(completed_job_records: list | None, t0: float | None) 
     }
 
 
-def _ts_guesses_to_list(spc, project_directory: str) -> list[dict]:
-    """
-    Build the per-TSGuess provenance list for a TS entry in output.yml.
-
-    One entry per TSGuess of the TS species, recording the guess method and its
-    provenance (method_sources after equivalent-guess clustering), success, relative
-    energy among the guesses, execution time (seconds), the level of theory the
-    guess-generating adapter ran its electronic structure at (``None`` for pure
-    ML/template methods), the guess log file (run-relative), and whether this guess
-    was the one chosen for the TS optimization.
-
-    Args:
-        spc (ARCSpecies): The TS species.
-        project_directory (str): Root directory of this ARC project.
-
-    Returns:
-        list[dict]: One provenance dict per TSGuess.
-    """
-    ts_guesses = getattr(spc, 'ts_guesses', None) or []
-    chosen_idx = getattr(spc, 'chosen_ts', None)
-    chosen_guess = None
-    if isinstance(chosen_idx, int) and 0 <= chosen_idx < len(ts_guesses):
-        chosen_guess = ts_guesses[chosen_idx]
-    entries = []
-    for tsg in ts_guesses:
-        method_sources = getattr(tsg, 'method_sources', None)
-        entries.append({
-            'index': tsg.index,
-            'method': tsg.method,
-            'method_sources': list(method_sources) if method_sources else None,
-            'method_index': tsg.method_index,
-            'method_direction': tsg.method_direction,
-            'success': tsg.success,
-            'energy_kj_mol': tsg.energy,  # relative energy among this TS's guesses
-            'execution_time_sec': _timedelta_to_seconds(getattr(tsg, 'execution_time', None)),
-            'level': getattr(tsg, 'level', None),
-            'log_path': _make_rel_path(getattr(tsg, 'log_path', None), project_directory),
-            'chosen': tsg is chosen_guess,
-        })
-    return entries
-
-
 def _parse_zpe(freq_path: str | None, project_directory: str) -> float | None:
     """
     Parse ZPE in Hartree from the freq log file.
@@ -430,6 +682,131 @@ def _parse_zpe(freq_path: str | None, project_directory: str) -> float | None:
         return None
 
 
+def _parse_wavefunction_stability(stability_path: str | None, project_directory: str) -> dict | None:
+    """
+    Parse the wavefunction stability verdict from a stability analysis log.
+
+    Returns ``None`` when no stability analysis was run, when its log is missing,
+    or when the log holds no verdict. Otherwise returns the parsed verdict with the
+    log's run-relative path added under ``'log'``.
+
+    ``'log'`` names the analysis log, and every other key of an ESS that follows an
+    instability rather than only reporting it describes one of TWO wavefunctions:
+    ``verdict``, ``lowest_eigenvalue``, ``negative_eigenvectors`` and ``restricted``
+    belong to the wavefunction under TEST, while the energies and spin expectation values
+    that log also holds belong to the FOLLOWED solution the ESS relaxed into, which is a
+    different wavefunction. A consumer reading a quantity out of that log rather than out
+    of this block is reading the followed solution.
+
+    Returns: dict | None
+        ``{'verdict': 'stable' | 'internal_instability' | 'external_instability'
+                      | 'unattributed_instability' | 'unknown',
+           'internal_instability': bool | None, 'external_instability': bool | None,
+           'relaxations': list[str], 'negative_eigenvectors': list[dict],
+           'lowest_eigenvalue': float | None, 'restricted': bool | None,
+           'invalidates_analytic_freq': bool | None, 'log': str}``, plus the keys an
+        individual ESS reader adds. The ORCA reader adds ``'n_analyses'`` (int), the number
+        of analyses the log holds, ``'followed_to_stable'`` (bool), whether the last of
+        several ended stable, and ``'s_squared_after_follow'`` (float | None), the spin
+        expectation value of the followed solution, from which the sector of a restricted
+        reference's instability is measured.
+        ``'unknown'`` means an analysis ran but its verdict could not be read, and is
+        never to be treated as ``'stable'``. ``'unattributed_instability'`` means the
+        wavefunction is unstable but the ESS did not report which sector the instability
+        lies in, and is likewise never to be treated as ``'stable'``.
+    """
+    if not stability_path:
+        return None
+    path = stability_path if os.path.isabs(stability_path) else os.path.join(project_directory, stability_path)
+    if not os.path.isfile(path):
+        return None
+    try:
+        result = parse_wavefunction_stability(path)
+    except Exception:
+        logger.debug(f'Failed to parse a wavefunction stability verdict from {path!r}', exc_info=True)
+        return None
+    if not result:
+        return None
+    result = dict(result)
+    result['log'] = _make_rel_path(path, project_directory)
+    return result
+
+
+def _scf_reference_block(spc, stability: dict | None, project_directory: str) -> dict:
+    """
+    Report which source decided a species' open-shell character and which SCF references its jobs used.
+
+    ``source`` is ``'declared'`` when the user gave a ``number_of_radicals``, which always wins
+    and is reported even where it contradicts the measured verdict; ``'derived'`` when the user
+    gave nothing and a measured wavefunction-stability verdict made the species unrestricted;
+    and ``None`` when the spin multiplicity alone decided. ``verdict`` and ``verdict_restricted``
+    carry the measured picture whether or not it was the deciding one, and ``log`` names the
+    stability analysis they were read from, following ``_parse_wavefunction_stability``.
+
+    The analysis is run for a transition state and for any other species whose optimization ran
+    restricted, but only a transition state's verdict is acted on. So a species carrying an
+    external instability under a ``source`` of ``None`` is one whose restricted energy sits above
+    a lower symmetry-broken solution that ARC measured and left alone, which the entry's ``is_ts``
+    separates from a transition state whose identical verdict reads ``'derived'`` and did decide.
+
+    ``sp_reference`` and ``freq_reference`` are the references those two jobs declared in the
+    inputs they actually ran, and ``reference_mismatch`` is ``True`` when they differ, which
+    means the species' E0 sums an electronic energy and a ZPE taken from two different surfaces.
+    It is ``None``, not ``False``, whenever either reference is unknown: an sp job that was never
+    submitted because the sp level equals the opt level, or a job carrying no memo, leaves nothing
+    to compare, and reporting that as ``False`` would be indistinguishable from two references
+    checked and found to agree.
+
+    ``source`` is ``None`` where a declared ``number_of_radicals`` of zero or one blocked a measured
+    verdict without itself attributing open-shell character. ``declared_number_of_radicals`` still
+    carries the declaration, so the pair says what happened.
+
+    ``measured_on_ts_guess`` is set only on a verdict carried over from an abandoned TS guess,
+    and names the guess it was measured on; the guess reported elsewhere in the entry is a
+    different one. A TS switch resets the stability path, so ``log`` falls back to the path the
+    species' own verdict was read from: a ``source`` of ``'derived'`` names the analysis that
+    decided it whether or not that analysis is still the surviving geometry's.
+
+    ``verdict`` falls back to the stability log when the species carries none, as a restart
+    written before the species held one does, while ``source`` never does: the reference
+    decision reads the species and only the species, so a verdict that reached the log but not
+    the species decided nothing and is reported without being credited with the decision.
+
+    The block is emitted whether or not the species converged, like the ``wavefunction_stability``
+    entry it explains and unlike the parsed results around it. It records a decision ARC made
+    rather than a quantity a job produced, and a species that adopted a verdict and then failed to
+    converge is exactly the case where knowing ARC changed its reference explains the failure.
+
+    Args:
+        spc (ARCSpecies): The species the block describes.
+        stability (dict, optional): The parsed wavefunction stability verdict, where one was parsed.
+        project_directory (str): The project directory, which the reported log path is relative to.
+
+    Returns: dict
+        A flat mapping of scalars; keys are always present, with ``None`` where unknown.
+    """
+    verdict = getattr(spc, 'derived_stability_verdict', None)
+    if not isinstance(verdict, dict):
+        verdict = stability if isinstance(stability, dict) else None
+    log = stability.get('log') if isinstance(stability, dict) else None
+    if log is None and verdict is not None:
+        log = _make_rel_path(verdict.get('log'), project_directory)
+    references = getattr(spc, 'scf_references', None)
+    references = references if isinstance(references, dict) else dict()
+    sp_reference, freq_reference = references.get('sp'), references.get('freq')
+    return {'source': open_shell_character_source(spc),
+            'declared_number_of_radicals': getattr(spc, 'number_of_radicals', None),
+            'verdict': verdict.get('verdict') if verdict else None,
+            'verdict_restricted': verdict.get('restricted') if verdict else None,
+            'measured_on_ts_guess': verdict.get('measured_on_ts_guess') if verdict else None,
+            'sp_reference': sp_reference,
+            'freq_reference': freq_reference,
+            'reference_mismatch': sp_reference != freq_reference
+                                  if sp_reference is not None and freq_reference is not None else None,
+            'log': log,
+            }
+
+
 def _parse_spin_diagnostic(sp_path: str | None,
                            freq_path: str | None,
                            opt_path: str | None,
@@ -440,37 +817,40 @@ def _parse_spin_diagnostic(sp_path: str | None,
     Parse the S**2 spin-contamination diagnostic for a species' single-point calc.
 
     The diagnostic is a property of the (unrestricted) wavefunction, so it is
-    parsed from the sp job's log; when the benchmark reuses the optimization
-    output for the sp energy the sp log may be absent, so this falls back to the
-    freq log and then the opt/geo log (all run at comparable open-shell
-    references). Only emitted for unrestricted/open-shell calcs — restricted /
-    closed-shell logs print no ``<S**2>`` and this returns ``None`` (so the
-    caller omits the block entirely rather than fabricating an all-null one).
+    parsed from the sp job's log; when the sp energy reused the optimization
+    output the sp log may be absent, so the first of the sp, freq and opt/geo
+    logs that exists is the one read. A log that exists but yields no
+    ``<S**2>`` ends the search: an ESS with no ``<S**2>`` reader, or a
+    restricted reference, means this calc has no diagnostic, and reading a
+    different job's wavefunction in its place would attribute another level of
+    theory's value to the sp calc. The log actually read is recorded under
+    ``'log'`` so the value can be traced to it.
 
-    ``s_squared_expected`` is authoritatively recomputed from ARC's own
-    ``multiplicity`` (the source of truth) when available, falling back to the
-    value the ESS log reported.
+    Restricted / closed-shell logs print no ``<S**2>`` and this returns ``None``
+    for them, so the caller omits the block rather than emitting an all-null one.
+
+    ``s_squared_expected`` is recomputed from ARC's own ``multiplicity`` when
+    available, falling back to the value the ESS log reported.
 
     Returns: dict | None
         ``{'s_squared': float, 's_squared_expected': float | None (omitted if
-        None), 's_squared_annihilated': float | None (omitted if None)}`` or
-        ``None`` when no ``<S**2>`` could be parsed.
+        None), 's_squared_annihilated': float | None (omitted if None),
+        'log': str}`` or ``None`` when no ``<S**2>`` could be parsed.
     """
-    parsed = None
+    parsed, source_path = None, None
     for candidate in (sp_path, freq_path, opt_path):
         if not candidate:
             continue
         path = candidate if os.path.isabs(candidate) else os.path.join(project_directory, candidate)
         if not os.path.isfile(path):
             continue
+        source_path = path
         try:
             parsed = parse_s_squared(path)
         except Exception:
-            logger.debug(f'Failed to parse S**2 spin diagnostic from {path!r}', exc_info=True)
+            logger.debug(f'Failed to parse an S**2 spin diagnostic from {path!r}', exc_info=True)
             parsed = None
-        if parsed is not None and parsed.get('s_squared') is not None:
-            break
-        parsed = None
+        break
     if parsed is None or parsed.get('s_squared') is None:
         return None
     result: dict = {'s_squared': float(parsed['s_squared'])}
@@ -482,6 +862,7 @@ def _parse_spin_diagnostic(sp_path: str | None,
     annihilated = parsed.get('s_squared_annihilated')
     if annihilated is not None:
         result['s_squared_annihilated'] = float(annihilated)
+    result['log'] = _make_rel_path(source_path, project_directory)
     return result
 
 
@@ -499,8 +880,8 @@ def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
     to per-ESS adapters; logs from any supported ESS work without
     branching here. Used for both fine and coarse opt logs — the coarse
     geometry surfaces as ``coarse_opt_output_xyz`` in output.yml so the
-    TCKDB bundle can chain ``opt_coarse → opt`` with the right geometry
-    on each side.
+    downstream consumers can reconstruct the ``opt_coarse → opt`` geometry
+    lineage.
     """
     if not geo_path:
         return None, None, None
@@ -534,6 +915,19 @@ def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
     return n_steps, e_hartree, final_xyz
 
 
+def _abs_existing_path(path: str | None, project_directory: str) -> str | None:
+    """Return the absolute path of a calculation file that exists on disk, else ``None``.
+
+    ``path`` may be absolute (as ``output_dict['paths']`` stores it) or relative to
+    ``project_directory`` (as the fields this module emits store it); both forms are
+    resolved here.
+    """
+    if not path:
+        return None
+    abs_path = path if os.path.isabs(path) else os.path.join(project_directory, path)
+    return abs_path if os.path.isfile(abs_path) else None
+
+
 def _parse_calc_constraints(
     input_rel_path: str | None,
     log_path: str | None,
@@ -556,28 +950,21 @@ def _parse_calc_constraints(
         return []
     sw = str(software).lower()
 
-    candidates: list[str] = []
-    if input_rel_path:
-        abs_input = os.path.join(project_directory, input_rel_path) \
-            if not os.path.isabs(input_rel_path) else input_rel_path
-        if os.path.isfile(abs_input):
-            candidates.append(abs_input)
-    if log_path and os.path.isfile(log_path):
-        candidates.append(log_path)
+    candidates = [path for path in (_abs_existing_path(input_rel_path, project_directory),
+                                    _abs_existing_path(log_path, project_directory))
+                  if path is not None]
 
     if not candidates:
         return []
 
     try:
         if sw == 'gaussian':
-            from arc.parser.adapters.gaussian import parse_gaussian_constraints
             for path in candidates:
                 parsed = parse_gaussian_constraints(path)
                 if parsed:
                     return parsed
             return []
         if sw == 'orca':
-            from arc.parser.adapters.orca import parse_orca_constraints
             for path in candidates:
                 parsed = parse_orca_constraints(path)
                 if parsed:
@@ -627,17 +1014,289 @@ def _derive_input_path(
     return _make_rel_path(candidate, project_directory)
 
 
-def _get_ess_versions(paths: dict, project_directory: str) -> dict[str, str] | None:
-    """
-    Parse ESS version strings from each available log file (sp, opt, freq, neb).
+def _gaussian_route_text(path: str) -> str | None:
+    """Return the Gaussian route section of an input deck or log as a single line.
 
-    Returns a dict like ``{'sp': 'ORCA 5.0.4', 'opt': 'Gaussian 16, Revision C.01'}``,
-    keyed by job type.  Caches parsed versions to avoid re-parsing shared log files.
-    Returns ``None`` if nothing could be parsed.
+    The route starts at the first line whose first non-blank character is ``#`` and ends
+    at the following blank line (an input deck) or rule of dashes (a log's echoed route).
+    A log wraps the route mid-token at a fixed column and indents every echoed line by one
+    space; the lines are joined after dropping that single leading space and without
+    inserting one, so ``integral=(grid=ultr`` + ``afine, ...`` rejoins as written.
+
+    Returns ``None`` when the file cannot be read or holds no route.
+    """
+    collected: list[str] = []
+    try:
+        with open(path, 'r', errors='ignore') as f:
+            for line in f:
+                stripped = line.strip()
+                if not collected:
+                    if stripped.startswith('#'):
+                        collected.append(line.rstrip('\n'))
+                    continue
+                if not stripped or set(stripped) == {'-'}:
+                    break
+                collected.append(line.rstrip('\n'))
+    except OSError as exc:
+        logger.debug("Could not read a Gaussian route from '%s': %s", path, exc)
+        return None
+    if not collected:
+        return None
+    return ''.join(part[1:] if part.startswith(' ') else part for part in collected)
+
+
+def _gaussian_freq_keyword_options(route: str) -> str | None:
+    """Return the lowercase options attached to the route's ``freq`` keyword.
+
+    ``''`` means the route requested a bare ``freq`` with no options, ``None`` means the
+    route carries no ``freq`` keyword at all. ``freq=numer``, ``freq=(noraman,numer)``
+    and ``freq(numer)`` all yield the text between the delimiters. A letter may not
+    follow the keyword, so log prose such as ``Frequencies --`` does not match.
+    """
+    match = GAUSSIAN_FREQ_KEYWORD_REGEX.search(route)
+    if match is None:
+        return None
+    return (match.group(1) or match.group(2) or '').lower()
+
+
+def _gaussian_method_hessian_method(method: str, method_type: str | None) -> str | None:
+    """Map a Gaussian method name onto how Gaussian builds its Hessian under a bare ``freq``.
+
+    The method name is matched as a whole token, lowercased and stripped, against three
+    explicit tables; a leading ``u`` or ``r`` spin prefix is removed when the remainder is
+    a listed token, so ``uccsd(t)`` resolves as ``ccsd(t)``. An ``ro`` prefix is handled
+    separately: ``rohf`` gets numerical frequencies, RO-MP*/RO-CC are energies-only, and
+    every other ``ro`` method (RO-DFT included) is ``None``.
+
+    A spelling that matches ``GAUSSIAN_CORRELATED_METHOD_REGEX`` without matching a table
+    entry — ``mp4(full)``, ``mp4sdq(full)``, ``ccsd(full)`` — is ``None``.
+
+    Methods outside the tables and outside that pattern fall through to ``method_type``:
+    a ``'dft'`` level carrying none of the ``GAUSSIAN_NO_ANALYTIC_HESSIAN_DFT_MARKERS``
+    substrings is analytic. Anything else — composite, semiempirical, force field, an
+    unlisted wavefunction method — is ``None``.
+    """
+    normalized = method.lower().strip()
+    if normalized.startswith('ro'):
+        base = normalized[2:]
+        if base == 'hf':
+            return HESSIAN_METHOD_FD_GRADIENT
+        if base in GAUSSIAN_RO_FD_ENERGY_METHODS:
+            return HESSIAN_METHOD_FD_ENERGY
+        return None
+    candidates = [normalized]
+    for prefix in ('u', 'r'):
+        if normalized.startswith(prefix):
+            candidates.append(normalized[len(prefix):])
+    for candidate in candidates:
+        if candidate in GAUSSIAN_FD_ENERGY_METHODS:
+            return HESSIAN_METHOD_FD_ENERGY
+        if candidate in GAUSSIAN_FD_GRADIENT_METHODS:
+            return HESSIAN_METHOD_FD_GRADIENT
+        if candidate in GAUSSIAN_ANALYTIC_METHODS:
+            return HESSIAN_METHOD_ANALYTIC
+    if GAUSSIAN_CORRELATED_METHOD_REGEX.match(normalized) is not None:
+        return None
+    if method_type == 'dft' and not any(marker in normalized
+                                        for marker in GAUSSIAN_NO_ANALYTIC_HESSIAN_DFT_MARKERS):
+        return HESSIAN_METHOD_ANALYTIC
+    return None
+
+
+def _gaussian_freq_hessian_method(deck_path: str | None,
+                                  log_path: str | None,
+                                  level,
+                                  ) -> str | None:
+    """Resolve the Hessian method of a Gaussian freq job from its route and its level.
+
+    ``Freq=Numer`` (or ``Numerical``) and ``Freq=EnOnly`` state the answer in the route.
+    A bare ``freq`` — what ``arc/job/adapters/gaussian.py`` writes — does not, and is
+    resolved from the method by ``_gaussian_method_hessian_method``. Only the route is
+    read; no other Gaussian log text is consulted.
+
+    The route is taken from ``deck_path`` when that file yields one, and from
+    ``log_path`` otherwise. Returns ``None`` when no route is available and when the
+    route carries no ``freq`` keyword.
+    """
+    route = None
+    for path in (deck_path, log_path):
+        if path is None:
+            continue
+        route = _gaussian_route_text(path)
+        if route:
+            break
+    if not route:
+        return None
+    options = _gaussian_freq_keyword_options(route)
+    if options is None:
+        return None
+    if 'enonly' in options:
+        return HESSIAN_METHOD_FD_ENERGY
+    if 'numer' in options:
+        return HESSIAN_METHOD_FD_GRADIENT
+    method = getattr(level, 'method', None)
+    if not method:
+        return None
+    return _gaussian_method_hessian_method(method, getattr(level, 'method_type', None))
+
+
+def _orca_route_text(path: str) -> str | None:
+    """Return the lowercase Orca keyword lines of an input deck or log, space-joined.
+
+    Orca keyword lines start with ``!``; a log echoes the deck one line at a time behind
+    an ``|  <n]> `` prefix, which is stripped here so a deck and a log yield the same
+    text. The scan stops at the ``****END OF INPUT****`` line that closes a log's echoed
+    input block, and in any case after ``ORCA_ROUTE_SCAN_LINE_LIMIT`` lines. Returns
+    ``None`` when the file cannot be read or holds no keyword line.
+    """
+    keyword_lines: list[str] = []
+    try:
+        with open(path, 'r', errors='ignore') as f:
+            for line_number, line in enumerate(f):
+                if line_number >= ORCA_ROUTE_SCAN_LINE_LIMIT:
+                    break
+                content = line.strip()
+                if content.startswith('|') and '>' in content:
+                    content = content.split('>', 1)[1].strip()
+                if ORCA_INPUT_ECHO_END_MARKER in content:
+                    break
+                if content.startswith('!'):
+                    keyword_lines.append(content[1:].strip().lower())
+    except OSError as exc:
+        logger.debug("Could not read an Orca route from '%s': %s", path, exc)
+        return None
+    return ' '.join(keyword_lines) or None
+
+
+def _orca_analytic_hessian_is_documented(route: str, level) -> bool:
+    """Return whether Orca documents an analytic Hessian for this level and keyword line.
+
+    True for HF and for a DFT functional that is not a double hybrid, and only when the
+    keyword line carries no RI-JK approximation. Every other case — MP2, DLPNO, the
+    coupled-cluster methods, a double hybrid, or an RI-JK run — is False.
+    """
+    if any(marker in route for marker in ORCA_NO_ANALYTIC_HESSIAN_MARKERS):
+        return False
+    method = (getattr(level, 'method', None) or '').lower().strip()
+    if not method:
+        return False
+    if any(marker in method for marker in ORCA_DOUBLE_HYBRID_MARKERS):
+        return False
+    if method in ORCA_ANALYTIC_HESSIAN_HF_METHODS:
+        return True
+    return getattr(level, 'method_type', None) == 'dft'
+
+
+def _file_contains_marker(path: str, marker: str, line_limit: int) -> bool:
+    """Return whether ``marker`` appears within the first ``line_limit`` lines of ``path``.
+
+    Returns ``False`` when the file cannot be read and when the marker lies beyond
+    ``line_limit``.
+    """
+    try:
+        with open(path, 'r', errors='ignore') as f:
+            for line_number, line in enumerate(f):
+                if line_number >= line_limit:
+                    break
+                if marker in line:
+                    return True
+    except OSError as exc:
+        logger.debug("Could not scan '%s' for '%s': %s", path, marker, exc)
+    return False
+
+
+def _orca_freq_hessian_method(deck_path: str | None, log_path: str | None, level) -> str | None:
+    """Resolve the Hessian method of an Orca freq job from its keyword line.
+
+    ``NumFreq`` differentiates gradients, or energies when ``NumGrad`` is on the same
+    keyword line. Orca documents ``Freq`` as an alias of ``AnFreq``, so both are analytic
+    for the levels ``_orca_analytic_hessian_is_documented`` accepts and ``None``
+    otherwise. When no keyword line can be read, an ``ORCA SCF HESSIAN`` header within the
+    first ``ORCA_HESSIAN_MARKER_SCAN_LINE_LIMIT`` lines of the log is taken as analytic;
+    no numerical header is relied on.
+    """
+    route = None
+    for path in (deck_path, log_path):
+        if path is None:
+            continue
+        route = _orca_route_text(path)
+        if route:
+            break
+    if route is None:
+        if log_path is not None and _file_contains_marker(log_path, ORCA_ANALYTIC_HESSIAN_MARKER,
+                                                          ORCA_HESSIAN_MARKER_SCAN_LINE_LIMIT):
+            return HESSIAN_METHOD_ANALYTIC
+        return None
+    if 'numfreq' in route:
+        return HESSIAN_METHOD_FD_ENERGY if 'numgrad' in route else HESSIAN_METHOD_FD_GRADIENT
+    if 'anfreq' in route or ORCA_FREQ_KEYWORD_REGEX.search(route) is not None:
+        return HESSIAN_METHOD_ANALYTIC if _orca_analytic_hessian_is_documented(route, level) else None
+    return None
+
+
+def _pyscf_freq_hessian_method(spc) -> str | None:
+    """Resolve the Hessian method of a PySCF freq job from the species' spin multiplicity.
+
+    ``run_freq`` in ``arc/job/adapters/scripts/pyscf_script.py`` branches on the
+    multiplicity alone: multiplicity 1 builds an analytic RKS Hessian, and any higher
+    multiplicity builds a central finite difference of analytic gradients. Returns
+    ``None`` when the species carries no multiplicity and when the multiplicity is not
+    an integer value.
+    """
+    multiplicity = getattr(spc, 'multiplicity', None)
+    if not is_str_int(multiplicity):
+        return None
+    return HESSIAN_METHOD_FD_GRADIENT if int(multiplicity) > 1 else HESSIAN_METHOD_ANALYTIC
+
+
+def _get_freq_hessian_method(freq_input_path: str | None,
+                             freq_log_path: str | None,
+                             software: str | None,
+                             level,
+                             spc,
+                             project_directory: str,
+                             ) -> str | None:
+    """Return how the frequency job's Hessian was built, or ``None``.
+
+    The value is one of ``'analytic'``, ``'finite_difference_gradient'`` and
+    ``'finite_difference_energy'``, and records the method ARC's own frequency request
+    resolves to under the documented behaviour of the ESS that ran it. It is ``None``
+    wherever that request does not settle the answer, and is never inferred from anything
+    weaker.
+
+    The input deck is read in preference to the log, the log being the fallback when the
+    deck is not on disk. ``software`` is the freq job's ESS name as ``_get_ess_software``
+    yields it, ``level`` is the freq level of theory and ``spc`` the species the job ran
+    on. ``gaussian``, ``orca`` and ``pyscf`` are resolved by the helpers above; every
+    other ESS returns ``None``, as does a freq job whose deck and log are both missing.
+    """
+    if not software:
+        return None
+    deck_path = _abs_existing_path(freq_input_path, project_directory)
+    log_path = _abs_existing_path(freq_log_path, project_directory)
+    if deck_path is None and log_path is None:
+        return None
+    sw = str(software).lower()
+    if sw == 'gaussian':
+        return _gaussian_freq_hessian_method(deck_path, log_path, level)
+    if sw == 'orca':
+        return _orca_freq_hessian_method(deck_path, log_path, level)
+    if sw == 'pyscf':
+        return _pyscf_freq_hessian_method(spc)
+    return None
+
+
+def _iter_ess_logs(paths: dict, project_directory: str):
+    """
+    Yield ``(job_type, absolute_log_path)`` for every ESS log referenced by ``paths``
+    that exists on disk.
+
+    The job types are ``'sp'``, ``'opt'``, ``'freq'`` and ``'neb'``, and define the key
+    space shared by ``_get_ess_versions`` and ``_get_ess_software``. Relative paths are
+    resolved against ``project_directory``; entries that are empty or not a file on disk
+    are skipped.
     """
     key_map = {'sp': 'sp', 'geo': 'opt', 'freq': 'freq', 'neb': 'neb'}
-    versions: dict[str, str] = {}
-    parsed_cache: dict[str, str] = {}
     for path_key, label in key_map.items():
         log_path = paths.get(path_key) or None
         if not log_path:
@@ -646,6 +1305,21 @@ def _get_ess_versions(paths: dict, project_directory: str) -> dict[str, str] | N
             log_path = os.path.join(project_directory, log_path)
         if not os.path.isfile(log_path):
             continue
+        yield label, log_path
+
+
+def _get_ess_versions(paths: dict, project_directory: str) -> dict[str, str] | None:
+    """
+    Parse ESS version strings from each available log file (sp, opt, freq, neb).
+
+    Returns a dict like ``{'sp': 'ORCA 5.0.4', 'opt': 'Gaussian 16, Revision C.01'}``,
+    keyed by job type. Each value is the full ESS banner as the program printed it, not a
+    bare version number. Caches parsed versions to avoid re-parsing shared log files.
+    Returns ``None`` if nothing could be parsed.
+    """
+    versions: dict[str, str] = {}
+    parsed_cache: dict[str, str] = {}
+    for label, log_path in _iter_ess_logs(paths, project_directory):
         if log_path in parsed_cache:
             versions[label] = parsed_cache[log_path]
             continue
@@ -659,28 +1333,66 @@ def _get_ess_versions(paths: dict, project_directory: str) -> dict[str, str] | N
     return versions or None
 
 
-def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> tuple:
+def _get_ess_software(paths: dict, project_directory: str) -> dict[str, str] | None:
     """
-    Look up the AEC (per-atom, Hartree) and BAC (per-bond, kJ/mol) values
-    that Arkane used from the RMG database for the given level of theory.
+    Identify the ESS that produced each available log file (sp, opt, freq, neb).
 
-    Finds the AEC and BAC keys independently via fuzzy matching in their
-    respective database sections, then calls ``arc/scripts/get_qm_corrections.py``
-    as a subprocess to extract the actual correction dicts.
+    Returns a dict like ``{'sp': 'orca', 'opt': 'gaussian'}``, keyed by the same job types
+    ``_get_ess_versions`` uses and read from the same log files, so a consumer can pair a
+    version string with the program that actually produced it instead of with the program
+    a level of theory declared. Values are ARC's lowercase ESS names.
 
-    Returns:
-        (aec_dict_or_None, bac_dict_or_None)
+    The key set is a superset of ``_get_ess_versions``' key set: a log whose ESS is
+    identified but whose version banner cannot be parsed appears here and not there, while
+    a parsed version always implies an identified ESS. Caches identifications to avoid
+    re-reading shared log files. Returns ``None`` if no ESS could be identified.
+    """
+    software: dict[str, str] = {}
+    identified_cache: dict[str, str] = {}
+    for label, log_path in _iter_ess_logs(paths, project_directory):
+        if log_path in identified_cache:
+            software[label] = identified_cache[log_path]
+            continue
+        try:
+            ess_name = determine_ess(log_file_path=log_path, raise_error=False)
+        except Exception:
+            logger.debug(f"Failed to identify the ESS of log file '{log_path}'", exc_info=True)
+            continue
+        if ess_name:
+            software[label] = ess_name
+            identified_cache[log_path] = ess_name
+    return software or None
+
+
+class EnergyCorrections(NamedTuple):
+    """The run-level AEC/BAC parameter tables together with the Arkane keys they came from.
+
+    ``aec_key`` and ``bac_key`` are the exact Arkane database key strings that were
+    fuzzy-matched in the atom-energy and bond-additivity sections respectively. They are
+    matched independently and may legitimately differ, and either is ``None`` when no key
+    was matched (or when the correction was not requested).
+    """
+    aec: dict | None
+    bac: dict | None
+    aec_key: str | None
+    bac_key: str | None
+
+
+def _match_arkane_correction_keys(arkane_level_of_theory,
+                                  bac_type: str | None,
+                                  ) -> tuple[str | None, str | None]:
+    """
+    Fuzzy-match the Arkane database key strings for the AEC and the BAC sections separately.
+
+    Returns ``(aec_key, bac_key)``. Each entry is ``None`` when no key matched, and
+    ``bac_key`` is ``None`` when ``bac_type`` is not ``'p'`` or ``'m'``.
     """
     if arkane_level_of_theory is None:
         return None, None
     try:
         qm_corr_files = get_qm_corrections_files()
-
         aec_key = find_best_across_files(arkane_level_of_theory, qm_corr_files,
-                                          AEC_SECTION_START, AEC_SECTION_END)
-        if aec_key is None:
-            return None, None
-
+                                         AEC_SECTION_START, AEC_SECTION_END)
         bac_key = None
         if bac_type in ('p', 'm'):
             if bac_type == 'm':
@@ -688,7 +1400,31 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> tup
             else:
                 bac_start, bac_end = PBAC_SECTION_START, PBAC_SECTION_END
             bac_key = find_best_across_files(arkane_level_of_theory, qm_corr_files, bac_start, bac_end)
+        return aec_key, bac_key
+    except Exception:
+        logger.debug('Failed to match Arkane correction keys', exc_info=True)
+        return None, None
 
+
+def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> EnergyCorrections:
+    """
+    Look up the AEC (per-atom, Hartree) and BAC (per-bond, kcal/mol) values
+    that Arkane used from the RMG database for the given level of theory.
+
+    Finds the AEC and BAC keys independently via fuzzy matching in their
+    respective database sections, then calls ``arc/scripts/get_qm_corrections.py``
+    as a subprocess to extract the actual correction dicts. The matched keys are
+    returned alongside the tables so that callers can report which Arkane key the
+    corrections were computed from and whether the BAC table belongs to that key.
+
+    Returns:
+        EnergyCorrections: The AEC table, the BAC table, the AEC key and the BAC key,
+        each ``None`` when unavailable.
+    """
+    aec_key, bac_key = _match_arkane_correction_keys(arkane_level_of_theory, bac_type)
+    if aec_key is None and bac_key is None:
+        return EnergyCorrections(None, None, None, None)
+    try:
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_qm_corrections.py')
 
         fd_in, tmp_in = tempfile.mkstemp(suffix='.qm_input.yml')
@@ -708,7 +1444,7 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> tup
                 logger.warning(f'get_qm_corrections.py stderr: {stderr}')
 
             result = read_yaml_file(tmp_out) or {}
-            return result.get('aec'), result.get('bac')
+            return EnergyCorrections(result.get('aec'), result.get('bac'), aec_key, bac_key)
         finally:
             for p in (tmp_in, tmp_out):
                 try:
@@ -716,7 +1452,8 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> tup
                 except OSError:
                     logger.debug(f'Failed to remove temporary file {p!r}', exc_info=True)
     except Exception:
-        return None, None
+        logger.debug('Failed to read the Arkane correction tables', exc_info=True)
+        return EnergyCorrections(None, None, aec_key, bac_key)
 
 
 def _safe(fn, default=None):
@@ -728,45 +1465,12 @@ def _safe(fn, default=None):
         return default
 
 
-_BAC_KIND_BY_TYPE = {'p': 'bac_petersson', 'm': 'bac_melius'}
+def _build_species_correction_inputs(species_dict: dict) -> list[dict]:
+    """Build the per-species payloads for ``arc/scripts/get_species_corrections.py``.
 
-
-def _compute_species_corrections(
-    species_dict: dict,
-    arkane_level_of_theory,
-    bac_type: str | None,
-    project_directory: str,
-) -> dict[str, dict]:
-    """Compute per-species AEC/BAC totals + components by delegating to
-    Arkane's correction functions through ``arc/scripts/get_species_corrections.py``
-    in the RMG conda environment.
-
-    Returns a dict ``{label: {'aec': {...}, 'bac': {...}}}``. Species whose
-    inputs are insufficient (no xyz, no bonds, etc.) are omitted; per-species
-    Arkane errors land as ``aec_error``/``bac_error`` keys and are dropped
-    silently when the result is consumed (the correction is omitted for that
-    species). Returns ``{}`` on any whole-batch failure so that downstream
-    output.yml writing proceeds without corrections rather than aborting.
+    Species whose geometry is missing, empty, or carries an unknown element symbol
+    are omitted.
     """
-    if arkane_level_of_theory is None:
-        return {}
-    from arc.common import NUMBER_BY_SYMBOL
-
-    # Resolve the same matched LevelOfTheory key string that
-    # _get_energy_corrections uses, via fuzzy match against the RMG QM
-    # corrections data files. This is what the rmg_env script's regex
-    # parser knows how to reconstruct.
-    try:
-        qm_corr_files = get_qm_corrections_files()
-        lot_str = find_best_across_files(
-            arkane_level_of_theory, qm_corr_files,
-            AEC_SECTION_START, AEC_SECTION_END,
-        )
-    except Exception:
-        lot_str = None
-    if not lot_str:
-        return {}
-
     species_inputs: list[dict] = []
     for label, spc in species_dict.items():
         xyz = spc.final_xyz if spc.final_xyz is not None else spc.initial_xyz
@@ -791,11 +1495,72 @@ def _compute_species_corrections(
             'nums': nums,
             'multiplicity': int(getattr(spc, 'multiplicity', None) or 1),
         })
+    return species_inputs
 
+
+def _bac_is_applied_to(spc, compute_thermo: bool) -> bool:
+    """Whether ARC routes ``spc`` through the Arkane run that applies a BAC.
+
+    A bond additivity correction is applied only by the thermo statmech run.
+    That run does not happen at all when the project does not compute thermo,
+    it never includes a transition state, and it excludes a species whose own
+    ``compute_thermo`` is off. The kinetics statmech run — the only Arkane run
+    a rates-only project performs — is invoked with no BAC type, so nothing in
+    such a run carries one.
+    """
+    if not compute_thermo:
+        return False
+    if getattr(spc, 'is_ts', False):
+        return False
+    return bool(getattr(spc, 'compute_thermo', True))
+
+
+def _compute_species_corrections(
+    species_dict: dict,
+    aec_key: str | None,
+    bac_type: str | None,
+    project_directory: str,
+) -> dict[str, dict]:
+    """Compute per-species AEC/BAC totals + components by delegating to
+    Arkane's correction functions through ``arc/scripts/get_species_corrections.py``
+    in the RMG conda environment.
+
+    ``aec_key`` is the atom-energy-section key ARC hands Arkane as its model
+    chemistry. Both correction kinds are computed from it in a single invocation,
+    and nothing is computed when it is ``None``.
+
+    Returns a dict ``{label: {'aec': {...}, 'bac': {...}}}``. Species whose
+    inputs are insufficient (no xyz, no bonds, etc.) are omitted; per-species
+    Arkane errors land as ``aec_error``/``bac_error`` keys and are dropped
+    silently when the result is consumed (the correction is omitted for that
+    species). Returns ``{}`` on any whole-batch failure so that downstream
+    output.yml writing proceeds without corrections rather than aborting.
+    """
+    if aec_key is None:
+        return {}
+
+    species_inputs = _build_species_correction_inputs(species_dict)
     if not species_inputs:
         return {}
 
-    rmg_env = settings.get('RMG_ENV_NAME', 'rmg_env')
+    return _run_species_corrections_script(
+        species_inputs=species_inputs,
+        lot_str=aec_key,
+        bac_type=bac_type,
+        project_directory=project_directory,
+    )
+
+
+def _run_species_corrections_script(species_inputs: list[dict],
+                                    lot_str: str,
+                                    bac_type: str | None,
+                                    project_directory: str,
+                                    ) -> dict[str, dict]:
+    """Run ``arc/scripts/get_species_corrections.py`` for a single Arkane key.
+
+    Returns ``{label: {...}}`` with the raw blocks the script emitted, or ``{}`` when
+    the invocation failed.
+    """
     script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_species_corrections.py')
 
     tmp_dir = os.path.join(project_directory, 'output')
@@ -811,19 +1576,8 @@ def _compute_species_corrections(
             'species': species_inputs,
         })
 
-        commands = [
-            'bash -lc "set -euo pipefail; '
-            'if command -v micromamba >/dev/null 2>&1; then '
-            f'    micromamba run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}; '
-            'elif command -v conda >/dev/null 2>&1; then '
-            f'    conda run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}; '
-            'elif command -v mamba >/dev/null 2>&1; then '
-            f'    mamba run -n {rmg_env} python {script_path} {tmp_in} {tmp_out}; '
-            'else '
-            '    echo \'micromamba/conda/mamba required\' >&2; exit 1; '
-            'fi"',
-        ]
-        _, stderr = execute_command(command=commands, executable='/bin/bash')
+        command = rmg_env_command(py_args=[script_path, tmp_in, tmp_out])
+        _, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
         if stderr:
             logger.warning(f'get_species_corrections.py stderr: {stderr}')
 
@@ -846,33 +1600,35 @@ def _compute_species_corrections(
                 logger.debug(f'Failed to remove temporary file {p!r}', exc_info=True)
 
 
-def _aec_atom_params(aec_table: dict | None) -> list[dict]:
-    """Translate ARC's run-level ``atom_energy_corrections`` mapping into
-    TCKDB ``SchemeAtomParamPayload`` shape, sorted by element for
-    deterministic output.yml. Returns ``[]`` when the table is empty or
-    missing — TCKDB then has no scheme params to persist, but the applied
-    correction row still lands."""
-    if not aec_table:
-        return []
-    return [
-        {'element': str(elem), 'value': float(value)}
-        for elem, value in sorted(aec_table.items())
-    ]
+_AEC_TABLE_UNIT = 'hartree'
+_BAC_TABLE_UNIT = 'kcal_mol'
 
 
-def _pbac_bond_params(bac_table: dict | None) -> list[dict]:
-    """Translate ARC's run-level ``bond_additivity_corrections`` mapping
-    into TCKDB ``SchemeBondParamPayload`` shape, sorted by bond_key for
-    deterministic output.yml."""
-    if not bac_table:
-        return []
-    return [
-        {'bond_key': str(key), 'value': float(value)}
-        for key, value in sorted(bac_table.items())
-    ]
+def _flat_parameter_values(table: dict | None) -> dict[str, float] | None:
+    """
+    Return ``table`` as a sorted ``{name: float}`` mapping, or ``None``.
+
+    ``None`` is returned for an absent table and for any table that is not a
+    flat mapping of scalars — Arkane's Melius corrections are a nested
+    ``{atom_corr: {...}, bond_corr_length: {...}, ...}`` structure that cannot
+    be expressed as a parameter table. Checking the shape here keeps the
+    caller's ``bac_type`` test a statement about which correction model carries
+    a parameter table, rather than the only thing standing between a nested
+    table and a ``TypeError`` inside ``write_output_yml``, whose caller logs and
+    discards the exception along with the entire document.
+    """
+    if not table or not isinstance(table, dict):
+        return None
+    if any(isinstance(value, (dict, list, tuple)) for value in table.values()):
+        return None
+    try:
+        return {str(key): float(value) for key, value in sorted(table.items())}
+    except (TypeError, ValueError):
+        logger.debug('Correction parameter table is not a flat numeric mapping', exc_info=True)
+        return None
 
 
-def _build_applied_corrections_for_species(
+def _build_energy_corrections_for_species(
     label: str,
     species_corrections: dict[str, dict],
     arkane_level_of_theory,
@@ -880,26 +1636,21 @@ def _build_applied_corrections_for_species(
     *,
     aec_table: dict | None = None,
     bac_table: dict | None = None,
+    aec_key: str | None = None,
+    bac_key: str | None = None,
 ) -> list[dict]:
-    """Build the per-species ``applied_energy_corrections`` list for output.yml.
+    """Build tool-neutral per-species correction facts for ``output.yml``.
 
-    Translates the rmg_env script's per-species totals + components into the
-    output.yml shape (mirroring TCKDB's ``AppliedEnergyCorrectionUploadPayload``
-    contract): each entry has ``application_role``, ``value``, ``value_unit``,
-    ``scheme``, and (optional) ``components``. Failure rows from the script
-    (``aec_error``/``bac_error``) are silently dropped — that species simply
-    has the failing role omitted.
-
-    ``aec_table`` and ``bac_table`` are the run-level parameter dicts ARC
-    already retrieves from the RMG database (see ``_get_energy_corrections``).
-    Attached to each scheme as ``atom_params`` / ``bond_params`` so TCKDB
-    populates the ``energy_correction_scheme_atom_param`` /
-    ``energy_correction_scheme_bond_param`` reference tables — without
-    them the applied correction lands but the scheme rows that link to
-    parameter values stay empty. mBAC schemes never carry params: the
-    Melius parameter table doesn't fit ``SchemeBondParamPayload``'s
-    bond-key shape (it's atom-pair indexed and includes mol-level
-    corrections), and there's no safe coercion at the producer.
+    ARC records the correction model, total, native component decomposition,
+    the level of theory ARC ran at, the Arkane database key ARC matched in the
+    section this correction's parameters live in, and the parameter table it
+    actually used. The atom-energy record reports ``aec_key`` as its
+    ``matched_arkane_key`` and the bond-additivity record reports ``bac_key``;
+    either is ``None`` when nothing matched in that section. The BAC
+    ``parameter_table`` is emitted only when ``bac_key`` equals ``aec_key``, the
+    key ARC hands Arkane as its model chemistry. Consumers own any
+    database-specific scheme enums, roles, nesting, or reference rows. Failure rows
+    from the helper script are omitted independently.
     """
     entry = species_corrections.get(label) or {}
     applied: list[dict] = []
@@ -907,60 +1658,60 @@ def _build_applied_corrections_for_species(
 
     aec_block = entry.get('aec')
     if aec_block and aec_block.get('value') is not None:
-        scheme: dict = {
-            'kind': 'atom_energy',
-            'name': 'atom_energy',
+        correction: dict = {
+            'correction_type': 'atom_energy',
+            'model': 'arkane_atom_energy',
             'level_of_theory': lot_dict,
-            'units': aec_block.get('value_unit', 'hartree'),
-            'version': None,
-            'source_literature': None,
-            'note': 'Per-species AEC computed by Arkane.',
-        }
-        atom_params = _aec_atom_params(aec_table)
-        if atom_params:
-            scheme['atom_params'] = atom_params
-        applied.append({
-            'application_role': 'aec_total',
-            'value': float(aec_block['value']),
-            'value_unit': aec_block.get('value_unit', 'hartree'),
-            'scheme': scheme,
+            'matched_arkane_key': aec_key,
+            'total': {
+                'value': float(aec_block['value']),
+                'unit': aec_block.get('value_unit', 'hartree'),
+            },
             'components': aec_block.get('components') or [],
-        })
+        }
+        if aec_table:
+            # NOT per-atom corrections: these are Arkane's bare atomic
+            # electronic energies, which Arkane *subtracts* as a reference. The
+            # per-atom quantity that actually sums to ``total`` is
+            # ``components[].contribution_value``, which additionally carries
+            # the ``atom_hf - atom_thermal`` term absent here. Naming this
+            # ``parameter_table`` invited consumers to reconstruct the
+            # correction as ``sum(count * value)``, which gets both the sign and
+            # ~10^5 kJ/mol wrong.
+            correction['reference_atom_energies'] = {
+                'unit': _AEC_TABLE_UNIT,
+                'applied_as': 'subtracted',
+                'values': {str(k): float(v) for k, v in sorted(aec_table.items())},
+            }
+        applied.append(correction)
 
     bac_block = entry.get('bac')
-    if bac_block and bac_block.get('value') is not None and bac_type in _BAC_KIND_BY_TYPE:
-        scheme_kind = _BAC_KIND_BY_TYPE[bac_type]
+    if bac_block and bac_block.get('value') is not None and bac_type in ('p', 'm'):
         components = bac_block.get('components')
         # Drop components when any bond is missing a parameter — partial
         # decompositions would not sum to the total and would mislead
         # downstream consumers.
         if components and any(c.get('parameter_value') is None for c in components):
             components = None
-        scheme = {
-            'kind': scheme_kind,
-            'name': scheme_kind,
+        correction = {
+            'correction_type': 'bond_additivity',
+            'model': {'p': 'petersson', 'm': 'melius'}[bac_type],
             'level_of_theory': lot_dict,
-            'units': bac_block.get('value_unit', 'kcal_mol'),
-            'version': None,
-            'source_literature': None,
-            'note': f'Per-species BAC computed by Arkane (bac_type={bac_type}).',
-        }
-        # Petersson BAC has a clean (bond_key → value) parameter table;
-        # Melius does not — its parameters are atom-pair / length /
-        # neighbor / molecular and need ``component_params``, which ARC
-        # doesn't currently surface. Per spec we omit params for mBAC
-        # rather than fabricate or coerce.
-        if bac_type == 'p':
-            bond_params = _pbac_bond_params(bac_table)
-            if bond_params:
-                scheme['bond_params'] = bond_params
-        applied.append({
-            'application_role': 'bac_total',
-            'value': float(bac_block['value']),
-            'value_unit': bac_block.get('value_unit', 'kcal_mol'),
-            'scheme': scheme,
+            'matched_arkane_key': bac_key,
+            'total': {
+                'value': float(bac_block['value']),
+                'unit': bac_block.get('value_unit', 'kcal_mol'),
+            },
             'components': components or [],
-        })
+        }
+        if bac_type == 'p' and bac_key == aec_key:
+            values = _flat_parameter_values(bac_table)
+            if values:
+                correction['parameter_table'] = {
+                    'unit': _BAC_TABLE_UNIT,
+                    'values': values,
+                }
+        applied.append(correction)
 
     return applied
 
@@ -1020,7 +1771,8 @@ def _compute_point_groups(species_dict: dict, project_directory: str) -> dict[st
 
 def _spc_to_dict(spc, output_dict: dict, project_directory: str,
                   point_groups: dict | None = None, irc_requested: bool = True,
-                  software_by_job: dict[str, str | None] | None = None) -> dict:
+                  software_by_job: dict[str, str | None] | None = None,
+                  freq_level=None) -> dict:
     """Build the per-species/TS section for output.yml.
 
     ``software_by_job`` is an optional ``{'opt': name, 'freq': name,
@@ -1028,6 +1780,10 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     paths (``opt_input``, ``freq_input``, ``sp_input``) alongside the
     log paths. When omitted (the back-compat path), the input fields
     come out as ``None`` and downstream consumers proceed with logs only.
+
+    ``freq_level`` is the frequency job's level of theory, needed to state
+    ``freq_hessian_method`` for an ESS that does not print which Hessian it
+    built; without it that field comes out as ``None``.
     """
     software_by_job = software_by_job or {}
     label = spc.label
@@ -1069,7 +1825,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         # Monoatomic species skip opt entirely (nothing to optimize), so neither
         # final_xyz nor initial_xyz is populated. Synthesize the trivial
         # one-atom geometry so output.yml carries a usable xyz for downstream
-        # consumers (e.g. the TCKDB uploader).
+        # consumers.
         xyz = {'symbols': (spc.mol.atoms[0].element.symbol,),
                'coords': ((0.0, 0.0, 0.0),)}
     d['xyz'] = xyz_to_str(xyz) if xyz is not None else None
@@ -1077,11 +1833,17 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     # ── screened conformers ────────────────────────────────────────────────
     # ARC's conformer screen often produces multiple optimized geometries
     # at the same level. ``ARCSpecies.conformers`` holds them as xyz
-    # dicts, with ``conformer_energies`` holding the post-screen E0 in
-    # kJ/mol *relative* to the lowest. Surface both lists when populated
-    # so downstream consumers (TCKDB bundle) can emit the full set
-    # rather than only the selected conformer of record. Skipped (key
-    # omitted) when ARC has no screened conformers — backward compatible.
+    # dicts, with ``conformer_energies`` holding one energy per conformer,
+    # relative to the lowest. The unit follows the stage the screen has
+    # reached: kcal/mol while the list still holds force-field energies
+    # (``arc/species/species.py`` fills it from ``conf['FF energy']``), kJ/mol
+    # once the conformers have been optimized at a quantum-chemical level. An
+    # entry is ``None`` for a conformer whose energy has not been filled in
+    # yet, which is an ordinary state: the list is pre-allocated per conformer
+    # and populated one job at a time. Surface both lists when populated so
+    # downstream consumers can inspect the full set rather than only the
+    # selected conformer of record. Skipped (key omitted) when ARC has no
+    # screened conformers — backward compatible.
     raw_conformers = getattr(spc, 'conformers', None) or []
     if raw_conformers:
         d['conformers'] = [xyz_to_str(c) if not isinstance(c, str) else c
@@ -1152,32 +1914,43 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d['opt_input_xyz'] = coarse_final_xyz
     else:
         # Either no coarse stage, or coarse ran but its geometry wasn't
-        # parseable. Producers downstream (TCKDB bundle) won't emit a
-        # standalone ``opt_coarse`` calc in that case — they need the
-        # output geometry to chain. Honest-empty beats fake-provenance.
+        # parseable. Consumers cannot reconstruct the standalone coarse stage
+        # without its output geometry. Honest-empty beats fake provenance.
         d['coarse_opt_input_xyz'] = None
         d['coarse_opt_output_xyz'] = None
         d['opt_input_xyz'] = initial_xyz_str
 
     # ── freq results ────────────────────────────────────────────────────────
-    if is_mono:
+    if is_mono or not converged:
         d['freq_n_imag'] = None
         d['imag_freq_cm1'] = None
-    elif converged and not spc.is_ts:
-        d['freq_n_imag'] = 0
-        d['imag_freq_cm1'] = None          # never meaningful for stable species
-    elif converged and spc.is_ts:
-        d['freq_n_imag'] = 1
-        d['imag_freq_cm1'] = _get_ts_imag_freq(spc)
+        d['imaginary_frequencies_cm1'] = None
     else:
-        d['freq_n_imag'] = None
-        d['imag_freq_cm1'] = None
+        imaginary_freqs = _get_imaginary_freqs(spc)
+        d['freq_n_imag'] = len(imaginary_freqs) if imaginary_freqs is not None else None
+        d['imag_freq_cm1'] = min(imaginary_freqs) if imaginary_freqs else None
+        d['imaginary_frequencies_cm1'] = imaginary_freqs or None
 
     # ── log file paths (run-relative) ────────────────────────────────────────
     d['opt_log'] = _make_rel_path(paths.get('geo') or None, project_directory)
     d['freq_log'] = _make_rel_path(paths.get('freq') or None, project_directory)
     d['sp_log'] = _make_rel_path(paths.get('sp') or None, project_directory)
 
+    # ── wavefunction stability diagnostic (null unless the job ran) ──────────
+    stability = _parse_wavefunction_stability(paths.get('stability') or None, project_directory)
+    d['wavefunction_stability'] = stability
+
+    # ── which source decided the open-shell character, and the references used ──
+    d['scf_reference'] = _scf_reference_block(spc, stability, project_directory)
+
+    # ── S**2 spin-contamination diagnostic (sp calc, open-shell only) ───────
+    d['sp_spin_diagnostic'] = _parse_spin_diagnostic(
+        paths.get('sp') or None,
+        paths.get('freq') or None,
+        paths.get('geo') or None,
+        spc.multiplicity,
+        project_directory,
+    ) if converged else None
     # ── ESS input deck paths ────────────────────────────────────────────────
     # Same directory as the corresponding log, with the per-software
     # filename from settings['input_filenames']. None when the file isn't
@@ -1192,7 +1965,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         paths.get('sp') or None, software_by_job.get('sp'), project_directory,
     )
 
-    # ── held-fixed coordinate constraints (for TCKDB) ──────────────────────
+    # ── held-fixed coordinate constraints ──────────────────────────────────
     # Best-effort: parse the input deck (preferred — exact ARC-emitted form)
     # falling back to the log when no deck is on disk. Failures here never
     # fail output.yml generation; they just emit ``[]`` for that calc.
@@ -1204,8 +1977,12 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d.get('freq_input'), paths.get('freq') or None,
         software_by_job.get('freq'), project_directory,
     )
+    d['freq_hessian_method'] = _get_freq_hessian_method(
+        d.get('freq_input'), paths.get('freq') or None,
+        software_by_job.get('freq'), freq_level, spc, project_directory,
+    ) if converged else None
 
-    # ── per-calc final effective settings (for TCKDB) ──────────────────────
+    # ── per-calc final effective settings ──────────────────────────────────
     # These are the calc-specific scientific knobs (grid, scf_convergence,
     # opt_convergence, max_*_cycles, symmetry, guess, …) that defined the
     # FINAL job — distinct from ``level_of_theory`` identity and from
@@ -1241,72 +2018,49 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         software_by_job.get('sp'), project_directory,
     )
 
-    # ── S**2 spin-contamination diagnostic (for TCKDB, sp calc) ─────────────
-    # A property of the (unrestricted) wavefunction, parsed from the sp job's
-    # log (falling back to freq/opt when the sp energy reused the opt output).
-    # Only populated for open-shell/unrestricted calcs where the ESS reported
-    # ``<S**2>``; ``None`` (key present, null value) for restricted /
-    # closed-shell species — the TCKDB adapter omits the block in that case.
-    d['sp_spin_diagnostic'] = _parse_spin_diagnostic(
-        paths.get('sp') or None,
-        paths.get('freq') or None,
-        paths.get('geo') or None,
-        spc.multiplicity,
-        project_directory,
-    ) if converged else None
-
     # ── ESS software version (from SP log, or fall back to geo/freq log) ──
     d['ess_versions'] = _get_ess_versions(paths, project_directory) if converged else None
+    d['ess_software'] = _get_ess_software(paths, project_directory) if converged else None
 
     if spc.is_ts:
         d['chosen_ts_method'] = getattr(spc, 'chosen_ts_method', None)
         d['successful_ts_methods'] = getattr(spc, 'successful_methods', None) or None
-        d['ts_guesses'] = _ts_guesses_to_list(spc, project_directory)
         d['neb_log'] = _make_rel_path(paths.get('neb') or None, project_directory)
-        # Path-search log slot for xtb_gsm-chosen TS guesses. Distinct
-        # from ``neb_log`` so the TCKDB adapter can dispatch a method-
-        # aware ``path_search`` parent calc (``method=neb`` vs
-        # ``method=gsm``) without inspecting the file. Null when the
-        # chosen TS-guess method is not GSM (or when GSM ran but didn't
-        # surface a stringfile path).
         d['gsm_log'] = _make_rel_path(paths.get('gsm') or None, project_directory)
 
-        # Fallback: when ``paths['neb']`` / ``paths['gsm']`` is empty
-        # but the chosen TSGuess carries a ``log_path``, route it to
-        # the matching log field. Covers restart-restored runs where
-        # the scheduler's TS-selection write sites
-        # (``determine_most_likely_ts_conformer`` /
-        # ``run_ts_conformer_jobs``) don't re-fire because
-        # ``chosen_ts`` is already pinned. Method dispatch is strict —
-        # no GSM-log-into-neb_log cross-pollination — and gated on the
-        # *chosen* guess (per the calculation_dependency contract: a
-        # log from a non-winning guess is irrelevant provenance).
-        chosen_idx = getattr(spc, 'chosen_ts', None)
-        ts_guesses = getattr(spc, 'ts_guesses', None) or []
-        if (chosen_idx is not None
-                and isinstance(chosen_idx, int)
-                and 0 <= chosen_idx < len(ts_guesses)):
-            chosen_guess = ts_guesses[chosen_idx]
+        chosen_index = getattr(spc, 'chosen_ts', None)
+        chosen_guess = None
+        if isinstance(chosen_index, int):
+            chosen_guess = next(
+                (guess for guess in (getattr(spc, 'ts_guesses', None) or [])
+                 if getattr(guess, 'index', None) == chosen_index),
+                None,
+            )
+        if chosen_guess is not None:
+            method = getattr(chosen_guess, 'method', None)
+            method = method.strip().lower() if isinstance(method, str) and method.strip() else None
+            method_sources = []
+            for source in (getattr(chosen_guess, 'method_sources', None) or []):
+                if not isinstance(source, str) or not source.strip():
+                    continue
+                source = source.strip().lower()
+                if source not in method_sources:
+                    method_sources.append(source)
+            if method is not None and method not in method_sources:
+                method_sources.insert(0, method)
+            # Only expose stable attribution fields. TSGuess.as_dict() also
+            # contains absolute paths, timestamps, geometries, and diagnostic
+            # state that do not belong in this result-contract seam.
+            d['ts_guesses'] = [{
+                'index': getattr(chosen_guess, 'index', chosen_index),
+                'chosen': True,
+                'method': method,
+                'method_sources': method_sources,
+            }]
             chosen_log = getattr(chosen_guess, 'log_path', None)
-            chosen_method = (getattr(chosen_guess, 'method', None)
-                             or d.get('chosen_ts_method'))
-            log_field = _ts_guess_log_field_for_method(chosen_method)
+            log_field = _ts_guess_log_field_for_method(getattr(chosen_guess, 'method', None))
             if chosen_log and log_field and not d.get(log_field):
                 d[log_field] = _make_rel_path(chosen_log, project_directory)
-            # Additive fallback for dedup-merged guesses: when the chosen
-            # guess's own (primary) method is geometry-only but a
-            # path-search method (xtb_gsm / orca_neb) merged into it during
-            # equivalent-guess clustering, route that source's preserved log
-            # (``method_source_paths``) into the matching field. Mirrors
-            # ``scheduler._ts_guess_path_provenance`` so restart-restored
-            # runs — where the scheduler's TS-selection write sites don't
-            # re-fire — still surface the path-search log. Does not change
-            # which method won selection. Only fires when neither path-log
-            # field was populated above (i.e. the scheduler's ``paths`` write
-            # didn't run), and sets exactly one field — first path source in
-            # ``method_sources`` order — so output.yml keeps the scheduler's
-            # single-slot, first-source-wins invariant and never claims two
-            # path logs for one guess.
             if not d.get('neb_log') and not d.get('gsm_log'):
                 source_paths = getattr(chosen_guess, 'method_source_paths', None) or {}
                 for source in (getattr(chosen_guess, 'method_sources', None) or []):
@@ -1315,24 +2069,21 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
                     if source_field and source_log:
                         d[source_field] = _make_rel_path(source_log, project_directory)
                         break
+        else:
+            d['ts_guesses'] = []
+
         irc_paths = list(paths.get('irc') or [])
-        d['irc_logs'] = [_make_rel_path(p, project_directory) for p in irc_paths]
-        # Per-log direction in lockstep with ``irc_logs``: 'forward' /
-        # 'reverse' / null when the scheduler couldn't observe it (older
-        # projects, restarts predating the parallel-list tracking).
-        # Padded to ``len(irc_logs)`` so consumers can zip the two lists
-        # without index-out-of-range checks.
-        irc_dirs_raw = list(paths.get('irc_directions') or [])
+        d['irc_logs'] = [_make_rel_path(path, project_directory) for path in irc_paths]
+        irc_directions = list(paths.get('irc_directions') or [])
         d['irc_log_directions'] = (
-            irc_dirs_raw + [None] * (len(irc_paths) - len(irc_dirs_raw))
+            irc_directions + [None] * (len(irc_paths) - len(irc_directions))
         )[:len(irc_paths)]
         if not irc_requested:
             d['irc_converged'] = None
         else:
             d['irc_converged'] = entry.get('job_types', {}).get('irc', False)
+        d['ts_checks'] = _ts_checks_to_dict(spc)
         d['rxn_label'] = spc.rxn_label
-        ts_checks = getattr(spc, 'ts_checks', None)
-        d['ts_checks'] = dict(ts_checks) if isinstance(ts_checks, dict) and ts_checks else None
 
     # ── thermochemistry (non-TS converged species only) ──────────────────────
     if not spc.is_ts and converged and spc.thermo is not None and spc.thermo.H298 is not None:
@@ -1340,55 +2091,60 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     else:
         d['thermo'] = None
 
-    # ── statistical mechanics ────────────────────────────────────────────────
+    rotor_scans = _build_rotor_scans(spc, project_directory) if not is_mono and converged else []
+
     if not is_mono and converged:
         pg = (point_groups or {}).get(label)
-        d['statmech'] = _statmech_to_dict(spc, project_directory, point_group=pg)
+        d['statmech'] = _statmech_to_dict(
+            spc, project_directory, point_group=pg,
+            scan_keys={entry['key'] for entry in rotor_scans},
+        )
     else:
         d['statmech'] = None
 
     # ── additional calculations (rotor scans, etc.) ─────────────────────────
-    # Bundle-local calcs that aren't part of the opt → freq → sp chain. The
-    # field is a list (possibly empty) so consumers can iterate without a
-    # None-guard. Currently populated only for converged non-monoatomic
-    # species with successful 1D rotor scans; everything else gets ``[]``.
-    if not is_mono and converged:
-        d['additional_calculations'] = _build_scan_calculations(spc, project_directory)
-    else:
-        d['additional_calculations'] = []
+    d['rotor_scans'] = rotor_scans
 
     return d
 
 
-def _get_ts_imag_freq(spc) -> float | None:
-    """Return the imaginary frequency (cm⁻¹) of the TS, or None.
-
-    ``ARCSpecies.chosen_ts`` holds the chosen ``TSGuess.index``, which is that guess's stable
-    identity, not its position in ``ts_guesses``: unsuccessful guesses are kept in the list and
-    equivalent-guess clustering removes guesses while preserving the survivors' indices, so the
-    two diverge. The chosen guess is therefore looked up by index.
+def _get_imaginary_freqs(spc) -> list[float] | None:
     """
-    # Primary: take the most negative frequency from spc.freqs (all freqs from the freq job)
+    Return every imaginary frequency (cm⁻¹) of a species, most negative first.
+
+    Imaginary frequencies are reported as negative numbers. The negative frequencies of the completed
+    freq job are used when it found any; otherwise the chosen TS guess's recorded imaginary
+    frequencies are used, falling back to the freq job's (empty) result. The chosen guess is
+    looked up by its ``TSGuess.index``, not by its position in ``ts_guesses``.
+
+    Returns:
+        Optional[list[float]]: The imaginary frequencies, an empty list when the species has none,
+                               or ``None`` when no frequency data is available at all.
+    """
     freqs = getattr(spc, 'freqs', None)
-    if freqs:
-        neg = [f for f in freqs if f < 0]
-        if neg:
-            return float(min(neg))
-    # Fallback: try the chosen TS guess's imaginary_freqs
+    negative_freqs = sorted(float(f) for f in freqs if f < 0) if freqs is not None and len(freqs) else None
+    if negative_freqs:
+        return negative_freqs
     try:
         chosen = spc.chosen_ts
         if chosen is not None and spc.ts_guesses:
             chosen_guess = next((tsg for tsg in spc.ts_guesses if tsg.index == chosen), None)
             im_freqs = chosen_guess.imaginary_freqs if chosen_guess is not None else None
             if im_freqs:
-                return float(im_freqs[0])
-    except Exception:
-        logger.debug('Failed to obtain TS imaginary frequency from ts_guesses for %s', spc.label, exc_info=True)
-    return None
+                return sorted(float(f) for f in im_freqs)
+    except Exception as e:
+        logger.debug('Failed to obtain imaginary frequencies from ts_guesses for %s, got %s: %s',
+                     spc.label, type(e).__name__, e)
+    return negative_freqs
 
 
 def _thermo_to_dict(thermo) -> dict:
-    """Convert a ThermoData object to a plain, unit-labeled dict."""
+    """Convert a ThermoData object to a plain, unit-labeled dict.
+
+    ``standard_state_pressure_pa`` is the standard state every entropy, free energy and
+    NASA fit in the returned dict belongs to, including those inside ``thermo_points``.
+    It is ``None`` when the thermo did not come from a statmech run that recorded one.
+    """
     def _scalar(x):
         """Extract the numeric value from a (value, units) tuple or a plain number."""
         if isinstance(x, (list, tuple)) and len(x) >= 1:
@@ -1400,15 +2156,16 @@ def _thermo_to_dict(thermo) -> dict:
         's298_j_mol_k': thermo.S298,
         'tmin_k': _scalar(thermo.Tmin),
         'tmax_k': _scalar(thermo.Tmax),
+        'standard_state_pressure_pa': getattr(thermo, 'standard_state_pressure_pa', None),
     }
 
     # ── Per-temperature thermochemistry ──────────────────────────────────────
-    # ``thermo_points`` carries the full TCKDB ``thermo_point`` shape
+    # ``thermo_points`` carries explicit thermodynamic facts and units
     # (Cp + H + S + G at each tabulated T). Falls back to building a
     # Cp-only point list from RMG's ``Tdata``/``Cpdata`` when only that
     # legacy form is available — H/S/G stay omitted because we don't
-    # have the polynomial in scope here to evaluate them. The TCKDB
-    # adapter accepts either shape.
+    # have the polynomial in scope here to evaluate them. Consumers must accept
+    # either shape.
     points = getattr(thermo, 'thermo_points', None)
     if points is not None:
         t['thermo_points'] = points
@@ -1427,8 +2184,15 @@ def _thermo_to_dict(thermo) -> dict:
     return t
 
 
-def _statmech_to_dict(spc, project_directory: str, point_group: str | None = None) -> dict:
-    """Build the statmech sub-section for a non-monoatomic converged species/TS."""
+def _statmech_to_dict(spc,
+                      project_directory: str,
+                      point_group: str | None = None,
+                      scan_keys: set[str] | None = None,
+                      ) -> dict:
+    """Build the statmech sub-section for a non-monoatomic converged species/TS.
+
+    ``scan_keys`` is forwarded unchanged to :func:`_get_torsions`.
+    """
     # Use the cached private attribute to avoid triggering a geometry re-read
     is_linear = spc._is_linear
 
@@ -1453,22 +2217,32 @@ def _statmech_to_dict(spc, project_directory: str, point_group: str | None = Non
         'point_group': point_group,
         'rigid_rotor_kind': rotor_kind,
         'harmonic_frequencies_cm1': [float(f) for f in freqs] if freqs is not None else None,
-        'torsions': _get_torsions(spc, project_directory),
+        'torsions': _get_torsions(spc, project_directory, scan_keys=scan_keys),
+        'rejected_torsions': _get_rejected_torsions(spc, project_directory),
     }
 
 
-def _get_torsions(spc, project_directory: str) -> list[dict]:
+def _get_torsions(spc, project_directory: str, scan_keys: set[str] | None = None) -> list[dict]:
     """Build the torsions list from spc.rotors_dict.
 
-    Each emitted torsion carries a ``source_scan_calculation_key`` (e.g.
-    ``"scan_rotor_3"``) when its scan log is on disk and parseable. The key
-    matches the bundle-local key used by :func:`_build_scan_calculations`,
-    so TCKDB consumers can resolve the torsion's underlying scan calc.
-    Rotors whose scan log is missing or fails to parse get the field set to
-    ``None`` rather than fabricating a key that points at no calc.
+    Each emitted torsion carries a ``source_scan_key`` (e.g.
+    ``"scan_rotor_3"``) only when :func:`_build_rotor_scans` actually emits a
+    record under that key, so a torsion can never reference a scan record that
+    is absent from ``rotor_scans``. Rotors with no corresponding record get the
+    field set to ``None`` rather than fabricating a key that points at no calc.
+
+    Args:
+        spc: The species whose ``rotors_dict`` is being rendered.
+        project_directory (str): The run's project directory.
+        scan_keys (Optional[set[str]]): The keys :func:`_build_rotor_scans`
+            emitted for this species. When ``None`` the keys are derived here
+            via the same builder, which costs an extra parse; callers that
+            already built the records should pass them in.
     """
     if not getattr(spc, 'rotors_dict', None):
         return []
+    if scan_keys is None:
+        scan_keys = {entry['key'] for entry in _build_rotor_scans(spc, project_directory)}
     torsions = []
     for rotor_index, rotor in spc.rotors_dict.items():
         if rotor.get('success') is not True:
@@ -1478,19 +2252,117 @@ def _get_torsions(spc, project_directory: str) -> list[dict]:
         symmetry = rotor.get('symmetry', 1)
         rotor_type = rotor.get('type', 'HinderedRotor')
         treatment = 'free_rotor' if 'Free' in str(rotor_type) else 'hindered_rotor'
-        scan_key = (
-            f'scan_rotor_{rotor_index}'
-            if _scan_log_is_parseable(rotor, project_directory) else None
-        )
+        dimension = int(rotor.get('dimensions', 1) or 1)
+        candidate_key = f'scan_rotor_{rotor_index}'
+        scan_key = candidate_key if candidate_key in scan_keys else None
         torsions.append({
             'symmetry_number': symmetry,
             'treatment': treatment,
+            'dimension': dimension,
             'atom_indices': scan,
             'pivot_atoms': pivots,
-            'barrier_kj_mol': _get_rotor_barrier(rotor, project_directory),
-            'source_scan_calculation_key': scan_key,
+            'barrier_kj_mol': (_get_rotor_barrier(rotor, project_directory)
+                               if dimension == 1 else None),
+            'source_scan_key': scan_key,
         })
     return torsions
+
+
+def _get_rejected_torsions(spc, project_directory: str) -> list[dict]:
+    """Build the rejected-torsions list from spc.rotors_dict.
+
+    ``_get_torsions`` above emits only rotors ARC actually treated
+    (``success is True``); genuinely rejected rotors — ``success is
+    False`` — simply vanished from the result contract. That's a real
+    information loss: a species where ARC found 3 rotors and rejected 2
+    looked identical, downstream, to one that genuinely has a single rotor.
+    This is the complementary half of ``rotors_dict``: every entry
+    ``_get_torsions`` skips *because ARC decided against it*, paired with
+    *why* (``invalidation_reason``), so a consumer can tell "no rotors"
+    from "rotors found and rejected, for these reasons."
+
+    ``success`` is a three-state field (see ``arc/scheduler.py``'s rotor
+    state table): ``None`` means pending — not yet started, mid
+    troubleshooting, or scanning against a previous/lower conformer — and
+    is *not* a rejection; ``False`` means ARC genuinely rejected the rotor
+    (invalidated after convergence, or determined not to be a torsion at
+    all); ``True`` means it succeeded. Only ``success is False`` belongs
+    here. A species can converge with rotors still ``None`` (rotor
+    convergence is not gated on species convergence), so treating
+    "not True" as "rejected" would misreport ordinary pending rotors as
+    reason-less rejections.
+
+    ``invalidation_reason`` is carried verbatim, including the empty string
+    it defaults to when ARC never recorded a specific reason — that's the
+    honest signal ("rejected, reason unknown") rather than something to
+    paper over. It is accumulated with ``+=`` across troubleshooting
+    rounds (see ``arc/scheduler.py`` and ``arc/checks/ts.py``), so a
+    single string here may concatenate more than one recorded reason.
+
+    Each emitted rejection also carries ``source_log`` — the rotor's scan
+    log path, relative to ``project_directory``, when one is found on disk
+    at write time (:func:`_resolve_scan_path`), using the same
+    relative-path treatment (:func:`_make_rel_path`)
+    ``rotor_scans[].source_log`` gets — which is a bare ``os.path.relpath``
+    with no containment check, so a log outside ``project_directory``
+    yields a ``../..``-prefixed path revealing host layout (matches
+    existing ``rotor_scans[].source_log`` behavior; not changed here).
+    This deliberately does *not* go through :func:`_build_rotor_scan_entry`
+    / ``rotor_scans``: that gate only admits ``success is True`` rotors
+    (see its docstring), and a rejected rotor's log may itself be
+    truncated or self-inconsistent (e.g. a crashed job's partial scan) —
+    recording *where the evidence is* is safe and useful even when
+    *parsing* it would not be. ``source_log`` is *omitted* (never ``null``)
+    when ``rotors_dict`` records no on-disk scan for this rotor, so a
+    consumer never receives a dangling reference.
+
+    IMPORTANT: the *absence* of ``source_log`` is NOT a reliable signal
+    that this rotor was "never a torsion." ``_resolve_scan_path`` requires
+    the file to actually exist on disk at write time, and there are
+    several reachable paths to ``success is False`` with no surviving log
+    even though a scan genuinely ran:
+
+    - A restart-restored rejected rotor's relative ``scan_path`` is only
+      repaired for rotors where ``success`` is truthy (see
+      ``arc/main.py``), so a rejected rotor's stale relative path
+      routinely fails ``_resolve_scan_path``'s ``os.path.isfile`` check
+      even though the rotor was genuinely scanned.
+    - A failed directed scan has its ``scan_path`` deliberately blanked to
+      ``''`` alongside a real, non-empty ``invalidation_reason``
+      (``arc/scheduler.py``'s ``check_directed_scan``) — the scan ran and
+      failed, but the record looks identical to "never scanned."
+    - A TS reaction-zone pivot exclusion (``arc/checks/ts.py``) sets
+      ``success = False`` for a policy reason, typically before any scan
+      was attempted at all.
+
+    ARC's ``rotors_dict`` does not currently distinguish these rejection
+    stages from a genuine "not a torsion" determination —
+    ``invalidation_reason`` is the only (free-text, imperfect) signal
+    available, and ``source_log``'s presence or absence must not be used
+    as a substitute discriminator.
+
+    Args:
+        spc: The species whose ``rotors_dict`` is being rendered.
+        project_directory (str): The run's project directory.
+    """
+    if not getattr(spc, 'rotors_dict', None):
+        return []
+    rejected = []
+    for rotor_index, rotor in spc.rotors_dict.items():
+        if rotor.get('success') is not False:
+            continue
+        entry = {
+            'rotor_index': rotor_index,
+            'invalidation_reason': rotor.get('invalidation_reason', ''),
+            'atom_indices': rotor.get('scan'),   # 4-atom dihedral defining atoms, 1-indexed
+            'pivot_atoms': rotor.get('pivots'),  # 2-atom rotation axis, 1-indexed
+            'dimension': int(rotor.get('dimensions', 1) or 1),
+        }
+        source_log = _make_rel_path(_resolve_scan_path(rotor, project_directory), project_directory)
+        if source_log is not None:
+            entry['source_log'] = source_log
+        rejected.append(entry)
+    return rejected
 
 
 def _resolve_scan_path(rotor: dict, project_directory: str) -> str | None:
@@ -1508,11 +2380,6 @@ def _resolve_scan_path(rotor: dict, project_directory: str) -> str | None:
     if not os.path.isfile(scan_path):
         return None
     return scan_path
-
-
-def _scan_log_is_parseable(rotor: dict, project_directory: str) -> bool:
-    """Cheap presence-check for a usable 1D scan log on disk."""
-    return _resolve_scan_path(rotor, project_directory) is not None
 
 
 def _get_rotor_barrier(rotor: dict, project_directory: str) -> float | None:
@@ -1534,31 +2401,34 @@ def _get_rotor_barrier(rotor: dict, project_directory: str) -> float | None:
     return None
 
 
-def _build_scan_calculations(spc, project_directory: str) -> list[dict]:
-    """Build the species' ``additional_calculations`` list from rotor scans.
+def _build_rotor_scans(spc, project_directory: str) -> list[dict]:
+    """Build tool-neutral parsed rotor-scan records for a species.
 
-    Emits one ``type='scan'`` calc per successful 1D rotor whose scan log
-    is on disk and parses cleanly. Each entry shape:
+    Emits one record per successful 1D rotor whose scan log is available and
+    parses cleanly. ARC reports source facts, native indices and explicit
+    units; consumers decide how scans map into their calculation models.
+
+    ``relaxed`` is ``None`` when the scan type is unrecognized, and
+    ``zero_energy_reference_hartree`` is omitted entirely when the parser
+    reports none.
 
         {
             'key': 'scan_rotor_<i>',
-            'type': 'scan',
-            'scan_result': {
+            'source_log': str,
+            'result': {
                 'dimension': 1,
-                'is_relaxed': True,
-                'zero_energy_reference_hartree': float | None,
-                'coordinates': [{coordinate_index, coordinate_kind, atom*_index,
-                                 step_count, value_unit, symmetry_number}],
-                'points': [{point_index, electronic_energy_hartree,
-                            relative_energy_kj_mol,
-                            coordinate_values: [{coordinate_index,
-                                                 coordinate_value, value_unit}],
-                            xyz: str | None}],
+                'relaxed': bool | None,
+                'zero_energy_reference_hartree': float,
+                'coordinate': {coordinate_type, atom_indices, index_base,
+                               unit, symmetry_number, ...},
+                'samples': [{source_index, angle_degrees,
+                             electronic_energy_hartree,
+                             relative_energy_kj_mol, geometry_xyz}],
             },
         }
 
     Rotors that don't produce a parseable scan_result are skipped — the
-    matching torsion's ``source_scan_calculation_key`` will be ``None``
+    matching torsion's ``source_scan_key`` will be ``None``
     so consumers don't end up with dangling references.
 
     Only 1D rotors are emitted here; ND rotors and any future
@@ -1576,34 +2446,59 @@ def _build_scan_calculations(spc, project_directory: str) -> list[dict]:
     input_xyz = getattr(spc, 'final_xyz', None) or getattr(spc, 'initial_xyz', None)
     out: list[dict] = []
     for rotor_index, rotor in spc.rotors_dict.items():
-        if rotor.get('success') is not True:
-            continue
-        if rotor.get('dimensions', 1) != 1:
-            continue
-        scan_result = _build_scan_result_for_rotor(
-            rotor, project_directory, input_xyz=input_xyz,
+        entry = _build_rotor_scan_entry(
+            rotor_index, rotor, project_directory, input_xyz=input_xyz,
         )
-        if scan_result is None:
-            continue
-        scan_constraints = _parse_scan_constraints(rotor, project_directory)
-        entry = {
-            'key': f'scan_rotor_{rotor_index}',
-            'type': 'scan',
-            'scan_result': scan_result,
-        }
-        if scan_constraints:
-            entry['constraints'] = scan_constraints
-        out.append(entry)
+        if entry is not None:
+            out.append(entry)
     return out
+
+
+def _build_rotor_scan_entry(rotor_index,
+                            rotor: dict,
+                            project_directory: str,
+                            input_xyz: dict | None = None,
+                            ) -> dict | None:
+    """Return the ``rotor_scans`` record for a single rotor, or ``None``.
+
+    ``None`` is returned for an unsuccessful rotor, a rotor of more than one
+    dimension, and a rotor whose scan log does not yield a scan result. This is
+    the only place that decision is made; both :func:`_build_rotor_scans` and
+    :func:`_get_torsions` reach it through :func:`_build_rotor_scans`.
+    """
+    if rotor.get('success') is not True:
+        return None
+    if rotor.get('dimensions', 1) != 1:
+        return None
+    scan_result = _build_scan_result_for_rotor(
+        rotor, project_directory, input_xyz=input_xyz,
+    )
+    if scan_result is None:
+        return None
+    entry = {
+        'key': f'scan_rotor_{rotor_index}',
+        'source_log': _make_rel_path(_resolve_scan_path(rotor, project_directory), project_directory),
+        'result': scan_result,
+    }
+    scan_constraints = _parse_scan_constraints(rotor, project_directory)
+    if scan_constraints:
+        entry['constraints'] = scan_constraints
+    return entry
 
 
 def _parse_scan_constraints(rotor: dict, project_directory: str) -> list[dict]:
     """Best-effort extraction of held-fixed constraints for a rotor scan.
 
     Dispatches to the per-software constraint parser based on the
-    rotor's ``scan_software`` hint (set by the scheduler when the scan
-    job completes). Returns the held-fixed constraints — the active
-    scan coordinate is excluded; it lives in ``scan_result.coordinates[]``.
+    rotor's ``scan_software`` hint. The scheduler stamps this field with
+    ``job.job_adapter`` (e.g. ``'gaussian'``, ``'orca'``) every time it
+    records a scan job's output path — in ``Scheduler.end_job`` when a
+    scan/directed-scan job finishes, and in ``Scheduler.check_scan_job``
+    when the scan is post-processed for symmetry/energies — so a
+    completed scan's rotor dict always carries the software that
+    actually produced the log. Returns the held-fixed constraints — the
+    active scan coordinate is excluded; it lives in
+    ``scan_result.coordinates[]``.
 
     Software dispatch:
         ``gaussian``      → :func:`parse_gaussian_constraints`
@@ -1616,7 +2511,7 @@ def _parse_scan_constraints(rotor: dict, project_directory: str) -> list[dict]:
                             the consumer only cares about the absence)
 
     Never raises: parser failures degrade to ``[]`` so a malformed log
-    doesn't break ``additional_calculations`` for the rest of the run.
+    doesn't break the other rotor-scan records in the run.
     """
     scan_path = _resolve_scan_path(rotor, project_directory)
     if scan_path is None:
@@ -1645,14 +2540,9 @@ def _scan_constraint_parser_for(software: str):
     None so the caller can debug-log and emit an empty list without
     parsing surprise files.
     """
-    if not software:
-        from arc.parser.adapters.gaussian import parse_gaussian_constraints
-        return parse_gaussian_constraints
-    if software == 'gaussian':
-        from arc.parser.adapters.gaussian import parse_gaussian_constraints
+    if not software or software == 'gaussian':
         return parse_gaussian_constraints
     if software == 'orca':
-        from arc.parser.adapters.orca import parse_orca_constraints
         return parse_orca_constraints
     return None
 
@@ -1666,7 +2556,7 @@ def _safe_dihedral_for_scan_atoms(
 
     Wraps :func:`arc.species.vectors.calculate_dihedral_angle` with the
     failure-tolerant contract this helper needs: missing input → quiet
-    ``None`` (caller falls through to "unknown"); raised exception or
+    ``None`` (caller decides what "unknown" means); raised exception or
     NaN return (colinear atoms) → ``None`` plus a warning that names
     the scan log so the operator can investigate. Never raises.
 
@@ -1679,41 +2569,112 @@ def _safe_dihedral_for_scan_atoms(
         angle = calculate_dihedral_angle(coords=xyz, torsion=scan_atoms, index=1)
     except Exception as exc:
         logger.warning(
-            "Scan start_value/end_value: dihedral calculation failed for "
-            "atoms=%r in '%s': %s; omitting start_value/end_value.",
+            "Scan dihedral calculation failed for atoms=%r in '%s': %s.",
             scan_atoms, scan_path, exc,
         )
         return None
     if math.isnan(angle):  # colinear atoms in the input geometry.
         logger.warning(
-            "Scan start_value/end_value: dihedral is NaN (colinear quartet?) "
-            "for atoms=%r in '%s'; omitting start_value/end_value.",
+            "Scan dihedral is NaN (colinear quartet?) for atoms=%r in '%s'.",
             scan_atoms, scan_path,
         )
         return None
     return float(angle)
 
 
-def _xyz_dict_to_tckdb_xyz_text(xyz_dict: dict | None) -> str | None:
-    """Serialize an ARC xyz dict into TCKDB's count-headered xyz_text.
+def _unwrap_angle_sequence(angles: list[float]) -> list[float]:
+    """Make a sequence of angles continuous by folding each step into (-180, 180].
 
-    Mirrors the conformer-side normalization the adapter applies to the
-    species ``xyz`` field: bare atom-only string from
-    ``arc.species.converter.xyz_to_str`` plus a TCKDB-required
-    ``<n_atoms>\\n<comment>\\n<atoms>`` envelope. Returns ``None`` for
-    null/empty input so the caller can decide whether to omit the
-    field; serialization errors propagate as exceptions for the caller
-    to handle (uniform-drop on failure rather than per-point drop).
+    The first value is kept as measured; every later value is the running sum of the
+    folded steps. A sweep that passes a full turn therefore keeps climbing past 360
+    instead of folding back towards 0, and a sweep that runs towards decreasing values
+    goes below its start. Every value equals the corresponding input angle modulo 360.
     """
+    unwrapped = [float(angles[0])]
+    for previous, current in zip(angles, angles[1:]):
+        step = (float(current) - float(previous) + 180.0) % 360.0 - 180.0
+        unwrapped.append(unwrapped[-1] + step)
+    return unwrapped
+
+
+def _absolute_scan_dihedrals(geometries: list | None,
+                             scan_atoms: list[int],
+                             scan_path: str,
+                             expected_count: int,
+                             ) -> list[float] | None:
+    """Measure one absolute dihedral per scan point, or return ``None``.
+
+    Each value is the dihedral of ``scan_atoms`` measured on that point's *own*
+    geometry, so it is the value of the internal coordinate at that point rather than a
+    displacement from the scan's first sample, and it agrees by construction with what a
+    consumer recomputes from the geometry published alongside it. The sequence is
+    unwrapped, so a full rotation ends a turn away from where it started and a sweep
+    towards decreasing values goes below its start; values are never folded back into a
+    0-360 window.
+
+    Returns ``None`` when the per-point geometries are absent, do not align 1:1 with the
+    scan points, or contain a quartet whose dihedral cannot be measured. There is no
+    absolute coordinate to publish in those cases and a displacement is not a substitute,
+    so the caller drops the scan rather than publishing an axis of a different kind.
+    """
+    if not isinstance(geometries, list) or len(geometries) != expected_count:
+        logger.warning(
+            "Scan-point geometries are unavailable or do not align with the %d scan "
+            "points of '%s'; omitting scan_result, as the samples' absolute dihedral "
+            "cannot be measured.",
+            expected_count, scan_path,
+        )
+        return None
+    measured: list[float] = []
+    for geometry in geometries:
+        angle = _safe_dihedral_for_scan_atoms(geometry, scan_atoms, scan_path)
+        if angle is None:
+            logger.warning(
+                "Could not measure the dihedral of atoms=%r at every point of '%s'; "
+                "omitting scan_result.",
+                scan_atoms, scan_path,
+            )
+            return None
+        measured.append(angle)
+    return _unwrap_angle_sequence(measured)
+
+
+def _xyz_dict_to_output_text(xyz_dict: dict | None) -> str | None:
+    """Serialize an ARC xyz dict using ARC's ordinary atom-line format."""
     if xyz_dict is None:
         return None
     bare = xyz_to_str(xyz_dict=xyz_dict)
     if not bare:
         return None
-    text = bare.strip()
-    if not text:
-        return None
-    return f"{len(text.splitlines())}\n\n{text}"
+    return bare.strip() or None
+
+
+def _scan_is_relaxed(rotor: dict) -> bool | None:
+    """Return whether the rotor's scan geometries were relaxed at each point.
+
+    An ESS-native torsion scan (``directed_scan_type`` absent or ``'ess'``)
+    optimizes all remaining degrees of freedom at every step, and so does every
+    ``*_opt`` directed scan. ARC also supports rigid scans — the
+    ``brute_force_sp`` family evaluates single-point energies on unrelaxed
+    geometries — for which claiming relaxation would be a false statement about
+    the data. An unrecognized scan type yields ``None`` rather than a guess.
+
+    Args:
+        rotor (dict): The species' ``rotors_dict`` entry.
+
+    Returns:
+        bool | None: ``True`` for a relaxed scan, ``False`` for a rigid one,
+                     ``None`` when the scan type is not recognized.
+    """
+    scan_type = rotor.get('directed_scan_type')
+    if scan_type is None or not str(scan_type).strip():
+        return True
+    scan_type = str(scan_type).strip().lower()
+    if scan_type == 'ess' or '_opt' in scan_type:
+        return True
+    if '_sp' in scan_type:
+        return False
+    return None
 
 
 def _build_scan_result_for_rotor(
@@ -1722,35 +2683,27 @@ def _build_scan_result_for_rotor(
     *,
     input_xyz: dict | None = None,
 ) -> dict | None:
-    """Parse the rotor's scan log and shape it into a TCKDB ``scan_result`` dict.
+    """Parse a rotor scan into a tool-neutral scientific result.
 
     Returns ``None`` when:
       * no scan log on disk (covered by ``_resolve_scan_path``)
       * parser fails to extract angles or relative energies (the only
-        two fields that drive the shape — absolute Hartree and
-        geometries are nice-to-have)
-      * atom_indices isn't a 4-int 1-based dihedral quartet (the
-        coordinates entry would be unusable downstream)
+        two fields that drive the shape — absolute Hartree energies are
+        nice-to-have)
+      * atom indices are not a valid ARC-native 1-based dihedral quartet
+      * the per-point geometries do not yield an absolute dihedral for
+        every sample, since each sample's ``angle_degrees`` is measured
+        on that sample's own geometry
 
-    On the happy path the dict carries plain Python primitives only, so
-    YAML emission via ``save_yaml_file`` Just Works. Per-point
-    geometries are emitted under ``points[i].geometry.xyz_text`` when
-    the parser returns a per-step geometry list aligned with the
-    energy/angle list (TCKDB resolves these server-side into
-    ``calc_scan_point.geometry_id``); on length mismatch or
-    serialization failure the geometries are dropped uniformly across
-    all points and a warning is logged — partial coverage would imply
-    a per-point alignment we can't actually verify.
+    Per-sample geometries use ARC's ordinary atom-line XYZ text. On length
+    mismatch or serialization failure they are dropped uniformly; partial
+    coverage would imply an alignment ARC cannot verify.
     """
     scan_path = _resolve_scan_path(rotor, project_directory)
     if scan_path is None:
         return None
 
-    try:
-        parsed = parse_1d_scan_full_result(log_file_path=scan_path)
-    except Exception:
-        logger.debug(f"Failed to parse 1D rotor scan result from '{scan_path}'", exc_info=True)
-        return None
+    parsed = parse_1d_scan_full_result(log_file_path=scan_path)
 
     angles = parsed.get('angles_deg')
     rel_energies = parsed.get('relative_energies_kj_mol')
@@ -1771,8 +2724,8 @@ def _build_scan_result_for_rotor(
 
     # Per-point geometries: the parser wrapper returns one xyz dict per
     # converged scan iteration. Attach to each point as
-    # ``geometry.xyz_text`` (TCKDB count-headered format) only when the
-    # list aligns 1:1 with the energy list; otherwise drop wholesale —
+    # geometry text only when the list aligns 1:1 with the energy list;
+    # otherwise drop wholesale —
     # mixing populated and missing entries would imply an alignment we
     # can't verify, and the schema accepts ``geometry`` as omitted but
     # not as ``null``.
@@ -1788,7 +2741,7 @@ def _build_scan_result_for_rotor(
         else:
             try:
                 point_geometry_xyz_texts = [
-                    _xyz_dict_to_tckdb_xyz_text(g) for g in geometries
+                    _xyz_dict_to_output_text(g) for g in geometries
                 ]
             except Exception as exc:
                 logger.warning(
@@ -1813,18 +2766,20 @@ def _build_scan_result_for_rotor(
             and all(isinstance(a, int) and a >= 1 for a in scan_atoms)
             and len(set(scan_atoms)) == 4):
         return None
-    a1, a2, a3, a4 = scan_atoms
+
+    point_dihedrals = _absolute_scan_dihedrals(
+        geometries, scan_atoms, scan_path, len(rel_energies),
+    )
+    if point_dihedrals is None:
+        return None
 
     symmetry = rotor.get('symmetry')
     coord: dict[str, Any] = {
-        'coordinate_index': 1,
-        'coordinate_kind': 'dihedral',
-        'atom1_index': a1,
-        'atom2_index': a2,
-        'atom3_index': a3,
-        'atom4_index': a4,
-        'step_count': len(angles),
-        'value_unit': 'degree',
+        'coordinate_type': 'dihedral',
+        'atom_indices': list(scan_atoms),
+        'index_base': 1,
+        'unit': 'degree',
+        'sample_count': len(angles),
     }
     if isinstance(symmetry, int) and symmetry >= 1:
         coord['symmetry_number'] = symmetry
@@ -1835,27 +2790,26 @@ def _build_scan_result_for_rotor(
     # step size the user requested rather than one inferred from the
     # completed point spacing. ORCA / other ESS raise
     # ``NotImplementedError`` from the same parser; in those cases
-    # the grid fields stay absent rather than guessed at — TCKDB
-    # treats null as "unknown grid", which is honest.
+    # the grid fields stay absent rather than guessed at.
     requested_step_size: float | None = None
+    requested_steps: int | None = None
     try:
         scan_args = parse_scan_args(scan_path)
         raw_step_size = scan_args.get('step_size')
-        if isinstance(raw_step_size, (int, float)) and raw_step_size > 0:
+        if isinstance(raw_step_size, (int, float)) and raw_step_size != 0:
             requested_step_size = float(raw_step_size)
+        raw_steps = scan_args.get('step')
+        if isinstance(raw_steps, int) and raw_steps > 0:
+            requested_steps = raw_steps
     except NotImplementedError:
-        # Non-Gaussian ESS: parser doesn't speak this log format yet.
-        pass
+        logger.debug(f"parse_scan_args does not support the log format of '{scan_path}'; "
+                     f"leaving the requested-grid fields absent")
     except Exception:
         logger.debug(f"parse_scan_args failed for '{scan_path}'", exc_info=True)
     if requested_step_size is not None:
-        coord['step_size'] = requested_step_size
-        # 1D dihedral torsion scans: the resolution IS the step size.
-        # ND or non-dihedral scans would need a different mapping;
-        # this whole helper is the 1D path so the equivalence holds.
-        coord['resolution_degrees'] = requested_step_size
+        coord['requested_step_size'] = requested_step_size
 
-    # ``start_value``/``end_value`` describe the requested grid, not
+    # ``requested_start``/``requested_end`` describe the requested grid, not
     # the completed-point spacing. Computing them honestly requires
     # both the requested step size (above) AND the input dihedral
     # (the geometry the user pointed the scan at). The latter comes
@@ -1864,15 +2818,22 @@ def _build_scan_result_for_rotor(
     # ModRedundant scans has the dihedral held fixed at the input
     # value by construction (so it's not "inferring from outputs",
     # it's reading a frozen DOF). ``end_value`` is then exact:
-    # ``start + step_size * (step_count - 1)``. We deliberately do
+    # ``start + step_size * steps``. We deliberately do
     # NOT wrap into [-180, 180]: a full rotation must land at
-    # ``start + 360°``, not back at ``start`` — TCKDB's column has
-    # no range constraint, and continuity is what downstream
-    # consumers (rotor-treatment plotters, etc.) expect.
-    step_count_for_grid = len(rel_energies)
+    # ``start + 360°``, not back at ``start``; continuity is the scientific
+    # fact downstream consumers need.
+    #
+    # ``steps`` is the count the user *requested*, read from the same
+    # ModRedundant header as the step size. Deriving it from the number of
+    # completed points instead would make a Gaussian-truncated scan report its
+    # truncated span as the request — contradicting this field's whole purpose.
+    # Completed points remain available as ``sample_count`` and ``samples``.
+    requested_span_steps = (
+        requested_steps if requested_steps is not None else len(rel_energies) - 1
+    )
     if (
         requested_step_size is not None
-        and step_count_for_grid >= 1
+        and requested_span_steps >= 0
     ):
         dihedral_source = input_xyz
         if dihedral_source is None:
@@ -1883,39 +2844,64 @@ def _build_scan_result_for_rotor(
             dihedral_source, scan_atoms, scan_path,
         )
         if start_value is not None:
-            coord['start_value'] = start_value
-            coord['end_value'] = (
-                start_value + requested_step_size * (step_count_for_grid - 1)
+            coord['requested_start'] = start_value
+            coord['requested_end'] = (
+                start_value + requested_step_size * requested_span_steps
             )
 
-    points: list[dict[str, Any]] = []
-    for i, (angle, rel_e) in enumerate(zip(angles, rel_energies), start=1):
-        point: dict[str, Any] = {
-            'point_index': i,
+    samples: list[dict[str, Any]] = []
+    for source_index, (angle, rel_e) in enumerate(zip(point_dihedrals, rel_energies)):
+        sample: dict[str, Any] = {
+            'source_index': source_index,
+            'angle_degrees': float(angle),
             'relative_energy_kj_mol': float(rel_e),
-            'coordinate_values': [{
-                'coordinate_index': 1,
-                'coordinate_value': float(angle),
-                'value_unit': 'degree',
-            }],
         }
         if abs_energies is not None:
-            point['electronic_energy_hartree'] = float(abs_energies[i - 1])
+            sample['electronic_energy_hartree'] = float(abs_energies[source_index])
         if point_geometry_xyz_texts is not None:
-            point['geometry'] = {'xyz_text': point_geometry_xyz_texts[i - 1]}
-        points.append(point)
+            sample['geometry_xyz'] = point_geometry_xyz_texts[source_index]
+        samples.append(sample)
 
     scan_result: dict[str, Any] = {
         'dimension': 1,
-        'is_relaxed': True,
-        'coordinates': [coord],
-        'points': points,
+        'relaxed': _scan_is_relaxed(rotor),
+        'coordinate': coord,
+        'samples': samples,
     }
     zero_ref = parsed.get('zero_energy_reference_hartree')
     if isinstance(zero_ref, (int, float)):
         scan_result['zero_energy_reference_hartree'] = float(zero_ref)
 
     return scan_result
+
+
+def _ts_checks_to_dict(spc) -> dict:
+    """Return the transition state's validation verdicts.
+
+    ``ARCSpecies.ts_checks`` is where ARC records whether the transition state
+    passed each validation it ran: the energy checks (``E0``, ``e_elect``), the
+    IRC endpoint check, the single-imaginary-frequency check, and the normal
+    mode displacement check. A verdict is ``True`` (passed), ``False`` (failed)
+    or ``None`` (not run, or run without a conclusion) — ``None`` is not a
+    failure. ``warnings`` accumulates free text emitted by those checks.
+
+    These are the transition state's provenance: ``irc_converged`` next to them
+    reports that the IRC *jobs completed*, not that the IRC validated anything,
+    and only ``ts_checks['IRC']`` carries that verdict.
+
+    Args:
+        spc (ARCSpecies): The transition state species.
+
+    Returns: dict
+        ``{'E0', 'e_elect', 'IRC', 'freq', 'NMD'}`` mapped to ``bool | None``,
+        plus ``'warnings'`` as a string.
+    """
+    checks = getattr(spc, 'ts_checks', None) or dict()
+    result = {key: (checks.get(key) if isinstance(checks.get(key), bool) else None)
+              for key in ('E0', 'e_elect', 'IRC', 'freq', 'NMD')}
+    warnings = checks.get('warnings')
+    result['warnings'] = warnings if isinstance(warnings, str) else ''
+    return result
 
 
 def _rxn_to_dict(rxn) -> dict:
@@ -1925,6 +2911,7 @@ def _rxn_to_dict(rxn) -> dict:
     if kinetics is not None:
         A = kinetics.get('A')
         Ea = kinetics.get('Ea')
+        T0 = kinetics.get('T0')
         Tmin = kinetics.get('Tmin')
         Tmax = kinetics.get('Tmax')
         kin_dict = {
@@ -1933,6 +2920,7 @@ def _rxn_to_dict(rxn) -> dict:
             'n': kinetics.get('n'),
             'Ea': Ea[0] if isinstance(Ea, (tuple, list)) else Ea,
             'Ea_units': Ea[1] if isinstance(Ea, (tuple, list)) else None,
+            'T0_k': T0[0] if isinstance(T0, (tuple, list)) else T0,
             'Tmin_k': Tmin[0] if isinstance(Tmin, (tuple, list)) else Tmin,
             'Tmax_k': Tmax[0] if isinstance(Tmax, (tuple, list)) else Tmax,
             'dA': kinetics.get('dA'),
@@ -1940,13 +2928,14 @@ def _rxn_to_dict(rxn) -> dict:
             'dEa': kinetics.get('dEa'),
             'dEa_units': kinetics.get('dEa_units'),
             'n_data_points': kinetics.get('n_data_points'),
-            # ARC always renders the same tunneling method into Arkane's
-            # input template (currently 'Eckart'); record it here so
-            # downstream consumers know which correction was applied to
-            # the fitted A/n/Ea. If Arkane's parsed kinetics carries an
-            # explicit tunneling marker in the future, prefer that;
-            # otherwise fall back to the template constant.
-            'tunneling': kinetics.get('tunneling') or ARKANE_TUNNELING_METHOD,
+            # Only the Arkane run that fitted these A/n/Ea stamps this key
+            # (arc/statmech/arkane.py). Kinetics from any other source —
+            # user-supplied in the input YAML, restored from a restart file, or
+            # from a future non-Arkane StatmechAdapter — carry no tunneling
+            # correction, so the field stays null rather than defaulting from
+            # the template constant. A provenance field that cannot be false
+            # carries no information.
+            'tunneling': kinetics.get('tunneling'),
         }
 
     rxn_dict: dict = {

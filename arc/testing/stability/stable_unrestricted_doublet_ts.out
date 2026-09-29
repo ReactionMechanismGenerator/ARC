@@ -1,6 +1,6 @@
  Entering Gaussian System, Link 0=g16
  Initial command:
- /usr/local/g16-gpu/g16/l1.exe "/gtmp/calvin.p/scratch/g16/4571156.zeus-master/Gau-1868571.inp" -scrdir="/gtmp/calvin.p/scratch/g16/4571156.zeus-master/"
+ /usr/local/g16-gpu/g16/l1.exe "/scratch/g16/job/Gau-1868571.inp" -scrdir="/scratch/g16/job/"
  Entering Link 1 = /usr/local/g16-gpu/g16/l1.exe PID=   1868577.
   
  Copyright (c) 1988-2021, Gaussian, Inc.  All Rights Reserved.

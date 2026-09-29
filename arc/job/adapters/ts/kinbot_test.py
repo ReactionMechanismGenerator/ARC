@@ -13,6 +13,7 @@ import unittest
 from unittest import mock
 
 from arc.common import ARC_TESTING_PATH, get_logger, read_yaml_file, save_yaml_file
+from arc.exceptions import DependencyError
 import arc.job.adapters.ts.kinbot_ts as kinbot_ts
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
@@ -84,7 +85,7 @@ class TestKinBotAdapter(unittest.TestCase):
         """Test that execute_incore() raises if the kinbot_env python executable is missing."""
         adapter = self.get_adapter(dir_name='tst_missing_python')
         with mock.patch.object(kinbot_ts, 'KINBOT_PYTHON', None):
-            with self.assertRaises(FileNotFoundError):
+            with self.assertRaises(DependencyError):
                 adapter.execute_incore()
 
     def test_intra_h_migration(self):

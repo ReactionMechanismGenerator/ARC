@@ -65,19 +65,13 @@ import rmgpy.constants as constants
 
 from arkane.encorr.corr import get_atom_correction, get_bac
 from arkane.encorr.data import atom_energies, pbac
-from arkane.modelchem import LevelOfTheory
 
+from arkane_levels import lot_from_string
 from common import read_yaml_file, save_yaml_file
 
 
 HARTREE_TO_J_MOL = constants.E_h * constants.Na      # ~2625499.858
 KCAL_TO_J_MOL = 4184.0
-
-
-def _lot_from_string(lot_str):
-    """Construct a LevelOfTheory from its repr string."""
-    kwargs = dict(re.findall(r"(\w+)\s*=\s*'([^']*)'", lot_str))
-    return LevelOfTheory(**kwargs)
 
 
 def _aec_for(lot, atoms):
@@ -225,7 +219,7 @@ def main(input_path, output_path):
         save_yaml_file(output_path, result)
         return
 
-    lot = _lot_from_string(lot_str)
+    lot = lot_from_string(lot_str)
     for spc in species:
         result['species'].append(_process_species(spc, lot, bac_type))
 

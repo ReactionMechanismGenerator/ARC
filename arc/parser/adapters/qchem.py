@@ -8,6 +8,7 @@ import numpy as np
 import re
 from typing import TYPE_CHECKING
 
+from arc.common import is_str_int
 from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import xyz_from_data
 from arc.parser.adapter import ESSAdapter
@@ -160,10 +161,8 @@ class QChemParser(ESSAdapter, ABC):
                 elif in_molecule and line.strip():
                     tokens = line.split()
                     if len(tokens) >= 2:
-                        try:
+                        if is_str_int(tokens[1]):
                             multiplicity = int(tokens[1])
-                        except ValueError:
-                            pass
                     in_molecule = False
         if s_squared is None:
             return None

@@ -57,6 +57,16 @@ class TestChecks(unittest.TestCase):
         self.assertEqual(common.get_i_from_job_name('conf_opt_3355'), 3355)
         self.assertEqual(common.get_i_from_job_name('tsg2'), 2)
 
+    def test_get_conformer_job_name(self):
+        """Test the get_conformer_job_name() function"""
+        self.assertEqual(common.get_conformer_job_name('conf_opt', 0), 'conf_opt_0')
+        self.assertEqual(common.get_conformer_job_name('conf_sp', 3), 'conf_sp_3')
+        self.assertEqual(common.get_conformer_job_name('conf_opt', 3355), 'conf_opt_3355')
+        self.assertTrue(common.is_conformer_job(common.get_conformer_job_name('conf_sp', 12)))
+        for job_type in common.CONFORMER_JOB_TYPES:
+            for i in [0, 7, 99999]:
+                self.assertEqual(common.get_i_from_job_name(common.get_conformer_job_name(job_type, i)), i)
+
     def test_is_ts_check_exempt(self):
         """
         Test the is_ts_check_exempt() function.

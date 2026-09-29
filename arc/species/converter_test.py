@@ -19,7 +19,7 @@ from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 import arc.species.converter as converter
 from arc.common import (ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists,
                         almost_equal_lists, distance_matrix)
-from arc.constants import angstrom_to_bohr
+from arc.constants import angstrom_to_bohr, bohr_to_angstrom
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
 from arc.species.perceive import perceive_molecule_from_xyz
@@ -722,7 +722,12 @@ H      3.654100    0.340300    0.057100"""
         self.assertAlmostEqual(float(z2), 0.0)
 
     def test_reorder_xyz_string_coordinate_first(self):
-        """Test reordering coordinate-first XYZ strings back to atom-last order with conversion"""
+        """
+        Test reordering coordinate-first XYZ strings back to atom-last order with conversion.
+
+        The converted coordinate is compared numerically rather than as a byte-exact string, to the full
+        precision of ``bohr_to_angstrom``.
+        """
         xyz_format = "0.0 0.0 0.0 N\n1.0 0.0 0.0 H"
         converted = converter.reorder_xyz_string(
             xyz_str=xyz_format,
@@ -730,8 +735,14 @@ H      3.654100    0.340300    0.057100"""
             units="bohr",
             convert_to="angstrom",
         )
-        expected = "0.0 0.0 0.0 N\n0.529177 0.0 0.0 H"
-        self.assertEqual(converted, expected)
+        lines = converted.splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0], "0.0 0.0 0.0 N")
+        x, y, z, symbol = lines[1].split()
+        self.assertEqual(symbol, 'H')
+        self.assertAlmostEqual(float(x), bohr_to_angstrom, places=8)
+        self.assertAlmostEqual(float(y), 0.0, places=8)
+        self.assertAlmostEqual(float(z), 0.0, places=8)
 
     def test_xyz_to_str(self):
         """Test converting an ARC xyz format to a string xyz format"""

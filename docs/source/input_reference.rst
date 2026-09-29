@@ -223,6 +223,7 @@ Current job type keys are:
 * ``rotors``
 * ``irc``
 * ``orbitals``
+* ``stability``
 * ``onedmin``
 * ``bde``
 
@@ -242,6 +243,46 @@ Example:
      freq: true
      sp: true
      rotors: false
+     stability: false
+
+``conf_opt``, ``opt``, ``fine``, ``freq``, ``sp``, ``rotors`` and ``irc`` default to
+``true`` when omitted; ``conf_sp``, ``orbitals``, ``stability``, ``onedmin`` and ``bde``
+default to ``false``.
+
+Wavefunction Stability Analysis
+-------------------------------
+
+``stability`` is off by default and is opt-in through ``job_types``. ARC has implemented
+the analysis for Gaussian and for ORCA so far; other ESSs are not wired up yet, and a run
+whose optimization jobs go to another ESS is told so once per ESS in the log rather than
+silently producing nothing. The two ESSs test the same space and agree on the verdict; in
+ORCA the analysis always follows an instability it finds, since ORCA 6.0.0 aborts rather
+than merely reporting one, and the sector of a restricted reference's instability is read
+off the solution it relaxes into.
+
+It runs once per species, as soon as that species' optimization converges and before the
+frequency job, the single point, the IRC and the rotor scans, so that those jobs inherit
+the reference and the geometry the verdict settles on. It runs only for a transition state
+or for a species whose optimization actually ran with a restricted reference - a restricted
+reference is the only one the analysis can inform, since a restricted solution gives the
+same energy as an unrestricted one if and only if it is stable. It is further limited to
+DFT and Hartree-Fock optimization levels, and needs the checkfile the optimization job
+wrote, so that the SCF under test is the converged one the later jobs build on.
+
+What it buys you: a verdict recorded in the log and in ``output.yml`` saying whether the
+converged wavefunction is a genuine minimum in the space of orbital rotations, together
+with the label and eigenvalue of any negative stability-matrix root, and whether the
+analytic frequencies are invalidated by it. For a transition state the verdict can also
+decide the restricted-versus-unrestricted reference of the jobs that follow. See
+:ref:`Advanced Features <advanced>` for the full treatment, including which instabilities
+invalidate analytic frequencies and what an adopted verdict does and does not correct.
+
+``specific_job_type`` cannot be used to request it. That key replaces ``job_types``
+wholesale with a dictionary in which only the named job type is ``true``, so
+``specific_job_type: stability`` switches off the ``opt``, ``freq`` and ``sp`` jobs the
+analysis is spawned from and nothing runs at all (``bde`` is special-cased to re-enable
+them; ``stability`` is not). Any other value of ``specific_job_type`` likewise sets
+``stability`` to ``false``. Request it through ``job_types``.
 
 ESS Settings
 ------------

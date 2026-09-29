@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
-from arc.job.pipe.pipe_planner import PipePlanner
+from arc.job.pipe.pipe_planner import PipePlanner, rotor_scan_resolution
 from arc.level import Level
 from arc.species import ARCSpecies
 
@@ -65,6 +65,9 @@ def _make_mock_sched(project_directory):
     sched.species_dict = {'H2O': spc}
     sched.output = {'H2O': {'paths': {}, 'job_types': {}}}
     sched.deduce_job_adapter = MagicMock(return_value='gaussian')
+    # A real Scheduler defaults this to None (the rotor_scan_resolution input key was not given);
+    # spell it out, since a bare MagicMock attribute is truthy and would pose as a run-level value.
+    sched.rotor_scan_resolution = None
     return sched
 
 
@@ -261,6 +264,20 @@ class TestTryPipeRotorScans(unittest.TestCase):
         self.sched.scan_level = None
         handled = self.planner.try_pipe_rotor_scans_1d('H2O', list(range(12)))
         self.assertEqual(handled, set())
+
+    def test_settings_default_scan_res_when_run_level_is_none(self):
+        """Without a rotor_scan_resolution input key, the payload carries the settings default."""
+        self.planner.try_pipe_rotor_scans_1d('H2O', list(range(12)))
+        pipe = list(self.coord.active_pipes.values())[0]
+        self.assertTrue(all(task.input_payload['scan_res'] == rotor_scan_resolution
+                            for task in pipe.tasks))
+
+    def test_run_level_scan_res_overrides_settings_default(self):
+        """The rotor_scan_resolution input key wins over the launching host's settings value."""
+        self.sched.rotor_scan_resolution = 4.0
+        self.planner.try_pipe_rotor_scans_1d('H2O', list(range(12)))
+        pipe = list(self.coord.active_pipes.values())[0]
+        self.assertTrue(all(task.input_payload['scan_res'] == 4.0 for task in pipe.tasks))
 
 
 class TestTryPipeTsg(unittest.TestCase):

@@ -11,13 +11,31 @@ import sys
 
 from common import save_yaml_file
 
+import rmgpy.constants as constants
 from rmgpy.data.thermo import ThermoLibrary
+from rmgpy.statmech import IdealGasTranslation
 from rmgpy.thermo import NASAPolynomial, NASA, ThermoData, Wilhoit
 
 RT = 298.15  # Room temperature in K
 
 
 _CP_TEMPS = [300.0, 400.0, 500.0, 600.0, 800.0, 1000.0, 1500.0, 2000.0, 2400.0]
+
+
+def standard_state_pressure_pa():
+    """Return the standard-state pressure, in Pa, of RMG's translational partition function.
+
+    ``IdealGasTranslation.get_partition_function(T)`` evaluates
+    ``((2 * pi * m) / h ** 2) ** 1.5 / P0 * (kB * T) ** 2.5``. Evaluating it for a known
+    mass and temperature and dividing that analytic numerator by the result recovers
+    ``P0``, so the pressure reported is the one RMG's own statmech code applied. The
+    quotient is rounded to six decimals, which clears the residue of the division.
+    """
+    mode = IdealGasTranslation(mass=(1.0, 'amu'))
+    mass, temperature = mode.mass.value_si, RT
+    numerator = ((2 * constants.pi * mass) / (constants.h * constants.h)) ** 1.5 \
+        * (constants.kB * temperature) ** 2.5
+    return round(numerator / mode.get_partition_function(temperature), 6)
 
 
 def _extract_nasa(thermo_data):
@@ -39,8 +57,7 @@ def _extract_nasa(thermo_data):
 def _extract_thermo_points(thermo_data):
     """Return a list of per-temperature thermochemistry dicts, or None.
 
-    Each entry carries the full set of TCKDB-shaped fields that
-    ``thermo_point`` accepts:
+    Each entry carries explicit thermodynamic values and units:
 
         ``temperature_k``  - the evaluation temperature in K
         ``cp_j_mol_k``     - heat capacity        (J/(mol*K))
@@ -50,8 +67,7 @@ def _extract_thermo_points(thermo_data):
 
     RMG's NASA / ThermoData accessors return SI units (J/mol for energies,
     J/(mol*K) for capacities/entropies); enthalpy and free energy are
-    converted to kJ/mol at the boundary because TCKDB persists them in
-    those units.
+    converted to kJ/mol for a compact, explicit output contract.
 
     Any per-temperature evaluation that raises (e.g., the polynomial is
     not valid at that T) is skipped silently — the goal is best-effort
@@ -133,61 +149,14 @@ def _load_thermo_entries_from_output_py(output_path, local_context):
     return entries
 
 
-def _iter_thermo_calls(content):
-    """Return the :class:`ast.Call` node of each ``thermo(...)`` call in ``content``.
-
-    Selects calls to the bare name ``thermo`` only, so the ``thermo=`` keyword nested inside each
-    call is not mistaken for one. If ``content`` is not parseable Python, a message is written to
-    stderr and an empty list is returned.
-    """
-    try:
-        tree = ast.parse(content)
-    except SyntaxError as e:
-        sys.stderr.write(f'Could not parse an Arkane output.py as Python: {e}\n')
-        return []
-    return [node for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == 'thermo']
-
-
-def _load_thermo_entries_from_output_py(output_path, local_context):
-    """Reconstruct a ``{label: NASA}`` mapping directly from an Arkane ``output.py``.
-
-    Used as a fallback when ``RMG_libraries/thermo.py`` is absent because Arkane's
-    ``save_thermo_lib`` crashed *after* writing ``output.py`` (e.g. it rejects the two
-    identical reactants of an A+A reaction such as OH + OH, or a singlet-carbene
-    multiplicity clash). ``output.py`` holds one ``thermo(label=..., thermo=NASA(...))``
-    call per species; each is evaluated with the real rmgpy thermo classes in scope —
-    exactly the context Arkane itself uses to read these files back — so no thermo data
-    is lost to the library-save failure. A block that fails to evaluate is reported on
-    stderr and the remaining blocks are still parsed.
-    """
-    with open(output_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    entries = dict()
-
-    def _capture(label=None, thermo=None, *args, **kwargs):
-        if label is not None:
-            entries[label] = thermo
-
-    eval_context = dict(local_context)
-    eval_context['thermo'] = _capture
-    for node in _iter_thermo_calls(content):
-        try:
-            eval(compile(ast.Expression(body=node), '<arkane_output>', 'eval'), eval_context)
-        except Exception as e:
-            sys.stderr.write(f'Could not parse an Arkane thermo() block from {output_path}: {e}\n')
-    return entries
-
-
 def main():
     """
     Run this script from an Arkane project folder.
     In ARC this is under calcs/statmech/thermo.
     It loads the computed thermo (from the RMG thermo library Arkane wrote, or — when
     that library save failed — straight from ``output.py``), extracts H298, S298, NASA
-    polynomial coefficients, and tabulated thermo points, saving the results in a YAML file.
+    polynomial coefficients, tabulated Cp data, and the standard-state pressure the
+    entropies and free energies belong to, saving the results in a YAML file.
     A species whose thermo cannot be evaluated is reported on stderr and skipped, so the
     remaining species are still written.
     """
@@ -198,7 +167,8 @@ def main():
                      'Wilhoit': Wilhoit,
                      'NASAPolynomial': NASAPolynomial,
                      'NASA': NASA}
-    entries = dict()  # label -> rmgpy thermo object (NASA / ThermoData / Wilhoit)
+    entries = dict()
+    pressure_pa = standard_state_pressure_pa()
     if os.path.isfile(thermo_lib_path):
         library = ThermoLibrary()
         library.load(thermo_lib_path, local_context, {})
@@ -228,6 +198,7 @@ def main():
             'nasa_low': nasa_low,
             'nasa_high': nasa_high,
             'thermo_points': thermo_points,
+            'standard_state_pressure_pa': pressure_pa,
         }
     if result:
         result_path = os.path.join(cwd, 'thermo.yaml')

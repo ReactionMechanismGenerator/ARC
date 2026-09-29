@@ -198,6 +198,16 @@ class ESSAdapter(ABC):
         """
         pass
 
+    def parse_geometry_in_normal_mode_frame(self) -> dict[str, tuple] | None:
+        """
+        Parse the geometry in the Cartesian frame in which ``parse_normal_mode_displacement()``
+        reports the normal mode displacements of this log file.
+
+        Returns: dict[str, tuple] | None
+            The cartesian geometry.
+        """
+        return self.parse_geometry()
+
     def parse_1d_scan_energies_hartree(self) -> tuple[list[float] | None, list[float] | None]:
         """
         Parse the 1D torsion scan absolute electronic energies in Hartree.
@@ -213,15 +223,45 @@ class ESSAdapter(ABC):
             :meth:`parse_1d_scan_energies`.
         """
         return None, None
-    def parse_geometry_in_normal_mode_frame(self) -> dict[str, tuple] | None:
-        """
-        Parse the geometry in the Cartesian frame in which ``parse_normal_mode_displacement()``
-        reports the normal mode displacements of this log file.
 
-        Returns: dict[str, tuple] | None
-            The cartesian geometry.
+    def parse_cartesian_hessian_lower_triangle(self) -> list[float] | None:
         """
-        return self.parse_geometry()
+        Parse the Cartesian Hessian and return its packed lower triangle.
+
+        The triangle is row-major and includes the diagonal, i.e.
+        ``[H[i][j] for i in range(3N) for j in range(i + 1)]``, in the ESS's
+        native atomic units (hartree/bohr^2) with no SI conversion applied.
+
+        Adapters that don't implement this return ``None``; the caller treats
+        ``None`` as "no Cartesian Hessian available for this ESS".
+
+        Returns: list[float] | None
+            The lower triangle (length ``3N(3N + 1) / 2``), or ``None``.
+        """
+        return None
+
+    def parse_cartesian_hessian_geometry(self) -> tuple[dict[str, tuple] | None, str | None]:
+        """
+        Parse the geometry in the same Cartesian frame as the Hessian.
+
+        A Hessian is only meaningful alongside the geometry it was evaluated
+        at, in the *same* frame: mass-weighting and projecting out translation
+        and rotation both mix the two. Several ESSs report the Hessian in one
+        frame and their canonical geometry in another (Gaussian prints force
+        constants in the input orientation but reports geometries in the
+        standard orientation, a pure rotation apart), so a consumer that pairs
+        :meth:`parse_cartesian_hessian_lower_triangle` with
+        :meth:`parse_geometry` can silently reconstruct the wrong spectrum.
+        This method is the frame-correct partner for the Hessian.
+
+        Adapters that don't implement this return ``(None, None)``.
+
+        Returns: tuple[dict[str, tuple] | None, str | None]
+            The Cartesian geometry and a stable label naming its frame (e.g.
+            ``'gaussian_input_orientation'``), or ``(None, None)`` when the
+            frame-matched geometry is not recoverable.
+        """
+        return None, None
 
     def parse_opt_steps(self) -> int | None:
         """
@@ -241,11 +281,43 @@ class ESSAdapter(ABC):
         (or restricted/closed-shell logs) return ``None`` — the caller treats ``None`` as
         "no spin diagnostic available for this calc" and omits the block entirely.
 
+        ``None`` therefore covers three situations that this method does not distinguish:
+        an ESS with no reader here, a log holding no readable value, and a restricted
+        reference, whose determinant is an exact eigenfunction of S**2 with
+        ``<S**2> = S(S+1)`` by construction. A consumer that wants the restricted value
+        computes it from the species' multiplicity rather than reading it off a log.
+
         Returns: dict[str, float | None] | None
             ``{'s_squared': float, 's_squared_expected': float | None,
                's_squared_annihilated': float | None}`` when an ``<S**2>`` value was parsed,
             else ``None``. ``s_squared`` is always present (and finite) when the dict is
             returned; the other two are ``None`` when the ESS doesn't report them.
+        """
+        return None
+
+    def parse_wavefunction_stability(self) -> dict | None:
+        """
+        Parse the verdict of a wavefunction stability analysis.
+
+        Only meaningful for an ESS that offers the analysis and for a log that ran it.
+        Adapters that don't implement this return ``None``, which the caller records as
+        no stability verdict for that calc, so an ESS with no reader here is
+        indistinguishable from a log that holds no analysis.
+
+        An adapter that does implement it returns the keys documented on
+        ``GaussianParser.parse_wavefunction_stability``: ``verdict``, one of
+        ``'stable'``, ``'internal_instability'``, ``'external_instability'``,
+        ``'unattributed_instability'`` or ``'unknown'``, the ``internal_instability`` /
+        ``external_instability`` flags, the ``relaxations`` an external verdict names, the
+        ``negative_eigenvectors`` of the stability matrix and the ``lowest_eigenvalue``
+        among the roots it reported, the ``restricted`` reference tested, and whether the
+        verdict ``invalidates_analytic_freq``. ``'unattributed_instability'`` reports a
+        wavefunction the ESS found unstable without saying which sector the instability
+        lies in; only an adapter whose ESS leaves that open returns it. An adapter may add
+        keys of its own for behaviour peculiar to its ESS.
+
+        Returns: dict | None
+            The structured verdict, or ``None``.
         """
         return None
 

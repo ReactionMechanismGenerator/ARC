@@ -40,6 +40,7 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
                     backend: str = 'ARC',
                     consider_chirality: bool = True,
                     inc_vals: int | None = None,
+                    constraint: dict[int, int] | None = None,
                     verbose: bool = False,
                     ) -> list[int] | dict[int, int] | None:
     """
@@ -66,6 +67,10 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
         backend (str, optional): Currently only ``ARC``'s method is implemented as the backend.
         consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
         inc_vals (int, optional): An optional integer by which all values in the atom map list will be incremented.
+        constraint (dict[int, int], optional): Atom correspondences the map must satisfy, as ``spc_1`` index
+                                               -> ``spc_2`` index. Lets a reaction family's labeled-atom
+                                               assignment be honored while the candidates are still being
+                                               chosen, rather than patched into the assembled map afterwards.
         verbose (bool, optional): Whether to use logging.
 
     Returns:
@@ -80,6 +85,161 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
             logger.warning(f'Could not map species {spc_1} and {spc_2}.')
         return None
 
+    trivial_map = trivial_atom_map(spc_1, spc_2, map_type=map_type)
+    if trivial_map is not None:
+        return trivial_map
+
+    if backend.lower() not in ['arc']:
+        raise ValueError(f'The backend {backend} is not supported for 3DAM.')
+    atom_map = None
+
+    if backend.lower() == 'arc':
+        candidates = identify_backbone_candidates(spc_1, spc_2, consider_chirality=consider_chirality,
+                                                  constraint=constraint)
+        if not candidates:
+            return None
+        candidates = filter_candidates_by_constraint(candidates=candidates,
+                                                     constraint=constraint,
+                                                     label=f'{spc_1.label} -> {spc_2.label}',
+                                                     )
+        rmsds, fixed_spcs = list(), list()
+        for candidate in candidates:
+            rmsd, fixed_spc_1, fixed_spc_2 = score_backbone_candidate(spc_1, spc_2, candidate)
+            rmsds.append(rmsd)
+            fixed_spcs.append((fixed_spc_1, fixed_spc_2))
+        lowest_rmsd = min(rmsds)
+        tied_indices = [i for i, rmsd in enumerate(rmsds) if rmsd - lowest_rmsd <= RMSD_TIE_TOLERANCE]
+        atom_maps = dict()
+        for i in tied_indices:
+            atom_maps[i] = map_hydrogens(fixed_spcs[i][0], fixed_spcs[i][1], candidates[i])
+            check_atom_map_is_a_permutation(atom_maps[i], spc_1, spc_2)
+        if len(tied_indices) > 1:
+            displacements = {i: fixed_spcs[i][0].kabsch(fixed_spcs[i][1],
+                                                        [v for k, v in sorted(atom_maps[i].items(),
+                                                                              key=lambda item: item[0])])
+                             for i in tied_indices}
+            lowest_displacement = min(displacements.values())
+            tied_indices = [i for i in tied_indices
+                            if displacements[i] - lowest_displacement <= RMSD_TIE_TOLERANCE]
+        chosen_candidate_index = max(tied_indices)
+        atom_map = atom_maps[chosen_candidate_index]
+        if map_type == 'list':
+            atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
+
+    if inc_vals is not None:
+        # Iterating a dict yields its keys, so the dict branch has to be explicit: incrementing keys would
+        # return a map with a shifted domain instead of shifted values, silently violating map_type='dict'.
+        if isinstance(atom_map, dict):
+            atom_map = {key: value + inc_vals for key, value in atom_map.items()}
+        else:
+            atom_map = [value + inc_vals for value in atom_map]
+    return atom_map
+
+
+def map_two_species_all(spc_1: ARCSpecies | Molecule,
+                        spc_2: ARCSpecies | Molecule,
+                        map_type: str = 'list',
+                        backend: str = 'ARC',
+                        consider_chirality: bool = True,
+                        inc_vals: int | None = None,
+                        verbose: bool = False,
+                        ) -> list[tuple[list[int] | dict[int, int], float]] | None:
+    """
+    Map the atoms in ``spc_1`` to the atoms in ``spc_2``, returning *every* superimposable candidate map
+    rather than only the best-scoring one.
+
+    This is the multiplicity-preserving counterpart of :func:`map_two_species`. Where ``map_two_species``
+    collapses the candidate list produced by :func:`identify_superimposable_candidates` down to a single
+    map (lowest backbone RMSD, ties broken by the all-atom Kabsch displacement and then by taking the last
+    tied candidate), this function scores and returns all of them. It is intended for callers that need to
+    enumerate distinct reaction channels, see ``arc.mapping.cluster``.
+
+    Note that the first entry of the returned list is not necessarily the map returned by
+    ``map_two_species``: entries are ordered by ascending backbone RMSD, whereas ``map_two_species``
+    resolves a tie by choosing the *last* tied candidate.
+
+    Candidates whose hydrogen mapping fails (a ``ValueError`` raised by :func:`map_hydrogens`, e.g. an
+    H-count mismatch at a mapped heavy atom) are skipped rather than aborting the whole enumeration.
+
+    Args:
+        spc_1 (ARCSpecies | Molecule): Species 1.
+        spc_2 (ARCSpecies | Molecule): Species 2.
+        map_type (str, optional): Whether to return 'list' or 'dict' type maps.
+        backend (str, optional): Currently only ``ARC``'s method is implemented as the backend.
+        consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
+        inc_vals (int, optional): An optional integer by which all values in the atom map lists will be incremented.
+        verbose (bool, optional): Whether to use logging.
+
+    Returns:
+        list[tuple[list[int] | dict[int, int], float]] | None:
+            Entries are ``(atom_map, backbone_rmsd)`` tuples ordered by ascending ``backbone_rmsd``.
+            ``None`` if the two species could not be mapped at all.
+    """
+    spc_1, spc_2 = get_arc_species(spc_1), get_arc_species(spc_2)
+    if not check_species_before_mapping(spc_1, spc_2, verbose=verbose):
+        if verbose:
+            logger.warning(f'Could not map species {spc_1} and {spc_2}.')
+        return None
+
+    trivial_map = trivial_atom_map(spc_1, spc_2, map_type=map_type)
+    if trivial_map is not None:
+        # A trivial map is unique by construction, so the enumeration holds exactly one entry.
+        return [(trivial_map, 0.0)]
+
+    if backend.lower() not in ['arc']:
+        raise ValueError(f'The backend {backend} is not supported for 3DAM.')
+
+    candidates = identify_backbone_candidates(spc_1, spc_2, consider_chirality=consider_chirality)
+    if not candidates:
+        return None
+
+    scored: list[tuple[list[int] | dict[int, int], float]] = list()
+    for candidate in candidates:
+        rmsd, fixed_spc_1, fixed_spc_2 = score_backbone_candidate(spc_1, spc_2, candidate)
+        try:
+            atom_map = map_hydrogens(fixed_spc_1, fixed_spc_2, candidate)
+            # A candidate that does not yield a permutation is discarded rather than raised on, since
+            # unlike map_two_species this function is enumerating and other candidates may still be good.
+            check_atom_map_is_a_permutation(atom_map, spc_1, spc_2)
+        except ValueError as e:
+            if verbose:
+                logger.warning(f'Could not map hydrogens for a backbone candidate of '
+                               f'{spc_1} and {spc_2}, skipping it. Got:\n{e}')
+            continue
+        if map_type == 'list':
+            atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
+            if inc_vals is not None:
+                atom_map = [value + inc_vals for value in atom_map]
+        elif inc_vals is not None:
+            atom_map = {k: v + inc_vals for k, v in atom_map.items()}
+        scored.append((atom_map, rmsd))
+    if not scored:
+        logger.warning(f'Could not map hydrogens for any backbone candidate of {spc_1} and {spc_2}.')
+        return None
+    scored.sort(key=lambda entry: entry[1])
+    return scored
+
+
+def trivial_atom_map(spc_1: ARCSpecies,
+                     spc_2: ARCSpecies,
+                     map_type: str = 'list',
+                     ) -> list[int] | dict[int, int] | None:
+    """
+    Return the atom map for the trivial cases that do not require the fingerprint/DFS/RMSD pipeline:
+    mono-atomic species, homonuclear diatomic species, and species in which every atom is a different element.
+
+    Note: Historically these shortcuts returned directly from ``map_two_species`` before the ``inc_vals``
+    increment was applied, so a trivial map is *not* incremented by ``inc_vals``. That behaviour is preserved
+    here. ``inc_vals`` is only exercised by the test suite, it is not used anywhere in the production pipeline.
+
+    Args:
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        map_type (str, optional): Whether to return a 'list' or a 'dict' map type.
+
+    Returns:
+        list[int] | dict[int, int] | None: The trivial atom map, or ``None`` if no shortcut applies.
+    """
     # A shortcut for mono-atomic species.
     if spc_1.number_of_atoms == spc_2.number_of_atoms == 1:
         if map_type == 'dict':
@@ -105,67 +265,127 @@ def map_two_species(spc_1: ARCSpecies | Molecule,
             atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
         return atom_map
 
-    if backend.lower() not in ['arc']:
-        raise ValueError(f'The backend {backend} is not supported for 3DAM.')
-    atom_map = None
+    return None
 
-    if backend.lower() == 'arc':
+
+def identify_backbone_candidates(spc_1: ARCSpecies,
+                                 spc_2: ARCSpecies,
+                                 consider_chirality: bool = True,
+                                 constraint: dict[int, int] | None = None,
+                                 ) -> list[dict[int, int]] | None:
+    """
+    Fingerprint both species and identify all superimposable heavy-atom backbone candidates.
+    If no candidate is found, the search is retried with the opposite ``consider_chirality`` setting.
+
+    Args:
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
+        constraint (dict[int, int], optional): Correspondences the candidates must contain, in species indices.
+
+    Returns:
+        list[dict[int, int]] | None: The backbone candidates, or ``None`` if none could be identified.
+    """
+    fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
+    fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
+    candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2, constraint=constraint)
+    if candidates is None or len(candidates) == 0:
+        consider_chirality = not consider_chirality
         fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
         fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
-        candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
+        candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2, constraint=constraint)
         if candidates is None or len(candidates) == 0:
-            consider_chirality = not consider_chirality
-            fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
-            fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
-            candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
-            if candidates is None or len(candidates) == 0:
-                logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
-                return None
-        if not len(candidates):
-                return None
-        else:
-            rmsds, fixed_spcs = list(), list()
-            for candidate in candidates:
-                fixed_spc_1, fixed_spc_2 = fix_dihedrals_by_backbone_mapping(spc_1, spc_2, backbone_map=candidate)
-                fixed_spcs.append((fixed_spc_1, fixed_spc_2))
-                backbone_1, backbone_2 = set(list(candidate.keys())), set(list(candidate.values()))
-                xyz1, xyz2 = fixed_spc_1.get_xyz(), fixed_spc_2.get_xyz()
-                xyz1 = xyz_from_data(coords=[xyz1['coords'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
-                                     symbols=[xyz1['symbols'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
-                                     isotopes=[xyz1['isotopes'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1])
-                xyz2 = xyz_from_data(coords=[xyz2['coords'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
-                                     symbols=[xyz2['symbols'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
-                                     isotopes=[xyz2['isotopes'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2])
-                no_gap_candidate = remove_gaps_from_values(candidate)
-                xyz2 = sort_xyz_using_indices(xyz2, indices=[v for k, v in sorted(no_gap_candidate.items(),
-                                                                                  key=lambda item: item[0])])
-                rmsds.append(compare_confs(xyz1=xyz1, xyz2=xyz2, rmsd_score=True))
-            lowest_rmsd = min(rmsds)
-            tied_indices = [i for i, rmsd in enumerate(rmsds) if rmsd - lowest_rmsd <= RMSD_TIE_TOLERANCE]
-            atom_maps = dict()
-            for i in tied_indices:
-                atom_maps[i] = map_hydrogens(fixed_spcs[i][0], fixed_spcs[i][1], candidates[i])
-                if sorted(atom_maps[i].keys()) != list(range(spc_1.number_of_atoms)) \
-                        or sorted(atom_maps[i].values()) != list(range(spc_2.number_of_atoms)):
-                    raise ValueError(f'The atom map of {spc_1.label} and {spc_2.label} is not a permutation of their '
-                                     f'{spc_1.number_of_atoms} and {spc_2.number_of_atoms} atoms, '
-                                     f'got:\n{atom_maps[i]}')
-            if len(tied_indices) > 1:
-                displacements = {i: fixed_spcs[i][0].kabsch(fixed_spcs[i][1],
-                                                            [v for k, v in sorted(atom_maps[i].items(),
-                                                                                  key=lambda item: item[0])])
-                                 for i in tied_indices}
-                lowest_displacement = min(displacements.values())
-                tied_indices = [i for i in tied_indices
-                                if displacements[i] - lowest_displacement <= RMSD_TIE_TOLERANCE]
-            chosen_candidate_index = max(tied_indices)
-            atom_map = atom_maps[chosen_candidate_index]
-            if map_type == 'list':
-                atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
+            logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
+            return None
+    return candidates
 
-    if inc_vals is not None:
-        atom_map = [value + inc_vals for value in atom_map]
-    return atom_map
+
+def filter_candidates_by_constraint(candidates: list[dict[int, int]],
+                                    constraint: dict[int, int] | None,
+                                    label: str = '',
+                                    ) -> list[dict[int, int]]:
+    """
+    Keep only the backbone candidates that honor a required set of atom correspondences.
+
+    A reaction family's labeled atoms fix part of the correspondence up front. Honoring that while the
+    candidates are still being chosen keeps a symmetric species from being mapped onto an orientation the
+    template then has to overrule in :func:`glue_maps`, which would transpose the labeled atoms without
+    carrying their hydrogens along. Constraints on atoms outside the backbone (a labeled hydrogen, say)
+    cannot be expressed here and are skipped.
+
+    Args:
+        candidates (list[dict[int, int]]): The superimposable backbone candidates.
+        constraint (dict[int, int] | None): Required species-1 index -> species-2 index correspondences.
+        label (str, optional): A label used for logging.
+
+    Returns:
+        list[dict[int, int]]: The candidates satisfying the constraint, or all of them if none does.
+    """
+    if not constraint or not candidates:
+        return candidates
+    backbone_constraint = {k: v for k, v in constraint.items() if any(k in c for c in candidates)}
+    if not backbone_constraint:
+        return candidates
+    filtered = [c for c in candidates if all(c.get(k) == v for k, v in backbone_constraint.items())]
+    if not filtered:
+        # Falling back to the unconstrained list keeps this from turning a suboptimal map into no map at all.
+        logger.debug(f'No superimposable candidate for {label} satisfies the template constraint '
+                     f'{backbone_constraint}, using all {len(candidates)} candidates.')
+        return candidates
+    return filtered
+
+
+def check_atom_map_is_a_permutation(atom_map: dict[int, int],
+                                    spc_1: ARCSpecies,
+                                    spc_2: ARCSpecies,
+                                    ) -> None:
+    """
+    Verify that a mapped species pair yields a genuine permutation of both species' atoms.
+
+    Args:
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        atom_map (dict[int, int]): The candidate atom map.
+
+    Raises:
+        ValueError: If the map does not cover every atom of both species exactly once.
+    """
+    if sorted(atom_map.keys()) != list(range(spc_1.number_of_atoms)) \
+            or sorted(atom_map.values()) != list(range(spc_2.number_of_atoms)):
+        raise ValueError(f'The atom map of {spc_1.label} and {spc_2.label} is not a permutation of their '
+                         f'{spc_1.number_of_atoms} and {spc_2.number_of_atoms} atoms, '
+                         f'got:\n{atom_map}')
+
+
+def score_backbone_candidate(spc_1: ARCSpecies,
+                             spc_2: ARCSpecies,
+                             candidate: dict[int, int],
+                             ) -> tuple[float, ARCSpecies, ARCSpecies]:
+    """
+    Score a single backbone candidate by the RMSD between the two dihedral-corrected backbone geometries.
+
+    Args:
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        candidate (dict[int, int]): The candidate backbone map.
+
+    Returns:
+        tuple[float, ARCSpecies, ARCSpecies]:
+            The backbone RMSD, and the two dihedral-corrected species this candidate implies.
+    """
+    fixed_spc_1, fixed_spc_2 = fix_dihedrals_by_backbone_mapping(spc_1, spc_2, backbone_map=candidate)
+    backbone_1, backbone_2 = set(list(candidate.keys())), set(list(candidate.values()))
+    xyz1, xyz2 = fixed_spc_1.get_xyz(), fixed_spc_2.get_xyz()
+    xyz1 = xyz_from_data(coords=[xyz1['coords'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
+                         symbols=[xyz1['symbols'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
+                         isotopes=[xyz1['isotopes'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1])
+    xyz2 = xyz_from_data(coords=[xyz2['coords'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
+                         symbols=[xyz2['symbols'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
+                         isotopes=[xyz2['isotopes'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2])
+    no_gap_candidate = remove_gaps_from_values(candidate)
+    xyz2 = sort_xyz_using_indices(xyz2, indices=[v for k, v in sorted(no_gap_candidate.items(),
+                                                                     key=lambda item: item[0])])
+    return compare_confs(xyz1=xyz1, xyz2=xyz2, rmsd_score=True), fixed_spc_1, fixed_spc_2
 
 
 def get_arc_species(spc: ARCSpecies | Molecule) -> ARCSpecies:
@@ -303,6 +523,7 @@ def fingerprint(spc: ARCSpecies,
 
 def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | list[int]]],
                                        fingerprint_2: dict[int, dict[str, str | list[int]]],
+                                       constraint: dict[int, int] | None = None,
                                        ) -> list[dict[int, int]]:
     """
     Identify candidate ordering of heavy atoms (only) that could potentially be superimposed.
@@ -310,6 +531,9 @@ def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | 
     Args:
         fingerprint_1 (dict[int, dict[str, str | list[int]]]): Adjacent element dict for species 1.
         fingerprint_2 (dict[int, dict[str, str | list[int]]]): Adjacent element dict for species 2.
+        constraint (dict[int, int], optional): Correspondences the candidates must contain. Enforced during the
+                                               search and additionally used to re-anchor it, so that a compatible
+                                               map the unconstrained enumeration cannot reach is still found.
 
     Returns:
         list[dict[int, int]]: Entries are superimposable candidate dicts. Keys are atom indices of heavy atoms
@@ -325,9 +549,20 @@ def identify_superimposable_candidates(fingerprint_1: dict[int, dict[str, str | 
     # benzene it lost the best candidate in half of the trials, by up to 0.04 A.
     candidates: list[dict[int, int]] = []
     for key_2 in fingerprint_2.keys():
-        result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
+        result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2, constraint=constraint)
         if result is not None and result not in candidates:
             candidates.append(result)
+    if constraint:
+        # One completion is returned per anchor image, so a constraint-compatible map reachable only by a
+        # different branch choice is never generated -- benzene has 12 automorphisms but yields 6 candidates.
+        # Re-anchoring on a constrained pair puts that correspondence in the seed instead of leaving it to
+        # the search, which surfaces the compatible map when the unconstrained enumeration misses it.
+        for c_1, c_2 in constraint.items():
+            if c_1 not in fingerprint_1 or c_2 not in fingerprint_2:
+                continue
+            result = iterative_dfs(fingerprint_1, fingerprint_2, c_1, c_2, constraint=constraint)
+            if result is not None and result not in candidates:
+                candidates.append(result)
     return candidates
 
 
@@ -357,11 +592,45 @@ def are_adj_elements_in_agreement(fingerprint_1: dict[str, str | list[int]],
     return True
 
 
+def is_assignment_consistent(fingerprint_1: dict[int, dict[str, list[int]]],
+                             fingerprint_2: dict[int, dict[str, list[int]]],
+                             mapping: dict[int, int],
+                             k_1: int,
+                             k_2: int,
+                             ) -> bool:
+    """
+    Check that mapping ``k_1`` onto ``k_2`` agrees with the correspondences already fixed.
+
+    Every heavy-atom neighbour of ``k_1`` that is already mapped must land on a neighbour of ``k_2``,
+    and the two atoms' adjacent elements must agree.
+
+    Args:
+        fingerprint_1 (dict[int, dict[str, list[int]]]): Adjacent elements dictionary 1 (graph 1).
+        fingerprint_2 (dict[int, dict[str, list[int]]]): Adjacent elements dictionary 2 (graph 2).
+        mapping (dict[int, int]): The correspondences fixed so far.
+        k_1 (int): The graph 1 atom index being assigned.
+        k_2 (int): The graph 2 atom index it would be assigned to.
+
+    Returns:
+        bool: Whether the assignment is consistent.
+    """
+    if not are_adj_elements_in_agreement(fingerprint_1[k_1], fingerprint_2[k_2]):
+        return False
+    for symbol in fingerprint_1[k_1].keys():
+        if symbol in RESERVED_FINGERPRINT_KEYS + ['H']:
+            continue
+        for nbr_1 in fingerprint_1[k_1][symbol]:
+            if nbr_1 in mapping and mapping[nbr_1] not in fingerprint_2[k_2].get(symbol, []):
+                return False
+    return True
+
+
 def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
                   fingerprint_2: dict[int, dict[str, list[int]]],
                   key_1: int,
                   key_2: int,
                   allow_first_key_pair_to_disagree: bool = False,
+                  constraint: dict[int, int] | None = None,
                   ) -> dict[int, int] | None:
     """
     A depth first search (DFS) graph traversal algorithm to determine possible superimposable ordering of heavy atoms.
@@ -374,6 +643,10 @@ def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
         key_2 (int): The starting index for graph 2.
         allow_first_key_pair_to_disagree (bool, optional): ``True`` to not enforce agreement between the fingerprint
                                                            of ``key_1`` and ``key_2``.
+        constraint (dict[int, int], optional): Correspondences the mapping must contain. They are seeded into the
+                                               mapping before the search starts and enforced at every step, so the
+                                               backtracking returns a completion consistent with all of them rather
+                                               than whichever completion it happens to reach first.
 
     Returns:
         dict[int, int] | None: ``None`` if this is an invalid superimposable candidate. Keys are atom indices of
@@ -390,6 +663,16 @@ def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
 
     mapping = {key_1: key_2}
     mapped_2 = {key_2}
+    constraint = constraint or dict()
+    if constraint.get(key_1, key_2) != key_2:
+        return None
+    for c_1, c_2 in constraint.items():
+        if c_1 in mapping:
+            continue
+        if c_2 in mapped_2:
+            return None
+        mapping[c_1] = c_2
+        mapped_2.add(c_2)
 
     traversal_order = []
     visited = set()
@@ -412,22 +695,19 @@ def iterative_dfs(fingerprint_1: dict[int, dict[str, list[int]]],
         if idx_1 == len(traversal_order):
             return True
         k1 = traversal_order[idx_1]
+        if k1 in mapping:
+            # Seeded by the constraint: its value is fixed, but it still has to hold up as a mapping.
+            if not is_assignment_consistent(fingerprint_1, fingerprint_2, mapping, k1, mapping[k1]):
+                return False
+            return backtrack(idx_1 + 1)
         for k2 in keys_2:
             if k2 in mapped_2:
                 continue
+            if constraint.get(k1, k2) != k2:
+                continue
             if not are_adj_elements_in_agreement(fingerprint_1[k1], fingerprint_2[k2]):
                 continue
-            consistent = True
-            for symbol in fingerprint_1[k1].keys():
-                if symbol not in RESERVED_FINGERPRINT_KEYS + ['H']:
-                    for nbr1 in fingerprint_1[k1][symbol]:
-                        if nbr1 in mapping:
-                            if mapping[nbr1] not in fingerprint_2[k2].get(symbol, []):
-                                consistent = False
-                                break
-                if not consistent:
-                    break
-            if not consistent:
+            if not is_assignment_consistent(fingerprint_1, fingerprint_2, mapping, k1, k2):
                 continue
             mapping[k1] = k2
             mapped_2.add(k2)
@@ -1573,58 +1853,151 @@ def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies, strict: b
     return False
 
 
+def tags_on_cut(cut: ARCSpecies, label_map: dict[str, int] | None) -> set:
+    """
+    Return the template tags whose atom lies in a scissored fragment.
+
+    Args:
+        cut (ARCSpecies): A scissored fragment, its atoms labeled with running indices of the whole complex.
+        label_map (dict[str, int] | None): Template tag -> running atom index.
+
+    Returns:
+        set: The tags held by this fragment.
+    """
+    if not label_map:
+        return set()
+    indices = {int(atom.label) for atom in cut.mol.atoms if atom.label is not None}
+    return {tag for tag, index in label_map.items() if index in indices}
+
+
 def pairing_reactants_and_products_for_mapping(r_cuts: list[ARCSpecies],
-                                               p_cuts: list[ARCSpecies]
+                                               p_cuts: list[ARCSpecies],
+                                               r_label_map: dict[str, int] | None = None,
+                                               p_label_map: dict[str, int] | None = None,
                                                )-> list[tuple[ARCSpecies,ARCSpecies]]:
     """
     A function for matching reactants and products in scissored products.
     The matched species are removed from p_cuts.
 
     Greedy two-pass pairing:
-        1) Strict graph isomorphism — avoids pairing constitutional isomers that merely share a
-           molecular formula (e.g. α- vs β-radical positional isomers in H-abstraction).
-        2) Loose fingerprint-or-isomorphic fallback — for rearrangements whose cut fragments are
+        1) Strict graph isomorphism - avoids pairing constitutional isomers that merely share a
+           molecular formula (e.g. alpha- vs beta-radical positional isomers in H-abstraction).
+        2) Loose fingerprint-or-isomorphic fallback - for rearrangements whose cut fragments are
            not strictly isomorphic but can still be aligned by ``map_two_species``.
+
+    When several product cuts match the same reactant cut in a pass - two identical fragments, as in a
+    degenerate abstraction - the choice between them is arbitrary on structure alone. Passing the family's
+    label maps breaks that tie in favor of the product cut sharing the most template tags with the reactant
+    cut, so the pairing agrees with the template instead of leaving :func:`glue_maps` to transpose the
+    labeled atoms afterwards and strand the hydrogens that hang off them. Without the label maps the first
+    match wins, as before.
 
     Args:
         r_cuts (list[ARCSpecies]): A list of the scissored species in the reactants
         p_cuts (list[ARCSpecies]): A list of the scissored species in the reactants
+        r_label_map (dict[str, int], optional): Template tag -> running reactant atom index.
+        p_label_map (dict[str, int], optional): Template tag -> running product atom index.
 
     Returns:
         list[tuple[ARCSpecies,ARCSpecies]]: A list of paired reactant and products, to be sent to map_two_species.
     """
     pairs: list[tuple[ARCSpecies, ARCSpecies]] = list()
     unmatched_r: list[ARCSpecies] = list()
-    for react in r_cuts:
-        for idx, prod in enumerate(p_cuts):
-            if r_cut_p_cut_isomorphic(react, prod, strict=True):
-                pairs.append((react, prod))
-                p_cuts.pop(idx)
-                break
-        else:
-            unmatched_r.append(react)
-    for react in unmatched_r:
-        for idx, prod in enumerate(p_cuts):
-            if r_cut_p_cut_isomorphic(react, prod):
-                pairs.append((react, prod))
-                p_cuts.pop(idx)
-                break
+    for strict in (True, False):
+        for react in (r_cuts if strict else unmatched_r):
+            matches = [idx for idx, prod in enumerate(p_cuts)
+                       if r_cut_p_cut_isomorphic(react, prod, strict=strict)]
+            if not matches:
+                if strict:
+                    unmatched_r.append(react)
+                continue
+            react_tags = tags_on_cut(react, r_label_map)
+            best = max(matches, key=lambda idx: len(react_tags & tags_on_cut(p_cuts[idx], p_label_map)))
+            pairs.append((react, p_cuts[best]))
+            p_cuts.pop(best)
     return pairs
 
 
-def map_pairs(pairs: list[tuple[ARCSpecies, ARCSpecies]]) -> list[list[int]]:
+def build_pair_constraints(pairs: list[tuple[ARCSpecies, ARCSpecies]],
+                           r_label_map: dict[str, int],
+                           p_label_map: dict[str, int],
+                           ) -> list[dict[int, int]]:
+    """
+    Translate a family's labeled-atom assignment into a per-pair, fragment-local constraint.
+
+    ``r_label_map`` and ``p_label_map`` are keyed by template tag ('*1', '*2', ...) and hold running atom
+    indices of the whole reactant and product complexes, while the scissored fragments carry those running
+    indices in ``atom.label``. A tag constrains a pair only when both of its atoms landed in that pair.
+
+    Args:
+        pairs (list[tuple[ARCSpecies, ARCSpecies]]): The paired reactant and product cuts.
+        r_label_map (dict[str, int]): Template tag -> running reactant atom index.
+        p_label_map (dict[str, int]): Template tag -> running product atom index.
+
+    Returns:
+        list[dict[int, int]]: Per pair, the required reactant-cut index -> product-cut index correspondences.
+    """
+    constraints = list()
+    for r_cut, p_cut in pairs:
+        r_local = {int(atom.label): i for i, atom in enumerate(r_cut.mol.atoms) if atom.label is not None}
+        p_local = {int(atom.label): i for i, atom in enumerate(p_cut.mol.atoms) if atom.label is not None}
+        constraint = dict()
+        for tag, r_global in r_label_map.items():
+            if tag not in p_label_map:
+                continue
+            p_global = p_label_map[tag]
+            if r_global in r_local and p_global in p_local:
+                constraint[r_local[r_global]] = p_local[p_global]
+        constraints.append(constraint)
+    return constraints
+
+
+def map_pairs(pairs: list[tuple[ARCSpecies, ARCSpecies]],
+              constraints: list[dict[int, int]] | None = None,
+              ) -> list[list[int]]:
     """
     A function that maps the matched species together
 
     Args:
-         (list[tuple[ARCSpecies, ARCSpecies]]): A list of the pairs of reactants and species.
+         pairs (list[tuple[ARCSpecies, ARCSpecies]]): A list of the pairs of reactants and species.
+         constraints (list[dict[int, int]], optional): Per pair, atom correspondences the map must satisfy.
 
     Returns:
         list[list[int]]: A list of the mapped species
     """
     maps = list()
+    for i, pair in enumerate(pairs):
+        constraint = constraints[i] if constraints is not None and i < len(constraints) else None
+        maps.append(map_two_species(pair[0], pair[1], constraint=constraint))
+    return maps
+
+
+def map_pairs_all(pairs: list[tuple[ARCSpecies, ARCSpecies]],
+                  max_per_pair: int | None = None,
+                  ) -> list[list[list[int]]] | None:
+    """
+    The multiplicity-preserving counterpart of :func:`map_pairs`: for every matched fragment pair, return
+    *all* superimposable maps rather than only the best-scoring one.
+
+    Args:
+        pairs (list[tuple[ARCSpecies, ARCSpecies]]): The matched reactant/product fragment pairs.
+        max_per_pair (int, optional): Keep at most this many maps per pair, best-scoring first.
+
+    Returns:
+        list[list[list[int]]] | None:
+            Per pair, the list of candidate atom maps ordered by ascending backbone RMSD.
+            ``None`` if any pair could not be mapped at all.
+    """
+    maps = list()
     for pair in pairs:
-        maps.append(map_two_species(pair[0], pair[1]))
+        scored = map_two_species_all(pair[0], pair[1])
+        if not scored:
+            return None
+        candidates = [atom_map for atom_map, _ in scored]
+        if max_per_pair is not None and len(candidates) > max_per_pair:
+            logger.debug(f'map_pairs_all: keeping {max_per_pair} of {len(candidates)} maps for a fragment pair.')
+            candidates = candidates[:max_per_pair]
+        maps.append(candidates)
     return maps
 
 

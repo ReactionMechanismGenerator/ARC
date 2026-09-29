@@ -5,16 +5,22 @@
 This module contains unit tests for the parser functions
 """
 
+import math
 import numpy as np
 import os
 import shutil
+import tempfile
+import time
 import unittest
 
 import arc.parser.parser as parser
 from ase.data import atomic_masses, atomic_numbers
 
 from arc.common import ARC_TESTING_PATH, almost_equal_coords, get_element_mass, read_yaml_file
-from arc.parser.adapters.gaussian import parse_ic_info, parse_ic_values
+from arc.constants import E_h_kJmol
+from arc.parser.adapters.gaussian import GaussianParser, parse_ic_info, parse_ic_values
+from arc.parser.adapters.orca import OrcaParser, SPIN_SYMMETRY_BREAKING_S_SQUARED
+from arc.parser.factory import ess_factory
 from arc.species import ARCSpecies
 from arc.species.converter import str_to_xyz, xyz_to_str
 from arc.species.vectors import calculate_distance
@@ -473,6 +479,8 @@ class TestParser(unittest.TestCase):
         """Test that the frequencies and normal mode displacements are returned unchanged."""
         for log_file_path in [os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log'),
                               os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml'),
+                              os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out'),
+                              os.path.join(ARC_TESTING_PATH, 'freq', 'orca_example_freq.log'),
                               os.path.join(ARC_TESTING_PATH, 'normal_mode', 'TS_0', 'output.out')]:
             expected_freqs, expected_disp = parser.parse_normal_mode_displacement(log_file_path=log_file_path)
             parsed_modes = parser.get_normal_mode_displacement(log_file_path=log_file_path, label='TS')
@@ -482,8 +490,8 @@ class TestParser(unittest.TestCase):
 
     def test_get_normal_mode_displacement_returns_none_when_no_modes_are_reported(self):
         """Test that an output file yielding no normal mode displacements returns None, not the (None, None) sentinel."""
-        for file_name in ['orca_neg_freq_ts.out', 'orca_example_freq.log', 'orca6_example.out',
-                          'CH2O_freq_molpro.out', 'C2H6_freq_QChem.out', 'CH2O_freq_terachem.dat',
+        for file_name in ['orca6_example.out', 'CH2O_freq_molpro.out', 'C2H6_freq_QChem.out',
+                          'CH2O_freq_terachem.dat',
                           'yml_no_freqs.yml']:
             log_file_path = os.path.join(ARC_TESTING_PATH, 'freq', file_name)
             self.assertEqual(parser.parse_normal_mode_displacement(log_file_path=log_file_path), (None, None))
@@ -499,6 +507,63 @@ class TestParser(unittest.TestCase):
         warning = '\n'.join(captured.output)
         self.assertIn(missing_path, warning)
         self.assertIn('TS', warning)
+
+    def test_parse_orca_normal_mode_displacement(self):
+        """Test parsing Cartesian normal-mode displacements from an Orca output."""
+        path = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'n_cetane', 'output.log')
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(log_file_path=path)
+        parsed_freqs = parser.parse_frequencies(log_file_path=path)
+        np.testing.assert_array_equal(freqs, parsed_freqs)
+        self.assertEqual(len(freqs), 144)
+        expected_freqs = np.array(
+            [-33.01, 16.27, 25.64, 39.59, 50.28, 52.63, 66.15, 89.35, 94.27, 102.74, 121.39, 131.04, 138.98,
+             155.81, 162.43, 167.8, 168.41, 208.48, 242.09, 255.16, 263.76, 287.41, 336.12, 390.57, 403.27,
+             436.59, 487.4, 510.61, 542.11, 730.2, 730.58, 732.5, 737.04, 745.58, 762.99, 787.24, 808.06,
+             845.48, 889.76, 909.71, 911.43, 920.32, 945.29, 977.07, 1008.49, 1011.17, 1022.54, 1036.38,
+             1046.72, 1059.6, 1063.73, 1076.99, 1082.5, 1089.15, 1093.37, 1094.52, 1095.7, 1104.51, 1113.18,
+             1146.23, 1166.62, 1199.48, 1215.02, 1229.15, 1237.54, 1252.0, 1263.31, 1272.63, 1288.75, 1295.02,
+             1305.13, 1320.15, 1322.62, 1330.36, 1333.47, 1336.2, 1339.65, 1341.72, 1344.52, 1348.68, 1351.22,
+             1358.46, 1384.84, 1388.49, 1405.63, 1419.42, 1421.45, 1422.44, 1423.4, 1427.25, 1428.65, 1429.52,
+             1487.35, 1487.85, 1489.0, 1490.45, 1491.13, 1492.08, 1493.54, 1494.23, 1496.62, 1501.11, 1503.69,
+             1504.3, 1506.32, 1507.13, 1511.16, 1513.91, 1515.19, 1517.24, 3026.36, 3026.81, 3027.04, 3028.03,
+             3028.11, 3029.63, 3030.28, 3031.6, 3032.76, 3034.73, 3037.88, 3040.87, 3042.59, 3043.94, 3049.39,
+             3050.43, 3050.9, 3051.22, 3052.87, 3056.5, 3059.03, 3062.83, 3066.86, 3071.48, 3074.03, 3080.84,
+             3087.03, 3090.54, 3092.04, 3095.14, 3121.2, 3121.22, 3129.34, 3130.0], np.float64)
+        np.testing.assert_almost_equal(freqs, expected_freqs)
+        self.assertEqual(normal_modes_disp.shape, (144, 50, 3))
+        # freqs[0] (-33.01 cm^-1) is the sole imaginary mode; spot-check its displacement vectors.
+        expected_r1_imaginary_mode_first_atom = np.array([0.020715, -0.025648, 0.103113], np.float64)
+        expected_r1_imaginary_mode_last_atom = np.array([-0.000219, 0.135443, -0.044644], np.float64)
+        np.testing.assert_almost_equal(normal_modes_disp[0][0], expected_r1_imaginary_mode_first_atom)
+        np.testing.assert_almost_equal(normal_modes_disp[0][-1], expected_r1_imaginary_mode_last_atom)
+
+        xyz = parser.parse_geometry(log_file_path=path)
+        masses = np.array(
+            [atomic_masses[atomic_numbers[symbol]] for symbol in xyz['symbols']],
+            dtype=np.float64,
+        )
+        mass_weighted_sum = (masses[:, np.newaxis] * normal_modes_disp[0]).sum(axis=0)
+        np.testing.assert_allclose(mass_weighted_sum, np.zeros(3), atol=1e-3)
+
+    def test_parse_truncated_orca_normal_mode_displacement(self):
+        """Test that a truncated Orca normal-mode block returns no modes instead of raising an IndexError."""
+        import tempfile
+
+        path = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'n_cetane', 'output.log')
+        with open(path, 'r') as f:
+            lines = f.readlines()
+        normal_modes_start = next(i for i, line in enumerate(lines) if line.strip() == 'NORMAL MODES')
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+            truncated_path = f.name
+            f.writelines(lines[:normal_modes_start + 10])
+        try:
+            self.assertEqual(
+                parser.parse_normal_mode_displacement(log_file_path=truncated_path),
+                (None, None),
+            )
+        finally:
+            os.remove(truncated_path)
 
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""
@@ -831,6 +896,11 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertAlmostEqual(first['max_gradient'], 0.007275026)
         self.assertAlmostEqual(first['rms_gradient'], 0.002502813)
         self.assertEqual(len(first['xyz']['symbols']), 8)
+        self.assertEqual(
+            [point['reaction_coordinate'] for point in points],
+            sorted(point['reaction_coordinate'] for point in points),
+        )
+        self.assertEqual({point['direction'] for point in points}, {'forward'})
         # Reaction coordinate increases monotonically along a single
         # Gaussian IRC branch (cumulative path length).
         rcs = [p['reaction_coordinate'] for p in points]
@@ -850,6 +920,147 @@ H      -1.69381305    0.40788834    0.90078104"""
             sorted({p['direction'] for p in points}),
             ['reverse'],
         )
+
+    def test_parse_irc_path_reaction_coordinate_is_signed_about_the_ts(self):
+        """The two branches of one reaction concatenate into a single coordinate.
+
+        Gaussian prints NET REACTION COORDINATE as a per-branch cumulative arc
+        length, so both branches leave the TS with positive values and cannot be
+        plotted on one axis as printed. ARC negates the reverse branch, so the
+        forward branch runs 0 -> +s, the reverse branch 0 -> -s, and the two
+        magnitudes at equal step counts still agree with each other and with the
+        raw log.
+        """
+        forward = parser.parse_irc_path(
+            log_file_path=os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        reverse = parser.parse_irc_path(
+            log_file_path=os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+
+        for point in forward:
+            self.assertGreater(point['reaction_coordinate'], 0.0)
+        for point in reverse:
+            self.assertLess(point['reaction_coordinate'], 0.0)
+
+        self.assertAlmostEqual(forward[0]['reaction_coordinate'], 0.07236)
+        self.assertAlmostEqual(reverse[0]['reaction_coordinate'], -0.07236)
+        self.assertAlmostEqual(reverse[1]['reaction_coordinate'], -0.14469)
+
+        forward_coordinates = [point['reaction_coordinate'] for point in forward]
+        reverse_coordinates = [point['reaction_coordinate'] for point in reverse]
+        self.assertEqual(forward_coordinates, sorted(forward_coordinates))
+        self.assertEqual(reverse_coordinates, sorted(reverse_coordinates, reverse=True))
+        self.assertEqual([round(abs(value), 5) for value in reverse_coordinates[:3]],
+                         [0.07236, 0.14469, 0.21703])
+
+    def test_parse_irc_path_drops_a_point_whose_geometry_table_is_truncated(self):
+        """A log cut off mid-table must not export a point holding part of the molecule.
+
+        The fixture's points each carry 8 atoms. Truncating the file inside the
+        second point's CURRENT STRUCTURE table leaves 4 readable atom rows; the
+        point is dropped rather than emitted as a 4-atom geometry, which nothing
+        downstream could tell apart from a smaller molecule.
+        """
+        source = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
+        with open(source, 'r') as f:
+            lines = f.readlines()
+        full = parser.parse_irc_path(log_file_path=source)
+        self.assertEqual(sorted({len(point['xyz']['symbols']) for point in full}), [8])
+
+        tmp_dir = tempfile.mkdtemp(prefix='test_parse_irc_path_truncated_')
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        truncated_path = os.path.join(tmp_dir, 'truncated.out')
+        with open(truncated_path, 'w') as f:
+            f.writelines(lines[:2030])
+
+        points = parser.parse_irc_path(log_file_path=truncated_path)
+        self.assertEqual(len(points), 1)
+        self.assertEqual(points[0]['point_number'], 1)
+        for point in points:
+            self.assertEqual(len(point['xyz']['symbols']), 8)
+        trajectory = parser.parse_irc_traj(log_file_path=truncated_path)
+        self.assertEqual([len(xyz['symbols']) for xyz in trajectory], [8, 8])
+
+    def test_parse_irc_path_prefers_a_correlated_total_over_the_scf_component(self):
+        """On a post-SCF method the point energy is the total, not the SCF part.
+
+        Gaussian prints ``SCF Done`` for every step whatever the method, so an MP2
+        or double-hybrid IRC would otherwise export the HF component and lose the
+        whole correlation contribution -- for the B2PLYPD3 numbers used here, 0.369
+        Hartree, about 231 kcal/mol, and a quantity that varies along the path, so
+        the shape of the profile is wrong too, not only its zero.
+        """
+        tmp_dir = tempfile.mkdtemp(prefix='test_parse_irc_path_post_scf_')
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        body = (
+            " Entering Gaussian System\n"
+            " Point Number  1 in FORWARD path direction\n"
+            " SCF Done:  E(UB2PLYPD3) =  -316.439293079     A.U. after 1 cycles\n"
+            " E2(B2PLYPD3) =    -0.3688321800D+00 E(B2PLYPD3) =    -0.31680812525887D+03\n"
+            " Cartesian Forces:  Max     0.000100000 RMS     0.000010000\n"
+            " Point Number:   1          Path Number:   1\n"
+            "      CURRENT STRUCTURE\n"
+            " -------------------------------------------------------------------\n"
+            "         Center     Atomic                     Coordinates (Angstroms)\n"
+            "         Number     Number       X           Y           Z\n"
+            " -------------------------------------------------------------------\n"
+            "           1          8        0.000000    0.000000    0.000000\n"
+            "           2          1        0.000000    0.000000    0.960000\n"
+            " -------------------------------------------------------------------\n"
+            "    NET REACTION COORDINATE UP TO THIS POINT =    0.10000\n"
+        )
+        path = os.path.join(tmp_dir, 'mp2_irc.out')
+        with open(path, 'w') as f:
+            f.write(body)
+
+        points = parser.parse_irc_path(log_file_path=path)
+        self.assertEqual(len(points), 1)
+        self.assertAlmostEqual(points[0]['electronic_energy_hartree'], -316.80812525887)
+        self.assertNotAlmostEqual(points[0]['electronic_energy_hartree'], -316.439293079)
+
+    def test_parse_1d_scan_full_result_never_raises(self):
+        """The wrapper documents that it never raises; hold it to that.
+
+        A missing path used to raise ``FileNotFoundError`` and a file no ESS
+        adapter recognises used to raise ``TypeError`` out of the tuple unpack,
+        which made its only caller's blanket ``try`` load-bearing.
+        """
+        tmp_dir = tempfile.mkdtemp(prefix='test_parse_1d_scan_full_result_')
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        empty_path = os.path.join(tmp_dir, 'empty.out')
+        with open(empty_path, 'w'):
+            pass
+        expected_keys = {'angles_deg', 'relative_energies_kj_mol', 'absolute_energies_hartree',
+                         'zero_energy_reference_hartree', 'geometries'}
+        for log_file_path in (os.path.join(tmp_dir, 'absent.out'), empty_path, ''):
+            with self.subTest(log_file_path=log_file_path):
+                result = parser.parse_1d_scan_full_result(log_file_path=log_file_path)
+                self.assertEqual(set(result), expected_keys)
+                for key in expected_keys:
+                    self.assertIsNone(result[key])
+
+    def test_parse_1d_scan_full_result_still_parses_a_real_log(self):
+        """The guards must not cost the happy path."""
+        result = parser.parse_1d_scan_full_result(
+            log_file_path=os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2.out'))
+        self.assertEqual(len(result['angles_deg']), 37)
+        self.assertEqual(len(result['relative_energies_kj_mol']), 37)
+        self.assertIsNotNone(result['zero_energy_reference_hartree'])
+
+    def test_parse_irc_path_geometries_match_parse_irc_traj(self):
+        """Both Gaussian IRC walkers read the same geometry tables.
+
+        ``parse_irc_traj`` additionally emits the ``Point Number: 0`` seed,
+        which ``parse_irc_path`` omits, so the trajectory is one longer and
+        its tail is the structured path's geometries.
+        """
+        from arc.parser.adapters.gaussian import GaussianParser
+        for name in ('rxn_1_irc_1.out', 'rxn_1_irc_2.out'):
+            with self.subTest(log=name):
+                adapter = GaussianParser(os.path.join(ARC_TESTING_PATH, 'irc', name))
+                traj = adapter.parse_irc_traj()
+                points = adapter.parse_irc_path()
+                self.assertEqual(len(traj), len(points) + 1)
+                self.assertEqual(traj[1:], [point['xyz'] for point in points])
 
     def test_parse_irc_path_failed_log_returns_none(self):
         """A truncated/failed IRC log yields None — the upstream upload
@@ -916,9 +1127,8 @@ H      -1.69381305    0.40788834    0.90078104"""
         t1 = parser.parse_t1(path)
         self.assertEqual(t1, 0.0002)
 
-    def test_parse_s_squared(self):
-        """Test parsing the S**2 spin-contamination diagnostic"""
-        # Gaussian, open-shell doublet (UwB97XD): <S**2>=0.7535, expected 0.75, annihilated 0.75.
+    def test_parse_s_squared_gaussian_doublet(self):
+        """Test parsing the S**2 diagnostic of a Gaussian open-shell doublet"""
         path = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
         sd = parser.parse_s_squared(path)
         self.assertIsNotNone(sd)
@@ -926,7 +1136,8 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
         self.assertAlmostEqual(sd['s_squared_annihilated'], 0.75)
 
-        # Gaussian, open-shell triplet: <S**2>=2.0153, expected 2.0, annihilated 2.0001.
+    def test_parse_s_squared_gaussian_triplet(self):
+        """Test parsing the S**2 diagnostic of a Gaussian open-shell triplet"""
         path = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'TSs', 'TS_freq.out')
         sd = parser.parse_s_squared(path)
         self.assertIsNotNone(sd)
@@ -934,11 +1145,13 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertAlmostEqual(sd['s_squared_expected'], 2.0)
         self.assertAlmostEqual(sd['s_squared_annihilated'], 2.0001)
 
-        # Gaussian, closed-shell/restricted: no <S**2> printed -> None.
+    def test_parse_s_squared_gaussian_closed_shell(self):
+        """Test that a restricted Gaussian log, which prints no <S**2>, yields None"""
         path = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
         self.assertIsNone(parser.parse_s_squared(path))
 
-        # ORCA, open-shell doublet: last converged <S**2>=0.762333, Ideal value 0.75, no annihilation.
+    def test_parse_s_squared_orca(self):
+        """Test parsing the S**2 diagnostic of an ORCA open-shell doublet"""
         path = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
         sd = parser.parse_s_squared(path)
         self.assertIsNotNone(sd)
@@ -946,7 +1159,18 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
         self.assertIsNone(sd['s_squared_annihilated'])
 
-        # Q-Chem, open-shell doublet: <S^2> = 0.7572, expected from multiplicity, no annihilation.
+    def test_parse_s_squared_orca_takes_the_last_scf_block(self):
+        """Test that a multi-image ORCA log yields the final SCF's pair, not an earlier image's"""
+        path = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+        with open(path, 'r') as f:
+            values = [float(line.split(':')[1]) for line in f.readlines()
+                      if 'Expectation value of <S**2>' in line]
+        self.assertGreater(len(values), 1)
+        self.assertNotAlmostEqual(values[0], values[-1])
+        self.assertAlmostEqual(parser.parse_s_squared(path)['s_squared'], values[-1])
+
+    def test_parse_s_squared_qchem(self):
+        """Test parsing the S**2 diagnostic of a Q-Chem open-shell doublet"""
         path = os.path.join(ARC_TESTING_PATH, 'freq', 'NO3_freq_QChem_fails_on_cclib.out')
         sd = parser.parse_s_squared(path)
         self.assertIsNotNone(sd)
@@ -954,7 +1178,8 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
         self.assertIsNone(sd['s_squared_annihilated'])
 
-        # Malformed / non-ESS path -> None (no crash).
+    def test_parse_s_squared_from_a_non_ess_file(self):
+        """Test that a file holding no <S**2> yields None rather than raising"""
         path = os.path.join(ARC_TESTING_PATH, 'mockter.yml')
         self.assertIsNone(parser.parse_s_squared(path))
 
@@ -966,9 +1191,59 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertAlmostEqual(sd['s_squared'], 0.7536)
         self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
         self.assertAlmostEqual(sd['s_squared_annihilated'], 0.75)
+        with open(path, 'r') as f:
+            eigenvector_spins = [float(line.split('<S**2>=')[1])
+                                 for line in f.readlines() if 'Eigenvector' in line and '<S**2>=' in line]
+        self.assertGreater(len(eigenvector_spins), 1)
+        self.assertNotIn(round(sd['s_squared'], 3), [round(spin, 3) for spin in eigenvector_spins])
 
+    def test_parse_s_squared_from_a_restricted_stability_log(self):
+        """Test that a restricted Stable log, whose only <S**2>= lines are its roots, yields None"""
         path = os.path.join(ARC_TESTING_PATH, 'stability', 'stable_restricted_singlet_ts.out')
         self.assertIsNone(parser.parse_s_squared(path))
+        path = os.path.join(ARC_TESTING_PATH, 'stability', 'rhf_uhf_instability_singlet_ts.out')
+        self.assertIsNone(parser.parse_s_squared(path))
+
+    def test_parse_s_squared_is_the_value_before_annihilation(self):
+        """Test that the SCF <S**2> is read, not the value after annihilating the first contaminant"""
+        path = os.path.join(ARC_TESTING_PATH, 'stability', 'stable_spin_contaminated_doublet_ts.out')
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        with open(path, 'r') as f:
+            lines = [line for line in f.readlines() if 'S**2 before annihilation' in line]
+        self.assertEqual(len(lines), 1)
+        before, after = lines[0].split()[3].rstrip(','), lines[0].split()[-1]
+        self.assertAlmostEqual(sd['s_squared'], float(before), places=4)
+        self.assertAlmostEqual(sd['s_squared_annihilated'], float(after), places=4)
+        self.assertNotAlmostEqual(sd['s_squared'], float(after), places=4)
+
+    def test_parse_s_squared_ignores_the_initial_guess_spin(self):
+        """Test that a job that died before its first SCF cycle reports no <S**2> at all"""
+        path = os.path.join(ARC_TESTING_PATH, 'spin', 'uhf_died_before_scf_septet.out')
+        with open(path, 'r') as f:
+            lines = [line for line in f.readlines() if '<Sx>=' in line]
+        self.assertEqual(len(lines), 1)
+        self.assertIn('Initial guess', lines[0])
+        self.assertIn('<S**2>=12.0000', lines[0])
+        self.assertIsNone(parser.parse_s_squared(path))
+
+    def test_parse_s_squared_takes_the_first_multiplicity_line(self):
+        """Test that a guess=fragment log's ideal value comes from the molecule, not from a fragment"""
+        path = os.path.join(ARC_TESTING_PATH, 'spin', 'uhf_fragment_guess_doublet.out')
+        with open(path, 'r') as f:
+            multiplicities = [int(line.split('Multiplicity =')[1].split()[0])
+                              for line in f.readlines() if 'Multiplicity =' in line]
+        self.assertEqual(multiplicities, [2, 2, 1])
+        sd = parser.parse_s_squared(path)
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7536)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+
+    def test_parse_s_squared_from_an_ordinary_unrestricted_freq_log(self):
+        """Test that <S**2> is read from a log carrying no stability analysis"""
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH3OO_freq_gaussian.out')
+        self.assertIsNone(parser.parse_wavefunction_stability(path))
+        self.assertAlmostEqual(parser.parse_s_squared(path)['s_squared'], 0.7544, places=4)
 
     def test_s_squared_expected_from_multiplicity(self):
         """Test the ideal S(S+1) helper"""
@@ -1078,59 +1353,73 @@ H      -1.69381305    0.40788834    0.90078104"""
                                     200.0, 208.0, 216.0, 224.0, 232.0, 240.0, 248.0, 256.0, 264.0, 272.0, 280.0, 288.0,
                                     296.0, 304.0, 312.0, 320.0, 328.0, 336.0, 344.0])
         
+        # Orca reports the surface on its own -180..180 dihedral origin in absolute
+        # Hartree; the adapter must publish the ARC-wide convention instead:
+        # kJ/mol relative to the scan minimum, on a displacement-from-first-point
+        # angle axis. The absolute Hartree values remain reachable through
+        # parse_1d_scan_energies_hartree.
         path_4 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'orca', 'cc.txt')
         energies_4, angles_4 = parser.parse_1d_scan_energies(log_file_path=path_4)
-        self.assertEqual(energies_4.shape, (45,))
-        energies_4, angles_4 = energies_4.tolist(), angles_4.tolist()
-        self.assertEqual(angles_4, [-180.        , -171.81818182, -163.63636364, -155.45454545,
-                                    -147.27272727, -139.09090909, -130.90909091, -122.72727273,
-                                    -114.54545455, -106.36363636,  -98.18181818,  -90.        ,
-                                    -81.81818182,  -73.63636364,  -65.45454545,  -57.27272727,
-                                    -49.09090909,  -40.90909091,  -32.72727273,  -24.54545455,
-                                    -16.36363636,   -8.18181818,    0.        ,    8.18181818,
-                                     16.36363636,   24.54545455,   32.72727273,   40.90909091,
-                                     49.09090909,   57.27272727,   65.45454545,   73.63636364,
-                                     81.81818182,   90.        ,   98.18181818,  106.36363636,
-                                     114.54545455,  122.72727273,  130.90909091,  139.09090909,
-                                     147.27272727,  155.45454545,  163.63636364,  171.81818182,
-                                     180.        ])
-        self.assertEqual(energies_4, [-205.45224799, -205.45190811, -205.45091275, -205.44933274,
-                                      -205.44728671, -205.4449269 , -205.44243238, -205.43999284,
-                                      -205.43779528, -205.43600588, -205.434757  , -205.43414239,
-                                      -205.43420969, -205.43496112, -205.4363512 , -205.43828268,
-                                      -205.44061138, -205.44315299, -205.44569266, -205.44800238,
-                                      -205.4498563 , -205.4510646 , -205.45148293, -205.45106459,
-                                      -205.44985629, -205.44800238, -205.44569265, -205.44315298,
-                                      -205.44061136, -205.43828268, -205.43635116, -205.43496113,
-                                      -205.43420969, -205.43414239, -205.434757  , -205.43600587,
-                                      -205.43779528, -205.43999284, -205.44243239, -205.44492691,
-                                      -205.44728671, -205.44933274, -205.45091284, -205.45190811,
-                                      -205.45224799])
+        self.assertEqual(len(energies_4), 45)
+        self.assertEqual(len(angles_4), 45)
+        self.assertAlmostEqual(min(energies_4), 0.0, places=10)
+        self.assertAlmostEqual(max(energies_4), 47.5363, places=3)
+        self.assertAlmostEqual(angles_4[0], 0.0, places=10)
+        self.assertAlmostEqual(angles_4[1], 8.18181818, places=6)
+        self.assertAlmostEqual(angles_4[-1], 360.0, places=6)
+        self.assertEqual(angles_4, sorted(angles_4))
+
+        abs_energies_4, abs_angles_4 = parser.parse_1d_scan_energies_hartree(log_file_path=path_4)
+        self.assertEqual(len(abs_energies_4), 45)
+        self.assertAlmostEqual(min(abs_energies_4), -205.45224799, places=6)
+        self.assertAlmostEqual(max(abs_energies_4), -205.43414239, places=6)
+        self.assertEqual(abs_angles_4, angles_4)
+        # The two views must agree: E_rel = (E_abs - min(E_abs)) * E_h_kJmol.
+        lowest_4 = min(abs_energies_4)
+        for absolute, relative in zip(abs_energies_4, energies_4):
+            self.assertAlmostEqual((absolute - lowest_4) * E_h_kJmol, relative, places=6)
 
         path_5 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'orca', 'dft.txt')
         energies_5, angles_5 = parser.parse_1d_scan_energies(log_file_path=path_5)
-        self.assertEqual(energies_5.shape, (40,))
-        energies_5, angles_5 = energies_5.tolist(), angles_5.tolist()
-        self.assertEqual(angles_5, [-180.        , -170.76923077, -161.53846154, -152.30769231,
-                                    -143.07692308, -133.84615385, -124.61538462, -115.38461538,
-                                    -106.15384615,  -96.92307692,  -87.69230769,  -78.46153846,
-                                    -69.23076923,  -60.        ,  -50.76923077,  -41.53846154,
-                                    -32.30769231,  -23.07692308,  -13.84615385,   -4.61538462,
-                                     4.61538462,   13.84615385,   23.07692308,   32.30769231,
-                                     41.53846154,   50.76923077,   60.        ,   69.23076923,
-                                     78.46153846,   87.69230769,   96.92307692,  106.15384615,
-                                     115.38461538,  124.61538462,  133.84615385,  143.07692308,
-                                     152.30769231,  161.53846154,  170.76923077,  180.        ])
-        self.assertEqual(energies_5, [-205.56412863, -205.56304415, -205.55981277, -205.55449922,
-                                      -205.54721698, -205.53811775, -205.5274174 , -205.51539728,
-                                      -205.50245689, -205.49000818, -205.49181718, -205.50275068,
-                                      -205.51519265, -205.52710432, -205.53796901, -205.54748809,
-                                      -205.55543296, -205.56160894, -205.56584894, -205.5680131 ,
-                                      -205.56801483, -205.56585336, -205.56161212, -205.55542977,
-                                      -205.54748298, -205.53796909, -205.52710778, -205.51519567,
-                                      -205.50275147, -205.49181828, -205.49000878, -205.50245773,
-                                      -205.51540006, -205.52742038, -205.53811826, -205.5472153 ,
-                                      -205.55449977, -205.55981412, -205.56304759, -205.56413261])
+        self.assertEqual(len(energies_5), 40)
+        self.assertEqual(len(angles_5), 40)
+        self.assertAlmostEqual(min(energies_5), 0.0, places=10)
+        self.assertAlmostEqual(max(energies_5), 204.8064, places=3)
+        self.assertAlmostEqual(angles_5[0], 0.0, places=10)
+        self.assertAlmostEqual(angles_5[-1], 360.0, places=6)
+
+    def test_parse_1d_scan_energies_gaussian_scan_direction(self):
+        """Test that Gaussian 1D scan angles stay monotonic and keep the scan direction"""
+        forward_wrapping_path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2.out')
+        energies, angles = parser.parse_1d_scan_energies(log_file_path=forward_wrapping_path)
+        self.assertEqual(len(angles), len(energies))
+        self.assertEqual(len(angles), 37)
+        np.testing.assert_almost_equal(angles, np.arange(0.0, 360.1, 10.0), 3)
+        self.assertGreater(min(np.diff(angles)), 0)
+
+        reverse_path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2_reverse_scan.out')
+        energies_rev, angles_rev = parser.parse_1d_scan_energies(log_file_path=reverse_path)
+        self.assertEqual(len(angles_rev), len(energies_rev))
+        self.assertEqual(len(angles_rev), 37)
+        np.testing.assert_almost_equal(angles_rev, np.arange(0.0, -360.1, -10.0), 3)
+        self.assertLess(max(np.diff(angles_rev)), 0)
+        self.assertAlmostEqual(angles_rev[-1], -360.0, 3)
+
+        two_point_path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'H2O2_two_point_scan.out')
+        energies_2, angles_2 = parser.parse_1d_scan_energies(log_file_path=two_point_path)
+        self.assertEqual(len(angles_2), 2)
+        np.testing.assert_almost_equal(angles_2, [0.0, 10.0], 3)
+
+        short_forward_path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'TS_errored.out')
+        energies_3, angles_3 = parser.parse_1d_scan_energies(log_file_path=short_forward_path)
+        self.assertEqual(len(angles_3), 3)
+        np.testing.assert_almost_equal(angles_3, [0.0, 30.0, 60.0], 3)
+
+        non_uniform_path = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'l103_err.out')
+        energies_4, angles_4 = parser.parse_1d_scan_energies(log_file_path=non_uniform_path)
+        self.assertEqual(len(angles_4), len(energies_4))
+        np.testing.assert_almost_equal(angles_4, [0.0, 24.0, 32.0, 40.0], 3)
+        self.assertGreater(min(np.diff(angles_4)), 0)
 
     def test_parse_nd_scan_energies(self):
         """Test parsing an ND scan output file"""
@@ -1456,9 +1745,50 @@ H      -1.69381305    0.40788834    0.90078104"""
         path5 = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
         self.assertEqual(parser.parse_ess_version(path5), 'Molpro 2015.1.37')
 
+    def test_parse_ess_version_molpro(self):
+        """Test parsing the Molpro version string from 2015, 2021, and 2022 output files."""
+        path_2015_freq = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
+        self.assertEqual(parser.parse_ess_version(path_2015_freq), 'Molpro 2015.1.37')
+
+        path_2015_sp = os.path.join(ARC_TESTING_PATH, 'sp', 'mehylamine_CCSD(T).out')
+        self.assertEqual(parser.parse_ess_version(path_2015_sp), 'Molpro 2015.1.37')
+
+        path_2015_trsh = os.path.join(ARC_TESTING_PATH, 'trsh', 'molpro', 'insufficient_memory.out')
+        self.assertEqual(parser.parse_ess_version(path_2015_trsh), 'Molpro 2015.1.11')
+
+        path_2021_sp = os.path.join(ARC_TESTING_PATH, 'sp', 'ONHO(T)_sp_CCSD(T).out')
+        self.assertEqual(parser.parse_ess_version(path_2021_sp), 'Molpro 2021.2')
+
+        path_2021_trsh = os.path.join(ARC_TESTING_PATH, 'trsh', 'molpro', 'insufficient_memory_2.out')
+        self.assertEqual(parser.parse_ess_version(path_2021_trsh), 'Molpro 2021.3')
+
+        path_2022_h = os.path.join(ARC_TESTING_PATH, 'sp', 'H_CCSD.out')
+        self.assertEqual(parser.parse_ess_version(path_2022_h), 'Molpro 2022.3')
+
+        path_2022_n = os.path.join(ARC_TESTING_PATH, 'sp', 'N_CCSD.out')
+        self.assertEqual(parser.parse_ess_version(path_2022_n), 'Molpro 2022.3')
+
+        path_2022_ts = os.path.join(ARC_TESTING_PATH, 'sp', 'TS_x118_sp_CCSD(T).out')
+        self.assertEqual(parser.parse_ess_version(path_2022_ts), 'Molpro 2022.3')
+
+        path_2022_restart = os.path.join(ARC_TESTING_PATH, 'restart', '5_TS1', 'sp_a7003', 'output.out')
+        self.assertEqual(parser.parse_ess_version(path_2022_restart), 'Molpro 2022.3')
+
+    def test_parse_ess_version_molpro_without_a_version_line(self):
+        """Test parsing a Molpro output file that carries no version line at all."""
+        scratch_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        path = os.path.join(scratch_dir, 'no_version.out')
+        with open(path, 'w') as f:
+            f.write(' PROGRAM SYSTEM MOLPRO\n'
+                    '\n'
+                    ' SETTING BASIS = CC-PVTZ\n'
+                    '\n'
+                    ' Variable memory set to 100.0 MB\n')
+        self.assertIsNone(parser.parse_ess_version(path))
+
     def test_yaml_parser(self):
         """Test the YAMLParser adapter for all its parse methods."""
-        import tempfile
         from arc.parser.adapters.yaml import YAMLParser
         from arc.constants import E_h_kJmol, bohr_to_angstrom
         import yaml
@@ -1548,6 +1878,558 @@ H      -1.69381305    0.40788834    0.90078104"""
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
+
+
+class TestParseRealStabilityLogs(unittest.TestCase):
+    """
+    Contains unit tests for parsing real Gaussian stable=(rext,noopt) logs of campaign TSs.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.path = lambda name: os.path.join(ARC_TESTING_PATH, 'stability', name)
+
+    def _parse(self, name: str) -> dict:
+        """Parse a stability fixture by file name."""
+        result = parser.parse_wavefunction_stability(os.path.join(ARC_TESTING_PATH, 'stability', name))
+        self.assertIsNotNone(result, msg=f'no stability verdict parsed from {name}')
+        return result
+
+    def test_one_analysis_and_one_verdict_per_rext_run(self):
+        """Test that a RExt run reports a single analysis with a single verdict line"""
+        for name in ['rhf_uhf_instability_singlet_ts.out', 'stable_unrestricted_doublet_ts.out',
+                     'stable_restricted_singlet_ts.out', 'stable_spin_contaminated_doublet_ts.out']:
+            with open(os.path.join(ARC_TESTING_PATH, 'stability', name), 'r') as f:
+                lines = f.readlines()
+            headers = [line for line in lines if 'Stability analysis using' in line]
+            verdicts = [line for line in lines
+                        if 'wavefunction is stable' in line or 'wavefunction has an' in line]
+            self.assertEqual(len(headers), 1, msg=f'{name} has {len(headers)} stability analyses')
+            self.assertEqual(len(verdicts), 1, msg=f'{name} has {len(verdicts)} verdict lines')
+
+    def test_restricted_singlet_ts_with_an_rhf_uhf_instability(self):
+        """Test the verdict of a restricted singlet TS whose wavefunction is RHF -> UHF unstable"""
+        result = self._parse('rhf_uhf_instability_singlet_ts.out')
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertTrue(result['restricted'])
+        self.assertTrue(result['external_instability'])
+        self.assertEqual(result['relaxations'], ['RHF -> UHF'])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.0642219, places=6)
+        self.assertEqual([e['label'] for e in result['negative_eigenvectors']], ['Triplet-A'])
+        self.assertAlmostEqual(result['negative_eigenvectors'][0]['eigenvalue'], -0.0642219, places=6)
+
+    def test_restricted_external_instability_leaves_the_analytic_hessian_defined(self):
+        """Test that the sole negative root of the unstable singlet TS is triplet, not singlet"""
+        result = self._parse('rhf_uhf_instability_singlet_ts.out')
+        self.assertNotIn('Singlet', [e['label'].split('-')[0] for e in result['negative_eigenvectors']])
+        self.assertFalse(result['internal_instability'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+
+    def test_stable_unrestricted_doublet_ts(self):
+        """Test that an unrestricted stable verdict leaves the unanalysed spin-flip sector undecided"""
+        result = self._parse('stable_unrestricted_doublet_ts.out')
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertFalse(result['restricted'])
+        self.assertFalse(result['internal_instability'])
+        self.assertIsNone(result['external_instability'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+        self.assertEqual(result['relaxations'], [])
+        self.assertEqual(result['negative_eigenvectors'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0024619, places=6)
+
+    def test_an_unrestricted_analysis_holds_no_spin_flip_block(self):
+        """Test that the unrestricted fixtures carry no <AB,BA matrix, so no external root was computed"""
+        for name in ['stable_unrestricted_doublet_ts.out', 'stable_spin_contaminated_doublet_ts.out']:
+            with open(os.path.join(ARC_TESTING_PATH, 'stability', name), 'r') as f:
+                content = f.read()
+            self.assertEqual(content.count('<AA,BB:AA,BB> singles matrix'), 1, msg=name)
+            self.assertNotIn('<AB,BA', content, msg=name)
+
+    def test_stable_restricted_singlet_ts(self):
+        """Test that a restricted stable verdict covers both sectors of its single matrix"""
+        result = self._parse('stable_restricted_singlet_ts.out')
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertTrue(result['restricted'])
+        self.assertFalse(result['internal_instability'])
+        self.assertFalse(result['external_instability'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+        self.assertEqual(result['negative_eigenvectors'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0241461, places=6)
+
+    def test_spin_contaminated_doublet_ts_is_stable(self):
+        """Test that a spin-contaminated doublet TS is reported stable, with no relaxation left to find"""
+        result = self._parse('stable_spin_contaminated_doublet_ts.out')
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertFalse(result['restricted'])
+        self.assertIsNone(result['external_instability'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+        self.assertEqual(result['negative_eigenvectors'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0005803, places=6)
+
+    def test_unrestricted_eigenvector_labels_are_read(self):
+        """Test that the numeric symmetry label of an unrestricted eigenvector is parsed"""
+        adapter = GaussianParser(os.path.join(ARC_TESTING_PATH, 'stability',
+                                              'stable_unrestricted_doublet_ts.out'))
+        result = adapter.parse_wavefunction_stability()
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0024619, places=6)
+        self.assertFalse(result['restricted'])
+
+
+class TestParseWavefunctionStability(unittest.TestCase):
+    """
+    Contains unit tests for parsing a Gaussian wavefunction stability analysis.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.header = ' Entering Gaussian System, Link 0=g16\n' \
+                     ' #P stable=(rext,noopt) uwb97xd/def2tzvp guess=read\n'
+        cls.stable_block = """ Stability analysis using <AA,BB:AA,BB> singles matrix:
+
+ Eigenvector   1:  3.026-?Sym  Eigenvalue= 0.0219147  <S**2>=2.039
+ Eigenvector   2:  3.026-?Sym  Eigenvalue= 0.0451128  <S**2>=2.041
+
+ The wavefunction is stable under the perturbations considered.
+
+ Normal termination of Gaussian 16.
+"""
+        cls.internal_block = """ Stability analysis using <AA,BB:AA,BB> singles matrix:
+
+ Eigenvector   1:      Singlet-?Sym  Eigenvalue=-0.0731205  <S**2>=0.000
+
+ The wavefunction has an internal instability.
+
+ Normal termination of Gaussian 16.
+"""
+        cls.external_block = """ Stability analysis using <AA,BB:AA,BB> singles matrix:
+
+ Eigenvector   1:      Triplet-?Sym  Eigenvalue=-0.1434007  <S**2>=2.000
+ Eigenvector   3:      Singlet-?Sym  Eigenvalue= 0.0000259  <S**2>=0.000
+
+ The wavefunction has an RHF -> UHF instability.
+
+ Normal termination of Gaussian 16.
+"""
+
+    def _parse(self, block: str, scf_done: str = ''):
+        """Write a Gaussian log holding the given block to a temporary file and parse its verdict."""
+        with tempfile.NamedTemporaryFile(suffix='.log', mode='w', delete=False) as f:
+            f.write(self.header + scf_done + block)
+            temp_path = f.name
+        try:
+            return parser.parse_wavefunction_stability(temp_path)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_stable_verdict(self):
+        """Test parsing a stable wavefunction verdict whose reference the log never states"""
+        result = self._parse(self.stable_block)
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertIsNone(result['restricted'])
+        self.assertFalse(result['internal_instability'])
+        self.assertIsNone(result['external_instability'])
+        self.assertEqual(result['relaxations'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0219147, places=6)
+
+    def test_a_restricted_stable_verdict_covers_the_spin_flip_sector(self):
+        """Test that a stable restricted reference reports the external sector tested and clean"""
+        result = self._parse(self.stable_block, scf_done=' SCF Done:  E(RwB97XD) =  -100.0     A.U.\n')
+        self.assertTrue(result['restricted'])
+        self.assertFalse(result['internal_instability'])
+        self.assertFalse(result['external_instability'])
+
+    def test_an_unrestricted_stable_verdict_leaves_the_spin_flip_sector_undecided(self):
+        """Test that a stable unrestricted reference reports the untested external sector as undecided"""
+        result = self._parse(self.stable_block, scf_done=' SCF Done:  E(UwB97XD) =  -100.0     A.U.\n')
+        self.assertFalse(result['restricted'])
+        self.assertFalse(result['internal_instability'])
+        self.assertIsNone(result['external_instability'])
+
+    def test_internal_instability_verdict(self):
+        """Test parsing an internal instability verdict"""
+        result = self._parse(self.internal_block)
+        self.assertEqual(result['verdict'], 'internal_instability')
+        self.assertTrue(result['internal_instability'])
+        self.assertEqual(result['relaxations'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.0731205, places=6)
+
+    def test_external_instability_verdict(self):
+        """Test parsing an external instability verdict and the relaxed constraint"""
+        result = self._parse(self.external_block)
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertTrue(result['external_instability'])
+        self.assertEqual(result['relaxations'], ['RHF -> UHF'])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.1434007, places=6)
+
+    def test_internal_takes_precedence_over_external(self):
+        """Test that an internal instability outranks an external one in the same log"""
+        result = self._parse(self.internal_block + self.external_block)
+        self.assertEqual(result['verdict'], 'internal_instability')
+        self.assertTrue(result['internal_instability'])
+        self.assertTrue(result['external_instability'])
+        self.assertEqual(result['relaxations'], ['RHF -> UHF'])
+
+    def test_restricted_external_instability_does_not_invalidate_freq(self):
+        """Test that an external instability of a restricted reference leaves the freq valid"""
+        result = self._parse(' SCF Done:  E(RwB97XD) =  -78.5936     A.U.\n' + self.external_block)
+        self.assertTrue(result['restricted'])
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertFalse(result['invalidates_analytic_freq'])
+
+    def test_unrestricted_external_instability_invalidates_freq(self):
+        """Test that any instability of an unrestricted reference invalidates the freq"""
+        result = self._parse(' SCF Done:  E(UwB97XD) =  -78.5936     A.U.\n' + self.external_block)
+        self.assertFalse(result['restricted'])
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertTrue(result['invalidates_analytic_freq'])
+
+    def test_internal_instability_invalidates_either_reference(self):
+        """Test that an internal instability invalidates the freq for both references"""
+        for reference in ['R', 'U']:
+            result = self._parse(f' SCF Done:  E({reference}wB97XD) =  -78.5936     A.U.\n' + self.internal_block)
+            self.assertTrue(result['invalidates_analytic_freq'])
+        stable = self._parse(' SCF Done:  E(UwB97XD) =  -78.5936     A.U.\n' + self.stable_block)
+        self.assertFalse(stable['invalidates_analytic_freq'])
+
+    def test_unknown_reference_leaves_freq_validity_undecided(self):
+        """Test that an unreadable reference does not resolve an external verdict either way"""
+        result = self._parse(self.external_block)
+        self.assertIsNone(result['restricted'])
+        self.assertIsNone(result['invalidates_analytic_freq'])
+
+    def test_negative_unrestricted_eigenvector_label_is_read(self):
+        """Test that a negative root carrying an unrestricted numeric label is recorded"""
+        result = self._parse(' SCF Done:  E(UB3LYP) =  -614.0536     A.U.\n'
+                             ' Stability analysis using <AA,BB:AA,BB> singles matrix:\n'
+                             '\n'
+                             ' Eigenvectors of the stability matrix:\n'
+                             '\n'
+                             ' Eigenvector   1:  2.012-A    Eigenvalue=-0.0311204  <S**2>=0.762\n'
+                             ' Eigenvector   2:  2.041-A    Eigenvalue= 0.0744695  <S**2>=0.791\n'
+                             '\n'
+                             ' The wavefunction has an internal instability.\n')
+        self.assertEqual(result['verdict'], 'internal_instability')
+        self.assertFalse(result['restricted'])
+        self.assertTrue(result['invalidates_analytic_freq'])
+        self.assertEqual([e['label'] for e in result['negative_eigenvectors']], ['2.012-A'])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.0311204, places=6)
+
+    def test_unparsed_verdict_is_not_reported_as_stable(self):
+        """Test that an analysis whose verdict line was not recognized yields 'unknown'"""
+        result = self._parse(' Stability analysis using <AA,BB:AA,BB> singles matrix:\n'
+                             ' Eigenvector   1:      Singlet-?Sym  Eigenvalue=-0.0731205  <S**2>=0.000\n'
+                             ' The wavefunction has some phrasing ARC does not know.\n')
+        self.assertEqual(result['verdict'], 'unknown')
+        self.assertIsNone(result['internal_instability'])
+        self.assertIsNone(result['external_instability'])
+
+    def test_negative_eigenvector_labels_are_kept(self):
+        """Test that the label of each negative stability-matrix eigenvalue is recorded"""
+        result = self._parse(self.external_block)
+        self.assertEqual([e['label'] for e in result['negative_eigenvectors']], ['Triplet-?Sym'])
+        self.assertEqual(len(result['negative_eigenvectors']), 1)
+        self.assertEqual(self._parse(self.stable_block)['negative_eigenvectors'], [])
+
+    def test_fortran_double_exponent_eigenvalue(self):
+        """Test that an eigenvalue in Fortran D notation is not read as its mantissa"""
+        result = self._parse(' Stability analysis using <AA,BB:AA,BB> singles matrix:\n'
+                             ' Eigenvector   1:      Singlet-?Sym  Eigenvalue=-0.53D-02  <S**2>=0.000\n'
+                             ' The wavefunction has an internal instability.\n')
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.0053, places=6)
+
+    def test_no_stability_analysis(self):
+        """Test that a log with no stability analysis yields no verdict"""
+        self.assertIsNone(self._parse(' SCF Done:  E(UB3LYP) =  -78.5936    A.U.\n'
+                                      ' Normal termination of Gaussian 16.\n'))
+        freq_path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH3OO_freq_gaussian.out')
+        self.assertIsNone(parser.parse_wavefunction_stability(freq_path))
+
+
+class TestParseOrcaStabilityLogs(unittest.TestCase):
+    """
+    Contains unit tests for parsing real ORCA STABPerform logs of campaign TSs.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_orca_stability_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
+
+    def _parse(self, name: str) -> dict:
+        """Parse an ORCA stability fixture by file name."""
+        result = parser.parse_wavefunction_stability(os.path.join(ARC_TESTING_PATH, 'stability', name))
+        self.assertIsNotNone(result, msg=f'no stability verdict parsed from {name}')
+        return result
+
+    def test_stable_restricted_singlet_ts(self):
+        """Test the verdict of a stable restricted singlet TS"""
+        result = self._parse('orca_stable_restricted_singlet_ts.out')
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertTrue(result['restricted'])
+        self.assertFalse(result['internal_instability'])
+        self.assertFalse(result['external_instability'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+        self.assertEqual(result['relaxations'], [])
+        self.assertEqual(result['negative_eigenvectors'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0245450, places=6)
+        self.assertEqual(result['n_analyses'], 1)
+        self.assertFalse(result['followed_to_stable'])
+
+    def test_stable_unrestricted_doublet_ts(self):
+        """Test that an unrestricted stable verdict leaves the unanalysed spin-flip sector undecided"""
+        result = self._parse('orca_stable_unrestricted_doublet_ts.out')
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertFalse(result['restricted'])
+        self.assertFalse(result['internal_instability'])
+        self.assertIsNone(result['external_instability'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+        self.assertEqual(result['negative_eigenvectors'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0024498, places=6)
+
+    def test_spin_contaminated_doublet_ts_is_stable(self):
+        """Test that a spin-contaminated doublet TS is reported stable by the spin-conserving analysis"""
+        result = self._parse('orca_stable_spin_contaminated_doublet_ts.out')
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertFalse(result['restricted'])
+        self.assertEqual(result['negative_eigenvectors'], [])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], 0.0656010, places=6)
+
+    def test_the_two_codes_agree_on_every_verdict(self):
+        """Test that ORCA and Gaussian report the same verdict on each of the four measured systems"""
+        for orca_name, gaussian_name in [('orca_stable_restricted_singlet_ts.out',
+                                          'stable_restricted_singlet_ts.out'),
+                                         ('orca_stable_unrestricted_doublet_ts.out',
+                                          'stable_unrestricted_doublet_ts.out'),
+                                         ('orca_stable_spin_contaminated_doublet_ts.out',
+                                          'stable_spin_contaminated_doublet_ts.out'),
+                                         ('orca_rhf_uhf_instability_singlet_ts.out',
+                                          'rhf_uhf_instability_singlet_ts.out')]:
+            orca = self._parse(orca_name)
+            gaussian = parser.parse_wavefunction_stability(
+                os.path.join(ARC_TESTING_PATH, 'stability', gaussian_name))
+            self.assertEqual(orca['verdict'], gaussian['verdict'], msg=f'{orca_name} vs {gaussian_name}')
+            self.assertEqual(orca['restricted'], gaussian['restricted'], msg=f'{orca_name} vs {gaussian_name}')
+            self.assertEqual(orca['internal_instability'], gaussian['internal_instability'],
+                             msg=f'{orca_name} vs {gaussian_name}')
+            self.assertEqual(orca['external_instability'], gaussian['external_instability'],
+                             msg=f'{orca_name} vs {gaussian_name}')
+
+    def test_the_same_physical_situation_gets_the_same_analytic_freq_answer(self):
+        """Test that both readers apply one rule to invalidates_analytic_freq"""
+        for orca_name, gaussian_name in [('orca_stable_restricted_singlet_ts.out',
+                                          'stable_restricted_singlet_ts.out'),
+                                         ('orca_stable_unrestricted_doublet_ts.out',
+                                          'stable_unrestricted_doublet_ts.out'),
+                                         ('orca_rhf_uhf_instability_singlet_ts.out',
+                                          'rhf_uhf_instability_singlet_ts.out')]:
+            orca = self._parse(orca_name)
+            gaussian = parser.parse_wavefunction_stability(
+                os.path.join(ARC_TESTING_PATH, 'stability', gaussian_name))
+            self.assertEqual(orca['invalidates_analytic_freq'], gaussian['invalidates_analytic_freq'],
+                             msg=f'{orca_name} vs {gaussian_name}')
+
+    def test_restricted_singlet_ts_with_an_rhf_uhf_instability(self):
+        """Test that the verdict of a restarted log describes the first analysis, the one under test"""
+        result = self._parse('orca_rhf_uhf_instability_singlet_ts.out')
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertTrue(result['restricted'])
+        self.assertTrue(result['external_instability'])
+        self.assertIsNone(result['internal_instability'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+        self.assertEqual(result['relaxations'], ['RHF -> UHF'])
+        self.assertEqual(result['n_analyses'], 2)
+        self.assertTrue(result['followed_to_stable'])
+        self.assertEqual([eigenvector['label'] for eigenvector in result['negative_eigenvectors']], [None])
+        self.assertAlmostEqual(result['negative_eigenvectors'][0]['eigenvalue'], -0.0646615, places=6)
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.0646615, places=6)
+
+    def test_the_external_sector_is_measured_and_not_assumed(self):
+        """Test that the RHF -> UHF label rests on the spin contamination of the followed solution"""
+        result = self._parse('orca_rhf_uhf_instability_singlet_ts.out')
+        self.assertAlmostEqual(result['s_squared_after_follow'], 0.864742, places=6)
+        self.assertGreater(result['s_squared_after_follow'], SPIN_SYMMETRY_BREAKING_S_SQUARED)
+        with open(os.path.join(ARC_TESTING_PATH, 'stability',
+                               'orca_rhf_uhf_instability_singlet_ts.out'), 'r') as f:
+            lines = f.readlines()
+        spin_lines = [line for line in lines if 'Expectation value of <S**2>' in line]
+        self.assertEqual(len(spin_lines), 1, msg='the restart fixture no longer holds one <S**2> block')
+        self.assertGreater(lines.index(spin_lines[0]),
+                           max(index for index, line in enumerate(lines)
+                               if 'WAVEFUNCTION STABILITY ANALYSIS' in line),
+                           msg='the <S**2> of record is no longer the followed solution\'s')
+        self.assertEqual(result['verdict'], 'external_instability')
+
+    def test_a_follow_that_ended_unstable_still_measures_the_sector(self):
+        """Test that the sector is read off a followed solution the last analysis still calls unstable"""
+        path = os.path.join(self.scratch_dir, 'follow_ended_unstable.out')
+        with open(os.path.join(ARC_TESTING_PATH, 'stability',
+                               'orca_rhf_uhf_instability_singlet_ts.out'), 'r') as f:
+            content = f.read()
+        with open(path, 'w') as f:
+            f.write(content.replace('The stability analysis shows that the wavefunction is stable',
+                                    'The stability analysis indicates that the wavefunction is unstable'))
+        result = parser.parse_wavefunction_stability(path)
+        self.assertEqual(result['n_analyses'], 2)
+        self.assertFalse(result['followed_to_stable'])
+        self.assertAlmostEqual(result['s_squared_after_follow'], 0.864742, places=5)
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertTrue(result['external_instability'])
+        self.assertEqual(result['relaxations'], ['RHF -> UHF'])
+        self.assertFalse(result['invalidates_analytic_freq'])
+
+    def test_a_follow_that_stayed_spin_symmetric_is_an_internal_instability(self):
+        """Test that a followed solution still at zero <S**2> relaxed within the spin-conserving sector"""
+        path = os.path.join(self.scratch_dir, 'follow_stayed_symmetric.out')
+        with open(os.path.join(ARC_TESTING_PATH, 'stability',
+                               'orca_rhf_uhf_instability_singlet_ts.out'), 'r') as f:
+            content = f.read()
+        with open(path, 'w') as f:
+            f.write(content.replace('Expectation value of <S**2>     :     0.864742',
+                                    'Expectation value of <S**2>     :     0.000000'))
+        result = parser.parse_wavefunction_stability(path)
+        self.assertEqual(result['verdict'], 'internal_instability')
+        self.assertTrue(result['internal_instability'])
+        self.assertTrue(result['invalidates_analytic_freq'])
+
+    def test_a_log_opening_on_a_stable_analysis_reports_no_follow(self):
+        """Test that concatenated stable analyses are not read as a followed instability"""
+        path = os.path.join(self.scratch_dir, 'two_stable_analyses.out')
+        with open(os.path.join(ARC_TESTING_PATH, 'stability',
+                               'orca_stable_unrestricted_doublet_ts.out'), 'r') as f:
+            content = f.read()
+        with open(path, 'w') as f:
+            f.write(content + content)
+        result = parser.parse_wavefunction_stability(path)
+        self.assertEqual(result['n_analyses'], 2)
+        self.assertFalse(result['followed_to_stable'])
+        self.assertIsNone(result['s_squared_after_follow'])
+        self.assertEqual(result['verdict'], 'stable')
+
+    def test_an_eigenvalue_line_of_any_length_is_read_without_backtracking(self):
+        """Test that a malformed eigenvalue line is rejected in time linear in its length"""
+        path = os.path.join(self.scratch_dir, 'long_eigenvalue_line.out')
+        with open(path, 'w') as f:
+            f.write('                               WAVEFUNCTION STABILITY ANALYSIS\n')
+            f.write('The eigenvalues of the stability matrix:\n')
+            f.write(f"   E( 0) = {'1' * 160000}\n")
+            f.write('The stability analysis shows that the wavefunction is stable\n')
+        start = time.time()
+        result = OrcaParser(log_file_path=path).parse_wavefunction_stability()
+        elapsed = time.time() - start
+        self.assertEqual(result['verdict'], 'stable')
+        self.assertEqual(result['negative_eigenvectors'], [])
+        self.assertLess(elapsed, 15.0, msg=f'a 160k-character eigenvalue line took {elapsed} s to reject')
+
+    def test_an_instability_whose_sector_was_not_measured_is_left_unattributed(self):
+        """Test that a restricted instability the ESS never relaxed is neither internal nor external"""
+        result = self._parse('orca_rhf_uhf_instability_no_restart_crash.out')
+        self.assertEqual(result['verdict'], 'unattributed_instability')
+        self.assertTrue(result['restricted'])
+        self.assertIsNone(result['internal_instability'])
+        self.assertIsNone(result['external_instability'])
+        self.assertIsNone(result['invalidates_analytic_freq'])
+        self.assertIsNone(result['s_squared_after_follow'])
+        self.assertEqual(result['relaxations'], [])
+        self.assertLess(result['lowest_eigenvalue'], 0)
+
+    def test_an_ro_reference_is_neither_restricted_nor_unrestricted(self):
+        """Test that an ROHF reference is not reported as restricted and gets no RHF -> UHF relaxation"""
+        path = os.path.join(self.scratch_dir, 'rohf_instability.out')
+        with open(os.path.join(ARC_TESTING_PATH, 'stability',
+                               'orca_rhf_uhf_instability_singlet_ts.out'), 'r') as f:
+            content = f.read()
+        with open(path, 'w') as f:
+            f.write(content.replace('HFTyp           .... RHF', 'HFTyp           .... ROHF'))
+        result = parser.parse_wavefunction_stability(path)
+        self.assertIsNone(result['restricted'])
+        self.assertEqual(result['verdict'], 'unattributed_instability')
+        self.assertEqual(result['relaxations'], [])
+        self.assertIsNone(result['internal_instability'])
+        self.assertIsNone(result['external_instability'])
+
+    def test_a_negative_zero_root_counts_as_negative(self):
+        """Test that a marginal root printed as -0.00000000 is not dropped from the root list"""
+        path = os.path.join(self.scratch_dir, 'negative_zero_root.out')
+        with open(os.path.join(ARC_TESTING_PATH, 'stability',
+                               'orca_rhf_uhf_instability_singlet_ts.out'), 'r') as f:
+            content = f.read()
+        with open(path, 'w') as f:
+            f.write(content.replace('-0.06466151', '-0.00000000'))
+        result = parser.parse_wavefunction_stability(path)
+        self.assertEqual(len(result['negative_eigenvectors']), 1)
+        self.assertLess(math.copysign(1.0, result['negative_eigenvectors'][0]['eigenvalue']), 0)
+        self.assertEqual(result['verdict'], 'external_instability')
+
+    def test_the_relaxed_solution_does_not_overwrite_the_verdict(self):
+        """Test that the stable second analysis of a restarted log is reported apart from the verdict"""
+        with open(os.path.join(ARC_TESTING_PATH, 'stability',
+                               'orca_rhf_uhf_instability_singlet_ts.out'), 'r') as f:
+            lines = f.readlines()
+        verdicts = [line for line in lines if 'stability analysis' in line and 'wavefunction is' in line]
+        self.assertEqual(len(verdicts), 2, msg='the restart fixture no longer holds two verdicts')
+        self.assertIn('unstable', verdicts[0])
+        self.assertNotIn('unstable', verdicts[1])
+        result = self._parse('orca_rhf_uhf_instability_singlet_ts.out')
+        self.assertEqual(result['verdict'], 'external_instability')
+        self.assertLess(result['lowest_eigenvalue'], 0)
+
+    def test_the_parser_does_not_need_a_normal_termination(self):
+        """Test parser robustness on a crashed log, which ARC itself never surfaces a verdict from"""
+        path = os.path.join(ARC_TESTING_PATH, 'stability', 'orca_rhf_uhf_instability_no_restart_crash.out')
+        with open(path, 'r') as f:
+            content = f.read()
+        self.assertIn('error termination in LEANSCF', content)
+        self.assertNotIn('ORCA TERMINATED NORMALLY', content)
+        result = self._parse('orca_rhf_uhf_instability_no_restart_crash.out')
+        self.assertTrue(result['restricted'])
+        self.assertEqual(result['n_analyses'], 1)
+        self.assertFalse(result['followed_to_stable'])
+        self.assertAlmostEqual(result['lowest_eigenvalue'], -0.0646615, places=6)
+
+    def test_the_two_codes_agree_on_a_restricted_reference(self):
+        """Test that the lowest root of a restricted reference agrees between ORCA and Gaussian"""
+        for orca_name, gaussian_name in [('orca_rhf_uhf_instability_singlet_ts.out',
+                                          'rhf_uhf_instability_singlet_ts.out'),
+                                         ('orca_stable_restricted_singlet_ts.out',
+                                          'stable_restricted_singlet_ts.out')]:
+            orca = self._parse(orca_name)
+            gaussian = parser.parse_wavefunction_stability(
+                os.path.join(ARC_TESTING_PATH, 'stability', gaussian_name))
+            self.assertEqual(orca['verdict'], gaussian['verdict'])
+            self.assertAlmostEqual(orca['lowest_eigenvalue'], gaussian['lowest_eigenvalue'], places=2)
+
+    def test_no_stability_analysis_in_a_plain_orca_log(self):
+        """Test that an ORCA log holding no analysis yields no verdict"""
+        self.assertIsNone(parser.parse_wavefunction_stability(
+            os.path.join(ARC_TESTING_PATH, 'freq', 'orca_example_freq.log')))
+
+
+class TestBaseParserStability(unittest.TestCase):
+    """
+    Contains unit tests for the base ESS adapter's wavefunction stability declaration.
+    """
+
+    def test_an_ess_with_no_reader_returns_none(self):
+        """Test that an adapter that does not implement the analysis returns None rather than raising"""
+        for path in [os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out'),
+                     os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')]:
+            ess_name = parser.determine_ess(log_file_path=path)
+            adapter = ess_factory(log_file_path=path, ess_adapter=ess_name)
+            self.assertIsNone(adapter.parse_wavefunction_stability())
+            self.assertIsNone(parser.parse_wavefunction_stability(path))
 
 
 if __name__ == '__main__':

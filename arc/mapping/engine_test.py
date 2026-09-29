@@ -918,6 +918,21 @@ class TestMappingEngine(unittest.TestCase):
         atom_map = engine.map_two_species(spc1, spc2, inc_vals=100)
         self.assertEqual(atom_map, [102, 100, 101, 103, 104])
 
+    def test_inc_vals_dict(self):
+        """Test that inc_vals shifts a dict map's values, not its keys.
+
+        Iterating a dict yields its keys, so incrementing 'for value in atom_map' silently returned a list of
+        shifted reactant indices instead of a dict with shifted product indices.
+        """
+        spc1 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        spc2 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz_diff_order)
+        plain = engine.map_two_species(spc1, spc2, map_type='dict')
+        shifted = engine.map_two_species(spc1, spc2, map_type='dict', inc_vals=100)
+        self.assertIsInstance(shifted, dict)
+        # The domain is untouched and every value moved by exactly inc_vals.
+        self.assertEqual(sorted(shifted.keys()), sorted(plain.keys()))
+        self.assertEqual(shifted, {key: value + 100 for key, value in plain.items()})
+
     def test_get_arc_species(self):
         """Test the get_arc_species() function."""
         self.assertIsInstance(engine.get_arc_species(ARCSpecies(label='S', smiles='C')), ARCSpecies)

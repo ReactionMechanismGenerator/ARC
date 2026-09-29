@@ -10,7 +10,7 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from arc.common import get_logger
+from arc.common import get_angle_in_180_range, get_logger
 from arc.exceptions import InputError, ParserError
 from arc.parser.factory import ess_factory
 from arc.species.converter import str_to_xyz
@@ -290,6 +290,12 @@ parse_ess_version = make_parser(
     error_message='Could not parse ESS version from {path}',
 )
 
+parse_wavefunction_stability = make_parser(
+    parse_method='parse_wavefunction_stability',
+    return_type=dict | None,
+    error_message='Could not parse a wavefunction stability analysis from {path}',
+)
+
 parse_s_squared = make_parser(
     parse_method='parse_s_squared',
     return_type=dict | None,
@@ -323,69 +329,6 @@ def s_squared_expected_from_multiplicity(multiplicity: int | float | None) -> fl
         return None
     s = (m - 1.0) / 2.0
     return s * (s + 1.0)
-
-
-def parse_1d_scan_full_result(log_file_path: str) -> dict:
-    """
-    Parse a 1D rotor scan log into a single bundle of derived quantities suitable
-    for both ARC-internal use and TCKDB upload.
-
-    The returned dict aggregates what individual narrow parsers expose so that
-    callers (in particular the ``output.yml`` writer) don't have to re-walk the
-    log file three times. Fields are populated independently — any of them may
-    be ``None`` if the underlying parser cannot extract that information for the
-    given ESS log; the wrapper never raises.
-
-    Args:
-        log_file_path (str): Path to the ESS scan log.
-
-    Returns: dict
-        ``{
-            'angles_deg': list[float] | None,
-            'relative_energies_kj_mol': list[float] | None,
-            'absolute_energies_hartree': list[float] | None,
-            'zero_energy_reference_hartree': float | None,   # min absolute energy
-            'geometries': list[dict[str, tuple]] | None,
-        }``
-
-        ``angles_deg`` is taken from the relative-energies parse (the
-        established source of truth) when available, else from the absolute
-        parse. ``zero_energy_reference_hartree`` is the minimum of
-        ``absolute_energies_hartree`` when present, else ``None``.
-    """
-    rel_energies, rel_angles = parse_1d_scan_energies(log_file_path=log_file_path)
-    abs_energies, abs_angles = parse_1d_scan_energies_hartree(log_file_path=log_file_path)
-    geometries = parse_1d_scan_coords(log_file_path=log_file_path)
-
-    # Coerce numpy outputs (Gaussian's relative path returns lists; older code
-    # paths and ORCA may return ndarrays) to plain lists so YAML/JSON
-    # serialisers downstream don't choke on numpy scalars.
-    def _to_list(x):
-        if x is None:
-            return None
-        try:
-            return [float(v) for v in x]
-        except TypeError:
-            return None
-
-    rel_energies = _to_list(rel_energies)
-    rel_angles = _to_list(rel_angles)
-    abs_energies = _to_list(abs_energies)
-    abs_angles = _to_list(abs_angles)
-
-    angles = rel_angles if rel_angles is not None else abs_angles
-
-    zero_ref = None
-    if abs_energies:
-        zero_ref = min(abs_energies)
-
-    return {
-        'angles_deg': angles,
-        'relative_energies_kj_mol': rel_energies,
-        'absolute_energies_hartree': abs_energies,
-        'zero_energy_reference_hartree': zero_ref,
-        'geometries': geometries,
-    }
 
 
 def get_normal_mode_displacement(log_file_path: str,
@@ -423,6 +366,126 @@ def get_normal_mode_displacement(log_file_path: str,
                        f'displacements.')
         return None
     return freqs, normal_mode_disp
+
+
+def parse_1d_scan_full_result(log_file_path: str) -> dict:
+    """
+    Parse a 1D rotor scan log into a single bundle of derived quantities suitable
+    for both ARC-internal use and TCKDB upload.
+
+    The returned dict aggregates what individual narrow parsers expose so that
+    callers (in particular the ``output.yml`` writer) don't have to re-walk the
+    log file three times. Fields are populated independently — any of them may
+    be ``None`` if the underlying parser cannot extract that information for the
+    given ESS log.
+
+    The wrapper never raises: a path that is missing, unreadable or not
+    recognisable as any ESS output, and a narrow parser that raises on a
+    malformed log, each yield ``None`` for the affected fields and are reported
+    at debug level. Every key is present in the returned dict in all cases, so
+    a caller needs no exception handling of its own.
+
+    Args:
+        log_file_path (str): Path to the ESS scan log.
+
+    Returns: dict
+        ``{
+            'angles_deg': list[float] | None,
+            'relative_energies_kj_mol': list[float] | None,
+            'absolute_energies_hartree': list[float] | None,
+            'zero_energy_reference_hartree': float | None,   # min absolute energy
+            'geometries': list[dict[str, tuple]] | None,
+        }``
+
+        ``angles_deg`` is taken from the relative-energies parse (the
+        established source of truth) when available, else from the absolute
+        parse. ``zero_energy_reference_hartree`` is the minimum of
+        ``absolute_energies_hartree`` when present, else ``None``.
+    """
+    readable = bool(log_file_path) and os.path.isfile(log_file_path)
+    if not readable:
+        logger.debug(f'Cannot parse a 1D scan result: {log_file_path!r} is not a file.')
+
+    def _call(parser_function):
+        """Run one narrow parser, degrading to ``None`` instead of raising."""
+        if not readable:
+            return None
+        try:
+            return parser_function(log_file_path=log_file_path)
+        except Exception:
+            logger.debug(f'Parsing a 1D scan result from {log_file_path!r} raised', exc_info=True)
+            return None
+
+    def _call_pair(parser_function):
+        """Run one narrow parser that reports a pair, degrading to ``(None, None)``."""
+        result = _call(parser_function)
+        if isinstance(result, tuple) and len(result) == 2:
+            return result
+        return None, None
+
+    rel_energies, rel_angles = _call_pair(parse_1d_scan_energies)
+    abs_energies, abs_angles = _call_pair(parse_1d_scan_energies_hartree)
+    geometries = _call(parse_1d_scan_coords)
+
+    def _to_list(x):
+        """Coerce a numpy sequence to plain floats so YAML/JSON serialisers
+        downstream never see a numpy scalar; ``None`` for anything else."""
+        if x is None:
+            return None
+        try:
+            return [float(v) for v in x]
+        except (TypeError, ValueError):
+            return None
+
+    rel_energies = _to_list(rel_energies)
+    rel_angles = _to_list(rel_angles)
+    abs_energies = _to_list(abs_energies)
+    abs_angles = _to_list(abs_angles)
+
+    angles = rel_angles if rel_angles is not None else abs_angles
+
+    zero_ref = None
+    if abs_energies:
+        zero_ref = min(abs_energies)
+
+    return {
+        'angles_deg': angles,
+        'relative_energies_kj_mol': rel_energies,
+        'absolute_energies_hartree': abs_energies,
+        'zero_energy_reference_hartree': zero_ref,
+        'geometries': geometries,
+    }
+
+
+def scan_angles_to_displacement(angles) -> list[float]:
+    """
+    Convert absolute scan-coordinate values into displacements from the first sample.
+
+    ESSs report the scanned dihedral on their own origin: Gaussian echoes the
+    running internal-coordinate value, Orca tabulates the requested surface
+    coordinate on a -180 to 180 range. ARC's scan contract is a displacement
+    from the scan's first point, so every adapter routes its raw angles through
+    this function and downstream consumers see one convention.
+
+    The displacement is accumulated from the per-step differences, each taken in
+    the -180 to +180 degree range. It starts at zero, retains the sign of the scan
+    direction (negative for a scan with a negative step size), and is not folded
+    into the 0-360 degree range, so a sweep that completes a full turn ends at
+    +/-360 degrees. Consecutive scan points are assumed to be less than 180 degrees
+    apart.
+
+    Args:
+        angles (list[float] | np.ndarray): The scanned coordinate values in degrees,
+                                           in source order.
+
+    Returns: list[float]
+        The displacement of each sample from the first, in degrees.
+    """
+    angle_arr = np.array(angles, float)
+    if not angle_arr.size:
+        return list()
+    steps = [get_angle_in_180_range(step, round_to=None) for step in np.diff(angle_arr)]
+    return np.concatenate(([0.0], np.cumsum(steps))).tolist() if len(steps) else [0.0]
 
 
 def parse_1d_scan_energies_from_specific_angle(log_file_path: str,

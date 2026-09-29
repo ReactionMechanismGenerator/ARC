@@ -3,43 +3,61 @@ Tests for the arc.output module (consolidated output.yml writer).
 """
 
 import datetime
+import json
 import os
 import shutil
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from arc.common import ARC_PATH
+import yaml
+
+from arc.common import ARC_PATH, read_yaml_file
+from arc.constants import E_h_kJmol
+from arc.exceptions import InputError
 from arc.level import Level
 from arc.common import ARC_TESTING_PATH
 from arc.output import (
-    _build_applied_corrections_for_species,
-    _build_scan_calculations,
+    EnergyCorrections,
+    GAUSSIAN_CORRELATED_METHOD_REGEX,
+    _bac_is_applied_to,
+    _build_energy_corrections_for_species,
+    _build_rotor_scans,
     _build_scan_result_for_rotor,
     _compute_cost_metrics,
     _compute_point_groups,
     _compute_species_corrections,
-    _get_arkane_git_commit,
+    _evidence_status_counts,
+    _get_arkane_provenance,
+    _get_rmg_py_git_commit,
     _get_energy_corrections,
+    _get_ess_software,
+    _gaussian_route_text,
+    _get_freq_hessian_method,
     _get_ess_versions,
+    _get_rejected_torsions,
     _get_rotor_barrier,
     _get_torsions,
-    _get_ts_imag_freq,
+    _get_imaginary_freqs,
+    _flat_parameter_values,
     _level_to_dict,
     _make_rel_path,
+    _orca_route_text,
+    _parse_arkane_log_provenance,
     _parse_opt_log,
+    _parse_rmg_py_version,
     _parse_spin_diagnostic,
+    _parse_wavefunction_stability,
     _parse_zpe,
-    _resolve_freq_scale_factor_source,
+    _resolve_freq_scale_factor_entry,
     _rxn_to_dict,
     _spc_to_dict,
     _statmech_to_dict,
     _thermo_to_dict,
     _timedelta_to_seconds,
-    _ts_guesses_to_list,
     write_output_yml,
 )
-from arc.species.species import ThermoData, TSGuess
+from arc.species.species import ARCSpecies, TSGuess, ThermoData
 
 
 class TestLevelToDict(unittest.TestCase):
@@ -68,6 +86,24 @@ class TestLevelToDict(unittest.TestCase):
         self.assertEqual(result['solvent'], 'water')
         self.assertEqual(result['solvation_method'], 'smd')
 
+    def test_year_survives_and_is_omitted_when_unset(self):
+        """``year`` is carried through when the level has one and omitted when it does not."""
+        self.assertEqual(_level_to_dict(Level(method='wb97xd', basis='def2tzvp',
+                                              software='gaussian', year=2023))['year'], 2023)
+        self.assertNotIn('year', _level_to_dict(Level(method='wb97xd', basis='def2tzvp',
+                                                      software='gaussian')))
+
+    def test_solvation_scheme_level_is_yaml_safe(self):
+        """A nested solvation scheme level is emitted as a plain dict that ``yaml.safe_load`` reads."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                      solvent='water', solvation_method='smd',
+                      solvation_scheme_level=Level(method='b3lyp', basis='6-31g'))
+        result = _level_to_dict(level)
+        self.assertIsInstance(result['solvation_scheme_level'], dict)
+        self.assertEqual(result['solvation_scheme_level']['method'], 'b3lyp')
+        round_tripped = yaml.safe_load(yaml.dump({'level': result}))
+        self.assertEqual(round_tripped['level']['solvation_scheme_level']['basis'], '6-31g')
+
 
 class TestMakeRelPath(unittest.TestCase):
     """Tests for _make_rel_path."""
@@ -86,24 +122,83 @@ class TestMakeRelPath(unittest.TestCase):
         result = _make_rel_path('/home/user/project/file.log', '/home/user/project')
         self.assertEqual(result, 'file.log')
 
+    def test_a_log_outside_the_project_directory_is_dropped(self):
+        """An export is shared, so a path that walks out of the project — which would
+        carry the writer's own directory layout and resolve nowhere for a reader — is
+        reported as absent rather than as a ``../..`` path."""
+        for path in ('/home/someone/elsewhere/sp.log',
+                     '/home/user/project_sibling/sp.log',
+                     '/home/user/sp.log'):
+            with self.subTest(path=path):
+                self.assertIsNone(_make_rel_path(path, '/home/user/project'))
 
-class TestResolveFreqScaleFactorSource(unittest.TestCase):
-    """Tests for _resolve_freq_scale_factor_source."""
+    def test_a_dropped_path_never_leaks_a_directory_name(self):
+        """The guard is on the whole result, not only on a leading ``..``."""
+        result = _make_rel_path('/home/quiteidentifiable/run/sp.log', '/srv/projects/p1')
+        self.assertIsNone(result)
+
+
+class TestResolveFreqScaleFactorEntry(unittest.TestCase):
+    """Tests for _resolve_freq_scale_factor_entry."""
 
     def test_none_level(self):
-        self.assertIsNone(_resolve_freq_scale_factor_source(None))
+        self.assertEqual(_resolve_freq_scale_factor_entry(None), (None, None))
 
     def test_missing_level(self):
-        """A level not in the YAML should return None."""
+        """A level not in the YAML has neither a key nor a source."""
         level = Level(method='totally_fake_method', basis='fake_basis')
-        self.assertIsNone(_resolve_freq_scale_factor_source(level))
+        self.assertEqual(_resolve_freq_scale_factor_entry(level), (None, None))
 
-    def test_known_level_returns_citation(self):
-        """wb97xd/def2tzvp should resolve to [4] citation."""
+    def test_known_level_returns_its_key_and_citation(self):
+        """wb97xd/def2tzvp names the block it was read from and that block's [4] citation."""
         level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
-        result = _resolve_freq_scale_factor_source(level)
-        self.assertIsNotNone(result)
-        self.assertIn('10.1021/ct100326h', result)
+        key, source = _resolve_freq_scale_factor_entry(level)
+        self.assertEqual(key, 'wb97xd/def2tzvp, software: gaussian')
+        self.assertIsNotNone(source)
+        self.assertIn('10.1021/ct100326h', source)
+
+    def test_the_key_is_the_block_the_factor_was_read_from(self):
+        """The returned key indexes the entry whose factor ARC would use."""
+        level = Level(method='b3lyp', basis='6-311g(d,p)', software='gaussian')
+        key, source = _resolve_freq_scale_factor_entry(level)
+        data = read_yaml_file(os.path.join(ARC_PATH, 'data', 'freq_scale_factors.yml'))
+        self.assertIn(key, data['freq_scale_factors'])
+        self.assertEqual(source, data['sources'][data['freq_scale_factors'][key]['source']])
+
+    def test_a_string_level_is_used_verbatim(self):
+        key, source = _resolve_freq_scale_factor_entry('wb97xd/def2tzvp, software: gaussian')
+        self.assertEqual(key, 'wb97xd/def2tzvp, software: gaussian')
+        self.assertIsNotNone(source)
+
+    def test_an_entry_without_a_source_still_reports_its_key(self):
+        """A matched block with no source index is named, with a null citation."""
+        database = {'sources': {1: 'a citation'},
+                    'freq_scale_factors': {'fake/level': {'factor': 0.99}}}
+        with patch('arc.output.read_yaml_file', return_value=database):
+            self.assertEqual(_resolve_freq_scale_factor_entry('fake/level'), ('fake/level', None))
+
+    def test_an_unlisted_source_index_still_reports_its_key(self):
+        database = {'sources': {1: 'a citation'},
+                    'freq_scale_factors': {'fake/level': {'factor': 0.99, 'source': 7}}}
+        with patch('arc.output.read_yaml_file', return_value=database):
+            self.assertEqual(_resolve_freq_scale_factor_entry('fake/level'), ('fake/level', None))
+
+    def test_an_unreadable_or_malformed_database_yields_no_key(self):
+        """The failures read_yaml_file can raise are guarded, one at a time."""
+        for error in (InputError('missing'), OSError('unreadable'), yaml.YAMLError('malformed')):
+            with self.subTest(error=type(error).__name__):
+                with patch('arc.output.read_yaml_file', side_effect=error):
+                    self.assertEqual(_resolve_freq_scale_factor_entry('fake/level'), (None, None))
+
+    def test_an_unexpected_error_is_not_swallowed(self):
+        """The guard is narrow: anything read_yaml_file cannot raise propagates."""
+        with patch('arc.output.read_yaml_file', side_effect=RuntimeError('boom')):
+            with self.assertRaises(RuntimeError):
+                _resolve_freq_scale_factor_entry('fake/level')
+
+    def test_a_database_that_is_not_a_mapping_yields_no_key(self):
+        with patch('arc.output.read_yaml_file', return_value=['not', 'a', 'mapping']):
+            self.assertEqual(_resolve_freq_scale_factor_entry('fake/level'), (None, None))
 
 
 class TestParseThermoDataBlock(unittest.TestCase):
@@ -147,28 +242,183 @@ class TestParseThermoDataBlock(unittest.TestCase):
         self.assertAlmostEqual(result['S298'], 218.4, places=1)
 
 
-class TestGetArkaneGitCommit(unittest.TestCase):
-    """Tests for _get_arkane_git_commit."""
+class TestGetRmgPyGitCommit(unittest.TestCase):
+    """Tests for _get_rmg_py_git_commit."""
 
-    @patch('arc.output.settings', {'RMG_PATH': '/fake/RMG-Py'})
+    def setUp(self):
+        self.rmg_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.rmg_dir, ignore_errors=True)
+
     @patch('arc.output.get_git_commit', return_value=('abc1234', '2026-01-01'))
     def test_returns_hash(self, mock_git):
-        result = _get_arkane_git_commit()
-        self.assertEqual(result, 'abc1234')
+        self.assertEqual(_get_rmg_py_git_commit(self.rmg_dir), 'abc1234')
+        self.assertEqual(mock_git.call_args[0][0], self.rmg_dir)
 
-    @patch('arc.output.settings', {'RMG_PATH': '/fake/RMG-Py'})
-    @patch('arc.output.get_git_commit', side_effect=Exception('no repo'))
-    def test_returns_none_on_error(self, mock_git):
-        self.assertIsNone(_get_arkane_git_commit())
-
-    @patch('arc.output.settings', {'RMG_PATH': '/fake/RMG-Py'})
     @patch('arc.output.get_git_commit', return_value=('', ''))
     def test_returns_none_for_empty(self, mock_git):
-        self.assertIsNone(_get_arkane_git_commit())
+        self.assertIsNone(_get_rmg_py_git_commit(self.rmg_dir))
 
-    @patch('arc.output.settings', {})
     def test_returns_none_no_rmg_path(self):
-        self.assertIsNone(_get_arkane_git_commit())
+        self.assertIsNone(_get_rmg_py_git_commit(None))
+
+    def test_a_misconfigured_rmg_path_is_reported(self):
+        """A path that is set but names no directory is logged as a warning."""
+        missing = os.path.join(self.rmg_dir, 'does_not_exist')
+        with self.assertLogs('arc', level='WARNING') as captured:
+            self.assertIsNone(_get_rmg_py_git_commit(missing))
+        self.assertIn(missing, '\n'.join(captured.output))
+
+    @patch('arc.output.get_git_commit', side_effect=ValueError('not enough values to unpack'))
+    def test_returns_none_when_git_output_is_unreadable(self, mock_git):
+        """Output that does not split into a hash and a date is absorbed."""
+        self.assertIsNone(_get_rmg_py_git_commit(self.rmg_dir))
+
+
+ARKANE_LOG_HEADER = """Arkane execution initiated at Sat Sep 13 10:00:00 2026
+
+################################################################
+#                                                              #
+# Automated Reaction Kinetics and Network Exploration (Arkane) #
+#                                                              #
+#   Version: {version:49s} #
+#   Authors: RMG Developers (rmg_dev@mit.edu)                  #
+#                                                              #
+################################################################
+
+The current git HEAD for RMG-Py is:
+\t{head}
+\tTue Feb 17 08:33:23 2026 -0500
+
+The current git HEAD for RMG-database is:
+\t0000000000000000000000000000000000000000
+\tTue Feb 17 08:33:23 2026 -0500
+"""
+
+
+def arkane_log_header(version: str = '3.3.0',
+                      head: str = '6b1368de6c19204c7ce4fda6fbecb05da4a0fe0e') -> str:
+    """Render an Arkane log header in the layout ``arkane.main.log_header`` prints."""
+    return ARKANE_LOG_HEADER.format(version=version, head=head)
+
+
+class TestArkaneProvenance(unittest.TestCase):
+    """Tests for _get_arkane_provenance and the sources it reads."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+
+    def _write_arkane_log(self, subdir: str, file_name: str, content: str) -> str:
+        from arc.statmech.arkane import create_statmech_dir
+        log_dir = create_statmech_dir(calcs_directory=os.path.join(self.tmp_dir, 'calcs'),
+                                      subdir=subdir)
+        log_path = os.path.join(log_dir, file_name)
+        with open(log_path, 'w') as handle:
+            handle.write(content)
+        return log_path
+
+    def _write_rmg_py_tree(self, version_line: str) -> str:
+        rmg_path = os.path.join(self.tmp_dir, 'RMG-Py')
+        os.makedirs(os.path.join(rmg_path, 'rmgpy'), exist_ok=True)
+        with open(os.path.join(rmg_path, 'rmgpy', 'version.py'), 'w') as handle:
+            handle.write(f'"""Docstring."""\n\n{version_line}\n')
+        return rmg_path
+
+    def test_the_statmech_layout_matches_create_statmech_dir(self):
+        """``create_statmech_dir`` writes the directory this module reads, not a copy of it."""
+        self._write_arkane_log('thermo', 'arkane.log', arkane_log_header())
+        with patch('arc.output.settings', {}):
+            provenance = _get_arkane_provenance(self.tmp_dir)
+        self.assertEqual(provenance.version, '3.3.0')
+        self.assertEqual(provenance.git_commit, '6b1368de6c19204c7ce4fda6fbecb05da4a0fe0e')
+
+    def test_the_rmg_database_commit_is_not_mistaken_for_rmg_py(self):
+        log_path = self._write_arkane_log('thermo', 'arkane.log', arkane_log_header())
+        self.assertEqual(_parse_arkane_log_provenance(log_path).git_commit,
+                         '6b1368de6c19204c7ce4fda6fbecb05da4a0fe0e')
+
+    def test_an_appended_log_reports_the_first_run_whole(self):
+        """Both fields come from the first header, so an appended log pairs one run's own values."""
+        log_path = self._write_arkane_log(
+            'thermo', 'arkane.log',
+            arkane_log_header(version='3.3.0', head='a' * 40)
+            + arkane_log_header(version='3.4.0', head='b' * 40))
+        self.assertEqual(_parse_arkane_log_provenance(log_path), ('3.3.0', 'a' * 40))
+
+    def test_an_arkane_run_that_produced_no_output_is_still_identified(self):
+        """Arkane prints its header at startup, so a failed run is named the same as a complete one."""
+        self._write_arkane_log('thermo', 'arkane.log', arkane_log_header())
+        output_py = os.path.join(self.tmp_dir, 'calcs', 'statmech', 'thermo', 'output.py')
+        self.assertFalse(os.path.isfile(output_py))
+        with patch('arc.output.settings', {}):
+            self.assertEqual(_get_arkane_provenance(self.tmp_dir),
+                             ('3.3.0', '6b1368de6c19204c7ce4fda6fbecb05da4a0fe0e'))
+
+    def test_an_empty_version_field_does_not_yield_the_box_character(self):
+        """An empty version renders as padding between two ``#``; neither is a version."""
+        log_path = self._write_arkane_log('thermo', 'arkane.log', arkane_log_header(version=''))
+        self.assertIsNone(_parse_arkane_log_provenance(log_path).version)
+
+    def test_a_multi_token_version_is_kept_whole(self):
+        """A version carrying a qualifier is returned whole, not truncated at the first space."""
+        log_path = self._write_arkane_log('thermo', 'arkane.log',
+                                          arkane_log_header(version='3.3.0 (dev)'))
+        self.assertEqual(_parse_arkane_log_provenance(log_path).version, '3.3.0 (dev)')
+
+    def test_a_log_without_a_git_head_keeps_the_version(self):
+        """Arkane prints no HEAD on an install with no repository; the version still stands."""
+        header = arkane_log_header().split('The current git HEAD')[0]
+        log_path = self._write_arkane_log('thermo', 'arkane.log', header)
+        provenance = _parse_arkane_log_provenance(log_path)
+        self.assertEqual(provenance.version, '3.3.0')
+        self.assertIsNone(provenance.git_commit)
+
+    def test_missing_and_headerless_logs_yield_nothing(self):
+        self.assertEqual(_parse_arkane_log_provenance(os.path.join(self.tmp_dir, 'absent.log')),
+                         (None, None))
+        log_path = self._write_arkane_log('thermo', 'stdout.log', 'no header here\n')
+        self.assertEqual(_parse_arkane_log_provenance(log_path), (None, None))
+
+    def test_a_header_beyond_the_scan_limit_is_not_read(self):
+        log_path = self._write_arkane_log('thermo', 'arkane.log',
+                                          'filler\n' * 200 + arkane_log_header())
+        self.assertEqual(_parse_arkane_log_provenance(log_path), (None, None))
+
+    def test_a_log_older_than_the_run_is_ignored(self):
+        """A statmech directory persists between runs; a stale log is not this run's Arkane."""
+        log_path = self._write_arkane_log('thermo', 'arkane.log', arkane_log_header())
+        os.utime(log_path, (1000.0, 1000.0))
+        self.assertEqual(_parse_arkane_log_provenance(log_path, t0=2000.0), (None, None))
+        self.assertEqual(_parse_arkane_log_provenance(log_path, t0=500.0).version, '3.3.0')
+
+    def test_the_running_arkane_is_preferred_over_the_source_tree(self):
+        self._write_arkane_log('thermo', 'arkane.log', arkane_log_header())
+        rmg_path = self._write_rmg_py_tree("__version__ = '9.9.9'")
+        with patch('arc.output.settings', {'RMG_PATH': rmg_path}):
+            self.assertEqual(_get_arkane_provenance(self.tmp_dir).version, '3.3.0')
+
+    def test_the_kinetics_log_is_read_when_no_thermo_log_exists(self):
+        self._write_arkane_log('kinetics', 'stdout.log', arkane_log_header())
+        with patch('arc.output.settings', {}):
+            self.assertEqual(_get_arkane_provenance(self.tmp_dir).version, '3.3.0')
+
+    @patch('arc.output.get_git_commit', return_value=('def4567', '2026-01-01'))
+    def test_both_fields_fall_back_to_the_same_rmg_py_tree(self, mock_git):
+        """The pair never mixes installs: when the version falls back, so does the commit."""
+        rmg_path = self._write_rmg_py_tree("__version__ = '4.0.0'")
+        with patch('arc.output.settings', {'RMG_PATH': rmg_path}):
+            self.assertEqual(_get_arkane_provenance(self.tmp_dir), ('4.0.0', 'def4567'))
+
+    def test_returns_nothing_when_no_source_is_resolvable(self):
+        with patch('arc.output.settings', {'RMG_PATH': None}):
+            self.assertEqual(_get_arkane_provenance(self.tmp_dir), (None, None))
+
+    def test_rmg_py_version_file_edge_cases(self):
+        mismatched_quotes = "__version__ = '4.0.0" + chr(34)
+        self.assertIsNone(_parse_rmg_py_version(None))
+        self.assertIsNone(_parse_rmg_py_version(os.path.join(self.tmp_dir, 'absent')))
+        self.assertIsNone(_parse_rmg_py_version(self._write_rmg_py_tree('__version__ = 4.0.0')))
+        self.assertIsNone(_parse_rmg_py_version(self._write_rmg_py_tree(mismatched_quotes)))
 
 
 class TestThermoToDict(unittest.TestCase):
@@ -194,17 +444,11 @@ class TestThermoToDict(unittest.TestCase):
         self.assertEqual(result['nasa_low'], nasa_low)
         self.assertEqual(result['nasa_high'], nasa_high)
 
-    def test_thermo_with_thermo_points(self):
-        points = [
-            {'temperature_k': 300.0, 'cp_j_mol_k': 35.1,
-             'h_kj_mol': -50.0, 's_j_mol_k': 200.0, 'g_kj_mol': -110.0},
-            {'temperature_k': 400.0, 'cp_j_mol_k': 40.5,
-             'h_kj_mol': -45.2, 's_j_mol_k': 215.0, 'g_kj_mol': -131.2},
-        ]
-        thermo = ThermoData(H298=-10.0, S298=200.0, Tmin=(300, 'K'),
-                            Tmax=(2000, 'K'), thermo_points=points)
+    def test_thermo_with_cp_data(self):
+        cp = [{'temperature_k': 300.0, 'cp_j_mol_k': 35.1}, {'temperature_k': 400.0, 'cp_j_mol_k': 40.5}]
+        thermo = ThermoData(H298=-10.0, S298=200.0, Tmin=(300, 'K'), Tmax=(2000, 'K'), thermo_points=cp)
         result = _thermo_to_dict(thermo)
-        self.assertEqual(result['thermo_points'], points)
+        self.assertEqual(result['thermo_points'], cp)
 
     def test_tmin_tmax_scalar(self):
         """Tmin/Tmax can be plain numbers (not tuples)."""
@@ -215,22 +459,24 @@ class TestThermoToDict(unittest.TestCase):
 
 
 class TestGetTsImagFreq(unittest.TestCase):
-    """Tests for _get_ts_imag_freq."""
+    """Tests for _get_imaginary_freqs falling back to the chosen TS guess."""
 
     def test_no_ts_guesses(self):
         spc = MagicMock()
+        spc.freqs = None
         spc.chosen_ts = None
         spc.ts_guesses = []
-        self.assertIsNone(_get_ts_imag_freq(spc))
+        self.assertIsNone(_get_imaginary_freqs(spc))
 
     def test_valid_imag_freq(self):
         ts_guess = MagicMock()
         ts_guess.index = 0
         ts_guess.imaginary_freqs = [-1500.0, -200.0]
         spc = MagicMock()
+        spc.freqs = None
         spc.chosen_ts = 0
         spc.ts_guesses = [ts_guess]
-        self.assertAlmostEqual(_get_ts_imag_freq(spc), -1500.0)
+        self.assertEqual(_get_imaginary_freqs(spc), [-1500.0, -200.0])
 
     def test_chosen_ts_is_an_index_not_a_position(self):
         """``chosen_ts`` is the chosen TSGuess.index; the list position must not be used."""
@@ -241,7 +487,7 @@ class TestGetTsImagFreq(unittest.TestCase):
         spc.freqs = None
         spc.chosen_ts = 4
         spc.ts_guesses = [other_guess, chosen_guess]
-        self.assertAlmostEqual(_get_ts_imag_freq(spc), -1500.0)
+        self.assertEqual(_get_imaginary_freqs(spc), [-1500.0])
 
     def test_chosen_ts_matches_no_guess(self):
         guess = MagicMock()
@@ -250,7 +496,7 @@ class TestGetTsImagFreq(unittest.TestCase):
         spc.freqs = None
         spc.chosen_ts = 5
         spc.ts_guesses = [guess]
-        self.assertIsNone(_get_ts_imag_freq(spc))
+        self.assertIsNone(_get_imaginary_freqs(spc))
 
 
 class TestStatmechToDict(unittest.TestCase):
@@ -304,6 +550,26 @@ class TestStatmechToDict(unittest.TestCase):
         spc = self._make_spc()
         result = _statmech_to_dict(spc, '/tmp/project')
         self.assertEqual(result['torsions'], [])
+
+    def test_empty_rejected_torsions(self):
+        spc = self._make_spc()
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertEqual(result['rejected_torsions'], [])
+
+    def test_mixed_rotors_split_between_torsions_and_rejected_torsions(self):
+        spc = self._make_spc()
+        spc.rotors_dict = {
+            0: {'success': True, 'scan': [1, 2, 3, 4], 'pivots': [2, 3], 'symmetry': 3,
+                'type': 'HinderedRotor', 'scan_path': ''},
+            1: {'success': False, 'scan': [2, 3, 4, 5], 'pivots': [3, 4],
+                'invalidation_reason': 'rotor set too many (5) times'},
+        }
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertEqual(len(result['torsions']), 1)
+        self.assertEqual(len(result['rejected_torsions']), 1)
+        self.assertEqual(result['rejected_torsions'][0]['rotor_index'], 1)
+        self.assertEqual(result['rejected_torsions'][0]['invalidation_reason'],
+                         'rotor set too many (5) times')
 
 
 class TestGetTorsions(unittest.TestCase):
@@ -360,6 +626,99 @@ class TestGetTorsions(unittest.TestCase):
         self.assertEqual(result[0]['treatment'], 'free_rotor')
 
 
+class TestGetRejectedTorsions(unittest.TestCase):
+    """Tests for _get_rejected_torsions."""
+
+    def test_no_rotors_dict(self):
+        spc = MagicMock()
+        spc.rotors_dict = None
+        self.assertEqual(_get_rejected_torsions(spc, '/tmp/project'), [])
+
+    def test_empty_rotors_dict(self):
+        spc = MagicMock()
+        spc.rotors_dict = {}
+        self.assertEqual(_get_rejected_torsions(spc, '/tmp/project'), [])
+
+    def test_successful_rotor_excluded(self):
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {'success': True, 'scan': [1, 2, 3, 4], 'pivots': [2, 3],
+                'invalidation_reason': ''},
+        }
+        self.assertEqual(_get_rejected_torsions(spc, '/tmp/project'), [])
+
+    def test_rejected_rotor_with_reason(self):
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {'success': False, 'scan': [1, 2, 3, 4], 'pivots': [2, 3],
+                'invalidation_reason': 'rotor set too many (5) times'},
+        }
+        result = _get_rejected_torsions(spc, '/tmp/project')
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['rotor_index'], 0)
+        self.assertEqual(result[0]['invalidation_reason'], 'rotor set too many (5) times')
+        self.assertEqual(result[0]['atom_indices'], [1, 2, 3, 4])
+        self.assertEqual(result[0]['pivot_atoms'], [2, 3])
+        self.assertEqual(result[0]['dimension'], 1)
+        # No 'scan_path' on the rotor dict -> no scan log -> no dangling reference.
+        self.assertNotIn('source_log', result[0])
+
+    def test_rejected_rotor_with_empty_invalidation_reason(self):
+        """ARC's default is an empty string; it must be carried as-is, not fabricated."""
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {'success': False, 'scan': [1, 2, 3, 4], 'pivots': [2, 3],
+                'invalidation_reason': ''},
+        }
+        result = _get_rejected_torsions(spc, '/tmp/project')
+        self.assertEqual(result[0]['invalidation_reason'], '')
+
+    def test_pending_rotor_excluded(self):
+        """``success is None`` is pending (never attempted / mid-troubleshooting), not rejected.
+
+        A species' convergence does not depend on its rotors completing
+        (``job_types['rotors']`` is initialised to ``True`` and never set
+        False), so an ordinary converged species can carry rotors that are
+        still ``None``. Those must not be published as reason-less
+        rejections -- they simply are not decided yet, exactly like
+        ``torsions`` already omits them.
+        """
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {'scan': [1, 2, 3, 4], 'pivots': [2, 3]},  # no 'success' key -> .get() is None
+            1: {'success': None, 'scan': [2, 3, 4, 5], 'pivots': [3, 4]},
+        }
+        result = _get_rejected_torsions(spc, '/tmp/project')
+        self.assertEqual(result, [])
+
+    def test_mix_of_successful_pending_and_rejected_rotors(self):
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {'success': True, 'scan': [1, 2, 3, 4], 'pivots': [2, 3],
+                'invalidation_reason': ''},
+            1: {'success': False, 'scan': [2, 3, 4, 5], 'pivots': [3, 4],
+                'invalidation_reason': 'rotor set too many (5) times'},
+            2: {'success': False, 'scan': [3, 4, 5, 6], 'pivots': [4, 5],
+                'invalidation_reason': ''},
+            3: {'success': None, 'scan': [4, 5, 6, 7], 'pivots': [5, 6]},
+        }
+        result = _get_rejected_torsions(spc, '/tmp/project')
+        self.assertEqual({entry['rotor_index'] for entry in result}, {1, 2})
+
+    def test_only_rejected_rotors(self):
+        """A species where ARC found rotors but rejected every one of them."""
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {'success': False, 'scan': [1, 2, 3, 4], 'pivots': [2, 3],
+                'invalidation_reason': 'rotor set too many (5) times'},
+            1: {'success': False, 'scan': [2, 3, 4, 5], 'pivots': [3, 4],
+                'invalidation_reason': 'rotor set too many (3) times'},
+        }
+        result = _get_rejected_torsions(spc, '/tmp/project')
+        self.assertEqual(len(result), 2)
+        self.assertEqual({entry['rotor_index'] for entry in result}, {0, 1})
+
+
 class TestGetRotorBarrier(unittest.TestCase):
     """Tests for _get_rotor_barrier."""
 
@@ -396,17 +755,13 @@ class TestParseOptLog(unittest.TestCase):
     """Tests for _parse_opt_log and the Gaussian parse_opt_steps adapter."""
 
     def test_gaussian_opt_log(self):
-        """Parse a real Gaussian opt log for step count, final energy, and final xyz."""
+        """Parse a real Gaussian opt log for step count and final energy."""
         opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
         n_steps, e_hartree, final_xyz = _parse_opt_log(opt_path, '/dummy')
         self.assertEqual(n_steps, 4)
         self.assertIsNotNone(e_hartree)
         self.assertAlmostEqual(e_hartree, -116.986089069, places=6)
-        # The geometry is parsed via the shared parse_geometry dispatcher;
-        # we just check it produced a non-empty atom-only string.
         self.assertIsNotNone(final_xyz)
-        self.assertGreaterEqual(len(final_xyz.splitlines()), 3,
-                                msg=f"expected several atom lines, got {final_xyz!r}")
 
     def test_missing_file(self):
         n_steps, e_hartree, final_xyz = _parse_opt_log('/nonexistent/file.log', '/tmp')
@@ -445,7 +800,7 @@ class TestParseSpinDiagnostic(unittest.TestCase):
     """Tests for _parse_spin_diagnostic (output.yml S**2 plumbing)."""
 
     def test_open_shell_gaussian_doublet(self):
-        """Open-shell doublet: block with s_squared, expected (from mult), annihilated."""
+        """Test that an open-shell doublet yields s_squared, expected and annihilated"""
         sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
         sd = _parse_spin_diagnostic(sp, None, None, multiplicity=2, project_directory='/dummy')
         self.assertIsNotNone(sd)
@@ -454,7 +809,7 @@ class TestParseSpinDiagnostic(unittest.TestCase):
         self.assertAlmostEqual(sd['s_squared_annihilated'], 0.75)
 
     def test_expected_recomputed_from_arc_multiplicity(self):
-        """s_squared_expected is authoritative from ARC's multiplicity (triplet -> 2.0)."""
+        """Test that s_squared_expected comes from ARC's multiplicity, a triplet giving 2.0"""
         sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'TSs', 'TS_freq.out')
         sd = _parse_spin_diagnostic(sp, None, None, multiplicity=3, project_directory='/dummy')
         self.assertIsNotNone(sd)
@@ -462,26 +817,68 @@ class TestParseSpinDiagnostic(unittest.TestCase):
         self.assertAlmostEqual(sd['s_squared_expected'], 2.0)
 
     def test_closed_shell_returns_none(self):
-        """Restricted/closed-shell log (no <S**2>) -> None (block omitted)."""
+        """Test that a restricted log, which prints no <S**2>, yields None"""
         sp = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
         self.assertIsNone(_parse_spin_diagnostic(sp, None, None, multiplicity=1, project_directory='/dummy'))
 
     def test_fallback_to_freq_when_sp_absent(self):
-        """When the sp log is absent, falls back to the freq log."""
+        """Test that an absent sp log falls back to the freq log"""
         freq = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
         sd = _parse_spin_diagnostic(None, freq, None, multiplicity=2, project_directory='/dummy')
         self.assertIsNotNone(sd)
         self.assertAlmostEqual(sd['s_squared'], 0.7535)
 
     def test_no_paths_returns_none(self):
+        """Test that no candidate log yields None"""
         self.assertIsNone(_parse_spin_diagnostic(None, None, None, multiplicity=2, project_directory='/dummy'))
 
     def test_orca_open_shell_no_annihilation_key(self):
-        """ORCA: annihilated is None -> the key is omitted from the emitted block."""
+        """Test that an ESS reporting no annihilated value omits the key from the block"""
         sp = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
         sd = _parse_spin_diagnostic(sp, None, None, multiplicity=2, project_directory='/dummy')
         self.assertIsNotNone(sd)
         self.assertNotIn('s_squared_annihilated', sd)
+        self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
+
+    def test_a_stability_log_is_not_read_off_its_eigenvectors(self):
+        """Test that a Stable job's log yields the wavefunction's <S**2>, not a root's"""
+        sp = os.path.join(ARC_TESTING_PATH, 'stability', 'stable_unrestricted_doublet_ts.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=2, project_directory='/dummy')
+        self.assertIsNotNone(sd)
+        self.assertAlmostEqual(sd['s_squared'], 0.7536)
+        restricted = os.path.join(ARC_TESTING_PATH, 'stability', 'stable_restricted_singlet_ts.out')
+        self.assertIsNone(_parse_spin_diagnostic(restricted, None, None, multiplicity=1,
+                                                 project_directory='/dummy'))
+
+    def test_the_sp_log_is_preferred_over_the_freq_and_opt_logs(self):
+        """Test that the sp log wins when several candidate logs exist"""
+        sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        freq = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'TSs', 'TS_freq.out')
+        opt = os.path.join(ARC_TESTING_PATH, 'freq', 'CH3OO_freq_gaussian.out')
+        sd = _parse_spin_diagnostic(sp, freq, opt, multiplicity=2, project_directory=ARC_TESTING_PATH)
+        self.assertAlmostEqual(sd['s_squared'], 0.7535)
+        self.assertNotAlmostEqual(sd['s_squared'], 2.0153)
+        self.assertNotAlmostEqual(sd['s_squared'], 0.7544)
+
+    def test_the_log_the_value_was_read_from_is_recorded(self):
+        """Test that the block names the log its <S**2> came from"""
+        freq = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        sd = _parse_spin_diagnostic(None, freq, None, multiplicity=2, project_directory=ARC_TESTING_PATH)
+        self.assertEqual(sd['log'], os.path.join('restart', '2_restart_rate', 'calcs', 'Species',
+                                                 'NH2_freq.out'))
+
+    def test_an_sp_log_that_holds_no_s_squared_is_not_replaced_by_another_job(self):
+        """Test that a present sp log yielding no <S**2> ends the search rather than falling through"""
+        sp = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
+        freq = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        self.assertIsNone(_parse_spin_diagnostic(sp, freq, None, multiplicity=2,
+                                                 project_directory=ARC_TESTING_PATH))
+
+    def test_the_expected_value_falls_back_to_the_one_the_ess_reported(self):
+        """Test that ORCA's Ideal value S*(S+1) is used when ARC's multiplicity is unknown"""
+        sp = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+        sd = _parse_spin_diagnostic(sp, None, None, multiplicity=None, project_directory=ARC_TESTING_PATH)
+        self.assertIsNotNone(sd)
         self.assertAlmostEqual(sd['s_squared_expected'], 0.75)
 
 
@@ -536,29 +933,441 @@ class TestGetEssVersions(unittest.TestCase):
         self.assertIsNone(_get_ess_versions(paths, '/dummy'))
 
 
+class TestGetEssSoftware(unittest.TestCase):
+    """Tests for _get_ess_software."""
+
+    gaussian_log = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+    orca_log = os.path.join(ARC_TESTING_PATH, 'orca_example_opt.log')
+
+    def test_mixed_program_run(self):
+        """A run whose opt and sp used different programs reports both, keyed by job type."""
+        paths = {'geo': self.gaussian_log, 'sp': self.orca_log}
+        self.assertEqual(_get_ess_software(paths, '/dummy'),
+                         {'opt': 'gaussian', 'sp': 'orca'})
+
+    def test_pairs_with_ess_versions_for_a_mixed_program_run(self):
+        """Each version banner is paired with the program that actually produced it."""
+        paths = {'geo': self.gaussian_log, 'sp': self.orca_log}
+        software = _get_ess_software(paths, '/dummy')
+        versions = _get_ess_versions(paths, '/dummy')
+        self.assertEqual(software['opt'], 'gaussian')
+        self.assertIn('Gaussian', versions['opt'])
+        self.assertEqual(software['sp'], 'orca')
+        self.assertIn('ORCA', versions['sp'])
+
+    def test_key_set_is_a_superset_of_the_version_key_set(self):
+        paths = {'geo': self.gaussian_log, 'sp': self.orca_log}
+        software = _get_ess_software(paths, '/dummy')
+        versions = _get_ess_versions(paths, '/dummy')
+        self.assertLessEqual(set(versions), set(software))
+
+    def test_shared_log_file_reports_all_job_types(self):
+        paths = {'sp': self.gaussian_log, 'geo': self.gaussian_log}
+        self.assertEqual(_get_ess_software(paths, '/dummy'),
+                         {'sp': 'gaussian', 'opt': 'gaussian'})
+
+    def test_relative_paths_are_resolved_against_the_project_directory(self):
+        paths = {'geo': os.path.join('opt', 'iC3H7.out')}
+        self.assertEqual(_get_ess_software(paths, ARC_TESTING_PATH), {'opt': 'gaussian'})
+
+    def test_no_paths(self):
+        self.assertIsNone(_get_ess_software({}, '/dummy'))
+
+    def test_missing_files(self):
+        paths = {'sp': '/nonexistent.log', 'geo': '/also_missing.log'}
+        self.assertIsNone(_get_ess_software(paths, '/dummy'))
+
+
+class TestGetFreqHessianMethod(unittest.TestCase):
+    """Tests for _get_freq_hessian_method."""
+
+    orca_bare_freq_log = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+    orca_anfreq_log = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_example_freq.log')
+    gaussian_wrapped_route_log = os.path.join(ARC_TESTING_PATH, 'composite',
+                                              'TS_butylene_intra_H_migration.out')
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scratch = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.scratch, True)
+
+    def deck(self, name: str, text: str) -> str:
+        """Write ``text`` to ``name`` under the class scratch directory and return the name."""
+        with open(os.path.join(self.scratch, name), 'w') as handle:
+            handle.write(text)
+        return name
+
+    def gaussian(self, name: str, route: str, level) -> str | None:
+        """Resolve the Hessian method of a Gaussian deck holding ``route``."""
+        deck = self.deck(name, self.gaussian_deck_text(route))
+        return _get_freq_hessian_method(deck, None, 'gaussian', level, None, self.scratch)
+
+    @staticmethod
+    def gaussian_deck_text(route: str) -> str:
+        """Return a minimal Gaussian input deck carrying ``route``."""
+        return f'%chk=check.chk\n{route}\n\ntitle\n\n0 1\nC 0.0 0.0 0.0\n'
+
+    @staticmethod
+    def gaussian_log_text(route: str) -> str:
+        """Return a minimal Gaussian log whose echoed route section holds ``route``."""
+        return ('  Gaussian 16:  ES64L-G16RevC.01\n'
+                ' ' + '-' * 70 + '\n'
+                f' {route}\n'
+                ' ' + '-' * 70 + '\n'
+                ' Normal termination of Gaussian 16.\n')
+
+    def test_gaussian_bare_freq_with_a_dft_level_is_analytic(self):
+        """The bare ``freq`` ARC writes plus a DFT functional resolves to analytic."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        route = '#P guess=read uwb97xd/def2tzvp freq IOp(7/33=1) scf=(tight, direct)'
+        self.assertEqual(self.gaussian('dft.gjf', route, level), 'analytic')
+
+    def test_gaussian_freq_numer_is_a_gradient_finite_difference(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        route = '#P uwb97xd/def2tzvp freq=(numer) scf=tight'
+        self.assertEqual(self.gaussian('numer.gjf', route, level), 'finite_difference_gradient')
+
+    def test_gaussian_freq_enonly_is_an_energy_finite_difference(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        route = '#P uwb97xd/def2tzvp freq=enonly'
+        self.assertEqual(self.gaussian('enonly.gjf', route, level), 'finite_difference_energy')
+
+    def test_gaussian_ccsd_t_has_no_analytic_gradients(self):
+        """CCSD(T) has neither analytic second derivatives nor analytic gradients."""
+        level = Level(method='ccsd(t)', basis='cc-pvtz', software='gaussian')
+        route = '#P uccsd(t)/cc-pvtz freq IOp(7/33=1)'
+        self.assertEqual(self.gaussian('ccsdt.gjf', route, level), 'finite_difference_energy')
+
+    def test_gaussian_mp2_has_analytic_second_derivatives(self):
+        level = Level(method='mp2', basis='cc-pvtz', software='gaussian')
+        route = '#P ump2/cc-pvtz freq IOp(7/33=1)'
+        self.assertEqual(self.gaussian('mp2.gjf', route, level), 'analytic')
+
+    def test_gaussian_bare_mp4_means_mp4_sdtq(self):
+        """``mp4`` alone is MP4(SDTQ), which has no analytic gradients."""
+        level = Level(method='mp4', basis='cc-pvtz', software='gaussian')
+        route = '#P mp4/cc-pvtz freq IOp(7/33=1)'
+        self.assertEqual(self.gaussian('mp4.gjf', route, level), 'finite_difference_energy')
+
+    def test_gaussian_mp4_sdq_has_analytic_gradients(self):
+        level = Level(method='mp4(sdq)', basis='cc-pvtz', software='gaussian')
+        route = '#P mp4(sdq)/cc-pvtz freq IOp(7/33=1)'
+        self.assertEqual(self.gaussian('mp4sdq.gjf', route, level), 'finite_difference_gradient')
+
+    def test_gaussian_cisd_is_not_cis(self):
+        """CIS has analytic second derivatives; CISD only has analytic gradients."""
+        cis_level = Level(method='cis', basis='cc-pvtz', software='gaussian')
+        cisd_level = Level(method='cisd', basis='cc-pvtz', software='gaussian')
+        self.assertEqual(self.gaussian('cis.gjf', '#P cis/cc-pvtz freq', cis_level), 'analytic')
+        self.assertEqual(self.gaussian('cisd.gjf', '#P cisd/cc-pvtz freq', cisd_level),
+                         'finite_difference_gradient')
+
+    def test_gaussian_rohf_gets_numerical_frequencies(self):
+        """Gaussian has analytic second derivatives for RHF/UHF but not for ROHF."""
+        level = Level(method='rohf', basis='cc-pvtz', software='gaussian')
+        route = '#P rohf/cc-pvtz freq IOp(7/33=1)'
+        self.assertEqual(self.gaussian('rohf.gjf', route, level), 'finite_difference_gradient')
+
+    def test_gaussian_uhf_is_analytic(self):
+        level = Level(method='uhf', basis='cc-pvtz', software='gaussian')
+        route = '#P uhf/cc-pvtz freq IOp(7/33=1)'
+        self.assertEqual(self.gaussian('uhf.gjf', route, level), 'analytic')
+
+    def test_gaussian_ro_correlated_methods_are_energies_only(self):
+        level = Level(method='romp2', basis='cc-pvtz', software='gaussian')
+        route = '#P romp2/cc-pvtz freq IOp(7/33=1)'
+        self.assertEqual(self.gaussian('romp2.gjf', route, level), 'finite_difference_energy')
+
+    def test_gaussian_ro_dft_is_undocumented(self):
+        level = Level(method='rob3lyp', basis='def2tzvp', software='gaussian')
+        route = '#P rob3lyp/def2tzvp freq IOp(7/33=1)'
+        self.assertIsNone(self.gaussian('rob3lyp.gjf', route, level))
+
+    def test_gaussian_unlisted_wavefunction_method_is_null(self):
+        level = Level(method='nevpt2', basis='cc-pvtz', software='gaussian')
+        route = '#P nevpt2/cc-pvtz freq IOp(7/33=1)'
+        self.assertIsNone(self.gaussian('nevpt2.gjf', route, level))
+
+    def test_gaussian_composite_level_is_null(self):
+        """A composite method's internal frequency step is not ARC's request to describe."""
+        level = Level(method='cbs-qb3', software='gaussian')
+        route = '#P cbs-qb3 freq IOp(7/33=1)'
+        self.assertIsNone(self.gaussian('composite.gjf', route, level))
+
+    def test_gaussian_undocumented_double_hybrid_is_null(self):
+        level = Level(method='dsdpbep86', basis='def2tzvp', software='gaussian')
+        route = '#P dsdpbep86/def2tzvp freq IOp(7/33=1)'
+        self.assertIsNone(self.gaussian('dsd.gjf', route, level))
+
+    def test_gaussian_route_without_a_freq_keyword_is_null(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        route = '#P uwb97xd/def2tzvp opt=(calcfc,tight)'
+        self.assertIsNone(self.gaussian('opt_only.gjf', route, level))
+
+    def test_gaussian_freq_tolerates_whitespace_around_the_equals_sign(self):
+        """Gaussian's route is free-format, so ``Freq = Numer`` is the same keyword."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        self.assertEqual(self.gaussian('ws_numer.gjf', '#P uwb97xd/def2tzvp Freq = Numer', level),
+                         'finite_difference_gradient')
+        self.assertEqual(self.gaussian('ws_enonly.gjf', '#P uwb97xd/def2tzvp Freq = EnOnly', level),
+                         'finite_difference_energy')
+        self.assertEqual(self.gaussian('ws_paren.gjf',
+                                       '#P uwb97xd/def2tzvp Freq = (NoRaman, Numer)', level),
+                         'finite_difference_gradient')
+
+    def test_gaussian_freq_numerical_spelling_is_a_gradient_finite_difference(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        route = '#P uwb97xd/def2tzvp Freq=Numerical scf=tight'
+        self.assertEqual(self.gaussian('numerical.gjf', route, level),
+                         'finite_difference_gradient')
+
+    def test_gaussian_freq_keyword_neighbours_are_not_mistaken_for_options(self):
+        """A following keyword, a parenthesised ``scf`` and ``opt=calcnumerfc`` leave freq bare."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        for name, route in (('nb_scf.gjf', '#P uwb97xd/def2tzvp freq scf=(numer)'),
+                            ('nb_calcnumerfc.gjf', '#P uwb97xd/def2tzvp opt=calcnumerfc freq'),
+                            ('nb_iop.gjf', '#P uwb97xd/def2tzvp freq IOp(7/33=1)')):
+            self.assertEqual(self.gaussian(name, route, level), 'analytic')
+
+    def test_gaussian_freq_keyword_does_not_match_a_longer_word(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        for name, route in (('freqchk.gjf', '#P uwb97xd/def2tzvp freqchk'),
+                            ('anharm.gjf', '#P uwb97xd/def2tzvp anharmonicfreq')):
+            self.assertIsNone(self.gaussian(name, route, level))
+
+    def test_gaussian_correlated_option_forms_are_null_not_analytic(self):
+        """An MP4/MP5 spelling outside the tables is not a DFT functional."""
+        for index, method in enumerate(('mp4(full)', 'MP4(SDTQ,Full)', 'mp4(sdq,full)',
+                                        'mp5(full)', 'mp4(fc)', 'mp4(dq,full)', 'mp4(t)',
+                                        'mp4sdq(full)')):
+            level = Level(method=method, basis='cc-pvtz', software='gaussian')
+            self.assertEqual(level.method_type, 'dft')
+            self.assertIsNone(self.gaussian(f'correlated_{index}.gjf',
+                                            f'#P {method}/cc-pvtz freq', level))
+
+    def test_gaussian_dft_functionals_starting_like_a_correlated_method_stay_analytic(self):
+        """A DFT functional whose name opens with a correlated-method prefix stays analytic."""
+        for index, method in enumerate(('b3lyp', 'mpw3lyp', 'mpw2plyp', 'b2plyp', 'b2plypd3',
+                                        'b97d3', 'wb97xd')):
+            level = Level(method=method, basis='def2tzvp', software='gaussian')
+            self.assertEqual(level.method_type, 'dft')
+            self.assertEqual(self.gaussian(f'dftlike_{index}.gjf',
+                                           f'#P {method}/def2tzvp freq', level), 'analytic')
+
+    def test_gaussian_correlated_guard_spares_dft_exchange_functionals(self):
+        """``HFS``/``HFB``/``HF-3c`` are not Hartree-Fock spellings the guard may claim."""
+        for method in ('hfs', 'hfb', 'hf3c', 'cam-b3lyp', 'b3lyp', 'mpw3lyp', 'mpw2plyp',
+                       'b2plyp', 'wb97xd', 'mn15', 'm06-2x', 'hse06', 'bhandhlyp', 'cid'):
+            self.assertIsNone(GAUSSIAN_CORRELATED_METHOD_REGEX.match(method))
+        for method in ('mp4(full)', 'mp4sdq(full)', 'mp5(full)', 'ccsd(full)', 'cisd(full)',
+                       'qcisd(full)', 'casscf(8,8)', 'bd(tq)', 'hf'):
+            self.assertIsNotNone(GAUSSIAN_CORRELATED_METHOD_REGEX.match(method))
+
+    def test_gaussian_double_hybrid_exclusion_matches_a_substring(self):
+        """Spelling variants of the excluded double hybrids are excluded too."""
+        for index, method in enumerate(('revdsdpbep86', 'dsd-blyp', 'pwpb95', 'b2gpplyp',
+                                        'wb97x-2', 'pbe-qidh')):
+            level = Level(method=method, basis='def2tzvp', software='gaussian')
+            self.assertIsNone(self.gaussian(f'dh_{index}.gjf',
+                                            f'#P {method}/def2tzvp freq', level))
+
+    def test_gaussian_deck_wins_over_the_log(self):
+        """The deck is ARC's request; the log only echoes it."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        deck = self.deck('precedence.gjf',
+                         self.gaussian_deck_text('#P uwb97xd/def2tzvp freq'))
+        log = self.deck('precedence.log',
+                        self.gaussian_log_text('#P uwb97xd/def2tzvp freq=numer'))
+        self.assertEqual(_get_freq_hessian_method(deck, log, 'gaussian', level, None, self.scratch),
+                         'analytic')
+
+    def test_gaussian_log_only_resolves_from_the_logs_route(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        log = self.deck('log_only.log', self.gaussian_log_text('#P uwb97xd/def2tzvp freq=numer'))
+        self.assertEqual(_get_freq_hessian_method(None, log, 'gaussian', level, None, self.scratch),
+                         'finite_difference_gradient')
+
+    def test_gaussian_absent_deck_falls_back_to_the_log(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        log = self.deck('fallback.log', self.gaussian_log_text('#P uwb97xd/def2tzvp freq=enonly'))
+        self.assertEqual(_get_freq_hessian_method('no_such_deck.gjf', log, 'gaussian',
+                                                  level, None, self.scratch),
+                         'finite_difference_energy')
+
+    def test_gaussian_empty_deck_is_null(self):
+        """A deck holding no route yields no value, even though the file is on disk."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        deck = self.deck('empty.gjf', '')
+        self.assertIsNone(_get_freq_hessian_method(deck, None, 'gaussian', level,
+                                                   None, self.scratch))
+
+    def test_gaussian_wrapped_log_route_is_rejoined(self):
+        """A real log wraps the route mid-token; the halves rejoin without a space."""
+        route = _gaussian_route_text(self.gaussian_wrapped_route_log)
+        self.assertIn('integral=(grid=ultrafine', route)
+        level = Level(method='b3lyp', basis='cbsb7', software='gaussian')
+        self.assertEqual(_get_freq_hessian_method(None, self.gaussian_wrapped_route_log,
+                                                  'gaussian', level, None, self.scratch),
+                         'analytic')
+
+    def test_orca_numfreq_deck_is_a_gradient_finite_difference(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='orca')
+        deck = self.deck('numfreq.in', '! wb97x-d3 def2-tzvp tightscf NumFreq\n* xyz 0 1\n*\n')
+        self.assertEqual(_get_freq_hessian_method(deck, None, 'orca', level, None, self.scratch),
+                         'finite_difference_gradient')
+
+    def test_orca_numfreq_over_numgrad_is_an_energy_finite_difference(self):
+        """Differentiating a numerical gradient makes the Hessian an energy difference."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='orca')
+        deck = self.deck('numfreq_numgrad.in', '! wb97x-d3 def2-tzvp NumFreq NumGrad\n')
+        self.assertEqual(_get_freq_hessian_method(deck, None, 'orca', level, None, self.scratch),
+                         'finite_difference_energy')
+
+    def test_orca_anfreq_deck_is_analytic(self):
+        level = Level(method='b3lyp', basis='def2tzvp', software='orca')
+        deck = self.deck('anfreq.in', '! RKS B3LYP def2-tzvp TightSCF AnFreq\n')
+        self.assertEqual(_get_freq_hessian_method(deck, None, 'orca', level, None, self.scratch),
+                         'analytic')
+
+    def test_orca_bare_freq_log_with_a_dft_level_is_analytic(self):
+        """A real Orca log whose echoed keyword line is a bare ``!Freq`` (Freq aliases AnFreq)."""
+        level = Level(method='wb97xd3', basis='def2tzvp', software='orca')
+        self.assertEqual(_get_freq_hessian_method(None, self.orca_bare_freq_log, 'orca',
+                                                  level, None, self.scratch),
+                         'analytic')
+
+    def test_orca_anfreq_log_is_analytic(self):
+        """A real Orca log whose echoed keyword line carries ``AnFreq``."""
+        level = Level(method='b3lyp', basis='svp', software='orca')
+        self.assertEqual(_get_freq_hessian_method(None, self.orca_anfreq_log, 'orca',
+                                                  level, None, self.scratch),
+                         'analytic')
+
+    def test_orca_analytic_hessian_marker_is_present_in_the_reference_logs(self):
+        """The ``ORCA SCF HESSIAN`` header the log fallback keys on is real, not assumed."""
+        for path in (self.orca_bare_freq_log, self.orca_anfreq_log):
+            with open(path, 'r', errors='ignore') as handle:
+                self.assertIn('ORCA SCF HESSIAN', handle.read())
+
+    def test_orca_marker_fallback_is_analytic_when_no_keyword_line_survives(self):
+        """A log whose echoed keyword lines are gone still states an analytic Hessian."""
+        with open(self.orca_anfreq_log, 'r', errors='ignore') as handle:
+            lines = handle.readlines()
+        tail = [line for line in lines if not line.strip().startswith('!')]
+        marker_index = next(i for i, line in enumerate(tail) if 'ORCA SCF HESSIAN' in line)
+        tail = tail[marker_index - 5:]
+        self.assertNotIn('!', ''.join(line.strip()[:1] for line in tail))
+        log = self.deck('orca_marker_tail.log', ''.join(tail))
+        abs_log = os.path.join(self.scratch, log)
+        self.assertIsNone(_orca_route_text(abs_log))
+        level = Level(method='b3lyp', basis='svp', software='orca')
+        self.assertEqual(_get_freq_hessian_method(None, log, 'orca', level, None, self.scratch),
+                         'analytic')
+
+    def test_orca_marker_fallback_is_null_without_the_marker(self):
+        """No keyword line and no analytic-Hessian header leaves nothing to state."""
+        log = self.deck('orca_no_marker.log',
+                        '                       ORCA property calculations\n'
+                        '  Total Energy       :         -76.12345678 Eh\n'
+                        '  ****ORCA TERMINATED NORMALLY****\n')
+        level = Level(method='b3lyp', basis='svp', software='orca')
+        self.assertIsNone(_get_freq_hessian_method(None, log, 'orca', level, None, self.scratch))
+
+    def test_orca_route_scan_stops_at_the_end_of_the_echoed_input(self):
+        """Keyword-looking lines after ``****END OF INPUT****`` are not part of the route."""
+        log = self.deck('orca_end_of_input.log',
+                        '| 1> ! RKS B3LYP def2-tzvp AnFreq\n'
+                        '| 2>                          ****END OF INPUT****\n'
+                        '! NumFreq NumGrad\n')
+        abs_log = os.path.join(self.scratch, log)
+        self.assertEqual(_orca_route_text(abs_log), 'rks b3lyp def2-tzvp anfreq')
+        level = Level(method='b3lyp', basis='def2tzvp', software='orca')
+        self.assertEqual(_get_freq_hessian_method(None, log, 'orca', level, None, self.scratch),
+                         'analytic')
+
+    def test_orca_bare_freq_with_mp2_is_null(self):
+        """Orca deprecated the analytic MP2 Hessian and documents no fallback."""
+        level = Level(method='mp2', basis='def2tzvp', software='orca')
+        self.assertIsNone(_get_freq_hessian_method(None, self.orca_bare_freq_log, 'orca',
+                                                   level, None, self.scratch))
+
+    def test_orca_bare_freq_with_ri_jk_is_null(self):
+        level = Level(method='b3lyp', basis='def2tzvp', software='orca')
+        deck = self.deck('rijk.in', '! B3LYP def2-tzvp RI-JK def2/JK Freq\n')
+        self.assertIsNone(_get_freq_hessian_method(deck, None, 'orca', level, None, self.scratch))
+
+    def test_orca_bare_freq_with_a_double_hybrid_is_null(self):
+        level = Level(method='b2plyp', basis='def2tzvp', software='orca')
+        deck = self.deck('b2plyp.in', '! B2PLYP def2-tzvp Freq\n')
+        self.assertIsNone(_get_freq_hessian_method(deck, None, 'orca', level, None, self.scratch))
+
+    def test_pyscf_closed_shell_is_analytic(self):
+        """pyscf_script builds an analytic RKS Hessian for multiplicity 1."""
+        level = Level(method='wb97m-v', basis='def2tzvp', software='pyscf')
+        spc = ARCSpecies(label='CH4', smiles='C')
+        deck = self.deck('pyscf_singlet.yml', 'job_type: freq\n')
+        self.assertEqual(_get_freq_hessian_method(deck, None, 'pyscf', level, spc, self.scratch),
+                         'analytic')
+
+    def test_pyscf_open_shell_is_a_gradient_finite_difference(self):
+        """pyscf_script differentiates analytic gradients for any multiplicity above 1."""
+        level = Level(method='wb97m-v', basis='def2tzvp', software='pyscf')
+        spc = ARCSpecies(label='CH3', smiles='[CH3]')
+        deck = self.deck('pyscf_doublet.yml', 'job_type: freq\n')
+        self.assertEqual(_get_freq_hessian_method(deck, None, 'pyscf', level, spc, self.scratch),
+                         'finite_difference_gradient')
+
+    def test_pyscf_unusable_multiplicity_is_null(self):
+        """A multiplicity that is not an integer value yields no Hessian method."""
+        level = Level(method='wb97m-v', basis='def2tzvp', software='pyscf')
+        deck = self.deck('pyscf_bad_mult.yml', 'job_type: freq\n')
+        for value in ('doublet', None, [2]):
+            spc = MagicMock(multiplicity=value)
+            self.assertIsNone(_get_freq_hessian_method(deck, None, 'pyscf', level,
+                                                       spc, self.scratch))
+
+    def test_unknown_ess_is_null(self):
+        level = Level(method='ccsd(t)', basis='cc-pvtz', software='molpro')
+        deck = self.deck('molpro.in', '#P ccsd(t)/cc-pvtz freq\n')
+        self.assertIsNone(_get_freq_hessian_method(deck, None, 'molpro', level, None, self.scratch))
+
+    def test_no_software_is_null(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        deck = self.deck('no_software.gjf', '#P uwb97xd/def2tzvp freq\n')
+        self.assertIsNone(_get_freq_hessian_method(deck, None, None, level, None, self.scratch))
+
+    def test_missing_deck_and_log_is_null(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        self.assertIsNone(_get_freq_hessian_method('nonexistent.gjf', '/also/missing.log',
+                                                   'gaussian', level, None, self.scratch))
+
+
 class TestGetEnergyCorrections(unittest.TestCase):
     """Tests for _get_energy_corrections."""
 
     def test_none_level(self):
-        aec, bac = _get_energy_corrections(None, 'p')
-        self.assertIsNone(aec)
-        self.assertIsNone(bac)
+        corrections = _get_energy_corrections(None, 'p')
+        self.assertIsNone(corrections.aec)
+        self.assertIsNone(corrections.bac)
+        self.assertIsNone(corrections.aec_key)
+        self.assertIsNone(corrections.bac_key)
 
     def test_known_level(self):
         lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
-        aec, bac = _get_energy_corrections(lot, 'p')
-        if aec is not None:  # only if RMG-database is available
-            self.assertIn('H', aec)
-            self.assertIn('C', aec)
-            self.assertIsInstance(aec['H'], float)
-        if bac is not None:
-            self.assertIn('C-H', bac)
-            self.assertIsInstance(bac['C-H'], float)
+        corrections = _get_energy_corrections(lot, 'p')
+        if corrections.aec is not None:  # only if RMG-database is available
+            self.assertIn('H', corrections.aec)
+            self.assertIn('C', corrections.aec)
+            self.assertIsInstance(corrections.aec['H'], float)
+        if corrections.bac is not None:
+            self.assertIn('C-H', corrections.bac)
+            self.assertIsInstance(corrections.bac['C-H'], float)
 
     def test_no_bac_when_type_none(self):
         lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
-        aec, bac = _get_energy_corrections(lot, None)
-        self.assertIsNone(bac)
+        corrections = _get_energy_corrections(lot, None)
+        self.assertIsNone(corrections.bac)
+        self.assertIsNone(corrections.bac_key)
 
     def test_independent_aec_and_bac_keys(self):
         """AEC and BAC keys should be resolved independently, not reusing the AEC key for BAC."""
@@ -580,46 +1389,119 @@ class TestGetEnergyCorrections(unittest.TestCase):
              patch('arc.output.execute_command', return_value=('', '')), \
              patch('arc.output.read_yaml_file', return_value={'aec': {'H': -0.5}, 'bac': {'C-H': -0.06}}), \
              patch('arc.output.save_yaml_file') as mock_save:
-            aec, bac = _get_energy_corrections(lot, 'p')
+            corrections = _get_energy_corrections(lot, 'p')
 
-        # Verify both sections were searched independently
         self.assertTrue(any('atom_energies' in c for c in calls))
         self.assertTrue(any('pbac' in c for c in calls))
-        # Verify the script received separate keys
         save_call = mock_save.call_args
         saved_content = save_call[1].get('content') or save_call[0][1]
         self.assertEqual(saved_content['aec_key'], aec_key)
         self.assertEqual(saved_content['bac_key'], bac_key)
-        # Verify results returned
-        self.assertIsNotNone(aec)
-        self.assertIsNotNone(bac)
+        self.assertIsNotNone(corrections.aec)
+        self.assertIsNotNone(corrections.bac)
+        self.assertEqual(corrections.aec_key, aec_key)
+        self.assertEqual(corrections.bac_key, bac_key)
+
+    def test_matched_keys_reported_when_only_the_aec_section_matches(self):
+        """A missing BAC key must be reported as None rather than reusing the AEC key."""
+        lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        aec_key = "LevelOfTheory(method='wb97xd',basis='def2tzvp',software='gaussian')"
+
+        def mock_find_best(level, files, start, end):
+            return aec_key if 'atom_energies' in start else None
+
+        with patch('arc.output.find_best_across_files', side_effect=mock_find_best), \
+             patch('arc.output.get_qm_corrections_files', return_value=['/fake/data.py']), \
+             patch('arc.output.execute_command', return_value=('', '')), \
+             patch('arc.output.read_yaml_file', return_value={'aec': {'H': -0.5}, 'bac': None}), \
+             patch('arc.output.save_yaml_file'):
+            corrections = _get_energy_corrections(lot, 'p')
+
+        self.assertEqual(corrections.aec_key, aec_key)
+        self.assertIsNone(corrections.bac_key)
+
+    def test_bac_table_looked_up_when_only_the_bac_section_matches(self):
+        """A BAC-section match with no atom-energy match still yields the BAC table and its key."""
+        lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        bac_key = "LevelOfTheory(method='wb97xd',basis='def2tzvp')"
+
+        def mock_find_best(level, files, start, end):
+            return bac_key if 'pbac' in start else None
+
+        with patch('arc.output.find_best_across_files', side_effect=mock_find_best), \
+             patch('arc.output.get_qm_corrections_files', return_value=['/fake/data.py']), \
+             patch('arc.output.execute_command', return_value=('', '')) as mock_exec, \
+             patch('arc.output.read_yaml_file', return_value={'aec': None, 'bac': {'C-H': -0.06}}), \
+             patch('arc.output.save_yaml_file') as mock_save:
+            corrections = _get_energy_corrections(lot, 'p')
+
+        mock_exec.assert_called_once()
+        saved_content = mock_save.call_args[1].get('content') or mock_save.call_args[0][1]
+        self.assertIsNone(saved_content['aec_key'])
+        self.assertEqual(saved_content['bac_key'], bac_key)
+        self.assertIsNone(corrections.aec)
+        self.assertIsNone(corrections.aec_key)
+        self.assertEqual(corrections.bac, {'C-H': -0.06})
+        self.assertEqual(corrections.bac_key, bac_key)
+
+    def test_aec_table_lookup_failure_preserves_the_matched_keys(self):
+        """The subprocess failing loses the tables, not the provenance that was observed."""
+        lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        aec_key = "LevelOfTheory(method='wb97xd',basis='def2tzvp',software='gaussian')"
+        bac_key = "LevelOfTheory(method='wb97xd',basis='def2tzvp')"
+
+        def mock_find_best(level, files, start, end):
+            return aec_key if 'atom_energies' in start else bac_key
+
+        with patch('arc.output.find_best_across_files', side_effect=mock_find_best), \
+             patch('arc.output.get_qm_corrections_files', return_value=['/fake/data.py']), \
+             patch('arc.output.execute_command', side_effect=RuntimeError('boom')), \
+             patch('arc.output.save_yaml_file'):
+            corrections = _get_energy_corrections(lot, 'p')
+
+        self.assertIsNone(corrections.aec)
+        self.assertIsNone(corrections.bac)
+        self.assertEqual(corrections.aec_key, aec_key)
+        self.assertEqual(corrections.bac_key, bac_key)
 
 
 class TestGetTsImagFreqFromFreqs(unittest.TestCase):
-    """Tests for _get_ts_imag_freq using spc.freqs as primary source."""
+    """Tests for _get_imaginary_freqs using spc.freqs as the primary source."""
 
     def test_from_spc_freqs(self):
         spc = MagicMock()
         spc.freqs = [-1500.0, 100.0, 200.0, 300.0]
         spc.chosen_ts = None
         spc.ts_guesses = []
-        result = _get_ts_imag_freq(spc)
-        self.assertAlmostEqual(result, -1500.0)
+        self.assertEqual(_get_imaginary_freqs(spc), [-1500.0])
 
-    def test_most_negative_selected(self):
+    def test_most_negative_first(self):
         spc = MagicMock()
         spc.freqs = [-200.0, -1500.0, 100.0, 300.0]
         spc.chosen_ts = None
         spc.ts_guesses = []
-        result = _get_ts_imag_freq(spc)
-        self.assertAlmostEqual(result, -1500.0)
+        self.assertEqual(_get_imaginary_freqs(spc), [-1500.0, -200.0])
 
     def test_no_negative_freqs(self):
         spc = MagicMock()
         spc.freqs = [100.0, 200.0, 300.0]
         spc.chosen_ts = None
         spc.ts_guesses = []
-        self.assertIsNone(_get_ts_imag_freq(spc))
+        self.assertEqual(_get_imaginary_freqs(spc), [])
+
+    def test_a_spurious_small_mode_is_reported_alongside_the_major_one(self):
+        spc = MagicMock()
+        spc.freqs = [-1379.0, -42.0, 120.0, 800.0]
+        spc.chosen_ts = None
+        spc.ts_guesses = []
+        self.assertEqual(_get_imaginary_freqs(spc), [-1379.0, -42.0])
+
+    def test_an_imaginary_mode_on_a_stable_species_is_reported(self):
+        spc = MagicMock()
+        spc.freqs = [-31.0, 120.0, 800.0]
+        spc.chosen_ts = None
+        spc.ts_guesses = []
+        self.assertEqual(_get_imaginary_freqs(spc), [-31.0])
 
 
 class TestParseConformerStatmech(unittest.TestCase):
@@ -742,6 +1624,9 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.rxn_label = 'CHO + CH4 <=> CH2O + CH3'
         spc.chosen_ts_method = 'heuristics'
         spc.successful_methods = ['heuristics']
+        spc.number_of_radicals = None
+        spc.derived_stability_verdict = None
+        spc.scf_references = dict()
         output_dict = {'TS0': {'convergence': True, 'paths': {'irc': []}, 'job_types': {'opt': True, 'irc': True}}}
         result = _spc_to_dict(spc, output_dict, '/abs')
         self.assertIsNone(result['smiles'])
@@ -769,266 +1654,118 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.rxn_label = 'A <=> B'
         spc.chosen_ts_method = None
         spc.successful_methods = []
+        spc.number_of_radicals = None
+        spc.derived_stability_verdict = None
+        spc.scf_references = dict()
         output_dict = {'TS1': {'convergence': True, 'paths': {'irc': []}, 'job_types': {}}}
         result = _spc_to_dict(spc, output_dict, '/abs')
         self.assertIsNone(result['smiles'])
         self.assertIsNone(result['formula'])
 
-    @staticmethod
-    def _minimal_ts_mock(label, chosen):
-        """Build a ``MagicMock`` species shaped enough for ``_spc_to_dict``
-        to walk the TS branch and emit ``neb_log``/``gsm_log``."""
+    def test_ts_path_logs_and_irc_directions(self):
         spc = MagicMock()
-        spc.label = label
+        spc.label = 'TS_paths'
         spc.original_label = None
         spc.charge = 0
-        spc.multiplicity = 2
+        spc.multiplicity = 1
         spc.is_ts = True
         spc.mol = None
         spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0, 0, 0),)}
         spc.initial_xyz = None
         spc.is_monoatomic.return_value = False
-        spc.e_elect = -100.0
-        spc.e0 = -95.0
+        spc.e_elect = None
         spc._is_linear = False
         spc.optical_isomers = 1
         spc.external_symmetry = 1
-        spc.freqs = [-1500.0, 100.0]
+        spc.freqs = [-1000.0, 100.0]
         spc.rotors_dict = None
         spc.thermo = None
         spc.rxn_label = 'A <=> B'
-        spc.chosen_ts_method = chosen
-        spc.successful_methods = [chosen] if chosen else []
-        return spc
-
-    def test_ts_emits_gsm_log_when_paths_gsm_set(self):
-        # When the scheduler routed an xtb_gsm log to ``paths['gsm']``
-        # (separate slot from ``paths['neb']``), the TS record carries
-        # a ``gsm_log`` field populated with the run-relative path. The
-        # ``neb_log`` field stays empty/None for the same record so the
-        # TCKDB adapter's method-aware gate doesn't see cross-pollination.
-        spc = self._minimal_ts_mock(label='TS_gsm', chosen='xTB-GSM')
-        gsm_abs = '/abs/calcs/TS_gsm/gsm/stringfile.xyz0000'
-        output_dict = {'TS_gsm': {
-            'convergence': True,
-            'paths': {'irc': [], 'neb': '', 'gsm': gsm_abs},
-            'job_types': {},
-        }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        # ``_make_rel_path`` strips the project_directory prefix.
-        self.assertEqual(result['gsm_log'],
-                         'calcs/TS_gsm/gsm/stringfile.xyz0000')
-        self.assertIsNone(result['neb_log'])
-
-    def test_ts_emits_neb_log_when_paths_neb_set(self):
-        # Mirror of the GSM test: ``paths['neb']`` populated → ``neb_log``
-        # filled, ``gsm_log`` stays None. Guards against a regression
-        # that would emit both fields from the same path slot.
-        spc = self._minimal_ts_mock(label='TS_neb', chosen='orca_neb')
-        neb_abs = '/abs/calcs/TS_neb/neb/input.log'
-        output_dict = {'TS_neb': {
-            'convergence': True,
-            'paths': {'irc': [], 'neb': neb_abs, 'gsm': ''},
-            'job_types': {},
-        }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertEqual(result['neb_log'], 'calcs/TS_neb/neb/input.log')
-        self.assertIsNone(result['gsm_log'])
-
-    def test_ts_emits_neither_log_when_paths_empty(self):
-        # Geometry-only TS guess (heuristics/AutoTST/user XYZ): both
-        # slots empty, both ``*_log`` fields end up None. The TCKDB
-        # adapter's gate then leaves ts_opt edge-less.
-        spc = self._minimal_ts_mock(label='TS_geom', chosen='Heuristics')
-        # Explicitly: no ts_guesses/chosen_ts → fallback path inert.
-        spc.ts_guesses = []
+        spc.chosen_ts_method = 'xTB-GSM'
+        spc.successful_methods = ['xTB-GSM']
+        spc.number_of_radicals = None
+        spc.derived_stability_verdict = None
+        spc.scf_references = dict()
         spc.chosen_ts = None
-        output_dict = {'TS_geom': {
+        spc.ts_guesses = []
+        output_dict = {'TS_paths': {
             'convergence': True,
-            'paths': {'irc': [], 'neb': '', 'gsm': ''},
-            'job_types': {},
+            'paths': {
+                'gsm': '/run/gsm/stringfile.xyz0000',
+                'neb': '',
+                'irc': ['/run/irc/forward.log', '/run/irc/reverse.log'],
+                'irc_directions': ['forward', 'reverse'],
+            },
+            'job_types': {'irc': True},
         }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
+        result = _spc_to_dict(spc, output_dict, '/run')
+        self.assertEqual(result['gsm_log'], 'gsm/stringfile.xyz0000')
         self.assertIsNone(result['neb_log'])
-        self.assertIsNone(result['gsm_log'])
+        self.assertEqual(result['irc_log_directions'], ['forward', 'reverse'])
 
-    # ------------------------------------------------------------------
-    # Restart-restored fallback: chosen TSGuess.log_path → *_log when
-    # the scheduler's TS-selection write sites didn't re-fire.
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _ts_guess_mock(*, method, log_path):
-        """Build a TSGuess-shaped mock with just the attrs the
-        ``_spc_to_dict`` fallback reads."""
-        g = MagicMock()
-        g.method = method
-        g.log_path = log_path
-        return g
-
-    def test_restart_chosen_gsm_falls_back_to_tsguess_log_path(self):
-        # The restart-restored scenario: paths['gsm'] is empty (the
-        # scheduler write site bypassed) but the in-memory TSGuess
-        # carries the stringfile path. Output must still emit gsm_log
-        # so the TCKDB adapter can fire the path_search gate.
-        spc = self._minimal_ts_mock(label='TS_gsm_restart', chosen='xtb-gsm')
-        spc.ts_guesses = [
-            self._ts_guess_mock(method='autotst', log_path=None),
-            self._ts_guess_mock(method='xTB-GSM',
-                                log_path='/abs/calcs/TS/tsg1/stringfile.xyz0000'),
-        ]
-        spc.chosen_ts = 1
-        output_dict = {'TS_gsm_restart': {
-            'convergence': True,
-            'paths': {'irc': [], 'neb': '', 'gsm': ''},  # both empty
-            'job_types': {},
-        }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertEqual(result['gsm_log'],
-                         'calcs/TS/tsg1/stringfile.xyz0000')
-        self.assertIsNone(result['neb_log'])
-
-    def test_restart_chosen_neb_falls_back_to_tsguess_log_path(self):
-        # Mirror for orca_neb: paths['neb'] empty, TSGuess.log_path set,
-        # output must populate neb_log.
-        spc = self._minimal_ts_mock(label='TS_neb_restart', chosen='orca_neb')
-        spc.ts_guesses = [
-            self._ts_guess_mock(method='heuristics', log_path=None),
-            self._ts_guess_mock(method='orca_neb',
-                                log_path='/abs/calcs/TS/tsg2/input.log'),
-        ]
-        spc.chosen_ts = 1
-        output_dict = {'TS_neb_restart': {
-            'convergence': True,
-            'paths': {'irc': [], 'neb': '', 'gsm': ''},
-            'job_types': {},
-        }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertEqual(result['neb_log'], 'calcs/TS/tsg2/input.log')
-        self.assertIsNone(result['gsm_log'])
-
-    def test_chosen_gsm_does_not_populate_neb_log_from_log_path(self):
-        # Cross-pollination guard: a GSM stringfile must never end up
-        # in neb_log even if neb_log slot is empty and a GSM log_path
-        # exists. The TCKDB adapter's gate would otherwise mis-emit
-        # type=path_search method=neb pointing at a GSM stringfile.
-        spc = self._minimal_ts_mock(label='TS_xpoll', chosen='xtb-gsm')
-        spc.ts_guesses = [
-            self._ts_guess_mock(method='xTB-GSM',
-                                log_path='/abs/calcs/TS/tsg1/stringfile.xyz0000'),
-        ]
-        spc.chosen_ts = 0
-        output_dict = {'TS_xpoll': {
-            'convergence': True,
-            'paths': {'irc': [], 'neb': '', 'gsm': ''},
-            'job_types': {},
-        }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNone(result['neb_log'])
-        self.assertEqual(result['gsm_log'],
-                         'calcs/TS/tsg1/stringfile.xyz0000')
-
-    def test_chosen_neb_does_not_populate_gsm_log_from_log_path(self):
-        # Mirror cross-pollination guard.
-        spc = self._minimal_ts_mock(label='TS_xpoll2', chosen='orca_neb')
-        spc.ts_guesses = [
-            self._ts_guess_mock(method='orca_neb',
-                                log_path='/abs/calcs/TS/tsg2/input.log'),
-        ]
-        spc.chosen_ts = 0
-        output_dict = {'TS_xpoll2': {
-            'convergence': True,
-            'paths': {'irc': [], 'neb': '', 'gsm': ''},
-            'job_types': {},
-        }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNone(result['gsm_log'])
-        self.assertEqual(result['neb_log'], 'calcs/TS/tsg2/input.log')
-
-    def test_geometry_only_chosen_method_does_not_populate_either_log(self):
-        # Even if a TSGuess has a stray log_path, a non-path-search
-        # chosen method (heuristics/AutoTST/user/GCN/KinBot) must keep
-        # both fields null — the gate in adapter.py would otherwise
-        # never see them, but defense-in-depth at the producer side.
-        for chosen_method in ('Heuristics', 'AutoTST', 'KinBot', 'GCN', 'user guess 0'):
-            spc = self._minimal_ts_mock(label='TS_geom_log',
-                                        chosen=chosen_method)
-            spc.ts_guesses = [
-                self._ts_guess_mock(method=chosen_method,
-                                    log_path='/abs/some/stray.log'),
-            ]
-            spc.chosen_ts = 0
-            output_dict = {'TS_geom_log': {
-                'convergence': True,
-                'paths': {'irc': [], 'neb': '', 'gsm': ''},
-                'job_types': {},
-            }}
-            result = _spc_to_dict(spc, output_dict, '/abs')
-            self.assertIsNone(result['neb_log'],
-                              msg=f'neb_log leaked for {chosen_method}')
-            self.assertIsNone(result['gsm_log'],
-                              msg=f'gsm_log leaked for {chosen_method}')
-
-    def test_restart_merged_geometry_primary_recovers_gsm_source(self):
-        # Dedup-merged (benchmark reaction_06): the chosen guess's primary
-        # method is geometry-only (gcn) but xtb-gsm merged into it during
-        # clustering, carrying a preserved log in ``method_source_paths``.
-        # On restart (paths empty), output must recover ``gsm_log`` from
-        # the merged source, not from the geometry-only primary method.
-        spc = self._minimal_ts_mock(label='TS_merged', chosen='gcn')
-        gcn = TSGuess(index=0, method='gcn', success=True, xyz='C 0.0 0.0 0.0')
-        gcn.method_sources = ['gcn', 'xtb-gsm']
-        gcn.method_source_paths = {'xtb-gsm': '/abs/calcs/TS/tsg/stringfile.xyz0000'}
-        spc.ts_guesses = [gcn]
-        spc.chosen_ts = 0
+    def test_merged_ts_guess_recovers_path_artifact_by_index(self):
+        spc = MagicMock()
+        spc.label = 'TS_merged'
+        spc.original_label = None
+        spc.charge = 0
+        spc.multiplicity = 1
+        spc.is_ts = True
+        spc.mol = None
+        spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0, 0, 0),)}
+        spc.initial_xyz = None
+        spc.is_monoatomic.return_value = False
+        spc.e_elect = None
+        spc._is_linear = False
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc.freqs = [-1000.0, 100.0]
+        spc.rotors_dict = None
+        spc.thermo = None
+        spc.rxn_label = 'A <=> B'
+        spc.chosen_ts_method = 'gcn'
+        spc.successful_methods = ['gcn', 'xTB-GSM']
+        spc.number_of_radicals = None
+        spc.derived_stability_verdict = None
+        spc.scf_references = dict()
+        guess = TSGuess(index=7, method='gcn', success=True, xyz='C 0 0 0')
+        guess.method_sources = ['gcn', 'xtb-gsm']
+        guess.method_source_paths = {'xtb-gsm': '/run/gsm/stringfile.xyz0000'}
+        spc.chosen_ts = 7
+        spc.ts_guesses = [guess]
         output_dict = {'TS_merged': {
             'convergence': True,
-            'paths': {'irc': [], 'neb': '', 'gsm': ''},
+            'paths': {'gsm': '', 'neb': '', 'irc': []},
             'job_types': {},
         }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertEqual(result['gsm_log'], 'calcs/TS/tsg/stringfile.xyz0000')
+        result = _spc_to_dict(spc, output_dict, '/run')
+        self.assertEqual(result['gsm_log'], 'gsm/stringfile.xyz0000')
         self.assertIsNone(result['neb_log'])
+        self.assertEqual(result['ts_guesses'], [{
+            'index': 7,
+            'chosen': True,
+            'method': 'gcn',
+            'method_sources': ['gcn', 'xtb-gsm'],
+        }])
 
-    def test_restart_merged_sets_exactly_one_path_log_field(self):
-        # A guess merging BOTH xtb-gsm and orca_neb must not populate two
-        # path-log fields — mirror the scheduler's single-slot invariant
-        # (first path source in method_sources order wins).
-        spc = self._minimal_ts_mock(label='TS_merged2', chosen='gcn')
-        gcn = TSGuess(index=0, method='gcn', success=True, xyz='C 0.0 0.0 0.0')
-        gcn.method_sources = ['gcn', 'xtb-gsm', 'orca_neb']
-        gcn.method_source_paths = {'xtb-gsm': '/abs/calcs/TS/tsg/stringfile.xyz0000',
-                                   'orca_neb': '/abs/calcs/TS/tsg/input.log'}
-        spc.ts_guesses = [gcn]
-        spc.chosen_ts = 0
-        output_dict = {'TS_merged2': {
-            'convergence': True,
-            'paths': {'irc': [], 'neb': '', 'gsm': ''},
-            'job_types': {},
-        }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertEqual(result['gsm_log'], 'calcs/TS/tsg/stringfile.xyz0000')
-        self.assertIsNone(result['neb_log'])
 
-    def test_paths_slot_wins_over_tsguess_log_path(self):
-        # When both are populated (live-scheduler scenario), the
-        # ``paths`` slot is the source of truth (it's what the
-        # scheduler explicitly wrote). The fallback only fires when
-        # the slot is empty.
-        spc = self._minimal_ts_mock(label='TS_both', chosen='xtb-gsm')
-        spc.ts_guesses = [
-            self._ts_guess_mock(method='xTB-GSM',
-                                log_path='/abs/from/tsguess.xyz0000'),
-        ]
-        spc.chosen_ts = 0
-        output_dict = {'TS_both': {
-            'convergence': True,
-            'paths': {'irc': [], 'neb': '',
-                      'gsm': '/abs/from/scheduler.xyz0000'},
-            'job_types': {},
-        }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertEqual(result['gsm_log'], 'from/scheduler.xyz0000')
+class TestEvidenceStatusCounts(unittest.TestCase):
+    """Tests concise evidence-write diagnostics."""
+
+    def test_counts_only_known_evidence_envelopes(self):
+        evidence = {'records': [
+            {'record_kind': 'species', 'label': 'A',
+             'freq_hessian': {'status': 'available'}},
+            {'record_kind': 'transition_state', 'label': 'TS0',
+             'freq_hessian': {'status': 'unavailable'},
+             'irc': {'status': 'available'},
+             'gsm': {'status': 'unavailable'}},
+            {'record_kind': 'species', 'label': 'B', 'other': {'status': 'available'}},
+        ]}
+        self.assertEqual(_evidence_status_counts(evidence), {
+            'freq_hessian': {'available': 1, 'unavailable': 1},
+            'irc': {'available': 1, 'unavailable': 0},
+            'gsm': {'available': 0, 'unavailable': 1},
+        })
 
 
 class TestRxnToDict(unittest.TestCase):
@@ -1076,48 +1813,6 @@ class TestRxnToDict(unittest.TestCase):
         self.assertEqual(result['kinetics']['Ea_units'], 'kJ/mol')
         self.assertEqual(result['kinetics']['n'], 0.5)
 
-    def test_tunneling_method_defaults_to_arkane_template_constant(self):
-        # ARC writes ``tunneling='Eckart'`` into every Arkane reaction()
-        # block (see ARKANE_TUNNELING_METHOD). _rxn_to_dict must surface
-        # that decision in the kinetics block so downstream consumers
-        # (TCKDB, analysis) know which correction was applied to the fit.
-        from arc.statmech.arkane import ARKANE_TUNNELING_METHOD
-        rxn = MagicMock()
-        rxn.label = 'A <=> B'
-        rxn.reactants = ['A']
-        rxn.products = ['B']
-        rxn.family = None
-        rxn.multiplicity = 1
-        rxn.ts_label = 'TS0'
-        rxn.kinetics = {
-            'A': (1.0e10, 's^-1'),
-            'n': 0.0,
-            'Ea': (10.0, 'kJ/mol'),
-            'Tmin': (300, 'K'), 'Tmax': (2000, 'K'),
-        }
-        result = _rxn_to_dict(rxn)
-        self.assertEqual(result['kinetics']['tunneling'], ARKANE_TUNNELING_METHOD)
-
-    def test_tunneling_method_from_parsed_kinetics_wins(self):
-        # If Arkane ever surfaces an explicit tunneling marker on the
-        # parsed kinetics dict, prefer that over the template constant.
-        # Future-proofs the producer against per-reaction tunneling
-        # configs without forcing a template-constant change.
-        rxn = MagicMock()
-        rxn.label = 'A <=> B'
-        rxn.reactants = ['A']
-        rxn.products = ['B']
-        rxn.family = None
-        rxn.multiplicity = 1
-        rxn.ts_label = 'TS0'
-        rxn.kinetics = {
-            'A': (1.0e10, 's^-1'), 'n': 0.0, 'Ea': (10.0, 'kJ/mol'),
-            'Tmin': (300, 'K'), 'Tmax': (2000, 'K'),
-            'tunneling': 'Wigner',
-        }
-        result = _rxn_to_dict(rxn)
-        self.assertEqual(result['kinetics']['tunneling'], 'Wigner')
-
 
 class TestSpcToDict(unittest.TestCase):
     """Tests for _spc_to_dict."""
@@ -1157,6 +1852,9 @@ class TestSpcToDict(unittest.TestCase):
         spc.rxn_label = None
         spc.ts_guesses = []
         spc.chosen_ts = None
+        spc.number_of_radicals = None
+        spc.derived_stability_verdict = None
+        spc.scf_references = dict()
         return spc
 
     def test_converged_species(self):
@@ -1179,16 +1877,194 @@ class TestSpcToDict(unittest.TestCase):
         self.assertEqual(result['freq_log'], 'freq.log')
         self.assertEqual(result['sp_log'], 'sp.log')
 
+    def test_freq_hessian_method_is_emitted_for_a_converged_gaussian_freq_job(self):
+        """The species record carries the freq job's Hessian method beside its deck path."""
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        freq_dir = os.path.join(scratch, 'calcs', 'Species', 'CH4', 'freq')
+        os.makedirs(freq_dir)
+        with open(os.path.join(freq_dir, 'input.gjf'), 'w') as handle:
+            handle.write('%chk=check.chk\n#P uwb97xd/def2tzvp freq IOp(7/33=1)\n\nCH4\n\n0 1\nC 0.0 0.0 0.0\n')
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True,
+                               'paths': {'freq': os.path.join(freq_dir, 'input.log')},
+                               'job_types': {'opt': True}}}
+        result = _spc_to_dict(spc, output_dict, scratch,
+                              software_by_job={'freq': 'gaussian'},
+                              freq_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian'))
+        self.assertEqual(result['freq_hessian_method'], 'analytic')
+
+    def test_freq_hessian_method_is_null_without_a_freq_level(self):
+        """Without the freq level ARC cannot place a bare ``freq`` route, so it says nothing."""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {'freq': '/abs/freq.log'},
+                               'job_types': {'opt': True}}}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertIn('freq_hessian_method', result)
+        self.assertIsNone(result['freq_hessian_method'])
+
     def test_non_converged_species(self):
         spc = self._make_spc_mock(converged=False)
         output_dict = {'CH4': {'convergence': False, 'paths': {}, 'job_types': {}}}
         result = _spc_to_dict(spc, output_dict, '/abs')
         self.assertFalse(result['converged'])
+        self.assertIsNone(result['freq_hessian_method'])
         self.assertIsNone(result['sp_energy_hartree'])
         self.assertIsNone(result['zpe_hartree'])
         self.assertIsNone(result['freq_n_imag'])
         self.assertIsNone(result['thermo'])
         self.assertIsNone(result['statmech'])
+
+    def test_a_non_converged_species_carries_no_spin_diagnostic(self):
+        """Test that a readable sp log does not give an unconverged species an sp_spin_diagnostic"""
+        sp = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        spc = self._make_spc_mock(label='NH2')
+        spc.multiplicity = 2
+        output_dict = {'NH2': {'convergence': True, 'paths': {'sp': sp}, 'job_types': {}}}
+        self.assertIsNotNone(_spc_to_dict(spc, output_dict, ARC_TESTING_PATH)['sp_spin_diagnostic'])
+        output_dict['NH2']['convergence'] = False
+        self.assertIsNone(_spc_to_dict(spc, output_dict, ARC_TESTING_PATH)['sp_spin_diagnostic'])
+
+    def test_scf_reference_records_a_declared_source(self):
+        """Test that a user-declared number_of_radicals is reported as the deciding source"""
+        spc = self._make_spc_mock()
+        spc.number_of_radicals = 2
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+        self.assertEqual(block['source'], 'declared')
+        self.assertEqual(block['declared_number_of_radicals'], 2)
+        self.assertIsNone(block['verdict'])
+
+    def test_scf_reference_records_a_derived_source_and_its_verdict(self):
+        """Test that an adopted measured verdict is reported as the deciding source"""
+        spc = self._make_spc_mock(is_ts=True)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+        self.assertEqual(block['source'], 'derived')
+        self.assertEqual(block['verdict'], 'external_instability')
+        self.assertIs(block['verdict_restricted'], True)
+        self.assertIsNone(block['declared_number_of_radicals'])
+
+    def test_a_well_records_its_verdict_without_being_credited_with_a_decision(self):
+        """Test that a species that is not a TS records the same verdict under no deciding source"""
+        spc = self._make_spc_mock()
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        entry = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertFalse(entry['is_ts'])
+        block = entry['scf_reference']
+        self.assertEqual(block['verdict'], 'external_instability')
+        self.assertIs(block['verdict_restricted'], True)
+        self.assertIsNone(block['source'])
+
+    def test_a_well_records_the_stability_log_it_was_measured_from(self):
+        """Test that the stability diagnostic reaches output.yml for a species that is not a TS"""
+        stability = os.path.join(ARC_TESTING_PATH, 'stability', 'rhf_uhf_instability_singlet_ts.out')
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {'stability': stability}, 'job_types': {}}}
+        entry = _spc_to_dict(spc, output_dict, ARC_TESTING_PATH)
+        self.assertFalse(entry['is_ts'])
+        self.assertEqual(entry['wavefunction_stability']['verdict'], 'external_instability')
+        self.assertEqual(entry['scf_reference']['log'],
+                         os.path.join('stability', 'rhf_uhf_instability_singlet_ts.out'))
+
+    def test_scf_reference_reports_a_declared_source_over_a_contradicting_verdict(self):
+        """Test that a declared value is still the reported source where the verdict disagrees"""
+        spc = self._make_spc_mock(is_ts=True)
+        spc.number_of_radicals = 2
+        spc.derived_stability_verdict = {'verdict': 'stable', 'restricted': True}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+        self.assertEqual(block['source'], 'declared')
+        self.assertEqual(block['verdict'], 'stable')
+
+    def test_a_declaration_attributing_no_open_shell_character_names_no_source(self):
+        """Test that a declared 1 blocks the verdict and is reported without being called the source"""
+        spc = self._make_spc_mock(is_ts=True)
+        spc.number_of_radicals = 1
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+        self.assertIsNone(block['source'])
+        self.assertEqual(block['declared_number_of_radicals'], 1)
+        self.assertEqual(block['verdict'], 'external_instability')
+
+    def test_scf_reference_reports_a_mixed_reference(self):
+        """Test that an electronic energy and a ZPE from different references are recorded as such"""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        spc.scf_references = {'sp': 'unrestricted', 'freq': 'restricted'}
+        block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+        self.assertEqual(block['sp_reference'], 'unrestricted')
+        self.assertEqual(block['freq_reference'], 'restricted')
+        self.assertTrue(block['reference_mismatch'])
+        spc.scf_references = {'sp': 'unrestricted', 'freq': 'unrestricted'}
+        self.assertIs(_spc_to_dict(spc, output_dict, '/abs')['scf_reference']['reference_mismatch'], False)
+
+    def test_an_unrecorded_reference_is_reported_as_unknown_rather_than_consistent(self):
+        """Test that a missing sp or freq reference is None, not the False that means checked and equal"""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        for references in [dict(), {'freq': 'restricted'}, {'sp': 'restricted'}, 'not a dict']:
+            spc.scf_references = references
+            block = _spc_to_dict(spc, output_dict, '/abs')['scf_reference']
+            self.assertIsNone(block['reference_mismatch'], msg=f'{references} reported a mismatch verdict')
+
+    def test_scf_reference_names_the_ts_guess_a_carried_verdict_was_measured_on(self):
+        """Test that a verdict carried over from an abandoned TS guess says which guess it came from"""
+        spc = self._make_spc_mock()
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True,
+                                         'measured_on_ts_guess': 3}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        self.assertEqual(_spc_to_dict(spc, output_dict, '/abs')['scf_reference']['measured_on_ts_guess'], 3)
+
+    def test_a_carried_verdict_still_names_the_analysis_that_decided_the_reference(self):
+        """Test that a TS switch, which resets the stability path, leaves no source without a log"""
+        stability = os.path.join(ARC_TESTING_PATH, 'stability', 'rhf_uhf_instability_singlet_ts.out')
+        spc = self._make_spc_mock(is_ts=True)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True,
+                                         'measured_on_ts_guess': 3, 'log': stability}
+        output_dict = {'CH4': {'convergence': True, 'paths': {'stability': ''}, 'job_types': {}}}
+        entry = _spc_to_dict(spc, output_dict, ARC_TESTING_PATH)
+        self.assertIsNone(entry['wavefunction_stability'])
+        block = entry['scf_reference']
+        self.assertEqual(block['source'], 'derived')
+        self.assertEqual(block['measured_on_ts_guess'], 3)
+        self.assertEqual(block['log'], os.path.join('stability', 'rhf_uhf_instability_singlet_ts.out'))
+
+    def test_a_verdict_carrying_no_log_reports_none_rather_than_raising(self):
+        """Test that a verdict restored from a restart written without a log path is still reported"""
+        spc = self._make_spc_mock(is_ts=True)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, ARC_TESTING_PATH)['scf_reference']
+        self.assertEqual(block['source'], 'derived')
+        self.assertIsNone(block['log'])
+
+    def test_a_non_converged_species_still_carries_its_scf_reference_block(self):
+        """Test that the record of what ARC decided survives the species failing to converge"""
+        spc = self._make_spc_mock(converged=False, is_ts=True)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
+        spc.scf_references = {'freq': 'restricted', 'sp': 'unrestricted'}
+        output_dict = {'CH4': {'convergence': False, 'paths': {}, 'job_types': {}}}
+        entry = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertFalse(entry['converged'])
+        self.assertIsNone(entry['sp_spin_diagnostic'])
+        block = entry['scf_reference']
+        self.assertEqual(block['source'], 'derived')
+        self.assertEqual(block['verdict'], 'external_instability')
+        self.assertIs(block['reference_mismatch'], True)
+
+    def test_scf_reference_reads_a_verdict_off_the_log_without_calling_it_the_source(self):
+        """Test that a verdict only the log holds is reported but is not credited with the decision"""
+        stability = os.path.join(ARC_TESTING_PATH, 'stability', 'rhf_uhf_instability_singlet_ts.out')
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {'stability': stability}, 'job_types': {}}}
+        block = _spc_to_dict(spc, output_dict, ARC_TESTING_PATH)['scf_reference']
+        self.assertEqual(block['verdict'], 'external_instability')
+        self.assertEqual(block['log'], os.path.join('stability', 'rhf_uhf_instability_singlet_ts.out'))
+        self.assertIsNone(block['source'])
 
     def test_monoatomic_species(self):
         spc = self._make_spc_mock(label='Ar', monoatomic=True)
@@ -1201,55 +2077,6 @@ class TestSpcToDict(unittest.TestCase):
         self.assertIsNone(result['imag_freq_cm1'])
         self.assertIsNone(result['zpe_hartree'])
         self.assertIsNone(result['statmech'])
-
-    def test_monoatomic_synthesizes_xyz_when_geometry_missing(self):
-        # ARC skips opt for atoms (nothing to optimize), so final_xyz/initial_xyz
-        # may both be None even when the species converged via SP. The producer
-        # must still emit a usable xyz so downstream consumers (e.g. TCKDB) can
-        # build a geometry payload.
-        spc = self._make_spc_mock(label='H_atom', monoatomic=True)
-        spc.final_xyz = None
-        spc.initial_xyz = None
-        spc.freqs = None
-        spc.thermo = None
-        atom = MagicMock()
-        atom.element.symbol = 'H'
-        spc.mol.atoms = [atom]
-        spc.mol.get_formula.return_value = 'H'
-        output_dict = {'H_atom': {'convergence': True, 'paths': {}, 'job_types': {}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNotNone(result['xyz'])
-        self.assertIn('H', result['xyz'])
-        self.assertIn('0.00000000', result['xyz'])
-
-    def test_polyatomic_with_missing_geometry_keeps_xyz_none(self):
-        # Negative case: a non-monoatomic species missing both final_xyz and
-        # initial_xyz must NOT get a synthesized geometry — there's no unique
-        # one to choose.
-        spc = self._make_spc_mock(label='CH4')
-        spc.final_xyz = None
-        spc.initial_xyz = None
-        # _make_spc_mock leaves spc.mol.atoms unset (a MagicMock attribute), so
-        # set len-able multi-atom contents to make the negative case explicit.
-        spc.mol.atoms = [MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock()]
-        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNone(result['xyz'])
-
-    def test_unconverged_monoatomic_keeps_xyz_none(self):
-        # Negative case: don't synthesize geometry for unconverged species, even
-        # if monoatomic — output.yml only carries geometry for results we trust.
-        spc = self._make_spc_mock(label='H_atom', monoatomic=True, converged=False)
-        spc.final_xyz = None
-        spc.initial_xyz = None
-        spc.freqs = None
-        spc.thermo = None
-        atom = MagicMock()
-        atom.element.symbol = 'H'
-        spc.mol.atoms = [atom]
-        output_dict = {'H_atom': {'convergence': False, 'paths': {}, 'job_types': {}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNone(result['xyz'])
 
     def test_ts_species(self):
         spc = self._make_spc_mock(label='TS0', is_ts=True)
@@ -1271,37 +2098,6 @@ class TestSpcToDict(unittest.TestCase):
         self.assertEqual(result['rxn_label'], 'CH4 + OH <=> CH3 + H2O')
         self.assertEqual(len(result['irc_logs']), 2)
         self.assertTrue(result['irc_converged'])
-
-    def test_ts_checks_reported(self):
-        """The TS validation verdicts are surfaced, including a failed IRC check."""
-        spc = self._make_spc_mock(label='TS0', is_ts=True)
-        spc.rxn_label = 'A <=> B'
-        spc.thermo = None
-        spc.ts_checks = {'E0': True, 'e_elect': True, 'IRC': False, 'freq': True, 'NMD': True, 'warnings': ''}
-        output_dict = {'TS0': {'convergence': True, 'paths': {}, 'job_types': {}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertEqual(result['ts_checks'],
-                         {'E0': True, 'e_elect': True, 'IRC': False, 'freq': True, 'NMD': True, 'warnings': ''})
-        self.assertIsNot(result['ts_checks'], spc.ts_checks)
-
-    def test_ts_checks_empty_or_missing(self):
-        """An empty or non-dict ts_checks attribute is reported as null and does not raise."""
-        spc = self._make_spc_mock(label='TS0', is_ts=True)
-        spc.rxn_label = 'A <=> B'
-        spc.thermo = None
-        spc.ts_checks = dict()
-        output_dict = {'TS0': {'convergence': True, 'paths': {}, 'job_types': {}}}
-        self.assertIsNone(_spc_to_dict(spc, output_dict, '/abs')['ts_checks'])
-        del spc.ts_checks
-        self.assertIsNone(_spc_to_dict(spc, output_dict, '/abs')['ts_checks'])
-
-    def test_ts_checks_not_reported_for_non_ts(self):
-        """A non-TS species has no ts_checks key and does not raise even if the attribute exists."""
-        spc = self._make_spc_mock()
-        spc.ts_checks = {'IRC': False}
-        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertNotIn('ts_checks', result)
 
     def test_ts_irc_not_requested(self):
         spc = self._make_spc_mock(label='TS1', is_ts=True)
@@ -1333,315 +2129,81 @@ class TestSpcToDict(unittest.TestCase):
         result = _spc_to_dict(spc, output_dict, '/abs')
         self.assertIsNone(result['statmech']['point_group'])
 
-    # ------------------------------------------------------------------
-    # Input-deck path emission (`<job>_input` keys).
-    # ------------------------------------------------------------------
 
-    def test_input_paths_default_none_when_no_software_info(self):
-        """Back-compat: callers that don't pass ``software_by_job`` get None."""
-        spc = self._make_spc_mock()
-        output_dict = {'CH4': {
-            'convergence': True,
-            'paths': {'geo': '/abs/opt.log', 'freq': '/abs/freq.log', 'sp': '/abs/sp.log'},
-            'job_types': {'opt': True},
-        }}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNone(result['opt_input'])
-        self.assertIsNone(result['freq_input'])
-        self.assertIsNone(result['sp_input'])
+class TestFlatCalculationContract(unittest.TestCase):
+    """Pin the flat per-calculation shape that downstream uploaders consume.
 
-    def test_input_path_emitted_when_file_exists(self):
-        """Gaussian's input.gjf next to opt.log → opt_input populated, project-relative."""
-        proj = tempfile.mkdtemp(prefix='arc-output-test-')
-        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
-        opt_dir = os.path.join(proj, 'calcs', 'CH4', 'opt')
-        os.makedirs(opt_dir, exist_ok=True)
-        opt_log = os.path.join(opt_dir, 'input.log')
-        opt_inp = os.path.join(opt_dir, 'input.gjf')
-        for p in (opt_log, opt_inp):
-            with open(p, 'w') as f:
-                f.write('x')
-        spc = self._make_spc_mock()
-        output_dict = {'CH4': {
-            'convergence': True,
-            'paths': {'geo': opt_log},
-            'job_types': {'opt': True},
-        }}
-        result = _spc_to_dict(
-            spc, output_dict, proj,
-            software_by_job={'opt': 'gaussian', 'freq': None, 'sp': None},
-        )
-        self.assertEqual(result['opt_input'], 'calcs/CH4/opt/input.gjf')
+    ARC emits every calculation result as a flat, prefixed scalar field on the
+    species record, and never as a wrapped ``opt_result``/``freq_result``/
+    ``sp_result`` object. Field names, flatness and units are asserted here.
+    """
 
-    def test_input_path_none_when_input_file_missing(self):
-        """Software is known, log is on disk, but input deck isn't → None (no ghost path)."""
-        proj = tempfile.mkdtemp(prefix='arc-output-test-')
-        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
-        opt_dir = os.path.join(proj, 'calcs', 'CH4', 'opt')
-        os.makedirs(opt_dir, exist_ok=True)
-        opt_log = os.path.join(opt_dir, 'input.log')
-        with open(opt_log, 'w') as f:
-            f.write('x')
-        # no input.gjf written
-        spc = self._make_spc_mock()
-        output_dict = {'CH4': {
-            'convergence': True,
-            'paths': {'geo': opt_log},
-            'job_types': {'opt': True},
-        }}
-        result = _spc_to_dict(
-            spc, output_dict, proj,
-            software_by_job={'opt': 'gaussian'},
-        )
-        self.assertIsNone(result['opt_input'])
+    FLAT_CALC_FIELDS = (
+        'opt_converged',
+        'opt_n_steps',
+        'opt_final_energy_hartree',
+        'freq_n_imag',
+        'imag_freq_cm1',
+        'zpe_hartree',
+        'sp_energy_hartree',
+    )
 
-    def test_input_path_uses_software_specific_filename(self):
-        """orca → input.in, cfour → ZMAT — driven by settings['input_filenames']."""
-        proj = tempfile.mkdtemp(prefix='arc-output-test-')
-        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
-        # opt: orca run, deck is input.in
-        opt_dir = os.path.join(proj, 'calcs', 'CH4', 'opt')
-        os.makedirs(opt_dir, exist_ok=True)
-        opt_log = os.path.join(opt_dir, 'input.log')
-        opt_inp = os.path.join(opt_dir, 'input.in')
-        for p in (opt_log, opt_inp):
-            open(p, 'w').close()
-        # sp: cfour run, deck is ZMAT
-        sp_dir = os.path.join(proj, 'calcs', 'CH4', 'sp')
-        os.makedirs(sp_dir, exist_ok=True)
-        sp_log = os.path.join(sp_dir, 'output.out')
-        sp_inp = os.path.join(sp_dir, 'ZMAT')
-        for p in (sp_log, sp_inp):
-            open(p, 'w').close()
-        spc = self._make_spc_mock()
-        output_dict = {'CH4': {
-            'convergence': True,
-            'paths': {'geo': opt_log, 'sp': sp_log},
-            'job_types': {'opt': True},
-        }}
-        result = _spc_to_dict(
-            spc, output_dict, proj,
-            software_by_job={'opt': 'orca', 'sp': 'cfour'},
-        )
-        self.assertEqual(result['opt_input'], 'calcs/CH4/opt/input.in')
-        self.assertEqual(result['sp_input'], 'calcs/CH4/sp/ZMAT')
+    WRAPPED_CALC_FIELDS = ('opt_result', 'freq_result', 'sp_result', 'irc_result', 'neb_result')
 
-    def test_input_path_none_when_log_missing(self):
-        """No log path → no input path, regardless of software."""
-        spc = self._make_spc_mock()
-        output_dict = {'CH4': {
-            'convergence': True,
-            'paths': {},  # no geo/freq/sp
-            'job_types': {'opt': True},
-        }}
-        result = _spc_to_dict(
-            spc, output_dict, '/abs',
-            software_by_job={'opt': 'gaussian', 'freq': 'gaussian', 'sp': 'gaussian'},
-        )
-        self.assertIsNone(result['opt_input'])
-        self.assertIsNone(result['freq_input'])
-        self.assertIsNone(result['sp_input'])
+    def _converged(self, **kwargs):
+        maker = TestSpcToDict()
+        spc = maker._make_spc_mock(**kwargs)
+        output_dict = {spc.label: {'convergence': True,
+                                   'paths': {'freq': '/abs/freq.log', 'sp': '/abs/sp.log'},
+                                   'job_types': {'opt': True}}}
+        return spc, _spc_to_dict(spc, output_dict, '/abs')
 
-    def test_input_path_none_when_software_unknown(self):
-        """Software not in settings['input_filenames'] (e.g., gcn) → None."""
-        proj = tempfile.mkdtemp(prefix='arc-output-test-')
-        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
-        opt_dir = os.path.join(proj, 'calcs', 'CH4', 'opt')
-        os.makedirs(opt_dir, exist_ok=True)
-        opt_log = os.path.join(opt_dir, 'output.yml')
-        open(opt_log, 'w').close()
-        spc = self._make_spc_mock()
-        output_dict = {'CH4': {
-            'convergence': True,
-            'paths': {'geo': opt_log},
-            'job_types': {'opt': True},
-        }}
-        result = _spc_to_dict(
-            spc, output_dict, proj,
-            software_by_job={'opt': 'gcn'},  # gcn has no entry in input_filenames
-        )
-        self.assertIsNone(result['opt_input'])
+    def test_calculation_fields_are_flat_and_present(self):
+        """Every flat calc field is emitted on a converged species, wrapped ones never are."""
+        _, record = self._converged()
+        for field in self.FLAT_CALC_FIELDS:
+            self.assertIn(field, record)
+        for field in self.WRAPPED_CALC_FIELDS:
+            self.assertNotIn(field, record)
 
-    # ------------------------------------------------------------------
-    # opt_input_xyz: pre-opt geometry surfaced for opt's input-geometry
-    # provenance. freq + sp share the conformer's converged geometry by
-    # ARC's invariant; only opt has a distinct input.
-    # ------------------------------------------------------------------
+    def test_flat_calc_fields_hold_scalars_not_result_objects(self):
+        """The flat fields carry scalars or None, never a nested result mapping."""
+        _, record = self._converged()
+        for field in self.FLAT_CALC_FIELDS:
+            with self.subTest(field=field):
+                self.assertIsInstance(record[field], (bool, int, float, type(None)))
 
-    def test_opt_input_xyz_emitted_from_initial_xyz(self):
-        """``spc.initial_xyz`` lands as ``opt_input_xyz`` in xyz_to_str format."""
-        spc = self._make_spc_mock()
-        spc.initial_xyz = {
-            'symbols': ('C', 'H'),
-            'isotopes': (12, 1),
-            'coords': ((0.001, 0.002, 0.003), (1.090, 0.000, 0.000)),
-        }
-        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNotNone(result['opt_input_xyz'])
-        # Same atom-only string format as the existing ``xyz`` field.
-        lines = result['opt_input_xyz'].splitlines()
-        self.assertEqual(len(lines), 2)
-        self.assertTrue(lines[0].startswith('C '))
-        self.assertTrue(lines[1].startswith('H '))
+    def test_energy_fields_are_hartree_not_kj_mol(self):
+        """``*_hartree`` fields are converted out of ARC's internal kJ/mol."""
+        spc, record = self._converged()
+        self.assertAlmostEqual(record['sp_energy_hartree'], spc.e_elect / E_h_kJmol)
+        self.assertLess(abs(record['sp_energy_hartree']), abs(spc.e_elect))
 
-    def test_opt_input_xyz_distinct_from_xyz_when_both_present(self):
-        """``xyz`` carries final, ``opt_input_xyz`` carries initial. Different
-        coordinates → different strings; the bundle's `input_geometries`
-        link for opt is genuinely separate from the conformer geometry."""
-        spc = self._make_spc_mock()
-        spc.initial_xyz = {
-            'symbols': ('C',),
-            'isotopes': (12,),
-            'coords': ((0.001, 0.0, 0.0),),
-        }
-        spc.final_xyz = {
-            'symbols': ('C',),
-            'isotopes': (12,),
-            'coords': ((0.500, 0.0, 0.0),),
-        }
-        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNotNone(result['xyz'])
-        self.assertIsNotNone(result['opt_input_xyz'])
-        self.assertNotEqual(result['xyz'], result['opt_input_xyz'])
+    def test_imaginary_frequency_is_cm1_and_negative_for_a_ts(self):
+        """A TS reports one imaginary mode, in cm^-1, carrying its negative sign."""
+        maker = TestSpcToDict()
+        spc = maker._make_spc_mock(label='TS0', is_ts=True)
+        spc.thermo = None
+        spc.rxn_label = 'A <=> B'
+        guess = MagicMock()
+        guess.index = 0
+        guess.imaginary_freqs = [-1500.0]
+        spc.ts_guesses = [guess]
+        spc.chosen_ts = 0
+        output_dict = {'TS0': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}}
+        record = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertEqual(record['freq_n_imag'], 1)
+        self.assertAlmostEqual(record['imag_freq_cm1'], -1500.0)
 
-    def test_opt_input_xyz_none_when_initial_xyz_absent(self):
-        """Species with no initial_xyz set → ``opt_input_xyz`` is null."""
-        spc = self._make_spc_mock()
-        spc.initial_xyz = None
-        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNone(result['opt_input_xyz'])
-
-    def test_opt_input_xyz_emitted_independently_of_convergence(self):
-        """Opt's input is meaningful even on failed runs — surface it
-        regardless of the species convergence flag."""
-        spc = self._make_spc_mock(converged=False)
-        spc.initial_xyz = {
-            'symbols': ('O',),
-            'isotopes': (16,),
-            'coords': ((0.0, 0.0, 0.0),),
-        }
-        output_dict = {'CH4': {'convergence': False, 'paths': {}, 'job_types': {}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNotNone(result['opt_input_xyz'])
-
-    # ------------------------------------------------------------------
-    # coarse → fine opt geometry chain. When coarse runs, opt_input_xyz
-    # changes meaning from "pre-everything" to "fine opt's input" =
-    # coarse opt's output.
-    # ------------------------------------------------------------------
-
-    def test_no_coarse_opt_keeps_single_stage_semantics(self):
-        """No coarse log → coarse_opt_* fields are null; opt_input_xyz
-        reflects the species' initial xyz (the single-stage opt's input)."""
-        spc = self._make_spc_mock()
-        spc.initial_xyz = {'symbols': ('C',), 'isotopes': (12,),
-                           'coords': ((0.0, 0.0, 0.0),)}
-        output_dict = {'CH4': {'convergence': True,
-                                'paths': {},   # no geo_coarse
-                                'job_types': {'opt': True}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNone(result['coarse_opt_log'])
-        self.assertIsNone(result['coarse_opt_input_xyz'])
-        self.assertIsNone(result['coarse_opt_output_xyz'])
-        # Single-stage: opt_input_xyz comes from spc.initial_xyz.
-        self.assertIsNotNone(result['opt_input_xyz'])
-        self.assertEqual(result['opt_input_xyz'].split()[0], 'C')
-
-    def test_coarse_opt_chains_geometries_to_fine(self):
-        """When coarse log parses cleanly, the geometry chain is:
-        spc.initial_xyz → coarse_opt_input_xyz → coarse_opt_output_xyz =
-        opt_input_xyz → xyz."""
-        # Use the shipped Gaussian iC3H7 opt log — parse_geometry handles
-        # it via the per-ESS adapter, so we get a real xyz back.
-        coarse_log = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
-        spc = self._make_spc_mock()
-        spc.initial_xyz = {'symbols': ('C',), 'isotopes': (12,),
-                           'coords': ((9.999, 9.999, 9.999),)}  # distinctive
-        output_dict = {'CH4': {'convergence': True,
-                                'paths': {'geo_coarse': coarse_log,
-                                          'geo': coarse_log},  # both point at same file for this test
-                                'job_types': {'opt': True}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        # Coarse fields populated.
-        self.assertIsNotNone(result['coarse_opt_log'])
-        self.assertIsNotNone(result['coarse_opt_input_xyz'])
-        self.assertIsNotNone(result['coarse_opt_output_xyz'])
-        # Coarse input == species initial xyz.
-        self.assertIn('9.999', result['coarse_opt_input_xyz'])
-        # Coarse output != initial xyz (it was actually parsed from the log).
-        self.assertNotIn('9.999', result['coarse_opt_output_xyz'])
-        # opt_input_xyz now points at the coarse output, not initial xyz.
-        self.assertEqual(result['opt_input_xyz'], result['coarse_opt_output_xyz'])
-
-    def test_final_settings_emitted_when_coarse_stage_ran(self):
-        """When a coarse opt ran, the fine opt is the ``"fine"`` stage
-        and the coarse opt is the ``"coarse"`` stage of ARC's two-stage
-        convention. Surfacing it as ``optimization_stage`` (rather than
-        an ESS-shaped ``fine: bool``) keeps the meaning self-evident
-        and avoids collision with future ESS "fine" keywords landing
-        in the same dict.
-        """
-        coarse_log = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
-        spc = self._make_spc_mock()
-        spc.initial_xyz = {'symbols': ('C',), 'isotopes': (12,),
-                           'coords': ((0.0, 0.0, 0.0),)}
-        output_dict = {'CH4': {'convergence': True,
-                                'paths': {'geo_coarse': coarse_log,
-                                          'geo': coarse_log},
-                                'job_types': {'opt': True}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertEqual(result['opt_final_settings'],
-                         {'optimization_stage': 'fine'})
-        self.assertEqual(result['coarse_opt_final_settings'],
-                         {'optimization_stage': 'coarse'})
-
-    def test_final_settings_null_when_single_stage_opt(self):
-        """Single-stage opt: filesystem state alone can't prove whether
-        ``fine=True`` or ``fine=False`` was passed to the job, so the
-        producer leaves the field None — better than fabricating a
-        default."""
-        spc = self._make_spc_mock()
-        spc.initial_xyz = {'symbols': ('C',), 'isotopes': (12,),
-                           'coords': ((0.0, 0.0, 0.0),)}
-        output_dict = {'CH4': {'convergence': True,
-                                'paths': {},
-                                'job_types': {'opt': True}}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNone(result['opt_final_settings'])
-        self.assertIsNone(result['coarse_opt_final_settings'])
-        # freq/sp have no producer-side honest source today either.
-        self.assertIsNone(result['freq_final_settings'])
-        self.assertIsNone(result['sp_final_settings'])
-
-    def test_coarse_opt_unparseable_geometry_falls_back_safely(self):
-        """If the coarse log exists but its geometry can't be parsed, we
-        emit no coarse_opt_output_xyz and fall back to single-stage
-        semantics for opt_input_xyz (= spc.initial_xyz). A bundle
-        downstream won't emit a structured opt_coarse calc in this case."""
-        # An unparseable file (empty), but its existence triggers the
-        # coarse-opt-ran branch.
-        proj = tempfile.mkdtemp(prefix='arc-coarse-fallback-')
-        self.addCleanup(shutil.rmtree, proj, ignore_errors=True)
-        empty_log = os.path.join(proj, 'coarse.log')
-        open(empty_log, 'w').close()
-        spc = self._make_spc_mock()
-        spc.initial_xyz = {'symbols': ('C',), 'isotopes': (12,),
-                           'coords': ((0.0, 0.0, 0.0),)}
-        output_dict = {'CH4': {'convergence': True,
-                                'paths': {'geo_coarse': empty_log},
-                                'job_types': {'opt': True}}}
-        result = _spc_to_dict(spc, output_dict, proj)
-        # coarse_opt_log path is recorded (it exists) but the parsed
-        # geometry is None, so the chain-aware fields stay null.
-        self.assertIsNotNone(result['coarse_opt_log'])
-        self.assertIsNone(result['coarse_opt_output_xyz'])
-        self.assertIsNone(result['coarse_opt_input_xyz'])
-        # Fallback: opt_input_xyz comes from initial_xyz, not from the
-        # missing coarse output.
-        self.assertIsNotNone(result['opt_input_xyz'])
+    def test_unconverged_species_nulls_every_calc_field(self):
+        """An unconverged species emits the same keys, all null, never a missing key."""
+        maker = TestSpcToDict()
+        spc = maker._make_spc_mock(converged=False)
+        record = _spc_to_dict(spc, {'CH4': {'convergence': False, 'paths': {}, 'job_types': {}}}, '/abs')
+        for field in self.FLAT_CALC_FIELDS:
+            with self.subTest(field=field):
+                self.assertIn(field, record)
+                self.assertIsNone(record[field])
 
 
 class TestComputePointGroups(unittest.TestCase):
@@ -1740,10 +2302,8 @@ class TestWriteOutputYml(unittest.TestCase):
 
     def setUp(self):
         self.tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
         os.makedirs(os.path.join(self.tmp_dir, 'output'), exist_ok=True)
-
-    def tearDown(self):
-        shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
     def _make_spc_mock(self, label='CH4'):
         spc = MagicMock()
@@ -1774,12 +2334,15 @@ class TestWriteOutputYml(unittest.TestCase):
         spc.freqs = [1300.0, 1500.0, 3000.0]
         spc.rotors_dict = None
         spc.thermo = ThermoData(H298=-74.6, S298=186.3, Tmin=(300, 'K'), Tmax=(3000, 'K'))
+        spc.number_of_radicals = None
+        spc.derived_stability_verdict = None
+        spc.scf_references = dict()
         return spc
 
     @patch('arc.output._compute_point_groups', return_value={})
-    @patch('arc.output._get_arkane_git_commit', return_value='abc123')
+    @patch('arc.output._get_arkane_provenance', return_value=('3.3.0', 'abc123'))
     @patch('arc.output.get_git_commit', return_value=('def456', '2026-01-01'))
-    def test_writes_file_atomically(self, mock_arc_git, mock_arkane_git, mock_pg):
+    def test_writes_file_atomically(self, mock_arc_git, mock_arkane_provenance, mock_pg):
         from arc.common import read_yaml_file
         spc = self._make_spc_mock()
         species_dict = {'CH4': spc}
@@ -1797,6 +2360,12 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertTrue(os.path.isfile(out_path))
         doc = read_yaml_file(out_path)
         self.assertEqual(doc['schema_version'], '1.1')
+        self.assertEqual(doc['parser_evidence']['path'], 'parser_evidence.json')
+        evidence_path = os.path.join(self.tmp_dir, 'output', 'parser_evidence.json')
+        self.assertTrue(os.path.isfile(evidence_path))
+        with open(evidence_path) as handle:
+            evidence = json.load(handle)
+        self.assertEqual(evidence['document_id'], doc['parser_evidence']['document_id'])
         self.assertEqual(doc['project'], 'test_project')
         self.assertEqual(doc['arc_git_commit'], 'def456')
         self.assertEqual(doc['arkane_git_commit'], 'abc123')
@@ -1807,42 +2376,57 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertEqual(doc['transition_states'], [])
 
     @patch('arc.output._compute_point_groups', return_value={})
-    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
     @patch('arc.output.get_git_commit', return_value=('', ''))
-    def test_ts_checks_written(self, mock_arc_git, mock_arkane_git, mock_pg):
-        """The TS validation verdicts round-trip into the written output.yml."""
+    def test_ess_software_is_emitted_and_pairs_with_ess_versions(self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """``ess_software`` names the program per job type even when the level declares another one."""
         from arc.common import read_yaml_file
         spc = self._make_spc_mock()
-        ts = self._make_spc_mock(label='TS0')
-        ts.is_ts = True
-        ts.mol = None
-        ts.thermo = None
-        ts.rxn_label = 'CH4 <=> CH3 + H'
-        ts.chosen_ts_method = 'autotst'
-        ts.successful_methods = ['autotst']
-        ts.ts_guesses = []
-        ts.chosen_ts = None
-        ts.ts_checks = {'E0': True, 'e_elect': True, 'IRC': False, 'freq': True, 'NMD': None, 'warnings': ''}
+        paths = {'geo': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
+                 'sp': os.path.join(ARC_TESTING_PATH, 'orca_example_opt.log')}
 
         write_output_yml(
-            project='test_ts_checks',
+            project='test_ess_software',
             project_directory=self.tmp_dir,
-            species_dict={'CH4': spc, 'TS0': ts},
+            species_dict={'CH4': spc},
             reactions=[],
-            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}},
-                         'TS0': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            output_dict={'CH4': {'convergence': True, 'paths': paths, 'job_types': {}}},
+            opt_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian'),
+            freq_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian'),
+            sp_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian'),
         )
 
         doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
-        self.assertEqual(len(doc['transition_states']), 1)
-        self.assertFalse(doc['transition_states'][0]['ts_checks']['IRC'])
-        self.assertIsNone(doc['transition_states'][0]['ts_checks']['NMD'])
-        self.assertNotIn('ts_checks', doc['species'][0])
+        entry = doc['species'][0]
+        self.assertEqual(entry['ess_software'], {'opt': 'gaussian', 'sp': 'orca'})
+        self.assertIn('Gaussian', entry['ess_versions']['opt'])
+        self.assertIn('ORCA', entry['ess_versions']['sp'])
 
     @patch('arc.output._compute_point_groups', return_value={})
-    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
     @patch('arc.output.get_git_commit', return_value=('', ''))
-    def test_levels_of_theory(self, mock_arc_git, mock_arkane_git, mock_pg):
+    def test_ess_software_is_null_for_a_non_converged_species(self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        from arc.common import read_yaml_file
+        spc = self._make_spc_mock()
+        paths = {'geo': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')}
+
+        write_output_yml(
+            project='test_ess_software_unconverged',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': spc},
+            reactions=[],
+            output_dict={'CH4': {'convergence': False, 'paths': paths, 'job_types': {}}},
+        )
+
+        entry = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))['species'][0]
+        self.assertIn('ess_software', entry)
+        self.assertIsNone(entry['ess_software'])
+        self.assertIsNone(entry['ess_versions'])
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_levels_of_theory(self, mock_arc_git, mock_arkane_provenance, mock_pg):
         from arc.common import read_yaml_file
         spc = self._make_spc_mock()
         opt_level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
@@ -1867,13 +2451,55 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertEqual(doc['opt_level']['method'], 'wb97xd')
         self.assertEqual(doc['sp_level']['method'], 'dlpno-ccsd(t)')
         self.assertAlmostEqual(doc['freq_scale_factor'], 0.975)
+        self.assertIsNone(doc['freq_scale_factor_key'])
         self.assertIsNone(doc['freq_scale_factor_source'])  # user-provided
         self.assertEqual(doc['bac_type'], 'p')
 
     @patch('arc.output._compute_point_groups', return_value={})
-    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
     @patch('arc.output.get_git_commit', return_value=('', ''))
-    def test_arkane_level_of_theory(self, mock_arc_git, mock_arkane_git, mock_pg):
+    def test_a_rates_only_run_reports_the_requested_bac_but_applies_none(
+            self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """A run that computes rates without thermo never reaches a BAC-applying
+        Arkane run, so no species carries a ``bond_additivity`` record even though
+        the run requested ``bac_type: p``. The atom-energy record is unaffected --
+        Arkane applies that in the kinetics run too."""
+        from arc.common import read_yaml_file
+        corrections = {'CH4': {'aec': {'value': -0.0234, 'value_unit': 'hartree', 'components': []},
+                               'bac': {'value': -0.694, 'value_unit': 'kcal_mol',
+                                       'bac_type': 'p', 'components': []}}}
+        documents = {}
+        for compute_thermo in (True, False):
+            with patch('arc.output._compute_species_corrections', return_value=corrections):
+                write_output_yml(
+                    project='p',
+                    project_directory=self.tmp_dir,
+                    species_dict={'CH4': self._make_spc_mock()},
+                    reactions=[],
+                    output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+                    opt_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian'),
+                    bac_type='p',
+                    compute_thermo=compute_thermo,
+                    arkane_level_of_theory=Level(method='wb97xd', basis='def2tzvp',
+                                                 software='gaussian'),
+                )
+            documents[compute_thermo] = read_yaml_file(
+                os.path.join(self.tmp_dir, 'output', 'output.yml'))
+
+        def correction_types(document):
+            return [entry['correction_type']
+                    for entry in document['species'][0]['energy_corrections']]
+
+        self.assertEqual(documents[True]['bac_type'], 'p')
+        self.assertEqual(documents[False]['bac_type'], 'p')
+        self.assertIn('bond_additivity', correction_types(documents[True]))
+        self.assertNotIn('bond_additivity', correction_types(documents[False]))
+        self.assertIn('atom_energy', correction_types(documents[False]))
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_arkane_level_of_theory(self, mock_arc_git, mock_arkane_provenance, mock_pg):
         from arc.common import read_yaml_file
         spc = self._make_spc_mock()
         sp_level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
@@ -1894,9 +2520,88 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertEqual(doc['sp_level']['method'], 'wb97xd')
 
     @patch('arc.output._compute_point_groups', return_value={})
-    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output._get_arkane_provenance', return_value=('3.2.0', None))
     @patch('arc.output.get_git_commit', return_value=('', ''))
-    def test_arkane_level_none_when_not_set(self, mock_arc_git, mock_arkane_git, mock_pg):
+    def test_arkane_version_identifies_the_software_without_a_git_commit(
+            self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """The corrections stay attributable on an install that has no RMG-Py git repo."""
+        write_output_yml(
+            project='test_arkane_version',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': self._make_spc_mock()},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            arkane_level_of_theory=Level(method='cbs-qb3', software='gaussian'),
+            bac_type='p',
+        )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertEqual(doc['arkane_version'], '3.2.0')
+        self.assertIsNone(doc['arkane_git_commit'])
+        self.assertEqual(mock_arkane_provenance.call_args[0][0], self.tmp_dir)
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, 'abc123'))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_arkane_version_is_null_not_absent_when_unresolvable(
+            self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """An unresolvable version is emitted as null, the convention every optional key follows."""
+        write_output_yml(
+            project='test_arkane_version_null',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': self._make_spc_mock()},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+        )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertIn('arkane_version', doc)
+        self.assertIsNone(doc['arkane_version'])
+        self.assertEqual(doc['arkane_git_commit'], 'abc123')
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=('3.3.0', 'abc123'))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_the_arkane_identity_is_emitted_without_any_corrections(
+            self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """The pair names the Arkane ARC invoked; it is not gated on corrections reaching the document."""
+        write_output_yml(
+            project='test_arkane_identity_without_corrections',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': self._make_spc_mock()},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+        )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertIsNone(doc['atom_energy_corrections'])
+        self.assertIsNone(doc['bond_additivity_corrections'])
+        self.assertEqual(doc['arkane_version'], '3.3.0')
+        self.assertEqual(doc['arkane_git_commit'], 'abc123')
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_arkane_level_of_theory_carries_its_year(
+            self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """The level's ``year`` reaches the emitted ``arkane_level_of_theory`` dict."""
+        write_output_yml(
+            project='test_arkane_year',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': self._make_spc_mock()},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            arkane_level_of_theory=Level(method='wb97xd', basis='def2tzvp',
+                                         software='gaussian', year=2023),
+        )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertEqual(doc['arkane_level_of_theory']['year'], 2023)
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_arkane_level_none_when_not_set(self, mock_arc_git, mock_arkane_provenance, mock_pg):
         from arc.common import read_yaml_file
         spc = self._make_spc_mock()
 
@@ -1912,9 +2617,119 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertIsNone(doc['arkane_level_of_theory'])
 
     @patch('arc.output._compute_point_groups', return_value={})
-    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
     @patch('arc.output.get_git_commit', return_value=('', ''))
-    def test_no_tmp_files_left(self, mock_arc_git, mock_arkane_git, mock_pg):
+    def test_energy_correction_records_carry_the_matched_arkane_key(self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """The writer threads the matched Arkane key onto every emitted correction record."""
+        aec_key = "LevelOfTheory(method='wb97xd',basis='def2tzvp',software='gaussian')"
+        corrections = EnergyCorrections(aec={'C': -37.8, 'H': -0.5}, bac={'C-H': -0.17},
+                                        aec_key=aec_key, bac_key=aec_key)
+        species_corrections = {'CH4': {
+            'aec': {'value': -0.02, 'value_unit': 'hartree', 'components': []},
+            'bac': {'value': -0.7, 'value_unit': 'kcal_mol', 'components': []},
+        }}
+        with patch('arc.output._get_energy_corrections', return_value=corrections), \
+             patch('arc.output._compute_species_corrections', return_value=species_corrections):
+            write_output_yml(
+                project='matched_key_wiring',
+                project_directory=self.tmp_dir,
+                species_dict={'CH4': self._make_spc_mock()},
+                reactions=[],
+                output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+                sp_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian'),
+                arkane_level_of_theory=Level(method='wb97xd', basis='def2tzvp', software='gaussian'),
+                bac_type='p',
+            )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        records = doc['species'][0]['energy_corrections']
+        self.assertEqual(sorted(r['correction_type'] for r in records),
+                         ['atom_energy', 'bond_additivity'])
+        for record in records:
+            self.assertEqual(record['matched_arkane_key'], aec_key)
+        bac = next(r for r in records if r['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['parameter_table']['values'], {'C-H': -0.17})
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_each_correction_record_names_its_own_arkane_block(self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """AEC and BAC blocks resolved under different keys each name the key they came from."""
+        aec_key = "LevelOfTheory(method='wb97mv',basis='def2tzvpd',software='qchem')"
+        bac_key = "LevelOfTheory(method='wb97mv2023',basis='def2tzvpd',software='qchem')"
+        corrections = EnergyCorrections(aec={'C': -37.8, 'H': -0.5}, bac={'C-H': -0.17},
+                                        aec_key=aec_key, bac_key=bac_key)
+        species_corrections = {'CH4': {
+            'aec': {'value': -0.02, 'value_unit': 'hartree', 'components': []},
+            'bac': {'value': -0.7, 'value_unit': 'kcal_mol', 'components': []},
+        }}
+        with patch('arc.output._get_energy_corrections', return_value=corrections), \
+             patch('arc.output._compute_species_corrections', return_value=species_corrections):
+            write_output_yml(
+                project='per_section_key_wiring',
+                project_directory=self.tmp_dir,
+                species_dict={'CH4': self._make_spc_mock()},
+                reactions=[],
+                output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+                sp_level=Level(method='wb97m-v', basis='def2tzvpd', software='qchem'),
+                arkane_level_of_theory=Level(method='wb97m-v', basis='def2tzvpd', software='qchem'),
+                bac_type='p',
+            )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        records = doc['species'][0]['energy_corrections']
+        keys = {r['correction_type']: r['matched_arkane_key'] for r in records}
+        self.assertEqual(keys, {'atom_energy': aec_key, 'bond_additivity': bac_key})
+        bac = next(r for r in records if r['correction_type'] == 'bond_additivity')
+        self.assertNotIn('parameter_table', bac)
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_freq_scale_factor_key_names_the_block_the_factor_came_from(self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """A level that is in ARC's table publishes that table's entry key and its citation."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        write_output_yml(
+            project='freq_scale_key',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': self._make_spc_mock()},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            opt_level=level,
+            freq_level=level,
+            freq_scale_factor=0.988,
+        )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertEqual(doc['freq_scale_factor_key'], 'wb97xd/def2tzvp, software: gaussian')
+        self.assertIn('10.1021/ct100326h', doc['freq_scale_factor_source'])
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_a_level_absent_from_the_table_publishes_a_null_key(self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """An unlisted level leaves both the key and the citation null rather than omitting them."""
+        level = Level(method='totally_fake_method', basis='fake_basis')
+        write_output_yml(
+            project='freq_scale_key_absent',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': self._make_spc_mock()},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            opt_level=level,
+            freq_level=level,
+            freq_scale_factor=0.99,
+        )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertIn('freq_scale_factor_key', doc)
+        self.assertIsNone(doc['freq_scale_factor_key'])
+        self.assertIsNone(doc['freq_scale_factor_source'])
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_no_tmp_files_left(self, mock_arc_git, mock_arkane_provenance, mock_pg):
         """After a successful write, no .tmp files should remain."""
         spc = self._make_spc_mock()
         write_output_yml(
@@ -1928,77 +2743,74 @@ class TestWriteOutputYml(unittest.TestCase):
         leftover = [f for f in os.listdir(out_dir) if f.endswith('.tmp')]
         self.assertEqual(leftover, [])
 
-    def _make_ts_mock(self, label='TS0'):
-        """Build a MagicMock TS species carrying real TSGuess objects."""
-        spc = MagicMock()
-        spc.label = label
-        spc.original_label = None
-        spc.charge = 0
-        spc.multiplicity = 2
-        spc.is_ts = True
-        spc.mol = None
-        spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
-        spc.initial_xyz = None
-        spc.is_monoatomic.return_value = False
-        spc.e_elect = -100.0
-        spc.e0 = -95.0
-        spc._is_linear = False
-        spc.optical_isomers = 1
-        spc.external_symmetry = 1
-        spc.freqs = [-1500.0, 100.0]
-        spc.rotors_dict = None
-        spc.thermo = None
-        spc.rxn_label = 'A <=> B'
-        spc.chosen_ts_method = 'orca_neb'
-        spc.successful_methods = ['orca_neb', 'xtb-gsm']
-        tsg_0 = TSGuess(method='heuristics', method_index=0, method_direction='F', success=False)
-        tsg_0.execution_time = datetime.timedelta(seconds=2)
-        tsg_1 = TSGuess(method='orca_neb', method_index=0, success=True, energy=0.0,
-                        level={'method': 'wb97x-d3', 'basis': 'def2-tzvp', 'software': 'orca'},
-                        log_path=os.path.join(self.tmp_dir, 'calcs', 'TSs', label, 'tsg1', 'output.out'))
-        tsg_1.index = 1
-        tsg_1.execution_time = datetime.timedelta(minutes=30)
-        tsg_0.index = 0
-        spc.ts_guesses = [tsg_0, tsg_1]
-        spc.chosen_ts = 1
-        return spc
-
     @patch('arc.output._compute_point_groups', return_value={})
-    @patch('arc.output._get_arkane_git_commit', return_value=None)
-    @patch('arc.output.get_git_commit', return_value=('', ''))
-    def test_ts_guesses_section(self, mock_arc_git, mock_arkane_git, mock_pg):
-        """The TS entry should carry a per-guess provenance table."""
-        from arc.common import read_yaml_file
-        spc = self._make_ts_mock()
+    @patch('arc.output.build_parser_evidence', side_effect=RuntimeError('evidence failed'))
+    def test_evidence_failure_still_writes_output(self, mock_build, mock_pg):
+        spc = self._make_spc_mock()
         write_output_yml(
-            project='test_tsg',
+            project='evidence_failure',
             project_directory=self.tmp_dir,
-            species_dict={'TS0': spc},
+            species_dict={'CH4': spc},
             reactions=[],
-            output_dict={'TS0': {'convergence': True, 'paths': {'irc': []},
-                                 'job_types': {'opt': True, 'irc': True}}},
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
         )
+        from arc.common import read_yaml_file
         doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
-        self.assertEqual(len(doc['transition_states']), 1)
-        guesses = doc['transition_states'][0]['ts_guesses']
-        self.assertEqual(len(guesses), 2)
-        g0, g1 = guesses
-        self.assertEqual(g0['method'], 'heuristics')
-        self.assertIsNone(g0['level'])
-        self.assertFalse(g0['chosen'])
-        self.assertEqual(g0['execution_time_sec'], 2.0)
-        self.assertEqual(g1['method'], 'orca_neb')
-        self.assertEqual(g1['level'], {'method': 'wb97x-d3', 'basis': 'def2-tzvp', 'software': 'orca'})
-        self.assertTrue(g1['chosen'])
-        self.assertEqual(g1['execution_time_sec'], 1800.0)
-        self.assertEqual(g1['energy_kj_mol'], 0.0)
-        # log path must be run-relative
-        self.assertEqual(g1['log_path'], os.path.join('calcs', 'TSs', 'TS0', 'tsg1', 'output.out'))
+        self.assertEqual(doc['schema_version'], '1.1')
+        self.assertNotIn('parser_evidence', doc)
 
     @patch('arc.output._compute_point_groups', return_value={})
-    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output.build_parser_evidence', side_effect=RuntimeError('evidence failed'))
+    def test_evidence_failure_removes_the_previous_runs_sidecar(self, mock_build, mock_pg):
+        """A run that cannot produce evidence must not leave the last run's beside its output.
+
+        The sidecar is only interpretable against the ``output.yml`` naming its
+        ``document_id``. A surviving sidecar from an earlier run sits beside a
+        document with no descriptor at all, so nothing marks it stale and a
+        consumer reads last week's Hessians as this run's.
+        """
+        out_dir = os.path.join(self.tmp_dir, 'output')
+        os.makedirs(out_dir, exist_ok=True)
+        stale_path = os.path.join(out_dir, 'parser_evidence.json')
+        with open(stale_path, 'w') as handle:
+            handle.write('{"document_id": "from_a_previous_run"}\n')
+
+        spc = self._make_spc_mock()
+        write_output_yml(
+            project='evidence_failure',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': spc},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+        )
+        doc = read_yaml_file(os.path.join(out_dir, 'output.yml'))
+        self.assertNotIn('parser_evidence', doc)
+        self.assertFalse(os.path.exists(stale_path))
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    def test_evidence_is_replaced_before_output(self, mock_pg):
+        spc = self._make_spc_mock()
+        real_replace = os.replace
+        destinations = []
+
+        def recording_replace(source, destination):
+            destinations.append(os.path.basename(destination))
+            return real_replace(source, destination)
+
+        with patch('os.replace', side_effect=recording_replace):
+            write_output_yml(
+                project='replace_order',
+                project_directory=self.tmp_dir,
+                species_dict={'CH4': spc},
+                reactions=[],
+                output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            )
+        self.assertEqual(destinations[-2:], ['parser_evidence.json', 'output.yml'])
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
     @patch('arc.output.get_git_commit', return_value=('', ''))
-    def test_cost_metrics_section(self, mock_arc_git, mock_arkane_git, mock_pg):
+    def test_cost_metrics_section(self, mock_arc_git, mock_arkane_provenance, mock_pg):
         """Cost metrics should aggregate per-ESS execution time and core-hours."""
         from arc.common import read_yaml_file
         spc = self._make_spc_mock()
@@ -2034,6 +2846,1514 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertEqual(cm['per_ess']['orca']['job_count'], 1)
         self.assertAlmostEqual(cm['per_ess']['orca']['execution_time_hrs'], 0.25)
         self.assertAlmostEqual(cm['per_ess']['orca']['core_hours'], 4.0)
+
+
+class TestGetPointGroupsScript(unittest.TestCase):
+    """Tests for arc/scripts/get_point_groups.py helper functions (imported directly)."""
+
+    def test_point_group_for_monoatomic(self):
+        """Monoatomic species should return 'Kh' without calling the binary."""
+        import importlib.util
+        script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_point_groups.py')
+        spec = importlib.util.spec_from_file_location('get_point_groups', script_path,
+                                                       submodule_search_locations=[])
+        # The script imports from 'common' which is in the scripts dir — add it to path
+        import sys
+        scripts_dir = os.path.join(ARC_PATH, 'arc', 'scripts')
+        added = scripts_dir not in sys.path
+        if added:
+            sys.path.insert(0, scripts_dir)
+        try:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            result = mod._point_group_for_species(['Ar'], [[0.0, 0.0, 0.0]])
+            self.assertEqual(result, 'Kh')
+        finally:
+            if added:
+                sys.path.remove(scripts_dir)
+
+    def test_point_group_for_empty(self):
+        import importlib.util
+        import sys
+        script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_point_groups.py')
+        spec = importlib.util.spec_from_file_location('get_point_groups', script_path)
+        scripts_dir = os.path.join(ARC_PATH, 'arc', 'scripts')
+        added = scripts_dir not in sys.path
+        if added:
+            sys.path.insert(0, scripts_dir)
+        try:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            self.assertIsNone(mod._point_group_for_species([], []))
+            self.assertIsNone(mod._point_group_for_species(None, None))
+        finally:
+            if added:
+                sys.path.remove(scripts_dir)
+
+    def test_point_group_unknown_element(self):
+        import importlib.util
+        import sys
+        script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_point_groups.py')
+        spec = importlib.util.spec_from_file_location('get_point_groups', script_path)
+        scripts_dir = os.path.join(ARC_PATH, 'arc', 'scripts')
+        added = scripts_dir not in sys.path
+        if added:
+            sys.path.insert(0, scripts_dir)
+        try:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            # 'Uuo' is not in the lookup table
+            result = mod._point_group_for_species(['Uuo', 'H'], [[0, 0, 0], [1, 0, 0]])
+            self.assertIsNone(result)
+        finally:
+            if added:
+                sys.path.remove(scripts_dir)
+
+
+class TestParseWavefunctionStabilityForOutput(unittest.TestCase):
+    """
+    Contains unit tests for the wavefunction stability entry written to output.yml.
+    """
+
+    def _write_log(self, body: str) -> str:
+        """Write a Gaussian stability log to a temporary file and return its path."""
+        with tempfile.NamedTemporaryFile(suffix='.log', mode='w', delete=False) as f:
+            f.write(' Entering Gaussian System, Link 0=g16\n' + body)
+            return f.name
+
+    def test_freq_validity_reaches_the_output_record(self):
+        """Test that output.yml carries the reference and the frequency-validity verdict"""
+        body = ' SCF Done:  E(UwB97XD) =  -78.5936     A.U.\n' \
+               ' Stability analysis using <AA,BB:AA,BB> singles matrix:\n' \
+               ' Eigenvector   1:      Triplet-?Sym  Eigenvalue=-0.1434007  <S**2>=2.000\n' \
+               ' The wavefunction has an RHF -> UHF instability.\n'
+        path = self._write_log(body)
+        try:
+            result = _parse_wavefunction_stability(path, os.path.dirname(path))
+            self.assertEqual(result['verdict'], 'external_instability')
+            self.assertIn('restricted', result)
+            self.assertIn('invalidates_analytic_freq', result)
+            self.assertFalse(result['restricted'])
+            self.assertTrue(result['invalidates_analytic_freq'])
+            self.assertIsNotNone(result['log'])
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_restricted_external_instability_reaches_output_as_valid(self):
+        """Test that a restricted external instability is recorded as not invalidating the freq"""
+        body = ' SCF Done:  E(RwB97XD) =  -78.5936     A.U.\n' \
+               ' Stability analysis using <AA,BB:AA,BB> singles matrix:\n' \
+               ' The wavefunction has an RHF -> UHF instability.\n'
+        path = self._write_log(body)
+        try:
+            result = _parse_wavefunction_stability(path, os.path.dirname(path))
+            self.assertTrue(result['restricted'])
+            self.assertFalse(result['invalidates_analytic_freq'])
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_no_stability_log_yields_nothing(self):
+        """Test that a species with no stability analysis records no entry"""
+        self.assertIsNone(_parse_wavefunction_stability(None, '/tmp'))
+        self.assertIsNone(_parse_wavefunction_stability('/nonexistent/stability.log', '/tmp'))
+
+class TestBacIsAppliedTo(unittest.TestCase):
+    """Which species ARC actually routes through a BAC-applying Arkane run.
+
+    ``arc/processor.py`` invokes the kinetics statmech adapter with
+    ``bac_type=None`` and skips transition states when collecting species for
+    the thermo adapter, so a rates-only project applies no bond additivity
+    correction to anything and a TS never receives one from any run. Reporting
+    one under ``energy_corrections`` would name a correction Arkane never made.
+    """
+
+    @staticmethod
+    def _spc(is_ts=False, compute_thermo=True):
+        spc = MagicMock()
+        spc.is_ts = is_ts
+        spc.compute_thermo = compute_thermo
+        return spc
+
+    def test_an_ordinary_species_on_a_thermo_run_gets_a_bac(self):
+        self.assertTrue(_bac_is_applied_to(self._spc(), compute_thermo=True))
+
+    def test_a_rates_only_run_applies_no_bac_at_all(self):
+        self.assertFalse(_bac_is_applied_to(self._spc(), compute_thermo=False))
+
+    def test_a_transition_state_never_gets_a_bac(self):
+        self.assertFalse(_bac_is_applied_to(self._spc(is_ts=True), compute_thermo=True))
+
+    def test_a_species_excluded_from_thermo_gets_no_bac(self):
+        self.assertFalse(_bac_is_applied_to(self._spc(compute_thermo=False), compute_thermo=True))
+
+
+class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
+    """Direct tests for `_build_energy_corrections_for_species`.
+
+    Stubs the rmg_env script's per-label result so we don't depend on the
+    Arkane subprocess; the helper's job is purely shape-translation.
+    """
+
+    def _lot(self):
+        return Level(method='wb97xd3', basis='def2tzvp', software='qchem')
+
+    def _aec_block(self):
+        return {
+            'value': -0.0234,
+            'value_unit': 'hartree',
+            'components': [
+                {'component_kind': 'atom', 'key': 'C', 'multiplicity': 1,
+                 'parameter_value': -37.84993993, 'parameter_unit': 'hartree',
+                 'contribution_value': -0.015},
+                {'component_kind': 'atom', 'key': 'H', 'multiplicity': 4,
+                 'parameter_value': -0.49991749, 'parameter_unit': 'hartree',
+                 'contribution_value': -0.008},
+            ],
+        }
+
+    def _pbac_block(self):
+        return {
+            'value': -0.694,
+            'value_unit': 'kcal_mol',
+            'bac_type': 'p',
+            'components': [
+                {'component_kind': 'bond', 'key': 'C-H', 'multiplicity': 4,
+                 'parameter_value': -0.1735, 'parameter_unit': 'kcal_mol',
+                 'contribution_value': -0.694},
+            ],
+        }
+
+    def _mbac_block(self):
+        return {
+            'value': -0.056,
+            'value_unit': 'kcal_mol',
+            'bac_type': 'm',
+        }
+
+    def test_aec_total_emitted(self):
+        sc = {'CH4': {'aec': self._aec_block()}}
+        out = _build_energy_corrections_for_species('CH4', sc, self._lot(), 'p')
+        roles = [e['correction_type'] for e in out]
+        self.assertIn('atom_energy', roles)
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertAlmostEqual(aec['total']['value'], -0.0234)
+        self.assertEqual(aec['total']['unit'], 'hartree')
+        self.assertEqual(aec['model'], 'arkane_atom_energy')
+
+    def test_aec_components_sum_to_total(self):
+        # Use values that arithmetically sum exactly so the test
+        # asserts the producer doesn't drop or rescale rows.
+        block = {
+            'value': -0.030,
+            'value_unit': 'hartree',
+            'components': [
+                {'component_kind': 'atom', 'key': 'C', 'multiplicity': 1,
+                 'parameter_value': -37.85, 'parameter_unit': 'hartree',
+                 'contribution_value': -0.018},
+                {'component_kind': 'atom', 'key': 'H', 'multiplicity': 4,
+                 'parameter_value': -0.5, 'parameter_unit': 'hartree',
+                 'contribution_value': -0.012},
+            ],
+        }
+        sc = {'X': {'aec': block}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), None)
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        total = sum(c['contribution_value'] for c in aec['components'])
+        self.assertAlmostEqual(total, aec['total']['value'], places=6)
+
+    def test_pbac_total_and_components(self):
+        sc = {'CH4': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species('CH4', sc, self._lot(), 'p')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['model'], 'petersson')
+        self.assertEqual(bac['total']['unit'], 'kcal_mol')
+        self.assertEqual(len(bac['components']), 1)
+        self.assertEqual(bac['components'][0]['key'], 'C-H')
+
+    def test_mbac_total_only_no_components(self):
+        sc = {'CH4': {'aec': self._aec_block(), 'bac': self._mbac_block()}}
+        out = _build_energy_corrections_for_species('CH4', sc, self._lot(), 'm')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['model'], 'melius')
+        self.assertEqual(bac['components'], [])
+
+    def test_pbac_omits_components_when_param_missing(self):
+        block = self._pbac_block()
+        block['components'][0]['parameter_value'] = None
+        sc = {'X': {'aec': self._aec_block(), 'bac': block}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        # Components dropped entirely (partial decomposition would mislead).
+        self.assertEqual(bac['components'], [])
+
+    def test_units_are_explicit(self):
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        units = {e['correction_type']: e['total']['unit'] for e in out}
+        self.assertEqual(units['atom_energy'], 'hartree')
+        self.assertEqual(units['bond_additivity'], 'kcal_mol')
+
+    def test_missing_correction_omits_silently(self):
+        # AEC failed (no 'aec' key), BAC succeeded → only BAC emitted.
+        sc = {'X': {'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        roles = [e['correction_type'] for e in out]
+        self.assertEqual(roles, ['bond_additivity'])
+
+    def test_no_data_returns_empty_list(self):
+        out = _build_energy_corrections_for_species('X', {}, self._lot(), 'p')
+        self.assertEqual(out, [])
+
+    def test_bac_type_none_omits_bac(self):
+        # Even if a BAC block is present, bac_type=None means no BAC role.
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), None)
+        roles = [e['correction_type'] for e in out]
+        self.assertEqual(roles, ['atom_energy'])
+
+    # ---- provenance of the parameters each record was computed from ----
+
+    def test_each_record_names_the_key_matched_in_its_own_section(self):
+        """The two sections are matched independently, so the two records may differ."""
+        aec_key = "LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')"
+        bac_key = "LevelOfTheory(method='wb97xd3',basis='def2tzvp')"
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', aec_key=aec_key, bac_key=bac_key,
+        )
+        self.assertEqual([e['matched_arkane_key'] for e in out], [aec_key, bac_key])
+        self.assertNotEqual(aec_key, bac_key)
+
+    def test_a_refit_vintage_bac_key_is_reported_on_the_bac_record(self):
+        """A BAC block refit under a later vintage is named by that block's own key."""
+        aec_key = "LevelOfTheory(method='wb97mv',basis='def2tzvpd',software='qchem')"
+        bac_key = "LevelOfTheory(method='wb97mv2023',basis='def2tzvpd',software='qchem')"
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', aec_key=aec_key, bac_key=bac_key,
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(aec['matched_arkane_key'], aec_key)
+        self.assertEqual(bac['matched_arkane_key'], bac_key)
+
+    def test_an_unmatched_bac_key_is_reported_as_null_not_as_the_aec_key(self):
+        """An unmatched BAC section leaves the field present and null."""
+        aec_key = "LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')"
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', aec_key=aec_key, bac_key=None,
+        )
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertIn('matched_arkane_key', bac)
+        self.assertIsNone(bac['matched_arkane_key'])
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertEqual(aec['matched_arkane_key'], aec_key)
+
+    def test_an_unmatched_aec_key_leaves_the_bac_record_naming_its_own_key(self):
+        """The AEC record's null key does not erase the BAC record's."""
+        bac_key = "LevelOfTheory(method='wb97xd3',basis='def2tzvp')"
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', aec_key=None, bac_key=bac_key,
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertIsNone(aec['matched_arkane_key'])
+        self.assertEqual(bac['matched_arkane_key'], bac_key)
+
+    def test_matched_arkane_key_is_none_when_the_caller_supplies_no_keys(self):
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        for correction in out:
+            self.assertIsNone(correction['matched_arkane_key'])
+
+    def test_level_of_theory_and_matched_arkane_key_are_not_conflated(self):
+        """``level_of_theory`` is what ARC ran; ``matched_arkane_key`` is what Arkane matched."""
+        aec_key = "LevelOfTheory(method='wb97xd',basis='def2tzvp',software='gaussian')"
+        sc = {'X': {'aec': self._aec_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), None, aec_key=aec_key,
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertIsInstance(aec['level_of_theory'], dict)
+        self.assertEqual(aec['level_of_theory']['method'], 'wb97xd3')
+        self.assertEqual(aec['level_of_theory']['software'], 'qchem')
+        self.assertIsInstance(aec['matched_arkane_key'], str)
+        self.assertEqual(aec['matched_arkane_key'], aec_key)
+        self.assertNotEqual(aec['level_of_theory'], aec['matched_arkane_key'])
+
+    # ---- scheme parameter tables (atom_params / bond_params) ----
+
+    def test_aec_scheme_includes_atom_params_from_run_table(self):
+        # ARC's run-level atom_energy_corrections dict is the source of
+        # truth for AEC scheme parameters; without atom_params the
+        # downstream energy_correction_scheme_atom_param table never gets
+        # populated even though the applied row lands. Sorted-by-element
+        # for deterministic output.yml.
+        aec_table = {'C': -37.84706, 'H': -0.50066}
+        sc = {'X': {'aec': self._aec_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', aec_table=aec_table, bac_table=None,
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertEqual(
+            aec['reference_atom_energies']['values'],
+            {'C': -37.84706, 'H': -0.50066},
+        )
+
+    def test_pbac_scheme_includes_bond_params_from_run_table(self):
+        bac_table = {'C-H': -0.17350, 'C=O': -2.63454}
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', aec_table=None, bac_table=bac_table,
+        )
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(
+            bac['parameter_table']['values'],
+            {'C-H': -0.17350, 'C=O': -2.63454},
+        )
+
+    def test_pbac_parameter_table_emitted_when_the_bac_key_is_the_applied_key(self):
+        """The BAC table is emitted when the BAC-matched key is the key the numbers came from."""
+        key = "LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')"
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', bac_table={'C-H': -0.17350},
+            aec_key=key, bac_key=key,
+        )
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['parameter_table']['values'], {'C-H': -0.17350})
+
+    def test_pbac_parameter_table_omitted_when_the_bac_key_differs_from_the_applied_key(self):
+        """A BAC table matched under a different key than the applied one is omitted."""
+        aec_key = "LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')"
+        bac_key = "LevelOfTheory(method='wb97xd3',basis='def2tzvp')"
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', bac_table={'C-H': -0.17350},
+            aec_key=aec_key, bac_key=bac_key,
+        )
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertNotIn('parameter_table', bac)
+        self.assertEqual(bac['matched_arkane_key'], bac_key)
+        self.assertAlmostEqual(bac['total']['value'], -0.694)
+
+    def test_pbac_parameter_table_omitted_when_no_bac_key_matched(self):
+        """An unmatched BAC key omits the BAC table while the total and components stay."""
+        aec_key = "LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')"
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', bac_table={'C-H': -0.17350},
+            aec_key=aec_key, bac_key=None,
+        )
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertNotIn('parameter_table', bac)
+        self.assertEqual(len(bac['components']), 1)
+
+    def test_parameter_table_unit_is_the_table_unit_not_the_total_unit(self):
+        """Parameter tables carry their own source unit, not the total block's.
+
+        The values come from the Arkane AEC/BAC tables (Hartree and kcal/mol
+        respectively) while ``total.unit`` describes the per-species total. The
+        two are independent, so a divergent total unit must not relabel the
+        per-parameter values.
+        """
+        aec_block = self._aec_block()
+        aec_block['value_unit'] = 'kj_mol'
+        bac_block = self._pbac_block()
+        bac_block['value_unit'] = 'kj_mol'
+        sc = {'X': {'aec': aec_block, 'bac': bac_block}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p',
+            aec_table={'C': -37.84706}, bac_table={'C-H': -0.17350},
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(aec['reference_atom_energies']['unit'], 'hartree')
+        self.assertEqual(aec['reference_atom_energies']['applied_as'], 'subtracted')
+        self.assertEqual(bac['parameter_table']['unit'], 'kcal_mol')
+        self.assertEqual(aec['total']['unit'], 'kj_mol')
+        self.assertEqual(bac['total']['unit'], 'kj_mol')
+
+    def test_mbac_scheme_omits_params(self):
+        # Per spec: Melius BAC parameters are atom-pair / length / neighbor /
+        # molecular and don't fit SchemeBondParamPayload's bond-key shape.
+        # The producer must NOT fabricate or coerce them — emit total only.
+        bac_table = {'C-H': -0.17350}  # would coerce, but we must not
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._mbac_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'm', aec_table=None, bac_table=bac_table,
+        )
+        bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+        self.assertEqual(bac['model'], 'melius')
+        self.assertNotIn('parameter_table', bac)
+
+    def test_a_nested_melius_table_degrades_instead_of_raising(self):
+        """Arkane's real Melius table is nested and must not reach the flattener.
+
+        ``write_output_yml``'s caller logs and discards any exception, taking
+        the whole document with it, so a ``TypeError`` here would silently cost
+        an entire run its ``output.yml``. The record omits the parameter table
+        rather than raising, whichever ``bac_type`` is in play.
+        """
+        nested = {
+            'atom_corr': {'C': 0.20491, 'H': -2.06284},
+            'bond_corr_length': {'C': 0.05644, 'H': 1.07830},
+            'bond_corr_neighbor': {'C': -0.09439, 'H': -0.17906},
+            'mol_corr': -3.782190737782739,
+        }
+        self.assertIsNone(_flat_parameter_values(nested))
+        self.assertIsNone(_flat_parameter_values(None))
+        self.assertEqual(_flat_parameter_values({'C-H': -0.1735}), {'C-H': -0.1735})
+        for bac_type, block in (('m', self._mbac_block()), ('p', self._pbac_block())):
+            with self.subTest(bac_type=bac_type):
+                sc = {'X': {'aec': self._aec_block(), 'bac': block}}
+                out = _build_energy_corrections_for_species(
+                    'X', sc, self._lot(), bac_type, aec_table=None, bac_table=nested,
+                    aec_key='k', bac_key='k',
+                )
+                bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
+                self.assertNotIn('parameter_table', bac)
+
+    def test_aec_scheme_omits_atom_params_when_table_missing(self):
+        # Backward compat: when aec_table isn't supplied (caller predates
+        # this fix, or output.yml was written without it), the scheme still
+        # has identity but no atom_params field — schema treats it as []
+        # via the default factory.
+        sc = {'X': {'aec': self._aec_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), 'p', aec_table=None, bac_table=None,
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertNotIn('reference_atom_energies', aec)
+
+    def test_atom_params_sorted_for_determinism(self):
+        # Stable insertion order matters for the idempotency hash
+        # downstream consumers compute over the payload.
+        aec_table = {'O': -75.07, 'H': -0.5, 'C': -37.85}
+        sc = {'X': {'aec': self._aec_block()}}
+        out = _build_energy_corrections_for_species(
+            'X', sc, self._lot(), None, aec_table=aec_table, bac_table=None,
+        )
+        aec = next(e for e in out if e['correction_type'] == 'atom_energy')
+        self.assertEqual(list(aec['reference_atom_energies']['values']), ['C', 'H', 'O'])
+
+
+class TestComputeSpeciesCorrections(unittest.TestCase):
+    """Tests for `_compute_species_corrections` orchestration (subprocess call)."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+        os.makedirs(os.path.join(self.tmp_dir, 'output'), exist_ok=True)
+
+    def _spc(self, label='CH4'):
+        spc = MagicMock()
+        spc.label = label
+        spc.multiplicity = 1
+        spc.bond_corrections = {'C-H': 4}
+        spc.final_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                         'isotopes': (12, 1, 1, 1, 1),
+                         'coords': ((0, 0, 0), (0.6, 0.6, 0.6),
+                                    (-0.6, -0.6, 0.6), (-0.6, 0.6, -0.6),
+                                    (0.6, -0.6, -0.6))}
+        spc.initial_xyz = None
+        return spc
+
+    AEC_KEY = "LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')"
+    BAC_KEY = "LevelOfTheory(method='wb97xd3',basis='def2tzvp')"
+
+    @staticmethod
+    def _script_result(label='CH4'):
+        return {'species': [
+            {'label': label,
+             'aec': {'value': -0.02, 'value_unit': 'hartree', 'components': []},
+             'bac': {'value': -0.7, 'value_unit': 'kcal_mol', 'components': []}},
+        ]}
+
+    def test_returns_empty_when_no_atom_energy_key_matched(self):
+        """Without an atom-energy key Arkane applies no corrections, so none are computed."""
+        with patch('arc.output.execute_command') as mock_exec:
+            out = _compute_species_corrections({'CH4': self._spc()}, None, 'p', self.tmp_dir)
+        self.assertEqual(out, {})
+        mock_exec.assert_not_called()
+
+    def test_returns_empty_when_no_species_have_xyz(self):
+        spc = self._spc()
+        spc.final_xyz = None
+        spc.initial_xyz = None
+        with patch('arc.output.execute_command') as mock_exec:
+            out = _compute_species_corrections({'CH4': spc}, self.AEC_KEY, 'p', self.tmp_dir)
+        self.assertEqual(out, {})
+        mock_exec.assert_not_called()
+
+    def test_invokes_subprocess_with_batched_input(self):
+        with patch('arc.output.execute_command', return_value=('', '')) as mock_exec, \
+             patch('arc.output.read_yaml_file', return_value=self._script_result()), \
+             patch('arc.output.save_yaml_file') as mock_save:
+            out = _compute_species_corrections(
+                {'CH4': self._spc()}, self.AEC_KEY, 'p', self.tmp_dir,
+            )
+        self.assertEqual(mock_exec.call_count, 1)
+        self.assertIn('CH4', out)
+        self.assertEqual(out['CH4']['aec']['value'], -0.02)
+        self.assertEqual(out['CH4']['bac']['value'], -0.7)
+        save_call = mock_save.call_args
+        content = save_call[1].get('content') or save_call[0][1]
+        self.assertEqual(content['level_of_theory'], self.AEC_KEY)
+        self.assertEqual(content['bac_type'], 'p')
+        self.assertEqual(len(content['species']), 1)
+        self.assertEqual(content['species'][0]['label'], 'CH4')
+        self.assertEqual(content['species'][0]['atoms'], {'C': 1, 'H': 4})
+        self.assertEqual(content['species'][0]['bonds'], {'C-H': 4})
+        self.assertEqual(content['species'][0]['multiplicity'], 1)
+
+    def test_both_corrections_computed_from_the_atom_energy_key_in_one_pass(self):
+        """The AEC and the BAC come from a single invocation keyed on the atom-energy key."""
+        with patch('arc.output.execute_command', return_value=('', '')) as mock_exec, \
+             patch('arc.output.read_yaml_file', return_value=self._script_result()), \
+             patch('arc.output.save_yaml_file') as mock_save:
+            out = _compute_species_corrections(
+                {'CH4': self._spc()}, self.AEC_KEY, 'p', self.tmp_dir,
+            )
+        self.assertEqual(mock_exec.call_count, 1)
+        contents = [(c[1].get('content') or c[0][1]) for c in mock_save.call_args_list]
+        self.assertEqual([c['level_of_theory'] for c in contents], [self.AEC_KEY])
+        self.assertEqual(contents[0]['bac_type'], 'p')
+        self.assertEqual(contents[0]['species'][0]['atoms'], {'C': 1, 'H': 4})
+        self.assertEqual(out['CH4']['aec']['value'], -0.02)
+        self.assertEqual(out['CH4']['bac']['value'], -0.7)
+
+    def test_no_pass_is_keyed_on_the_bac_section_key(self):
+        """A BAC-section key that differs from the atom-energy key drives no invocation."""
+        with patch('arc.output.execute_command', return_value=('', '')), \
+             patch('arc.output.read_yaml_file', return_value=self._script_result()), \
+             patch('arc.output.save_yaml_file') as mock_save:
+            _compute_species_corrections({'CH4': self._spc()}, self.AEC_KEY, 'p', self.tmp_dir)
+        contents = [(c[1].get('content') or c[0][1]) for c in mock_save.call_args_list]
+        self.assertNotIn(self.BAC_KEY, [c['level_of_theory'] for c in contents])
+
+    def test_subprocess_failure_returns_empty(self):
+        with patch('arc.output.execute_command', side_effect=RuntimeError('boom')):
+            out = _compute_species_corrections(
+                {'CH4': self._spc()}, self.AEC_KEY, 'p', self.tmp_dir,
+            )
+        self.assertEqual(out, {})
+
+
+class TestScanCalculations(unittest.TestCase):
+    """Tests for tool-neutral rotor-scan result export.
+
+    Covers two layers:
+    - ``_build_scan_result_for_rotor`` preserves scientific scan facts,
+      returning ``None`` when the input is unusable.
+    - ``_build_rotor_scans`` aggregates across ``rotors_dict`` and
+      filters non-1D / failed / unparseable rotors.
+    - ``_get_torsions`` attaches ``source_scan_key`` only when
+      the corresponding scan log is on disk.
+    """
+
+    SCAN_LOG = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'sBuOH.out')
+
+    def _rotor(self, **overrides) -> dict:
+        """Build a rotor-dict with sensible defaults; override per-test."""
+        rotor: dict = {
+            'success': True,
+            'scan': [1, 2, 3, 4],
+            'pivots': [2, 3],
+            'symmetry': 3,
+            'type': 'HinderedRotor',
+            'scan_path': self.SCAN_LOG,
+            'dimensions': 1,
+        }
+        rotor.update(overrides)
+        return rotor
+
+    def test_build_scan_result_happy_path(self):
+        """Real Gaussian scan log → fully populated scan_result dict."""
+        result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        self.assertEqual(result['dimension'], 1)
+        self.assertTrue(result['relaxed'])
+        # zero_energy_reference_hartree = min absolute energy on the curve.
+        self.assertIsInstance(result['zero_energy_reference_hartree'], float)
+        # One coordinate, dihedral, atoms 1–4, 1-based, with symmetry.
+        coord = result['coordinate']
+        self.assertEqual(coord['coordinate_type'], 'dihedral')
+        self.assertEqual(coord['atom_indices'], [1, 2, 3, 4])
+        self.assertEqual(coord['index_base'], 1)
+        self.assertEqual(coord['unit'], 'degree')
+        self.assertEqual(coord['symmetry_number'], 3)
+        self.assertEqual(coord['sample_count'], len(result['samples']))
+        # Samples carry source index, angle, energies, and ARC-format geometry
+        # text straight from ``parse_1d_scan_full_result()['geometries']``.
+        self.assertGreater(len(result['samples']), 0)
+        first = result['samples'][0]
+        self.assertEqual(first['source_index'], 0)
+        self.assertIn('angle_degrees', first)
+        self.assertIn('relative_energy_kj_mol', first)
+        self.assertIn('electronic_energy_hartree', first)
+        self.assertNotIn('xyz', first)
+        # First point's relative energy ≈ 0 by zero-shift convention.
+        self.assertAlmostEqual(first['relative_energy_kj_mol'], 1.5753056e-05,
+                               places=6)
+
+    def test_sample_absolute_energies_are_index_aligned(self):
+        """Each sample's absolute energy is the one at its own index, not a neighbour's.
+
+        ``relative_energy_kj_mol`` was pinned to an exact value but
+        ``electronic_energy_hartree`` was only asserted present, so an off-by-one
+        in the absolute-energy lookup attached the wrong point's energy to every
+        exported sample without failing anything. Pin the correspondence itself:
+        the absolute energies must reproduce the relative curve.
+        """
+        result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        samples = result['samples']
+        absolute = [s['electronic_energy_hartree'] for s in samples]
+        relative = [s['relative_energy_kj_mol'] for s in samples]
+        self.assertEqual(len(absolute), len(relative))
+        # The zero reference is the minimum of the absolute curve, and
+        # rel = (abs - min) * E_h_kJmol, point for point.
+        self.assertAlmostEqual(result['zero_energy_reference_hartree'], min(absolute), places=10)
+        for index, (abs_e, rel_e) in enumerate(zip(absolute, relative)):
+            self.assertAlmostEqual((abs_e - min(absolute)) * E_h_kJmol, rel_e, places=4,
+                                   msg=f'absolute/relative energies disagree at sample {index}')
+        # And the ordering is genuinely non-trivial, so the check has teeth.
+        self.assertGreater(max(relative) - min(relative), 1.0)
+
+    def test_build_scan_result_no_log(self):
+        """Empty scan_path → None, never an exception."""
+        rotor = self._rotor(scan_path='')
+        self.assertIsNone(_build_scan_result_for_rotor(rotor, '/tmp/project'))
+
+    def test_build_scan_result_missing_log(self):
+        """Path that doesn't resolve to a real file → None."""
+        rotor = self._rotor(scan_path='/nonexistent/does/not/exist.log')
+        self.assertIsNone(_build_scan_result_for_rotor(rotor, '/tmp/project'))
+
+    def test_build_scan_result_malformed_atom_indices(self):
+        """Non-quartet ``scan`` field → None (no fabricated atom list)."""
+        rotor = self._rotor(scan=[1, 2, 3])  # only 3 atoms
+        self.assertIsNone(_build_scan_result_for_rotor(rotor, '/tmp/project'))
+
+    def test_build_scan_result_on_an_unparseable_log_returns_none(self):
+        """``parse_1d_scan_full_result`` honours its never-raises contract, so the
+        builder carries no exception handling: a log that yields nothing — here an
+        empty file, which used to raise ``TypeError`` out of the wrapper — still
+        returns ``None`` rather than propagating."""
+        project_directory = tempfile.mkdtemp(prefix='test_build_scan_result_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        empty_log = os.path.join(project_directory, 'empty.out')
+        with open(empty_log, 'w'):
+            pass
+        result = _build_scan_result_for_rotor(self._rotor(scan_path=empty_log), project_directory)
+        self.assertIsNone(result)
+
+    def test_build_scan_result_missing_relative_energies_returns_none(self):
+        """Parser returning empty energies → None, even with angles present."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value={
+                       'angles_deg': [0.0, 90.0],
+                       'relative_energies_kj_mol': None,
+                       'absolute_energies_hartree': None,
+                       'zero_energy_reference_hartree': None,
+                       'geometries': None,
+                   }):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNone(result)
+
+    def test_build_scan_calculations_emits_one_per_rotor(self):
+        """Two successful 1D rotors → two scan_rotor_<i> entries."""
+        spc = MagicMock()
+        spc.rotors_dict = {0: self._rotor(), 1: self._rotor()}
+        calcs = _build_rotor_scans(spc, '/tmp/project')
+        self.assertEqual(len(calcs), 2)
+        self.assertEqual(calcs[0]['key'], 'scan_rotor_0')
+        self.assertEqual(calcs[1]['key'], 'scan_rotor_1')
+        self.assertIn('source_log', calcs[0])
+        self.assertEqual(calcs[0]['result']['dimension'], 1)
+
+    def test_build_scan_calculations_skips_failed_rotor(self):
+        """An unsuccessful rotor (success is not True) is filtered, even with a real scan log.
+
+        ``_build_rotor_scan_entry`` is the only place that decides whether a
+        rotor yields a ``rotor_scans`` record, so the consumer cannot drift
+        from the producer: a rejected rotor never gets a scan-calculation
+        record here, full stop. (Its evidence, when a log survives on disk,
+        is instead recorded directly on ``statmech.rejected_torsions[].source_log`` --
+        see ``_get_rejected_torsions`` -- without going through this gate.)
+        """
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: self._rotor(),                     # ok
+            1: self._rotor(success=False),        # filtered
+        }
+        calcs = _build_rotor_scans(spc, '/tmp/project')
+        self.assertEqual([c['key'] for c in calcs], ['scan_rotor_0'])
+
+    def test_build_scan_calculations_skips_pending_rotor(self):
+        """A pending rotor (success=None) is filtered even with a leftover scan path.
+
+        ARC has not decided its fate yet -- a stray ``scan_path`` (e.g. from a
+        previous conformer or mid-troubleshooting) is not evidence of
+        anything final, so no record is emitted for it.
+        """
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: self._rotor(),                       # success=True, ok
+            1: self._rotor(success=None),           # pending -> filtered
+        }
+        calcs = _build_rotor_scans(spc, '/tmp/project')
+        self.assertEqual([c['key'] for c in calcs], ['scan_rotor_0'])
+
+    def test_build_scan_calculations_skips_nd(self):
+        """ND rotors are deferred — only 1D scans are emitted today."""
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: self._rotor(),                  # 1D, ok
+            1: self._rotor(dimensions=2),      # ND, skipped
+        }
+        calcs = _build_rotor_scans(spc, '/tmp/project')
+        self.assertEqual([c['key'] for c in calcs], ['scan_rotor_0'])
+
+    def test_build_scan_calculations_skips_unparseable(self):
+        """Unparseable scan (no log on disk) → no calc, no exception."""
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: self._rotor(scan_path=''),  # log missing → skipped
+            1: self._rotor(),              # ok
+        }
+        calcs = _build_rotor_scans(spc, '/tmp/project')
+        self.assertEqual([c['key'] for c in calcs], ['scan_rotor_1'])
+
+    def test_get_torsions_attaches_scan_key_when_log_present(self):
+        """``source_scan_calculation_key`` matches the scan calc key only when log resolves."""
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {
+                'success': True,
+                'scan': [1, 2, 3, 4],
+                'pivots': [2, 3],
+                'symmetry': 3,
+                'type': 'HinderedRotor',
+                'scan_path': self.SCAN_LOG,
+                'dimensions': 1,
+            },
+            7: {  # intentional non-contiguous index — keys must use the dict key.
+                'success': True,
+                'scan': [5, 6, 7, 8],
+                'pivots': [6, 7],
+                'symmetry': 1,
+                'type': 'HinderedRotor',
+                'scan_path': '',
+                'dimensions': 1,
+            },
+        }
+        torsions = _get_torsions(spc, '/tmp/project')
+        self.assertEqual(len(torsions), 2)
+        self.assertEqual(torsions[0]['source_scan_key'], 'scan_rotor_0')
+        # Second rotor has no scan log on disk → no fabricated key.
+        self.assertIsNone(torsions[1]['source_scan_key'])
+
+    def test_get_rejected_torsions_attaches_source_log_when_invalidated_rotor_has_real_log(self):
+        """A rejected rotor with a genuine on-disk scan carries its evidence path directly.
+
+        This is recorded from ``rotors_dict``'s own ``scan_path`` (via
+        ``_resolve_scan_path`` / ``_make_rel_path``, the same relative-path
+        treatment ``rotor_scans[].source_log`` gets) -- not via a
+        ``rotor_scans`` key, since rejected rotors never get a
+        ``rotor_scans`` record (see ``test_build_scan_calculations_skips_failed_rotor``).
+        """
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {
+                'success': False,
+                'scan': [1, 2, 3, 4],
+                'pivots': [2, 3],
+                'scan_path': self.SCAN_LOG,
+                'dimensions': 1,
+                'invalidation_reason': 'rotor set too many (5) times',
+            },
+            7: {  # intentional non-contiguous index — keys must use the dict key.
+                'success': False,
+                'scan': [5, 6, 7, 8],
+                'pivots': [6, 7],
+                'scan_path': '',
+                'dimensions': 1,
+                'invalidation_reason': '',
+            },
+        }
+        # Use a project_directory that is a real ancestor of SCAN_LOG (rather
+        # than the unrelated '/tmp/project' used elsewhere in this class) so
+        # the expected relative path is a fixed, portable literal -- not a
+        # value recomputed with the implementation's own os.path.relpath
+        # call, which would pass no matter what _make_rel_path actually does.
+        project_directory = os.path.dirname(ARC_TESTING_PATH)  # .../arc
+        rejected = _get_rejected_torsions(spc, project_directory)
+        self.assertEqual(len(rejected), 2)
+        by_index = {entry['rotor_index']: entry for entry in rejected}
+        self.assertEqual(by_index[0]['source_log'], os.path.join('testing', 'rotor_scans', 'sBuOH.out'))
+        self.assertEqual(by_index[0]['dimension'], 1)
+        # Second rejected rotor has no scan log on disk -> field is omitted, not null.
+        self.assertNotIn('source_log', by_index[7])
+
+    def test_get_rejected_torsions_survives_a_missing_on_disk_log(self):
+        """``scan_path`` set but the file is gone -> ``source_log`` omitted, rejection still emitted.
+
+        This is D1/(a) from round 4 review: a restart-restored rejected
+        rotor's ``scan_path`` is only repaired (see ``arc/main.py``) for
+        rotors where ``success`` is truthy, so a rejected rotor's stale
+        relative path routinely fails ``_resolve_scan_path``'s
+        ``os.path.isfile`` check even though a scan genuinely happened.
+        Losing the evidence pointer must never lose the rejection itself.
+        """
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {
+                'success': False,
+                'scan': [1, 2, 3, 4],
+                'pivots': [2, 3],
+                'scan_path': 'rotors/does_not_exist_on_disk.out',
+                'dimensions': 1,
+                'invalidation_reason': 'rotor scan did not converge after 3 attempts',
+            },
+        }
+        rejected = _get_rejected_torsions(spc, '/tmp/project')
+        self.assertEqual(len(rejected), 1)
+        entry = rejected[0]
+        self.assertEqual(entry['rotor_index'], 0)
+        self.assertEqual(entry['invalidation_reason'], 'rotor scan did not converge after 3 attempts')
+        self.assertEqual(entry['atom_indices'], [1, 2, 3, 4])
+        self.assertEqual(entry['pivot_atoms'], [2, 3])
+        self.assertNotIn('source_log', entry)
+
+    def test_get_rejected_torsions_survives_a_directed_scan_failure(self):
+        """A directed-scan-failure-shaped rotor is emitted with its reason, despite no ``source_log``.
+
+        This is D1/(b) from round 4 review: ``Scheduler.check_directed_scan``
+        (``arc/scheduler.py``) deliberately blanks ``scan_path`` to ``''``
+        after a real directed scan fails, while still recording a non-empty
+        ``invalidation_reason`` and an ND (list-of-lists) ``scan``/``pivots``
+        shape. The record looks identical, by ``source_log`` alone, to a
+        rotor that was never scanned -- but the rejection itself, and its
+        reason, must still come through.
+        """
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: {
+                'success': False,
+                'scan': [[1, 2, 3, 4], [5, 6, 7, 8]],
+                'pivots': [[2, 3], [6, 7]],
+                'scan_path': '',
+                'dimensions': 2,
+                'invalidation_reason': 'Directed scan is inconsistent. ',
+            },
+        }
+        rejected = _get_rejected_torsions(spc, '/tmp/project')
+        self.assertEqual(len(rejected), 1)
+        entry = rejected[0]
+        self.assertEqual(entry['rotor_index'], 0)
+        self.assertEqual(entry['invalidation_reason'], 'Directed scan is inconsistent. ')
+        self.assertEqual(entry['atom_indices'], [[1, 2, 3, 4], [5, 6, 7, 8]])
+        self.assertEqual(entry['pivot_atoms'], [[2, 3], [6, 7]])
+        self.assertEqual(entry['dimension'], 2)
+        self.assertNotIn('source_log', entry)
+
+    def test_get_torsions_no_scan_key_for_multidimensional_rotor(self):
+        """An ND rotor emits no scan record, so its torsion must not reference one."""
+        spc = MagicMock()
+        spc.rotors_dict = {0: self._rotor(dimensions=2)}
+        self.assertEqual([c['key'] for c in _build_rotor_scans(spc, '/tmp/project')], [])
+        torsions = _get_torsions(spc, '/tmp/project')
+        self.assertEqual(len(torsions), 1)
+        self.assertIsNone(torsions[0]['source_scan_key'])
+
+    def test_get_torsions_no_scan_key_when_scan_log_unparseable(self):
+        """A 1D rotor whose log exists but does not parse must not reference a record."""
+        handle = tempfile.NamedTemporaryFile(mode='w', suffix='.out', delete=False)
+        handle.write('not a scan log\n')
+        handle.close()
+        self.addCleanup(os.remove, handle.name)
+        spc = MagicMock()
+        spc.rotors_dict = {0: self._rotor(scan_path=handle.name)}
+        self.assertEqual([c['key'] for c in _build_rotor_scans(spc, '/tmp/project')], [])
+        torsions = _get_torsions(spc, '/tmp/project')
+        self.assertEqual(len(torsions), 1)
+        self.assertIsNone(torsions[0]['source_scan_key'])
+
+    def test_every_torsion_scan_key_resolves_to_a_record(self):
+        """The contract invariant: no source_scan_key without a matching rotor_scans record."""
+        handle = tempfile.NamedTemporaryFile(mode='w', suffix='.out', delete=False)
+        handle.write('not a scan log\n')
+        handle.close()
+        self.addCleanup(os.remove, handle.name)
+        spc = MagicMock()
+        spc.rotors_dict = {
+            0: self._rotor(),                          # 1D, parseable → record
+            1: self._rotor(dimensions=2),              # ND → no record
+            2: self._rotor(scan_path=handle.name),     # unparseable → no record
+            3: self._rotor(scan_path=''),              # no log → no record
+        }
+        scans = _build_rotor_scans(spc, '/tmp/project')
+        emitted = {entry['key'] for entry in scans}
+        self.assertEqual(emitted, {'scan_rotor_0'})
+        referenced = {t['source_scan_key'] for t in _get_torsions(spc, '/tmp/project')
+                      if t['source_scan_key'] is not None}
+        self.assertEqual(referenced, emitted)
+        self.assertTrue(referenced.issubset(emitted))
+
+    # ---- per-sample scan geometries ----
+    #
+    # ARC's parser wrapper already returns aligned per-step xyz dicts.
+    # ``_build_scan_result_for_rotor`` preserves them as ARC-format text.
+
+    def _stub_parsed(self, *, n_points=3, geometries='aligned', start_dihedral=0.0):
+        """Build a parser-wrapper return value with controllable geometry alignment.
+
+        Each frame is a 5-atom geometry whose 1-2-3-4 dihedral is
+        ``start_dihedral + 30 * i`` degrees, so the stub carries a real, measurable
+        sweep rather than a placeholder.
+
+        ``geometries`` is one of:
+          - ``'aligned'``   : list of length n_points, each a valid xyz dict.
+          - ``'mismatch'``  : list of length n_points + 1.
+          - ``'none'``      : ``None`` (parser returned no geometries).
+          - ``'malformed'`` : valid count, but one entry is malformed.
+        """
+        def frames(count):
+            return [self._input_xyz_for_dihedral(start_dihedral + i * 30.0)
+                    for i in range(count)]
+        if geometries == 'aligned':
+            geom_list = frames(n_points)
+        elif geometries == 'mismatch':
+            geom_list = frames(n_points + 1)
+        elif geometries == 'none':
+            geom_list = None
+        elif geometries == 'malformed':
+            geom_list = frames(n_points)
+            geom_list[1] = {'symbols': (), 'isotopes': (), 'coords': ()}
+        else:
+            raise ValueError(geometries)
+        return {
+            'angles_deg': [i * 30.0 for i in range(n_points)],
+            'relative_energies_kj_mol': [0.0] * n_points,
+            'absolute_energies_hartree': [-100.0] * n_points,
+            'zero_energy_reference_hartree': -100.0,
+            'geometries': geom_list,
+        }
+
+    def test_scan_points_include_geometry_when_aligned(self):
+        """Aligned geometries → every point carries ``geometry.xyz_text``."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3)):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result['samples']), 3)
+        for point in result['samples']:
+            self.assertIn('geometry_xyz', point)
+            xyz_text = point['geometry_xyz']
+            lines = xyz_text.splitlines()
+            self.assertEqual(len(lines), 5)
+
+    def test_scan_point_geometry_uses_only_xyz_text_no_db_id(self):
+        """No ``geometry_id`` (or any DB id) anywhere under scan_result."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3)):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        forbidden = {'geometry_id', 'existing_geometry_id', 'id'}
+        for point in result['samples']:
+            geom = point.get('geometry_xyz')
+            self.assertIsInstance(geom, str)
+            for k in forbidden:
+                self.assertNotIn(k, point, msg=f"{k} leaked onto scan point")
+        # Top-level scan_result also has no DB ids.
+        for k in forbidden:
+            self.assertNotIn(k, result)
+
+    def test_scan_is_dropped_when_the_parser_returned_no_geometries(self):
+        """``angle_degrees`` is measured per point, so no geometries means no scan."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3, geometries='none')):
+            with self.assertLogs('arc', level='WARNING') as cm:
+                result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNone(result)
+        self.assertTrue(any('absolute dihedral cannot be measured' in m for m in cm.output),
+                        msg=f"expected an unmeasurable-dihedral warning, got: {cm.output}")
+
+    def test_scan_is_dropped_when_geometries_do_not_align_with_the_points(self):
+        """A geometry list of the wrong length cannot be paired point-for-point."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3, geometries='mismatch')):
+            with self.assertLogs('arc', level='WARNING') as cm:
+                result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNone(result)
+        self.assertTrue(any('do not align' in m for m in cm.output),
+                        msg=f"expected an alignment warning, got: {cm.output}")
+
+    # ---- requested scan-grid metadata (TCKDB calc_scan_coordinate fields) ----
+
+    def test_scan_coord_includes_step_size_from_gaussian_header(self):
+        """Real Gaussian scan log → step_size + resolution_degrees populated
+        from the parsed ModRedundant header (not from the completed-point
+        spacing). The fixture log has ``S N 8.0`` in its header."""
+        result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        coord = result['coordinate']
+        self.assertIn('requested_step_size', coord)
+        # ARC writes ``S 360/scan_res scan_res``; for the sBuOH fixture the
+        # requested step size is 8 degrees.
+        self.assertAlmostEqual(coord['requested_step_size'], 8.0, places=6)
+
+    def test_scan_coord_step_size_independent_from_completed_count(self):
+        """``step_count`` reflects the *completed* points, ``step_size`` the
+        *requested* grid — they're sourced separately and must not be
+        coupled (a partially-failed scan would otherwise emit a misleading
+        derived step_size). Spot-check both come from independent data."""
+        result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        coord = result['coordinate']
+        # step_count is the point count we actually parsed; step_size is
+        # the requested grid spacing. Their product covers the requested
+        # range only when no points dropped.
+        self.assertEqual(coord['sample_count'], len(result['samples']))
+        self.assertGreater(coord['requested_step_size'], 0.0)
+
+    def test_scan_coord_omits_grid_metadata_for_non_gaussian(self):
+        """``parse_scan_args`` raising NotImplementedError (ORCA, etc.) →
+        step_size / resolution_degrees absent, no exception, scan_result
+        still produced."""
+        with patch('arc.output.parse_scan_args',
+                   side_effect=NotImplementedError('ORCA path')):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)
+        self.assertNotIn('resolution_degrees', coord)
+
+    def test_scan_coord_omits_grid_metadata_when_parser_raises(self):
+        """Generic parser failure (corrupt log, etc.) → grid fields absent,
+        no exception."""
+        with patch('arc.output.parse_scan_args',
+                   side_effect=RuntimeError('boom')):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)
+        self.assertNotIn('resolution_degrees', coord)
+
+    def test_scan_coord_omits_grid_metadata_when_step_size_zero(self):
+        """``parse_scan_args`` returns step_size=0 by default when the
+        ModRedundant block isn't matched — must be treated as 'unknown',
+        not as a literal 0-degree step (which would be nonsense and
+        violate the schema's intent)."""
+        stub = {'scan': [1, 2, 3, 4], 'freeze': [], 'step': 0,
+                'step_size': 0, 'n_atom': 0}
+        with patch('arc.output.parse_scan_args', return_value=stub):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)
+        self.assertNotIn('resolution_degrees', coord)
+
+    def test_scan_coord_grid_metadata_does_not_affect_points(self):
+        """Independence: completed-point coordinate_values aren't touched
+        by the requested-grid plumbing."""
+        with patch('arc.output.parse_scan_args',
+                   return_value={'scan': [1, 2, 3, 4], 'freeze': [],
+                                 'step': 36, 'step_size': 10.0, 'n_atom': 0}):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        # Points still carry their actual coordinate_value list; step_size
+        # didn't propagate into per-point data.
+        self.assertGreater(len(result['samples']), 0)
+        for point in result['samples']:
+            self.assertIn('angle_degrees', point)
+
+    # ---- start_value / end_value (TCKDB requested-grid endpoints) ----
+    #
+    # The dihedral is read from the input geometry the rotor scan was
+    # launched against. Gaussian's ModRedundant ``S`` syntax encodes
+    # ``end_value = start_value + step_size * (step_count - 1)``;
+    # we emit both values continuous (no [-180, 180] wrap) so a full
+    # rotation lands at start + 360, not back at start.
+
+    @staticmethod
+    def _input_xyz_for_dihedral(start_dihedral_deg: float):
+        """Build a minimal 5-atom xyz whose 1-2-3-4 dihedral, as
+        measured by :func:`calculate_dihedral_angle` (the same helper
+        the production code uses), equals ``start_dihedral_deg`` in the
+        0-360 convention. The internal rotation is offset by -270° to
+        compensate for the helper's right-hand-rule sign choice.
+        """
+        import math as _math
+        rad = _math.radians(start_dihedral_deg - 270.0)
+        return {
+            'symbols': ('C', 'C', 'C', 'C', 'H'),
+            'isotopes': (12, 12, 12, 12, 1),
+            'coords': (
+                (0.0, 0.0, 1.0),
+                (1.0, 0.0, 0.0),
+                (2.0, 0.0, 0.0),
+                (3.0, _math.cos(rad), _math.sin(rad)),
+                (4.0, 0.0, 0.0),
+            ),
+        }
+
+    def test_scan_start_value_computed_from_input_geometry(self):
+        """Input geometry → ``start_value`` matches the dihedral on the
+        scan atom quartet."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        result = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=xyz,
+        )
+        coord = result['coordinate']
+        self.assertIn('requested_start', coord)
+        # The fixture's offset compensates for the helper's right-hand
+        # rule, so 60° in → 60° out.
+        self.assertAlmostEqual(coord['requested_start'], 60.0, places=4)
+
+    def test_scan_end_value_extends_continuously_from_start(self):
+        """``end_value = start_value + step_size * (step_count - 1)`` —
+        not wrapped, so a 46-point 8° scan from 60° lands at 60 + 360 = 420°,
+        NOT back at 60° and NOT mod-360'd to 60°."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        result = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=xyz,
+        )
+        coord = result['coordinate']
+        # Real Gaussian fixture: step_size=8, len(points)=46 → +360 span.
+        expected_end = coord['requested_start'] + coord['requested_step_size'] * (
+            coord['sample_count'] - 1
+        )
+        self.assertAlmostEqual(coord['requested_end'], expected_end, places=6)
+        # Not wrapped: a full-rotation scan exceeds 360°, never re-folds.
+        self.assertGreater(coord['requested_end'], 360.0)
+
+    def test_scan_end_value_is_not_wrapped_into_minus_180_180(self):
+        """Continuity contract: even when start is near 180°, the end
+        value must not flip sign by wrapping into [-180, 180]."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(170.0)
+        result = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=xyz,
+        )
+        coord = result['coordinate']
+        # 170 + 360 = 530 — must NOT have folded to -190 or 170.
+        self.assertGreater(coord['requested_end'], 360.0)
+        self.assertGreater(coord['requested_end'] - coord['requested_start'],
+                           coord['requested_step_size'] * 0.99)
+
+    def test_scan_is_dropped_when_the_real_log_yields_no_geometries(self):
+        """Killing the parser's geometries drops the whole scan, not just start/end."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        with patch('arc.output.parse_1d_scan_full_result') as p:
+            from arc.parser.parser import parse_1d_scan_full_result as real
+            parsed = real(self.SCAN_LOG)
+            parsed['geometries'] = None
+            p.return_value = parsed
+            result = _build_scan_result_for_rotor(
+                rotor, '/tmp/project', input_xyz=None,
+            )
+        self.assertIsNone(result)
+
+    def test_scan_start_end_absent_when_step_size_unknown(self):
+        """Without step_size we can't compute end_value, so we omit BOTH
+        rather than emit a half-populated range."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        with patch('arc.output.parse_scan_args',
+                   side_effect=NotImplementedError('non-Gaussian')):
+            result = _build_scan_result_for_rotor(
+                rotor, '/tmp/project', input_xyz=xyz,
+            )
+        coord = result['coordinate']
+        self.assertNotIn('requested_step_size', coord)  # confirms the precondition
+        self.assertNotIn('requested_start', coord)
+        self.assertNotIn('requested_end', coord)
+
+    def test_scan_start_end_absent_when_step_size_zero(self):
+        """``parse_scan_args`` returning step_size=0 → no end_value
+        possible, omit both."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        stub = {'scan': [1, 2, 3, 4], 'freeze': [], 'step': 0,
+                'step_size': 0, 'n_atom': 0}
+        with patch('arc.output.parse_scan_args', return_value=stub):
+            result = _build_scan_result_for_rotor(
+                rotor, '/tmp/project', input_xyz=xyz,
+            )
+        coord = result['coordinate']
+        self.assertNotIn('requested_start', coord)
+        self.assertNotIn('requested_end', coord)
+
+    def test_scan_is_dropped_when_the_dihedral_calculation_raises(self):
+        """No measurable dihedral means no absolute axis, so the scan is not published."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        with patch('arc.output.calculate_dihedral_angle',
+                   side_effect=RuntimeError('atom missing')):
+            with self.assertLogs('arc', level='WARNING') as cm:
+                result = _build_scan_result_for_rotor(
+                    rotor, '/tmp/project', input_xyz=xyz,
+                )
+        self.assertIsNone(result)
+        self.assertTrue(any('dihedral calculation failed' in m for m in cm.output),
+                        msg=f"expected dihedral-failure warning, got: {cm.output}")
+
+    def test_scan_point_coordinate_values_unchanged_by_start_end_addition(self):
+        """``points[i].coordinate_values`` must remain whatever
+        ``parse_1d_scan_full_result`` reported, regardless of start/end."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        result_with = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=xyz,
+        )
+        result_without = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=None,
+        )
+        # Same number of points, same coordinate_values per point.
+        self.assertEqual(len(result_with['samples']), len(result_without['samples']))
+        for p_with, p_without in zip(result_with['samples'], result_without['samples']):
+            self.assertEqual(p_with['angle_degrees'], p_without['angle_degrees'])
+
+    def test_scan_falls_back_to_parsed_first_frame_when_input_xyz_missing(self):
+        """When ``input_xyz`` is None but the parser returned aligned
+        geometries, the first frame is a documented fallback for the
+        input dihedral (Gaussian ModRedundant freezes the scan dihedral
+        at the input value, so the first frame's dihedral IS the
+        requested start)."""
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        result = _build_scan_result_for_rotor(
+            rotor, '/tmp/project', input_xyz=None,
+        )
+        coord = result['coordinate']
+        # Real Gaussian fixture has ``geometries`` populated, so the
+        # fallback resolves and start/end are emitted.
+        self.assertIn('requested_start', coord)
+        self.assertIn('requested_end', coord)
+
+    # ---- the samples' angle is the absolute internal coordinate ----
+
+    def test_sample_angle_is_the_absolute_dihedral_of_its_own_geometry(self):
+        """Each ``angle_degrees`` equals the dihedral recomputed from that sample's
+        geometry, modulo a full turn — the same check a consumer performs on deposit."""
+        from arc.parser.parser import parse_1d_scan_full_result
+        from arc.species.vectors import calculate_dihedral_angle
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        result = _build_scan_result_for_rotor(rotor, '/tmp/project')
+        geometries = parse_1d_scan_full_result(self.SCAN_LOG)['geometries']
+        self.assertEqual(len(result['samples']), len(geometries))
+        for sample, geometry in zip(result['samples'], geometries):
+            measured = calculate_dihedral_angle(coords=geometry, torsion=[1, 2, 3, 4], index=1)
+            self.assertAlmostEqual(sample['angle_degrees'] % 360.0, measured % 360.0, places=6)
+
+    def test_sample_angle_is_not_the_displacement_from_the_first_sample(self):
+        """The published axis must not start at 0 for a scan whose coordinate does not."""
+        from arc.parser.parser import parse_1d_scan_full_result
+        from arc.species.vectors import calculate_dihedral_angle
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        result = _build_scan_result_for_rotor(rotor, '/tmp/project')
+        first_geometry = parse_1d_scan_full_result(self.SCAN_LOG)['geometries'][0]
+        first_geometry_dihedral = calculate_dihedral_angle(
+            coords=first_geometry, torsion=[1, 2, 3, 4], index=1)
+        self.assertNotAlmostEqual(result['samples'][0]['angle_degrees'], 0.0, places=3)
+        self.assertAlmostEqual(result['samples'][0]['angle_degrees'],
+                               first_geometry_dihedral, places=6)
+
+    def test_a_sweep_past_a_full_turn_is_not_wrapped(self):
+        """A 360-degree sweep from 350 must end near 710, never fold back below 350."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=13, start_dihedral=350.0)):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        angles = [sample['angle_degrees'] for sample in result['samples']]
+        self.assertEqual(angles, sorted(angles))
+        self.assertAlmostEqual(angles[0], 350.0, places=4)
+        self.assertAlmostEqual(angles[-1], 710.0, places=4)
+        self.assertGreater(angles[-1], 360.0)
+
+    def test_a_reversed_sweep_goes_below_its_start(self):
+        """A scan towards decreasing values keeps descending instead of folding to 360."""
+        parsed = self._stub_parsed(n_points=5)
+        parsed['geometries'] = [self._input_xyz_for_dihedral(60.0 - i * 30.0) for i in range(5)]
+        with patch('arc.output.parse_1d_scan_full_result', return_value=parsed):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        angles = [sample['angle_degrees'] for sample in result['samples']]
+        self.assertEqual(angles, sorted(angles, reverse=True))
+        self.assertAlmostEqual(angles[0], 60.0, places=4)
+        self.assertAlmostEqual(angles[-1], -60.0, places=4)
+        self.assertLess(angles[-1], 0.0)
+
+    # ---- a reversed Gaussian scan keeps its requested grid ----
+
+    def test_reversed_scan_records_a_signed_step_size_and_a_descending_range(self):
+        """A negative ModRedundant step must populate the grid, not blank it out.
+
+        ``requested_step_size`` keeps its sign, so ``requested_end`` falls below
+        ``requested_start`` and the scan's direction survives into the document.
+        """
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        stub = {'scan': [1, 2, 3, 4], 'freeze': [], 'step': 45,
+                'step_size': -8.0, 'n_atom': 0}
+        with patch('arc.output.parse_scan_args', return_value=stub):
+            result = _build_scan_result_for_rotor(rotor, '/tmp/project', input_xyz=xyz)
+        coord = result['coordinate']
+        self.assertIn('requested_step_size', coord)
+        self.assertIn('requested_start', coord)
+        self.assertIn('requested_end', coord)
+        self.assertAlmostEqual(coord['requested_step_size'], -8.0, places=6)
+        self.assertAlmostEqual(coord['requested_start'], 60.0, places=4)
+        self.assertAlmostEqual(coord['requested_end'], -300.0, places=4)
+        self.assertLess(coord['requested_end'], coord['requested_start'])
+
+    def test_requested_start_and_end_are_untouched_by_the_sample_axis(self):
+        """start/end stay grid metadata read off the launch geometry.
+
+        They describe the requested extent, so they must not be re-derived from, or
+        shifted by, the samples' absolute angles.
+        """
+        rotor = self._rotor(scan=[1, 2, 3, 4])
+        xyz = self._input_xyz_for_dihedral(60.0)
+        result = _build_scan_result_for_rotor(rotor, '/tmp/project', input_xyz=xyz)
+        coord = result['coordinate']
+        self.assertAlmostEqual(coord['requested_start'], 60.0, places=4)
+        self.assertAlmostEqual(
+            coord['requested_end'],
+            60.0 + coord['requested_step_size'] * (coord['sample_count'] - 1),
+            places=4)
+        self.assertNotAlmostEqual(coord['requested_start'],
+                                  result['samples'][0]['angle_degrees'], places=3)
+
+    def test_scan_points_omit_geometry_uniformly_on_serialization_failure(self):
+        """Unserializable geometry text → drop ``geometry_xyz`` from ALL points, warn
+        once, and still publish the scan: the dihedrals were measurable from the same
+        geometry dicts, so the absolute axis is intact."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3)):
+            with patch('arc.output._xyz_dict_to_output_text',
+                       side_effect=ValueError('unserializable')):
+                with self.assertLogs('arc', level='WARNING') as cm:
+                    result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        for point in result['samples']:
+            self.assertNotIn('geometry_xyz', point)
+            self.assertIn('angle_degrees', point)
+        self.assertTrue(
+            any('serialization failed' in m or 'empty text' in m for m in cm.output),
+            msg=f"expected serialization warning, got: {cm.output}",
+        )
+
+    def test_scan_is_dropped_when_one_point_geometry_is_unusable(self):
+        """A single unmeasurable frame sinks the scan: a partial axis is not published."""
+        with patch('arc.output.parse_1d_scan_full_result',
+                   return_value=self._stub_parsed(n_points=3, geometries='malformed')):
+            with self.assertLogs('arc', level='WARNING') as cm:
+                result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNone(result)
+        self.assertTrue(any('Could not measure the dihedral' in m for m in cm.output),
+                        msg=f"expected a per-point dihedral warning, got: {cm.output}")
+
+
+class TestScanConstraintDispatch(unittest.TestCase):
+    """Software-aware dispatch for rotor-scan constraint extraction.
+
+    The scheduler stamps ``scan_software`` onto each rotor when a scan
+    job completes (``arc/scheduler.py``). ``_parse_scan_constraints``
+    consumes that hint to call the right parser; everything else
+    degrades gracefully without failing payload generation.
+    """
+
+    SCAN_LOG = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'sBuOH.out')
+
+    def _rotor(self, **overrides) -> dict:
+        rotor: dict = {
+            'success': True,
+            'scan': [1, 2, 3, 4],
+            'pivots': [2, 3],
+            'symmetry': 1,
+            'type': 'HinderedRotor',
+            'scan_path': self.SCAN_LOG,
+            'dimensions': 1,
+            'scan_software': '',
+        }
+        rotor.update(overrides)
+        return rotor
+
+    def test_gaussian_hint_routes_to_gaussian_parser(self):
+        from arc.output import _parse_scan_constraints
+        sentinel = [{'coordinate_type': 'distance', 'atom_indices': [1, 2],
+                     'index_base': 1, 'target_value': None}]
+        with patch('arc.output.parse_gaussian_constraints',
+                   return_value=sentinel) as gauss, \
+             patch('arc.output.parse_orca_constraints') as orca:
+            result = _parse_scan_constraints(
+                self._rotor(scan_software='gaussian'), '/tmp/project',
+            )
+        self.assertEqual(result, sentinel)
+        gauss.assert_called_once_with(self.SCAN_LOG)
+        orca.assert_not_called()
+
+    def test_orca_hint_routes_to_orca_parser(self):
+        from arc.output import _parse_scan_constraints
+        sentinel = [{'coordinate_type': 'dihedral',
+                     'atom_indices': [0, 1, 2, 3], 'index_base': 0,
+                     'target_value': 90.0}]
+        with patch('arc.output.parse_orca_constraints',
+                   return_value=sentinel) as orca, \
+             patch('arc.output.parse_gaussian_constraints') as gauss:
+            result = _parse_scan_constraints(
+                self._rotor(scan_software='orca'), '/tmp/project',
+            )
+        self.assertEqual(result, sentinel)
+        orca.assert_called_once_with(self.SCAN_LOG)
+        gauss.assert_not_called()
+
+    def test_missing_software_falls_back_to_gaussian(self):
+        # Empty / missing ``scan_software`` preserves the historical
+        # behavior: try Gaussian (the only software with ModRedundant
+        # emission). Restart files written before this field landed
+        # therefore keep producing constraints rather than silently
+        # losing them.
+        from arc.output import _parse_scan_constraints
+        with patch('arc.output.parse_gaussian_constraints',
+                   return_value=[]) as gauss:
+            rotor_no_field = self._rotor()
+            rotor_no_field.pop('scan_software', None)
+            _parse_scan_constraints(rotor_no_field, '/tmp/project')
+            _parse_scan_constraints(self._rotor(scan_software=''), '/tmp/project')
+        self.assertEqual(gauss.call_count, 2)
+
+    def test_unknown_software_returns_empty_list_no_parser_call(self):
+        from arc.output import _parse_scan_constraints
+        with patch('arc.output.parse_gaussian_constraints') as gauss, \
+             patch('arc.output.parse_orca_constraints') as orca:
+            result = _parse_scan_constraints(
+                self._rotor(scan_software='qchem'), '/tmp/project',
+            )
+        self.assertEqual(result, [])
+        gauss.assert_not_called()
+        orca.assert_not_called()
+
+    def test_parser_exception_degrades_to_empty_list(self):
+        from arc.output import _parse_scan_constraints
+        with patch('arc.output.parse_gaussian_constraints',
+                   side_effect=RuntimeError('parser crashed')):
+            result = _parse_scan_constraints(
+                self._rotor(scan_software='gaussian'), '/tmp/project',
+            )
+        self.assertEqual(result, [])
+
+    def test_missing_scan_path_returns_empty_list(self):
+        # Defensive: never invoke a parser without a real path.
+        from arc.output import _parse_scan_constraints
+        rotor = self._rotor(scan_path='', scan_software='gaussian')
+        with patch('arc.output.parse_gaussian_constraints') as gauss:
+            self.assertEqual(_parse_scan_constraints(rotor, '/tmp/project'), [])
+            gauss.assert_not_called()
 
 
 class TestTimedeltaToSeconds(unittest.TestCase):
@@ -2115,1063 +4435,6 @@ class TestComputeCostMetrics(unittest.TestCase):
         records = [{'job_adapter': None, 'cpu_cores': 2, 'run_time_sec': 3600.0}]
         cm = _compute_cost_metrics(records, None)
         self.assertIn('unknown', cm['per_ess'])
-
-
-class TestTsGuessesToList(unittest.TestCase):
-    """Tests for _ts_guesses_to_list."""
-
-    def _make_spc(self):
-        spc = MagicMock()
-        spc.label = 'TS0'
-        tsg_0 = TSGuess(method='GCN', method_index=0, method_direction='F', success=True, energy=3.2)
-        tsg_0.index = 0
-        tsg_0.execution_time = '0:00:05'
-        tsg_1 = TSGuess(method='xTB-GSM', success=True, energy=0.0,
-                        level={'method': 'gfn2-xtb', 'software': 'xtb'},
-                        log_path='/proj/calcs/TSs/TS0/tsg1/stringfile.xyz0001')
-        tsg_1.index = 1
-        tsg_1.execution_time = datetime.timedelta(seconds=45)
-        tsg_1.method_sources = ['xtb-gsm', 'heuristics']
-        spc.ts_guesses = [tsg_0, tsg_1]
-        spc.chosen_ts = 1
-        return spc
-
-    def test_two_guesses(self):
-        entries = _ts_guesses_to_list(self._make_spc(), '/proj')
-        self.assertEqual(len(entries), 2)
-        g0, g1 = entries
-        self.assertEqual(g0['method'], 'gcn')
-        self.assertEqual(g0['method_sources'], ['gcn'])
-        self.assertEqual(g0['method_direction'], 'F')
-        self.assertEqual(g0['energy_kj_mol'], 3.2)
-        self.assertEqual(g0['execution_time_sec'], 5.0)
-        self.assertIsNone(g0['level'])
-        self.assertIsNone(g0['log_path'])
-        self.assertFalse(g0['chosen'])
-        self.assertEqual(g1['method'], 'xtb-gsm')
-        self.assertEqual(g1['method_sources'], ['xtb-gsm', 'heuristics'])
-        self.assertEqual(g1['level'], {'method': 'gfn2-xtb', 'software': 'xtb'})
-        self.assertEqual(g1['execution_time_sec'], 45.0)
-        self.assertEqual(g1['log_path'], os.path.join('calcs', 'TSs', 'TS0', 'tsg1', 'stringfile.xyz0001'))
-        self.assertTrue(g1['chosen'])
-
-    def test_no_guesses(self):
-        spc = MagicMock()
-        spc.ts_guesses = []
-        spc.chosen_ts = None
-        self.assertEqual(_ts_guesses_to_list(spc, '/proj'), [])
-
-    def test_chosen_out_of_range(self):
-        spc = self._make_spc()
-        spc.chosen_ts = 5
-        entries = _ts_guesses_to_list(spc, '/proj')
-        self.assertFalse(any(e['chosen'] for e in entries))
-
-
-class TestGetPointGroupsScript(unittest.TestCase):
-    """Tests for arc/scripts/get_point_groups.py helper functions (imported directly)."""
-
-    def test_point_group_for_monoatomic(self):
-        """Monoatomic species should return 'Kh' without calling the binary."""
-        import importlib.util
-        script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_point_groups.py')
-        spec = importlib.util.spec_from_file_location('get_point_groups', script_path,
-                                                       submodule_search_locations=[])
-        # The script imports from 'common' which is in the scripts dir — add it to path
-        import sys
-        scripts_dir = os.path.join(ARC_PATH, 'arc', 'scripts')
-        added = scripts_dir not in sys.path
-        if added:
-            sys.path.insert(0, scripts_dir)
-        try:
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            result = mod._point_group_for_species(['Ar'], [[0.0, 0.0, 0.0]])
-            self.assertEqual(result, 'Kh')
-        finally:
-            if added:
-                sys.path.remove(scripts_dir)
-
-    def test_point_group_for_empty(self):
-        import importlib.util
-        import sys
-        script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_point_groups.py')
-        spec = importlib.util.spec_from_file_location('get_point_groups', script_path)
-        scripts_dir = os.path.join(ARC_PATH, 'arc', 'scripts')
-        added = scripts_dir not in sys.path
-        if added:
-            sys.path.insert(0, scripts_dir)
-        try:
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            self.assertIsNone(mod._point_group_for_species([], []))
-            self.assertIsNone(mod._point_group_for_species(None, None))
-        finally:
-            if added:
-                sys.path.remove(scripts_dir)
-
-    def test_point_group_unknown_element(self):
-        import importlib.util
-        import sys
-        script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_point_groups.py')
-        spec = importlib.util.spec_from_file_location('get_point_groups', script_path)
-        scripts_dir = os.path.join(ARC_PATH, 'arc', 'scripts')
-        added = scripts_dir not in sys.path
-        if added:
-            sys.path.insert(0, scripts_dir)
-        try:
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            # 'Uuo' is not in the lookup table
-            result = mod._point_group_for_species(['Uuo', 'H'], [[0, 0, 0], [1, 0, 0]])
-            self.assertIsNone(result)
-        finally:
-            if added:
-                sys.path.remove(scripts_dir)
-
-
-class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
-    """Direct tests for `_build_applied_corrections_for_species`.
-
-    Stubs the rmg_env script's per-label result so we don't depend on the
-    Arkane subprocess; the helper's job is purely shape-translation.
-    """
-
-    def _lot(self):
-        return Level(method='wb97xd3', basis='def2tzvp', software='qchem')
-
-    def _aec_block(self):
-        return {
-            'value': -0.0234,
-            'value_unit': 'hartree',
-            'components': [
-                {'component_kind': 'atom', 'key': 'C', 'multiplicity': 1,
-                 'parameter_value': -37.84993993, 'parameter_unit': 'hartree',
-                 'contribution_value': -0.015},
-                {'component_kind': 'atom', 'key': 'H', 'multiplicity': 4,
-                 'parameter_value': -0.49991749, 'parameter_unit': 'hartree',
-                 'contribution_value': -0.008},
-            ],
-        }
-
-    def _pbac_block(self):
-        return {
-            'value': -0.694,
-            'value_unit': 'kcal_mol',
-            'bac_type': 'p',
-            'components': [
-                {'component_kind': 'bond', 'key': 'C-H', 'multiplicity': 4,
-                 'parameter_value': -0.1735, 'parameter_unit': 'kcal_mol',
-                 'contribution_value': -0.694},
-            ],
-        }
-
-    def _mbac_block(self):
-        return {
-            'value': -0.056,
-            'value_unit': 'kcal_mol',
-            'bac_type': 'm',
-        }
-
-    def test_aec_total_emitted(self):
-        sc = {'CH4': {'aec': self._aec_block()}}
-        out = _build_applied_corrections_for_species('CH4', sc, self._lot(), 'p')
-        roles = [e['application_role'] for e in out]
-        self.assertIn('aec_total', roles)
-        aec = next(e for e in out if e['application_role'] == 'aec_total')
-        self.assertAlmostEqual(aec['value'], -0.0234)
-        self.assertEqual(aec['value_unit'], 'hartree')
-        self.assertEqual(aec['scheme']['kind'], 'atom_energy')
-        self.assertEqual(aec['scheme']['name'], 'atom_energy')
-
-    def test_aec_components_sum_to_total(self):
-        # Use values that arithmetically sum exactly so the test
-        # asserts the producer doesn't drop or rescale rows.
-        block = {
-            'value': -0.030,
-            'value_unit': 'hartree',
-            'components': [
-                {'component_kind': 'atom', 'key': 'C', 'multiplicity': 1,
-                 'parameter_value': -37.85, 'parameter_unit': 'hartree',
-                 'contribution_value': -0.018},
-                {'component_kind': 'atom', 'key': 'H', 'multiplicity': 4,
-                 'parameter_value': -0.5, 'parameter_unit': 'hartree',
-                 'contribution_value': -0.012},
-            ],
-        }
-        sc = {'X': {'aec': block}}
-        out = _build_applied_corrections_for_species('X', sc, self._lot(), None)
-        aec = next(e for e in out if e['application_role'] == 'aec_total')
-        total = sum(c['contribution_value'] for c in aec['components'])
-        self.assertAlmostEqual(total, aec['value'], places=6)
-
-    def test_pbac_total_and_components(self):
-        sc = {'CH4': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
-        out = _build_applied_corrections_for_species('CH4', sc, self._lot(), 'p')
-        bac = next(e for e in out if e['application_role'] == 'bac_total')
-        self.assertEqual(bac['scheme']['kind'], 'bac_petersson')
-        self.assertEqual(bac['value_unit'], 'kcal_mol')
-        self.assertEqual(len(bac['components']), 1)
-        self.assertEqual(bac['components'][0]['key'], 'C-H')
-
-    def test_mbac_total_only_no_components(self):
-        sc = {'CH4': {'aec': self._aec_block(), 'bac': self._mbac_block()}}
-        out = _build_applied_corrections_for_species('CH4', sc, self._lot(), 'm')
-        bac = next(e for e in out if e['application_role'] == 'bac_total')
-        self.assertEqual(bac['scheme']['kind'], 'bac_melius')
-        self.assertEqual(bac['components'], [])
-
-    def test_pbac_omits_components_when_param_missing(self):
-        block = self._pbac_block()
-        block['components'][0]['parameter_value'] = None
-        sc = {'X': {'aec': self._aec_block(), 'bac': block}}
-        out = _build_applied_corrections_for_species('X', sc, self._lot(), 'p')
-        bac = next(e for e in out if e['application_role'] == 'bac_total')
-        # Components dropped entirely (partial decomposition would mislead).
-        self.assertEqual(bac['components'], [])
-
-    def test_units_are_explicit(self):
-        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
-        out = _build_applied_corrections_for_species('X', sc, self._lot(), 'p')
-        units = {e['application_role']: e['value_unit'] for e in out}
-        self.assertEqual(units['aec_total'], 'hartree')
-        self.assertEqual(units['bac_total'], 'kcal_mol')
-
-    def test_missing_correction_omits_silently(self):
-        # AEC failed (no 'aec' key), BAC succeeded → only BAC emitted.
-        sc = {'X': {'bac': self._pbac_block()}}
-        out = _build_applied_corrections_for_species('X', sc, self._lot(), 'p')
-        roles = [e['application_role'] for e in out]
-        self.assertEqual(roles, ['bac_total'])
-
-    def test_no_data_returns_empty_list(self):
-        out = _build_applied_corrections_for_species('X', {}, self._lot(), 'p')
-        self.assertEqual(out, [])
-
-    def test_bac_type_none_omits_bac(self):
-        # Even if a BAC block is present, bac_type=None means no BAC role.
-        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
-        out = _build_applied_corrections_for_species('X', sc, self._lot(), None)
-        roles = [e['application_role'] for e in out]
-        self.assertEqual(roles, ['aec_total'])
-
-    # ---- scheme parameter tables (atom_params / bond_params) ----
-
-    def test_aec_scheme_includes_atom_params_from_run_table(self):
-        # ARC's run-level atom_energy_corrections dict is the source of
-        # truth for AEC scheme parameters; without atom_params the
-        # downstream energy_correction_scheme_atom_param table never gets
-        # populated even though the applied row lands. Sorted-by-element
-        # for deterministic output.yml.
-        aec_table = {'C': -37.84706, 'H': -0.50066}
-        sc = {'X': {'aec': self._aec_block()}}
-        out = _build_applied_corrections_for_species(
-            'X', sc, self._lot(), 'p', aec_table=aec_table, bac_table=None,
-        )
-        aec = next(e for e in out if e['application_role'] == 'aec_total')
-        self.assertEqual(
-            aec['scheme']['atom_params'],
-            [{'element': 'C', 'value': -37.84706},
-             {'element': 'H', 'value': -0.50066}],
-        )
-
-    def test_pbac_scheme_includes_bond_params_from_run_table(self):
-        bac_table = {'C-H': -0.17350, 'C=O': -2.63454}
-        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
-        out = _build_applied_corrections_for_species(
-            'X', sc, self._lot(), 'p', aec_table=None, bac_table=bac_table,
-        )
-        bac = next(e for e in out if e['application_role'] == 'bac_total')
-        self.assertEqual(
-            bac['scheme']['bond_params'],
-            [{'bond_key': 'C-H', 'value': -0.17350},
-             {'bond_key': 'C=O', 'value': -2.63454}],
-        )
-
-    def test_mbac_scheme_omits_params(self):
-        # Per spec: Melius BAC parameters are atom-pair / length / neighbor /
-        # molecular and don't fit SchemeBondParamPayload's bond-key shape.
-        # The producer must NOT fabricate or coerce them — emit total only.
-        bac_table = {'C-H': -0.17350}  # would coerce, but we must not
-        sc = {'X': {'aec': self._aec_block(), 'bac': self._mbac_block()}}
-        out = _build_applied_corrections_for_species(
-            'X', sc, self._lot(), 'm', aec_table=None, bac_table=bac_table,
-        )
-        bac = next(e for e in out if e['application_role'] == 'bac_total')
-        self.assertEqual(bac['scheme']['kind'], 'bac_melius')
-        self.assertNotIn('bond_params', bac['scheme'])
-        self.assertNotIn('atom_params', bac['scheme'])
-        self.assertNotIn('component_params', bac['scheme'])
-
-    def test_aec_scheme_omits_atom_params_when_table_missing(self):
-        # Backward compat: when aec_table isn't supplied (caller predates
-        # this fix, or output.yml was written without it), the scheme still
-        # has identity but no atom_params field — schema treats it as []
-        # via the default factory.
-        sc = {'X': {'aec': self._aec_block()}}
-        out = _build_applied_corrections_for_species(
-            'X', sc, self._lot(), 'p', aec_table=None, bac_table=None,
-        )
-        aec = next(e for e in out if e['application_role'] == 'aec_total')
-        self.assertNotIn('atom_params', aec['scheme'])
-        self.assertNotIn('bond_params', aec['scheme'])
-
-    def test_atom_params_sorted_for_determinism(self):
-        # Stable insertion order matters for the idempotency hash
-        # downstream consumers compute over the payload.
-        aec_table = {'O': -75.07, 'H': -0.5, 'C': -37.85}
-        sc = {'X': {'aec': self._aec_block()}}
-        out = _build_applied_corrections_for_species(
-            'X', sc, self._lot(), None, aec_table=aec_table, bac_table=None,
-        )
-        aec = next(e for e in out if e['application_role'] == 'aec_total')
-        elements = [p['element'] for p in aec['scheme']['atom_params']]
-        self.assertEqual(elements, ['C', 'H', 'O'])  # sorted
-
-
-class TestComputeSpeciesCorrections(unittest.TestCase):
-    """Tests for `_compute_species_corrections` orchestration (subprocess call)."""
-
-    def setUp(self):
-        self.tmp_dir = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
-        os.makedirs(os.path.join(self.tmp_dir, 'output'), exist_ok=True)
-
-    def _spc(self, label='CH4'):
-        spc = MagicMock()
-        spc.label = label
-        spc.multiplicity = 1
-        spc.bond_corrections = {'C-H': 4}
-        spc.final_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'),
-                         'isotopes': (12, 1, 1, 1, 1),
-                         'coords': ((0, 0, 0), (0.6, 0.6, 0.6),
-                                    (-0.6, -0.6, 0.6), (-0.6, 0.6, -0.6),
-                                    (0.6, -0.6, -0.6))}
-        spc.initial_xyz = None
-        return spc
-
-    def test_returns_empty_when_lot_is_none(self):
-        out = _compute_species_corrections({'CH4': self._spc()}, None, 'p', self.tmp_dir)
-        self.assertEqual(out, {})
-
-    def _patch_lot_key(self, key="LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')"):
-        return [
-            patch('arc.output.get_qm_corrections_files', return_value=['/fake/data.py']),
-            patch('arc.output.find_best_across_files', return_value=key),
-        ]
-
-    def test_returns_empty_when_no_species_have_xyz(self):
-        spc = self._spc()
-        spc.final_xyz = None
-        spc.initial_xyz = None
-        lot = Level(method='wb97xd3', basis='def2tzvp', software='qchem')
-        patches = self._patch_lot_key()
-        for p in patches:
-            p.start()
-        self.addCleanup(lambda: [p.stop() for p in patches])
-        with patch('arc.output.execute_command') as mock_exec:
-            out = _compute_species_corrections({'CH4': spc}, lot, 'p', self.tmp_dir)
-        self.assertEqual(out, {})
-        mock_exec.assert_not_called()
-
-    def test_invokes_subprocess_with_batched_input(self):
-        lot = Level(method='wb97xd3', basis='def2tzvp', software='qchem')
-        patches = self._patch_lot_key()
-        for p in patches:
-            p.start()
-        self.addCleanup(lambda: [p.stop() for p in patches])
-        with patch('arc.output.execute_command', return_value=('', '')) as mock_exec, \
-             patch('arc.output.read_yaml_file', return_value={'species': [
-                 {'label': 'CH4',
-                  'aec': {'value': -0.02, 'value_unit': 'hartree', 'components': []},
-                  'bac': {'value': -0.7, 'value_unit': 'kcal_mol', 'components': []}}
-             ]}), \
-             patch('arc.output.save_yaml_file') as mock_save:
-            out = _compute_species_corrections(
-                {'CH4': self._spc()}, lot, 'p', self.tmp_dir,
-            )
-        # Subprocess was called once
-        self.assertEqual(mock_exec.call_count, 1)
-        # Result keyed by label
-        self.assertIn('CH4', out)
-        self.assertEqual(out['CH4']['aec']['value'], -0.02)
-        self.assertEqual(out['CH4']['bac']['value'], -0.7)
-        # Subprocess input batched all species
-        save_call = mock_save.call_args
-        content = save_call[1].get('content') or save_call[0][1]
-        self.assertEqual(content['level_of_theory'],
-                          "LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')")
-        self.assertEqual(content['bac_type'], 'p')
-        self.assertEqual(len(content['species']), 1)
-        self.assertEqual(content['species'][0]['label'], 'CH4')
-        self.assertEqual(content['species'][0]['atoms'], {'C': 1, 'H': 4})
-        self.assertEqual(content['species'][0]['bonds'], {'C-H': 4})
-        self.assertEqual(content['species'][0]['multiplicity'], 1)
-
-    def test_returns_empty_when_lot_key_not_in_database(self):
-        lot = Level(method='unknown', basis='unknown')
-        patches = [patch('arc.output.get_qm_corrections_files', return_value=['/fake/data.py']),
-                   patch('arc.output.find_best_across_files', return_value=None)]
-        for p in patches:
-            p.start()
-        self.addCleanup(lambda: [p.stop() for p in patches])
-        with patch('arc.output.execute_command') as mock_exec:
-            out = _compute_species_corrections({'CH4': self._spc()}, lot, 'p', self.tmp_dir)
-        self.assertEqual(out, {})
-        mock_exec.assert_not_called()
-
-    def test_subprocess_failure_returns_empty(self):
-        lot = Level(method='wb97xd3', basis='def2tzvp', software='qchem')
-        patches = self._patch_lot_key()
-        for p in patches:
-            p.start()
-        self.addCleanup(lambda: [p.stop() for p in patches])
-        with patch('arc.output.execute_command', side_effect=RuntimeError('boom')):
-            out = _compute_species_corrections(
-                {'CH4': self._spc()}, lot, 'p', self.tmp_dir,
-            )
-        self.assertEqual(out, {})
-
-
-class TestScanCalculations(unittest.TestCase):
-    """Tests for the rotor scan → ``additional_calculations`` plumbing.
-
-    Covers two layers:
-    - ``_build_scan_result_for_rotor`` shapes one rotor into a TCKDB-like
-      ``scan_result`` dict, returning ``None`` when the input is unusable.
-    - ``_build_scan_calculations`` aggregates across ``rotors_dict`` and
-      filters non-1D / failed / unparseable rotors.
-    - ``_get_torsions`` attaches ``source_scan_calculation_key`` only when
-      the corresponding scan log is on disk.
-    """
-
-    SCAN_LOG = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'sBuOH.out')
-
-    def _rotor(self, **overrides) -> dict:
-        """Build a rotor-dict with sensible defaults; override per-test."""
-        rotor: dict = {
-            'success': True,
-            'scan': [1, 2, 3, 4],
-            'pivots': [2, 3],
-            'symmetry': 3,
-            'type': 'HinderedRotor',
-            'scan_path': self.SCAN_LOG,
-            'dimensions': 1,
-        }
-        rotor.update(overrides)
-        return rotor
-
-    def test_build_scan_result_happy_path(self):
-        """Real Gaussian scan log → fully populated scan_result dict."""
-        result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNotNone(result)
-        self.assertEqual(result['dimension'], 1)
-        self.assertTrue(result['is_relaxed'])
-        # zero_energy_reference_hartree = min absolute energy on the curve.
-        self.assertIsInstance(result['zero_energy_reference_hartree'], float)
-        # One coordinate, dihedral, atoms 1–4, 1-based, with symmetry.
-        self.assertEqual(len(result['coordinates']), 1)
-        coord = result['coordinates'][0]
-        self.assertEqual(coord['coordinate_index'], 1)
-        self.assertEqual(coord['coordinate_kind'], 'dihedral')
-        self.assertEqual(
-            (coord['atom1_index'], coord['atom2_index'],
-             coord['atom3_index'], coord['atom4_index']),
-            (1, 2, 3, 4),
-        )
-        self.assertEqual(coord['value_unit'], 'degree')
-        self.assertEqual(coord['symmetry_number'], 3)
-        self.assertEqual(coord['step_count'], len(result['points']))
-        # Points carry index, energies, coordinate_values. Per-point
-        # geometries are now emitted under ``geometry.xyz_text`` so
-        # TCKDB can persist them into ``calc_scan_point.geometry_id``;
-        # geometries come straight from
-        # ``parse_1d_scan_full_result()['geometries']`` and are
-        # serialized in the TCKDB count-headered xyz convention.
-        self.assertGreater(len(result['points']), 0)
-        first = result['points'][0]
-        self.assertEqual(first['point_index'], 1)
-        self.assertEqual(first['coordinate_values'][0]['value_unit'], 'degree')
-        self.assertIn('relative_energy_kj_mol', first)
-        self.assertIn('electronic_energy_hartree', first)
-        self.assertNotIn('xyz', first)
-        # First point's relative energy ≈ 0 by zero-shift convention.
-        self.assertAlmostEqual(first['relative_energy_kj_mol'], 1.5753056e-05,
-                               places=6)
-
-    def test_build_scan_result_no_log(self):
-        """Empty scan_path → None, never an exception."""
-        rotor = self._rotor(scan_path='')
-        self.assertIsNone(_build_scan_result_for_rotor(rotor, '/tmp/project'))
-
-    def test_build_scan_result_missing_log(self):
-        """Path that doesn't resolve to a real file → None."""
-        rotor = self._rotor(scan_path='/nonexistent/does/not/exist.log')
-        self.assertIsNone(_build_scan_result_for_rotor(rotor, '/tmp/project'))
-
-    def test_build_scan_result_malformed_atom_indices(self):
-        """Non-quartet ``scan`` field → None (no fabricated atom list)."""
-        rotor = self._rotor(scan=[1, 2, 3])  # only 3 atoms
-        self.assertIsNone(_build_scan_result_for_rotor(rotor, '/tmp/project'))
-
-    def test_build_scan_result_parser_failure_returns_none(self):
-        """Exceptions in the scan-result parser surface as ``None`` (no crash)."""
-        with patch('arc.output.parse_1d_scan_full_result',
-                   side_effect=Exception('boom')):
-            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNone(result)
-
-    def test_build_scan_result_missing_relative_energies_returns_none(self):
-        """Parser returning empty energies → None, even with angles present."""
-        with patch('arc.output.parse_1d_scan_full_result',
-                   return_value={
-                       'angles_deg': [0.0, 90.0],
-                       'relative_energies_kj_mol': None,
-                       'absolute_energies_hartree': None,
-                       'zero_energy_reference_hartree': None,
-                       'geometries': None,
-                   }):
-            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNone(result)
-
-    def test_build_scan_calculations_emits_one_per_rotor(self):
-        """Two successful 1D rotors → two scan_rotor_<i> entries."""
-        spc = MagicMock()
-        spc.rotors_dict = {0: self._rotor(), 1: self._rotor()}
-        calcs = _build_scan_calculations(spc, '/tmp/project')
-        self.assertEqual(len(calcs), 2)
-        self.assertEqual(calcs[0]['key'], 'scan_rotor_0')
-        self.assertEqual(calcs[0]['type'], 'scan')
-        self.assertEqual(calcs[1]['key'], 'scan_rotor_1')
-        self.assertIn('scan_result', calcs[0])
-        self.assertEqual(calcs[0]['scan_result']['dimension'], 1)
-
-    def test_build_scan_calculations_skips_failed_rotor(self):
-        spc = MagicMock()
-        spc.rotors_dict = {
-            0: self._rotor(),                     # ok
-            1: self._rotor(success=False),        # filtered
-        }
-        calcs = _build_scan_calculations(spc, '/tmp/project')
-        self.assertEqual([c['key'] for c in calcs], ['scan_rotor_0'])
-
-    def test_build_scan_calculations_skips_nd(self):
-        """ND rotors are deferred — only 1D scans are emitted today."""
-        spc = MagicMock()
-        spc.rotors_dict = {
-            0: self._rotor(),                  # 1D, ok
-            1: self._rotor(dimensions=2),      # ND, skipped
-        }
-        calcs = _build_scan_calculations(spc, '/tmp/project')
-        self.assertEqual([c['key'] for c in calcs], ['scan_rotor_0'])
-
-    def test_build_scan_calculations_skips_unparseable(self):
-        """Unparseable scan (no log on disk) → no calc, no exception."""
-        spc = MagicMock()
-        spc.rotors_dict = {
-            0: self._rotor(scan_path=''),  # log missing → skipped
-            1: self._rotor(),              # ok
-        }
-        calcs = _build_scan_calculations(spc, '/tmp/project')
-        self.assertEqual([c['key'] for c in calcs], ['scan_rotor_1'])
-
-    def test_get_torsions_attaches_scan_key_when_log_present(self):
-        """``source_scan_calculation_key`` matches the scan calc key only when log resolves."""
-        spc = MagicMock()
-        spc.rotors_dict = {
-            0: {
-                'success': True,
-                'scan': [1, 2, 3, 4],
-                'pivots': [2, 3],
-                'symmetry': 3,
-                'type': 'HinderedRotor',
-                'scan_path': self.SCAN_LOG,
-                'dimensions': 1,
-            },
-            7: {  # intentional non-contiguous index — keys must use the dict key.
-                'success': True,
-                'scan': [5, 6, 7, 8],
-                'pivots': [6, 7],
-                'symmetry': 1,
-                'type': 'HinderedRotor',
-                'scan_path': '',
-                'dimensions': 1,
-            },
-        }
-        torsions = _get_torsions(spc, '/tmp/project')
-        self.assertEqual(len(torsions), 2)
-        self.assertEqual(torsions[0]['source_scan_calculation_key'], 'scan_rotor_0')
-        # Second rotor has no scan log on disk → no fabricated key.
-        self.assertIsNone(torsions[1]['source_scan_calculation_key'])
-
-    # ---- per-point scan geometries (TCKDB calc_scan_point.geometry_id) ----
-    #
-    # ARC's parser wrapper already returns aligned per-step xyz dicts.
-    # ``_build_scan_result_for_rotor`` previously dropped them; now it
-    # passes them through as ``points[i].geometry.xyz_text`` so TCKDB's
-    # bundle workflow can resolve and persist a geometry per scan point.
-
-    def _stub_parsed(self, *, n_points=3, geometries='aligned'):
-        """Build a parser-wrapper return value with controllable geometry alignment.
-
-        ``geometries`` is one of:
-          - ``'aligned'``   : list of length n_points, each a valid xyz dict.
-          - ``'mismatch'``  : list of length n_points + 1.
-          - ``'none'``      : ``None`` (parser returned no geometries).
-          - ``'malformed'`` : valid count, but one entry is malformed.
-        """
-        valid_xyz = {
-            'symbols': ('C', 'H'),
-            'isotopes': (12, 1),
-            'coords': ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
-        }
-        if geometries == 'aligned':
-            geom_list = [valid_xyz for _ in range(n_points)]
-        elif geometries == 'mismatch':
-            geom_list = [valid_xyz for _ in range(n_points + 1)]
-        elif geometries == 'none':
-            geom_list = None
-        elif geometries == 'malformed':
-            geom_list = [valid_xyz for _ in range(n_points)]
-            geom_list[1] = {'symbols': (), 'isotopes': (), 'coords': ()}
-        else:
-            raise ValueError(geometries)
-        return {
-            'angles_deg': [i * 30.0 for i in range(n_points)],
-            'relative_energies_kj_mol': [0.0] * n_points,
-            'absolute_energies_hartree': [-100.0] * n_points,
-            'zero_energy_reference_hartree': -100.0,
-            'geometries': geom_list,
-        }
-
-    def test_scan_points_include_geometry_when_aligned(self):
-        """Aligned geometries → every point carries ``geometry.xyz_text``."""
-        with patch('arc.output.parse_1d_scan_full_result',
-                   return_value=self._stub_parsed(n_points=3)):
-            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNotNone(result)
-        self.assertEqual(len(result['points']), 3)
-        for point in result['points']:
-            self.assertIn('geometry', point)
-            self.assertIn('xyz_text', point['geometry'])
-            xyz_text = point['geometry']['xyz_text']
-            # TCKDB count-headered convention: "<n>\\n<comment>\\n<atoms>".
-            lines = xyz_text.splitlines()
-            self.assertEqual(int(lines[0].strip()), 2,
-                             msg=f"first line must be atom count, got {lines[0]!r}")
-            # Body has the right atom count.
-            self.assertEqual(len(lines), 4)  # count + comment + 2 atom rows
-
-    def test_scan_point_geometry_uses_only_xyz_text_no_db_id(self):
-        """No ``geometry_id`` (or any DB id) anywhere under scan_result."""
-        with patch('arc.output.parse_1d_scan_full_result',
-                   return_value=self._stub_parsed(n_points=3)):
-            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNotNone(result)
-        forbidden = {'geometry_id', 'existing_geometry_id', 'id'}
-        for point in result['points']:
-            geom = point.get('geometry') or {}
-            self.assertEqual(set(geom.keys()), {'xyz_text'},
-                             msg=f"geometry must carry only xyz_text, got {geom}")
-            for k in forbidden:
-                self.assertNotIn(k, point, msg=f"{k} leaked onto scan point")
-                self.assertNotIn(k, geom)
-        # Top-level scan_result also has no DB ids.
-        for k in forbidden:
-            self.assertNotIn(k, result)
-
-    def test_scan_points_omit_geometry_when_geometries_missing(self):
-        """Parser returned ``geometries=None`` → no point carries a geometry,
-        no warning, scan_result still emitted with energies and angles."""
-        with patch('arc.output.parse_1d_scan_full_result',
-                   return_value=self._stub_parsed(n_points=3, geometries='none')):
-            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNotNone(result)
-        for point in result['points']:
-            self.assertNotIn('geometry', point)
-
-    def test_scan_points_omit_geometry_uniformly_on_length_mismatch(self):
-        """Length mismatch → drop geometries from ALL points (not partial)
-        and log a warning. The scan_result itself still uploads."""
-        with patch('arc.output.parse_1d_scan_full_result',
-                   return_value=self._stub_parsed(n_points=3, geometries='mismatch')):
-            with self.assertLogs('arc', level='WARNING') as cm:
-                result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNotNone(result)
-        for point in result['points']:
-            self.assertNotIn('geometry', point)
-        self.assertTrue(any('does not match scan-point count' in m for m in cm.output),
-                        msg=f"expected mismatch warning, got: {cm.output}")
-
-    # ---- requested scan-grid metadata (TCKDB calc_scan_coordinate fields) ----
-
-    def test_scan_coord_includes_step_size_from_gaussian_header(self):
-        """Real Gaussian scan log → step_size + resolution_degrees populated
-        from the parsed ModRedundant header (not from the completed-point
-        spacing). The fixture log has ``S N 8.0`` in its header."""
-        result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNotNone(result)
-        coord = result['coordinates'][0]
-        self.assertIn('step_size', coord)
-        self.assertIn('resolution_degrees', coord)
-        # 1D dihedral torsion scan: resolution == step size.
-        self.assertEqual(coord['step_size'], coord['resolution_degrees'])
-        # ARC writes ``S 360/scan_res scan_res``; for the sBuOH fixture the
-        # requested step size is 8 degrees.
-        self.assertAlmostEqual(coord['step_size'], 8.0, places=6)
-
-    def test_scan_coord_step_size_independent_from_completed_count(self):
-        """``step_count`` reflects the *completed* points, ``step_size`` the
-        *requested* grid — they're sourced separately and must not be
-        coupled (a partially-failed scan would otherwise emit a misleading
-        derived step_size). Spot-check both come from independent data."""
-        result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        coord = result['coordinates'][0]
-        # step_count is the point count we actually parsed; step_size is
-        # the requested grid spacing. Their product covers the requested
-        # range only when no points dropped.
-        self.assertEqual(coord['step_count'], len(result['points']))
-        self.assertGreater(coord['step_size'], 0.0)
-
-    def test_scan_coord_omits_grid_metadata_for_non_gaussian(self):
-        """``parse_scan_args`` raising NotImplementedError (ORCA, etc.) →
-        step_size / resolution_degrees absent, no exception, scan_result
-        still produced."""
-        with patch('arc.output.parse_scan_args',
-                   side_effect=NotImplementedError('ORCA path')):
-            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNotNone(result)
-        coord = result['coordinates'][0]
-        self.assertNotIn('step_size', coord)
-        self.assertNotIn('resolution_degrees', coord)
-
-    def test_scan_coord_omits_grid_metadata_when_parser_raises(self):
-        """Generic parser failure (corrupt log, etc.) → grid fields absent,
-        no exception."""
-        with patch('arc.output.parse_scan_args',
-                   side_effect=RuntimeError('boom')):
-            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNotNone(result)
-        coord = result['coordinates'][0]
-        self.assertNotIn('step_size', coord)
-        self.assertNotIn('resolution_degrees', coord)
-
-    def test_scan_coord_omits_grid_metadata_when_step_size_zero(self):
-        """``parse_scan_args`` returns step_size=0 by default when the
-        ModRedundant block isn't matched — must be treated as 'unknown',
-        not as a literal 0-degree step (which would be nonsense and
-        violate the schema's intent)."""
-        stub = {'scan': [1, 2, 3, 4], 'freeze': [], 'step': 0,
-                'step_size': 0, 'n_atom': 0}
-        with patch('arc.output.parse_scan_args', return_value=stub):
-            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNotNone(result)
-        coord = result['coordinates'][0]
-        self.assertNotIn('step_size', coord)
-        self.assertNotIn('resolution_degrees', coord)
-
-    def test_scan_coord_grid_metadata_does_not_affect_points(self):
-        """Independence: completed-point coordinate_values aren't touched
-        by the requested-grid plumbing."""
-        with patch('arc.output.parse_scan_args',
-                   return_value={'scan': [1, 2, 3, 4], 'freeze': [],
-                                 'step': 36, 'step_size': 10.0, 'n_atom': 0}):
-            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        # Points still carry their actual coordinate_value list; step_size
-        # didn't propagate into per-point data.
-        self.assertGreater(len(result['points']), 0)
-        for point in result['points']:
-            self.assertIn('coordinate_values', point)
-            self.assertEqual(point['coordinate_values'][0]['value_unit'], 'degree')
-
-    # ---- start_value / end_value (TCKDB requested-grid endpoints) ----
-    #
-    # The dihedral is read from the input geometry the rotor scan was
-    # launched against. Gaussian's ModRedundant ``S`` syntax encodes
-    # ``end_value = start_value + step_size * (step_count - 1)``;
-    # we emit both values continuous (no [-180, 180] wrap) so a full
-    # rotation lands at start + 360, not back at start.
-
-    @staticmethod
-    def _input_xyz_for_dihedral(start_dihedral_deg: float):
-        """Build a minimal 5-atom xyz whose 1-2-3-4 dihedral, as
-        measured by :func:`calculate_dihedral_angle` (the same helper
-        the production code uses), equals ``start_dihedral_deg`` in the
-        0-360 convention. The internal rotation is offset by -270° to
-        compensate for the helper's right-hand-rule sign choice.
-        """
-        import math as _math
-        rad = _math.radians(start_dihedral_deg - 270.0)
-        return {
-            'symbols': ('C', 'C', 'C', 'C', 'H'),
-            'isotopes': (12, 12, 12, 12, 1),
-            'coords': (
-                (0.0, 0.0, 1.0),
-                (1.0, 0.0, 0.0),
-                (2.0, 0.0, 0.0),
-                (3.0, _math.cos(rad), _math.sin(rad)),
-                (4.0, 0.0, 0.0),
-            ),
-        }
-
-    def test_scan_start_value_computed_from_input_geometry(self):
-        """Input geometry → ``start_value`` matches the dihedral on the
-        scan atom quartet."""
-        rotor = self._rotor(scan=[1, 2, 3, 4])
-        xyz = self._input_xyz_for_dihedral(60.0)
-        result = _build_scan_result_for_rotor(
-            rotor, '/tmp/project', input_xyz=xyz,
-        )
-        coord = result['coordinates'][0]
-        self.assertIn('start_value', coord)
-        # The fixture's offset compensates for the helper's right-hand
-        # rule, so 60° in → 60° out.
-        self.assertAlmostEqual(coord['start_value'], 60.0, places=4)
-
-    def test_scan_end_value_extends_continuously_from_start(self):
-        """``end_value = start_value + step_size * (step_count - 1)`` —
-        not wrapped, so a 46-point 8° scan from 60° lands at 60 + 360 = 420°,
-        NOT back at 60° and NOT mod-360'd to 60°."""
-        rotor = self._rotor(scan=[1, 2, 3, 4])
-        xyz = self._input_xyz_for_dihedral(60.0)
-        result = _build_scan_result_for_rotor(
-            rotor, '/tmp/project', input_xyz=xyz,
-        )
-        coord = result['coordinates'][0]
-        # Real Gaussian fixture: step_size=8, len(points)=46 → +360 span.
-        expected_end = coord['start_value'] + coord['step_size'] * (
-            coord['step_count'] - 1
-        )
-        self.assertAlmostEqual(coord['end_value'], expected_end, places=6)
-        # Not wrapped: a full-rotation scan exceeds 360°, never re-folds.
-        self.assertGreater(coord['end_value'], 360.0)
-
-    def test_scan_end_value_is_not_wrapped_into_minus_180_180(self):
-        """Continuity contract: even when start is near 180°, the end
-        value must not flip sign by wrapping into [-180, 180]."""
-        rotor = self._rotor(scan=[1, 2, 3, 4])
-        xyz = self._input_xyz_for_dihedral(170.0)
-        result = _build_scan_result_for_rotor(
-            rotor, '/tmp/project', input_xyz=xyz,
-        )
-        coord = result['coordinates'][0]
-        # 170 + 360 = 530 — must NOT have folded to -190 or 170.
-        self.assertGreater(coord['end_value'], 360.0)
-        self.assertGreater(coord['end_value'] - coord['start_value'],
-                           coord['step_size'] * 0.99)
-
-    def test_scan_start_end_absent_when_input_geometry_missing(self):
-        """No ``input_xyz`` and no parser fallback → fields stay absent."""
-        rotor = self._rotor(scan=[1, 2, 3, 4])
-        # Patch out both sources: input_xyz=None and parsed geometries=None.
-        with patch('arc.output.parse_1d_scan_full_result') as p:
-            from arc.parser.parser import parse_1d_scan_full_result as real
-            parsed = real(self.SCAN_LOG)
-            parsed['geometries'] = None  # kill the fallback
-            p.return_value = parsed
-            result = _build_scan_result_for_rotor(
-                rotor, '/tmp/project', input_xyz=None,
-            )
-        coord = result['coordinates'][0]
-        self.assertNotIn('start_value', coord)
-        self.assertNotIn('end_value', coord)
-
-    def test_scan_start_end_absent_when_step_size_unknown(self):
-        """Without step_size we can't compute end_value, so we omit BOTH
-        rather than emit a half-populated range."""
-        rotor = self._rotor(scan=[1, 2, 3, 4])
-        xyz = self._input_xyz_for_dihedral(60.0)
-        with patch('arc.output.parse_scan_args',
-                   side_effect=NotImplementedError('non-Gaussian')):
-            result = _build_scan_result_for_rotor(
-                rotor, '/tmp/project', input_xyz=xyz,
-            )
-        coord = result['coordinates'][0]
-        self.assertNotIn('step_size', coord)  # confirms the precondition
-        self.assertNotIn('start_value', coord)
-        self.assertNotIn('end_value', coord)
-
-    def test_scan_start_end_absent_when_step_size_zero(self):
-        """``parse_scan_args`` returning step_size=0 → no end_value
-        possible, omit both."""
-        rotor = self._rotor(scan=[1, 2, 3, 4])
-        xyz = self._input_xyz_for_dihedral(60.0)
-        stub = {'scan': [1, 2, 3, 4], 'freeze': [], 'step': 0,
-                'step_size': 0, 'n_atom': 0}
-        with patch('arc.output.parse_scan_args', return_value=stub):
-            result = _build_scan_result_for_rotor(
-                rotor, '/tmp/project', input_xyz=xyz,
-            )
-        coord = result['coordinates'][0]
-        self.assertNotIn('start_value', coord)
-        self.assertNotIn('end_value', coord)
-
-    def test_scan_start_end_absent_when_dihedral_calc_raises(self):
-        """A failed dihedral calculation logs a warning, omits start/end,
-        and does NOT abort the rest of scan_result emission."""
-        rotor = self._rotor(scan=[1, 2, 3, 4])
-        xyz = self._input_xyz_for_dihedral(60.0)
-        with patch('arc.output.calculate_dihedral_angle',
-                   side_effect=RuntimeError('atom missing')):
-            with self.assertLogs('arc', level='WARNING') as cm:
-                result = _build_scan_result_for_rotor(
-                    rotor, '/tmp/project', input_xyz=xyz,
-                )
-        # scan_result is still emitted (energies + step_size + points all there).
-        self.assertIsNotNone(result)
-        coord = result['coordinates'][0]
-        self.assertNotIn('start_value', coord)
-        self.assertNotIn('end_value', coord)
-        self.assertIn('step_size', coord)  # other grid fields untouched
-        self.assertGreater(len(result['points']), 0)
-        self.assertTrue(any('dihedral calculation failed' in m for m in cm.output),
-                        msg=f"expected dihedral-failure warning, got: {cm.output}")
-
-    def test_scan_point_coordinate_values_unchanged_by_start_end_addition(self):
-        """``points[i].coordinate_values`` must remain whatever
-        ``parse_1d_scan_full_result`` reported, regardless of start/end."""
-        rotor = self._rotor(scan=[1, 2, 3, 4])
-        xyz = self._input_xyz_for_dihedral(60.0)
-        result_with = _build_scan_result_for_rotor(
-            rotor, '/tmp/project', input_xyz=xyz,
-        )
-        result_without = _build_scan_result_for_rotor(
-            rotor, '/tmp/project', input_xyz=None,
-        )
-        # Same number of points, same coordinate_values per point.
-        self.assertEqual(len(result_with['points']), len(result_without['points']))
-        for p_with, p_without in zip(result_with['points'], result_without['points']):
-            self.assertEqual(p_with['coordinate_values'],
-                             p_without['coordinate_values'])
-
-    def test_scan_falls_back_to_parsed_first_frame_when_input_xyz_missing(self):
-        """When ``input_xyz`` is None but the parser returned aligned
-        geometries, the first frame is a documented fallback for the
-        input dihedral (Gaussian ModRedundant freezes the scan dihedral
-        at the input value, so the first frame's dihedral IS the
-        requested start)."""
-        rotor = self._rotor(scan=[1, 2, 3, 4])
-        result = _build_scan_result_for_rotor(
-            rotor, '/tmp/project', input_xyz=None,
-        )
-        coord = result['coordinates'][0]
-        # Real Gaussian fixture has ``geometries`` populated, so the
-        # fallback resolves and start/end are emitted.
-        self.assertIn('start_value', coord)
-        self.assertIn('end_value', coord)
-
-    def test_scan_points_omit_geometry_uniformly_on_serialization_failure(self):
-        """One unserializable xyz dict → drop geometries from ALL points,
-        warn once. Energies/angles still flow through."""
-        with patch('arc.output.parse_1d_scan_full_result',
-                   return_value=self._stub_parsed(n_points=3, geometries='malformed')):
-            with self.assertLogs('arc', level='WARNING') as cm:
-                result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
-        self.assertIsNotNone(result)
-        # No partial coverage: nothing carries a geometry.
-        for point in result['points']:
-            self.assertNotIn('geometry', point)
-        self.assertTrue(
-            any('serialization failed' in m or 'empty text' in m for m in cm.output),
-            msg=f"expected serialization warning, got: {cm.output}",
-        )
-
-
-class TestScanConstraintDispatch(unittest.TestCase):
-    """Software-aware dispatch for rotor-scan constraint extraction.
-
-    The scheduler stamps ``scan_software`` onto each rotor when a scan
-    job completes (``arc/scheduler.py``). ``_parse_scan_constraints``
-    consumes that hint to call the right parser; everything else
-    degrades gracefully without failing payload generation.
-    """
-
-    SCAN_LOG = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'sBuOH.out')
-
-    def _rotor(self, **overrides) -> dict:
-        rotor: dict = {
-            'success': True,
-            'scan': [1, 2, 3, 4],
-            'pivots': [2, 3],
-            'symmetry': 1,
-            'type': 'HinderedRotor',
-            'scan_path': self.SCAN_LOG,
-            'dimensions': 1,
-            'scan_software': '',
-        }
-        rotor.update(overrides)
-        return rotor
-
-    def test_gaussian_hint_routes_to_gaussian_parser(self):
-        from arc.output import _parse_scan_constraints
-        sentinel = [{'constraint_kind': 'bond', 'atoms': [1, 2],
-                     'target_value': None}]
-        with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints',
-                   return_value=sentinel) as gauss, \
-             patch('arc.parser.adapters.orca.parse_orca_constraints') as orca:
-            result = _parse_scan_constraints(
-                self._rotor(scan_software='gaussian'), '/tmp/project',
-            )
-        self.assertEqual(result, sentinel)
-        gauss.assert_called_once_with(self.SCAN_LOG)
-        orca.assert_not_called()
-
-    def test_orca_hint_routes_to_orca_parser(self):
-        from arc.output import _parse_scan_constraints
-        sentinel = [{'constraint_kind': 'dihedral',
-                     'atoms': [1, 2, 3, 4], 'target_value': 90.0}]
-        with patch('arc.parser.adapters.orca.parse_orca_constraints',
-                   return_value=sentinel) as orca, \
-             patch('arc.parser.adapters.gaussian.parse_gaussian_constraints') as gauss:
-            result = _parse_scan_constraints(
-                self._rotor(scan_software='orca'), '/tmp/project',
-            )
-        self.assertEqual(result, sentinel)
-        orca.assert_called_once_with(self.SCAN_LOG)
-        gauss.assert_not_called()
-
-    def test_missing_software_falls_back_to_gaussian(self):
-        # Empty / missing ``scan_software`` preserves the historical
-        # behavior: try Gaussian (the only software with ModRedundant
-        # emission). Restart files written before this field landed
-        # therefore keep producing constraints rather than silently
-        # losing them.
-        from arc.output import _parse_scan_constraints
-        with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints',
-                   return_value=[]) as gauss:
-            rotor_no_field = self._rotor()
-            rotor_no_field.pop('scan_software', None)
-            _parse_scan_constraints(rotor_no_field, '/tmp/project')
-            _parse_scan_constraints(self._rotor(scan_software=''), '/tmp/project')
-        self.assertEqual(gauss.call_count, 2)
-
-    def test_unknown_software_returns_empty_list_no_parser_call(self):
-        from arc.output import _parse_scan_constraints
-        with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints') as gauss, \
-             patch('arc.parser.adapters.orca.parse_orca_constraints') as orca:
-            result = _parse_scan_constraints(
-                self._rotor(scan_software='qchem'), '/tmp/project',
-            )
-        self.assertEqual(result, [])
-        gauss.assert_not_called()
-        orca.assert_not_called()
-
-    def test_parser_exception_degrades_to_empty_list(self):
-        from arc.output import _parse_scan_constraints
-        with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints',
-                   side_effect=RuntimeError('parser crashed')):
-            result = _parse_scan_constraints(
-                self._rotor(scan_software='gaussian'), '/tmp/project',
-            )
-        self.assertEqual(result, [])
-
-    def test_missing_scan_path_returns_empty_list(self):
-        # Defensive: never invoke a parser without a real path.
-        from arc.output import _parse_scan_constraints
-        rotor = self._rotor(scan_path='', scan_software='gaussian')
-        with patch('arc.parser.adapters.gaussian.parse_gaussian_constraints') as gauss:
-            self.assertEqual(_parse_scan_constraints(rotor, '/tmp/project'), [])
-            gauss.assert_not_called()
 
 
 if __name__ == '__main__':

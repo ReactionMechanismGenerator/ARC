@@ -5,20 +5,50 @@ An adapter for parsing Orca log files.
 from abc import ABC
 
 import glob
+import math
 import numpy as np
 import os
 import pandas as pd
 import re
 
-from arc.common import SYMBOL_BY_NUMBER, get_logger
+from arc.common import NUMBER_BY_SYMBOL, SYMBOL_BY_NUMBER, get_logger, is_str_int
 from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import str_to_xyz, xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
-from arc.parser.parser import _get_lines_from_file, s_squared_expected_from_multiplicity
+from arc.parser.parser import (_get_lines_from_file,
+                               s_squared_expected_from_multiplicity,
+                               scan_angles_to_displacement,
+                               )
 
 
 logger = get_logger()
+
+# Upper bound on the Hessian dimension (3N) accepted from a ``.hess`` header
+# when the file carries no ``$atoms`` block to cross-check against. 3N = 30000
+# is 10,000 atoms, far above any kinetics-scale species, and caps the two
+# ``n_rows x n_rows`` allocations at a few GB rather than terabytes.
+_MAX_HESSIAN_DIMENSION = 30000
+
+SPIN_SYMMETRY_BREAKING_S_SQUARED = 0.01
+
+
+def _root_is_negative(eigenvalue: float) -> bool:
+    """
+    Check whether a stability-matrix root is a negative one.
+
+    Negative zero counts as negative: ORCA prints a marginal root as ``-0.00000000``,
+    which parses to ``-0.0``, for which the ordinary ``< 0`` comparison is ``False``.
+    A wavefunction ORCA reports unstable on such a root would otherwise be recorded
+    with no negative roots at all.
+
+    Args:
+        eigenvalue (float): The root of the stability matrix.
+
+    Returns:
+        bool: Whether the root is negative.
+    """
+    return eigenvalue < 0 or (eigenvalue == 0 and math.copysign(1.0, eigenvalue) < 0)
 
 
 class OrcaParser(ESSAdapter, ABC):
@@ -116,9 +146,12 @@ class OrcaParser(ESSAdapter, ABC):
                     return xyz_from_data(coords=np.array(coords), numbers=np.array(numbers))
         return None
 
-    def parse_frequencies(self) -> np.ndarray | None:
+    def _parse_frequencies(self, include_zeros: bool = False) -> np.ndarray | None:
         """
         Parse the frequencies from a freq job output file.
+
+        Args:
+            include_zeros (bool, optional): Whether to retain exact-zero translation and rotation modes.
 
         Returns: np.ndarray | None
             The parsed frequencies (in cm^-1).
@@ -143,8 +176,8 @@ class OrcaParser(ESSAdapter, ABC):
                     if len(parts) >= 2 and parts[0].rstrip(':').isdigit():
                         try:
                             freq = float(parts[1])
-                            # Keep negative freqs (imaginary modes), drop exact zeros (translations/rotations).
-                            if abs(freq) > 0.0:
+                            # Keep negative freqs (imaginary modes), optionally drop exact-zero translations/rotations.
+                            if include_zeros or abs(freq) > 0.0:
                                 frequencies.append(freq)
                             found_freqs = True
                         except ValueError:
@@ -158,15 +191,79 @@ class OrcaParser(ESSAdapter, ABC):
 
         return np.array(frequencies, dtype=np.float64) if frequencies else None
 
+    def parse_frequencies(self) -> np.ndarray | None:
+        """
+        Parse the nonzero frequencies from a freq job output file.
+
+        Returns: np.ndarray | None
+            The parsed nonzero frequencies (in cm^-1).
+        """
+        return self._parse_frequencies(include_zeros=False)
+
     def parse_normal_mode_displacement(self) -> tuple[np.ndarray | None, np.ndarray | None]:
         """
-        Parse frequencies and normal mode displacement.
+        Parse the frequencies and normal mode displacements from an Orca frequency job output file.
 
-        Returns: tuple[np.ndarray | None, np.ndarray | None]
-            The frequencies (in cm^-1) and the normal mode displacements.
+        Returns:
+            tuple[np.ndarray | None, np.ndarray | None]:
+                - frequencies (in cm^-1), exact-zero translation/rotation modes excluded.
+                - normal mode displacements, shape (num_modes, num_atoms, 3), same mode order as frequencies.
         """
-        # Not implemented for Orca.
-        return None, None
+        with open(self.log_file_path, 'r') as f:
+            lines = f.readlines()
+
+        all_freqs = self._parse_frequencies(include_zeros=True)
+        if all_freqs is None:
+            return None, None
+        n_dof = len(all_freqs)
+
+        start = None
+        for i, line in enumerate(lines):
+            if line.strip() == 'NORMAL MODES':
+                start = i
+                break
+        if start is None:
+            return None, None
+
+        full_matrix = [[0.0] * n_dof for _ in range(n_dof)]
+        n_cols_parsed = 0
+        i = start
+        while n_cols_parsed < n_dof and i < len(lines):
+            stripped = lines[i].strip()
+            if stripped and '.' not in stripped:
+                try:
+                    col_indices = [int(tok) for tok in stripped.split()]
+                except ValueError:
+                    i += 1
+                    continue
+                i += 1
+                for row in range(n_dof):
+                    if i >= len(lines):
+                        return None, None
+                    vals = lines[i].split()[1:]
+                    if len(vals) < len(col_indices):
+                        return None, None
+                    for k, col in enumerate(col_indices):
+                        try:
+                            full_matrix[row][col] = float(vals[k])
+                        except (IndexError, ValueError):
+                            return None, None
+                    i += 1
+                n_cols_parsed += len(col_indices)
+            else:
+                i += 1
+        if n_cols_parsed < n_dof:
+            return None, None
+
+        keep = [idx for idx, freq in enumerate(all_freqs) if freq != 0.0]
+        freqs = np.array([all_freqs[idx] for idx in keep], dtype=np.float64)
+        n_atoms = n_dof // 3
+        full_matrix_np = np.array(full_matrix, dtype=np.float64)
+        normal_modes_disp = np.array(
+            [full_matrix_np[:, idx].reshape(n_atoms, 3) for idx in keep],
+            dtype=np.float64,
+        )
+        return freqs, normal_modes_disp
 
     def _locate_hess_file(self) -> str | None:
         """
@@ -238,6 +335,15 @@ class OrcaParser(ESSAdapter, ABC):
         if n_rows < 6:
             # Single atom (3N == 3) or empty — no meaningful Cartesian Hessian.
             return None
+        # ``n_rows`` is attacker-reachable file content and sizes two O(n^2)
+        # allocations below, so bound it against the atom count the same file
+        # declares before allocating: a truncated or corrupt header would
+        # otherwise request terabytes and raise MemoryError.
+        declared_atoms = self._parse_hess_atom_count(lines)
+        if declared_atoms is not None and n_rows != 3 * declared_atoms:
+            return None
+        if declared_atoms is None and n_rows > _MAX_HESSIAN_DIMENSION:
+            return None
 
         matrix = np.zeros((n_rows, n_rows), dtype=np.float64)
         seen = np.zeros((n_rows, n_rows), dtype=bool)
@@ -283,6 +389,92 @@ class OrcaParser(ESSAdapter, ABC):
                 lower_triangle.append(float(value))
         return lower_triangle
 
+    @staticmethod
+    def _parse_hess_atoms(lines: list[str]) -> tuple[list[int], list[list[float]]] | None:
+        """
+        Read the ``$atoms`` block of an Orca ``.hess`` file.
+
+        The block opens with the atom count, then one line per atom holding
+        ``<symbol> <mass> <x> <y> <z>`` with the coordinates in **Bohr**.
+
+        Returns: tuple[list[int], list[list[float]]] | None
+            Atomic numbers and coordinates in Angstrom, or ``None`` when the
+            block is absent or malformed.
+        """
+        start = None
+        for idx, line in enumerate(lines):
+            if line.strip() == '$atoms':
+                start = idx + 1
+                break
+        if start is None:
+            return None
+        while start < len(lines) and not lines[start].strip():
+            start += 1
+        if start >= len(lines):
+            return None
+        try:
+            n_atoms = int(lines[start].strip())
+        except ValueError:
+            return None
+        if n_atoms < 1 or start + n_atoms >= len(lines):
+            return None
+        numbers, coords = list(), list()
+        for line in lines[start + 1:start + 1 + n_atoms]:
+            tokens = line.split()
+            if len(tokens) < 5:
+                return None
+            number = NUMBER_BY_SYMBOL.get(tokens[0].capitalize())
+            if number is None:
+                return None
+            try:
+                xyz = [float(tokens[2]) * bohr_to_angstrom,
+                       float(tokens[3]) * bohr_to_angstrom,
+                       float(tokens[4]) * bohr_to_angstrom]
+            except ValueError:
+                return None
+            numbers.append(number)
+            coords.append(xyz)
+        return numbers, coords
+
+    def _parse_hess_atom_count(self, lines: list[str]) -> int | None:
+        """
+        Return the atom count declared by a ``.hess`` file's ``$atoms`` block.
+
+        Used to bound the ``$hessian`` dimension before allocating, so a
+        truncated or corrupt header cannot drive an unbounded allocation.
+
+        Returns: int | None
+            The atom count, or ``None`` when no ``$atoms`` block is present.
+        """
+        atoms = self._parse_hess_atoms(lines)
+        return len(atoms[0]) if atoms is not None else None
+
+    def parse_cartesian_hessian_geometry(self) -> tuple[dict[str, tuple] | None, str | None]:
+        """
+        Parse the geometry from the same ``.hess`` file as the Hessian.
+
+        Orca writes the geometry the Hessian was evaluated at into the
+        ``$atoms`` block of the ``.hess`` file itself, in Bohr. Reading it from
+        there rather than from the ``.out`` log guarantees the geometry and the
+        Hessian share a frame.
+
+        Returns: tuple[dict[str, tuple] | None, str | None]
+            The Cartesian geometry in Angstrom and the frame label
+            ``'orca_hess_atoms'``, or ``(None, None)`` when the ``.hess`` file
+            or its ``$atoms`` block is not reachable.
+        """
+        hess_path = self._locate_hess_file()
+        if hess_path is None:
+            return None, None
+        with open(hess_path, 'r') as f:
+            lines = f.readlines()
+        atoms = self._parse_hess_atoms(lines)
+        if atoms is None:
+            return None, None
+        numbers, coords = atoms
+        xyz = xyz_from_data(coords=np.array(coords, float), numbers=np.array(numbers, int))
+        return xyz, 'orca_hess_atoms'
+
     def parse_t1(self) -> float | None:
         """
         Parse the T1 parameter from a CC calculation.
@@ -299,6 +491,187 @@ class OrcaParser(ESSAdapter, ABC):
                         continue
         return None
 
+    def parse_wavefunction_stability(self) -> dict | None:
+        """
+        Parse the verdict of an ORCA ``STABPerform`` wavefunction stability analysis.
+
+        ORCA opens each analysis with a ``WAVEFUNCTION STABILITY ANALYSIS`` banner,
+        lists the lowest roots of the stability matrix as::
+
+            The eigenvalues of the stability matrix:
+               E( 0) =  -0.06466151 Eh
+
+        and closes with one of::
+
+            The stability analysis shows that the wavefunction is stable
+            The stability analysis indicates that the wavefunction is unstable
+
+        Unlike Gaussian, ORCA neither labels a root by the perturbation it came from
+        nor reports its spin expectation value, so every entry of
+        ``negative_eigenvectors`` carries ``'label': None``. A root printed as ``-0.00000000``
+        parses to negative zero and counts as negative, so a wavefunction reported unstable
+        on a marginal root is not reported with an empty root list.
+
+        TWO ANALYSES PER LOG. ``STABRestartUHFifUnstable true``, which ARC always sets
+        because ORCA 6.0.0 aborts in LEANSCF when it is false, rotates the orbitals of
+        an unstable wavefunction, re-converges the SCF and analyses the result again.
+        Such a log holds two analyses with opposite verdicts. ``verdict`` is read from
+        the FIRST one, which is the wavefunction under test, i.e. the one the frequency
+        job built its Hessian from; ``lowest_eigenvalue`` and ``negative_eigenvectors``
+        likewise come from that block. ``n_analyses`` counts the blocks and
+        ``followed_to_stable`` reports whether an analysis that opened UNSTABLE ended
+        stable, i.e. whether ORCA reached a stable solution after following the
+        instability. A log opening on a stable analysis reports ``False`` however many
+        blocks follow it, so a concatenation of stable analyses is not read as a follow
+        and no ``<S**2>`` of a wavefunction the log never relaxed into is reported.
+        ``restricted`` is read from the ``HFTyp`` line preceding the first analysis, so
+        a restart to an unrestricted solution does not overwrite the reference tested;
+        an ``RO`` reference is reported as ``None`` rather than as restricted, since its
+        instabilities relax neither of the two constraints the flags name.
+
+        WHICH SECTORS ARE TESTED, and hence which of the two instability flags a verdict
+        can set. ORCA analyses an RHF/RKS reference in UHF/UKS space and a UHF/UKS
+        reference in UHF/UKS space, both of which are Ms-conserving; the spin-flip
+        (UHF -> GHF) sector is analysed in neither, and Gaussian's ``Stable=RExt`` uses
+        the same Ms-conserving ``<AA,BB:AA,BB>`` singles matrix for both references, so
+        the two codes span the same space and neither reaches the GHF sector. Measured on
+        four systems the verdicts agreed in every case, and at matched functional (ORCA's
+        ``B3LYP/G`` is Gaussian's VWN3 parameterisation, while plain ORCA ``B3LYP`` uses
+        VWN-5) the lowest roots agreed to under 0.4% on the three systems where both codes
+        converged to the same SCF solution.
+
+        * An unrestricted reference is tested against spin-conserving rotations, which is
+          Gaussian's internal sector, so an instability is recorded as
+          ``internal_instability`` with ``relaxations`` empty. ``external_instability``
+          stays ``None``, since a spin-flip root would be the evidence for it and no root
+          of that kind is computed.
+        * For a restricted reference the single unlabelled matrix spans both the
+          spin-conserving (internal) and the spin-symmetry-breaking (RHF -> UHF, external)
+          sectors, and ORCA does not say which root it found. The sector is therefore
+          MEASURED rather than assumed, from the solution ORCA relaxes into: a nominal
+          singlet that reaches a stable solution whose ``<S**2>`` exceeds
+          ``SPIN_SYMMETRY_BREAKING_S_SQUARED`` broke the spin symmetry, which is an
+          external instability, while one that reaches a stable solution still at
+          ``<S**2>`` of zero relaxed within the spin-conserving sector, which is an
+          internal instability. That value is reported as ``s_squared_after_follow``, and
+          the threshold sits far above the ``1e-5`` a spin-symmetric UHF solution's
+          numerical noise reaches and far below the few tenths a broken-symmetry singlet
+          carries, so nothing realistic falls near it.
+          THE SECTOR IS READ OFF EVERY FOLLOWED SOLUTION, whether or not the last analysis
+          ended stable. ORCA re-converges the SCF before each analysis it runs, so the
+          ``<S**2>`` of the solution it relaxed into is that of a converged determinant
+          whichever try it stopped on, and a solution that reached ``<S**2>`` of a few
+          tenths broke the spin symmetry whether or not a further root remains. ORCA allows
+          five follow attempts, so a biradicaloid singlet reaching the last of them is
+          ordinary, and the question the sector answers is whether a lower solution exists
+          outside the spin symmetry rather than whether the one ORCA stopped on is itself
+          the bottom.
+          An instability ORCA never followed at all, which is a log holding one analysis,
+          leaves nothing to measure the sector from: the verdict is
+          ``'unattributed_instability'`` with both flags ``None``.
+
+        A log that ran an analysis but whose verdict line could not be read yields
+        ``'unknown'``. An instability whose reference could not be read yields
+        ``'unattributed_instability'``, since the reference decides which of the two flags
+        an instability sets. The roots of the first block are reported either way.
+
+        ``invalidates_analytic_freq`` follows the same rule the Gaussian reader applies, so
+        the two ESSs report the same value for the same physical situation: an internal
+        instability invalidates the analytic frequencies of either reference, an external
+        one invalidates only an unrestricted reference's, and an instability whose sector or
+        reference is undetermined leaves the question open as ``None``.
+
+        WHICH WAVEFUNCTION EACH FIELD DESCRIBES. ``verdict``, ``lowest_eigenvalue``,
+        ``negative_eigenvectors`` and ``restricted`` describe the wavefunction under TEST.
+        The rest of a restart log, its ``FINAL SINGLE POINT ENERGY`` and its final
+        ``<S**2>`` among them, describes the FOLLOWED solution ORCA relaxed into, which is a
+        different wavefunction; ``s_squared_after_follow`` is reported under a name that says
+        so. A consumer reading a quantity off the log this verdict came from is reading the
+        followed solution unless it is one of the four fields named here.
+
+        Returns: dict | None
+            ``{'verdict': str, 'internal_instability': bool | None,
+               'external_instability': bool | None, 'relaxations': list[str],
+               'negative_eigenvectors': list[dict], 'lowest_eigenvalue': float | None,
+               'restricted': bool | None, 'invalidates_analytic_freq': bool | None,
+               'n_analyses': int, 'followed_to_stable': bool,
+               's_squared_after_follow': float | None}``,
+            or ``None`` when the log holds no stability analysis. ``verdict`` is one of
+            ``'stable'``, ``'internal_instability'``, ``'external_instability'``,
+            ``'unattributed_instability'`` or ``'unknown'``.
+        """
+        blocks, restricted = list(), None
+        for line in _get_lines_from_file(self.log_file_path):
+            if 'WAVEFUNCTION STABILITY ANALYSIS' in line:
+                blocks.append({'eigenvalues': list(), 'verdict': None})
+                continue
+            if not blocks:
+                if 'HFTyp' in line:
+                    match = re.search(r'HFTyp\s*\.+\s*(\S+)', line)
+                    if match is not None:
+                        hf_type = match.group(1).upper()
+                        restricted = None if hf_type.startswith('RO') else not hf_type.startswith('U')
+                continue
+            match = re.match(r'\s*E\(\s*\d+\)\s*=\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[EeDd][-+]?\d+)?)\s*Eh', line)
+            if match is not None:
+                blocks[-1]['eigenvalues'].append(float(re.sub(r'[Dd]', 'e', match.group(1))))
+                continue
+            if 'stability analysis' in line and 'wavefunction is' in line:
+                if 'wavefunction is unstable' in line:
+                    blocks[-1]['verdict'] = 'unstable'
+                elif 'wavefunction is stable' in line:
+                    blocks[-1]['verdict'] = 'stable'
+        if not blocks:
+            return None
+        eigenvalues = blocks[0]['eigenvalues']
+        negative_eigenvectors = [{'label': None, 'eigenvalue': eigenvalue}
+                                 for eigenvalue in eigenvalues if _root_is_negative(eigenvalue)]
+        lowest_eigenvalue = min(eigenvalues) if eigenvalues else None
+        followed = len(blocks) > 1 and blocks[0]['verdict'] == 'unstable'
+        followed_to_stable = followed and blocks[-1]['verdict'] == 'stable'
+        s_squared_after_follow = None
+        if followed:
+            s_squared = self.parse_s_squared()
+            s_squared_after_follow = s_squared['s_squared'] if s_squared is not None else None
+        internal_instability, external_instability, relaxations = None, None, list()
+        if blocks[0]['verdict'] == 'stable':
+            verdict = 'stable'
+            internal_instability = False
+            external_instability = False if restricted else None
+        elif blocks[0]['verdict'] == 'unstable' and restricted is False:
+            verdict, internal_instability = 'internal_instability', True
+        elif blocks[0]['verdict'] == 'unstable' and restricted is True \
+                and s_squared_after_follow is not None:
+            if s_squared_after_follow > SPIN_SYMMETRY_BREAKING_S_SQUARED:
+                verdict, external_instability = 'external_instability', True
+                relaxations.append('RHF -> UHF')
+            else:
+                verdict, internal_instability = 'internal_instability', True
+        elif blocks[0]['verdict'] == 'unstable':
+            verdict = 'unattributed_instability'
+        else:
+            verdict = 'unknown'
+        if verdict == 'internal_instability':
+            invalidates_analytic_freq = True
+        elif verdict == 'stable':
+            invalidates_analytic_freq = False
+        elif verdict == 'external_instability' and restricted is not None:
+            invalidates_analytic_freq = not restricted
+        else:
+            invalidates_analytic_freq = None
+        return {'verdict': verdict,
+                'internal_instability': internal_instability,
+                'external_instability': external_instability,
+                'relaxations': relaxations,
+                'negative_eigenvectors': negative_eigenvectors,
+                'lowest_eigenvalue': lowest_eigenvalue,
+                'restricted': restricted,
+                'invalidates_analytic_freq': invalidates_analytic_freq,
+                'n_analyses': len(blocks),
+                'followed_to_stable': followed_to_stable,
+                's_squared_after_follow': s_squared_after_follow,
+                }
+
     def parse_s_squared(self) -> dict[str, float | None] | None:
         """
         Parse the S**2 spin-contamination diagnostic from an ORCA UHF/UKS log.
@@ -309,11 +682,17 @@ class OrcaParser(ESSAdapter, ABC):
             Ideal value S*(S+1) for S=0.5   :     0.750000
 
         The value of record is the *last* (converged / final-SCF) pair on the
-        log. Restricted (closed-shell) references don't print these lines, so
-        this returns ``None`` for them. ORCA has no spin-contaminant
-        annihilation step, so ``s_squared_annihilated`` is always ``None``.
-        The ideal value is taken from the ``Ideal value S*(S+1)`` line when
-        present (that is exactly the expected ``S(S+1)``), else from the
+        log; on a multi-image or multi-step log every SCF prints its own block
+        and the final one is the calculation's. On a wavefunction-stability log
+        that followed an instability, that is the SCF ORCA relaxed into and not
+        the one the analysis tested. Unlike Gaussian's ``<S**2>=``,
+        this anchor string occurs nowhere in an ORCA log but in that block, so
+        it needs no further anchoring. Restricted (closed-shell) references
+        don't print these lines, so this returns ``None`` for them. ORCA has no
+        spin-contaminant annihilation step, so ``s_squared_annihilated`` is
+        always ``None``. The ideal value is taken from the
+        ``Ideal value S*(S+1)`` line of the same block as the expectation value
+        of record (that is exactly the expected ``S(S+1)``), else from the
         parsed ``Multiplicity`` line.
 
         Returns: dict[str, float | None] | None
@@ -326,7 +705,7 @@ class OrcaParser(ESSAdapter, ABC):
                 match = re.search(r':\s*([-+]?\d*\.?\d+)', line)
                 if match:
                     try:
-                        s_squared = float(match.group(1))
+                        s_squared, s_squared_expected = float(match.group(1)), None
                     except ValueError:
                         continue
             elif 'Ideal value S*(S+1)' in line:
@@ -336,9 +715,9 @@ class OrcaParser(ESSAdapter, ABC):
                         s_squared_expected = float(match.group(1))
                     except ValueError:
                         continue
-            elif 'Multiplicity' in line and 'Mult' in line:
+            elif 'Multiplicity' in line:
                 match = re.search(r'\.\.\.\.\s*(\d+)', line)
-                if match:
+                if match and is_str_int(match.group(1)):
                     multiplicity = int(match.group(1))
         if s_squared is None:
             return None
@@ -407,14 +786,19 @@ class OrcaParser(ESSAdapter, ABC):
             return zpe * E_h_kJmol
         return None
 
-    def parse_1d_scan_energies(self) -> tuple[list[float] | None, list[float] | None]:
+    def _parse_1d_scan_surface(self) -> tuple[list[float], list[float]]:
         """
-        Parse the 1D torsion scan energies from an ESS log file.
+        Read Orca's ``The Calculated Surface using the 'Actual Energy'`` table.
 
-        Returns: tuple[list[float] | None, list[float] | None]
-            The electronic energy in kJ/mol and the dihedral scan angle in degrees.
+        Returns: tuple[list[float], list[float]]
+            The absolute electronic energies in Hartree and the matching scan
+            coordinate values as Orca tabulates them (degrees, on Orca's own
+            -180 to 180 origin for a dihedral scan).
+
+        Raises:
+            ValueError: If the table is absent or its two columns disagree in length.
         """
-        cs, es = [], []
+        cs, es = list(), list()
         with open(self.log_file_path, "r") as f:
             flag_actual = False
             for line in f.readlines():
@@ -429,7 +813,42 @@ class OrcaParser(ESSAdapter, ABC):
                         es.append(float(e))
         if len(cs) != len(es) or not cs:
             raise ValueError("Failed to parse 1D scan energies from Orca log file.")
-        return np.array(es), np.array(cs)
+        return es, cs
+
+    def parse_1d_scan_energies(self) -> tuple[list[float] | None, list[float] | None]:
+        """
+        Parse the 1D torsion scan energies from an ESS log file.
+
+        Returns: tuple[list[float] | None, list[float] | None]
+            The electronic energy in kJ/mol relative to the lowest point of the
+            scan, and the dihedral scan angle in degrees as a displacement from
+            the first scan point.
+        """
+        absolute_energies, raw_angles = self._parse_1d_scan_surface()
+        energies = np.array(absolute_energies, float)
+        energies -= np.min(energies)
+        energies *= E_h_kJmol
+        return energies.tolist(), scan_angles_to_displacement(raw_angles)
+
+    def parse_1d_scan_energies_hartree(self) -> tuple[list[float] | None, list[float] | None]:
+        """
+        Parse the 1D torsion scan absolute electronic energies in Hartree.
+
+        Returns ``(None, None)`` when the log carries no scan surface, honouring
+        :meth:`arc.parser.adapter.ESSAdapter.parse_1d_scan_energies_hartree`'s
+        contract that absence is not an error.
+
+        Returns: tuple[list[float] | None, list[float] | None]
+            The absolute electronic energy in Hartree and the dihedral scan
+            angle in degrees, on the same displacement origin and with the same
+            point ordering as :meth:`parse_1d_scan_energies`.
+        """
+        try:
+            absolute_energies, raw_angles = self._parse_1d_scan_surface()
+        except ValueError as exc:
+            logger.debug('No Orca 1D scan surface in %s: %s', self.log_file_path, exc)
+            return None, None
+        return list(absolute_energies), scan_angles_to_displacement(raw_angles)
 
     def parse_1d_scan_coords(self) -> list[dict[str, tuple]] | None:
         """
@@ -533,9 +952,24 @@ class OrcaParser(ESSAdapter, ABC):
         return None
 
 
-_ORCA_LETTER_TO_TCKDB_KIND: dict[str, tuple[str, int]] = {
-    'C': ('cartesian_atom', 1),
-    'B': ('bond', 2),
+_ORCA_CONSTRAINT_UNITS: dict[str, str] = {
+    'cartesian': 'angstrom',
+    'distance': 'angstrom',
+    'angle': 'degree',
+    'dihedral': 'degree',
+}
+"""
+The unit each ORCA constraint type is written in.
+
+ORCA reads Cartesian coordinates and constraint lengths in Angstrom unless a deck selects Bohr, and
+ARC writes Angstrom, so a length parsed from a deck ARC produced is in Angstrom. ``target_value`` is
+reported exactly as the deck states it and is never converted, so a deck written elsewhere in Bohr
+carries a value this unit does not describe.
+"""
+
+_ORCA_CONSTRAINT_COORDINATES: dict[str, tuple[str, int]] = {
+    'C': ('cartesian', 1),
+    'B': ('distance', 2),
     'A': ('angle', 3),
     'D': ('dihedral', 4),
 }
@@ -554,8 +988,8 @@ def parse_orca_constraints(file_path: str) -> list[dict]:
         end
 
     Notes / known limitations:
-        - ORCA atom indices in the input deck are 0-based; this parser
-          converts them to TCKDB's 1-based convention at the boundary.
+        - ORCA atom indices remain in their native 0-based convention; each
+          record reports ``index_base: 0`` explicitly.
         - ARC's ORCA adapter does not currently emit ``%geom Constraints``
           blocks (only ``%geom Scan``). This parser is therefore mainly
           defensive — it handles user-supplied decks and any future ARC
@@ -564,6 +998,11 @@ def parse_orca_constraints(file_path: str) -> list[dict]:
           and ``Constraints` blocks scattered across multiple ``%geom``
           sections are recognised; everything else is ignored with a
           debug log rather than failing the whole parse.
+
+    ``target_value`` is reported exactly as written in the deck, never
+    converted. ``target_value_units`` is ``'degree'`` for an angle or dihedral
+    and ``'angstrom'`` for a Cartesian or distance constraint, the unit ORCA
+    reads by default and the one ARC writes.
 
     Returns ``[]`` on file read errors or when no recognised
     ``Constraints`` block is found.
@@ -597,9 +1036,9 @@ def _parse_orca_constraint_line(line: str) -> dict | None:
         { <letter> <atom indices...> [<value>] C }
 
     The trailing ``C`` flags the coordinate as constrained. ``value`` is
-    optional. Atom indices are converted from 0-based (ORCA) to 1-based
-    (TCKDB). Unparseable lines return None and are skipped silently at
-    debug level so the rest of the block still parses.
+    optional. Atom indices remain 0-based, as written by ORCA. Unparseable
+    lines return ``None`` and are skipped silently at debug level so the rest
+    of the block still parses.
     """
     stripped = line.strip()
     if not stripped or stripped.startswith('#'):
@@ -612,12 +1051,12 @@ def _parse_orca_constraint_line(line: str) -> dict | None:
     if len(tokens) < 2:
         return None
     letter = tokens[0].upper()
-    entry = _ORCA_LETTER_TO_TCKDB_KIND.get(letter)
+    entry = _ORCA_CONSTRAINT_COORDINATES.get(letter)
     if entry is None:
         logger.debug("parse_orca_constraints: skipping unrecognised letter "
                      "%s in line: %s", letter, line)
         return None
-    kind, expected_n = entry
+    coordinate_type, expected_n = entry
 
     if len(tokens) < 1 + expected_n:
         logger.debug("parse_orca_constraints: too few atom tokens for letter "
@@ -625,13 +1064,11 @@ def _parse_orca_constraint_line(line: str) -> dict | None:
         return None
 
     try:
-        zero_based = [int(tok) for tok in tokens[1:1 + expected_n]]
+        atom_indices = [int(tok) for tok in tokens[1:1 + expected_n]]
     except ValueError:
         logger.debug("parse_orca_constraints: non-integer atom index in: %s",
                      line)
         return None
-    atoms = [a + 1 for a in zero_based]
-
     target_value: float | None = None
     rest = tokens[1 + expected_n:]
     for tok in rest:
@@ -643,9 +1080,11 @@ def _parse_orca_constraint_line(line: str) -> dict | None:
             continue
 
     return {
-        'constraint_kind': kind,
-        'atoms': atoms,
+        'coordinate_type': coordinate_type,
+        'atom_indices': atom_indices,
+        'index_base': 0,
         'target_value': target_value,
+        'target_value_units': _ORCA_CONSTRAINT_UNITS[coordinate_type],
     }
 
 

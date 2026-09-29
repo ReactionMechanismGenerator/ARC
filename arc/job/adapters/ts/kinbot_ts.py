@@ -14,6 +14,7 @@ import os
 from typing import TYPE_CHECKING
 
 from arc.common import ARC_PATH, almost_equal_coords, get_logger, read_yaml_file, save_yaml_file
+from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
@@ -250,7 +251,7 @@ class KinBotAdapter(JobAdapter):
         Execute a job incore.
         """
         if not KINBOT_PYTHON or not os.path.isfile(KINBOT_PYTHON):
-            raise FileNotFoundError('The KinBot python executable was not found. '
+            raise DependencyError('The KinBot python executable was not found. '
                                     'Make sure the kinbot_env exists and KINBOT_PYTHON is configured '
                                     '(run devtools/install_kinbot.sh to create the environment). '
                                     f'See {self.url} for more information.')
