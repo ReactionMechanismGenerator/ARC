@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 
 from arc.checks.common import TS_IRC_FAILED_MARKER
-from arc.common import ARC_TESTING_PATH, save_yaml_file
+from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file, save_yaml_file
 from arc.exceptions import InputError
 from arc.level import Level
 from arc.reaction import ARCReaction
@@ -21,9 +21,16 @@ from arc.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
 from arc.statmech.arkane import ArkaneAdapter
 from arc.statmech.arkane import (
+    AEC_SECTION_END,
+    AEC_SECTION_START,
+    FREQ_SECTION_START,
+    PBAC_SECTION_END,
+    PBAC_SECTION_START,
     _all_available_years,
     _available_years_for_level,
+    _effective_method,
     _extract_section,
+    _match_aec_yml_key,
     find_best_across_files,
     _find_best_level_key_for_sp_level,
     get_qm_corrections_files,
@@ -520,6 +527,221 @@ class TestArkaneAdapter(unittest.TestCase):
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'arkane_input_tests_delete'), ignore_errors=True)
 
 
+class TestDispersionAndSolvationMatching(unittest.TestCase):
+    """
+    Contains unit tests for matching a level's separate ``dispersion`` and ``solvation_method`` fields against
+    Arkane's quantum corrections database and ARC's data/AEC.yml.
+    """
+
+    @staticmethod
+    def _write_qm_file(keys):
+        """Write a minimal quantum corrections data.py whose AEC section holds ``keys``, in order."""
+        content = '\n'.join(['atom_energies = {']
+                            + [f'    "{key}": {{}},' for key in keys]
+                            + ['}', 'pbac = {'])
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.py') as f:
+            f.write(content)
+        return f.name
+
+    def _best(self, level, keys):
+        """The AEC key matched for ``level`` among ``keys``."""
+        path = self._write_qm_file(keys)
+        self.addCleanup(os.remove, path)
+        return _find_best_level_key_for_sp_level(level, path, 'atom_energies = {', 'pbac = {')
+
+    def test_effective_method(self):
+        """The dispersion is folded into the method in one spelling, wherever the level carries it."""
+        self.assertEqual(_effective_method('b3lyp', 'gd3bj'), ('b3lypd3bj', None))
+        self.assertEqual(_effective_method('B3LYP-D3(BJ)'), ('b3lypd3bj', None))
+        self.assertEqual(_effective_method('b3lyp', 'EmpiricalDispersion=GD3BJ'), ('b3lypd3bj', None))
+        self.assertEqual(_effective_method('b2plypd32023'), ('b2plypd3', 2023))
+        self.assertEqual(_effective_method('wb97xd2023'), ('wb97xd', 2023))
+        self.assertEqual(_effective_method('wb97xd3'), ('wb97xd3', None))
+        self.assertEqual(_effective_method('dlpnoccsd(t)f122023'), ('dlpnoccsd(t)f12', 2023))
+        self.assertEqual(_effective_method(None, 'gd3bj'), (None, None))
+        self.assertEqual(_effective_method('b2plyp-gd3'), ('b2plypd3', None))
+        # A dispersion correction added to a separately parametrized "-D" functional stays apart from its name.
+        self.assertEqual(_effective_method('b97', 'gd3'), ('b97 + d3', None))
+        self.assertEqual(_effective_method('b97-gd3'), ('b97 + d3', None))
+        self.assertEqual(_effective_method('wb97x', 'gd3'), ('wb97x + d3', None))
+        self.assertEqual(_effective_method('wB97X-GD3'), ('wb97x + d3', None))
+        self.assertEqual(_effective_method('b97-d3'), ('b97d3', None))
+        self.assertEqual(_effective_method('b97d32023'), ('b97d3', 2023))
+        self.assertEqual(_effective_method('wb97x-d3'), ('wb97xd3', None))
+
+    def test_a_dispersion_field_does_not_match_the_plain_method(self):
+        """b3lyp/def2tzvp with dispersion gd3bj is not b3lyp/def2tzvp: Arkane has only the plain b3lyp2023 set."""
+        qm_corr_files = get_qm_corrections_files()
+        plain = Level(method='b3lyp', basis='def2tzvp', software='gaussian')
+        d3bj = Level(method='b3lyp', basis='def2tzvp', software='gaussian', dispersion='gd3bj')
+        for start, end in ((AEC_SECTION_START, AEC_SECTION_END), (PBAC_SECTION_START, PBAC_SECTION_END)):
+            with self.subTest(section=start):
+                self.assertEqual(find_best_across_files(plain, qm_corr_files, start, end),
+                                 "LevelOfTheory(method='b3lyp2023',basis='def2tzvp',software='gaussian')")
+                self.assertIsNone(find_best_across_files(d3bj, qm_corr_files, start, end))
+        self.assertIsNone(get_arkane_model_chemistry(sp_level=d3bj, freq_scale_factor=1.0))
+        self.assertFalse(check_arkane_bacs(sp_level=d3bj, bac_type='p'))
+        with self.assertRaises(ValueError):
+            check_arkane_aec(sp_level=d3bj, raise_error=True)
+
+    def test_a_dispersion_field_matches_a_key_with_that_dispersion(self):
+        """b2plyp with dispersion gd3 is Arkane's b2plypd3 for the AEC and the BAC entries. Frequency keys are
+        matched as before, which reads only the method string."""
+        qm_corr_files = get_qm_corrections_files()
+        expected = "LevelOfTheory(method='b2plypd32023',basis='def2tzvp',software='gaussian')"
+        freq_key = "LevelOfTheory(method='b2plypd3',basis='def2tzvp')"
+        for level, expected_freq_key in (
+                (Level(method='b2plyp', basis='def2tzvp', software='gaussian', dispersion='gd3'), None),
+                (Level(method='b2plyp-gd3', basis='def2tzvp', software='gaussian'), None),
+                (Level(method='b2plypd3', basis='def2tzvp', software='gaussian'), freq_key),
+                (Level(method='b2plyp-d3', basis='def2-tzvp', software='gaussian'), freq_key)):
+            with self.subTest(level=str(level)):
+                self.assertEqual(find_best_across_files(level, qm_corr_files, AEC_SECTION_START, AEC_SECTION_END),
+                                 expected)
+                self.assertEqual(find_best_across_files(level, qm_corr_files, PBAC_SECTION_START,
+                                                        PBAC_SECTION_END), expected)
+                self.assertEqual(find_best_across_files(level, qm_corr_files, FREQ_SECTION_START, None),
+                                 expected_freq_key)
+                self.assertEqual(get_arkane_model_chemistry(sp_level=level, freq_scale_factor=1.0), expected)
+
+    def test_a_dispersion_added_to_a_separately_parametrized_functional_matches_nothing(self):
+        """B97 + D3 is not Grimme's B97-D3, and wB97X + D3 is not wB97X-D3: the separate field and Gaussian's
+        g-prefixed spelling match none of Arkane's energy-correction keys, while the functionals' own names still
+        match as they did before."""
+        qm_corr_files = get_qm_corrections_files()
+        for level in (Level(method='b97', basis='def2tzvp', software='gaussian', dispersion='gd3'),
+                      Level(method='b97-gd3', basis='def2tzvp', software='gaussian'),
+                      Level(method='wb97x', basis='def2tzvp', software='qchem', dispersion='gd3'),
+                      Level(method='wb97x-gd3', basis='def2tzvp', software='qchem'),
+                      Level(method='b97', basis='def2msvp', software='qchem', dispersion='d3')):
+            for start, end in ((AEC_SECTION_START, AEC_SECTION_END), (PBAC_SECTION_START, PBAC_SECTION_END)):
+                with self.subTest(level=str(level), section=start):
+                    self.assertIsNone(find_best_across_files(level, qm_corr_files, start, end))
+        for level, key in ((Level(method='b97-d3', basis='def2tzvp', software='gaussian'),
+                            "LevelOfTheory(method='b97d32023',basis='def2tzvp',software='gaussian')"),
+                           (Level(method='b97d3', basis='def2msvp', software='qchem'),
+                            "LevelOfTheory(method='b97d3',basis='def2msvp',software='qchem')"),
+                           (Level(method='wb97xd3', basis='def2tzvp', software='qchem'),
+                            "LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')"),
+                           (Level(method='wb97x-d3', basis='def2-tzvp', software='qchem'),
+                            "LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')")):
+            with self.subTest(level=str(level)):
+                self.assertEqual(find_best_across_files(level, qm_corr_files, AEC_SECTION_START, AEC_SECTION_END),
+                                 key)
+
+    def test_frequency_keys_are_matched_as_before(self):
+        """The dispersion field and the solvation method are not read for frequency keys: with no scale factor
+        set, a missing frequency key would drop the whole model chemistry and the sp level's corrections."""
+        qm_corr_files = get_qm_corrections_files()
+        for level, key in ((Level(method='b3lyp', basis='6-31g(d,p)', software='gaussian', dispersion='gd3bj'),
+                            "LevelOfTheory(method='b3lyp',basis='631g(d,p)')"),
+                           (Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                                  solvation_method='smd', solvent='water'),
+                            "LevelOfTheory(method='wb97xd',basis='def2tzvp',software='gaussian')")):
+            with self.subTest(level=str(level)):
+                self.assertEqual(find_best_across_files(level, qm_corr_files, FREQ_SECTION_START, None), key)
+
+    def test_a_gas_phase_sp_level_with_a_solvated_freq_level_keeps_its_corrections(self):
+        """With no frequency scale factor, a gas-phase sp level and an SMD frequency level still get the composite
+        model chemistry, and so the sp level's atom energy corrections, as before."""
+        model_chemistry = get_arkane_model_chemistry(
+            sp_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian'),
+            freq_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                             solvation_method='smd', solvent='water'),
+            freq_scale_factor=None)
+        self.assertEqual(model_chemistry,
+                         "CompositeLevelOfTheory(\n"
+                         "    freq=LevelOfTheory(method='wb97xd',basis='def2tzvp',software='gaussian'),\n"
+                         "    energy=LevelOfTheory(method='wb97xd2023',basis='def2tzvp',software='gaussian')\n"
+                         ")")
+
+    def test_string_and_field_dispersion_forms_match_alike(self):
+        """The dispersion in the method string or the separate field selects the same key, and only that key."""
+        keys = ["LevelOfTheory(method='b3lypd3bj',basis='def2tzvp',software='gaussian')",
+                "LevelOfTheory(method='b3lyp',basis='def2tzvp',software='gaussian')"]
+        for level in (Level(method='b3lyp', basis='def2tzvp', software='gaussian', dispersion='gd3bj'),
+                      Level(method='b3lyp-d3bj', basis='def2tzvp', software='gaussian'),
+                      Level(method='b3lyp-d3(bj)', basis='def2tzvp', software='gaussian'),
+                      Level(method='b3lyp', basis='def2tzvp', software='gaussian',
+                            dispersion='empiricaldispersion=gd3bj')):
+            with self.subTest(level=str(level)):
+                self.assertEqual(self._best(level, keys), keys[0])
+        self.assertEqual(self._best(Level(method='b3lyp', basis='def2tzvp', software='gaussian'), keys), keys[1])
+        self.assertIsNone(self._best(Level(method='b3lyp', basis='def2tzvp', software='gaussian', dispersion='gd3'),
+                                     keys))
+
+    def test_wb97xd_and_wb97xd3_stay_distinct(self):
+        """wB97X-D (built-in D2) and wB97X-D3 are two functionals."""
+        keys = ["LevelOfTheory(method='wb97xd3',basis='def2tzvp',software='qchem')",
+                "LevelOfTheory(method='wb97xd',basis='def2tzvp',software='qchem')"]
+        self.assertEqual(self._best(Level(method='wb97xd', basis='def2tzvp', software='qchem'), keys), keys[1])
+        self.assertEqual(self._best(Level(method='wb97xd3', basis='def2tzvp', software='qchem'), keys), keys[0])
+
+    def test_a_solvated_level_matches_no_key(self):
+        """Arkane has only gas-phase corrections, so a solvated level has none, and says why."""
+        qm_corr_files = get_qm_corrections_files()
+        solvated = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                         solvation_method='smd', solvent='water')
+        for start, end in ((AEC_SECTION_START, AEC_SECTION_END), (PBAC_SECTION_START, PBAC_SECTION_END)):
+            with self.subTest(section=start):
+                self.assertIsNone(find_best_across_files(solvated, qm_corr_files, start, end))
+                self.assertEqual(_all_available_years(solvated, qm_corr_files, start, end), [])
+        with self.assertLogs('arc', level='WARNING') as cm:
+            self.assertIsNone(get_arkane_model_chemistry(sp_level=solvated, freq_scale_factor=1.0))
+        self.assertTrue(any('solvation method smd' in msg for msg in cm.output))
+        with self.assertRaises(ValueError) as error:
+            check_arkane_aec(sp_level=solvated, raise_error=True)
+        for remedy in ('solvated', 'compute_thermo', 'gas-phase arkane_level_of_theory', 'data/AEC.yml'):
+            self.assertIn(remedy, str(error.exception))
+        with self.assertRaises(ValueError):
+            check_arkane_bacs(sp_level=solvated, bac_type='p', raise_error=True)
+        self.assertFalse(check_arkane_bacs(sp_level=solvated, bac_type='p'))
+
+    def test_common_levels_match_as_before(self):
+        """Levels with no dispersion field and no solvation keep their keys."""
+        qm_corr_files = get_qm_corrections_files()
+        expected = [
+            (Level(method='wb97xd', basis='def2tzvp', software='gaussian'),
+             "LevelOfTheory(method='wb97xd2023',basis='def2tzvp',software='gaussian')"),
+            (Level(method='CBS-QB3'), "LevelOfTheory(method='cbsqb3',software='gaussian')"),
+            (Level(method='dlpno-ccsd(t)-f12', basis='cc-pvtz-f12', software='orca'),
+             "LevelOfTheory(method='dlpnoccsd(t)f122023',basis='ccpvtzf12',software='orca')"),
+            (Level(method='DLPNO-CCSD(T)', basis='def2-TZVP', software='orca'),
+             "LevelOfTheory(method='dlpnoccsd(t)2023',basis='def2tzvp',software='orca')"),
+            (Level(method='b97d3', basis='def2tzvp', software='gaussian'),
+             "LevelOfTheory(method='b97d32023',basis='def2tzvp',software='gaussian')"),
+            (Level(method='b3lyp', basis='6-31g(d,p)', software='gaussian'),
+             "LevelOfTheory(method='b3lyp',basis='631g(d,p)',software='gaussian')"),
+        ]
+        for level, key in expected:
+            with self.subTest(level=str(level)):
+                self.assertEqual(find_best_across_files(level, qm_corr_files, AEC_SECTION_START, AEC_SECTION_END),
+                                 key)
+        self.assertEqual(find_best_across_files(Level(method='wb97xd', basis='def2tzvp', software='gaussian'),
+                                                qm_corr_files, FREQ_SECTION_START, None),
+                         "LevelOfTheory(method='wb97xd',basis='def2tzvp',software='gaussian')")
+
+    def test_aec_yml_lookup(self):
+        """ARC's data/AEC.yml is matched like Arkane's keys: dispersion folded in, and no solvated match."""
+        aec_dict = read_yaml_file(os.path.join(ARC_PATH, 'data', 'AEC.yml'))
+        self.assertEqual(_match_aec_yml_key(Level('gfn2'), aec_dict), 'gfn2')
+        self.assertIsNone(_match_aec_yml_key(Level(method='gfn2', solvation_method='alpb', solvent='water'),
+                                             aec_dict))
+        self.assertIsNone(_match_aec_yml_key(Level(method='wb97xd', basis='def2tzvp'), aec_dict))
+        aec_dict = {'b3lyp-d3bj/def2-tzvp': {'H': 1}, 'b3lyp/def2tzvp': {'H': 2}, 'b3lyp/def2tzvp (2023)': {'H': 3}}
+        for level in (Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj'),
+                      Level(method='b3lyp-d3bj', basis='def2tzvp'),
+                      Level(method='B3LYP-D3(BJ)', basis='def2-TZVP')):
+            with self.subTest(level=str(level)):
+                self.assertEqual(_match_aec_yml_key(level, aec_dict), 'b3lyp-d3bj/def2-tzvp')
+        self.assertEqual(_match_aec_yml_key(Level(method='b3lyp', basis='def2tzvp'), aec_dict), 'b3lyp/def2tzvp')
+        self.assertEqual(_match_aec_yml_key(Level(method='b3lyp', basis='def2tzvp', year=2023), aec_dict),
+                         'b3lyp/def2tzvp (2023)')
+        self.assertIsNone(_match_aec_yml_key(Level(method='b3lyp', basis='def2tzvp', dispersion='gd3'), aec_dict))
+        self.assertIsNone(_match_aec_yml_key(Level(method='b3lyp', basis='def2tzvp', solvation_method='smd',
+                                                   solvent='water'), aec_dict))
+
+
 class TestArkaneCorrectionFlags(unittest.TestCase):
     """
     Contains unit tests for the energy-correction switches ArkaneAdapter records on the thermo it parses.
@@ -621,6 +843,52 @@ class TestArkaneCorrectionFlags(unittest.TestCase):
         self.assertIs(spc.thermo.atom_corrections_applied, False)
         self.assertIs(spc.thermo.bond_corrections_applied, False)
         self.assertIsNone(spc.thermo.atom_corrections_level)
+
+    def test_thermo_of_a_solvated_level_has_no_corrections(self):
+        """Arkane has no corrections for a solvated level, so the run is the no-correction fallback, although
+        the gas-phase wb97xd/def2tzvp has them."""
+        for sp_level in (Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                               solvation_method='smd', solvent='water'),
+                         Level(method='gfn2', solvation_method='alpb', solvent='water')):
+            with self.subTest(sp_level=str(sp_level)):
+                spc, input_py = self._compute_thermo_with_mocked_arkane(sp_level=sp_level, bac_type='p')
+                self.assertNotIn('modelChemistry = ', input_py)
+                self.assertNotIn('atomEnergies = ', input_py)
+                self.assertIn('useAtomCorrections = False\n', input_py)
+                self.assertIn('useBondCorrections = False\n', input_py)
+                self.assertIs(spc.thermo.atom_corrections_applied, False)
+                self.assertIs(spc.thermo.bond_corrections_applied, False)
+                self.assertIsNone(spc.thermo.atom_corrections_level)
+
+    def test_thermo_of_a_dispersion_field_level_uses_only_that_dispersion(self):
+        """b3lyp/def2tzvp + gd3bj gets no b3lyp2023 corrections; b2plyp/def2tzvp + gd3 gets the b2plypd3 ones."""
+        spc, input_py = self._compute_thermo_with_mocked_arkane(
+            sp_level=Level(method='b3lyp', basis='def2tzvp', software='gaussian', dispersion='gd3bj'), bac_type='p')
+        self.assertNotIn('modelChemistry = ', input_py)
+        self.assertIn('useAtomCorrections = False\n', input_py)
+        self.assertIs(spc.thermo.atom_corrections_applied, False)
+        self.assertIsNone(spc.thermo.atom_corrections_level)
+        sp_level = Level(method='b2plyp', basis='def2tzvp', software='gaussian', dispersion='gd3')
+        spc, input_py = self._compute_thermo_with_mocked_arkane(sp_level=sp_level, bac_type='p')
+        self.assertIn("modelChemistry = LevelOfTheory(method='b2plypd32023'", input_py)
+        self.assertIn('useAtomCorrections = True\n', input_py)
+        self.assertIn('useBondCorrections = True\n', input_py)
+        self.assertIs(spc.thermo.atom_corrections_applied, True)
+        self.assertEqual(spc.thermo.atom_corrections_level, sp_level)
+
+    def test_thermo_of_a_gas_phase_sp_level_with_a_solvated_freq_level_is_corrected(self):
+        """With no frequency scale factor, an SMD frequency level still matches its gas-phase Arkane frequency key,
+        as before, so the gas-phase sp level's corrections are applied."""
+        sp_level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        spc, input_py = self._compute_thermo_with_mocked_arkane(
+            sp_level=sp_level, bac_type='p', freq_scale_factor=None,
+            freq_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                             solvation_method='smd', solvent='water'))
+        self.assertIn('modelChemistry = CompositeLevelOfTheory(', input_py)
+        self.assertIn('useAtomCorrections = True\n', input_py)
+        self.assertIn('useBondCorrections = True\n', input_py)
+        self.assertIs(spc.thermo.atom_corrections_applied, True)
+        self.assertEqual(spc.thermo.atom_corrections_level, sp_level)
 
     def test_thermo_records_the_fallback_of_an_unmatched_frequency_level(self):
         """Without a frequency scale factor ARC asks Arkane for a composite model chemistry, which needs a

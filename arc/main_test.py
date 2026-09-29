@@ -778,39 +778,49 @@ class TestWarnIfArkaneLevelDiffers(unittest.TestCase):
                 energy_level=Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj')))
         self.assertTrue(any('differs from the level' in record for record in captured.output))
 
+    def test_levels_are_named_with_their_dispersion_and_solvation(self):
+        """Two levels that differ only in the dispersion field are named so the difference shows."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+            self.assertTrue(warn_if_arkane_level_differs(
+                arkane_level=Level(method='b3lyp', basis='def2tzvp'),
+                energy_level=Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj',
+                                   solvation_method='smd', solvent='water')))
+        self.assertTrue(any('(b3lyp/def2tzvp)' in record
+                            and 'b3lyp/def2tzvp, dispersion: gd3bj, solvation_method: smd, solvent: water' in record
+                            for record in captured.output))
+
     def test_a_different_dispersion_suffix_is_a_different_method(self):
         """``wb97xd`` and ``wb97xd3`` are distinct functionals, not spellings of one."""
         with self.assertLogs(logger=get_logger(), level=logging.WARNING):
             self.assertTrue(warn_if_arkane_level_differs(arkane_level=Level(method='wb97xd', basis='def2tzvp'),
                                                          energy_level=Level(method='wb97xd3', basis='def2tzvp')))
 
-    def test_a_solvated_energy_level_is_warned_about(self):
-        """ARC's Arkane matching ignores solvation_method, so gas-phase corrections are applied to solvated
-        energies, whether or not the Arkane level names the same solvation method."""
-        energy_level = Level(method='b3lyp', basis='def2tzvp', solvation_method='smd', solvent='water')
-        for arkane_level in (Level(method='b3lyp', basis='def2tzvp'),
-                             Level(method='b3lyp', basis='def2tzvp', solvation_method='smd', solvent='water')):
-            with self.subTest(arkane_level=str(arkane_level)):
-                with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
-                    self.assertTrue(warn_if_arkane_level_differs(arkane_level=arkane_level,
-                                                                 energy_level=energy_level))
-                self.assertTrue(any('solvation' in record and 'ignoring' in record and 'gas-phase' in record
-                                    for record in captured.output))
-                self.assertFalse(any('differs from the level' in record for record in captured.output))
+    def test_a_gas_phase_arkane_level_for_solvated_energies_is_warned_about(self):
+        """An explicit gas-phase Arkane level matches Arkane's corrections, which are then subtracted from solvated
+        energies; the levels compare equal on method and basis, so this is its own warning."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+            self.assertTrue(warn_if_arkane_level_differs(
+                arkane_level=Level(method='b3lyp', basis='def2tzvp'),
+                energy_level=Level(method='b3lyp', basis='def2tzvp', solvation_method='smd', solvent='water')))
+        self.assertTrue(any('solvation method' in record and 'gas-phase' in record for record in captured.output))
+        self.assertFalse(any('differs from the level' in record for record in captured.output))
+        self.assertFalse(any('ignoring' in record for record in captured.output))
 
-    def test_an_arkane_level_with_a_separate_dispersion_field_is_warned_about(self):
-        """ARC's Arkane matching ignores the dispersion field, so the Arkane level's own dispersion is dropped from
-        the corrections even when it matches the energy level."""
+    def test_a_solvated_arkane_level_is_not_warned_about_here(self):
+        """A solvated Arkane level matches no Arkane corrections, which the startup AEC/BAC check reports; nothing
+        gas-phase is applied to the solvated energies, so this function has nothing to add."""
+        level = Level(method='b3lyp', basis='def2tzvp', solvation_method='smd', solvent='water')
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=level, energy_level=level))
+
+    def test_an_arkane_level_with_a_separate_dispersion_field_is_not_warned_about(self):
+        """ARC matches the Arkane level's dispersion field as part of its method, so an Arkane level carrying the
+        energy level's dispersion, in either form, is the same level."""
         for energy_level in (Level(method='b3lyp-d3bj', basis='def2tzvp'),
                              Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj')):
             with self.subTest(energy_level=str(energy_level)):
-                with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
-                    self.assertTrue(warn_if_arkane_level_differs(
-                        arkane_level=Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj'),
-                        energy_level=energy_level))
-                self.assertTrue(any('dispersion field' in record and 'ignoring' in record
-                                    for record in captured.output))
-                self.assertFalse(any('differs from the level' in record for record in captured.output))
+                self.assertFalse(warn_if_arkane_level_differs(
+                    arkane_level=Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj'),
+                    energy_level=energy_level))
 
 
 class TestArkaneLevelWarningAtStartup(unittest.TestCase):
@@ -838,6 +848,21 @@ class TestArkaneLevelWarningAtStartup(unittest.TestCase):
             ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
                 level_of_theory='CBS-QB3', compute_thermo=False)
         mock_warn.assert_not_called()
+
+    def test_startup_treats_a_solvated_level_as_one_without_corrections(self):
+        """Arkane has no corrections for a solvated level, so ARC's startup check does what it does for any level
+        without corrections: raise when thermo is computed, only warn when it is not."""
+        solvated = {'method': 'wb97xd', 'basis': 'def2tzvp', 'solvation_method': 'smd', 'solvent': 'water'}
+        with self.assertRaises(ValueError) as error:
+            ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
+                sp_level=solvated, opt_level='wb97xd/def2tzvp', freq_scale_factor=1.0)
+        for remedy in ('solvated', 'compute_thermo', 'arkane_level_of_theory'):
+            self.assertIn(remedy, str(error.exception))
+        with patch('arc.statmech.arkane.logger.warning') as mock_warning:
+            ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
+                sp_level=solvated, opt_level='wb97xd/def2tzvp', freq_scale_factor=1.0, compute_thermo=False)
+        messages = [str(call.args[0]) for call in mock_warning.call_args_list if call.args]
+        self.assertTrue(any('solvated' in message for message in messages))
 
     def test_startup_warns_about_a_dummy_arkane_level(self):
         """The examples/Stationary/bde setup warns when ARC is initialized.

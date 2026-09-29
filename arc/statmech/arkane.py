@@ -401,8 +401,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                                                      ) or ''
 
         aec_dict = read_yaml_file(os.path.join(ARC_PATH, 'data', 'AEC.yml'))
-        atom_energies = f'\natomEnergies = {aec_dict[self.sp_level.simple()]}' \
-            if self.sp_level.simple() in aec_dict else ''
+        aec_yml_key = _match_aec_yml_key(self.sp_level, aec_dict)
+        atom_energies = f'\natomEnergies = {aec_dict[aec_yml_key]}' if aec_yml_key is not None else ''
 
         self.use_aec = bool(model_chemistry or atom_energies)
         self.use_bac = self.bac_type is not None and self.use_aec
@@ -883,6 +883,237 @@ def _split_method_year(method_norm: str) -> tuple:
     return base, int(year_str)
 
 
+# A dispersion suffix at the end of a normalized method string, e.g., the "d3(bj)" of "b3lypd3(bj)".
+DISPERSION_SUFFIX_REGEX = re.compile(r'g?d[234](\(?bj\)?)?$')
+
+
+def _canonical_dispersion(dispersion: str | None) -> str:
+    """
+    Return a dispersion correction in one canonical spelling, so that ``gd3bj``, ``D3(BJ)``, ``d3-bj`` and
+    ``EmpiricalDispersion=GD3BJ`` all read ``d3bj``.
+
+    Args:
+        dispersion (str | None): The dispersion correction, as a method suffix or a ``Level.dispersion`` value.
+
+    Returns:
+        str: The canonical dispersion, ``''`` if there is none.
+    """
+    if not dispersion:
+        return ''
+    dispersion = dispersion.lower()
+    for character in ('-', ' ', '(', ')'):
+        dispersion = dispersion.replace(character, '')
+    dispersion = dispersion.removeprefix('empiricaldispersion=')
+    if dispersion in ('gd2', 'gd3', 'gd3bj'):
+        dispersion = dispersion[1:]  # Gaussian's spelling.
+    return dispersion
+
+
+# Functionals whose dispersion-suffixed name is a separately parametrized functional, not the functional with an
+# added dispersion correction: B97-D/B97-D3 (Grimme's refit of B97, Arkane's ``b97d3``), wB97X-D/wB97X-D3
+# (Chai & Head-Gordon; Lin et al., Arkane's ``wb97xd``/``wb97xd3``), and wB97M-D3(BJ) (Najibi & Goerigk, not in
+# Arkane's database but the same situation). A separate dispersion correction on these is kept apart from the name.
+SEPARATELY_PARAMETRIZED_DISPERSION_BASES = ('b97', 'wb97x', 'wb97m')
+
+
+def _effective_method(method: str | None, dispersion: str | None = None) -> tuple:
+    """
+    Split a method into the normalized base it is matched on and its refit year, with the dispersion correction
+    folded into the base in a canonical spelling. The dispersion may be carried in the method string or passed
+    separately (a ``Level.dispersion`` value), so ``b3lyp`` + ``gd3bj``, ``b3lyp-d3bj`` and ``b3lyp-d3(bj)`` all
+    give ``b3lypd3bj``, while ``wb97xd`` and ``wb97xd3`` stay two methods.
+
+    For a functional in ``SEPARATELY_PARAMETRIZED_DISPERSION_BASES`` a dispersion correction given separately, or
+    in Gaussian's ``g``-prefixed spelling of an added correction (``b97-gd3``), is not folded: B97 + D3 is not the
+    B97-D3 functional. The base is then ``'<functional> + <dispersion>'``, which contains a space, so it never
+    equals a method as written in an Arkane key other than one in that same added-correction spelling. The
+    functional's own name (``b97-d3``, ``b97d3``, ``wb97xd3``) is still folded as for any method.
+
+    Examples:
+        ("B3LYP-D3(BJ)", None) -> ("b3lypd3bj", None)
+        ("b3lyp", "gd3bj")     -> ("b3lypd3bj", None)
+        ("b2plyp-gd3", None)   -> ("b2plypd3", None)
+        ("b2plypd32023", None) -> ("b2plypd3", 2023)
+        ("wb97xd", None)       -> ("wb97xd", None)
+        ("b97-d3", None)       -> ("b97d3", None)
+        ("b97", "gd3")         -> ("b97 + d3", None)
+        ("wb97x-gd3", None)    -> ("wb97x + d3", None)
+
+    Args:
+        method (str | None): The method, as written in a level or an Arkane key.
+        dispersion (str | None): A dispersion correction carried outside the method string.
+
+    Returns:
+        tuple: The normalized ``(base, year)``; ``(None, None)`` without a method.
+    """
+    method_norm = _normalize_name(method)
+    if method_norm is None:
+        return None, None
+    base, year = _split_method_year(method_norm)
+    added = ''  # A dispersion correction added to a separately parametrized functional, kept apart from its name.
+    suffix = DISPERSION_SUFFIX_REGEX.search(base)
+    if suffix is not None:
+        stem = base[:suffix.start()]
+        if stem in SEPARATELY_PARAMETRIZED_DISPERSION_BASES and suffix.group().startswith('g'):
+            base, added = stem, _canonical_dispersion(suffix.group())
+        else:
+            base = stem + _canonical_dispersion(suffix.group())
+    if base in SEPARATELY_PARAMETRIZED_DISPERSION_BASES:
+        added += _canonical_dispersion(dispersion)
+    else:
+        base += _canonical_dispersion(dispersion)
+    return (f'{base} + {added}' if added else base), year
+
+
+def _legacy_key_method(method: str | None) -> tuple:
+    """
+    Split a method into the normalized base and refit year the way ARC matched every Arkane key before it read a
+    level's dispersion field: no dispersion folding. Used for frequency keys (see ``_key_method``).
+
+    Args:
+        method (str | None): The method.
+
+    Returns:
+        tuple: The normalized ``(base, year)``; ``(None, None)`` without a method.
+    """
+    method_norm = _normalize_name(method)
+    if method_norm is None:
+        return None, None
+    return _split_method_year(method_norm)
+
+
+def _reads_level_fields(section_start: str) -> bool:
+    """
+    Whether matching in a data.py section reads a level's ``dispersion`` and ``solvation_method`` fields.
+
+    The energy-correction sections (atom energies, PBAC, MBAC) do: those corrections belong to the exact model
+    chemistry, and Arkane has none for a solvated level or for a dispersion variant it does not list. The frequency
+    section does not and is matched exactly as before: ARC only uses an Arkane frequency key when no
+    ``freq_scale_factor`` is set, and then a missing key drops the whole composite model chemistry, so reading
+    these fields there would switch off the energy corrections of a correctly matched sp level (e.g., a gas-phase
+    sp level with a solvated frequency level) to avoid a scale factor that differs little between the variants.
+
+    Args:
+        section_start (str): The start marker of the section.
+
+    Returns:
+        bool: Whether the level's dispersion and solvation fields are matched.
+    """
+    return section_start != FREQ_SECTION_START
+
+
+def _key_method(method: str | None, dispersion: str | None, section_start: str) -> tuple:
+    """
+    Return the normalized ``(base, year)`` a method is matched on in a data.py section: with the dispersion folded
+    in (``_effective_method``) for energy-correction sections, as before (``_legacy_key_method``) for frequencies.
+
+    Args:
+        method (str | None): The method.
+        dispersion (str | None): A dispersion correction carried outside the method string.
+        section_start (str): The start marker of the section.
+
+    Returns:
+        tuple: The normalized ``(base, year)``.
+    """
+    if _reads_level_fields(section_start):
+        return _effective_method(method, dispersion)
+    return _legacy_key_method(method)
+
+
+def _normalized_method_and_basis(level: 'Level') -> tuple:
+    """
+    Return a level's effective method and basis, normalized the way ARC matches levels against Arkane's database:
+    case, hyphens and spaces are ignored, a trailing four-digit refit year is stripped from the method, and the
+    dispersion correction is folded into the method (see ``_effective_method``).
+
+    Args:
+        level (Level): The level of theory.
+
+    Returns:
+        tuple: The normalized ``(method, basis)``.
+    """
+    return _effective_method(level.method, level.dispersion)[0], _normalize_name(level.basis)
+
+
+def _no_match_note(level: 'Level') -> str:
+    """
+    Return why a level may have no Arkane energy corrections although its method and basis string does: a
+    solvation method (Arkane has no energy corrections for solvated levels), or a separate dispersion field
+    (matched as part of the method). ``''`` for a level with neither.
+
+    Args:
+        level (Level): The level of theory.
+
+    Returns:
+        str: The note, starting with a space, or ``''``.
+    """
+    if level.solvation_method is not None:
+        return (f' The level has solvation method {level.solvation_method}, and Arkane has no energy corrections '
+                f'for solvated levels.')
+    if level.dispersion is not None:
+        effective = _effective_method(level.method, level.dispersion)[0]
+        if ' + ' in effective:
+            return (f' The level adds a dispersion correction ({level.dispersion}) to {level.method}, whose '
+                    f'dispersion-corrected variants are separately parametrized functionals, so it matches none of '
+                    f'them.')
+        return (f' The level\'s dispersion correction ({level.dispersion}) is matched as part of its method, '
+                f'i.e., as {effective}.')
+    return ''
+
+
+def _startup_remedy_note(level: 'Level') -> str:
+    """
+    Return the remedies for a level that has no Arkane energy corrections because of its solvation method or
+    dispersion field, for the startup AEC/BAC check. ``''`` for a level with neither.
+
+    Args:
+        level (Level): The level of theory.
+
+    Returns:
+        str: The note, starting with a space, or ``''``.
+    """
+    note = _no_match_note(level)
+    if not note:
+        return ''
+    kind = 'gas-phase' if level.solvation_method is not None else 'non-dispersion'
+    return (f'{note} To proceed, set compute_thermo to False, or set a {kind} arkane_level_of_theory that Arkane '
+            f'has corrections for: ARC then warns that its atom energies are subtracted from energies at another '
+            f'level, and H298 is not a formation enthalpy for these energies. An entry in data/AEC.yml does not '
+            f'satisfy this check.')
+
+
+def _match_aec_yml_key(level: 'Level', aec_dict: dict) -> str | None:
+    """
+    Return the key of ARC's ``data/AEC.yml`` whose atom energies belong to ``level``, ``None`` if there is none.
+
+    A key is written as ``Level.simple()`` writes a level: ``method[/basis][ (year)]``. It is compared with the
+    level as Arkane keys are, with the dispersion folded into the method (see ``_effective_method``). The entries
+    are gas-phase, so a level with a solvation method matches none.
+
+    Args:
+        level (Level): The level of theory.
+        aec_dict (dict): The ``data/AEC.yml`` content.
+
+    Returns:
+        str | None: The matching key.
+    """
+    if level is None or level.method is None or level.solvation_method is not None:
+        return None
+    if level.dispersion is None and level.simple() in aec_dict:
+        return level.simple()
+    base, method_year = _effective_method(level.method, level.dispersion)
+    target = (base, _normalize_name(level.basis), level.year if level.year is not None else method_year)
+    for key in aec_dict:
+        match = re.fullmatch(r'(?P<method>[^/]+?)(?:/(?P<basis>.+?))?(?: \((?P<year>\d{4})\))?', str(key))
+        if match is None:
+            continue
+        cand_base, cand_method_year = _effective_method(match['method'])
+        cand_year = int(match['year']) if match['year'] is not None else cand_method_year
+        if (cand_base, _normalize_name(match['basis']), cand_year) == target:
+            return key
+    return None
+
+
 def _parse_lot_params(lot_str: str) -> dict:
     """
     Parse method, basis, and software from a LevelOfTheory(...) string.
@@ -923,12 +1154,16 @@ def _available_years_for_level(level: "Level",
                                section_end: str | None = None) -> list[int | None]:
     """
     Return a sorted list of available year suffixes for a given Level in a section.
+    In the energy-correction sections the method is matched with the dispersion folded in (see
+    ``_effective_method``), and a solvated level, which Arkane has no entries for, has none; frequency keys are
+    matched as before (see ``_reads_level_fields``).
     """
     if level is None or level.method is None:
         return []
+    if level.solvation_method is not None and _reads_level_fields(section_start):
+        return []
 
-    target_method_norm = _normalize_name(level.method)
-    target_base, _ = _split_method_year(target_method_norm)
+    target_base, _ = _key_method(level.method, level.dispersion, section_start)
     target_basis_norm = _normalize_name(level.basis)
     target_software = level.software.lower() if level.software else None
 
@@ -942,8 +1177,7 @@ def _available_years_for_level(level: "Level",
         if cand_method is None:
             continue
 
-        cand_method_norm = _normalize_name(cand_method)
-        cand_base, cand_year = _split_method_year(cand_method_norm)
+        cand_base, cand_year = _key_method(cand_method, None, section_start)
 
         if cand_base != target_base:
             continue
@@ -1011,20 +1245,21 @@ def _warn_no_match(level: "Level",
     Log a warning when no matching LevelOfTheory key was found, listing available years.
     """
     years = _all_available_years(level, qm_corr_files, section_start, section_end)
+    note = _no_match_note(level) if _reads_level_fields(section_start) else ''
     if level.year is not None:
         logger.warning(
             f"No Arkane {label} entry found for year {level.year} at {level.simple()}; "
-            f"available years: {_format_years(years)}"
+            f"available years: {_format_years(years)}.{note}"
         )
     elif years:
         logger.warning(
             f"No Arkane {label} entry found for {level.simple()} without a year; "
             f"available years: {_format_years(years)}. "
-            f"Specify a year to select a matching entry."
+            f"Specify a year to select a matching entry.{note}"
         )
     else:
         logger.warning(
-            f"No Arkane {label} entry found for {level.simple()} in the RMG database."
+            f"No Arkane {label} entry found for {level.simple()} in the RMG database.{note}"
         )
 
 
@@ -1038,12 +1273,17 @@ def _find_best_level_key_for_sp_level(level: "Level",
       - hyphen-insensitive comparison
       - an optional 4-digit year suffix in Arkane's method
     and choose the *no-year* entry when no year is specified.
+
+    The level's dispersion correction is part of its method whether it is carried in the method string or in the
+    separate ``dispersion`` field (see ``_effective_method``), so ``b3lyp`` with ``dispersion: gd3bj`` matches only
+    a ``b3lypd3bj`` key, never a plain ``b3lyp`` one. A level with a ``solvation_method`` matches no key: Arkane's
+    energy corrections are all gas-phase. Both rules apply to the energy-correction sections only; frequency keys
+    are matched as before (see ``_reads_level_fields``).
     """
     if level is None or level.method is None:
         return None
 
-    target_method_norm = _normalize_name(level.method)
-    target_base, method_year = _split_method_year(target_method_norm)
+    target_base, method_year = _key_method(level.method, level.dispersion, section_start)
     explicit_year = level.year
     if explicit_year is not None and method_year is not None and explicit_year != method_year:
         raise InputError(
@@ -1051,6 +1291,8 @@ def _find_best_level_key_for_sp_level(level: "Level",
             f"explicit year={explicit_year}, method suffix year={method_year}. "
             "Please remove the year suffix from the method name or update the 'year' attribute to match."
         )
+    if level.solvation_method is not None and _reads_level_fields(section_start):
+        return None
     target_year = explicit_year if explicit_year is not None else method_year
     target_basis_norm = _normalize_name(level.basis)
     target_software = level.software.lower() if level.software else None
@@ -1067,10 +1309,9 @@ def _find_best_level_key_for_sp_level(level: "Level",
         if cand_method is None:
             continue
 
-        cand_method_norm = _normalize_name(cand_method)
-        cand_base, cand_year = _split_method_year(cand_method_norm)
+        cand_base, cand_year = _key_method(cand_method, None, section_start)
 
-        # method base must match
+        # method base (with the dispersion folded in) must match
         if cand_base != target_base:
             continue
 
@@ -1210,7 +1451,8 @@ def check_arkane_aec(sp_level: Level, raise_error: bool = False) -> bool:
     else:
         _warn_no_match(sp_level, qm_corr_files, AEC_SECTION_START, AEC_SECTION_END, label="AEC")
         if raise_error:
-            raise ValueError(f'Arkane has no atom energy corrections (AEC) for {_level_to_str(sp_level)}.')
+            raise ValueError(f'Arkane has no atom energy corrections (AEC) for {_level_to_str(sp_level)}.'
+                             f'{_startup_remedy_note(sp_level)}')
     return best_aec_key is not None
 
 
@@ -1267,6 +1509,7 @@ def check_arkane_bacs(sp_level: Level,
                 f"available BAC years: {_format_years(bac_years)}. "
                 f"Specify a year to select a matching entry."
             )
+        year_note += _startup_remedy_note(sp_level)
         if has_aec and not has_bac:
             mssg = (
                 f"Arkane atom energy corrections (AEC) matched for {repr_level}, "

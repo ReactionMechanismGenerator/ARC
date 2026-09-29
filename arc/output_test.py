@@ -31,6 +31,7 @@ from arc.output import (
     _get_arkane_provenance,
     _get_rmg_py_git_commit,
     _get_energy_corrections,
+    _match_arkane_correction_keys,
     _get_ess_software,
     _gaussian_route_text,
     _get_freq_hessian_method,
@@ -1400,6 +1401,21 @@ class TestGetEnergyCorrections(unittest.TestCase):
         if corrections.bac is not None:
             self.assertIn('C-H', corrections.bac)
             self.assertIsInstance(corrections.bac['C-H'], float)
+
+    def test_matched_keys_respect_dispersion_and_solvation(self):
+        """The matched Arkane keys fold a separate dispersion field into the method, and a solvated level has none,
+        so no gas-phase or non-dispersion table is looked up for it."""
+        with patch('arc.output.execute_command') as mock_exec:
+            for lot in (Level(method='b3lyp', basis='def2tzvp', software='gaussian', dispersion='gd3bj'),
+                        Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                              solvation_method='smd', solvent='water')):
+                with self.subTest(level=str(lot)):
+                    self.assertEqual(_match_arkane_correction_keys(lot, 'p'), (None, None))
+                    self.assertEqual(_get_energy_corrections(lot, 'p'), EnergyCorrections(None, None, None, None))
+        mock_exec.assert_not_called()
+        key = "LevelOfTheory(method='b2plypd32023',basis='def2tzvp',software='gaussian')"
+        self.assertEqual(_match_arkane_correction_keys(
+            Level(method='b2plyp', basis='def2tzvp', software='gaussian', dispersion='gd3'), 'p'), (key, key))
 
     def test_no_bac_when_type_none(self):
         lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
@@ -2826,6 +2842,62 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertIs(entry['thermo']['bond_corrections_applied'], False)
         self.assertIsNone(entry['thermo']['atom_corrections_level'])
         self.assertEqual(entry['energy_corrections'], [])
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_provenance', return_value=(None, None))
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_no_corrections_for_a_solvated_level(self, mock_arc_git, mock_arkane_provenance, mock_pg):
+        """End to end: Arkane has no corrections for an SMD-solvated wb97xd/def2tzvp, so ARC runs it with
+        ``useAtomCorrections = False`` and output.yml records no corrections, although gas-phase wb97xd/def2tzvp
+        matches an Arkane key."""
+        from arc.statmech.arkane import ArkaneAdapter
+        from arc.common import save_yaml_file
+        sp_level = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                         solvation_method='smd', solvent='water')
+        computed = ARCSpecies(label='CH4', smiles='C')
+        arkane = ArkaneAdapter(output_directory=os.path.join(self.tmp_dir, 'output'),
+                               calcs_directory=os.path.join(self.tmp_dir, 'calcs'),
+                               output_dict=dict(), bac_type='p', species=[computed], sp_level=sp_level,
+                               freq_level=sp_level, freq_scale_factor=1.0)
+        inputs = list()
+
+        def fake_run_arkane(statmech_dir):
+            with open(os.path.join(statmech_dir, 'input.py'), 'r') as f:
+                inputs.append(f.read())
+            with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+                f.write('')
+            save_yaml_file(path=os.path.join(statmech_dir, 'thermo.yaml'),
+                           content={'CH4': {'H298': -105000.0, 'S298': 186.3, 'data': 'NASA()'}})
+            return True
+
+        with patch('arc.statmech.arkane.run_arkane', side_effect=fake_run_arkane), \
+                patch.object(ArkaneAdapter, 'generate_species_files'), \
+                patch('arc.statmech.arkane.execute_command', return_value=('', '')):
+            arkane.compute_thermo()
+        self.assertIn('useAtomCorrections = False\n', inputs[0])
+        self.assertIn('useBondCorrections = False\n', inputs[0])
+
+        spc = self._make_spc_mock()
+        spc.thermo = computed.thermo
+        with patch('arc.output._compute_species_corrections', return_value={}):
+            write_output_yml(
+                project='solvated_level',
+                project_directory=self.tmp_dir,
+                species_dict={'CH4': spc},
+                reactions=[],
+                output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+                sp_level=sp_level,
+                arkane_level_of_theory=sp_level,
+                bac_type='p',
+            )
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        entry = doc['species'][0]
+        self.assertIs(entry['thermo']['atom_corrections_applied'], False)
+        self.assertIs(entry['thermo']['bond_corrections_applied'], False)
+        self.assertIsNone(entry['thermo']['atom_corrections_level'])
+        self.assertEqual(entry['energy_corrections'], [])
+        self.assertIsNone(doc['atom_energy_corrections'])
+        self.assertIsNone(doc['bond_additivity_corrections'])
 
     @patch('arc.output._compute_point_groups', return_value={})
     @patch('arc.output._get_arkane_provenance', return_value=(None, None))

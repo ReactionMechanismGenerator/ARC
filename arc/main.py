@@ -11,7 +11,6 @@ Where ``spc0``, ``spc1``, and ``spc2`` in the above example are :ref:`ARCSpecies
 import datetime
 import logging
 import os
-import re
 import shutil
 import time
 from IPython.display import display
@@ -41,7 +40,7 @@ from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
-from arc.statmech.arkane import _normalize_name, _split_method_year, check_arkane_aec, check_arkane_bacs
+from arc.statmech.arkane import _normalized_method_and_basis, check_arkane_aec, check_arkane_bacs
 from arc.utils.scale import determine_scaling_factors
 
 
@@ -1361,54 +1360,25 @@ def check_rotor_scan_resolution(rotor_scan_resolution: float | None) -> float | 
     return rotor_scan_resolution
 
 
-# A dispersion suffix at the end of a normalized method string, e.g., the "d3(bj)" of "b3lypd3(bj)".
-DISPERSION_SUFFIX_REGEX = re.compile(r'g?d[234](\(?bj\)?)?$')
-
-
-def _canonical_dispersion(dispersion: str | None) -> str:
+def _level_label(level: Level) -> str:
     """
-    Return a dispersion correction in one canonical spelling, so that ``gd3bj``, ``D3(BJ)``, ``d3-bj`` and
-    ``EmpiricalDispersion=GD3BJ`` all read ``d3bj``.
-
-    Args:
-        dispersion (str | None): The dispersion correction, as a method suffix or a ``Level.dispersion`` value.
-
-    Returns:
-        str: The canonical dispersion, ``''`` if there is none.
-    """
-    if not dispersion:
-        return ''
-    dispersion = dispersion.lower()
-    for character in ('-', ' ', '(', ')'):
-        dispersion = dispersion.replace(character, '')
-    dispersion = dispersion.removeprefix('empiricaldispersion=')
-    if dispersion in ('gd2', 'gd3', 'gd3bj'):
-        dispersion = dispersion[1:]  # Gaussian's spelling.
-    return dispersion
-
-
-def _normalized_method_and_basis(level: Level) -> tuple:
-    """
-    Return a level's effective method and basis, normalized the way ARC matches levels against Arkane's database:
-    case, hyphens and spaces are ignored, and a trailing four-digit refit year is stripped from the method.
-    The dispersion correction is folded into the method in a canonical spelling whether the level carries it in
-    the method string or in its separate ``dispersion`` field, so ``b3lyp`` + ``gd3bj``, ``b3lyp-d3bj`` and
-    ``b3lyp-d3(bj)`` are one method, while ``wb97xd`` and ``wb97xd3`` stay two.
+    Name a level in a warning by its method and basis (``Level.simple()``) plus the dispersion and solvation
+    fields, which ``simple()`` omits, so two levels that differ only in those fields read differently.
 
     Args:
         level (Level): The level of theory.
 
     Returns:
-        tuple: The normalized ``(method, basis)``.
+        str: The label, e.g., ``'b3lyp/def2tzvp, dispersion: gd3bj'``.
     """
-    method = _normalize_name(level.method)
-    if method is not None:
-        method = _split_method_year(method)[0]
-        suffix = DISPERSION_SUFFIX_REGEX.search(method)
-        if suffix is not None:
-            method = method[:suffix.start()] + _canonical_dispersion(suffix.group())
-        method += _canonical_dispersion(level.dispersion)
-    return method, _normalize_name(level.basis)
+    label = level.simple()
+    if level.dispersion is not None:
+        label += f', dispersion: {level.dispersion}'
+    if level.solvation_method is not None:
+        label += f', solvation_method: {level.solvation_method}'
+        if level.solvent is not None:
+            label += f', solvent: {level.solvent}'
+    return label
 
 
 def warn_if_arkane_level_differs(arkane_level: Level | None,
@@ -1426,10 +1396,10 @@ def warn_if_arkane_level_differs(arkane_level: Level | None,
     Arkane database matching, so spelling variants (``def2-TZVP`` vs. ``def2tzvp``) and refit years are not
     differences.
 
-    ARC's Arkane correction matching reads only the method string and the basis: it ignores a level's separate
-    ``dispersion`` and ``solvation_method`` fields. This function therefore also warns when an energy level is
-    solvated, or when the Arkane level carries its dispersion in the separate field, since the corrections
-    applied are then the gas-phase or the non-dispersion ones even though the levels compare equal.
+    Arkane has energy corrections for gas-phase levels only, so ARC matches no corrections for a solvated Arkane
+    level (and the startup check treats it as a level without corrections). A gas-phase Arkane level set for
+    solvated energy levels does match, and Arkane then subtracts gas-phase atom energies from solvated energies:
+    this function also warns about that, since the two levels compare equal on method and basis.
 
     Args:
         arkane_level (Level | None): The level ARC hands Arkane (``arkane_level_of_theory``).
@@ -1452,30 +1422,23 @@ def warn_if_arkane_level_differs(arkane_level: Level | None,
     arkane_key = _normalized_method_and_basis(arkane_level)
     differing, solvated = list(), list()
     for level in energy_levels:
-        if _normalized_method_and_basis(level) != arkane_key and level.simple() not in differing:
-            differing.append(level.simple())
-        if level.solvation_method is not None and str(level) not in solvated:
-            solvated.append(str(level))
+        if _normalized_method_and_basis(level) != arkane_key and _level_label(level) not in differing:
+            differing.append(_level_label(level))
+        if level.solvation_method is not None and _level_label(level) not in solvated:
+            solvated.append(_level_label(level))
     warned = False
     if differing:
-        logger.warning(f'The Arkane level of theory ({arkane_level.simple()}) differs from the level some species '
-                       f'energies are computed at ({", ".join(differing)}). Arkane will subtract '
-                       f'{arkane_level.simple()} atom energies from energies at another level, so the computed '
+        logger.warning(f'The Arkane level of theory ({_level_label(arkane_level)}) differs from the level some '
+                       f'species energies are computed at ({"; ".join(differing)}). Arkane will subtract '
+                       f'{_level_label(arkane_level)} atom energies from energies at another level, so the computed '
                        f'H298 and NASA polynomials of those species are not formation enthalpies.')
         warned = True
-    ignored = list()
-    if solvated:
-        ignored.append(f'species energies are computed with a solvation method ({"; ".join(solvated)}), so '
-                       f'gas-phase corrections are applied to solvated energies')
-    if arkane_level.dispersion is not None:
-        ignored.append(f'the Arkane level of theory ({arkane_level}) carries its dispersion correction in the '
-                       f'separate dispersion field, so the corrections of {arkane_level.method} without that '
-                       f'dispersion correction are applied')
-    if ignored:
-        logger.warning(f'ARC matches Arkane energy corrections on the method string and basis only, ignoring a '
-                       f'level\'s separate dispersion and solvation_method fields: {"; and ".join(ignored)}. The '
-                       f'computed H298 and NASA polynomials are then not formation enthalpies at the level of the '
-                       f'species energies.')
+    if solvated and arkane_level.solvation_method is None:
+        logger.warning(f'Species energies are computed with a solvation method ({"; ".join(solvated)}), but the '
+                       f'Arkane level of theory ({_level_label(arkane_level)}) is a gas-phase level: Arkane will '
+                       f'subtract its gas-phase atom energies from solvated energies (Arkane has no energy '
+                       f'corrections for solvated levels), so the computed H298 and NASA polynomials of those species '
+                       f'are not formation enthalpies.')
         warned = True
     return warned
 
