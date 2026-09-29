@@ -152,6 +152,11 @@ class TestArkaneAdapter(unittest.TestCase):
             self.fail(f'Arkane did not generate {plot_path}.\nstdout.log:\n{stdout_text}\nstderr.log:\n{stderr_text}')
         self.assertTrue(os.path.isfile(plot_path))
         self.assertAlmostEqual(self.ic3h7.e0, 6.75565e+07)
+        # gfn2 has atom energies only in ARC's data/AEC.yml, and no BAC was requested.
+        self.assertIsNotNone(self.ic3h7.thermo.H298)
+        self.assertIs(self.ic3h7.thermo.atom_corrections_applied, True)
+        self.assertIs(self.ic3h7.thermo.bond_corrections_applied, False)
+        self.assertEqual(self.ic3h7.thermo.atom_corrections_level, Level('gfn2'))
 
     def test_parse_arkane_thermo_output_recovers_missing_thermo_container(self):
         """
@@ -513,6 +518,168 @@ class TestArkaneAdapter(unittest.TestCase):
         """
         shutil.rmtree(cls.tmpdir, ignore_errors=True)
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'arkane_input_tests_delete'), ignore_errors=True)
+
+
+class TestArkaneCorrectionFlags(unittest.TestCase):
+    """
+    Contains unit tests for the energy-correction switches ArkaneAdapter records on the thermo it parses.
+    """
+
+    def _compute_thermo_with_mocked_arkane(self, sp_level, bac_type, species=None,
+                                           freq_level=None, freq_scale_factor=1.0):
+        """
+        Run ``compute_thermo`` with the Arkane and RMG subprocesses mocked out.
+
+        The mocked Arkane run writes the ``thermo.yaml`` that ``save_arkane_thermo.py`` would, so the
+        rendered ``input.py`` and the parsed thermo come from the same ``compute_thermo`` call.
+
+        Args:
+            species (list, optional): The species to run; a single CH4 by default.
+            freq_level (Level, optional): Defaults to ``sp_level``.
+
+        Returns:
+            tuple: The first species and the text of the ``input.py`` Arkane was handed.
+        """
+        tmpdir = tempfile.mkdtemp(prefix='test_Arkane_corrections_')
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        species = species or [ARCSpecies(label='CH4', smiles='C')]
+        arkane = ArkaneAdapter(output_directory=os.path.join(tmpdir, 'output'),
+                               calcs_directory=os.path.join(tmpdir, 'calcs'),
+                               output_dict=dict(),
+                               bac_type=bac_type,
+                               species=species,
+                               sp_level=sp_level,
+                               freq_level=freq_level or sp_level,
+                               freq_scale_factor=freq_scale_factor)
+        inputs = list()
+
+        def fake_run_arkane(statmech_dir):
+            with open(os.path.join(statmech_dir, 'input.py'), 'r') as f:
+                inputs.append(f.read())
+            with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+                f.write('')
+            save_yaml_file(path=os.path.join(statmech_dir, 'thermo.yaml'),
+                           content={spc.label: {'H298': -74.6, 'S298': 186.3, 'data': 'NASA()'} for spc in species})
+            return True
+
+        with patch('arc.statmech.arkane.run_arkane', side_effect=fake_run_arkane), \
+                patch.object(ArkaneAdapter, 'generate_species_files'), \
+                patch('arc.statmech.arkane.execute_command', return_value=('', '')):
+            arkane.compute_thermo()
+        self.assertEqual(len(inputs), 1)
+        return species[0], inputs[0]
+
+    def test_thermo_records_arkane_native_atom_corrections(self):
+        """A level Arkane's database has AEC for: the thermo records AEC, the requested BAC, and the
+        sp level as the level whose atom energies were subtracted."""
+        sp_level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        spc, input_py = self._compute_thermo_with_mocked_arkane(sp_level=sp_level, bac_type='p')
+        self.assertIn('modelChemistry = ', input_py)
+        self.assertNotIn('atomEnergies = ', input_py)
+        self.assertIn('useAtomCorrections = True\n', input_py)
+        self.assertIn('useBondCorrections = True\n', input_py)
+        self.assertEqual(spc.thermo.H298, -74.6)
+        self.assertIs(spc.thermo.atom_corrections_applied, True)
+        self.assertIs(spc.thermo.bond_corrections_applied, True)
+        self.assertEqual(spc.thermo.atom_corrections_level, sp_level)
+
+    def test_thermo_records_a_dummy_arkane_level(self):
+        """The examples/Stationary/bde setup: energies at apfd/def2svp, which Arkane has no AEC for, and a dummy
+        arkane_level_of_theory of bmk/cbsb7, which the processor hands the adapter as its sp level. Arkane is
+        told to apply AEC, so the flag is true, and the level recorded is the dummy one a consumer must compare
+        with the apfd/def2svp energy level."""
+        dummy = Level(method='bmk', basis='cbsb7', software='gaussian')
+        spc, input_py = self._compute_thermo_with_mocked_arkane(
+            sp_level=dummy, bac_type=None, freq_level=Level(method='apfd', basis='def2svp', software='gaussian'))
+        self.assertIn("modelChemistry = LevelOfTheory(method='bmk'", input_py)
+        self.assertIn('useAtomCorrections = True\n', input_py)
+        self.assertIs(spc.thermo.atom_corrections_applied, True)
+        self.assertIs(spc.thermo.bond_corrections_applied, False)
+        self.assertEqual(spc.thermo.atom_corrections_level, dummy)
+        self.assertNotEqual(spc.thermo.atom_corrections_level.method, 'apfd')
+
+    def test_thermo_records_arc_aec_yml_atom_corrections(self):
+        """A level only ARC's data/AEC.yml has atom energies for: AEC is applied although no
+        Arkane key matched, which is the case the ``energy_corrections`` list cannot show."""
+        spc, input_py = self._compute_thermo_with_mocked_arkane(sp_level=Level('gfn2'), bac_type=None)
+        self.assertNotIn('modelChemistry = ', input_py)
+        self.assertIn('atomEnergies = ', input_py)
+        self.assertIn('useAtomCorrections = True\n', input_py)
+        self.assertIn('useBondCorrections = False\n', input_py)
+        self.assertIs(spc.thermo.atom_corrections_applied, True)
+        self.assertIs(spc.thermo.bond_corrections_applied, False)
+        self.assertEqual(spc.thermo.atom_corrections_level, Level('gfn2'))
+
+    def test_thermo_records_the_no_atom_corrections_fallback(self):
+        """A level neither Arkane nor ARC has atom energies for: Arkane runs without corrections,
+        the requested BAC is dropped with them, and the thermo says so."""
+        spc, input_py = self._compute_thermo_with_mocked_arkane(
+            sp_level=Level(method='b3lyp', basis='sto-3g', software='gaussian'), bac_type='p')
+        self.assertIn('useAtomCorrections = False\n', input_py)
+        self.assertIn('useBondCorrections = False\n', input_py)
+        self.assertEqual(spc.thermo.H298, -74.6)
+        self.assertIs(spc.thermo.atom_corrections_applied, False)
+        self.assertIs(spc.thermo.bond_corrections_applied, False)
+        self.assertIsNone(spc.thermo.atom_corrections_level)
+
+    def test_thermo_records_the_fallback_of_an_unmatched_frequency_level(self):
+        """Without a frequency scale factor ARC asks Arkane for a composite model chemistry, which needs a
+        frequency entry too. With none for the frequency level Arkane gets no model chemistry, and so no atom
+        energy corrections, although the sp level alone has them."""
+        spc, input_py = self._compute_thermo_with_mocked_arkane(
+            sp_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian'), bac_type='p',
+            freq_level=Level(method='b3lyp', basis='sto-3g', software='gaussian'), freq_scale_factor=None)
+        self.assertNotIn('modelChemistry = ', input_py)
+        self.assertIn('useAtomCorrections = False\n', input_py)
+        self.assertIs(spc.thermo.atom_corrections_applied, False)
+        self.assertIs(spc.thermo.bond_corrections_applied, False)
+        self.assertIsNone(spc.thermo.atom_corrections_level)
+
+    def test_thermo_of_a_species_loaded_from_an_arkane_yaml_is_unknown(self):
+        """Arkane loads a species declared by its own YAML file as-is and applies no correction to it, so this
+        run's switches say nothing about its energy. A computed species in the same run is still stamped."""
+        yml_spc = ARCSpecies(label='H2O', smiles='O')
+        yml_spc.yml_path = os.path.join(ARC_TESTING_PATH, 'yml_testing', 'H2O.yml')
+        computed = ARCSpecies(label='CH4', smiles='C')
+        self._compute_thermo_with_mocked_arkane(
+            sp_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian'), bac_type='p',
+            species=[yml_spc, computed])
+        self.assertEqual(yml_spc.thermo.H298, -74.6)
+        self.assertIsNone(yml_spc.thermo.atom_corrections_applied)
+        self.assertIsNone(yml_spc.thermo.bond_corrections_applied)
+        self.assertIsNone(yml_spc.thermo.atom_corrections_level)
+        self.assertIs(computed.thermo.atom_corrections_applied, True)
+        self.assertIs(computed.thermo.bond_corrections_applied, True)
+
+    def test_thermo_correction_flags_stay_unknown_without_a_rendered_input(self):
+        """Thermo parsed by an adapter that rendered no Arkane input is not stamped with a guess,
+        and a species the run produced no thermo for is left untouched."""
+        tmpdir = tempfile.mkdtemp(prefix='test_Arkane_corrections_unknown_')
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        statmech_dir = os.path.join(tmpdir, 'calcs', 'statmech', 'thermo')
+        os.makedirs(statmech_dir)
+        with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+            f.write('')
+        save_yaml_file(path=os.path.join(statmech_dir, 'thermo.yaml'),
+                       content={'CH4': {'H298': -74.6, 'S298': 186.3, 'data': 'NASA()'}})
+        spc, other = ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='H2O', smiles='O')
+        other.thermo.H298 = -241.8
+        arkane = ArkaneAdapter(output_directory=os.path.join(tmpdir, 'output'),
+                               calcs_directory=os.path.join(tmpdir, 'calcs'),
+                               output_dict=dict(),
+                               species=[spc, other])
+        with patch('arc.statmech.arkane.execute_command', return_value=('', '')):
+            arkane.parse_arkane_thermo_output(statmech_dir)
+        self.assertEqual(spc.thermo.H298, -74.6)
+        self.assertIsNone(spc.thermo.atom_corrections_applied)
+        self.assertIsNone(spc.thermo.bond_corrections_applied)
+        self.assertFalse(hasattr(other.thermo, 'atom_corrections_applied'))
+
+        arkane.use_aec, arkane.use_bac = False, False
+        with patch('arc.statmech.arkane.execute_command', return_value=('', '')):
+            arkane.parse_arkane_thermo_output(statmech_dir)
+        self.assertIs(spc.thermo.atom_corrections_applied, False)
+        self.assertFalse(hasattr(other.thermo, 'atom_corrections_applied'))
 
 
 class TestArkaneOutputParsing(unittest.TestCase):

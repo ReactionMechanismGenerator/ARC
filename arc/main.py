@@ -647,6 +647,9 @@ class ARC(object):
 
         self.save_project_info_file()
 
+        if self.compute_thermo and self.thermo_adapter.lower() == 'arkane':
+            warn_if_arkane_level_differs(arkane_level=self.arkane_level_of_theory,
+                                         energy_level=self.composite_method or self.sp_level)
         process_arc_project(thermo_adapter=self.thermo_adapter.lower(),
                             kinetics_adapter=self.kinetics_adapter.lower(),
                             project=self.project,
@@ -1354,6 +1357,33 @@ def check_rotor_scan_resolution(rotor_scan_resolution: float | None) -> float | 
                          f'number of steps. Got: {rotor_scan_resolution}, which leaves a remainder of '
                          f'{divmod(360, rotor_scan_resolution)[1]}.')
     return rotor_scan_resolution
+
+
+def warn_if_arkane_level_differs(arkane_level: Level | None, energy_level: Level | None) -> bool:
+    """
+    Warn when Arkane will subtract the atom energies of a level other than the one the species' energies were
+    computed at. Arkane still applies the correction, but the resulting H298 and NASA polynomials then mix two
+    levels and are not formation enthalpies. This is a warning rather than an error: a dummy
+    ``arkane_level_of_theory`` is a legitimate way to process a project whose level Arkane does not know, e.g.,
+    when only differences such as bond dissociation energies are of interest.
+
+    Args:
+        arkane_level (Level | None): The level ARC hands Arkane (``arkane_level_of_theory``).
+        energy_level (Level | None): The level the species' energies were computed at (the composite method or
+                                     the sp level).
+
+    Returns:
+        bool: Whether a warning was issued.
+    """
+    if arkane_level is None or energy_level is None:
+        return False
+    if (arkane_level.method, arkane_level.basis) == (energy_level.method, energy_level.basis):
+        return False
+    logger.warning(f'The Arkane level of theory ({arkane_level.simple()}) differs from the level the species '
+                   f'energies were computed at ({energy_level.simple()}). Arkane will subtract '
+                   f'{arkane_level.simple()} atom energies from {energy_level.simple()} energies, so the computed '
+                   f'H298 and NASA polynomials are not formation enthalpies.')
+    return True
 
 
 def process_adaptive_levels(adaptive_levels: list | None) -> dict | None:

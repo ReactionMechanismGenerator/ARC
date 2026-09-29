@@ -187,6 +187,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.T_min = T_min
         self.T_max = T_max
         self.T_count = T_count
+        # The ``useAtomCorrections`` / ``useBondCorrections`` values of the last Arkane input this adapter
+        # rendered, recorded onto the thermo that run produces. ``None`` until an input is rendered.
+        self.use_aec = None
+        self.use_bac = None
         if not self.output_directory or not self.calcs_directory:
             raise InputError(f'Output and calcs directories must be given, got: {self.output_directory}, {self.calcs_directory}')
 
@@ -400,7 +404,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         atom_energies = f'\natomEnergies = {aec_dict[self.sp_level.simple()]}' \
             if self.sp_level.simple() in aec_dict else ''
 
-        if not model_chemistry and not atom_energies:
+        self.use_aec = bool(model_chemistry or atom_energies)
+        self.use_bac = self.bac_type is not None and self.use_aec
+        if not self.use_aec:
             logger.warning(f'SP level {self.sp_level} is not recognized by Arkane and has no AEC entry in ARC. '
                            f'Atom and bond energy corrections will be DISABLED for this Arkane run. '
                            f'Thermo and kinetics results will lack these corrections.')
@@ -415,8 +421,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             atom_energies=atom_energies,
             freq_scale_factor=freq_scale_factor,
             use_hindered_rotors=True if not skip_rotors else False,
-            use_aec=bool(model_chemistry or atom_energies),
-            use_bac=True if self.bac_type is not None and bool(model_chemistry or atom_energies) else False,
+            use_aec=self.use_aec,
+            use_bac=self.use_bac,
             bac_type=self.bac_type,
             species_list=species_list,
             ts_list=ts_list,
@@ -554,6 +560,19 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     spc.thermo.nasa_low = content[lbl].get('nasa_low')
                     spc.thermo.nasa_high = content[lbl].get('nasa_high')
                     spc.thermo.thermo_points = content[lbl].get('thermo_points')
+                    # Without atom energy corrections Arkane reports absolute electronic energies,
+                    # not formation enthalpies, so the thermo records which corrections its run used
+                    # and the level whose atom energies were subtracted. A species declared by an
+                    # Arkane YAML is loaded as-is (StatMechJob.load returns before applying any
+                    # correction), so this run's switches say nothing about its energy.
+                    if spc.yml_path:
+                        spc.thermo.atom_corrections_applied = None
+                        spc.thermo.bond_corrections_applied = None
+                        spc.thermo.atom_corrections_level = None
+                    else:
+                        spc.thermo.atom_corrections_applied = self.use_aec
+                        spc.thermo.bond_corrections_applied = self.use_bac
+                        spc.thermo.atom_corrections_level = self.sp_level if self.use_aec else None
 
                     line = (
                         f"   {lbl:<{label_width}}  "

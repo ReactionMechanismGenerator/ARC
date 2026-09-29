@@ -226,6 +226,7 @@ def write_output_yml(
             aec_table=corrections.aec, bac_table=corrections.bac,
             aec_key=corrections.aec_key, bac_key=corrections.bac_key,
         )
+        d['energy_corrections'] = _drop_corrections_arkane_did_not_apply(d['energy_corrections'], spc.thermo)
         if spc.is_ts:
             doc['transition_states'].append(d)
         else:
@@ -1515,6 +1516,22 @@ def _bac_is_applied_to(spc, compute_thermo: bool) -> bool:
     return bool(getattr(spc, 'compute_thermo', True))
 
 
+def _drop_corrections_arkane_did_not_apply(records: list[dict], thermo) -> list[dict]:
+    """Remove the correction records the Arkane thermo run is recorded as not having applied.
+
+    The records are recomputed from the Arkane key matched for the run's level, which says
+    nothing about whether Arkane was told to apply them. A thermo whose
+    ``atom_corrections_applied`` (``bond_corrections_applied``) is ``False`` loses its
+    ``atom_energy`` (``bond_additivity``) records. A ``None`` flag leaves the records as they are.
+    """
+    dropped = set()
+    if getattr(thermo, 'atom_corrections_applied', None) is False:
+        dropped.add('atom_energy')
+    if getattr(thermo, 'bond_corrections_applied', None) is False:
+        dropped.add('bond_additivity')
+    return [record for record in records if record.get('correction_type') not in dropped]
+
+
 def _compute_species_corrections(
     species_dict: dict,
     aec_key: str | None,
@@ -2144,6 +2161,12 @@ def _thermo_to_dict(thermo) -> dict:
     ``standard_state_pressure_pa`` is the standard state every entropy, free energy and
     NASA fit in the returned dict belongs to, including those inside ``thermo_points``.
     It is ``None`` when the thermo did not come from a statmech run that recorded one.
+
+    ``atom_corrections_applied`` and ``bond_corrections_applied`` are the ``useAtomCorrections``
+    and ``useBondCorrections`` values of the Arkane run that produced the thermo, and are
+    ``None`` when that run did not record them. ``atom_corrections_level`` is the level whose
+    atom energies that run subtracted, in the shape of the document's other levels; it is
+    ``None`` unless ``atom_corrections_applied`` is ``True``.
     """
     def _scalar(x):
         """Extract the numeric value from a (value, units) tuple or a plain number."""
@@ -2157,6 +2180,10 @@ def _thermo_to_dict(thermo) -> dict:
         'tmin_k': _scalar(thermo.Tmin),
         'tmax_k': _scalar(thermo.Tmax),
         'standard_state_pressure_pa': getattr(thermo, 'standard_state_pressure_pa', None),
+        'atom_corrections_applied': getattr(thermo, 'atom_corrections_applied', None),
+        'bond_corrections_applied': getattr(thermo, 'bond_corrections_applied', None),
+        'atom_corrections_level': _level_to_dict(getattr(thermo, 'atom_corrections_level', None))
+        if getattr(thermo, 'atom_corrections_applied', None) is True else None,
     }
 
     # ── Per-temperature thermochemistry ──────────────────────────────────────

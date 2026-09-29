@@ -32,7 +32,7 @@
   "properties": {
     "schema_version": {
       "description": "Output contract version. Emitted from arc.parser_evidence.OUTPUT_SCHEMA_VERSION, shared with the evidence sidecar's output_schema_version.",
-      "const": "1.1"
+      "const": "1.2"
     },
     "project": {
       "type": "string"
@@ -582,7 +582,10 @@
         },
         "log": {
           "description": "Run-relative path of the ESS log the <S**2> value was read from. Null when that log lies outside the project directory and is therefore not part of the export.",
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": false
@@ -1294,6 +1297,9 @@
         "tmin_k",
         "tmax_k",
         "standard_state_pressure_pa",
+        "atom_corrections_applied",
+        "bond_corrections_applied",
+        "atom_corrections_level",
         "thermo_points",
         "nasa_low",
         "nasa_high"
@@ -1327,6 +1333,24 @@
             "null"
           ]
         },
+        "atom_corrections_applied": {
+          "description": "Whether the Arkane run that produced this thermo had its atom energy correction switch (useAtomCorrections) on. false means Arkane subtracted no atom energies, so h298_kj_mol, the NASA polynomials and every thermo_points enthalpy and free energy are absolute electronic-structure energies. true means only that the switch was on: the atom energies subtracted are those of atom_corrections_level, which need not be the level the species' energies were computed at, so compare the two before treating the enthalpies as formation enthalpies. null when the thermo did not come from an Arkane run that recorded it, including a species Arkane loaded from its own YAML file.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "bond_corrections_applied": {
+          "description": "The useBondCorrections value of the Arkane run that produced this thermo. ARC disables bond additivity corrections whenever it disables atom energy corrections. true does not mean every bond had a parameter: Arkane skips a bond type its Petersson table lacks. null exactly when atom_corrections_applied is null.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "atom_corrections_level": {
+          "description": "The level whose atom energies Arkane subtracted (the level ARC matched Arkane's model chemistry for, or whose data/AEC.yml entry it passed as atomEnergies), in the same shape as sp_level and composite_method so it can be compared with the level of the species' energies. A level that differs from that energy level means h298_kj_mol mixes two levels and is not a formation enthalpy. null unless atom_corrections_applied is true.",
+          "$ref": "#/$defs/nullable_level_dict"
+        },
         "thermo_points": {
           "type": [
             "array",
@@ -1357,7 +1381,72 @@
           ]
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "atom_corrections_applied": {
+                "const": true
+              }
+            },
+            "required": [
+              "atom_corrections_applied"
+            ]
+          },
+          "then": {
+            "properties": {
+              "atom_corrections_level": {
+                "$ref": "#/$defs/level_dict"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "atom_corrections_applied": {
+                "const": false
+              }
+            },
+            "required": [
+              "atom_corrections_applied"
+            ]
+          },
+          "then": {
+            "properties": {
+              "bond_corrections_applied": {
+                "const": false
+              },
+              "atom_corrections_level": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "atom_corrections_applied": {
+                "const": null
+              }
+            },
+            "required": [
+              "atom_corrections_applied"
+            ]
+          },
+          "then": {
+            "properties": {
+              "bond_corrections_applied": {
+                "type": "null"
+              },
+              "atom_corrections_level": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "ts_guess": {
       "description": "Sanitized attribution for the chosen TS guess. The list is empty when no guess was chosen.",

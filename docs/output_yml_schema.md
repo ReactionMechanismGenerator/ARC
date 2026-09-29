@@ -22,7 +22,7 @@ document is a bug in this file.
 
 ```
 output.yml
-├── schema_version: "1.1"
+├── schema_version: "1.2"
 ├── project
 ├── arc_version
 ├── arc_git_commit?
@@ -97,6 +97,7 @@ output.yml
 │       ├── thermo?
 │       │   ├── h298_kj_mol, s298_j_mol_k, tmin_k, tmax_k
 │       │   ├── standard_state_pressure_pa?
+│       │   ├── atom_corrections_applied?, bond_corrections_applied?, atom_corrections_level?
 │       │   ├── thermo_points?: [{temperature_k, cp_j_mol_k, h_kj_mol, s_j_mol_k, g_kj_mol}, ...]
 │       │   ├── nasa_low?: {tmin_k, tmax_k, coeffs}
 │       │   └── nasa_high?: {tmin_k, tmax_k, coeffs}
@@ -144,7 +145,7 @@ TS entries share all species fields but add IRC/NEB/method fields and always hav
 
 | Field | Type | Description |
 |---|---|---|
-| `schema_version` | `str` | Output contract version. `1.1` adds the optional `parser_evidence` descriptor, adds the always-present `cost_metrics` block, renames the thermo block's `cp_data` to `thermo_points` (widened from Cp-only to Cp/H/S/G per temperature; there is no `cp_data` alias), renames the AEC `parameter_table` to `reference_atom_energies`, adds `imaginary_frequencies_cm1`, the per-correction `matched_arkane_key` and `freq_scale_factor_key`, adds `ess_software` so each `ess_versions` banner can be paired with the program that actually produced it, adds `arkane_version`, read together with `arkane_git_commit` from one install so the run carries an Arkane software identity even where there is no git repository to report a commit from, adds `freq_hessian_method`, whose three tokens are TCKDB's `HessianMethod` vocabulary and record the provenance of the frequency method ARC requested, adds the optional `statmech.rejected_torsions`, adds the TS-only `ts_checks`, adds `kinetics.T0_k` and the constraints' `target_value_units`, adds the thermo block's `standard_state_pressure_pa`, which names the standard state its entropy, free energy and NASA fit belong to, and adds the `rotor_scans` block, whose samples carry `angle_degrees` — the **absolute** dihedral measured on each sample's own geometry, never a displacement — and whose `requested_step_size` is signed, so a reversed scan records its direction instead of losing the whole requested grid. Emitted from a single constant shared with the evidence sidecar's `output_schema_version`, so the two cannot drift |
+| `schema_version` | `str` | Output contract version. `1.2` adds the thermo block's `atom_corrections_applied` and `bond_corrections_applied`, which state whether the Arkane run that produced the thermo had its atom energy and bond additivity correction switches on, and `atom_corrections_level`, the level whose atom energies it subtracted; together with the species' own energy level they decide whether `h298_kj_mol` is a formation enthalpy at all. `1.2` also drops an `energy_corrections` record whose kind the thermo run is recorded as not having applied. `1.1` adds the optional `parser_evidence` descriptor, adds the always-present `cost_metrics` block, renames the thermo block's `cp_data` to `thermo_points` (widened from Cp-only to Cp/H/S/G per temperature; there is no `cp_data` alias), renames the AEC `parameter_table` to `reference_atom_energies`, adds `imaginary_frequencies_cm1`, the per-correction `matched_arkane_key` and `freq_scale_factor_key`, adds `ess_software` so each `ess_versions` banner can be paired with the program that actually produced it, adds `arkane_version`, read together with `arkane_git_commit` from one install so the run carries an Arkane software identity even where there is no git repository to report a commit from, adds `freq_hessian_method`, whose three tokens are TCKDB's `HessianMethod` vocabulary and record the provenance of the frequency method ARC requested, adds the optional `statmech.rejected_torsions`, adds the TS-only `ts_checks`, adds `kinetics.T0_k` and the constraints' `target_value_units`, adds the thermo block's `standard_state_pressure_pa`, which names the standard state its entropy, free energy and NASA fit belong to, and adds the `rotor_scans` block, whose samples carry `angle_degrees` — the **absolute** dihedral measured on each sample's own geometry, never a displacement — and whose `requested_step_size` is signed, so a reversed scan records its direction instead of losing the whole requested grid. Emitted from a single constant shared with the evidence sidecar's `output_schema_version`, so the two cannot drift |
 | `project` | `str` | ARC project name |
 | `arc_version` | `str` | ARC version string |
 | `arc_git_commit` | `str?` | ARC repo HEAD commit hash |
@@ -652,6 +653,20 @@ run that computes rates without thermo, never on a transition state, and never o
 species whose own `compute_thermo` is off. Read the run-level `bac_type` as the request
 and this list as the outcome.
 
+The records are recomputed after the run from the Arkane key matched for
+`arkane_level_of_theory`, not read back from the run, so ARC removes those the thermo
+run is recorded as not having applied: a species whose `thermo.atom_corrections_applied`
+is `false` carries no `atom_energy` record, and one whose `thermo.bond_corrections_applied`
+is `false` carries no `bond_additivity` record. Where those flags are `null` (no thermo,
+transition states, thermo not stamped by an Arkane run) the records are emitted as before,
+so for such species a record still shows only that a correction was configured and matched.
+
+The converse does not hold: a missing `atom_energy` record does not show that Arkane ran
+without atom energy corrections. The list is recomputed after the run from the matched
+Arkane key, so it is empty when the corrections came from ARC's own `data/AEC.yml` rather
+than Arkane's database, and a failed recomputation drops its rows. Read
+`thermo.atom_corrections_applied` for whether the thermo carries the correction.
+
 | Field | Type | Description |
 |---|---|---|
 | `correction_type` | `str` | `"atom_energy"` or `"bond_additivity"` |
@@ -731,6 +746,9 @@ One entry per parsed scan point, in the order the ESS reported them.
 | `tmin_k` | `float?` | Minimum temperature (K) |
 | `tmax_k` | `float?` | Maximum temperature (K) |
 | `standard_state_pressure_pa` | `float?` | Standard-state pressure (Pa) that `s298_j_mol_k`, the NASA polynomials and every `thermo_points` entropy and free energy belong to. Recovered by `arc/scripts/save_arkane_thermo.py` from RMG's translational partition function — the one place the standard state enters a statmech result — rather than restated as a literal. Arkane runs at 1 atm (101325 Pa) and exposes no way to change it, so every record of a run carries the same value; a consumer that assumes 1 bar is wrong by about 0.11 J/(mol K) in S. `null` when the thermo did not come from a statmech run that recorded one, which is the case for every `output.yml` written before this field existed |
+| `atom_corrections_applied` | `bool?` | Whether the Arkane run that produced this thermo had its atom energy correction switch (`useAtomCorrections`) on. This is the switch ARC wrote into the Arkane input, and nothing more. ARC turns it off when neither Arkane's database nor ARC's `data/AEC.yml` has atom energies for `arkane_level_of_theory`; Arkane then subtracts no atom energies, so `h298_kj_mol`, the NASA polynomials and every `thermo_points` enthalpy and free energy are absolute electronic-structure energies (roughly -1e5 kJ/mol per heavy atom), **not** formation enthalpies. `true` means only that Arkane subtracted the atom energies of `atom_corrections_level` (it stops with an error rather than produce thermo when it cannot find them); it does **not** mean `h298_kj_mol` is a formation enthalpy. That also needs `atom_corrections_level` to be the level the species' energies were computed at, which ARC does not require: a dummy `arkane_level_of_theory` (as in `examples/Stationary/bde`) is applied to energies from another level, and ARC only logs a warning. `null` when the thermo did not come from an Arkane run that recorded it: every `output.yml` written before this field existed, and a species Arkane loaded from its own YAML file (`yml_path`), which Arkane takes as-is without applying any correction |
+| `bond_corrections_applied` | `bool?` | The `useBondCorrections` value of the same Arkane run. It is `true` only when the run requested a `bac_type` and atom energy corrections were on, so it is always `false` when `atom_corrections_applied` is `false`. `true` means the BAC model was applied, not that every bond had a parameter: Arkane's Petersson model skips, with a warning, a bond type its table lacks. `null` exactly when `atom_corrections_applied` is `null` |
+| `atom_corrections_level` | `dict?` | The level whose atom energies Arkane subtracted: the level ARC matched Arkane's model chemistry for, or whose `data/AEC.yml` entry it passed as `atomEnergies` (always `arkane_level_of_theory`). Same shape as `sp_level` and `composite_method`. **Before treating `h298_kj_mol` or the NASA polynomials as formation enthalpies, compare this with the level the species' energies were computed at** (`composite_method` if set, else `sp_level`): if they differ, the enthalpies mix two levels and are neither formation enthalpies nor absolute energies. The Arkane database key that level matched, which may carry a refit year, is `energy_corrections[].matched_arkane_key`. `null` unless `atom_corrections_applied` is `true` |
 | `thermo_points` | `list?` | Tabulated per-temperature thermochemistry (see below) |
 | `nasa_low` | `dict?` | Low-temperature NASA polynomial |
 | `nasa_high` | `dict?` | High-temperature NASA polynomial |

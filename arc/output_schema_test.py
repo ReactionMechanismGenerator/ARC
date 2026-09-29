@@ -161,6 +161,9 @@ def make_rich_species() -> ARCSpecies:
         nasa_low={'tmin_k': 300.0, 'tmax_k': 1000.0, 'coeffs': [1.0] * 7},
         nasa_high={'tmin_k': 1000.0, 'tmax_k': 3000.0, 'coeffs': [2.0] * 7},
     )
+    spc.thermo.atom_corrections_applied = True
+    spc.thermo.bond_corrections_applied = True
+    spc.thermo.atom_corrections_level = Level(method='cbs-qb3', software='gaussian')
     return spc
 
 
@@ -534,6 +537,9 @@ class TestRichDocumentValidates(SchemaAssertionMixin, unittest.TestCase):
         ])
         self.assertTrue(species['thermo']['thermo_points'])
         self.assertIsNotNone(species['thermo']['nasa_low'])
+        self.assertIs(species['thermo']['atom_corrections_applied'], True)
+        self.assertIs(species['thermo']['bond_corrections_applied'], True)
+        self.assertEqual(species['thermo']['atom_corrections_level']['method'], 'cbs-qb3')
         self.assertEqual({correction['correction_type'] for correction in species['energy_corrections']},
                          {'atom_energy', 'bond_additivity'})
         self.assertTrue(species['opt_constraints'])
@@ -1013,6 +1019,44 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
     def test_baseline_document_is_valid(self):
         """Every negative case below is only meaningful if the baseline passes."""
         self.assert_valid(self.document)
+
+    def test_thermo_without_the_atom_corrections_level_key_is_rejected(self):
+        """The key is required, so a producer that forgets it cannot pass as a null."""
+        del self.species['thermo']['atom_corrections_level']
+        self.assert_invalid(self.document, 'atom_corrections_level')
+
+    def test_uncorrected_and_unknown_thermo_validate(self):
+        """``false`` with no level, and all three ``null``, are both legal thermo blocks."""
+        for applied, bond in ((False, False), (None, None)):
+            with self.subTest(atom_corrections_applied=applied):
+                thermo = self.species['thermo']
+                thermo['atom_corrections_applied'] = applied
+                thermo['bond_corrections_applied'] = bond
+                thermo['atom_corrections_level'] = None
+                self.assert_valid(self.document)
+
+    def test_bond_corrections_without_atom_corrections_are_rejected(self):
+        """ARC never turns BAC on with AEC off, so a document saying so is wrong."""
+        self.species['thermo']['atom_corrections_applied'] = False
+        self.species['thermo']['atom_corrections_level'] = None
+        self.assert_invalid(self.document, 'bond_corrections_applied')
+
+    def test_uncorrected_thermo_naming_an_atom_corrections_level_is_rejected(self):
+        """A level is named only for atom energies that were actually subtracted."""
+        self.species['thermo']['atom_corrections_applied'] = False
+        self.species['thermo']['bond_corrections_applied'] = False
+        self.assert_invalid(self.document, 'atom_corrections_level')
+
+    def test_corrected_thermo_without_an_atom_corrections_level_is_rejected(self):
+        """``true`` alone would leave a consumer unable to check which level was subtracted."""
+        self.species['thermo']['atom_corrections_level'] = None
+        self.assert_invalid(self.document, 'atom_corrections_level')
+
+    def test_unknown_atom_corrections_with_known_bond_corrections_is_rejected(self):
+        """The two flags come from one Arkane run, so they are unknown together."""
+        self.species['thermo']['atom_corrections_applied'] = None
+        self.species['thermo']['atom_corrections_level'] = None
+        self.assert_invalid(self.document, 'bond_corrections_applied')
 
     def test_zero_based_scan_index_is_rejected(self):
         """``index_base`` is pinned to 1: a 0 would silently shift every atom."""

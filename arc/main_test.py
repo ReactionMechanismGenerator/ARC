@@ -20,7 +20,7 @@ from arc.imports import settings
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
-from arc.main import ARC, process_adaptive_levels
+from arc.main import ARC, process_adaptive_levels, warn_if_arkane_level_differs
 from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess
@@ -676,6 +676,36 @@ class TestARC(unittest.TestCase):
             project_directory = get_test_project_directory(project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestWarnIfArkaneLevelDiffers(unittest.TestCase):
+    """
+    Contains unit tests for warn_if_arkane_level_differs().
+    """
+
+    def test_a_dummy_arkane_level_is_warned_about(self):
+        """The examples/Stationary/bde setup: apfd/def2svp energies with a bmk/cbsb7 Arkane level."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+            warned = warn_if_arkane_level_differs(arkane_level=Level(method='bmk', basis='cbsb7'),
+                                                  energy_level=Level(method='apfd', basis='def2svp'))
+        self.assertTrue(warned)
+        self.assertTrue(any('bmk/cbsb7' in record and 'apfd/def2svp' in record
+                            and 'not formation enthalpies' in record for record in captured.output))
+
+    def test_the_same_level_is_not_warned_about(self):
+        """A refit year or another software on the same method and basis is not a different level."""
+        self.assertFalse(warn_if_arkane_level_differs(
+            arkane_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian', year=2023),
+            energy_level=Level(method='wb97xd', basis='def2tzvp', software='gaussian')))
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=Level(method='cbs-qb3'),
+                                                      energy_level=Level(method='cbs-qb3')))
+
+    def test_a_missing_level_is_not_warned_about(self):
+        """Without both levels there is nothing to compare."""
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=None, energy_level=Level(method='apfd',
+                                                                                             basis='def2svp')))
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=Level(method='bmk', basis='cbsb7'),
+                                                      energy_level=None))
 
 
 class TestExecuteReleasesPooledConnections(unittest.TestCase):
