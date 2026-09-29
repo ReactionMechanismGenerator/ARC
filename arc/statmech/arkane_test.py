@@ -543,6 +543,15 @@ class TestDispersionAndSolvationMatching(unittest.TestCase):
             f.write(content)
         return f.name
 
+    @staticmethod
+    def _write_qm_sections(key):
+        """Write a quantum corrections data.py whose atom energy, Petersson and Melius sections each hold ``key``."""
+        sections = ('atom_energies = {', 'pbac = {', 'mbac = {')
+        content = '\n'.join(line for start in sections for line in (start, f'    "{key}": {{}},', '}'))
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.py') as f:
+            f.write(content + '\nfreq_dict = {\n}\n')
+        return f.name
+
     def _best(self, level, keys):
         """The AEC key matched for ``level`` among ``keys``."""
         path = self._write_qm_file(keys)
@@ -570,19 +579,26 @@ class TestDispersionAndSolvationMatching(unittest.TestCase):
         self.assertEqual(_effective_method('wb97x-d3'), ('wb97xd3', None))
 
     def test_a_dispersion_field_does_not_match_the_plain_method(self):
-        """b3lyp/def2tzvp with dispersion gd3bj is not b3lyp/def2tzvp: Arkane has only the plain b3lyp2023 set."""
-        qm_corr_files = get_qm_corrections_files()
+        """b3lyp/def2tzvp with dispersion gd3bj and plain b3lyp/def2tzvp each match only their own key."""
         plain = Level(method='b3lyp', basis='def2tzvp', software='gaussian')
         d3bj = Level(method='b3lyp', basis='def2tzvp', software='gaussian', dispersion='gd3bj')
-        for start, end in ((AEC_SECTION_START, AEC_SECTION_END), (PBAC_SECTION_START, PBAC_SECTION_END)):
-            with self.subTest(section=start):
-                self.assertEqual(find_best_across_files(plain, qm_corr_files, start, end),
-                                 "LevelOfTheory(method='b3lyp2023',basis='def2tzvp',software='gaussian')")
-                self.assertIsNone(find_best_across_files(d3bj, qm_corr_files, start, end))
-        self.assertIsNone(get_arkane_model_chemistry(sp_level=d3bj, freq_scale_factor=1.0))
-        self.assertFalse(check_arkane_bacs(sp_level=d3bj, bac_type='p'))
-        with self.assertRaises(ValueError):
-            check_arkane_aec(sp_level=d3bj, raise_error=True)
+        plain_key = "LevelOfTheory(method='b3lyp2023',basis='def2tzvp',software='gaussian')"
+        d3bj_key = "LevelOfTheory(method='b3lypd3bj2023',basis='def2tzvp',software='gaussian')"
+        self.assertEqual(self._best(plain, [d3bj_key, plain_key]), plain_key)
+        self.assertEqual(self._best(d3bj, [plain_key, d3bj_key]), d3bj_key)
+        self.assertIsNone(self._best(plain, [d3bj_key]))
+        self.assertIsNone(self._best(d3bj, [plain_key]))
+        path = self._write_qm_sections(plain_key)
+        self.addCleanup(os.remove, path)
+        with patch('arc.statmech.arkane.get_qm_corrections_files', return_value=[path]):
+            for start, end in ((AEC_SECTION_START, AEC_SECTION_END), (PBAC_SECTION_START, PBAC_SECTION_END)):
+                with self.subTest(section=start):
+                    self.assertEqual(find_best_across_files(plain, [path], start, end), plain_key)
+                    self.assertIsNone(find_best_across_files(d3bj, [path], start, end))
+            self.assertIsNone(get_arkane_model_chemistry(sp_level=d3bj, freq_scale_factor=1.0))
+            self.assertFalse(check_arkane_bacs(sp_level=d3bj, bac_type='p'))
+            with self.assertRaises(ValueError):
+                check_arkane_aec(sp_level=d3bj, raise_error=True)
 
     def test_a_dispersion_field_matches_a_key_with_that_dispersion(self):
         """b2plyp with dispersion gd3 is Arkane's b2plypd3 for the AEC and the BAC entries. Frequency keys are
@@ -861,9 +877,14 @@ class TestArkaneCorrectionFlags(unittest.TestCase):
                 self.assertIsNone(spc.thermo.atom_corrections_level)
 
     def test_thermo_of_a_dispersion_field_level_uses_only_that_dispersion(self):
-        """b3lyp/def2tzvp + gd3bj gets no b3lyp2023 corrections; b2plyp/def2tzvp + gd3 gets the b2plypd3 ones."""
-        spc, input_py = self._compute_thermo_with_mocked_arkane(
-            sp_level=Level(method='b3lyp', basis='def2tzvp', software='gaussian', dispersion='gd3bj'), bac_type='p')
+        """b3lyp/def2tzvp + gd3bj gets no plain b3lyp corrections; b2plyp/def2tzvp + gd3 gets the b2plypd3 ones."""
+        path = TestDispersionAndSolvationMatching._write_qm_sections(
+            "LevelOfTheory(method='b3lyp2023',basis='def2tzvp',software='gaussian')")
+        self.addCleanup(os.remove, path)
+        with patch('arc.statmech.arkane.get_qm_corrections_files', return_value=[path]):
+            spc, input_py = self._compute_thermo_with_mocked_arkane(
+                sp_level=Level(method='b3lyp', basis='def2tzvp', software='gaussian', dispersion='gd3bj'),
+                bac_type='p')
         self.assertNotIn('modelChemistry = ', input_py)
         self.assertIn('useAtomCorrections = False\n', input_py)
         self.assertIs(spc.thermo.atom_corrections_applied, False)
