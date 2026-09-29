@@ -7,6 +7,7 @@ This module contains unit tests for ARC's common module
 
 import copy
 import datetime
+import logging.handlers
 import os
 import tempfile
 import time
@@ -1759,6 +1760,66 @@ class TestInitializeLogDeferredWarnings(unittest.TestCase):
         common.initialize_log(log_file=self.log_file, project='test_deferred_warnings')
         common.initialize_log(log_file=self.log_file, project='test_deferred_warnings')
         self.assertEqual(self._read_log().count('only flushed once'), 1)
+
+
+class TestRouteLoggerToArcLog(unittest.TestCase):
+    """route_logger_to_arc_log() hands a named logger's records to ARC's handlers for one block."""
+
+    name = 'route_logger_to_arc_log_test_package'
+
+    def setUp(self):
+        saved = list(common.logger.handlers)
+        self.addCleanup(self._restore_arc_handlers, saved)
+        for handler in saved:
+            common.logger.removeHandler(handler)
+        self.handler = logging.handlers.BufferingHandler(capacity=100)
+        self.handler.setLevel(logging.DEBUG)
+        common.logger.addHandler(self.handler)
+        self.target = logging.getLogger(self.name)
+        self.addCleanup(self.target.setLevel, logging.NOTSET)
+
+    @staticmethod
+    def _restore_arc_handlers(saved):
+        for handler in list(common.logger.handlers):
+            common.logger.removeHandler(handler)
+        for handler in saved:
+            common.logger.addHandler(handler)
+
+    def test_info_and_above_from_the_logger_and_its_children_are_routed(self):
+        with common.route_logger_to_arc_log(self.name):
+            self.assertFalse(self.target.propagate)
+            logging.getLogger(f'{self.name}.child').debug('debug record')
+            logging.getLogger(f'{self.name}.child').info('info record')
+            self.target.warning('warning record')
+        self.assertEqual([record.getMessage() for record in self.handler.buffer],
+                         ['info record', 'warning record'])
+
+    def test_the_logger_is_restored_when_the_block_raises(self):
+        self.target.setLevel(logging.ERROR)
+        with self.assertRaises(RuntimeError):
+            with common.route_logger_to_arc_log(self.name):
+                raise RuntimeError('raised inside the block')
+        self.assertEqual(self.target.handlers, [])
+        self.assertEqual(self.target.level, logging.ERROR)
+        self.assertTrue(self.target.propagate)
+
+    def test_a_nested_block_adds_no_second_handler(self):
+        with common.route_logger_to_arc_log(self.name):
+            with common.route_logger_to_arc_log(self.name):
+                self.assertEqual(self.target.handlers, [self.handler])
+                self.target.warning('nested record')
+            self.assertEqual(self.target.handlers, [self.handler])
+            self.assertFalse(self.target.propagate)
+        self.assertEqual([record.getMessage() for record in self.handler.buffer], ['nested record'])
+        self.assertEqual(self.target.handlers, [])
+        self.assertTrue(self.target.propagate)
+
+    def test_a_logger_without_arc_handlers_is_left_untouched(self):
+        common.logger.removeHandler(self.handler)
+        with common.route_logger_to_arc_log(self.name):
+            self.assertEqual(self.target.handlers, [])
+            self.assertEqual(self.target.level, logging.NOTSET)
+            self.assertTrue(self.target.propagate)
 
 
 class TestCheckRemotePathsOfPathNamingAdapters(unittest.TestCase):
