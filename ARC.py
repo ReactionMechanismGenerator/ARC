@@ -12,13 +12,6 @@ import os
 from arc.common import read_yaml_file
 from arc.main import ARC
 
-try:
-    from tckdb_arc.config import TCKDBConfig
-    from tckdb_arc.sweep import run_upload_sweep
-except ImportError:  # in-tree fallback until Phase 4 removes arc/tckdb/
-    from arc.tckdb.config import TCKDBConfig
-    from arc.tckdb.sweep import run_upload_sweep
-
 
 def parse_command_line_arguments(command_line_args=None):
     """
@@ -67,10 +60,13 @@ def main():
     if 'project_directory' not in input_dict or not input_dict['project_directory']:
         input_dict['project_directory'] = project_directory
 
-    tckdb_config = TCKDBConfig.from_dict(input_dict.pop('tckdb', None))
+    tckdb_settings = input_dict.pop('tckdb', None)
+    tckdb_config = None
+    if tckdb_settings is not None:
+        from tckdb_arc.config import TCKDBConfig
+        tckdb_config = TCKDBConfig.from_dict(tckdb_settings)
 
     arc_object = ARC(**input_dict)
-    arc_object.tckdb_config = tckdb_config
     if tckdb_config is not None:
         print(f'TCKDB integration enabled: {tckdb_config.base_url}')
 
@@ -82,10 +78,8 @@ def main():
         arc_object.execute()
 
         if tckdb_config is not None:
-            try:
-                from tckdb_arc.adapter import TCKDBAdapter
-            except ImportError:
-                from arc.tckdb.adapter import TCKDBAdapter
+            from tckdb_arc.adapter import TCKDBAdapter
+            from tckdb_arc.sweep import run_upload_sweep
             adapter = TCKDBAdapter(tckdb_config, project_directory=arc_object.project_directory)
             run_upload_sweep(
                 adapter=adapter,
