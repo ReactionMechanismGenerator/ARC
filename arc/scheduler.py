@@ -754,7 +754,8 @@ class Scheduler(object):
             return
         pending = set(self._pending_pipe_sp)
         self._pending_pipe_sp.clear()
-        piped = self.pipe_planner.try_pipe_species_sp(sorted(pending))
+        reusing_opt = {label for label in pending if self.sp_reuses_opt_output(label)}
+        piped = self.pipe_planner.try_pipe_species_sp(sorted(pending - reusing_opt))
         for label in sorted(pending - piped):
             self.run_sp_job(label)
 
@@ -1757,6 +1758,26 @@ class Scheduler(object):
             self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
                          level_of_theory=self.freq_level, job_type='freq')
 
+    def sp_reuses_opt_output(self, label: str, level: Level | None = None) -> bool:
+        """
+        Whether the sp energy of a species is parsed from its optimization output, so that no sp job is needed.
+
+        This holds when the sp level equals the optimization level, the method is not composite, the species
+        is not an xtb TS, and the optimization geometry path is known.
+
+        Args:
+            label (str): The species label.
+            level (Level, optional): The sp level. Defaults to ``self.sp_level``.
+
+        Returns:
+            bool: ``True`` if the optimization output serves as the sp output.
+        """
+        level = level or self.sp_level
+        return bool(level == self.opt_level and not self.composite_method
+                    and not (level.software == 'xtb' and self.species_dict[label].is_ts)
+                    and 'paths' in self.output[label] and 'geo' in self.output[label]['paths']
+                    and self.output[label]['paths']['geo'])
+
     def run_sp_job(self,
                    label: str,
                    level: Level | None = None,
@@ -1779,10 +1800,7 @@ class Scheduler(object):
                          job_type='conf_sp',
                          conformer=conformer)
             return
-        if level == self.opt_level and not self.composite_method \
-                and not (level.software == 'xtb' and self.species_dict[label].is_ts) \
-                and 'paths' in self.output[label] and 'geo' in self.output[label]['paths'] \
-                and self.output[label]['paths']['geo']:
+        if self.sp_reuses_opt_output(label, level):
             logger.info(f'Not running an sp job for {label} at {level} since the optimization was done at the '
                         f'same level of theory. Using the optimization output to parse the sp energy.')
             recent_opt_job_name, recent_opt_job = 'opt_a0', None

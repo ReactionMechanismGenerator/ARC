@@ -158,8 +158,8 @@ class TestSubmitPipeRun(unittest.TestCase):
         pipe = self.sched.pipe_coordinator.submit_pipe_run('run_001', tasks)
         self.assertIsInstance(pipe, PipeRun)
         self.assertEqual(pipe.status, PipeRunState.STAGED)
-        self.assertIn('run_001', self.sched.active_pipes)
-        self.assertIs(self.sched.active_pipes['run_001'], pipe)
+        self.assertIn(pipe.pipe_root, self.sched.active_pipes)
+        self.assertIs(self.sched.active_pipes[pipe.pipe_root], pipe)
 
     def test_submit_uses_explicit_cluster_software(self):
         tasks = [_make_task_spec('task_0')]
@@ -185,19 +185,19 @@ class TestPollPipes(unittest.TestCase):
         pipe = self.sched.pipe_coordinator.submit_pipe_run('run_poll', [_make_task_spec('task_poll')])
         _complete_task(pipe.pipe_root, 'task_poll')
         self.sched.pipe_coordinator.poll_pipes()
-        self.assertNotIn('run_poll', self.sched.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.sched.active_pipes)
 
     def test_poll_keeps_active_pipe(self):
-        self.sched.pipe_coordinator.submit_pipe_run('run_active', [_make_task_spec('task_active')])
+        pipe = self.sched.pipe_coordinator.submit_pipe_run('run_active', [_make_task_spec('task_active')])
         self.sched.pipe_coordinator.poll_pipes()
-        self.assertIn('run_active', self.sched.active_pipes)
+        self.assertIn(pipe.pipe_root, self.sched.active_pipes)
 
     def test_poll_removes_failed_pipe(self):
         pipe = self.sched.pipe_coordinator.submit_pipe_run('run_fail', [_make_task_spec('task_f')])
         pipe.status = PipeRunState.FAILED
         pipe._save_run_metadata()
         self.sched.pipe_coordinator.poll_pipes()
-        self.assertNotIn('run_fail', self.sched.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.sched.active_pipes)
 
     def test_poll_logs_counts(self):
         pipe = self.sched.pipe_coordinator.submit_pipe_run('run_log', [_make_task_spec('task_log')])
@@ -216,8 +216,8 @@ class TestPollPipes(unittest.TestCase):
                 error_calls = [str(c) for c in mock_logger.error.call_args_list]
                 self.assertTrue(any('run_err' in c and 'reconciliation failed' in c for c in error_calls))
         # Run should still be in active_pipes after first failure
-        self.assertIn('run_err', self.sched.active_pipes)
-        self.assertEqual(self.sched.pipe_coordinator._pipe_poll_failures.get('run_err'), 1)
+        self.assertIn(pipe.pipe_root, self.sched.active_pipes)
+        self.assertEqual(self.sched.pipe_coordinator._pipe_poll_failures.get(pipe.pipe_root), 1)
 
     def test_poll_removes_after_repeated_failures(self):
         """After 3 consecutive failures, the broken run is removed from active_pipes."""
@@ -225,8 +225,8 @@ class TestPollPipes(unittest.TestCase):
         with patch.object(pipe, 'reconcile', side_effect=RuntimeError('corrupt state')):
             for _ in range(3):
                 self.sched.pipe_coordinator.poll_pipes()
-        self.assertNotIn('run_stuck', self.sched.active_pipes)
-        self.assertNotIn('run_stuck', self.sched.pipe_coordinator._pipe_poll_failures)
+        self.assertNotIn(pipe.pipe_root, self.sched.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.sched.pipe_coordinator._pipe_poll_failures)
 
     def test_poll_resets_failure_count_on_success(self):
         """Successful reconciliation resets the failure counter."""
@@ -234,10 +234,10 @@ class TestPollPipes(unittest.TestCase):
         # Fail once
         with patch.object(pipe, 'reconcile', side_effect=RuntimeError('transient')):
             self.sched.pipe_coordinator.poll_pipes()
-        self.assertEqual(self.sched.pipe_coordinator._pipe_poll_failures.get('run_flaky'), 1)
+        self.assertEqual(self.sched.pipe_coordinator._pipe_poll_failures.get(pipe.pipe_root), 1)
         # Succeed — counter should reset
         self.sched.pipe_coordinator.poll_pipes()
-        self.assertNotIn('run_flaky', self.sched.pipe_coordinator._pipe_poll_failures)
+        self.assertNotIn(pipe.pipe_root, self.sched.pipe_coordinator._pipe_poll_failures)
 
 
 class TestScheduleJobsLoopCondition(unittest.TestCase):
@@ -256,10 +256,10 @@ class TestScheduleJobsLoopCondition(unittest.TestCase):
         _complete_task(pipe.pipe_root, 'task_loop')
         # Clear running_jobs so only active_pipes keeps the loop alive
         self.sched.running_jobs = {}
-        self.assertIn('run_loop', self.sched.active_pipes)
+        self.assertIn(pipe.pipe_root, self.sched.active_pipes)
         # Simulate one iteration: poll_pipes should complete and remove it
         self.sched.pipe_coordinator.poll_pipes()
-        self.assertNotIn('run_loop', self.sched.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.sched.active_pipes)
 
     def test_poll_pipes_invoked_in_loop(self):
         """Verify poll_pipes is invoked when the loop runs with only active pipes."""
@@ -276,7 +276,7 @@ class TestScheduleJobsLoopCondition(unittest.TestCase):
             self.sched.pipe_coordinator.poll_pipes()
             mock_poll.assert_called_once()
         # After polling, the completed pipe should be gone.
-        self.assertNotIn('run_int', self.sched.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.sched.active_pipes)
 
 
 class TestRegisterPipeRunFromDir(unittest.TestCase):
@@ -292,9 +292,9 @@ class TestRegisterPipeRunFromDir(unittest.TestCase):
         tasks = [_make_task_spec(f'task_{i}') for i in range(2)]
         original = self.sched.pipe_coordinator.submit_pipe_run('run_restart', tasks, cluster_software='pbs')
         pipe_root = original.pipe_root
-        del self.sched.active_pipes['run_restart']
+        del self.sched.active_pipes[pipe_root]
         restored = self.sched.pipe_coordinator.register_pipe_run_from_dir(pipe_root)
-        self.assertIn('run_restart', self.sched.active_pipes)
+        self.assertIn(pipe_root, self.sched.active_pipes)
         self.assertEqual(restored.run_id, 'run_restart')
         self.assertEqual(restored.cluster_software, 'pbs')
 
@@ -321,9 +321,9 @@ class TestTryPipeConformers(unittest.TestCase):
             result = self.sched.pipe_planner.try_pipe_conformers('H2O')
         self.assertTrue(result)
         self.assertEqual(len(self.sched.active_pipes), 1)
-        run_id = list(self.sched.active_pipes.keys())[0]
-        self.assertIn('H2O', run_id)
-        pipe = self.sched.active_pipes[run_id]
+        pipe_key = list(self.sched.active_pipes.keys())[0]
+        self.assertIn('H2O', pipe_key)
+        pipe = self.sched.active_pipes[pipe_key]
         self.assertEqual(len(pipe.tasks), 12)
         # Verify task metadata uses the new explicit schema
         spec = pipe.tasks[0]
@@ -570,9 +570,9 @@ class TestTryPipeConfSp(unittest.TestCase):
         with patch.object(self.sched, 'deduce_job_adapter', return_value='gaussian'):
             result = self.sched.pipe_planner.try_pipe_conf_sp('H2O', list(range(len(self.sched.species_dict['H2O'].conformers))))
         self.assertTrue(result)
-        run_id = list(self.sched.active_pipes.keys())[0]
-        self.assertIn('conf_sp', run_id)
-        pipe = self.sched.active_pipes[run_id]
+        pipe_key = list(self.sched.active_pipes.keys())[0]
+        self.assertIn('conf_sp', pipe_key)
+        pipe = self.sched.active_pipes[pipe_key]
         self.assertEqual(pipe.tasks[0].task_family, 'conf_sp')
 
     def test_conf_sp_no_pipe_below_threshold(self):
@@ -689,9 +689,9 @@ class TestTryPipeTsOpt(unittest.TestCase):
         with patch.object(self.sched, 'deduce_job_adapter', return_value='gaussian'):
             result = self.sched.pipe_planner.try_pipe_ts_opt('H2O', xyzs, level)
         self.assertTrue(result)
-        run_id = list(self.sched.active_pipes.keys())[0]
-        self.assertIn('ts_opt', run_id)
-        pipe = self.sched.active_pipes[run_id]
+        pipe_key = list(self.sched.active_pipes.keys())[0]
+        self.assertIn('ts_opt', pipe_key)
+        pipe = self.sched.active_pipes[pipe_key]
         self.assertEqual(pipe.tasks[0].task_family, 'ts_opt')
         self.assertEqual(pipe.tasks[0].owner_type, 'species')
 
@@ -844,8 +844,8 @@ class TestTryPipeSpeciesSp(unittest.TestCase):
         with patch.object(self.sched, 'deduce_job_adapter', return_value='gaussian'):
             result = self.sched.pipe_planner.try_pipe_species_sp(labels)
         self.assertTrue(result)
-        run_id = list(self.sched.active_pipes.keys())[0]
-        pipe = self.sched.active_pipes[run_id]
+        pipe_key = list(self.sched.active_pipes.keys())[0]
+        pipe = self.sched.active_pipes[pipe_key]
         self.assertEqual(pipe.tasks[0].task_family, 'species_sp')
         self.assertEqual(pipe.tasks[0].owner_type, 'species')
 
@@ -1268,7 +1268,7 @@ class TestSubmitPipeRunLifecycle(unittest.TestCase):
                    return_value=('errored', None)):
             pipe = self.sched.pipe_coordinator.submit_pipe_run('fail_run', tasks)
         self.assertEqual(pipe.status, PipeRunState.STAGED)
-        self.assertIn('fail_run', self.sched.active_pipes)
+        self.assertIn(pipe.pipe_root, self.sched.active_pipes)
 
 
 class TestPollPipesIntegration(unittest.TestCase):
@@ -1291,7 +1291,7 @@ class TestPollPipesIntegration(unittest.TestCase):
         # Mock schedule_jobs loop by calling poll_pipes directly
         # (full schedule_jobs is too heavy; this verifies the integration point)
         self.sched.pipe_coordinator.poll_pipes()
-        self.assertNotIn('poll_int', self.sched.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.sched.active_pipes)
 
 
 class TestFlushPendingPipeSp(unittest.TestCase):
@@ -1323,6 +1323,29 @@ class TestFlushPendingPipeSp(unittest.TestCase):
         self.assertEqual(mock_sp.call_count, 2)
         fallback_labels = sorted([c.args[0] for c in mock_sp.call_args_list])
         self.assertEqual(fallback_labels, ['spc_A', 'spc_C'])
+
+    def test_flush_skips_pipe_for_species_whose_sp_level_equals_opt_level(self):
+        """Species whose sp energy comes from the opt output are not batched, other species are."""
+        self.sched._pending_pipe_sp = {'spc_A', 'spc_B'}
+        self.sched.output['spc_A'] = {'paths': {'geo': '/path/to/spc_A_opt.log'}}
+        self.sched.output['spc_B'] = {'paths': {'geo': ''}}
+        self.sched.sp_level = self.sched.opt_level
+        with patch.object(self.sched.pipe_planner, 'try_pipe_species_sp', return_value={'spc_B'}) as mock_planner, \
+             patch.object(self.sched, 'run_sp_job') as mock_sp:
+            self.sched._flush_pending_pipe_sp()
+        mock_planner.assert_called_once_with(['spc_B'])
+        mock_sp.assert_called_once_with('spc_A')
+
+    def test_sp_reuses_opt_output(self):
+        """The sp job is skipped only for an identical, non-composite level with a known opt geometry path."""
+        self.sched.output['spc_A'] = {'paths': {'geo': '/path/to/spc_A_opt.log'}}
+        self.sched.sp_level = self.sched.opt_level
+        self.assertTrue(self.sched.sp_reuses_opt_output('spc_A'))
+        self.sched.output['spc_A']['paths']['geo'] = ''
+        self.assertFalse(self.sched.sp_reuses_opt_output('spc_A'))
+        self.sched.output['spc_A']['paths']['geo'] = '/path/to/spc_A_opt.log'
+        self.sched.sp_level = Level(method='ccsd(t)-f12', basis='cc-pvtz-f12', software='molpro')
+        self.assertFalse(self.sched.sp_reuses_opt_output('spc_A'))
 
     def test_flush_noop_when_empty(self):
         """Empty pending set should not call planner."""
@@ -1570,8 +1593,9 @@ class TestPipeRoutingIntegration(unittest.TestCase):
         with patch.object(self.sched, 'deduce_job_adapter', return_value='mockter'):
             self.sched.pipe_planner.try_pipe_ts_opt('H2O', xyzs, level)
         # Check that the pipe run was registered.
-        self.assertIn('H2O_ts_opt', self.sched.pipe_coordinator.active_pipes)
-        pipe = self.sched.pipe_coordinator.active_pipes['H2O_ts_opt']
+        self.assertEqual(len(self.sched.pipe_coordinator.active_pipes), 1)
+        pipe = next(iter(self.sched.pipe_coordinator.active_pipes.values()))
+        self.assertEqual(pipe.run_id, 'H2O_ts_opt')
         # Verify path is under calcs/TSs/H2O/.
         self.assertIn(os.path.join('calcs', 'TSs', 'H2O'), pipe.pipe_root)
         self.assertIn('pipe_ts_opt_0', pipe.pipe_root)
@@ -1582,7 +1606,7 @@ class TestPipeRoutingIntegration(unittest.TestCase):
         level = Level(repr=default_levels_of_theory['ts_guesses'])
         with patch.object(self.sched, 'deduce_job_adapter', return_value='mockter'):
             self.sched.pipe_planner.try_pipe_ts_opt('H2O', xyzs, level)
-        pipe = self.sched.pipe_coordinator.active_pipes['H2O_ts_opt']
+        pipe = next(iter(self.sched.pipe_coordinator.active_pipes.values()))
         self.assertEqual(len(pipe.tasks), 15)
         # All tasks should be ts_opt family.
         self.assertTrue(all(t.task_family == 'ts_opt' for t in pipe.tasks))
@@ -1593,7 +1617,7 @@ class TestPipeRoutingIntegration(unittest.TestCase):
         level = Level(repr=default_levels_of_theory['ts_guesses'])
         with patch.object(self.sched, 'deduce_job_adapter', return_value='mockter'):
             self.sched.pipe_planner.try_pipe_ts_opt('H2O', xyzs, level)
-        pipe = self.sched.pipe_coordinator.active_pipes['H2O_ts_opt']
+        pipe = next(iter(self.sched.pipe_coordinator.active_pipes.values()))
         tasks_dir = os.path.join(pipe.pipe_root, 'tasks')
         self.assertTrue(os.path.isdir(tasks_dir))
         task_dirs = sorted(os.listdir(tasks_dir))
@@ -1608,7 +1632,7 @@ class TestPipeRoutingIntegration(unittest.TestCase):
         level = Level(repr=default_levels_of_theory['ts_guesses'])
         with patch.object(self.sched, 'deduce_job_adapter', return_value='mockter'):
             self.sched.pipe_planner.try_pipe_ts_opt('H2O', xyzs, level)
-        pipe = self.sched.pipe_coordinator.active_pipes['H2O_ts_opt']
+        pipe = next(iter(self.sched.pipe_coordinator.active_pipes.values()))
         submit_path = os.path.join(pipe.pipe_root, 'submit.sh')
         self.assertTrue(os.path.isfile(submit_path))
         with open(submit_path) as f:

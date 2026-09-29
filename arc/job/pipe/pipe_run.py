@@ -239,10 +239,8 @@ class PipeRun:
             lines.append(engine_setup)
         scratch_base = pipe_settings.get('scratch_base', '')
         if scratch_base:
-            # Each worker needs its own scratch directory. Without a queueing system there is no
-            # job id to key it on, so fall back to the run id and the worker id.
             if self.cluster_software == 'local':
-                subdir = f'{self.run_id}/$WORKER_ID'
+                subdir = f'{os.path.relpath(self.pipe_root, os.path.join(self.project_directory, "calcs"))}/$WORKER_ID'
             else:
                 subdir = '${PBS_JOBID%%[*}/$PBS_ARRAY_INDEX'
             lines.append(f'export TMPDIR="{scratch_base}/{subdir}"\nmkdir -p "$TMPDIR"')

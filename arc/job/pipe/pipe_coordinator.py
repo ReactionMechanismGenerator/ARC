@@ -67,6 +67,9 @@ class PipeCoordinator:
     """
     Manages the lifecycle of active pipe runs for a Scheduler instance.
 
+    ``active_pipes`` is keyed by each run's ``pipe_root``, which is unique per batch, so several
+    concurrently active runs may share one logical ``run_id``.
+
     Owns:
       - pipe eligibility checks
       - run creation / submission / reconstruction
@@ -260,7 +263,7 @@ class PipeCoordinator:
         except NotImplementedError:
             logger.warning(f'Pipe run {run_id}: submit script generation not yet implemented '
                            f'for {cluster_software}. Tasks are staged but must be submitted manually.')
-            self.active_pipes[run_id] = pipe
+            self.active_pipes[pipe.pipe_root] = pipe
             return pipe
         try:
             job_status, job_id = pipe.submit_to_scheduler()
@@ -277,13 +280,13 @@ class PipeCoordinator:
         except Exception as e:
             logger.warning(f'Pipe run {run_id}: submission failed ({e}). '
                            f'Tasks are staged at {pipe.pipe_root} but not running.')
-        self.active_pipes[run_id] = pipe
+        self.active_pipes[pipe.pipe_root] = pipe
         return pipe
 
     def register_pipe_run_from_dir(self, pipe_root: str) -> PipeRun:
         """Reconstruct and register an existing pipe run from disk."""
         pipe = PipeRun.from_dir(pipe_root)
-        self.active_pipes[pipe.run_id] = pipe
+        self.active_pipes[pipe.pipe_root] = pipe
         return pipe
 
     @staticmethod
@@ -334,14 +337,15 @@ class PipeCoordinator:
                 tasks can be cleaned up immediately.
         """
         max_consecutive_failures = 3
-        for run_id in list(self.active_pipes.keys()):
-            pipe = self.active_pipes[run_id]
+        for pipe_key in list(self.active_pipes.keys()):
+            pipe = self.active_pipes[pipe_key]
+            run_id = pipe.run_id
             job_alive = self._is_scheduler_job_alive(pipe, server_job_ids)
             try:
                 counts = pipe.reconcile(scheduler_job_alive=job_alive)
             except Exception:
-                n_failures = self._pipe_poll_failures.get(run_id, 0) + 1
-                self._pipe_poll_failures[run_id] = n_failures
+                n_failures = self._pipe_poll_failures.get(pipe_key, 0) + 1
+                self._pipe_poll_failures[pipe_key] = n_failures
                 logger.error(f'Pipe run {run_id}: reconciliation failed '
                              f'({n_failures}/{max_consecutive_failures})', exc_info=True)
                 if n_failures >= max_consecutive_failures:
@@ -352,14 +356,14 @@ class PipeCoordinator:
                         pipe._save_run_metadata()
                     except Exception as e:
                         logger.debug(f'Pipe run {run_id}: best-effort FAILED persist failed: {e}')
-                    del self.active_pipes[run_id]
-                    self._pipe_poll_failures.pop(run_id, None)
+                    del self.active_pipes[pipe_key]
+                    self._pipe_poll_failures.pop(pipe_key, None)
                 continue
-            self._pipe_poll_failures.pop(run_id, None)
+            self._pipe_poll_failures.pop(pipe_key, None)
             summary = ', '.join(f'{state}: {n}' for state, n in sorted(counts.items()) if n > 0)
-            if summary != self._last_pipe_summary.get(run_id):
+            if summary != self._last_pipe_summary.get(pipe_key):
                 logger.info(f'Pipe run {run_id}: {summary}')
-                self._last_pipe_summary[run_id] = summary
+                self._last_pipe_summary[pipe_key] = summary
             if pipe.needs_resubmission:
                 logger.info(f'Pipe run {run_id}: resubmitting to pick up retried tasks.')
                 try:
@@ -378,12 +382,12 @@ class PipeCoordinator:
                     logger.warning(f'Pipe run {run_id}: resubmission failed.', exc_info=True)
             if pipe.status in (PipeRunState.COMPLETED, PipeRunState.COMPLETED_PARTIAL):
                 self.ingest_pipe_results(pipe)
-                del self.active_pipes[run_id]
+                del self.active_pipes[pipe_key]
             elif pipe.status == PipeRunState.FAILED:
                 logger.error(f'Pipe run {run_id} has FAILED status. '
                              f'Ingesting any available results and removing from active pipes.')
                 self.ingest_pipe_results(pipe)
-                del self.active_pipes[run_id]
+                del self.active_pipes[pipe_key]
 
     def ingest_pipe_results(self, pipe: PipeRun) -> None:
         """
