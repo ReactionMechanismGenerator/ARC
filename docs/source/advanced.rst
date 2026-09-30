@@ -481,6 +481,14 @@ Support is adapter-dependent. Gaussian, ORCA, and xTB currently have solvation
 handling in their job adapters; always choose method and solvent names in the
 format expected by the selected ESS.
 
+Arkane has energy corrections (atom energies and bond additivity corrections) for
+gas-phase levels only, so a solvated ``sp_level`` has none. With the Arkane thermo
+adapter and ``compute_thermo`` on (the default), ARC therefore stops at startup for a
+solvated energy level unless ``compute_thermo`` is set to ``False``, or a gas-phase
+``arkane_level_of_theory`` is given. In the latter case Arkane subtracts gas-phase atom
+energies from solvated energies, ARC logs a warning, and the resulting H298 is not a
+formation enthalpy.
+
 Adaptive Levels
 ---------------
 
