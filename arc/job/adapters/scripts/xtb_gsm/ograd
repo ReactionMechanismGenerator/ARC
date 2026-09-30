@@ -18,7 +18,7 @@ wc -l < $molfile > $ofile.xyz
 echo "Dummy for XTB/TM calculation" >> $ofile.xyz
 cat $molfile >> $ofile.xyz
 
-xtb $ofile.xyz --grad --chrg 0 > $ofile.xtbout
+xtb $ofile.xyz --grad --gfn 2 --chrg @CHARGE@ --uhf @UHF@ > $ofile.xtbout
 
 tm2orca.py $basename
 rm xtbrestart
