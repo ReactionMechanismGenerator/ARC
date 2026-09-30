@@ -7,8 +7,9 @@ This module contains unit tests for the arc.scheduler module
 
 import logging
 import tempfile
+from functools import partial
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 import os
 import shutil
 import time
@@ -17,13 +18,15 @@ from types import SimpleNamespace
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
+from arc.common import (ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file,
+                        save_yaml_file)
 from arc.exceptions import DependencyError, ReactionError
 from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_incore_adapters,
                                       derived_instability_breaks_spin_symmetry, is_restricted,
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
+from arc.job.input_options import job_input_options
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_run import build_rotor_scan_1d_tasks
 from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_state
@@ -813,6 +816,8 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                               'errors': '',
                               'info': '',
                               'isomorphism': '',
+                              'input_options': dict(),
+                              'levels': dict(),
                               'job_types': {'rotors': True,
                                             'composite': False,
                                             'conf_opt': False,
@@ -2349,6 +2354,26 @@ H      -0.38158795    1.01273118   -0.02607927""")),
             self.sched1.switch_ts(label='C2H6')
         self.assertTrue(carry.called)
 
+    def test_switch_ts_forgets_the_e0_and_the_arkane_record_of_the_abandoned_guess(self):
+        """Test that the next TS guess does not inherit the E0, its correction switches or the Arkane rotor modes"""
+        species = self.sched1.species_dict['C2H6']
+        for attribute in ('e0', 'e0_atom_corrections_applied', 'e0_bond_corrections_applied', 'e0_aec_yml_sha256',
+                          'arkane_rotor_modes'):
+            self.addCleanup(setattr, species, attribute, getattr(species, attribute))
+        self.addCleanup(setattr, species, 'ts_guesses_exhausted', species.ts_guesses_exhausted)
+        species.ts_guesses_exhausted = True
+        species.e0, species.e0_atom_corrections_applied, species.e0_bond_corrections_applied = 50.0, True, False
+        species.e0_aec_yml_sha256 = 'a' * 64
+        species.arkane_rotor_modes = ['HinderedRotor']
+        with patch.object(self.sched1, 'determine_most_likely_ts_conformer'), \
+                patch.object(self.sched1, 'delete_all_species_jobs'):
+            self.sched1.switch_ts(label='C2H6')
+        self.assertIsNone(species.e0_aec_yml_sha256)
+        self.assertIsNone(species.e0)
+        self.assertIsNone(species.e0_atom_corrections_applied)
+        self.assertIsNone(species.e0_bond_corrections_applied)
+        self.assertIsNone(species.arkane_rotor_modes)
+
     def test_switch_ts_carries_the_verdict_before_the_next_guess_is_chosen(self):
         """Test that the carried verdict names the guess it was measured on, not the one replacing it"""
         label, abandoned_guess, next_guess = 'C2H6', 3, 7
@@ -3687,6 +3712,12 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         sched.check_irc_species(label=irc_label_1)
 
         mock_check_irc_species_and_rxn.assert_called_once()
+        self.assertEqual(mock_check_irc_species_and_rxn.call_args.kwargs['endpoint_labels'],
+                         (irc_label_1, irc_label_2))
+        self.assertEqual(mock_check_irc_species_and_rxn.call_args.kwargs['irc_log_paths'],
+                         ['irc_f.out', 'irc_r.out'])
+        self.assertEqual(mock_check_irc_species_and_rxn.call_args.kwargs['endpoint_log_paths'],
+                         [f'{irc_label_1}_geo.out', f'{irc_label_2}_geo.out'])
         self.assertEqual(sched.species_dict[ts_label].chosen_ts, 1)
         self.assertIn(1, sched.species_dict[ts_label].chosen_ts_list)
         self.assertNotIn(irc_label_1, sched.species_dict)
@@ -4034,17 +4065,19 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertEqual(reported.call_args.kwargs['label'], 'C2H6')
         self.assertIs(reported.call_args.kwargs['job'], job_mock)
 
+    @patch('arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit')
+    @patch('arc.job.adapter.JobAdapter.execute')
     @patch('arc.scheduler.job_factory')
-    def test_run_job_does_not_alias_level_args(self, mock_job_factory):
-        """Test that run_job() passes a detached copy of the level args to the job."""
-        job_mock = MagicMock()
-        job_mock.job_name = 'opt_a0000'
-        job_mock.server = None
-        mock_job_factory.return_value = job_mock
+    def test_run_job_keeps_the_level_args_and_the_scan_trsh_in_the_adapter_args(self,
+                                                                                 mock_job_factory,
+                                                                                 mock_execute,
+                                                                                 mock_limit):
+        """Test that the adapter's args hold both the level's options and the scan troubleshooting keyword,
+        and that mutating them leaves the level alone."""
+        mock_job_factory.side_effect = lambda **kwargs: job_factory(testing=True, **kwargs)
         level = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
                       args={'keyword': {'opt': 'opt=(verytight)'}})
-
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_run_job_level_args')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_run_job_level_args_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='test_run_job_level_args', ess_settings=self.ess_settings,
                           species_list=[ARCSpecies(label='C2H6', smiles='CC')],
@@ -4056,13 +4089,18 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                           testing=True,
                           job_types=self.job_types1,
                           )
-        sched.run_job(label='C2H6', job_type='opt', level_of_theory=level, job_adapter='gaussian')
-
-        args = mock_job_factory.call_args.kwargs['args']
-        self.assertEqual(args['keyword'], {'opt': 'opt=(verytight)'})
-        self.assertIsNot(args['keyword'], level.args['keyword'])
-        args['keyword']['dft_grid'] = 'defgrid2'
+        sched.run_job(label='C2H6', job_type='opt', level_of_theory=level, job_adapter='gaussian',
+                      scan_trsh='scf=(tight)')
+        job = sched.job_dict['C2H6']['opt'][next(iter(sched.job_dict['C2H6']['opt']))]
+        self.assertEqual(job.args['keyword'], {'opt': 'opt=(verytight)', 'scan_trsh': 'scf=(tight)'})
+        job.args['keyword']['dft_grid'] = 'defgrid2'
         self.assertEqual(level.args, {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()})
+
+        sched.run_job(label='C2H6', job_type='opt', level_of_theory=level.as_dict(), job_adapter='gaussian',
+                      trsh=['scf=(qc)'])
+        names = list(sched.job_dict['C2H6']['opt'])
+        retry = sched.job_dict['C2H6']['opt'][names[-1]]
+        self.assertEqual(retry.args['keyword'], {'opt': 'opt=(verytight)'})
 
     @patch('arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit')
     @patch('arc.scheduler.job_factory')
@@ -4151,7 +4189,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.ess_settings = {'gaussian': ['server1']}
-        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 14)]
+        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 16)]
 
     @classmethod
     def tearDownClass(cls):
@@ -4538,6 +4576,20 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                             and "['kinbot', 'linear'] raised an exception" in record.getMessage()
                             for record in captured.records))
         self.assertEqual(sched.running_jobs[rxn_2.ts_label], ['tsg0', 'tsg1'])
+
+    def test_spawn_ts_jobs_skips_a_reaction_with_an_unknown_charge_or_multiplicity(self):
+        """Test that no TS search job is spawned while the charge or the multiplicity is unknown."""
+        for index, attribute in ((14, 'charge'), (15, 'multiplicity')):
+            with self.subTest(attribute=attribute):
+                sched, rxn, spawned = self.setup_hocho_scheduler(
+                    ts_adapters=['linear'],
+                    project=f'arc_project_for_testing_delete_after_usage_tsg_{index}')
+                with patch.object(ARCReaction, attribute, new_callable=PropertyMock, return_value=None), \
+                        self.assertLogs('arc', level='INFO') as captured:
+                    sched.spawn_ts_jobs()
+                self.assertEqual(spawned, list())
+                self.assertTrue(any('Not spawning TS search jobs' in record.getMessage()
+                                    for record in captured.records))
 
 
 class TestExceptionSummaryLine(unittest.TestCase):
@@ -4974,6 +5026,692 @@ class TestSchedulerReactionChargeBalance(unittest.TestCase):
         rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-')
         self.build_scheduler(rxn, species)
         self.assertEqual(rxn.charge, -1)
+
+
+class TestJobLevelRecording(unittest.TestCase):
+    """Tests that the scheduler records the level of each job whose log path it stores."""
+
+    def setUp(self):
+        self.project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.project_directory, ignore_errors=True)
+        self.run_opt = Level(method='b3lyp', basis='6-31g(d,p)')
+        self.job_opt = Level(method='wb97xd', basis='def2-tzvp', software='gaussian')
+        self.job_sp = Level(method='dlpno-ccsd(t)', basis='cc-pvtz', software='orca')
+        self.job_levels = {'opt': self.job_opt, 'freq': self.job_opt, 'sp': self.job_sp}
+        self.ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+H       1.81402049    1.03819414    0.00000000
+H       0.00000000    0.00000000    0.00000000
+H       0.91779059    1.22790192    0.72426890""")
+        self.spc = ARCSpecies(label='C2H6', smiles='CC')
+        self.ts = ARCSpecies(label='TS0', is_ts=True, xyz=self.ts_xyz, multiplicity=1, charge=0,
+                             compute_thermo=False)
+        self.sched = Scheduler(project='levels_test', ess_settings={'gaussian': ['server1']},
+                               species_list=[self.spc, self.ts],
+                               opt_level=self.run_opt,
+                               freq_level=self.run_opt,
+                               sp_level=Level(method='b3lyp', basis='6-311+g(d,p)'),
+                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                               project_directory=self.project_directory,
+                               testing=True,
+                               job_types={'conf_opt': True, 'conf_sp': False, 'opt': True, 'fine': False,
+                                          'freq': True, 'sp': True, 'rotors': False, 'irc': True},
+                               )
+        self.log = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+
+    def make_job(self, level, job_type='opt', **kwargs):
+        """Build a stand-in for a completed ESS job."""
+        return SimpleNamespace(job_type=job_type, level=level, local_path_to_output_file=self.log,
+                               local_path_to_xyz=None, job_name=f'{job_type}_a1', job_adapter='gaussian',
+                               is_ts=False, job_status=['done', {'status': 'done'}], restricted_used=True,
+                               **kwargs)
+
+    def test_a_gaussian_job_is_recorded_at_the_requested_level(self):
+        """Test that the level recorded for a Gaussian job keeps the requested spelling"""
+        requested = Level(method='wb97xd', basis='def2-tzvp', software='gaussian')
+        with patch('arc.scheduler.job_factory', side_effect=partial(job_factory, testing=True)), \
+                patch('arc.job.adapters.gaussian.GaussianAdapter.execute'), \
+                patch.object(self.sched, 'check_max_simultaneous_jobs_limit'), \
+                patch.object(self.sched, 'save_restart_dict'):
+            self.sched.run_job(label='C2H6', job_type='opt', level_of_theory=requested, job_adapter='gaussian')
+        job = next(iter(self.sched.job_dict['C2H6']['opt'].values()))
+        self.assertEqual(job.level.basis, 'def2-tzvp')
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=job.level)
+        self.assertEqual(self.sched.output['C2H6']['levels']['opt']['basis'], 'def2-tzvp')
+
+    def test_the_irc_level_survives_a_troubleshot_direction(self):
+        """Test that a forward IRC and a reverse IRC respawned from the first job's level record one level"""
+        requested = Level(method='wb97xd', basis='def2-tzvp', software='gaussian')
+        jobs = list()
+        with patch('arc.scheduler.job_factory', side_effect=partial(job_factory, testing=True)), \
+                patch('arc.job.adapters.gaussian.GaussianAdapter.execute'), \
+                patch.object(self.sched, 'check_max_simultaneous_jobs_limit'), \
+                patch.object(self.sched, 'save_restart_dict'):
+            self.sched.run_job(label='TS0', job_type='irc', level_of_theory=requested, job_adapter='gaussian',
+                               irc_direction='forward')
+            jobs.append(next(iter(self.sched.job_dict['TS0']['irc'].values())))
+            self.sched.run_job(label='TS0', job_type='irc', level_of_theory=jobs[0].level, job_adapter='gaussian',
+                               irc_direction='reverse')
+            jobs.append(list(self.sched.job_dict['TS0']['irc'].values())[-1])
+        self.sched.output['TS0']['paths']['irc'] = ['forward.out']
+        self.sched.record_irc_level(label='TS0', level=jobs[0].level)
+        self.sched.output['TS0']['paths']['irc'].append('reverse.out')
+        self.sched.record_irc_level(label='TS0', level=jobs[1].level)
+        self.assertEqual(self.sched.output['TS0']['levels']['irc']['basis'], 'def2-tzvp')
+
+    def test_a_new_output_dict_has_an_empty_levels_record(self):
+        """Test that the output dictionary of every species starts with a levels record"""
+        self.assertEqual(self.sched.output['C2H6']['levels'], dict())
+
+    def test_the_opt_job_level_is_recorded_and_stamped_on_the_species(self):
+        """Test that opt records the level of the job (adaptive level), not the run's opt level, and stamps opt_level"""
+        with patch('arc.scheduler.plotter.save_geo'):
+            self.spc.final_xyz = self.ts_xyz
+            self.sched.post_opt_geo_work('C2H6', self.make_job(self.job_opt))
+        self.assertEqual(self.sched.output['C2H6']['levels']['opt'], self.job_opt.as_dict())
+        self.assertNotEqual(self.sched.output['C2H6']['levels']['opt'], self.run_opt.as_dict())
+        self.assertEqual(self.spc.opt_level, self.job_opt.simple())
+        self.assertNotEqual(self.spc.opt_level, self.run_opt.simple())
+
+    def test_a_rerun_opt_at_a_different_level_replaces_the_recorded_level(self):
+        """Test that the recorded level is that of the job whose log is exported, after troubleshooting changed it"""
+        retry_level = Level(method='b3lyp', basis='6-31g(d,p)', software='gaussian')
+        with patch('arc.scheduler.plotter.save_geo'):
+            self.spc.final_xyz = self.ts_xyz
+            self.sched.post_opt_geo_work('C2H6', self.make_job(self.job_opt))
+            self.sched.post_opt_geo_work('C2H6', self.make_job(retry_level))
+        self.assertEqual(self.sched.output['C2H6']['levels']['opt'], retry_level.as_dict())
+
+    def test_the_freq_job_level_is_recorded(self):
+        """Test that a converged stable-species freq job records its own level next to its log path"""
+        freq_level = Level(method='wb97xd', basis='def2-svp', software='gaussian')
+        self.sched.post_freq_actions(label='C2H6', job=self.make_job(freq_level, 'freq'),
+                                     vibfreqs=[100.0, 200.0, 300.0])
+        self.assertEqual(self.sched.output['C2H6']['paths']['freq'], self.log)
+        self.assertEqual(self.sched.output['C2H6']['levels']['freq'], freq_level.as_dict())
+
+    def test_a_freq_job_with_an_unexpected_imaginary_mode_records_no_level(self):
+        """Test that no level is recorded for a freq job whose log path is not recorded"""
+        self.sched.post_freq_actions(label='C2H6', job=self.make_job(self.job_opt, 'freq'),
+                                     vibfreqs=[-100.0, 200.0, 300.0])
+        self.assertNotIn('freq', self.sched.output['C2H6']['levels'])
+
+    def test_the_sp_job_level_is_recorded(self):
+        """Test that the sp job records its own level"""
+        with patch('arc.scheduler.parser.parse_e_elect', return_value=-100.0), \
+                patch.object(self.sched, 'check_spin_contamination'), \
+                patch.object(self.sched, 'save_e_elect'):
+            self.sched.post_sp_actions('C2H6', sp_path=self.log, level=self.job_sp,
+                                       job=self.make_job(self.job_sp, 'sp'))
+        self.assertEqual(self.sched.output['C2H6']['levels']['sp'], self.job_sp.as_dict())
+
+    def sp_actions(self, **kwargs):
+        """Run post_sp_actions on C2H6 with the parsers stubbed out."""
+        with patch('arc.scheduler.parser.parse_e_elect', return_value=-100.0), \
+                patch.object(self.sched, 'check_spin_contamination'), \
+                patch.object(self.sched, 'save_e_elect'):
+            self.sched.post_sp_actions('C2H6', **kwargs)
+
+    def test_an_sp_read_from_the_opt_log_records_the_level_of_the_opt_job(self):
+        """Test that a job-less sp taken from the geometry log takes the recorded opt level, not the run default"""
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=self.job_opt)
+        self.sched.output['C2H6']['paths']['geo'] = self.log
+        self.sp_actions(sp_path=self.log, level=self.run_opt)
+        self.assertEqual(self.sched.output['C2H6']['levels']['sp'], self.job_opt.as_dict())
+
+    def test_a_jobless_sp_from_another_log_records_the_level_argument(self):
+        """Test that a pipe-finalized sp, whose log is not the geometry log, records the level it ran at"""
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=self.job_opt)
+        self.sched.output['C2H6']['paths']['geo'] = os.path.join(self.project_directory, 'opt.out')
+        self.sp_actions(sp_path=self.log, level=self.job_sp)
+        self.assertEqual(self.sched.output['C2H6']['levels']['sp'], self.job_sp.as_dict())
+
+    def test_a_composite_sp_records_the_composite_level(self):
+        """Test that the sp read from a composite log records the composite job's level"""
+        composite = Level(method='cbs-qb3', software='gaussian')
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=self.job_opt)
+        self.sp_actions(sp_path=self.log, level=composite)
+        self.assertEqual(self.sched.output['C2H6']['levels']['sp'], composite.as_dict())
+
+    def test_the_sp_level_is_restored_after_the_solvation_scheme_jobs(self):
+        """Test that the extra solvation-scheme sp jobs do not replace the level of the exported sp log"""
+        scheme = Level(method='b3lyp', basis='6-31g')
+        self.sched.sp_level = Level(method='wb97xd', basis='def2-tzvp', solvation_method='smd', solvent='water',
+                                    solvation_scheme_level=scheme)
+        self.sched.output['C2H6']['job_types']['sp'] = True
+        self.sched.record_job_level(label='C2H6', job_key='sp', level=self.job_sp)
+        original_log = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_0.out')
+        scheme_log = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_1.out')
+        original_energy = parser.parse_e_elect(original_log)
+        scheme_energy = parser.parse_e_elect(scheme_log)
+        self.assertNotEqual(original_energy, scheme_energy)
+        self.sched.output['C2H6']['paths']['sp'] = original_log
+        solvated = Level(method='wb97xd', basis='def2-tzvp', solvation_method='smd', solvent='water')
+        with patch.object(self.sched, 'check_spin_contamination'), patch.object(self.sched, 'save_e_elect'):
+            self.sched.post_sp_actions('C2H6', sp_path=scheme_log, level=solvated,
+                                       job=self.make_job(solvated, 'sp'))
+        self.assertEqual(self.sched.output['C2H6']['paths']['sp'], original_log)
+        self.assertEqual(self.sched.output['C2H6']['levels']['sp'], self.job_sp.as_dict())
+        self.assertEqual(self.sched.output['C2H6']['paths']['sp_sol'], scheme_log)
+        self.assertEqual(self.sched.species_dict['C2H6'].e_elect, original_energy)
+
+    def test_the_t1_diagnostic_is_restored_after_the_solvation_scheme_jobs(self):
+        """Test that the T1 diagnostic is the original sp job's, not the last scheme job's"""
+        scheme = Level(method='ccsd', basis='6-31g')
+        self.sched.sp_level = Level(method='ccsd(t)', basis='cc-pvtz', solvation_method='smd', solvent='water',
+                                    solvation_scheme_level=scheme)
+        self.sched.output['C2H6']['job_types']['sp'] = True
+        original_log = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_0.out')
+        scheme_log = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_1.out')
+        self.sched.output['C2H6']['paths']['sp'] = original_log
+        solvated = Level(method='ccsd(t)', basis='cc-pvtz', solvation_method='smd', solvent='water')
+        t1_by_path = {original_log: 0.01, scheme_log: 0.03}
+        with patch('arc.scheduler.parser.parse_t1', side_effect=lambda path: t1_by_path[path]), \
+                patch.object(self.sched, 'check_spin_contamination'), patch.object(self.sched, 'save_e_elect'):
+            self.sched.post_sp_actions('C2H6', sp_path=scheme_log, level=solvated, job=self.make_job(solvated, 'sp'))
+        self.assertEqual(self.sched.species_dict['C2H6'].t1, 0.01)
+
+    def test_the_mrci_pre_sp_records_its_level(self):
+        """Test that the CCSD job run before an MRCI sp records its own level next to its log path"""
+        self.sched.sp_level = Level(method='mrci', basis='cc-pvtz')
+        ccsd = Level(method='ccsd', basis='cc-pvdz', software='molpro')
+        with patch.object(self.sched, 'run_sp_job'):
+            self.sched.check_sp_job('C2H6', self.make_job(ccsd, 'sp'))
+        self.assertEqual(self.sched.output['C2H6']['levels']['sp'], ccsd.as_dict())
+
+    def test_a_monoatomic_sp_log_that_becomes_the_geometry_log_records_no_opt_level(self):
+        """Test that no opt level is recorded for a species whose sp log stands in for the opt log"""
+        job = self.make_job(self.job_sp, 'sp')
+        with patch.object(ARCSpecies, 'number_of_atoms', new_callable=PropertyMock, return_value=1), \
+                patch.object(self.sched, 'post_sp_actions'), \
+                patch.object(self.sched, 'save_restart_dict'):
+            self.sched.check_sp_job('C2H6', job)
+        self.assertEqual(self.sched.output['C2H6']['paths']['geo'], self.log)
+        self.assertNotIn('opt', self.sched.output['C2H6']['levels'])
+
+    def test_the_composite_job_level_is_recorded_and_stamped_on_the_species(self):
+        """Test that a composite job records its level and stamps it on the species instead of the run's method"""
+        composite = Level(method='cbs-qb3', software='gaussian')
+        self.sched.composite_method = Level(method='g4', software='gaussian')
+        self.sched.trsh_ess_jobs = False
+        with patch('arc.scheduler.parser.parse_geometry', return_value=self.ts_xyz), \
+                patch('arc.scheduler.plotter'), \
+                patch.object(self.sched, 'check_negative_freq', return_value=(False, False)), \
+                patch('arc.scheduler.parser.parse_frequencies', return_value=[100.0]):
+            self.sched.parse_composite_geo('C2H6', self.make_job(composite, 'composite'))
+        self.assertEqual(self.sched.output['C2H6']['levels']['composite'], composite.as_dict())
+        self.assertEqual(self.spc.opt_level, composite.simple())
+
+    def test_a_composite_job_records_no_freq_level(self):
+        """Test that the freq log that is the composite log records no freq level, and the composite one stays"""
+        composite = Level(method='cbs-qb3', software='gaussian')
+        job = self.make_job(composite, 'composite')
+        self.sched.post_freq_actions(label='C2H6', job=job, vibfreqs=[100.0, 200.0, 300.0])
+        self.sched.record_job_level(label='C2H6', job_key='composite', level=job.level)
+        self.assertEqual(self.sched.output['C2H6']['paths']['freq'], self.log)
+        self.assertNotIn('freq', self.sched.output['C2H6']['levels'])
+        self.assertEqual(self.sched.output['C2H6']['levels']['composite'], composite.as_dict())
+
+    def test_the_ts_freq_job_level_is_recorded(self):
+        """Test that the TS branch of the imaginary frequency check records the level of the freq job"""
+        freq_level = Level(method='wb97xd', basis='def2-svp', software='gaussian')
+        job = self.make_job(freq_level, 'freq')
+        self.assertIsNone(self.ts.chosen_ts)
+        with patch.object(self.sched, 'switch_ts') as switch_ts:
+            freq_ok, switched = self.sched.check_negative_freq(label='TS0', job=job, vibfreqs=[-1000.0, 100.0, 200.0])
+        switch_ts.assert_not_called()
+        self.assertTrue(freq_ok)
+        self.assertFalse(switched)
+        self.assertEqual(self.sched.output['TS0']['paths']['freq'], self.log)
+        self.assertEqual(self.sched.output['TS0']['levels']['freq'], freq_level.as_dict())
+
+    def test_an_irc_job_level_is_recorded_and_the_endpoint_carries_its_direction(self):
+        """Test that IRC records the job level, and each endpoint species records the direction of its own job"""
+        irc_level = Level(method='wb97xd', basis='def2-svp', software='gaussian')
+        with patch('arc.scheduler.parser.parse_geometry', return_value=self.ts_xyz), \
+                patch('arc.scheduler.plotter'), \
+                patch.object(self.sched, 'run_job'):
+            for direction in ('reverse', 'forward'):
+                job = self.make_job(irc_level, 'irc', irc_direction=direction)
+                job.species = [self.ts]
+                self.sched.spawn_post_irc_jobs('TS0', job)
+        self.assertEqual(self.sched.output['TS0']['levels']['irc'], irc_level.as_dict())
+        self.assertEqual(self.sched.output['IRC_TS0_1']['irc_direction'], 'reverse')
+        self.assertEqual(self.sched.output['IRC_TS0_2']['irc_direction'], 'forward')
+        self.assertEqual(self.sched.species_dict['IRC_TS0_1'].irc_label, 'TS0')
+
+    def test_an_irc_pair_at_different_levels_records_no_irc_level(self):
+        """Test that forward and reverse IRC jobs at different levels leave the level of the pair unrecorded"""
+        with patch('arc.scheduler.parser.parse_geometry', return_value=self.ts_xyz), \
+                patch('arc.scheduler.plotter'), \
+                patch.object(self.sched, 'run_job'):
+            for direction, level in (('forward', self.job_opt), ('reverse', self.job_sp)):
+                job = self.make_job(level, 'irc', irc_direction=direction)
+                job.species = [self.ts]
+                self.sched.spawn_post_irc_jobs('TS0', job)
+        self.assertNotIn('irc', self.sched.output['TS0']['levels'])
+
+    def test_each_irc_log_records_its_own_level_in_lockstep(self):
+        """Test that logs at different levels each keep their own level, although the pair's level is dropped"""
+        with patch('arc.scheduler.parser.parse_geometry', return_value=self.ts_xyz), \
+                patch('arc.scheduler.plotter'), \
+                patch.object(self.sched, 'run_job'):
+            for direction, level in (('forward', self.job_opt), ('reverse', self.job_sp)):
+                job = self.make_job(level, 'irc', irc_direction=direction)
+                job.species = [self.ts]
+                self.sched.spawn_post_irc_jobs('TS0', job)
+        paths = self.sched.output['TS0']['paths']
+        self.assertEqual(len(paths['irc']), 2)
+        self.assertEqual(paths['irc_levels'], [self.job_opt.as_dict(), self.job_sp.as_dict()])
+        self.assertEqual(paths['irc_directions'], ['forward', 'reverse'])
+        self.assertNotIn('irc', self.sched.output['TS0']['levels'])
+
+    def test_a_restart_output_without_levels_is_recorded_into_without_raising(self):
+        """Test that an output dictionary restored from an older restart file, with no levels key, still records"""
+        del self.sched.output['C2H6']['levels']
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=self.job_opt)
+        self.assertEqual(self.sched.output['C2H6']['levels'], {'opt': self.job_opt.as_dict()})
+
+    def test_recorded_levels_survive_a_restart_file_round_trip_as_independent_dicts(self):
+        """Test that the recorded levels round-trip through YAML, hold no aliases, and share nothing with the level"""
+        level = Level(method='wb97xd', basis='def2-tzvp', solvation_method='smd', solvent='water',
+                      args={'keyword': {'opt': 'tight'}}, solvation_scheme_level=Level(method='b3lyp'))
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=level)
+        self.sched.record_job_level(label='C2H6', job_key='freq', level=level)
+        path = os.path.join(self.project_directory, 'levels_restart.yml')
+        save_yaml_file(path=path, content={'output': self.sched.output})
+        with open(path) as handle:
+            self.assertNotIn('&id', handle.read())
+        restored = read_yaml_file(path)['output']['C2H6']['levels']
+        self.assertEqual(restored['opt']['solvation_method'], 'smd')
+        self.assertNotIn('solvation_scheme_level', restored['opt'])
+        self.sched.output['C2H6']['levels']['opt']['args']['keyword']['opt'] = 'loose'
+        self.assertEqual(level.args['keyword']['opt'], 'tight')
+        self.assertEqual(self.sched.output['C2H6']['levels']['freq']['args']['keyword']['opt'], 'tight')
+
+    def test_a_none_level_removes_the_record(self):
+        """Test that a job without a level does not leave a stale level next to a new log path"""
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=self.job_opt)
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=None)
+        self.assertNotIn('opt', self.sched.output['C2H6']['levels'])
+
+    def test_deleting_the_jobs_of_a_species_clears_its_recorded_levels(self):
+        """Test that levels recorded for the logs of a discarded TS guess are not carried to the next guess"""
+        self.sched.record_job_level(label='TS0', job_key='opt', level=self.job_opt)
+        self.sched.record_job_level(label='TS0', job_key='irc', level=self.job_opt)
+        self.sched.delete_all_species_jobs('TS0')
+        self.assertEqual(self.sched.output['TS0']['levels'], dict())
+
+    def test_deleting_the_jobs_of_a_ts_clears_its_irc_logs_and_their_levels_together(self):
+        """Test that the per-log IRC levels are reset with the IRC logs, so a rerun stays in lockstep"""
+        def spawn():
+            with patch('arc.scheduler.parser.parse_geometry', return_value=self.ts_xyz), \
+                    patch('arc.scheduler.plotter'), \
+                    patch.object(self.sched, 'run_job'):
+                job = self.make_job(self.job_opt, 'irc', irc_direction='forward')
+                job.species = [self.ts]
+                self.sched.spawn_post_irc_jobs('TS0', job)
+        spawn()
+        paths = self.sched.output['TS0']['paths']
+        self.assertEqual((len(paths['irc']), len(paths['irc_levels'])), (1, 1))
+        self.sched.delete_all_species_jobs('TS0')
+        self.assertEqual(self.sched.output['TS0']['paths']['irc_levels'], list())
+        spawn()
+        paths = self.sched.output['TS0']['paths']
+        self.assertEqual((len(paths['irc']), len(paths['irc_levels'])), (1, 1))
+
+    def test_a_restart_that_holds_information_keeps_its_levels_and_gains_the_key_for_new_species(self):
+        """Test that initializing the output of a new species does not disturb the levels of a restored one"""
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=self.job_opt)
+        new_spc = ARCSpecies(label='CH4', smiles='C')
+        self.sched.species_list.append(new_spc)
+        self.sched.species_dict['CH4'] = new_spc
+        self.sched.initialize_output_dict(label='CH4')
+        self.sched.initialize_output_dict()
+        self.assertEqual(self.sched.output['C2H6']['levels'], {'opt': self.job_opt.as_dict()})
+        self.assertEqual(self.sched.output['CH4']['levels'], dict())
+
+
+    ROUTE = '#P opt=(calcfc) wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=12, dkh2) scf=(tight)'
+    RETRY_ROUTE = '#P opt=(calcfc,cartesian) wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=12, dkh2) scf=(qc)'
+
+    def test_the_input_options_of_each_job_are_recorded_beside_its_level(self):
+        """Test that opt, freq and sp record the options their own job wrote, and a rerun replaces them"""
+        with patch('arc.scheduler.plotter.save_geo'):
+            self.spc.final_xyz = self.ts_xyz
+            self.sched.post_opt_geo_work('C2H6', self.make_job(self.job_opt, input_options={'C2H6': self.ROUTE}))
+            self.assertEqual(self.sched.output['C2H6']['input_options'], {'opt': self.ROUTE})
+            self.sched.post_opt_geo_work('C2H6', self.make_job(self.job_opt,
+                                                               input_options={'C2H6': self.RETRY_ROUTE}))
+            self.assertEqual(self.sched.output['C2H6']['input_options'], {'opt': self.RETRY_ROUTE})
+            self.sched.post_opt_geo_work('C2H6', self.make_job(self.job_opt))
+            self.assertEqual(self.sched.output['C2H6']['input_options'], dict())
+        self.sched.post_freq_actions(label='C2H6', job=self.make_job(self.job_opt, 'freq',
+                                                                     input_options={'C2H6': '#P freq'}),
+                                     vibfreqs=[100.0, 200.0, 300.0])
+        self.assertEqual(self.sched.output['C2H6']['input_options'], {'freq': '#P freq'})
+        self.sp_actions(sp_path=self.log, level=self.job_sp,
+                        job=self.make_job(self.job_sp, 'sp', input_options={'C2H6': '!sp', 'CH4': '!other'}))
+        self.assertEqual(self.sched.output['C2H6']['input_options'], {'freq': '#P freq', 'sp': '!sp'})
+
+    def test_an_sp_read_from_the_opt_log_records_the_options_of_the_opt_job(self):
+        """Test that a job-less sp taken from the geometry log states the opt job's options, another log none"""
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=self.job_opt, input_options=self.ROUTE)
+        self.sched.output['C2H6']['paths']['geo'] = self.log
+        self.sp_actions(sp_path=self.log, level=self.run_opt)
+        self.assertEqual(self.sched.output['C2H6']['input_options']['sp'], self.ROUTE)
+        self.sched.output['C2H6']['paths']['geo'] = os.path.join(self.project_directory, 'opt.out')
+        self.sp_actions(sp_path=self.log, level=self.job_sp)
+        self.assertNotIn('sp', self.sched.output['C2H6']['input_options'])
+
+    def test_a_jobless_sp_states_the_composite_or_the_given_options(self):
+        """Test that an sp read from the composite log states the composite job's options, a piped sp its own"""
+        composite_log = os.path.join(self.project_directory, 'composite.out')
+        self.sched.output['C2H6']['paths']['composite'] = composite_log
+        self.sched.record_job_level(label='C2H6', job_key='composite', level=Level(method='cbs-qb3'),
+                                    input_options='#P opt=(calcfc) cbs-qb3')
+        with patch('arc.scheduler.parser.parse_e_elect', return_value=-100.0), \
+                patch('arc.scheduler.parser.parse_t1', return_value=None), \
+                patch.object(self.sched, 'check_spin_contamination'), \
+                patch.object(self.sched, 'save_e_elect'):
+            self.sched.post_sp_actions('C2H6', sp_path=composite_log, level=Level(method='cbs-qb3'))
+            self.assertEqual(self.sched.output['C2H6']['input_options']['sp'], '#P opt=(calcfc) cbs-qb3')
+            self.sched.post_sp_actions('C2H6', sp_path=self.log, level=self.job_sp, input_options='!sp piped')
+            self.assertEqual(self.sched.output['C2H6']['input_options']['sp'], '!sp piped')
+
+    def test_the_sp_options_are_restored_after_the_solvation_scheme_jobs(self):
+        """Test that the extra solvation-scheme sp jobs do not replace the options of the exported sp log"""
+        self.sched.sp_level = Level(method='wb97xd', basis='def2-tzvp', solvation_method='smd', solvent='water',
+                                    solvation_scheme_level=Level(method='b3lyp', basis='6-31g'))
+        self.sched.output['C2H6']['job_types']['sp'] = True
+        self.sched.record_job_level(label='C2H6', job_key='sp', level=self.job_sp, input_options='#P sp scrf=(smd)')
+        self.sched.output['C2H6']['paths']['sp'] = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_0.out')
+        solvated = Level(method='wb97xd', basis='def2-tzvp', solvation_method='smd', solvent='water')
+        with patch.object(self.sched, 'check_spin_contamination'), patch.object(self.sched, 'save_e_elect'):
+            self.sched.post_sp_actions('C2H6', sp_path=os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_1.out'),
+                                       level=solvated, job=self.make_job(solvated, 'sp',
+                                                                         input_options={'C2H6': '#P sp scheme'}))
+        self.assertEqual(self.sched.output['C2H6']['input_options']['sp'], '#P sp scrf=(smd)')
+
+    def test_the_irc_options_are_recorded_per_log_only(self):
+        """Test that each real IRC job's options, which differ by direction, are kept beside its log, never as a pair"""
+        requested = Level(method='wb97xd', basis='def2-tzvp', software='gaussian')
+        jobs = list()
+        with patch('arc.scheduler.job_factory', side_effect=partial(job_factory, testing=True)), \
+                patch('arc.job.adapters.gaussian.GaussianAdapter.execute'), \
+                patch.object(self.sched, 'check_max_simultaneous_jobs_limit'), \
+                patch.object(self.sched, 'save_restart_dict'):
+            for direction in ('forward', 'reverse'):
+                self.sched.run_job(label='TS0', job_type='irc', level_of_theory=requested, job_adapter='gaussian',
+                                   irc_direction=direction)
+                jobs.append(list(self.sched.job_dict['TS0']['irc'].values())[-1])
+        options = [job_input_options(job, 'TS0') for job in jobs]
+        self.assertIn('forward', options[0])
+        self.assertIn('reverse', options[1])
+        self.sched.output['TS0']['paths']['irc'] = ['forward.out']
+        self.sched.record_irc_level(label='TS0', level=jobs[0].level, input_options=options[0])
+        self.sched.output['TS0']['paths']['irc'].append('reverse.out')
+        self.sched.record_irc_level(label='TS0', level=jobs[1].level, input_options=options[1])
+        self.assertEqual(self.sched.output['TS0']['paths']['irc_input_options'], options)
+        self.assertNotIn('irc', self.sched.output['TS0']['input_options'])
+        self.assertIn('irc', self.sched.output['TS0']['levels'])
+        self.sched.record_job_level(label='TS0', job_key='irc', level=jobs[0].level, input_options=options[0])
+        self.assertNotIn('irc', self.sched.output['TS0']['input_options'])
+
+    def test_irc_log_input_options_stay_one_to_one_with_the_irc_logs(self):
+        """Test that each IRC log has its own options at its own index, through a replaced direction and a reset"""
+        forward = '#P irc=(CalcAll,forward,maxpoints=50,stepsize=7) wb97xd/def2tzvp'
+        reverse_retry = '#P irc=(CalcAll,reverse,maxpoints=50,stepsize=7) wb97xd/def2tzvp scf=(qc)'
+        forward_rerun = '#P irc=(CalcAll,forward,maxpoints=100,stepsize=5) wb97xd/def2tzvp'
+
+        def spawn(direction, options, log):
+            irc_job = self.make_job(self.job_opt, 'irc', irc_direction=direction, input_options={'TS0': options})
+            irc_job.local_path_to_output_file = log
+            irc_job.species = [self.ts]
+            with patch('arc.scheduler.parser.parse_geometry', return_value=self.ts_xyz), \
+                    patch('arc.scheduler.plotter'), \
+                    patch.object(self.sched, 'run_job'), \
+                    patch.object(self.sched, 'check_irc_species'):
+                self.sched.spawn_post_irc_jobs('TS0', irc_job)
+
+        def assert_one_to_one(expected_logs, expected_options, expected_directions=None):
+            paths = self.sched.output['TS0']['paths']
+            self.assertEqual(paths['irc'], expected_logs)
+            self.assertEqual(paths['irc_input_options'], expected_options)
+            self.assertEqual(len(paths['irc_levels']), len(paths['irc']))
+            self.assertEqual(len(paths['irc_directions']), len(paths['irc']))
+            if expected_directions is not None:
+                self.assertEqual(paths['irc_directions'], expected_directions)
+
+        spawn('forward', forward, 'irc_forward.out')
+        assert_one_to_one(['irc_forward.out'], [forward])
+        spawn('reverse', reverse_retry, 'irc_reverse_retry.out')
+        assert_one_to_one(['irc_forward.out', 'irc_reverse_retry.out'], [forward, reverse_retry])
+        self.assertEqual(self.sched.output['TS0']['paths']['irc_directions'], ['forward', 'reverse'])
+        spawn('forward', forward_rerun, 'irc_forward_rerun.out')
+        assert_one_to_one(['irc_forward.out', 'irc_reverse_retry.out', 'irc_forward_rerun.out'],
+                          [forward, reverse_retry, forward_rerun])
+        self.assertNotIn('irc', self.sched.output['TS0']['input_options'])
+        self.sched.delete_all_species_jobs('TS0')
+        assert_one_to_one(list(), list())
+        spawn('reverse', reverse_retry, 'irc_reverse_after_switch.out')
+        assert_one_to_one(['irc_reverse_after_switch.out'], [reverse_retry])
+        del self.sched.output['TS0']['paths']['irc_input_options']
+        spawn('forward', forward, 'irc_forward_after_restart.out')
+        assert_one_to_one(['irc_reverse_after_switch.out', 'irc_forward_after_restart.out'], [None, forward],
+                          ['reverse', 'forward'])
+        self.sched.output['TS0']['paths'] = {'irc': ['old_forward.out']}
+        spawn('reverse', reverse_retry, 'irc_reverse_after_old_restart.out')
+        assert_one_to_one(['old_forward.out', 'irc_reverse_after_old_restart.out'], [None, reverse_retry],
+                          [None, 'reverse'])
+        self.assertIsNone(self.sched.output['TS0']['paths']['irc_levels'][0])
+        self.assertEqual(self.sched.output['TS0']['paths']['irc_levels'][1]['method'], self.job_opt.method)
+
+    def test_a_new_output_dict_has_an_empty_input_options_record(self):
+        """Test that every species starts with an input options record, and a TS with a per-log IRC list"""
+        self.assertEqual(self.sched.output['C2H6']['input_options'], dict())
+        self.assertEqual(self.sched.output['TS0']['paths']['irc_input_options'], list())
+        del self.sched.output['C2H6']['input_options']
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=self.job_opt, input_options=self.ROUTE)
+        self.assertEqual(self.sched.output['C2H6']['input_options'], {'opt': self.ROUTE})
+
+    def test_recorded_input_options_survive_a_restart_file_round_trip(self):
+        """Test that the recorded options are saved with the output in restart.yml and read back unchanged"""
+        self.sched.record_job_level(label='C2H6', job_key='opt', level=self.job_opt, input_options=self.ROUTE)
+        orca = '!uHF dlpno-ccsd(t) cc-pvtz cc-pvtz/c tightpno\n!sp\n%scf\nMaxIter 999\nend'
+        self.sched.record_job_level(label='C2H6', job_key='sp', level=self.job_sp, input_options=orca)
+        path = os.path.join(self.project_directory, 'input_options_restart.yml')
+        save_yaml_file(path=path, content={'output': self.sched.output})
+        restored = read_yaml_file(path)['output']['C2H6']['input_options']
+        self.assertEqual(restored, {'opt': self.ROUTE, 'sp': orca})
+
+    def _queued_gaussian_job(self, job_num: int):
+        """A real Gaussian opt job of C2H6, as the scheduler would have queued it."""
+        return job_factory(job_adapter='gaussian', project='levels_test', ess_settings={'gaussian': ['server1']},
+                           species=[self.spc], job_type='opt', level=Level(method='wb97xd', basis='def2-TZVP'),
+                           project_directory=self.project_directory, job_num=job_num)
+
+    def test_a_queued_jobs_input_options_survive_a_restart(self):
+        """Test that a job restored from restart.yml states the options it wrote, not the ones it would write today"""
+        job = self._queued_gaussian_job(931)
+        self.assertTrue(job.input_options['C2H6'].startswith('#P opt'))
+        job_description = job.as_dict()
+        job_description['input_options'] = {'C2H6': '#P opt the deck as it was written'}
+        self.sched.restart_dict = {'running_jobs': {'C2H6': [job_description]}}
+        self.sched.restore_running_jobs()
+        restored = self.sched.job_dict['C2H6']['opt'][job.job_name]
+        self.assertEqual(restored.input_options, {'C2H6': '#P opt the deck as it was written'})
+
+    def test_a_job_restored_from_an_older_restart_states_no_input_options(self):
+        """Test that a restart entry written before the options were recorded restores them as unknown"""
+        job = self._queued_gaussian_job(932)
+        job_description = job.as_dict()
+        del job_description['input_options']
+        self.sched.restart_dict = {'running_jobs': {'C2H6': [job_description]}}
+        self.sched.restore_running_jobs()
+        restored = self.sched.job_dict['C2H6']['opt'][job.job_name]
+        self.assertIsNone(restored.input_options)
+        from_restart = self.make_job(self.job_opt, input_options=restored.input_options)
+        with patch('arc.scheduler.plotter.save_geo'):
+            self.spc.final_xyz = self.ts_xyz
+            self.sched.post_opt_geo_work('C2H6', from_restart)
+        self.assertNotIn('opt', self.sched.output['C2H6']['input_options'])
+
+class TestConformerProvenanceRecording(unittest.TestCase):
+    """Tests that the scheduler records the level and the energy source of every conformer result."""
+
+    LOG_0 = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_0.out')
+    LOG_1 = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_1.out')
+
+    def setUp(self):
+        self.spc = ARCSpecies(label='methylamine', smiles='CN')
+        xyz = self.spc.get_xyz()
+        self.spc.conformers = [xyz, xyz]
+        self.spc.conformer_energies = [1.5, 0.0]
+        self.spc.conformer_levels = [None, None]
+        self.spc.conformer_logs = [None, None]
+        self.spc.conformer_energy_sources = [{'kind': 'force_field_kcal_mol', 'level': None}] * 2
+        self.sched = MagicMock()
+        self.sched.species_dict = {'methylamine': self.spc}
+        self.opt_level = Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'})
+        self.sp_level = Level(repr={'method': 'wb97x-d3', 'basis': 'def2-tzvp'})
+
+    def make_job(self, log, level, job_type='conf_opt', status='done'):
+        job = MagicMock()
+        job.local_path_to_output_file = log
+        job.level = level
+        job.job_type = job_type
+        job.times_rerun = 1
+        job.job_status = [status, {'status': status, 'keywords': list(), 'error': '', 'line': ''}]
+        return job
+
+    def parse(self, job, i):
+        return Scheduler.parse_conformer(self.sched, job=job, label='methylamine', i=i)
+
+    def test_a_converged_conf_opt_records_its_level_and_the_electronic_energy_source(self):
+        """Test that the conf_opt job's level is stored as the geometry level and as the energy level"""
+        self.assertFalse(self.parse(self.make_job(self.LOG_0, self.opt_level), 0))
+        self.assertEqual(self.spc.conformer_levels, [self.opt_level.as_dict(), None])
+        self.assertEqual(self.spc.conformer_energy_sources,
+                         [{'kind': 'electronic_kj_mol', 'level': self.opt_level.as_dict()},
+                          {'kind': 'force_field_kcal_mol', 'level': None}])
+        self.assertAlmostEqual(self.spc.conformer_energies[0], -251596.4435088726, 5)
+
+    def test_a_converged_conf_opt_records_the_log_the_geometry_came_from(self):
+        """Test that the optimization log is recorded for the conformer it produced, and nothing else gets one"""
+        self.parse(self.make_job(self.LOG_0, self.opt_level), 0)
+        self.assertEqual(self.spc.conformer_logs, [self.LOG_0, None])
+        self.parse(self.make_job(self.LOG_0, self.sp_level, job_type='conf_sp'), 0)
+        self.assertEqual(self.spc.conformer_logs, [self.LOG_0, None])
+
+    def test_a_failed_or_unparsed_conf_opt_records_no_log(self):
+        """Test that a conformer that keeps its force-field geometry has no log"""
+        self.parse(self.make_job(self.LOG_0, self.opt_level, status='errored'), 0)
+        with patch('arc.scheduler.parser.parse_geometry', return_value=None):
+            self.parse(self.make_job(self.LOG_0, self.opt_level), 1)
+        self.assertEqual(self.spc.conformer_logs, [None, None])
+
+    def test_a_conf_opt_whose_geometry_cannot_be_parsed_records_no_geometry_level(self):
+        """Test that no geometry level is recorded for a conformer whose optimized geometry was not read"""
+        with patch('arc.scheduler.parser.parse_geometry', return_value=None):
+            self.parse(self.make_job(self.LOG_0, self.opt_level), 0)
+        self.assertEqual(self.spc.conformer_levels, [None, None])
+
+    def test_a_conf_opt_whose_geometry_cannot_be_parsed_keeps_the_force_field_conformer(self):
+        """Test that the force-field geometry, its energy and its source are untouched when no geometry is read"""
+        original = self.spc.conformers[0]
+        with patch('arc.scheduler.parser.parse_geometry', return_value=None):
+            self.parse(self.make_job(self.LOG_0, self.opt_level), 0)
+        self.assertIs(self.spc.conformers[0], original)
+        self.assertEqual(self.spc.conformer_energies, [1.5, 0.0])
+        self.assertEqual(self.spc.conformer_energy_sources[0], {'kind': 'force_field_kcal_mol', 'level': None})
+
+    def test_a_failed_conf_opt_keeps_the_force_field_record(self):
+        """Test that a conformer whose optimization failed stays a null level with its force-field energy source"""
+        self.assertFalse(self.parse(self.make_job(self.LOG_0, self.opt_level, status='errored'), 0))
+        self.assertEqual(self.spc.conformer_levels, [None, None])
+        self.assertEqual(self.spc.conformer_energies, [1.5, 0.0])
+        self.assertEqual(self.spc.conformer_energy_sources[0], {'kind': 'force_field_kcal_mol', 'level': None})
+
+    def test_a_conf_sp_records_the_energy_level_and_leaves_the_geometry_level(self):
+        """Test that a conformer single point does not change the geometry's level but names the energy's level"""
+        self.parse(self.make_job(self.LOG_0, self.opt_level), 0)
+        self.parse(self.make_job(self.LOG_0, self.sp_level, job_type='conf_sp'), 0)
+        self.assertEqual(self.spc.conformer_levels[0], self.opt_level.as_dict())
+        self.assertEqual(self.spc.conformer_energy_sources[0],
+                         {'kind': 'electronic_kj_mol', 'level': self.sp_level.as_dict()})
+
+    def test_a_troubleshooting_rerun_at_another_level_replaces_the_recorded_level(self):
+        """Test that the level of the last conformer job that produced the geometry is the one recorded"""
+        self.parse(self.make_job(self.LOG_0, self.opt_level), 0)
+        self.parse(self.make_job(self.LOG_0, self.sp_level), 0)
+        self.assertEqual(self.spc.conformer_levels[0], self.sp_level.as_dict())
+
+    def test_conformers_set_without_provenance_lists_are_padded(self):
+        """Test that assigning conformers directly (as a restart or a test does) never mis-lengths the records"""
+        self.spc.conformer_levels = list()
+        self.spc.conformer_energy_sources = list()
+        self.parse(self.make_job(self.LOG_1, self.opt_level), 1)
+        self.assertEqual(self.spc.conformer_levels, [None, self.opt_level.as_dict()])
+        self.assertEqual(len(self.spc.conformer_energy_sources), 2)
+        self.assertIsNone(self.spc.conformer_energy_sources[0])
+
+    def test_perturbed_conformers_for_a_negative_frequency_start_with_no_provenance(self):
+        """Test that replacing the conformers wholesale resets the levels and the energy sources to nulls"""
+        self.parse(self.make_job(self.LOG_0, self.opt_level), 0)
+        xyz = self.spc.get_xyz()
+        self.sched.trsh_ess_jobs = True
+        self.sched.job_types = dict()
+        self.sched.job_dict = {'methylamine': dict()}
+        self.sched.conformer_opt_level = self.opt_level
+        self.sched.output = {'methylamine': {'errors': '', 'warnings': ''}}
+        with patch('arc.scheduler.trsh_negative_freq', return_value=([], [xyz, xyz, xyz], [], [])):
+            Scheduler.troubleshoot_negative_freq(self.sched, label='methylamine', job=self.make_job(self.LOG_0, None))
+        self.assertEqual(self.spc.conformer_energies, [None] * 3)
+        self.assertEqual(self.spc.conformer_levels, [None] * 3)
+        self.assertEqual(self.spc.conformer_energy_sources, [None] * 3)
+
+    def test_each_conformer_job_records_the_options_it_wrote(self):
+        """Test that a conf_opt's options describe the geometry and its energy, and a conf_sp's only the energy"""
+        opt, rerun, sp = '#P opt=(calcfc) b97d3/6311+g(d,p)', '#P opt=(calcfc,cartesian) b97d3/6311+g(d,p)', '!sp'
+
+        def job(level, options, job_type='conf_opt', status='done'):
+            conformer_job = self.make_job(self.LOG_0, level, job_type=job_type, status=status)
+            conformer_job.input_options = {'methylamine': options}
+            return conformer_job
+
+        self.parse(job(self.opt_level, opt), 0)
+        self.assertEqual(self.spc.conformer_input_options, [opt, None])
+        self.assertEqual(self.spc.conformer_energy_sources[0]['input_options'], opt)
+        self.parse(job(self.sp_level, sp, job_type='conf_sp'), 0)
+        self.assertEqual(self.spc.conformer_input_options, [opt, None])
+        self.assertEqual(self.spc.conformer_energy_sources[0]['input_options'], sp)
+        self.parse(job(self.opt_level, rerun), 0)
+        self.assertEqual(self.spc.conformer_input_options[0], rerun)
+        self.parse(job(self.opt_level, opt, status='errored'), 1)
+        self.assertEqual(self.spc.conformer_input_options, [rerun, None])
+        self.assertEqual(ARCSpecies(species_dict=self.spc.as_dict()).conformer_input_options, [rerun, None])
+        xyz = self.spc.get_xyz()
+        self.sched.trsh_ess_jobs = True
+        self.sched.job_types = dict()
+        self.sched.job_dict = {'methylamine': dict()}
+        self.sched.conformer_opt_level = self.opt_level
+        self.sched.output = {'methylamine': {'errors': '', 'warnings': ''}}
+        with patch('arc.scheduler.trsh_negative_freq', return_value=([], [xyz, xyz, xyz], [], [])):
+            Scheduler.troubleshoot_negative_freq(self.sched, label='methylamine', job=self.make_job(self.LOG_0, None))
+        self.assertEqual(self.spc.conformer_input_options, [None] * 3)
+
+    def test_the_records_survive_a_restart_and_older_restarts_load_as_nulls(self):
+        """Test the as_dict/from_dict round trip, and a restart dictionary that predates the new keys"""
+        self.parse(self.make_job(self.LOG_0, self.opt_level), 0)
+        restored = ARCSpecies(species_dict=self.spc.as_dict())
+        self.assertEqual(restored.conformer_levels, self.spc.conformer_levels)
+        self.assertEqual(restored.conformer_energy_sources, self.spc.conformer_energy_sources)
+        old = self.spc.as_dict()
+        del old['conformer_levels']
+        del old['conformer_energy_sources']
+        old_restored = ARCSpecies(species_dict=old)
+        self.assertEqual(old_restored.conformer_levels, [None, None])
+        self.assertEqual(old_restored.conformer_energy_sources, [None, None])
 
 
 if __name__ == '__main__':

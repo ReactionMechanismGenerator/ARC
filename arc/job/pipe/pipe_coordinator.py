@@ -20,7 +20,7 @@ from arc.level import Level
 
 from arc.job.pipe.pipe_run import (
     PipeRun, check_ess_convergence, find_output_file, get_task_attempt_dir,
-    ingest_completed_task,
+    ingest_completed_task, task_input_options,
 )
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
@@ -49,15 +49,19 @@ class PipedJobView:
     checks grow to consult them. Job-resubmitting troubleshooting is not reachable through this
     view, which is why ``post_freq_actions()`` and not ``check_freq_job()`` is the shared entry
     point: the former is the whole success path, the latter also owns the failure path.
+    ``input_options`` are the options the task's job wrote into its input deck, keyed by species
+    label as on a ``JobAdapter``, so the scheduler records them as it does for any job.
 
     Args:
         output_file (str): Path to the task's canonical output file.
         level (Level, optional): The level of theory the task ran at.
+        input_options (dict, optional): The options the task's job wrote into its input deck, by species label.
     """
 
-    def __init__(self, output_file: str, level: Level | None = None):
+    def __init__(self, output_file: str, level: Level | None = None, input_options: dict | None = None):
         self.local_path_to_output_file = output_file
         self.level = level
+        self.input_options = input_options
         self.job_status = ['done', {'status': 'done'}]
 
 
@@ -520,13 +524,15 @@ class PipeCoordinator:
         if not check_ess_convergence(pipe.run_id, spec, output_file, label):
             return
         level = Level(repr=spec.level) if spec.level else None
+        input_options = task_input_options(attempt_dir, label)
         try:
             if spec.task_family == 'species_sp':
-                self.sched.post_sp_actions(label=label, sp_path=output_file, level=level)
+                self.sched.post_sp_actions(label=label, sp_path=output_file, level=level,
+                                           input_options=input_options)
             elif spec.task_family == 'species_freq':
                 vibfreqs = parser.parse_frequencies(log_file_path=str(output_file))
                 self.sched.post_freq_actions(label=label,
-                                             job=PipedJobView(output_file, level),
+                                             job=PipedJobView(output_file, level, {label: input_options}),
                                              vibfreqs=vibfreqs)
         except Exception as e:
             logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
