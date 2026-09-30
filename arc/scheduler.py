@@ -820,6 +820,8 @@ class Scheduler(object):
                 or self._pending_pipe_sp or self._pending_pipe_freq \
                 or self._pending_pipe_irc or self._pending_pipe_conf_sp:
             self.timer = True
+            self.get_server_job_ids()
+            self.get_completed_incore_jobs()
             for label in self.unique_species_labels:
                 if label in self.output and self.output[label]['convergence'] is False:
                     # Skip unconverged species.
@@ -827,8 +829,6 @@ class Scheduler(object):
                         del self.running_jobs[label]
                     continue
                 # Look for completed jobs and decide what jobs to run next.
-                self.get_server_job_ids()  # updates ``self.server_job_ids`` and ``self.stale_servers``
-                self.get_completed_incore_jobs()  # updates ``self.completed_incore_jobs``
                 if label not in self.running_jobs.keys():
                     continue
                 job_list = self.running_jobs[label]
@@ -1268,6 +1268,8 @@ class Scheduler(object):
                 self.remote_project_paths[job.server] = job.remote_project_path
         self.check_max_simultaneous_jobs_limit(job.server)
         job.execute()
+        if job.execution_type == 'queue' and job.job_id:
+            self.server_job_ids.append(job.job_id)
         self.warn_on_collapsible_unrestricted_reference(label=label, job=job)
         self.save_restart_dict()
 

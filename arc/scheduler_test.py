@@ -4453,6 +4453,7 @@ class StubJob(object):
         self.job_name = f'{job_type}_{job_adapter}'
         self.job_id = None
         self.server = None
+        self.execution_type = 'queue'
 
     def as_dict(self) -> dict:
         """Return a dictionary representation of the job, used when saving the restart file."""
@@ -5382,6 +5383,119 @@ class TestSchedulerTSGuessReportAlignment(unittest.TestCase):
         self.assertEqual(self.column_cells(first, 2), ['110.00', '120.00'])
         self.assertEqual(self.column_cells(second, 2), self.column_cells(first, 2))
         self.assertEqual([tsg.energy for tsg in scheduler.species_dict['TS0'].ts_guesses], [110.0, 120.0, 0.0])
+
+
+class TestQueueSnapshotPerPass(unittest.TestCase):
+    """
+    The queue snapshot (``server_job_ids``) is taken once per pass of the scheduling loop, so a job submitted
+    while one label is processed must already be in it when a later label of the same pass is checked.
+    """
+
+    labels = [f'snap_{i}' for i in range(8)]
+
+    def setUp(self):
+        """Build a Scheduler over several species, with scratch outside the fixtures directory."""
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        species = [ARCSpecies(label=label, smiles='C', compute_thermo=False) for label in self.labels]
+        self.sched = Scheduler(project='snapshot_test',
+                               ess_settings={'gaussian': ['server1']},
+                               species_list=species,
+                               opt_level=Level(repr='b3lyp/6-31g(d,p)'),
+                               freq_level=Level(repr='b3lyp/6-31g(d,p)'),
+                               sp_level=Level(repr='b3lyp/6-311+g(d,p)'),
+                               project_directory=project_directory,
+                               testing=True,
+                               job_types=initialize_job_types(),
+                               )
+        self.sched.running_jobs = {label: list() for label in self.labels}
+        self.sched.unique_species_labels = list(self.labels)
+        self.sched.active_pipes = dict()
+        for name in ('generate_final_ts_guess_report', 'spawn_ts_jobs', 'run_conformer_jobs',
+                     'release_held_stability_work', 'save_restart_dict'):
+            patcher = patch.object(self.sched, name)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def one_pass_only(self):
+        """Make the scheduling loop end after its first pass."""
+        def end_the_pass():
+            self.sched.running_jobs.clear()
+        patcher = patch.object(self.sched, 'flush_pending_pipe_batches', side_effect=end_the_pass)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_queue_is_polled_once_per_pass_not_once_per_label(self):
+        """N labels in one pass cost one queue query and one incore scan, not N."""
+        self.one_pass_only()
+        with patch.object(self.sched, 'get_server_job_ids') as mock_ids, \
+                patch.object(self.sched, 'get_completed_incore_jobs') as mock_incore, \
+                patch.object(self.sched, 'check_all_done'):
+            self.sched.schedule_jobs()
+        self.assertEqual(mock_ids.call_count, 1)
+        self.assertEqual(mock_incore.call_count, 1)
+
+    def test_job_submitted_earlier_in_the_pass_is_not_treated_as_finished(self):
+        """A job submitted while processing the first label is still running when a later label is checked."""
+        self.one_pass_only()
+        first, last = self.labels[0], self.labels[-1]
+
+        def stale_queue_query(*args, **kwargs):
+            """A queue query that cannot yet see a job submitted a moment ago."""
+            self.sched.server_job_ids = list()
+
+        def submit_a_job_for_the_last_label(label):
+            """Submit the last label's first job while the first label is being processed."""
+            if label == first:
+                with patch('arc.scheduler.job_factory', side_effect=self.make_job):
+                    self.sched.run_job(job_type='opt', label=last, level_of_theory='b3lyp/6-31g(d,p)',
+                                       job_adapter='gaussian')
+
+        with patch.object(self.sched, 'get_server_job_ids', side_effect=stale_queue_query), \
+                patch.object(self.sched, 'get_completed_incore_jobs'), \
+                patch.object(self.sched, 'check_all_done', side_effect=submit_a_job_for_the_last_label), \
+                patch.object(self.sched, 'end_job', return_value=False) as mock_end_job:
+            self.sched.schedule_jobs()
+        mock_end_job.assert_not_called()
+
+    def make_job(self, job_type, job_adapter=None, execution_type='queue', **kwargs):
+        """Stand in for job_factory, returning a job that the queue accepted under a fixed ID."""
+        job = StubJob(job_type=job_type, job_adapter=job_adapter)
+        job.execution_type = execution_type
+        job.job_id = '4242' if execution_type == 'queue' else 7
+        return job
+
+    def test_run_job_adds_a_submitted_queue_job_to_the_snapshot(self):
+        """A queue job's ID is in ``server_job_ids`` as soon as ``run_job`` returns."""
+        self.sched.server_job_ids = ['1']
+        with patch('arc.scheduler.job_factory', side_effect=self.make_job):
+            self.sched.run_job(job_type='opt', label=self.labels[0], level_of_theory='b3lyp/6-31g(d,p)',
+                               job_adapter='gaussian')
+        self.assertEqual(self.sched.server_job_ids, ['1', '4242'])
+
+    def test_run_job_leaves_the_snapshot_alone_for_a_failed_submission(self):
+        """A submission that failed returns an empty job ID ('' locally, 0 over SSH), which must not enter the snapshot."""
+        for failed_id in ('', 0, None):
+            with self.subTest(job_id=failed_id):
+                self.sched.server_job_ids = ['1']
+
+                def failed_job(job_type, job_adapter=None, **kwargs):
+                    job = StubJob(job_type=job_type, job_adapter=job_adapter)
+                    job.execution_type = 'queue'
+                    job.job_id = failed_id
+                    return job
+
+                with patch('arc.scheduler.job_factory', side_effect=failed_job):
+                    self.sched.run_job(job_type='opt', label=self.labels[0], level_of_theory='b3lyp/6-31g(d,p)',
+                                       job_adapter='gaussian')
+                self.assertEqual(self.sched.server_job_ids, ['1'])
+
+    def test_run_job_leaves_the_snapshot_alone_for_an_incore_job(self):
+        """An incore job has no queue ID, so it must not enter the queue snapshot."""
+        with patch('arc.scheduler.job_factory', side_effect=self.make_job):
+            self.sched.run_job(job_type='opt', label=self.labels[0], level_of_theory='b3lyp/6-31g(d,p)',
+                               job_adapter=sorted(default_incore_adapters)[0])
+        self.assertEqual(self.sched.server_job_ids, list())
 
 
 class TestGetServerJobIds(unittest.TestCase):
