@@ -148,6 +148,18 @@ class ESSAdapter(ABC):
         """
         pass
 
+    def parse_irc_start_geometry(self) -> dict[str, tuple] | None:
+        """
+        Parse the geometry an IRC job started from, as the ESS printed it for the input coordinates.
+
+        The frame is the ESS's own and may differ from that of the input by a rigid-body motion. Adapters that
+        don't implement this return ``None``.
+
+        Returns: dict[str, tuple] | None
+            The starting Cartesian coordinates, or ``None``.
+        """
+        return None
+
     @abstractmethod
     def parse_scan_conformers(self) -> 'pd.DataFrame' | None:
         """
