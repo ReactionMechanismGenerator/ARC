@@ -153,7 +153,8 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         spec = read_task_spec(pipe_root, task_id)
         scratch_dir = tempfile.mkdtemp(prefix=f'pipe_{task_id}_')
         result = _make_result_template(task_id, state.attempt_index, started_at)
-        _dispatch_execution(spec, scratch_dir)
+        input_options = _dispatch_execution(spec, scratch_dir)
+        result['input_options'] = input_options if isinstance(input_options, dict) else None
         _copy_outputs(scratch_dir, attempt_dir)
         ended_at = time.time()
         result['ended_at'] = ended_at
@@ -248,6 +249,7 @@ def _make_result_template(task_id: str, attempt_index: int, started_at: float) -
         'failure_class': None,
         'parser_summary': None,
         'result_fields': {},
+        'input_options': None,
     }
 
 # ---------------------------------------------------------------------------
@@ -287,7 +289,7 @@ def _get_family_extra_kwargs(spec: TaskSpec) -> dict:
     return kwargs
 
 
-def _dispatch_execution(spec: TaskSpec, scratch_dir: str) -> None:
+def _dispatch_execution(spec: TaskSpec, scratch_dir: str) -> dict | None:
     """
     Dispatch execution by task_family.
 
@@ -295,15 +297,18 @@ def _dispatch_execution(spec: TaskSpec, scratch_dir: str) -> None:
     ``TASK_FAMILY_TO_JOB_TYPE`` mapping in ``pipe_state.py``.
     Family-specific extra kwargs (e.g. irc_direction, torsions)
     are extracted by ``_get_family_extra_kwargs``.
+
+    Returns:
+        dict | None: The options the job wrote into its input deck, see ``_run_adapter``.
     """
     job_type = TASK_FAMILY_TO_JOB_TYPE.get(spec.task_family)
     if job_type is None:
         raise ValueError(f'Unsupported task_family for execution: {spec.task_family}')
     extra = _get_family_extra_kwargs(spec)
-    _run_adapter(spec, scratch_dir, job_type=job_type, **extra)
+    return _run_adapter(spec, scratch_dir, job_type=job_type, **extra)
 
 
-def _run_adapter(spec: TaskSpec, scratch_dir: str, job_type: str, **extra_kwargs) -> None:
+def _run_adapter(spec: TaskSpec, scratch_dir: str, job_type: str, **extra_kwargs) -> dict | None:
     """
     Reconstruct ARC objects and run the adapter incore with the given job_type.
 
@@ -313,6 +318,10 @@ def _run_adapter(spec: TaskSpec, scratch_dir: str, job_type: str, **extra_kwargs
         job_type: The adapter-facing job type (e.g. 'sp', 'freq', 'irc').
         **extra_kwargs: Additional keyword arguments passed to job_factory
                         (e.g. ``irc_direction`` for IRC jobs).
+
+    Returns:
+        dict | None: The options the job wrote into its input deck, keyed by species label
+                     (``job.input_options``), or ``None`` when the job recorded none.
     """
     species_list = None
     reactions_list = None
@@ -358,6 +367,8 @@ def _run_adapter(spec: TaskSpec, scratch_dir: str, job_type: str, **extra_kwargs
     if output_file and not os.path.isfile(output_file):
         raise RuntimeError(f'{spec.engine} produced no output file at {output_file}. '
                            f'The engine may not be installed or configured on this node.')
+    input_options = getattr(job, 'input_options', None)
+    return dict(input_options) if isinstance(input_options, dict) else None
 
 
 # ---------------------------------------------------------------------------
