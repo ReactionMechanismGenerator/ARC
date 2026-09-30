@@ -11,7 +11,7 @@ import logging
 import os
 from urllib.parse import urlsplit
 
-from arc.common import read_yaml_file
+from arc.common import read_yaml_file, route_logger_to_arc_log
 from arc.main import ARC
 
 
@@ -19,6 +19,7 @@ logger = logging.getLogger('arc')
 
 
 TCKDB_ARC_SOURCE = 'https://github.com/calvinp0/tckdb-adapters'
+TCKDB_ARC_LOGGER = 'tckdb_arc'
 
 
 @lru_cache(maxsize=1)
@@ -64,7 +65,10 @@ def run_tckdb_upload(tckdb_settings, project_directory: str) -> None:
     written to configure anything else — a URL, a dry run — silently shipped
     the data. The resolved destination is logged before anything leaves the
     machine so the target is visible in the run log; only its host is written,
-    never any credential the URL carries.
+    never any credential the URL carries. While the adapter reads its
+    configuration and runs, the INFO and higher records of the ``tckdb_arc``
+    logger are handled by ARC's console and ``arc.log`` handlers, in ARC's
+    format and at their verbosity.
     """
     if not isinstance(tckdb_settings, dict):
         logger.warning("TCKDB upload skipped: the 'tckdb' entry in the input file is %s, "
@@ -85,16 +89,17 @@ def run_tckdb_upload(tckdb_settings, project_directory: str) -> None:
     from tckdb_arc.config import TCKDBConfig
     from tckdb_arc.sweep import run_upload_sweep
 
-    config = TCKDBConfig.from_dict(tckdb_settings)
-    if config is None:
-        return
-    logger.info('Uploading ARC results to TCKDB at %s.', _tckdb_log_destination(tckdb_settings))
-    adapter = TCKDBAdapter(config, project_directory=project_directory)
-    run_upload_sweep(
-        adapter=adapter,
-        project_directory=project_directory,
-        tckdb_config=config,
-    )
+    with route_logger_to_arc_log(TCKDB_ARC_LOGGER):
+        config = TCKDBConfig.from_dict(tckdb_settings)
+        if config is None:
+            return
+        logger.info('Uploading ARC results to TCKDB at %s.', _tckdb_log_destination(tckdb_settings))
+        adapter = TCKDBAdapter(config, project_directory=project_directory)
+        run_upload_sweep(
+            adapter=adapter,
+            project_directory=project_directory,
+            tckdb_config=config,
+        )
 
 
 def parse_command_line_arguments(command_line_args=None):
