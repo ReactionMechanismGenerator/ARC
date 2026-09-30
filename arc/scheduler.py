@@ -4099,21 +4099,27 @@ class Scheduler(object):
             self.record_scf_reference(label=label, job=job, reference_key='sp')
         original_sp_path = self.output[label]['paths']['sp'] if 'sp' in self.output[label]['paths'] else None
         self.output[label]['paths']['sp'] = sp_path
-        if self.sp_level is not None and 'ccsd' in self.sp_level.method:
-            self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
-        self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'])
+        is_solvation_scheme_job = self.sp_level is not None and self.sp_level.solvation_scheme_level is not None \
+            and self.output[label]['job_types']['sp']
+        if not is_solvation_scheme_job:
+            if self.sp_level is not None and 'ccsd' in self.sp_level.method:
+                self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
+            else:
+                self.species_dict[label].t1 = None
+            self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'])
         self.check_spin_contamination(label=label, sp_path=self.output[label]['paths']['sp'])
-        if level is not None and level.method_type == 'wavefunction' and self.species_dict[label].active is None:
-            self.species_dict[label].active = parser.parse_active_space(sp_path=self.output[label]['paths']['sp'],
-                                                                        species=self.species_dict[label])
-        if self.species_dict[label].t1 is not None:
-            txt = ''
-            if self.species_dict[label].t1 > 0.02:
-                txt += ". Looks like it should be treated using a multireference single-point energy method."
-            elif self.species_dict[label].t1 > 0.015:
-                txt += ". It might have multireference characteristic."
-            logger.info(f'Species {label} has a T1 diagnostic parameter of {self.species_dict[label].t1}{txt}')
-            self.output[label]['info'] += f'T1 = {self.species_dict[label].t1}; '
+        if not is_solvation_scheme_job:
+            if level is not None and level.method_type == 'wavefunction' and self.species_dict[label].active is None:
+                self.species_dict[label].active = parser.parse_active_space(
+                    sp_path=self.output[label]['paths']['sp'], species=self.species_dict[label])
+            if self.species_dict[label].t1 is not None:
+                txt = ''
+                if self.species_dict[label].t1 > 0.02:
+                    txt += ". Looks like it should be treated using a multireference single-point energy method."
+                elif self.species_dict[label].t1 > 0.015:
+                    txt += ". It might have multireference characteristic."
+                logger.info(f'Species {label} has a T1 diagnostic parameter of {self.species_dict[label].t1}{txt}')
+                self.output[label]['info'] += f'T1 = {self.species_dict[label].t1}; '
 
         if self.sp_level is not None and self.sp_level.solvation_scheme_level is not None:
             # a complex solvation correction behavior was requested for the single-point energy value
