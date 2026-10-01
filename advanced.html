@@ -60,6 +60,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#job-types">Job Types</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#levels-of-theory">Levels of Theory</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#ess-specific-arguments">ESS-Specific Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#running-ase-uma-jobs-on-a-cluster">Running ASE / UMA jobs on a cluster</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#multireference-methods-mrci">Multireference Methods (MRCI)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#solvation">Solvation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#adaptive-levels">Adaptive Levels</a></li>
@@ -458,6 +459,26 @@ Arkane correction year:</p>
 <span class="w">        </span><span class="no">end</span>
 </pre></div>
 </div>
+</section>
+<section id="running-ase-uma-jobs-on-a-cluster">
+<h2>Running ASE / UMA jobs on a cluster<a class="headerlink" href="#running-ase-uma-jobs-on-a-cluster" title="Link to this heading"></a></h2>
+<p>For an ASE-backed level (e.g. a UMA/fairchem MLIP), the <code class="docutils literal notranslate"><span class="pre">block</span></code> args also carry the knobs ARC
+needs to submit the job to a compute server’s queue: <code class="docutils literal notranslate"><span class="pre">python</span></code> (the server-side interpreter of the
+calculator’s environment), <code class="docutils literal notranslate"><span class="pre">env_setup</span></code> (shell commands run before the job, e.g. loading modules
+and activating the conda env), <code class="docutils literal notranslate"><span class="pre">queue</span></code> (the queue/partition to submit to), and <code class="docutils literal notranslate"><span class="pre">gpu_resource</span></code>
+(the scheduler’s GPU request, e.g. <code class="docutils literal notranslate"><span class="pre">gpu:1</span></code> on Slurm or <code class="docutils literal notranslate"><span class="pre">ngpus=1</span></code> on PBS):</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">level</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">uma</span>
+<span class="w">  </span><span class="nt">args</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">block</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">python</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/home/User/.conda/envs/UMA_env/bin/python</span>
+<span class="w">      </span><span class="nt">env_setup</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">module load CUDA/12.1; conda activate UMA_env</span>
+<span class="w">      </span><span class="nt">queue</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">GPU_Long</span>
+<span class="w">      </span><span class="nt">gpu_resource</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gpu:1</span>
+</pre></div>
+</div>
+<p>Unlike other args, the values of these four keys keep their original case, since they are
+filesystem paths, shell commands, and queue names.</p>
 </section>
 <section id="multireference-methods-mrci">
 <h2>Multireference Methods (MRCI)<a class="headerlink" href="#multireference-methods-mrci" title="Link to this heading"></a></h2>
