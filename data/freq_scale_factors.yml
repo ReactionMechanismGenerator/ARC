@@ -6,6 +6,7 @@ sources:
   3: 'http://comp.chem.umn.edu/freqscale/190107_Database_of_Freq_Scale_Factors_v4.pdf'
   4: 'Calculated as described in 10.1021/ct100326h'
   5: 'J.A. Montgomery, M.J. Frisch, J. Chem. Phys. 1999, 110, 2822-2827, DOI: 10.1063/1.477924'
+  6: 'L.A. Curtiss, P.C. Redfern, K. Raghavachari, J. Chem. Phys. 2007, 126, 084108, DOI: 10.1063/1.2436888'
 
 freq_scale_factors:
   'hf/sto3g, software: gaussian':
@@ -179,9 +180,9 @@ freq_scale_factors:
     source: 5
     note: 'Same as cbs-qb3, added for consistency with Arkane'
   'g4, software: gaussian':
-    factor: 0.994
-    source: 4
-    note: '0.980 * 1.014, the 0.980 value is the ZPE scale factor of G4, fitted with Truhlar''s method over the 15-species standard set'
+    factor: 0.9992
+    source: 6
+    note: '0.9854 * 1.014, the 0.9854 value is the ZPE scale factor of G4'
   'ccsd/cc-pvdz, software: molpro':
     factor: 0.947
     source: 2
