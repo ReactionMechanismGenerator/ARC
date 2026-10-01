@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
-from arc.exceptions import DependencyError
+from arc.exceptions import DependencyError, ReactionError
 from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_incore_adapters,
                                       derived_instability_breaks_spin_symmetry, is_restricted,
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
@@ -4358,6 +4358,52 @@ class TestScanSoftwareStamp(unittest.TestCase):
         self.assertEqual(rotor['scan_software'], 'orca')
         self.assertEqual(rotor['scan_path'], '/fake/scan.out')
         self.assertFalse(rotor['success'])
+
+
+class TestSchedulerReactionChargeBalance(unittest.TestCase):
+    """
+    Contains the charge balance check of reactions whose species the Scheduler attaches.
+    """
+
+    def build_scheduler(self, rxn, species_list):
+        """
+        Build a testing Scheduler for a single reaction.
+
+        Args:
+            rxn (ARCReaction): The reaction.
+            species_list (list): The species list.
+
+        Returns:
+            Scheduler: The constructed (testing) scheduler.
+        """
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        return Scheduler(project='charge_balance',
+                         ess_settings={'gaussian': ['server1']},
+                         species_list=species_list,
+                         rxn_list=[rxn],
+                         opt_level=Level(repr='b3lyp/6-31g(d,p)'),
+                         sp_level=Level(repr='b3lyp/6-311+g(d,p)'),
+                         freq_level=Level(repr='b3lyp/6-31g(d,p)'),
+                         project_directory=project_directory,
+                         job_types=initialize_job_types(),
+                         testing=True)
+
+    def test_a_reaction_built_from_labels_is_charge_checked_when_its_species_are_attached(self):
+        """Test that a label-only reaction whose attached species are not charge balanced is refused"""
+        species = [ARCSpecies(label='HO-', smiles='[OH-]', charge=-1), ARCSpecies(label='CH3OH', smiles='CO'),
+                   ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CH3O', smiles='C[O]')]
+        rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O')
+        with self.assertRaises(ReactionError):
+            self.build_scheduler(rxn, species)
+
+    def test_a_balanced_reaction_built_from_labels_gets_its_charge(self):
+        """Test that a label-only reaction whose attached species are charge balanced gets their net charge"""
+        species = [ARCSpecies(label='HO-', smiles='[OH-]', charge=-1), ARCSpecies(label='CH3OH', smiles='CO'),
+                   ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CH3O-', smiles='C[O-]', charge=-1)]
+        rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-')
+        self.build_scheduler(rxn, species)
+        self.assertEqual(rxn.charge, -1)
 
 
 if __name__ == '__main__':
