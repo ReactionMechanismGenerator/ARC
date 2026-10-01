@@ -275,6 +275,7 @@ class Scheduler(object):
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
         skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
         output (dict, optional): Output dictionary with status per job type and final QM file paths for all species.
+        only_process (bool, optional): Whether to only run statmech and process runs from a (restart) input file.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -378,6 +379,7 @@ class Scheduler(object):
                  report_e_elect: bool | None = False,
                  skip_nmd: bool | None = False,
                  output: dict | None = None,
+                 only_process: bool = False,
                  ) -> None:
 
         self.project = project
@@ -552,7 +554,10 @@ class Scheduler(object):
                     self.running_jobs[species.label if not species.multi_species else species.multi_species] = list()
                 if self.output[species.label]['convergence']:
                     continue
-                if species.is_monoatomic():
+                if only_process:
+                    pass
+                elif species.is_monoatomic():
+                    self.running_jobs[species.label] = list()  # initialize before running the first job
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
                             and 'sp' not in list(self.job_dict[species.label].keys()) \
@@ -644,7 +649,7 @@ class Scheduler(object):
 
         self.save_restart = True
         self.timer = True
-        if not self.testing:
+        if not self.testing and not only_process:
             self.schedule_jobs()
 
     def has_pending_pipe_work(self, label: str) -> bool:
