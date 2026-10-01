@@ -1,0 +1,12 @@
+%chk=check.chk
+%mem=9462mb
+%NProcShared=8
+
+#P opt=(calcfc)  uwb97xd/def2tzvp   IOp(2/9=2000)   
+
+spc_headroom
+
+0 3
+O       0.00000000    0.00000000    1.00000000
+
+

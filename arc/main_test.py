@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.main module
 """
 
+import inspect
 import logging
 import os
 import shutil
@@ -13,14 +14,16 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from arc.common import ARC_PATH, get_logger
+from arc.common import ARC_PATH, get_logger, get_test_project_directory, get_test_project_name
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
-from arc.main import ARC, process_adaptive_levels
-from arc.species.species import ARCSpecies
+from arc.main import ARC, process_adaptive_levels, warn_if_arkane_level_differs
+from arc.scheduler import Scheduler
+from arc.species.converter import str_to_xyz
+from arc.species.species import ARCSpecies, TSGuess
 
 servers = settings['servers']
 
@@ -51,7 +54,7 @@ class TestARC(unittest.TestCase):
         projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
                     'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
         for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
+            project_directory = get_test_project_directory(project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
 
@@ -61,7 +64,7 @@ class TestARC(unittest.TestCase):
                           smiles='CC',
                           compute_thermo=False,
                           )
-        arc0 = ARC(project='arc_test',
+        arc0 = ARC(project=get_test_project_name('arc_test'),
                    job_types=self.job_types1,
                    species=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
@@ -95,6 +98,7 @@ class TestARC(unittest.TestCase):
                                           'orca_neb': ['local'],
                                           'pyscf': ['local'],
                                           'qchem': ['server1'],
+                                          'qst2': ['local'],
                                           'rits': ['local'],
                                           'terachem': ['server1'],
                                           'torchani': ['local'],
@@ -130,7 +134,7 @@ class TestARC(unittest.TestCase):
                                        'method': 'b3lyp',
                                        'method_type': 'dft',
                                        'software': 'gaussian'},
-                         'project': 'arc_test',
+                         'project': get_test_project_name('arc_test'),
                          'sp_level': {'basis': 'cc-pvdz-f12',
                                       'method': 'ccsd(t)-f12',
                                       'method_type': 'wavefunction',
@@ -179,10 +183,10 @@ class TestARC(unittest.TestCase):
                                      'optical_isomers': 1,
                                      'rotors_dict': {},
                                      'xyzs': []}],
-                        'project_directory': os.path.join(ARC_PATH, 'Projects',
-                                                          'arc_project_for_testing_delete_after_usage_test_from_dict'),
+                        'project_directory': get_test_project_directory(
+                            'arc_project_for_testing_delete_after_usage_test_from_dict'),
                         }
-        arc1 = ARC(project='wrong', freq_scale_factor=0.95)
+        arc1 = ARC(project=get_test_project_name('wrong'), freq_scale_factor=0.95)
         self.assertEqual(arc1.freq_scale_factor, 0.95)  # user input
         arc2 = ARC(**restart_dict)
         self.assertEqual(arc2.freq_scale_factor, 0.96)  # loaded from the restart dict
@@ -199,8 +203,8 @@ class TestARC(unittest.TestCase):
     def test_from_dict_specific_job(self):
         """Test the from_dict() method of ARC"""
         restart_dict = {'specific_job_type': 'bde',
-                        'project': 'unit_test_specific_job',
-                        'project_directory': os.path.join(ARC_PATH, 'Projects', 'unit_test_specific_job'),
+                        'project': get_test_project_name('unit_test_specific_job'),
+                        'project_directory': get_test_project_directory('unit_test_specific_job'),
                         }
         arc1 = ARC(**restart_dict)
         job_type_expected = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
@@ -208,6 +212,87 @@ class TestARC(unittest.TestCase):
                              'stability': False}
         self.assertEqual(arc1.job_types, job_type_expected)
 
+    def test_save_project_info_file_skips_deleted_species(self):
+        """Test that a species present in self.species but absent from self.output (e.g., an IRC
+        endpoint species deleted mid-run) is omitted from the project info file and from the
+        accompanying YAML file, instead of raising a KeyError."""
+        arc0 = ARC(project='arc_info_test', species=[ARCSpecies(label='tst_spc', smiles='C')],
+                   level_of_theory='b3lyp/6-31g', bac_type=None, compute_thermo=False,
+                   freq_scale_factor=1.0, calc_freq_factor=False, job_types=self.job_types1,
+                   ess_settings={'gaussian': ['local']})
+        self.addCleanup(shutil.rmtree, arc0.project_directory, ignore_errors=True)
+        arc0.species.append(ARCSpecies(label='IRC_TS0_1', smiles='O'))
+        arc0.output = {'tst_spc': {'convergence': True}}
+        arc0.save_project_info_file()
+        with open(os.path.join(arc0.project_directory, f'{arc0.project}.info'), 'r') as f:
+            content = f.read()
+        self.assertIn('tst_spc', content)
+        self.assertNotIn('IRC_TS0_1', content)
+        with open(os.path.join(arc0.project_directory, f'{arc0.project}_info.yml'), 'r') as f:
+            yml_content = f.read()
+        self.assertIn('tst_spc', yml_content)
+        self.assertNotIn('IRC_TS0_1', yml_content)
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_save_project_info_file_after_a_scheduler_deleted_an_irc_species(self, mock_run_opt):
+        """Test that an ARC run whose Scheduler abandoned a TS guess, and thereby deleted the IRC
+        species spawned for it, can still write its project info files. Wires a real ARC to a real
+        Scheduler the way ARC.execute does, so it covers the shared species list rather than a
+        stand-in for it."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_spc = ARCSpecies(label='TS0', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.ts_guesses = [
+            TSGuess(index=0, method='heuristics', success=True, energy=100.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+            TSGuess(index=1, method='heuristics', success=True, energy=110.0, xyz=ts_xyz,
+                    execution_time='0:00:01'),
+        ]
+        ts_spc.ts_guesses[0].opt_xyz = ts_xyz
+        ts_spc.ts_guesses[0].imaginary_freqs = [-500.0]
+        ts_spc.ts_guesses[1].opt_xyz = ts_xyz
+        ts_spc.ts_guesses[1].imaginary_freqs = [-400.0]
+        ts_spc.chosen_ts = 0
+        ts_spc.chosen_ts_list = [0]
+        ts_spc.ts_guesses_exhausted = False
+
+        arc0 = ARC(project='arc_info_e2e_test', species=[ts_spc], level_of_theory='b3lyp/6-31g',
+                   bac_type=None, compute_thermo=False, freq_scale_factor=1.0,
+                   calc_freq_factor=False, job_types=self.job_types1,
+                   ess_settings={'gaussian': ['local']})
+        self.addCleanup(shutil.rmtree, arc0.project_directory, ignore_errors=True)
+        sched = Scheduler(project=arc0.project, species_list=arc0.species,
+                          ess_settings=arc0.ess_settings, opt_level=arc0.opt_level,
+                          freq_level=arc0.freq_level, sp_level=arc0.sp_level,
+                          ts_guess_level=arc0.ts_guess_level,
+                          project_directory=arc0.project_directory, testing=True,
+                          job_types=arc0.job_types)
+        self.assertIs(arc0.species, sched.species_list)
+
+        irc_label = 'IRC_TS0_1'
+        sched.species_dict[irc_label] = ARCSpecies(label=irc_label, xyz=ts_xyz,
+                                                   compute_thermo=False, irc_label='TS0')
+        sched.species_list.append(sched.species_dict[irc_label])
+        sched.unique_species_labels.append(irc_label)
+        sched.initialize_output_dict(label=irc_label)
+        ts_spc.irc_label = irc_label
+        self.assertIn(irc_label, [spc.label for spc in arc0.species])
+
+        sched.switch_ts('TS0')
+        arc0.output = sched.output
+        arc0.save_project_info_file()
+
+        self.assertNotIn(irc_label, [spc.label for spc in arc0.species])
+        with open(os.path.join(arc0.project_directory, f'{arc0.project}.info'), 'r') as f:
+            content = f.read()
+        self.assertIn('TS0', content)
+        self.assertNotIn(irc_label, content)
+        with open(os.path.join(arc0.project_directory, f'{arc0.project}_info.yml'), 'r') as f:
+            yml_content = f.read()
+        self.assertNotIn('IRC_TS0_1', yml_content)
     def test_rotor_scan_resolution_input_key(self):
         """Test the rotor_scan_resolution input key is parsed, stored, and round-tripped."""
         arc0 = ARC(project='arc_test_scan_res', rotor_scan_resolution=4.0)
@@ -254,21 +339,21 @@ class TestARC(unittest.TestCase):
 
     def test_determine_model_chemistry_and_freq_scale_factor(self):
         """Test determining the model chemistry and the frequency scaling factor"""
-        arc0 = ARC(project='arc_model_chemistry_test', level_of_theory='CBS-QB3')
+        arc0 = ARC(project=get_test_project_name('arc_model_chemistry_test'), level_of_theory='CBS-QB3')
         self.assertEqual(str(arc0.arkane_level_of_theory), "cbs-qb3, software: gaussian")
         self.assertEqual(arc0.freq_scale_factor, 1.004)
 
-        arc1 = ARC(project='arc_model_chemistry_test', level_of_theory='cbs-qb3-paraskevas')
+        arc1 = ARC(project=get_test_project_name('arc_model_chemistry_test'), level_of_theory='cbs-qb3-paraskevas')
         self.assertEqual(str(arc1.arkane_level_of_theory), 'cbs-qb3-paraskevas, software: gaussian')
         self.assertEqual(arc1.freq_scale_factor, 1.004)
         self.assertEqual(arc1.bac_type, 'p')
 
-        arc2 = ARC(project='arc_model_chemistry_test',
+        arc2 = ARC(project=get_test_project_name('arc_model_chemistry_test'),
                    level_of_theory='ccsd(t)-f12/cc-pvtz-f12//m062x/cc-pvtz')
         self.assertEqual(str(arc2.arkane_level_of_theory), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro')
         self.assertEqual(arc2.freq_scale_factor, 0.955)
 
-        arc3 = ARC(project='arc_model_chemistry_test',
+        arc3 = ARC(project=get_test_project_name('arc_model_chemistry_test'),
                    sp_level='ccsd(t)-f12/cc-pvtz-f12', opt_level='wb97xd/def2tzvp')
         self.assertEqual(str(arc3.arkane_level_of_theory), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro')
         self.assertEqual(arc3.freq_scale_factor, 0.988)
@@ -277,33 +362,33 @@ class TestARC(unittest.TestCase):
         """Test determining the model chemistry specification dictionary for job types"""
         # Test conflicted inputs: specify both level_of_theory and composite_method
         with self.assertRaises(InputError):
-            ARC(project='test', level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97x-d/aug-cc-pvtz',
+            ARC(project=get_test_project_name('test'), level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97x-d/aug-cc-pvtz',
                 composite_method='cbs-qb3')
 
         # Test illegal level of theory specification (method contains multiple slashes)
         with self.assertRaises(ValueError):
-            ARC(project='test', level_of_theory='dlpno-mp2-f12/D/cc-pVDZ(fi/sf/fw)//b3lyp/G/def2svp')
+            ARC(project=get_test_project_name('test'), level_of_theory='dlpno-mp2-f12/D/cc-pVDZ(fi/sf/fw)//b3lyp/G/def2svp')
 
         # Test illegal job level specification (method contains multiple slashes)
         with self.assertRaises(ValueError):
-            ARC(project='test', opt_level='b3lyp/d/def2tzvp/def2tzvp/c')
+            ARC(project=get_test_project_name('test'), opt_level='b3lyp/d/def2tzvp/def2tzvp/c')
 
         # Test illegal job level specification (method contains empty space)
         with self.assertRaises(ValueError):
-            ARC(project='test', opt_level='b3lyp/def2tzvp def2tzvp/c')
+            ARC(project=get_test_project_name('test'), opt_level='b3lyp/def2tzvp def2tzvp/c')
 
         # Test direct job level specification conflicts with level of theory specification
         with self.assertRaises(InputError):
-            ARC(project='test', level_of_theory='b3lyp/sto-3g', opt_level='wb97xd/def2tzvp')
+            ARC(project=get_test_project_name('test'), level_of_theory='b3lyp/sto-3g', opt_level='wb97xd/def2tzvp')
 
         # Test deduce levels from default method from settings.py
-        arc1 = ARC(project='test')
+        arc1 = ARC(project=get_test_project_name('test'))
         self.assertEqual(arc1.opt_level.simple(), 'wb97xd/def2tzvp')
         self.assertEqual(arc1.freq_level.simple(), 'wb97xd/def2tzvp')
         self.assertEqual(arc1.sp_level.simple(), 'ccsd(t)-f12/cc-pvtz-f12')
 
         # Test deduce levels from composite method specification
-        arc2 = ARC(project='test', composite_method='cbs-qb3')
+        arc2 = ARC(project=get_test_project_name('test'), composite_method='cbs-qb3')
         self.assertIsNotNone(arc2.opt_level)
         self.assertIsNone(arc2.sp_level)
         self.assertIsNone(arc2.orbitals_level)
@@ -312,35 +397,37 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc2.composite_method.simple(), 'cbs-qb3')
 
         # Test deduce levels from level of theory specification
-        arc3 = ARC(project='test', level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97m-v/def2tzvpd', freq_scale_factor=1)
+        arc3 = ARC(project=get_test_project_name('test'), freq_scale_factor=1,
+                   level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97m-v/def2tzvpd')
         self.assertEqual(arc3.opt_level.simple(), 'wb97m-v/def2tzvpd')
         self.assertEqual(arc3.freq_level.simple(), 'wb97m-v/def2tzvpd')
         self.assertEqual(arc3.sp_level.simple(), 'ccsd(t)-f12/cc-pvtz-f12')
         self.assertEqual(arc3.scan_level.simple(), 'wb97m-v/def2tzvpd')
         self.assertIsNone(arc3.orbitals_level)
 
-        arc4 = ARC(project='test', opt_level='wb97x-d3/6-311++G(3df,3pd)', freq_level='m062x/def2-tzvpp',
+        arc4 = ARC(project=get_test_project_name('test'), opt_level='wb97x-d3/6-311++G(3df,3pd)', freq_level='m062x/def2-tzvpp',
                    sp_level='ccsd(t)f12/aug-cc-pvqz', calc_freq_factor=False, compute_thermo=False)
         self.assertEqual(arc4.opt_level.simple(), 'wb97x-d3/6-311++g(3df,3pd)')
         self.assertEqual(arc4.freq_level.simple(), 'm062x/def2-tzvpp')
         self.assertEqual(arc4.sp_level.simple(), 'ccsd(t)f12/aug-cc-pvqz')
 
         # Test deduce freq level from opt level
-        arc7 = ARC(project='test', opt_level='wb97xd/aug-cc-pvtz', calc_freq_factor=False)
+        arc7 = ARC(project=get_test_project_name('test'), opt_level='wb97xd/aug-cc-pvtz', calc_freq_factor=False)
         self.assertEqual(arc7.opt_level.simple(), 'wb97xd/aug-cc-pvtz')
         self.assertEqual(arc7.freq_level.simple(), 'wb97xd/aug-cc-pvtz')
 
         # Test a level not supported by Arkane does not raise error if compute_thermo is False
-        arc8 = ARC(project='test', sp_level='method/unsupported', calc_freq_factor=False, compute_thermo=False)
+        arc8 = ARC(project=get_test_project_name('test'), sp_level='method/unsupported',
+                   calc_freq_factor=False, compute_thermo=False)
         self.assertEqual(arc8.sp_level.simple(), 'method/unsupported')
         self.assertEqual(arc8.freq_level.simple(), 'wb97xd/def2tzvp')
 
         # Test that a level not supported by Arkane does raise an error if compute_thermo is True (default)
         with self.assertRaises(ValueError):
-            ARC(project='test', sp_level='method/unsupported', calc_freq_factor=False)
+            ARC(project=get_test_project_name('test'), sp_level='method/unsupported', calc_freq_factor=False)
 
         # Test dictionary format specification with auxiliary basis and DFT dispersion
-        arc9 = ARC(project='test', opt_level={},
+        arc9 = ARC(project=get_test_project_name('test'), opt_level={},
                    freq_level={'method': 'B3LYP/G', 'basis': 'cc-pVDZ(fi/sf/fw)', 'auxiliary_basis': 'def2-svp/C',
                                'dispersion': 'DEF2-tzvp/c'},
                    sp_level={'method': 'DLPNO-CCSD(T)-F12', 'basis': 'cc-pVTZ-F12',
@@ -354,40 +441,42 @@ class TestARC(unittest.TestCase):
                          'cabs: cc-pvtz-f12-cabs, software: orca')
 
         # Test using default frequency and orbital level for composite job, also forbid rotors job
-        arc10 = ARC(project='test', composite_method='cbs-qb3', calc_freq_factor=False,
+        arc10 = ARC(project=get_test_project_name('test'), composite_method='cbs-qb3', calc_freq_factor=False,
                     job_types={'rotors': False, 'orbitals': True})
         self.assertEqual(arc10.freq_level.simple(), 'b3lyp/cbsb7')
         self.assertIsNone(arc10.scan_level)
         self.assertEqual(arc10.orbitals_level.simple(), 'b3lyp/cbsb7')
 
         # Test using specified frequency, scan, and orbital for composite job
-        arc11 = ARC(project='test', composite_method='cbs-qb3', freq_level='wb97xd/6-311g', scan_level='apfd/def2svp',
+        arc11 = ARC(project=get_test_project_name('test'), composite_method='cbs-qb3',
+                    freq_level='wb97xd/6-311g', scan_level='apfd/def2svp',
                     orbitals_level='hf/sto-3g', job_types={'orbitals': True}, calc_freq_factor=False)
         self.assertEqual(arc11.scan_level.simple(), 'apfd/def2svp')
         self.assertEqual(arc11.freq_level.simple(), 'wb97xd/6-311g')
         self.assertEqual(arc11.orbitals_level.simple(), 'hf/sto-3g')
 
         # Test using default frequency and orbital level for job specified from level of theory, also forbid rotors job
-        arc12 = ARC(project='test', level_of_theory='b3lyp/sto-3g', calc_freq_factor=False,
+        arc12 = ARC(project=get_test_project_name('test'), level_of_theory='b3lyp/sto-3g', calc_freq_factor=False,
                     job_types={'rotors': False, 'orbitals': True}, compute_thermo=False)
         self.assertIsNone(arc12.scan_level)
         self.assertEqual(arc12.freq_level.simple(), 'b3lyp/sto-3g')
         self.assertEqual(arc12.orbitals_level.simple(), 'wb97x-d3/def2tzvp')
 
         # Test using specified scan level
-        arc13 = ARC(project='test', level_of_theory='b3lyp/sto-3g', calc_freq_factor=False, scan_level='apfd/def2svp',
+        arc13 = ARC(project=get_test_project_name('test'), level_of_theory='b3lyp/sto-3g',
+                    calc_freq_factor=False, scan_level='apfd/def2svp',
                     job_types={'rotors': True}, compute_thermo=False)
         self.assertEqual(arc13.scan_level.simple(), 'apfd/def2svp')
 
         # Test specifying semi-empirical and force-field methods using dictionary
-        arc14 = ARC(project='test', opt_level={'method': 'AM1'}, freq_level={'method': 'PM6'},
+        arc14 = ARC(project=get_test_project_name('test'), opt_level={'method': 'AM1'}, freq_level={'method': 'PM6'},
                     sp_level={'method': 'AMBER'}, calc_freq_factor=False, compute_thermo=False)
         self.assertEqual(arc14.opt_level.simple(), 'am1')
         self.assertEqual(arc14.freq_level.simple(), 'pm6')
         self.assertEqual(arc14.sp_level.simple(), 'amber')
 
         # Test explicit year in arkane_level_of_theory dictionary
-        arc15 = ARC(project='test',
+        arc15 = ARC(project=get_test_project_name('test'),
                     sp_level='wb97xd/def2tzvp',
                     opt_level='wb97xd/def2tzvp',
                     arkane_level_of_theory={'method': 'wb97xd', 'basis': 'def2tzvp', 'year': 2023},
@@ -396,7 +485,7 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc15.arkane_level_of_theory.year, 2023)
 
         # Test warning when year is specified on sp_level instead of arkane_level_of_theory
-        arc16 = ARC(project='test',
+        arc16 = ARC(project=get_test_project_name('test'),
                     sp_level={'method': 'wb97xd', 'basis': 'def2tzvp', 'year': 2023},
                     opt_level='wb97xd/def2tzvp',
                     calc_freq_factor=False, compute_thermo=False)
@@ -409,7 +498,7 @@ class TestARC(unittest.TestCase):
         spc0 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)
         spc1 = ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)
         spc2 = ARCSpecies(label='spc2', smiles='CC', compute_thermo=False)
-        arc0 = ARC(project='arc_test', job_types=self.job_types1, species=[spc0, spc1, spc2],
+        arc0 = ARC(project=get_test_project_name('arc_test'), job_types=self.job_types1, species=[spc0, spc1, spc2],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         self.assertEqual(arc0.unique_species_labels, ['spc0', 'spc1', 'spc2'])
         spc3 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)
@@ -420,13 +509,13 @@ class TestARC(unittest.TestCase):
     def test_add_hydrogen_for_bde(self):
         """Test the add_hydrogen_for_bde method"""
         spc0 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)
-        arc0 = ARC(project='arc_test', job_types=self.job_types1, species=[spc0],
+        arc0 = ARC(project=get_test_project_name('arc_test'), job_types=self.job_types1, species=[spc0],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc0.add_hydrogen_for_bde()
         self.assertEqual(len(arc0.species), 1)
 
         spc1 = ARCSpecies(label='spc1', smiles='CC', compute_thermo=False, bdes=['all_h'])
-        arc1 = ARC(project='arc_test', job_types=self.job_types1, species=[spc1],
+        arc1 = ARC(project=get_test_project_name('arc_test'), job_types=self.job_types1, species=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)')
         arc1.add_hydrogen_for_bde()
         self.assertEqual(len(arc1.species), 2)
@@ -547,12 +636,12 @@ class TestARC(unittest.TestCase):
                           compute_thermo=False,
                           )
         with self.assertRaises(InputError):
-            arc0 = ARC(project='arc_test',
-                       job_types=self.job_types1,
-                       species=[spc1],
-                       level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
-                       ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
-                       )
+            ARC(project=get_test_project_name('arc_test'),
+                job_types=self.job_types1,
+                species=[spc1],
+                level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
+                ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
+                )
 
     def test_summary_reports_the_warnings_of_a_converged_species(self):
         """Test that the run summary prints the warnings of a species that converged"""
@@ -584,9 +673,209 @@ class TestARC(unittest.TestCase):
         projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
                     'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
         for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
+            project_directory = get_test_project_directory(project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestWarnIfArkaneLevelDiffers(unittest.TestCase):
+    """
+    Contains unit tests for warn_if_arkane_level_differs().
+    """
+
+    def test_a_dummy_arkane_level_is_warned_about(self):
+        """The examples/Stationary/bde setup: apfd/def2svp energies with a bmk/cbsb7 Arkane level."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+            warned = warn_if_arkane_level_differs(arkane_level=Level(method='bmk', basis='cbsb7'),
+                                                  energy_level=Level(method='apfd', basis='def2svp'))
+        self.assertTrue(warned)
+        self.assertTrue(any('bmk/cbsb7' in record and 'apfd/def2svp' in record
+                            and 'not formation enthalpies' in record for record in captured.output))
+
+    def test_the_same_method_with_another_basis_is_warned_about(self):
+        """Atom energies depend on the basis set, so the method alone must not decide."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING):
+            self.assertTrue(warn_if_arkane_level_differs(
+                arkane_level=Level(method='wb97xd', basis='def2tzvp'),
+                energy_level=Level(method='wb97xd', basis='def2svp')))
+
+    def test_another_method_with_the_same_basis_is_warned_about(self):
+        """A dispersion-corrected functional is a different method, not a spelling variant."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING):
+            self.assertTrue(warn_if_arkane_level_differs(
+                arkane_level=Level(method='b3lyp', basis='6-31g(d,p)'),
+                energy_level=Level(method='b3lyp-d3bj', basis='6-31g(d,p)')))
+
+    def test_the_same_level_is_not_warned_about(self):
+        """Spelling variants, a refit year, or another software on the same method and basis are the same level."""
+        same_levels = [
+            (Level(method='wb97xd', basis='def2tzvp', software='gaussian', year=2023),
+             Level(method='wb97xd', basis='def2tzvp', software='gaussian')),
+            (Level(method='wb97xd', basis='def2-tzvp'), Level(method='wb97xd', basis='def2tzvp')),
+            (Level(method='wB97X-D', basis='def2-TZVP'), Level(method='wb97xd', basis='def2tzvp')),
+            (Level(method='cbs-qb3'), Level(method='cbs-qb3')),
+        ]
+        for arkane_level, energy_level in same_levels:
+            with self.subTest(arkane_level=arkane_level.simple(), energy_level=energy_level.simple()):
+                self.assertFalse(warn_if_arkane_level_differs(arkane_level=arkane_level, energy_level=energy_level))
+                self.assertFalse(warn_if_arkane_level_differs(arkane_level=energy_level, energy_level=arkane_level))
+
+    def test_a_missing_level_is_not_warned_about(self):
+        """Without both levels there is nothing to compare."""
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=None, energy_level=Level(method='apfd',
+                                                                                             basis='def2svp')))
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=Level(method='bmk', basis='cbsb7'),
+                                                      energy_level=None))
+
+    def test_an_adaptive_sp_level_other_than_the_arkane_level_is_warned_about(self):
+        """Each species' sp level is picked by heavy-atom count, but Arkane gets one level for all of them."""
+        adaptive_levels = process_adaptive_levels([
+            {'atom_range': [1, 6], 'levels': {'opt freq': 'wb97xd/def2tzvp', 'sp': 'wb97xd/def2-tzvp'}},
+            {'atom_range': [7, 'inf'], 'levels': {'opt freq': 'b3lyp/6-31g(d,p)', 'sp': 'dlpno-ccsd(t)/def2-tzvp'}},
+        ])
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+            warned = warn_if_arkane_level_differs(arkane_level=Level(method='wb97xd', basis='def2tzvp'),
+                                                  energy_level=Level(method='wb97xd', basis='def2tzvp'),
+                                                  adaptive_levels=adaptive_levels)
+        self.assertTrue(warned)
+        self.assertTrue(any('dlpno-ccsd(t)/def2-tzvp' in record for record in captured.output))
+        self.assertFalse(any('b3lyp' in record for record in captured.output))
+
+    def test_adaptive_sp_levels_matching_the_arkane_level_are_not_warned_about(self):
+        """Adaptive levels that vary only the opt/freq level, or repeat the Arkane level for sp, are fine."""
+        adaptive_levels = process_adaptive_levels([
+            {'atom_range': [1, 6], 'levels': {'opt freq': 'b3lyp/6-31g(d,p)', 'sp': 'wB97X-D/def2-TZVP'}},
+            {'atom_range': [7, 'inf'], 'levels': {'opt freq': 'b3lyp/cbsb7'}},
+        ])
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=Level(method='wb97xd', basis='def2tzvp'),
+                                                      energy_level=Level(method='wb97xd', basis='def2tzvp'),
+                                                      adaptive_levels=adaptive_levels))
+
+
+    def test_a_refit_year_in_the_method_string_is_not_a_difference(self):
+        """Arkane keys carry refit vintages in the method name, e.g., ``b3lyp2023``."""
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=Level(method='b3lyp2023', basis='def2tzvp'),
+                                                      energy_level=Level(method='b3lyp', basis='def2tzvp')))
+
+    def test_dispersion_spellings_are_one_method(self):
+        """Dispersion carried in the method string or the separate field, in any spelling, is one method."""
+        same_levels = [
+            (Level(method='b3lyp-d3bj', basis='def2tzvp'),
+             Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj')),
+            (Level(method='b3lyp-d3(bj)', basis='def2tzvp'), Level(method='b3lyp-d3bj', basis='def2tzvp')),
+            (Level(method='b3lyp-d3bj', basis='def2tzvp'),
+             Level(method='b3lyp', basis='def2tzvp', dispersion='EmpiricalDispersion=GD3BJ')),
+        ]
+        for arkane_level, energy_level in same_levels:
+            with self.subTest(arkane_level=str(arkane_level), energy_level=str(energy_level)):
+                self.assertFalse(warn_if_arkane_level_differs(arkane_level=arkane_level, energy_level=energy_level))
+
+    def test_dispersion_only_in_the_energy_level_field_is_warned_about(self):
+        """Energies with a D3(BJ) correction are not at the Arkane level that has none."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+            self.assertTrue(warn_if_arkane_level_differs(
+                arkane_level=Level(method='b3lyp', basis='def2tzvp'),
+                energy_level=Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj')))
+        self.assertTrue(any('differs from the level' in record for record in captured.output))
+
+    def test_levels_are_named_with_their_dispersion_and_solvation(self):
+        """Two levels that differ only in the dispersion field are named so the difference shows."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+            self.assertTrue(warn_if_arkane_level_differs(
+                arkane_level=Level(method='b3lyp', basis='def2tzvp'),
+                energy_level=Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj',
+                                   solvation_method='smd', solvent='water')))
+        self.assertTrue(any('(b3lyp/def2tzvp)' in record
+                            and 'b3lyp/def2tzvp, dispersion: gd3bj, solvation_method: smd, solvent: water' in record
+                            for record in captured.output))
+
+    def test_a_different_dispersion_suffix_is_a_different_method(self):
+        """``wb97xd`` and ``wb97xd3`` are distinct functionals, not spellings of one."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING):
+            self.assertTrue(warn_if_arkane_level_differs(arkane_level=Level(method='wb97xd', basis='def2tzvp'),
+                                                         energy_level=Level(method='wb97xd3', basis='def2tzvp')))
+
+    def test_a_gas_phase_arkane_level_for_solvated_energies_is_warned_about(self):
+        """An explicit gas-phase Arkane level matches Arkane's corrections, which are then subtracted from solvated
+        energies; the levels compare equal on method and basis, so this is its own warning."""
+        with self.assertLogs(logger=get_logger(), level=logging.WARNING) as captured:
+            self.assertTrue(warn_if_arkane_level_differs(
+                arkane_level=Level(method='b3lyp', basis='def2tzvp'),
+                energy_level=Level(method='b3lyp', basis='def2tzvp', solvation_method='smd', solvent='water')))
+        self.assertTrue(any('solvation method' in record and 'gas-phase' in record for record in captured.output))
+        self.assertFalse(any('differs from the level' in record for record in captured.output))
+        self.assertFalse(any('ignoring' in record for record in captured.output))
+
+    def test_a_solvated_arkane_level_is_not_warned_about_here(self):
+        """A solvated Arkane level matches no Arkane corrections, which the startup AEC/BAC check reports; nothing
+        gas-phase is applied to the solvated energies, so this function has nothing to add."""
+        level = Level(method='b3lyp', basis='def2tzvp', solvation_method='smd', solvent='water')
+        self.assertFalse(warn_if_arkane_level_differs(arkane_level=level, energy_level=level))
+
+    def test_an_arkane_level_with_a_separate_dispersion_field_is_not_warned_about(self):
+        """ARC matches the Arkane level's dispersion field as part of its method, so an Arkane level carrying the
+        energy level's dispersion, in either form, is the same level."""
+        for energy_level in (Level(method='b3lyp-d3bj', basis='def2tzvp'),
+                             Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj')):
+            with self.subTest(energy_level=str(energy_level)):
+                self.assertFalse(warn_if_arkane_level_differs(
+                    arkane_level=Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj'),
+                    energy_level=energy_level))
+
+
+class TestArkaneLevelWarningAtStartup(unittest.TestCase):
+    """
+    Contains unit tests for ARC calling warn_if_arkane_level_differs() when it is initialized.
+    """
+
+    def setUp(self):
+        self.project_directory = tempfile.mkdtemp(prefix='arc_arkane_level_warning_')
+        self.addCleanup(shutil.rmtree, self.project_directory, ignore_errors=True)
+
+    def test_startup_checks_the_arkane_level_against_the_energy_levels(self):
+        """ARC checks the defaulted Arkane level at initialization, before any job runs."""
+        with patch('arc.main.warn_if_arkane_level_differs', return_value=False) as mock_warn:
+            arc0 = ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
+                       level_of_theory='CBS-QB3')
+        mock_warn.assert_called_once_with(arkane_level=arc0.arkane_level_of_theory,
+                                          energy_level=arc0.composite_method,
+                                          adaptive_levels=None)
+        self.assertIsNotNone(arc0.arkane_level_of_theory)
+
+    def test_startup_skips_the_check_without_thermo(self):
+        """Without thermo there is no H298 for the atom energies to go into."""
+        with patch('arc.main.warn_if_arkane_level_differs', return_value=False) as mock_warn:
+            ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
+                level_of_theory='CBS-QB3', compute_thermo=False)
+        mock_warn.assert_not_called()
+
+    def test_startup_treats_a_solvated_level_as_one_without_corrections(self):
+        """Arkane has no corrections for a solvated level, so ARC's startup check does what it does for any level
+        without corrections: raise when thermo is computed, only warn when it is not."""
+        solvated = {'method': 'wb97xd', 'basis': 'def2tzvp', 'solvation_method': 'smd', 'solvent': 'water'}
+        with self.assertRaises(ValueError) as error:
+            ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
+                sp_level=solvated, opt_level='wb97xd/def2tzvp', freq_scale_factor=1.0)
+        for remedy in ('solvated', 'compute_thermo', 'arkane_level_of_theory'):
+            self.assertIn(remedy, str(error.exception))
+        with patch('arc.statmech.arkane.logger.warning') as mock_warning:
+            ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
+                sp_level=solvated, opt_level='wb97xd/def2tzvp', freq_scale_factor=1.0, compute_thermo=False)
+        messages = [str(call.args[0]) for call in mock_warning.call_args_list if call.args]
+        self.assertTrue(any('solvated' in message for message in messages))
+
+    def test_startup_warns_about_a_dummy_arkane_level(self):
+        """The examples/Stationary/bde setup warns when ARC is initialized.
+
+        ARC re-initializes its logger's handlers in ``__init__``, which ``assertLogs`` does not survive,
+        so the warning call itself is observed.
+        """
+        with patch('arc.main.logger.warning') as mock_warning:
+            ARC(project='arc_test_arkane_level_warning', project_directory=self.project_directory,
+                level_of_theory='apfd/def2svp', arkane_level_of_theory='bmk/cbsb7', freq_scale_factor=1.0,
+                bac_type=None)
+        messages = [str(call.args[0]) for call in mock_warning.call_args_list if call.args]
+        self.assertTrue(any('bmk/cbsb7' in message and 'apfd/def2svp' in message for message in messages))
 
 
 class TestExecuteReleasesPooledConnections(unittest.TestCase):
@@ -655,6 +944,190 @@ class ReachedTheCleanup(Exception):
     """Raised to stop a run right after its check file cleanup, so the rest of the run is not needed."""
 
 
+class TestRequestedLevelsInOutput(unittest.TestCase):
+    """Tests the header levels ARC passes to write_output_yml, and the NEB level of a default-config run."""
+
+    def setUp(self):
+        self.project_directory = tempfile.mkdtemp(prefix='arc_requested_levels_')
+        self.addCleanup(shutil.rmtree, self.project_directory, ignore_errors=True)
+
+    def make_arc(self, species=None, **kwargs):
+        species = species if species is not None else [ARCSpecies(label='ethane', smiles='CC', compute_thermo=False)]
+        return ARC(project='requested_levels', project_directory=self.project_directory, species=species,
+                   level_of_theory='b3lyp/6-31g', compute_thermo=False, freq_scale_factor=1.0, **kwargs)
+
+    def make_ts(self):
+        return ARCSpecies(label='TS0', is_ts=True, xyz=None, multiplicity=1, charge=0, compute_thermo=False)
+
+    def stub_scheduler(self, arc0, ts_adapters=None):
+        arc0.scheduler = SchedulerStub(dict())
+        arc0.scheduler.species_dict = {spc.label: spc for spc in arc0.species}
+        arc0.scheduler.ts_adapters = ts_adapters if ts_adapters is not None else list()
+        return arc0.scheduler
+
+    def run_arc_and_get_output_kwargs(self, arc0, scheduler_ts_adapters, aec_yml_sha256s=None):
+        """Run ``_execute`` with the scheduler and the post-processing replaced, and return the write_output_yml kwargs"""
+        scheduler = self.stub_scheduler(arc0, scheduler_ts_adapters)
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch('arc.main.process_arc_project', return_value=aec_yml_sha256s), \
+                patch('arc.main.write_output_yml') as write_output_yml, \
+                patch('arc.main.display'), \
+                patch.object(ARC, 'summary', return_value=dict()), \
+                patch.object(ARC, 'save_project_info_file'), \
+                patch.object(ARC, 'clean_check_files'), \
+                patch.object(ARC, 'delete_leftovers'), \
+                patch('arc.main.log_footer'):
+            arc0._execute()
+        return write_output_yml.call_args.kwargs
+
+    def test_neb_level_is_exported_when_the_scheduler_falls_back_to_the_default_ts_adapters(self):
+        """Test that a run listing no ts_adapters exports neb_level, since the scheduler uses the default adapters"""
+        arc0 = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False), self.make_ts()])
+        self.assertIsNone(arc0.ts_adapters)
+        default_adapters = [adapter.lower() for adapter in settings['ts_adapters']]
+        self.assertIn('orca_neb', default_adapters)
+        with patch.dict('arc.processor.settings', {'orca_neb_settings': {'level': 'wb97x-d3/def2-svp'}}):
+            kwargs = self.run_arc_and_get_output_kwargs(arc0, default_adapters)
+        self.assertIsNotNone(kwargs['neb_level'])
+        self.assertEqual(kwargs['neb_level'].method, 'wb97x-d3')
+
+    def test_neb_level_follows_the_adapters_the_scheduler_uses(self):
+        """Test that an explicit list without orca_neb exports no neb_level"""
+        arc0 = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False), self.make_ts()],
+                             ts_adapters=['heuristics'])
+        with patch.dict('arc.processor.settings', {'orca_neb_settings': {'level': 'wb97x-d3/def2-svp'}}):
+            kwargs = self.run_arc_and_get_output_kwargs(arc0, ['heuristics'])
+        self.assertIsNone(kwargs['neb_level'])
+
+    def test_neb_level_needs_a_ts_or_a_reaction(self):
+        """Test that a species-only run with the default TS adapters exports no neb_level"""
+        arc0 = self.make_arc()
+        default_adapters = [adapter.lower() for adapter in settings['ts_adapters']]
+        self.assertIn('orca_neb', default_adapters)
+        with patch.dict('arc.processor.settings', {'orca_neb_settings': {'level': 'wb97x-d3/def2-svp'}}):
+            kwargs = self.run_arc_and_get_output_kwargs(arc0, default_adapters)
+        self.assertIsNone(kwargs['neb_level'])
+
+    def test_the_aec_digests_the_statmech_run_recorded_reach_the_writer(self):
+        """Test that the digests process_arc_project returns are what write_output_yml is given"""
+        kwargs = self.run_arc_and_get_output_kwargs(self.make_arc(), list(), aec_yml_sha256s=['a' * 64])
+        self.assertEqual(kwargs['arc_aec_yml_sha256s'], ['a' * 64])
+        kwargs = self.run_arc_and_get_output_kwargs(self.make_arc(), list(), aec_yml_sha256s=list())
+        self.assertEqual(kwargs['arc_aec_yml_sha256s'], list())
+
+    def test_the_header_levels_reach_the_writer(self):
+        """Test that the five requested levels are passed to write_output_yml"""
+        arc0 = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False), self.make_ts()],
+                             job_types={'rotors': True, 'conf_opt': True, 'conf_sp': True, 'irc': True},
+                             conformer_sp_level='dlpno-ccsd(t)/cc-pvtz')
+        kwargs = self.run_arc_and_get_output_kwargs(arc0, list())
+        for key in ('scan_level', 'irc_level', 'conformer_opt_level', 'conformer_sp_level', 'ts_guess_level'):
+            with self.subTest(key=key):
+                self.assertIsInstance(kwargs[key], Level)
+
+    def test_scan_level_needs_rotor_scans_to_be_requested(self):
+        """Test that a scan level the user set is not stated when rotor scans were not requested"""
+        arc0 = self.make_arc(job_types={'rotors': False}, scan_level='b3lyp/6-31g')
+        self.assertIsInstance(arc0.scan_level, Level)
+        self.stub_scheduler(arc0)
+        self.assertIsNone(arc0.get_requested_levels_for_output()['scan_level'])
+        arc0.job_types['rotors'] = True
+        self.assertIsInstance(arc0.get_requested_levels_for_output()['scan_level'], Level)
+
+    def test_irc_level_needs_irc_to_be_requested_and_a_ts(self):
+        """Test that irc_level is null without a requested IRC and without a transition state in the run"""
+        arc0 = self.make_arc(job_types={'irc': True}, irc_level='b3lyp/6-31g')
+        self.stub_scheduler(arc0)
+        self.assertIsNone(arc0.get_requested_levels_for_output()['irc_level'])
+        arc0.species.append(self.make_ts())
+        self.stub_scheduler(arc0)
+        self.assertIsInstance(arc0.get_requested_levels_for_output()['irc_level'], Level)
+        arc0.job_types['irc'] = False
+        self.assertIsNone(arc0.get_requested_levels_for_output()['irc_level'])
+
+    def test_ts_guess_level_needs_a_ts(self):
+        """Test that ts_guess_level is null in a run with no transition state"""
+        without_ts = self.make_arc()
+        self.stub_scheduler(without_ts)
+        self.assertIsNone(without_ts.get_requested_levels_for_output()['ts_guess_level'])
+        user_level = self.make_arc(ts_guess_level='pm7')
+        self.stub_scheduler(user_level)
+        self.assertIsNone(user_level.get_requested_levels_for_output()['ts_guess_level'])
+        with_ts = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False),
+                                         self.make_ts()])
+        self.stub_scheduler(with_ts)
+        self.assertIsInstance(with_ts.get_requested_levels_for_output()['ts_guess_level'], Level)
+
+    def test_conformer_opt_level_needs_conformer_optimization_to_have_been_possible(self):
+        """Test the conformer_opt_level rules: the job type, the species, and conformers optimized anyway"""
+        arc0 = self.make_arc(job_types={'conf_opt': False})
+        scheduler = self.stub_scheduler(arc0)
+        self.assertIsNone(arc0.get_requested_levels_for_output()['conformer_opt_level'])
+        scheduler.species_dict['ethane'].conformer_levels = [{'method': 'b3lyp', 'basis': '6-31g'}]
+        self.assertIsInstance(arc0.get_requested_levels_for_output()['conformer_opt_level'], Level)
+        scheduler.species_dict['ethane'].conformer_levels = list()
+        arc0.job_types['conf_opt'] = True
+        self.assertIsInstance(arc0.get_requested_levels_for_output()['conformer_opt_level'], Level)
+        atom = ARCSpecies(label='H', smiles='[H]', compute_thermo=False)
+        arc_atoms = self.make_arc(species=[atom], job_types={'conf_opt': True})
+        self.stub_scheduler(arc_atoms)
+        self.assertIsNone(arc_atoms.get_requested_levels_for_output()['conformer_opt_level'])
+        arc_ts = self.make_arc(species=[self.make_ts()], job_types={'conf_opt': True})
+        self.stub_scheduler(arc_ts)
+        self.assertIsNone(arc_ts.get_requested_levels_for_output()['conformer_opt_level'])
+
+    def test_conformer_sp_level_needs_conf_sp_and_a_different_level(self):
+        """Test that conformer_sp_level is null unless conf_sp was requested at a level other than the conf_opt one"""
+        arc0 = self.make_arc(job_types={'conf_sp': False}, conformer_sp_level='dlpno-ccsd(t)/cc-pvtz')
+        self.stub_scheduler(arc0)
+        self.assertIsNone(arc0.get_requested_levels_for_output()['conformer_sp_level'])
+        arc0.job_types['conf_sp'] = True
+        self.assertIsInstance(arc0.get_requested_levels_for_output()['conformer_sp_level'], Level)
+        arc0.conformer_sp_level = Level(repr=arc0.conformer_opt_level.as_dict())
+        self.assertIsNone(arc0.get_requested_levels_for_output()['conformer_sp_level'])
+        arc0.conformer_sp_level = None
+        self.assertIsNone(arc0.get_requested_levels_for_output()['conformer_sp_level'])
+
+    def test_a_header_level_is_null_where_an_adaptive_entry_covers_its_job_type(self):
+        """Test that scan, irc, conformer and TS guess levels are null when an adaptive entry names their job type"""
+        job_types = {'rotors': True, 'irc': True, 'conf_opt': True, 'conf_sp': True}
+        expected_null = {'scan': ['scan_level'], 'irc': ['irc_level'], 'conf_opt': ['conformer_opt_level',
+                                                                                   'ts_guess_level'],
+                         'conf_sp': ['conformer_sp_level']}
+        all_keys = ('scan_level', 'irc_level', 'conformer_opt_level', 'conformer_sp_level', 'ts_guess_level')
+        for job_type, null_keys in expected_null.items():
+            with self.subTest(job_type=job_type):
+                arc0 = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False),
+                                              self.make_ts()],
+                                     job_types=job_types, conformer_sp_level='dlpno-ccsd(t)/cc-pvtz',
+                                     adaptive_levels=[{'atom_range': [1, 'inf'],
+                                                       'levels': {job_type: 'b3lyp/6-311+g(d,p)'}}])
+                self.stub_scheduler(arc0)
+                levels = arc0.get_requested_levels_for_output()
+                for key in all_keys:
+                    if key in null_keys:
+                        self.assertIsNone(levels[key], key)
+                    else:
+                        self.assertIsInstance(levels[key], Level, key)
+
+    def test_a_failure_in_building_the_header_levels_does_not_abort_the_run(self):
+        """Test that an error while resolving the header levels is logged and the run still finishes"""
+        arc0 = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False), self.make_ts()])
+        scheduler = self.stub_scheduler(arc0)
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch('arc.main.process_arc_project'), \
+                patch('arc.main.write_output_yml') as write_output_yml, \
+                patch('arc.main.display'), \
+                patch('arc.main.resolve_neb_level', side_effect=RuntimeError('boom')), \
+                patch.object(ARC, 'summary', return_value=dict()), \
+                patch.object(ARC, 'save_project_info_file'), \
+                patch.object(ARC, 'clean_check_files'), \
+                patch.object(ARC, 'delete_leftovers'), \
+                patch('arc.main.log_footer'):
+            self.assertEqual(arc0._execute(), dict())
+        write_output_yml.assert_not_called()
+
+
 class SchedulerStub(object):
     """Stands in for a Scheduler that has finished running a project's jobs on a server."""
 
@@ -663,6 +1136,7 @@ class SchedulerStub(object):
         self.output = dict()
         self.species_dict = dict()
         self.rxn_list = list()
+        self.completed_job_records = list()
 
 
 class TestCheckFileCleanup(unittest.TestCase):
@@ -828,6 +1302,83 @@ class TestCheckFileCleanup(unittest.TestCase):
                 arc_logger.removeHandler(handler)
         shutil.rmtree(self.remote_root, ignore_errors=True)
         shutil.rmtree(os.path.dirname(self.project_directory), ignore_errors=True)
+
+
+class TestRestartRoundTrip(unittest.TestCase):
+    """
+    Test that a restart dictionary can be fed straight back into the ARC constructor.
+
+    ``ARC.py`` restarts a project with ``ARC(**read_yaml_file('restart.yml'))``, and ``restart.yml``
+    is the dictionary produced by ``ARC.as_dict()`` plus the keys the Scheduler adds to it. Any key
+    written into that dictionary which ``ARC.__init__()`` does not accept makes every restart of an
+    affected project fail with ``TypeError: got an unexpected keyword argument``, and nothing
+    detects it until somebody actually restarts. ``Scheduler.save_restart_dict()`` writes into
+    ARC's constructor namespace, so keys can be added there without touching ``main.py`` at all.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.maxDiff = None
+
+    def tearDown(self):
+        for project in ('arc_restart_roundtrip',):
+            project_directory = os.path.join(ARC_PATH, 'Projects', project)
+            shutil.rmtree(project_directory, ignore_errors=True)
+
+    def test_as_dict_output_is_accepted_by_the_constructor(self):
+        """Every key ARC writes into a restart dictionary must be a constructor parameter."""
+        arc0 = ARC(project='arc_restart_roundtrip',
+                   species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)],
+                   compute_thermo=False,
+                   )
+        restart_dict = arc0.as_dict()
+        accepted = set(inspect.signature(ARC.__init__).parameters) - {'self'}
+        unexpected = sorted(set(restart_dict) - accepted)
+        self.assertEqual(unexpected, list(),
+                         f'ARC.as_dict() emits key(s) that ARC.__init__() cannot accept: {unexpected}. '
+                         f'Every key written into a restart dictionary must be a constructor parameter, '
+                         f'or restarting any affected project raises TypeError.')
+
+    def test_scheduler_restart_keys_are_accepted_by_the_constructor(self):
+        """
+        The keys ``Scheduler.save_restart_dict()`` adds must also be constructor parameters.
+
+        The Scheduler writes into the same dictionary ARC is later reconstructed from, so a key
+        added there is just as breaking as one added to ``as_dict()`` - and is easier to miss,
+        because it does not touch ``main.py``.
+        """
+        accepted = set(inspect.signature(ARC.__init__).parameters) - {'self'}
+        scheduler_written_keys = {'output', 'output_multi_spc', 'completed_job_records',
+                                  'species', 'running_jobs'}
+        unexpected = sorted(scheduler_written_keys - accepted)
+        self.assertEqual(unexpected, list(),
+                         f'Scheduler.save_restart_dict() writes key(s) ARC.__init__() cannot accept: '
+                         f'{unexpected}.')
+
+    def test_completed_job_records_survives_a_restart(self):
+        """Cost records are persisted specifically so a restarted run keeps its history."""
+        records = [{'job_name': 'opt_a1', 'job_type': 'opt', 'adapter': 'gaussian',
+                    'server': 'local', 'cpu_cores': 8, 'run_time': 12.5, 'status': 'done'}]
+        arc0 = ARC(project='arc_restart_roundtrip',
+                   species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)],
+                   compute_thermo=False,
+                   completed_job_records=records,
+                   )
+        restart_dict = arc0.as_dict()
+        self.assertEqual(restart_dict['completed_job_records'], records)
+        arc1 = ARC(**restart_dict)
+        self.assertEqual(arc1.completed_job_records, records)
+
+    def test_absent_completed_job_records_defaults_to_empty(self):
+        """A restart file written before the key existed must still construct."""
+        arc0 = ARC(project='arc_restart_roundtrip',
+                   species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)],
+                   compute_thermo=False,
+                   )
+        self.assertEqual(arc0.completed_job_records, list())
+        restart_dict = arc0.as_dict()
+        self.assertNotIn('completed_job_records', restart_dict)
+        self.assertEqual(ARC(**restart_dict).completed_job_records, list())
 
 
 if __name__ == '__main__':

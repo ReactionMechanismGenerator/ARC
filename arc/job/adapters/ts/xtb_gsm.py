@@ -26,7 +26,7 @@ from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
 from arc.job.local import change_mode, execute_command
-from arc.level import Level
+from arc.level import Level, plain_level_dict
 from arc.parser.parser import parse_trajectory
 from arc.species import TSGuess
 from arc.species.converter import xyz_to_xyz_file_format
@@ -39,6 +39,8 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 GSM_EVIDENCE_ARCHIVE = 'gsm_evidence.tar.gz'
+OGRAD_CHARGE_PLACEHOLDER = '@CHARGE@'
+OGRAD_UHF_PLACEHOLDER = '@UHF@'
 GSM_QUEUE_BINARY = 'gsm.orca.bin'
 # Bounds on the downloaded evidence archive, checked before extracting. A GSM
 # run archives one stringfile plus a per-node output directory, so a few
@@ -241,7 +243,13 @@ class xTBGSMAdapter(JobAdapter):
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
+
+        Nothing is staged when the charge or the multiplicity of the reaction is unknown.
+
+        Raises:
+            ValueError: If the charge or the multiplicity of the reaction is unknown.
         """
+        self._get_charge_and_multiplicity()
         r_xyz = xyz_to_xyz_file_format(self.reactions[0].get_reactants_xyz(return_format=dict))
         p_xyz = xyz_to_xyz_file_format(self.reactions[0].get_products_xyz(return_format=dict))
 
@@ -256,13 +264,49 @@ class xTBGSMAdapter(JobAdapter):
         with open(self.inpfileq_path, 'w') as f:
             f.write(Template(input_template).render(**inpfileq_args))
 
+        self.write_ograd_file()
+
         if self.execution_type == 'incore':
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'gsm.orca'), destination=self.gsm_orca_path)
-            safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'ograd'), destination=self.ograd_path)
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'tm2orca.py'), destination=self.tm2orca_path)
             change_mode(mode='+x', file_name=self.gsm_orca_path)
-            change_mode(mode='+x', file_name=self.ograd_path)
             change_mode(mode='+x', file_name=self.tm2orca_path)
+
+    def _get_charge_and_multiplicity(self) -> tuple[int, int]:
+        """
+        The net charge and the multiplicity of the reaction this job searches a path for.
+
+        Raises:
+            ValueError: If the charge or the multiplicity of the reaction is unknown.
+        """
+        reaction = self.reactions[0]
+        charge, multiplicity = reaction.charge, reaction.multiplicity
+        if charge is None or multiplicity is None:
+            logger.error(f'Not staging the xTB-GSM job of reaction {reaction.label}: '
+                         f'its charge is {charge} and its multiplicity is {multiplicity}.')
+            raise ValueError(f'Cannot stage xTB-GSM for reaction {reaction.label} without its charge '
+                             f'and multiplicity.')
+        return charge, multiplicity
+
+    def write_ograd_file(self) -> None:
+        """
+        Write the ``ograd`` script of this job to ``self.ograd_path``.
+
+        The script runs xTB with the GFN2-xTB method (``--gfn 2``), the net charge of the reaction
+        (``--chrg``, the total molecular charge), and the number of unpaired electrons
+        (``--uhf``, the multiplicity minus one) taken from the reaction.
+
+        Raises:
+            ValueError: If the charge or the multiplicity of the reaction is unknown.
+        """
+        charge, multiplicity = self._get_charge_and_multiplicity()
+        with open(os.path.join(self.xtb_gsm_scripts_path, 'ograd'), 'r') as f:
+            ograd = f.read()
+        ograd = ograd.replace(OGRAD_CHARGE_PLACEHOLDER, str(int(charge)))
+        ograd = ograd.replace(OGRAD_UHF_PLACEHOLDER, str(int(multiplicity) - 1))
+        with open(self.ograd_path, 'w') as f:
+            f.write(ograd)
+        change_mode(mode='+x', file_name=self.ograd_path)
 
     def set_files(self) -> None:
         """
@@ -309,7 +353,7 @@ class xTBGSMAdapter(JobAdapter):
             # 1.4 ograd
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='ograd',
                                                                           make_x=True,
-                                                                          local=os.path.join(self.xtb_gsm_scripts_path, 'ograd')))
+                                                                          local=self.ograd_path))
             # 1.5 tm2orca.py
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='tm2orca.py',
                                                                           make_x=True,
@@ -484,9 +528,13 @@ class xTBGSMAdapter(JobAdapter):
         """
         Process a completed xTB-GSM run.
         """
+        # The GSM run is driven by the ograd script which executes plain ``xtb --grad``,
+        # i.e., GFN2-xTB (the xtb default), unless a level was explicitly set for this job.
         tsg = TSGuess(method='xTB-GSM',
                       success=False,
                       t0=self.initial_time,
+                      level=plain_level_dict(self.level) if self.level is not None
+                      else {'method': 'gfn2-xtb', 'software': 'xtb'},
                       )
         if os.path.isfile(self.stringfile_path):
             traj = parse_trajectory(self.stringfile_path)

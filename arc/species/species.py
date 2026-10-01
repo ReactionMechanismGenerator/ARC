@@ -26,7 +26,7 @@ from arc.common import (almost_equal_coords,
 from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError, \
     SanitizationError
 from arc.imports import settings
-from arc.level import Level
+from arc.level import Level, level_as_plain_dict
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.resonance import generate_aromatic_resonance_structure, generate_kekule_structure, generate_resonance_structures_safely
@@ -60,6 +60,9 @@ from arc.species.vectors import calculate_angle, calculate_distance, calculate_d
 logger = get_logger()
 
 valid_chars, minimum_barrier = settings['valid_chars'], settings['minimum_barrier']
+
+CONFORMER_ENERGY_KIND_FORCE_FIELD = 'force_field_kcal_mol'
+CONFORMER_ENERGY_KIND_ELECTRONIC = 'electronic_kj_mol'
 
 
 class ARCSpecies(object):
@@ -236,11 +239,37 @@ class ARCSpecies(object):
                                       across a restart.
         e_elect (float): The total electronic energy (without ZPE) at the chosen sp level, in kJ/mol.
         e0 (float): The 0 Kelvin energy (total electronic energy plus ZPE) at the chosen sp level, in kJ/mol.
+        e0_atom_corrections_applied (bool | None): Whether the Arkane run that wrote ``e0`` had its atom energy
+                                                   correction switched on. ``None`` when not known.
+        e0_bond_corrections_applied (bool | None): Whether the Arkane run that wrote ``e0`` had its bond additivity
+                                                   correction switched on. ``None`` when not known.
+        e0_aec_yml_sha256 (str | None): The SHA-256 of ARC's ``data/AEC.yml`` that the Arkane run that wrote ``e0``
+                                        rendered its atom energies from. ``None`` when not known, or when that run
+                                        did not render atom energies from it.
+        arkane_rotor_modes (list[str] | None): The rotor modes (``HinderedRotor``, ``FreeRotor``,
+                                               ``HinderedRotor2D``, ``HinderedRotorClassicalND``, ``Mode``) of the
+                                               conformer block of the last Arkane run, in order. ``None`` when that
+                                               block was not parsed.
         is_ts (bool):  Whether the species represents a transition state. `True` if it does.
         number_of_rotors (int): The number of potential rotors to scan.
         rotors_dict (dict): A dictionary of rotors. structure given below.
         conformers (list): A list of selected conformers XYZs (dict format).
-        conformer_energies (list): A list of conformers E0 (in kJ/mol).
+        conformer_energies (list): One absolute energy per conformer, in lockstep with ``conformers``. The unit is
+                                   kcal/mol for a force-field energy and kJ/mol for a parsed electronic energy;
+                                   ``conformer_energy_sources`` says which.
+        conformer_levels (list): In lockstep with ``conformers``, the level (a plain dictionary) of the conformer
+                                 optimization job that produced each geometry, or ``None`` for a geometry that
+                                 was never optimized (a force-field geometry, or a user-supplied one).
+        conformer_logs (list): In lockstep with ``conformers``, the path of the conformer optimization log that
+                               produced each geometry, or ``None`` for a geometry that was not parsed from a
+                               log (a force-field geometry, or a user-supplied one) and for a log that was not
+                               recorded (an older restart).
+        conformer_energy_sources (list): In lockstep with ``conformers``, ``{'kind': <kind or None>, 'level': <level
+                                         dict or None>}`` describing where each entry of ``conformer_energies``
+                                         came from (``kind`` is ``'force_field_kcal_mol'`` or
+                                         ``'electronic_kj_mol'``), with a ``'force_field'`` key naming the force
+                                         field and backend (e.g. ``'MMFF94s (rdkit)'``) of a force-field energy,
+                                         or ``None`` for an energy of unknown origin.
         cheap_conformer (str): A string format xyz of a cheap conformer (not necessarily the best/lowest one).
         most_stable_conformer (int): The index of the best/lowest conformer in self.conformers.
         recent_md_conformer (list): A length three list containing the coordinates of the recent conformer
@@ -278,6 +307,22 @@ class ARCSpecies(object):
         chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
         ts_checks (dict[str, bool]): Checks that a TS species went through.
+        nmd_record (dict): What the normal mode displacement check of a TS analysed: ``mode_index`` is the 0-based
+                           position, in the list of frequencies and modes parsed from the frequency job's output
+                           file, of the mode it analysed (the most negative frequency), ``n_modes`` is the length of
+                           that list, ``freq_log_path`` is the output file it was parsed from, and ``forced`` is
+                           whether a failed check was forced to pass (``skip_nmd``). Empty when the check has not
+                           run.
+        irc_participant_mapping (dict | None): Which atoms of each optimized IRC endpoint geometry belong to which
+                                               participant species, recorded only when the IRC check established its
+                                               verdict by graph isomorphism (see ``arc.checks.ts``). ``None`` otherwise.
+        ts_atom_map (dict | None): The 0-based TS atom of every reactant atom and of every product atom of the reaction
+                                   (``reactants``, ``products``), with the ``ts_label``, the ``method`` and
+                                   ``ts_atom_order_follows_reactants``, recorded only when the IRC check established its
+                                   verdict by graph isomorphism and the reaction's atom map is consistent with the TS
+                                   (see ``arc.checks.ts``). ``None`` otherwise.
+        ts_atom_map_unavailable_reason (str | None): Why the IRC check recorded no ``ts_atom_map``, ``None`` when it
+                                                     recorded one or has not run.
         rxn_zone_atom_indices (list[int]): 0-indexed atom indices of the active reaction zone.
         ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its
                                 TSGuess objects.
@@ -381,6 +426,9 @@ class ARCSpecies(object):
         self.most_stable_conformer = None
         self.recent_md_conformer = None
         self.conformer_energies = list()
+        self.conformer_levels = list()
+        self.conformer_logs = list()
+        self.conformer_energy_sources = list()
         self.initial_xyz = None
         self.thermo = ThermoData()
         self.rmg_thermo = ThermoData()
@@ -410,6 +458,10 @@ class ARCSpecies(object):
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
         self.ts_checks = dict()
+        self.nmd_record = dict()
+        self.irc_participant_mapping = None
+        self.ts_atom_map = None
+        self.ts_atom_map_unavailable_reason = None
         self.derived_stability_verdict = None
         self.scf_references = dict()
         self.stability_analysis_ran = False
@@ -438,6 +490,10 @@ class ARCSpecies(object):
             self.ts_guesses_exhausted = False
             self.e_elect = None
             self.e0 = None
+            self.e0_atom_corrections_applied = None
+            self.e0_bond_corrections_applied = None
+            self.e0_aec_yml_sha256 = None
+            self.arkane_rotor_modes = None
             self.arkane_file = None
             self.conf_is_isomorphic = None
             self.bdes = bdes
@@ -705,6 +761,20 @@ class ARCSpecies(object):
         species_dict = self.as_dict(reset_atom_ids=True)
         return ARCSpecies(species_dict=species_dict)
 
+    def copy_e0_from(self, other: 'ARCSpecies') -> None:
+        """
+        Take the E0 of another species when this one has none, together with the correction switches and the
+        ``AEC.yml`` digest of the Arkane run that wrote it. A species that already has an E0 is left untouched.
+
+        Args:
+            other (ARCSpecies): The species to take the E0, its correction switches and its ``AEC.yml`` digest from.
+        """
+        if self.e0 is None:
+            self.e0 = other.e0
+            self.e0_atom_corrections_applied = other.e0_atom_corrections_applied
+            self.e0_bond_corrections_applied = other.e0_bond_corrections_applied
+            self.e0_aec_yml_sha256 = other.e0_aec_yml_sha256
+
     def is_water(self) -> bool:
         """
         Check whether this species is a water molecule (H2O).
@@ -805,6 +875,14 @@ class ARCSpecies(object):
                 species_dict['chosen_ts_list'] = self.chosen_ts_list
             if self.ts_checks:
                 species_dict['ts_checks'] = self.ts_checks
+            if self.nmd_record:
+                species_dict['nmd_record'] = self.nmd_record
+            if self.irc_participant_mapping is not None:
+                species_dict['irc_participant_mapping'] = self.irc_participant_mapping
+            if self.ts_atom_map is not None:
+                species_dict['ts_atom_map'] = self.ts_atom_map
+            if self.ts_atom_map_unavailable_reason is not None:
+                species_dict['ts_atom_map_unavailable_reason'] = self.ts_atom_map_unavailable_reason
         if self.original_label is not None:
             species_dict['original_label'] = self.original_label
         if self.e_elect is not None:
@@ -815,6 +893,14 @@ class ARCSpecies(object):
             species_dict['fragments'] = self.fragments
         if self.e0 is not None:
             species_dict['e0'] = self.e0
+        if self.e0_atom_corrections_applied is not None:
+            species_dict['e0_atom_corrections_applied'] = self.e0_atom_corrections_applied
+        if self.e0_bond_corrections_applied is not None:
+            species_dict['e0_bond_corrections_applied'] = self.e0_bond_corrections_applied
+        if self.e0_aec_yml_sha256 is not None:
+            species_dict['e0_aec_yml_sha256'] = self.e0_aec_yml_sha256
+        if self.arkane_rotor_modes is not None:
+            species_dict['arkane_rotor_modes'] = list(self.arkane_rotor_modes)
         if self.e0_only is not False:
             species_dict['e0_only'] = self.e0_only
         if self.tsg_spawned is not False:
@@ -868,6 +954,10 @@ class ARCSpecies(object):
         if self.conformers:
             species_dict['conformers'] = [xyz_to_str(conf) for conf in self.conformers]
             species_dict['conformer_energies'] = self.conformer_energies
+            self.sync_conformer_provenance()
+            species_dict['conformer_levels'] = list(self.conformer_levels)
+            species_dict['conformer_logs'] = list(self.conformer_logs)
+            species_dict['conformer_energy_sources'] = list(self.conformer_energy_sources)
         if self.conformers_before_opt is not None:
             species_dict['conformers_before_opt'] = [xyz_to_str(conf) for conf in self.conformers_before_opt]
         if self.bdes is not None:
@@ -914,6 +1004,10 @@ class ARCSpecies(object):
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
         self.freqs = species_dict.get('freqs')
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
+        self.e0_atom_corrections_applied = species_dict.get('e0_atom_corrections_applied')
+        self.e0_bond_corrections_applied = species_dict.get('e0_bond_corrections_applied')
+        self.e0_aec_yml_sha256 = species_dict.get('e0_aec_yml_sha256')
+        self.arkane_rotor_modes = species_dict.get('arkane_rotor_modes')
         self.tsg_spawned = species_dict['tsg_spawned'] if 'tsg_spawned' in species_dict else False
         self.active = species_dict['active'] if 'active' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
@@ -954,6 +1048,12 @@ class ARCSpecies(object):
             self.rxn_zone_atom_indices = species_dict['rxn_zone_atom_indices'] \
                 if 'rxn_zone_atom_indices' in species_dict else None
             self.ts_checks = species_dict['ts_checks'] if 'ts_checks' in species_dict else dict()
+            self.nmd_record = species_dict['nmd_record'] if isinstance(species_dict.get('nmd_record'), dict) else dict()
+            self.irc_participant_mapping = species_dict['irc_participant_mapping'] \
+                if isinstance(species_dict.get('irc_participant_mapping'), dict) else None
+            self.ts_atom_map = species_dict['ts_atom_map'] if isinstance(species_dict.get('ts_atom_map'), dict) else None
+            self.ts_atom_map_unavailable_reason = species_dict['ts_atom_map_unavailable_reason'] \
+                if isinstance(species_dict.get('ts_atom_map_unavailable_reason'), str) else None
             self.chosen_ts_list = species_dict['chosen_ts_list'] if 'chosen_ts_list' in species_dict else list()
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
             self.renumber_ambiguous_ts_guesses()
@@ -1024,12 +1124,26 @@ class ARCSpecies(object):
                                  f'{self.multiplicity} (ignored mol.multiplicity)')
                 else:
                     self.multiplicity = self.mol.multiplicity
+            elif self.number_of_radicals is None and not self.is_ts and adjlist is None \
+                    and 'mol' not in species_dict and (smiles is not None or inchi is not None) \
+                    and self.mol.multiplicity != self.multiplicity:
+                # SMILES/InChI don't encode electron spin, so the perceived .mol may disagree with the
+                # declared multiplicity (e.g. [CH2] is perceived as triplet u2, but multiplicity: 1 is the
+                # singlet carbene u0 p1). Reconcile the graph to the declared spin state so downstream
+                # graph-based logic (RMG family determination, isomorphism checks) sees the correct species.
+                # Mirrors the kwargs __init__ path; skipped for adjlist/mol input (spin already encoded) and
+                # for open-shell states declared via number_of_radicals.
+                self.reconcile_mol_multiplicity()
             if self.charge is None:
                 self.charge = self.mol.get_net_charge()
         if 'conformers' in species_dict:
             self.conformers = [str_to_xyz(conf) for conf in species_dict['conformers']]
             self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict \
                 else [None] * len(self.conformers)
+            self.conformer_levels = list(species_dict.get('conformer_levels') or list())
+            self.conformer_logs = list(species_dict.get('conformer_logs') or list())
+            self.conformer_energy_sources = list(species_dict.get('conformer_energy_sources') or list())
+            self.sync_conformer_provenance()
         self.conformers_before_opt = [str_to_xyz(conf) for conf in species_dict['conformers_before_opt']] \
             if 'conformers_before_opt' in species_dict else None
         if self.mol is None and self.initial_xyz is None and self.final_xyz is None and not self.conformers \
@@ -1258,12 +1372,100 @@ class ARCSpecies(object):
                                                       economic_generation=economic_generation,
                                                       )
         if len(lowest_confs):
+            self.sync_conformer_provenance()
             self.conformers.extend([conf['xyz'] for conf in lowest_confs])
             self.conformer_energies.extend([conf['FF energy'] for conf in lowest_confs])
+            self.conformer_levels.extend([None] * len(lowest_confs))
+            self.conformer_logs.extend([None] * len(lowest_confs))
+            self.conformer_energy_sources.extend([self.get_force_field_energy_source(conf) for conf in lowest_confs])
         else:
             xyz = self.get_xyz(generate=False)
             if xyz is None or not xyz:
                 logger.error(f'No 3D coordinates available for species {self.label}!')
+
+    @staticmethod
+    def get_force_field_energy_source(conf: dict) -> dict | None:
+        """
+        Get the energy source record of a generated conformer.
+
+        Args:
+            conf (dict): A conformer dictionary of ``conformers.generate_conformers``.
+
+        Returns:
+            dict | None: ``None`` for a conformer without a force field energy, and for a placeholder energy
+                         (the cheat sheet, monoatomic and diatomic species) that no force field computed.
+                         Otherwise the force field and backend, with a kind of ``'force_field_kcal_mol'`` only if
+                         the energy unit is kcal/mol.
+        """
+        force_field = conf.get('force_field')
+        if conf.get('FF energy') is None or force_field is None:
+            return None
+        kind = CONFORMER_ENERGY_KIND_FORCE_FIELD if conf.get('force_field_unit') == 'kcal/mol' else None
+        return {'kind': kind, 'level': None, 'force_field': force_field}
+
+    def sync_conformer_provenance(self):
+        """
+        Make ``conformer_levels``, ``conformer_logs`` and ``conformer_energy_sources`` the same length as
+        ``conformers``.
+        Missing entries (an older restart, or conformers added without a record) become ``None``,
+        which stands for "not recorded"; entries beyond the last conformer are dropped.
+        """
+        n_conformers = len(self.conformers)
+        for attr in ('conformer_levels', 'conformer_logs', 'conformer_energy_sources'):
+            values = getattr(self, attr, None)
+            values = list(values) if isinstance(values, (list, tuple)) else list()
+            setattr(self, attr, (values + [None] * n_conformers)[:n_conformers])
+
+    def reset_conformer_provenance(self):
+        """
+        Forget the provenance of every conformer: no optimization level, no log, no energy source.
+        Call it when ``conformers`` is replaced wholesale.
+        """
+        self.conformer_levels = list()
+        self.conformer_logs = list()
+        self.conformer_energy_sources = list()
+        self.sync_conformer_provenance()
+
+    def record_conformer_geometry_level(self,
+                                        index: int,
+                                        level: Level | dict | None,
+                                        log_path: str | None = None,
+                                        ):
+        """
+        Record the level of the conformer optimization job that produced the geometry of a conformer,
+        and the log that geometry was parsed from.
+
+        Args:
+            index (int): The conformer index.
+            level (Level | dict, optional): The level of the job, or ``None`` if the geometry was not optimized.
+            log_path (str, optional): The path of the optimization log, ``None`` if it is not known.
+        """
+        self.sync_conformer_provenance()
+        if 0 <= index < len(self.conformers):
+            self.conformer_levels[index] = level_as_plain_dict(level)
+            self.conformer_logs[index] = log_path if isinstance(log_path, str) and log_path else None
+
+    def record_conformer_energy_source(self,
+                                       index: int,
+                                       kind: str | None,
+                                       level: Level | dict | None = None,
+                                       force_field: str | None = None,
+                                       ):
+        """
+        Record where the energy of a conformer came from.
+
+        Args:
+            index (int): The conformer index.
+            kind (str, optional): ``'force_field_kcal_mol'`` or ``'electronic_kj_mol'``; ``None`` if unknown.
+            level (Level | dict, optional): The level of the job that computed an electronic energy.
+            force_field (str, optional): The force field and backend that computed a force-field energy.
+        """
+        self.sync_conformer_provenance()
+        if 0 <= index < len(self.conformers):
+            source = {'kind': kind, 'level': level_as_plain_dict(level)}
+            if force_field is not None:
+                source['force_field'] = force_field
+            self.conformer_energy_sources[index] = source if kind is not None or force_field is not None else None
 
     def get_cheap_conformer(self):
         """
@@ -1522,7 +1724,7 @@ class ARCSpecies(object):
             deg_abs = calculate_dihedral_angle(coords=xyz, torsion=torsion) + deg_increment
         if is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[:3], index=0)) \
                 or is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[1:], index=0)):
-            logger.warning(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
+            logger.debug(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
             return None
         mol = self.mol
         if mol is None:
@@ -1531,6 +1733,7 @@ class ARCSpecies(object):
                                              multiplicity=self.multiplicity,
                                              n_radicals=self.number_of_radicals,
                                              n_fragments=self.get_n_fragments(),
+                                             is_ts=self.is_ts,
                                              )
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
@@ -1819,16 +2022,38 @@ class ARCSpecies(object):
 
     def cluster_tsgs(self):
         """
-        Cluster TSGuesses.
+        Cluster near-duplicate TSGuesses, keeping one representative per cluster.
+
+        The representative of each cluster is its lowest-``index`` member, and the guesses are
+        traversed in ascending ``index`` order, so both the cluster memberships and the surviving
+        representative are independent of the order in which the guesses were appended to
+        ``self.ts_guesses``. This matters because the representative's geometry is what gets
+        optimized downstream: with the previous first-seen rule, TS-search jobs completing in a
+        different queue order could hand a different geometry to the optimizer for the very same
+        input. ``index`` is used rather than energy because most guesses still have
+        ``energy is None`` at clustering time.
+
+        Guesses with no ``index`` (``None``) sort last and keep their relative order.
+        Surviving guesses are NOT renumbered: their indices are provenance, so the resulting
+        index sequence may have gaps.
+
+        This method is called repeatedly as queue TS-search jobs report back, so a survivor's
+        ``cluster`` list accumulates across passes instead of being reset to the survivor's own
+        index each time -- otherwise every pass would discard the indices absorbed by the previous
+        ones.
         """
         if not self.is_ts or not len(self.ts_guesses):
             return None
+        ordered_tsgs = sorted(self.ts_guesses,
+                              key=lambda tsg: (tsg.index is None, tsg.index if tsg.index is not None else 0))
         cluster_tsgs = list()
-        for tsg in self.ts_guesses:
+        for tsg in ordered_tsgs:
             for cluster_tsg in cluster_tsgs:
                 if cluster_tsg.almost_equal_tsgs(tsg):
                     logger.debug(f"Similar TSGuesses found: {tsg.index} is similar to {cluster_tsg.index}")
-                    cluster_tsg.cluster.append(tsg.index)
+                    for index in (tsg.cluster if tsg.cluster else [tsg.index]):
+                        if index not in cluster_tsg.cluster:
+                            cluster_tsg.cluster.append(index)
                     cluster_tsg.method_sources = TSGuess._normalize_method_sources(
                         (cluster_tsg.method_sources or []) + (tsg.method_sources or [])
                     )
@@ -1845,26 +2070,39 @@ class ARCSpecies(object):
                             cluster_tsg.method_source_paths.setdefault(source_method, source_log)
                     break
             else:
-                tsg.cluster = [tsg.index]
+                if not tsg.cluster:
+                    tsg.cluster = [tsg.index]
+                elif tsg.index not in tsg.cluster:
+                    tsg.cluster.append(tsg.index)
                 cluster_tsgs.append(tsg)
-        n_before = len([tsg for tsg in self.ts_guesses])
+        n_before = len(self.ts_guesses)
         self.ts_guesses = cluster_tsgs
         if len(cluster_tsgs) < n_before:
+            absorbed = {tsg.index: sorted(index for index in (tsg.cluster or list())
+                                          if index is not None and index != tsg.index)
+                        for tsg in cluster_tsgs}
+            absorbed_str = ', '.join(f'{", ".join(str(index) for index in indices)} into {kept}'
+                                     for kept, indices in absorbed.items() if indices)
             logger.info(f'Clustered {n_before} TS guesses for {self.label} '
-                        f'into {len(cluster_tsgs)} unique conformers.')
+                        f'into {len(cluster_tsgs)} unique conformers'
+                        f'{f" (absorbed duplicates: {absorbed_str})" if absorbed_str else ""}. '
+                        f'Surviving guesses keep their original indices, so the numbering may have gaps.')
 
-    def process_completed_tsg_queue_jobs(self, path: str):
+    def process_completed_tsg_queue_jobs(self, path: str, method: str = 'orca_neb'):
         """
         Process YAML files which are the output of running a TS guess job in the queue.
 
         Args:
             path (str): The path to the output file.
+            method (str): The TS-search adapter that produced the output (e.g. ``'orca_neb'``,
+                          ``'qst2'``). Used to correctly attribute the resulting TS guess; several
+                          queue adapters emit a ``.log`` so this must not be hard-coded.
         """
         if not isinstance(path, str) or not os.path.isfile(path):
             return None
         if path.endswith('.log'):
             xyz = parse_geometry(path)
-            tsg = TSGuess(method='orca_neb',
+            tsg = TSGuess(method=method,
                           success=True,
                           xyz=xyz,
                           log_path=path,
@@ -1872,12 +2110,10 @@ class ARCSpecies(object):
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                 self.append_ts_guess(tsg)
             else:
-                # The queue TS-search job produced no usable geometry (nothing parseable, or
-                # colliding atoms). Mark it failed and do NOT add it as a clusterable guess: a
-                # coordinate-less "successful" guess would break equivalent-guess clustering.
                 tsg.success = False
                 logger.warning(f"The queue TS-guess job at {path} produced no usable geometry; "
-                               f"marking this '{tsg.method}' guess as failed and not clustering it.")
+                               f"recording a failed '{tsg.method}' guess and not clustering the unusable one.")
+                self.append_ts_guess(TSGuess(method=tsg.method, success=False))
         elif path.endswith('.yml') or path.endswith('.yaml'):
             yml_path = path
             tsg_list = read_yaml_file(yml_path)
@@ -1929,6 +2165,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=_n_rad_for_perception,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
             if perceived_mol is not None:
                 if self.is_ts:
@@ -1963,6 +2200,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
             if perceived_mol is None and self.is_ts:
                 perceived_mol = perceive_molecule_from_xyz(xyz,
@@ -1970,11 +2208,14 @@ class ARCSpecies(object):
                                                            multiplicity=self.multiplicity,
                                                            n_radicals=self.number_of_radicals,
                                                            n_fragments=2,
+                                                           is_ts=True,
                                                            )
             if perceived_mol is not None:
                 self.mol = perceived_mol
             else:
-                logger.error(f'Could not infer a 2D graph for species {self.label}')
+                logger.warning(f'Could not perceive a 2D graph from the geometry of species {self.label}. '
+                               f'Downstream checks which re-perceive the connectivity from the coordinates '
+                               f'may still succeed.')
 
     def process_xyz(self, xyz_list: list | str | dict):
         """
@@ -2034,8 +2275,12 @@ class ARCSpecies(object):
                 elif i:
                     check_atom_balance(xyz, xyzs[0])
             if not self.is_ts:
+                self.sync_conformer_provenance()
                 self.conformers.extend(xyzs)
                 self.conformer_energies.extend(energies)
+                self.conformer_levels.extend([None] * len(xyzs))
+                self.conformer_logs.extend([None] * len(xyzs))
+                self.conformer_energy_sources.extend([None] * len(xyzs))
             else:
                 for xyz, energy in zip(xyzs, energies):
                     tsg_index = self.next_ts_guess_index()
@@ -2147,6 +2392,7 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
                                                        n_fragments=self.get_n_fragments(),
+                                                       is_ts=self.is_ts,
                                                        )
 
             # 2. A. Check isomorphism with bond orders using b_mol
@@ -2391,6 +2637,10 @@ class ARCSpecies(object):
             keys = ['E0', 'e_elect', 'IRC', 'freq', 'NMD']
             self.ts_checks = {key: None for key in keys}
             self.ts_checks['warnings'] = ''
+            self.nmd_record = dict()
+            self.irc_participant_mapping = None
+            self.ts_atom_map = None
+            self.ts_atom_map_unavailable_reason = None
 
     def get_symmetry_number(self):
         """
@@ -2538,6 +2788,9 @@ class TSGuess(object):
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
         log_path (str, optional): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
+        level (dict, optional): A plain dictionary representation of the level of theory at which the guess-generating
+                                adapter ran its electronic structure calculations (e.g., the NEB level for orca_neb,
+                                GFN2-xTB for xtb_gsm). ``None`` for pure ML/template based guess methods.
         project_directory (str, optional): The path to the project directory.
 
     Attributes:
@@ -2564,6 +2817,12 @@ class TSGuess(object):
         errors (str): Problems experienced with this TSGuess. Used for logging.
         cluster (list[int]): Indices of TSGuess object instances clustered together.
         log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
+        method_source_paths (dict[str, str]): Maps each method in ``method_sources`` to the ESS log path it produced,
+                                              preserved across equivalent-guess clustering. Lets path-search provenance
+                                              (per-node energies / points) survive dedup even when a geometry-only
+                                              method is the primary (winning) source of the merged guess.
+        level (dict): The level of theory the guess-generating adapter ran its electronic structure calculations at,
+                      as a plain dictionary. ``None`` for pure ML/template based guess methods.
     """
 
     def __init__(self,
@@ -2582,6 +2841,7 @@ class TSGuess(object):
                  energy: float | None = None,
                  cluster: list[int] | None = None,
                  log_path: str | None = None,
+                 level: dict | None = None,
                  project_directory: str | None = None,
                  ):
 
@@ -2605,6 +2865,7 @@ class TSGuess(object):
             self.energy = energy
             self.cluster = cluster
             self.log_path = log_path
+            self.level = level
             self.method_source_paths = dict()
             if self.log_path is not None:
                 self.method_source_paths[self.method] = self.log_path
@@ -2693,6 +2954,8 @@ class TSGuess(object):
         ts_dict['success'] = self.success
         if self.energy is not None:
             ts_dict['energy'] = self.energy
+        if self.level is not None:
+            ts_dict['level'] = self.level
         ts_dict['index'] = self.index
         if self.imaginary_freqs is not None:
             ts_dict['imaginary_freqs'] = [float(f) for f in self.imaginary_freqs]
@@ -2732,10 +2995,11 @@ class TSGuess(object):
         self.success = ts_dict['success'] if 'success' in ts_dict else None
         self.energy = ts_dict['energy'] if 'energy' in ts_dict else None
         self.cluster = ts_dict['cluster'] if 'cluster' in ts_dict else None
-        self.execution_time = timedelta_from_str(ts_dict['execution_time']) if 'execution_time' in ts_dict \
+        self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
+        self.execution_time = None if 'user guess' in self.method \
+            else timedelta_from_str(ts_dict['execution_time']) if 'execution_time' in ts_dict \
             and isinstance(ts_dict['execution_time'], str) \
             else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
-        self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
         if 'method_sources' in ts_dict and isinstance(ts_dict['method_sources'], list):
             self.method_sources = self._normalize_method_sources(ts_dict['method_sources'])
         else:
@@ -2762,6 +3026,7 @@ class TSGuess(object):
             self.method_source_paths = dict()
             if self.log_path is not None:
                 self.method_source_paths[self.method] = self.log_path
+        self.level = ts_dict['level'] if 'level' in ts_dict else None
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
     def process_xyz(self,

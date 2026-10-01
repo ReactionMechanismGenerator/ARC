@@ -21,8 +21,9 @@ from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, xyz_from_data
-from arc.species.vectors import (apply_rodrigues_rotation, calculate_dihedral_angle, get_angle, get_delta_angle,
-                                 get_perpendicular_axes, get_vector, get_vector_length, unit_vector)
+from arc.species.vectors import (apply_rodrigues_rotation, calculate_angle, calculate_dihedral_angle, get_angle,
+                                 get_delta_angle, get_perpendicular_axes, get_vector, get_vector_length,
+                                 unit_vector)
 from arc.species.zmat import TOL_180
 
 if TYPE_CHECKING:
@@ -969,8 +970,13 @@ def get_backbone_dihedral_angles(spc_1: ARCSpecies,
             if spc_1.mol.atoms[torsion_1[0]].is_non_hydrogen() \
                     and spc_1.mol.atoms[torsion_1[3]].is_non_hydrogen():
                 # This is not a "terminal" torsion.
+                torsion_2 = [backbone_map[t_1] for t_1 in torsion_1]
+                # Skip torsions that span a linear segment (e.g. a cumulene/ketene O=C=C backbone):
+                # their dihedral is geometrically undefined and ARCSpecies.set_dihedral() no-ops on them,
+                # so feeding them into the backbone-alignment loop only generates repeated log noise.
+                if is_torsion_linear(spc_1.get_xyz(), torsion_1) or is_torsion_linear(spc_2.get_xyz(), torsion_2):
+                    continue
                 for rotor_dict_2 in spc_2.rotors_dict.values():
-                    torsion_2 = [backbone_map[t_1] for t_1 in torsion_1]
                     if all(pivot_2 in [torsion_2[1], torsion_2[2]]
                            for pivot_2 in [rotor_dict_2['torsion'][1], rotor_dict_2['torsion'][2]]):
                         torsions.append({'torsion 1': torsion_1,
@@ -978,6 +984,25 @@ def get_backbone_dihedral_angles(spc_1: ARCSpecies,
                                          'angle 1': calculate_dihedral_angle(coords=spc_1.get_xyz(), torsion=torsion_1),
                                          'angle 2': calculate_dihedral_angle(coords=spc_2.get_xyz(), torsion=torsion_2)})
     return torsions
+
+
+def is_torsion_linear(xyz: dict,
+                      torsion: list[int],
+                      ) -> bool:
+    """
+    Determine whether a torsion spans a linear segment (a ~180 degree angle over either of its
+    two constituent atom triplets), in which case its dihedral angle is geometrically undefined.
+    This mirrors the guard in ``ARCSpecies.set_dihedral()``.
+
+    Args:
+        xyz (dict): The 3D coordinates.
+        torsion (list[int]): The 0-indexed torsion atom indices.
+
+    Returns:
+        bool: Whether the torsion contains a linear segment.
+    """
+    return is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[:3], index=0)) \
+        or is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[1:], index=0))
 
 
 def map_lists(list_1: list[float],
@@ -1800,21 +1825,31 @@ def update_xyz(species: list[ARCSpecies]) -> list[ARCSpecies]:
     return new
 
 
-def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies) -> bool:
+def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies, strict: bool = False) -> bool:
     """
     A function for checking if the reactant and product are the same molecule.
 
     Args:
         reactant (ARCSpecies): An ARCSpecies. might be as a result of scissors()
         product_ (ARCSpecies): an ARCSpecies. might be as a result of scissors()
+        strict (bool, optional): When ``True``, require full graph isomorphism. When ``False`` (default),
+            accept either fingerprint (formula) match or graph isomorphism — the looser criterion lets
+            downstream ``map_two_species`` recover atom correspondence in rearrangements whose cut
+            fragments are not strictly isomorphic. Strict mode is used as a first pass in
+            ``pairing_reactants_and_products_for_mapping`` to avoid pairing constitutional isomers
+            that share a molecular formula but differ in graph structure.
 
     Returns:
         bool: ``True`` if they are isomorphic, ``False`` otherwise.
     """
-    res1 = generate_resonance_structures_safely(reactant.mol, save_order=True)
+    res1 = generate_resonance_structures_safely(reactant.mol, save_order=True) or [reactant.mol]
     for res in res1:
-        if res.fingerprint == product_.mol.fingerprint or product_.mol.is_isomorphic(res, save_order=True):
-            return True
+        if strict:
+            if product_.mol.is_isomorphic(res, save_order=True):
+                return True
+        else:
+            if res.fingerprint == product_.mol.fingerprint or product_.mol.is_isomorphic(res, save_order=True):
+                return True
     return False
 
 
@@ -1844,12 +1879,18 @@ def pairing_reactants_and_products_for_mapping(r_cuts: list[ARCSpecies],
     A function for matching reactants and products in scissored products.
     The matched species are removed from p_cuts.
 
-    When several product cuts are isomorphic to the same reactant cut - two identical fragments, as in a
+    Greedy two-pass pairing:
+        1) Strict graph isomorphism - avoids pairing constitutional isomers that merely share a
+           molecular formula (e.g. alpha- vs beta-radical positional isomers in H-abstraction).
+        2) Loose fingerprint-or-isomorphic fallback - for rearrangements whose cut fragments are
+           not strictly isomorphic but can still be aligned by ``map_two_species``.
+
+    When several product cuts match the same reactant cut in a pass - two identical fragments, as in a
     degenerate abstraction - the choice between them is arbitrary on structure alone. Passing the family's
     label maps breaks that tie in favor of the product cut sharing the most template tags with the reactant
     cut, so the pairing agrees with the template instead of leaving :func:`glue_maps` to transpose the
     labeled atoms afterwards and strand the hydrogens that hang off them. Without the label maps the first
-    isomorphic match wins, as before.
+    match wins, as before.
 
     Args:
         r_cuts (list[ARCSpecies]): A list of the scissored species in the reactants
@@ -1861,23 +1902,19 @@ def pairing_reactants_and_products_for_mapping(r_cuts: list[ARCSpecies],
         list[tuple[ARCSpecies,ARCSpecies]]: A list of paired reactant and products, to be sent to map_two_species.
     """
     pairs: list[tuple[ARCSpecies, ARCSpecies]] = list()
-    r_res = [generate_resonance_structures_safely(react.mol, save_order=True) or [react.mol] for react in r_cuts]
-    for i, react in enumerate(r_cuts):
-        res1 = r_res[i]
-        matches = list()
-        for idx, prod in enumerate(p_cuts):
-            for res in res1:
-                if res.fingerprint == prod.mol.fingerprint or prod.mol.is_isomorphic(res, save_order=True):
-                    matches.append(idx)
-                    break
-        if not matches:
-            continue
-        react_tags = tags_on_cut(react, r_label_map)
-        # max() keeps the first index among equals, preserving the original first-match behavior both
-        # when no label maps are supplied and when none of the matches shares a tag with the reactant cut.
-        best = max(matches, key=lambda idx: len(react_tags & tags_on_cut(p_cuts[idx], p_label_map)))
-        pairs.append((react, p_cuts[best]))
-        p_cuts.pop(best)
+    unmatched_r: list[ARCSpecies] = list()
+    for strict in (True, False):
+        for react in (r_cuts if strict else unmatched_r):
+            matches = [idx for idx, prod in enumerate(p_cuts)
+                       if r_cut_p_cut_isomorphic(react, prod, strict=strict)]
+            if not matches:
+                if strict:
+                    unmatched_r.append(react)
+                continue
+            react_tags = tags_on_cut(react, r_label_map)
+            best = max(matches, key=lambda idx: len(react_tags & tags_on_cut(p_cuts[idx], p_label_map)))
+            pairs.append((react, p_cuts[best]))
+            p_cuts.pop(best)
     return pairs
 
 
@@ -1978,28 +2015,34 @@ def label_species_atoms(species: list[ARCSpecies]) -> None:
             index += 1
 
 
-def glue_maps(maps: list[list[int]],
+def glue_maps(maps: list[list[int] | None],
               pairs: list[tuple[ARCSpecies, ARCSpecies]],
               r_label_map: dict[str, int],
               p_label_map: dict[str, int],
               total_atoms: int,
-              ) -> list[int]:
+              ) -> list[int] | None:
     """
     Join the maps from the parts of a bimolecular reaction.
 
     Args:
-        maps (list[list[int]]): The list of all maps of the isomorphic cuts.
+        maps (list[list[int] | None]): The per-pair maps of the isomorphic cuts. An entry may
+            be ``None`` when ``map_two_species`` could not produce a map for that pair; in that
+            case ``glue_maps`` aborts and returns ``None`` so the caller can fall back.
         pairs (list[tuple[ARCSpecies, ARCSpecies]]): The pairs of the reactants and products.
         r_label_map (dict[str, int]): A dictionary mapping the reactant labels to their indices.
         p_label_map (dict[str, int]): A dictionary mapping the product labels to their indices.
         total_atoms (int): The total number of atoms across all reactants.
 
     Returns:
-        list[int]: An Atom Map of the complete reaction.
+        list[int] | None: The complete atom map, or ``None`` if any per-pair map is ``None``.
     """
     # 1) Build base map
     am_dict: dict[int,int] = {}
     for map_list, (r_cut, p_cut) in zip(maps, pairs):
+        if map_list is None:
+            logger.warning(f'glue_maps: received a None per-pair map for '
+                           f'{r_cut.mol.smiles} -> {p_cut.mol.smiles}; cannot build atom map.')
+            return None
         for local_i, r_atom in enumerate(r_cut.mol.atoms):
             r_glob = int(r_atom.label)
             p_glob = int(p_cut.mol.atoms[map_list[local_i]].label)

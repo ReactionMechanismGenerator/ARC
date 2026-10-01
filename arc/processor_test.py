@@ -7,7 +7,9 @@ This module contains unit tests for the arc.processor module
 
 import os
 import shutil
+import tempfile
 import unittest
+from unittest import mock
 
 import arc.processor as processor
 from arc.checks.common import TS_IRC_FAILED_MARKER
@@ -42,6 +44,39 @@ class TestProcessor(unittest.TestCase):
                                                           'H': self.h,
                                                           'CH4_BDE_1_2_A': self.ch4_bde_1_2_a})
         self.assertEqual(bde_report, {(1, 2): 50})
+
+    def test_process_arc_project_returns_the_aec_digests_the_adapters_recorded(self):
+        """The digests of data/AEC.yml that the statmech adapters recorded are returned, distinct and sorted."""
+        project_directory = tempfile.mkdtemp(prefix='test_processor_aec_digest_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        spc = ARCSpecies(label='CH4', smiles='C')
+        e0_only = ARCSpecies(label='H', smiles='[H]')
+        e0_only.e0_only = True
+        output_dict = {'CH4': {'convergence': True, 'job_types': dict()},
+                       'H': {'convergence': True, 'job_types': dict()}}
+        reaction = mock.MagicMock(label='CH4 <=> CH4', ts_label='TS0', r_species=[spc], p_species=[spc], kinetics=None)
+        output_dict['TS0'] = {'convergence': True, 'job_types': dict()}
+        for compute_rates, expected in ((False, ['a' * 64, 'b' * 64]), (True, ['a' * 64, 'b' * 64, 'c' * 64])):
+            with self.subTest(compute_rates=compute_rates):
+                adapters = [mock.MagicMock(aec_yml_sha256s={'b' * 64}), mock.MagicMock(aec_yml_sha256s={'a' * 64})]
+                if compute_rates:
+                    adapters.insert(0, mock.MagicMock(aec_yml_sha256s={'c' * 64}))
+                with mock.patch('arc.processor.statmech_factory', side_effect=adapters), \
+                        mock.patch('arc.processor.plotter'), mock.patch('arc.processor.write_unconverged_log'), \
+                        mock.patch('arc.processor.clean_output_directory'):
+                    recorded = processor.process_arc_project(
+                        thermo_adapter='arkane', kinetics_adapter='arkane', project='p',
+                        project_directory=project_directory, species_dict={'CH4': spc, 'H': e0_only},
+                        reactions=[reaction], output_dict=output_dict, compute_thermo=True,
+                        compute_rates=compute_rates, compare_to_rmg=False)
+                self.assertEqual(recorded, expected)
+        with mock.patch('arc.processor.statmech_factory', side_effect=[mock.MagicMock(spec=['compute_thermo'])]), \
+                mock.patch('arc.processor.plotter'), mock.patch('arc.processor.write_unconverged_log'), \
+                mock.patch('arc.processor.clean_output_directory'):
+            self.assertEqual(processor.process_arc_project(
+                thermo_adapter='other', kinetics_adapter='other', project='p', project_directory=project_directory,
+                species_dict={'CH4': spc}, reactions=[], output_dict=output_dict,
+                compute_thermo=True, compute_rates=False, compare_to_rmg=False), list())
 
     def test_compare_rates(self):
         """Test the compare_rates() method"""
@@ -79,12 +114,58 @@ class TestProcessor(unittest.TestCase):
         self.assertNotIn('ts_validation', content[1])
 
 
+    def test_compare_thermo_ignores_benign_rmg_stderr(self):
+        """Benign RMG INFO/WARNING stderr chatter must not be logged as an error when thermo was computed."""
+        benign_stderr = ['INFO:root:Loading thermodynamics library from primaryThermoLibrary.py ...',
+                         'WARNING:root:Setting a default value for tolerance.',
+                         '']
+        computed_species = [{'label': 'CH4', 'adjlist': 'x', 'h298': -17.9, 's298': 44.5, 'comment': 'GAV'}]
+        with mock.patch.object(processor, 'execute_command', return_value=([], benign_stderr)), \
+                mock.patch.object(processor, 'save_yaml_file'), \
+                mock.patch.object(processor, 'read_yaml_file', return_value=computed_species), \
+                mock.patch.object(processor.plotter, 'draw_thermo_parity_plots'):
+            with self.assertLogs(processor.logger, level='DEBUG') as cm:
+                processor.compare_thermo(species_for_thermo_lib=[ARCSpecies(label='CH4', smiles='C')],
+                                         output_directory=os.path.join(ARC_TESTING_PATH, 'process_thermo'))
+        self.assertFalse(any('Error while running RMG thermo script' in msg for msg in cm.output))
+
+    def test_compare_thermo_reports_real_error(self):
+        """A genuine traceback on stderr (or a missing deliverable) must still be logged as an error."""
+        real_stderr = ['INFO:root:Loading thermodynamics library ...',
+                       'Traceback (most recent call last):',
+                       'RuntimeError: RMG database failed to load']
+        # deliverable was seeded but never populated with h298/s298 -> genuine failure
+        seeded_species = [{'label': 'CH4', 'adjlist': 'x'}]
+        with mock.patch.object(processor, 'execute_command', return_value=([], real_stderr)), \
+                mock.patch.object(processor, 'save_yaml_file'), \
+                mock.patch.object(processor, 'read_yaml_file', return_value=seeded_species), \
+                mock.patch.object(processor.plotter, 'draw_thermo_parity_plots'):
+            with self.assertLogs(processor.logger, level='ERROR') as cm:
+                processor.compare_thermo(species_for_thermo_lib=[ARCSpecies(label='CH4', smiles='C')],
+                                         output_directory=os.path.join(ARC_TESTING_PATH, 'process_thermo'))
+        self.assertTrue(any('Error while running RMG thermo script' in msg for msg in cm.output))
+
+    def test_compare_thermo_reports_missing_deliverable(self):
+        """Benign-only stderr but an unpopulated deliverable (no h298/s298) must still log an error."""
+        benign_stderr = ['INFO:root:Loading thermodynamics library ...',
+                         'WARNING:root:Setting a default value for tolerance.']
+        seeded_species = [{'label': 'CH4', 'adjlist': 'x'}]  # pre-seeded, never populated -> script failed
+        with mock.patch.object(processor, 'execute_command', return_value=([], benign_stderr)), \
+                mock.patch.object(processor, 'save_yaml_file'), \
+                mock.patch.object(processor, 'read_yaml_file', return_value=seeded_species), \
+                mock.patch.object(processor.plotter, 'draw_thermo_parity_plots'):
+            with self.assertLogs(processor.logger, level='ERROR') as cm:
+                processor.compare_thermo(species_for_thermo_lib=[ARCSpecies(label='CH4', smiles='C')],
+                                         output_directory=os.path.join(ARC_TESTING_PATH, 'process_thermo'))
+        self.assertTrue(any('Error while running RMG thermo script' in msg for msg in cm.output))
+
     @classmethod
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
         """
         directories = [os.path.join(ARC_TESTING_PATH, 'process_kinetics'),
+                       os.path.join(ARC_TESTING_PATH, 'process_thermo'),
                       ]
         for dir_path in directories:
             if os.path.isdir(dir_path):

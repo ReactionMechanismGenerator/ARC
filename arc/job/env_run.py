@@ -111,6 +111,7 @@ def run_in_conda_env(
     *script_args: str,
     check: bool = False,
     strip_pythonpath: bool = False,
+    extra_env: dict | None = None,
 ) -> subprocess.CompletedProcess:
     """Run ``python script_path *script_args`` inside the env that owns
     ``python_executable``, isolated from ARC's process env.
@@ -134,6 +135,12 @@ def run_in_conda_env(
     itself. Leave it off for adapters that intentionally receive code
     via PYTHONPATH activation hooks set at env activation (those hooks
     still fire and re-add their paths inside the child either way).
+
+    ``extra_env`` overlays additional variables onto the child's copy of
+    the caller's environment. It exists for variables that only take
+    effect *before* the child interpreter starts and therefore cannot be
+    set by the script itself — ``PYTHONHASHSEED`` being the case in point
+    (GCN sets it for reproducible TS guesses).
     """
     env_prefix = env_prefix_from_python(python_executable)
     launcher, extra_flags = _detect_launcher()
@@ -144,8 +151,10 @@ def run_in_conda_env(
         *script_args,
     ]
     child_env = None
-    if strip_pythonpath:
-        child_env = {key: val for key, val in os.environ.items() if key != 'PYTHONPATH'}
+    if strip_pythonpath or extra_env:
+        child_env = {key: val for key, val in os.environ.items()
+                     if not (strip_pythonpath and key == 'PYTHONPATH')}
+        child_env.update({key: str(val) for key, val in (extra_env or dict()).items()})
     result = subprocess.run(argv, check=check, capture_output=True, text=True, env=child_env)
     if result.returncode:
         logger.warning(

@@ -545,7 +545,8 @@ H      0.00000000   -0.76336400   -0.47261500"""
 
         dropping_args = {'keyword': dict(), 'block': dict(), 'trsh': {'trsh': 'scf=(qc)'}}
         with self.assertLogs(logger='arc', level='WARNING') as captured:
-            common.set_job_args(args=dropping_args, level=level, job_name='j1')
+            args = common.set_job_args(args=dropping_args, level=level, job_name='j1')
+        self.assertEqual(args['trsh'], {'trsh': 'scf=(qc)'})
         message = ''.join(captured.output)
         self.assertIn('opt=(verytight)', message)
         self.assertIn('j1', message)

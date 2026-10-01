@@ -39,7 +39,8 @@ import copy
 import logging
 import sys
 import time
-from itertools import product
+from contextvars import ContextVar
+from itertools import chain, product
 
 from openbabel import openbabel as ob
 from openbabel import pybel as pyb
@@ -105,6 +106,44 @@ COMBINATION_THRESHOLD = 1000
 
 # Consolidation tolerances for Z matrices
 CONSOLIDATION_TOLS = {'R': 1e-2, 'A': 1e-2, 'D': 1e-2}
+
+_FORCE_FIELD_USAGE = ContextVar('arc_conformers_force_field_usage', default=None)
+
+
+def record_force_field_usage(backend: str, force_field: str, unit: str | None):
+    """
+    Record that force field energies were produced by a backend, if a conformer generation is collecting them.
+
+    Args:
+        backend (str): 'rdkit' or 'openbabel'.
+        force_field (str): The force field the energies were computed with.
+        unit (str, optional): The energy unit the backend reports, ``'kcal/mol'`` or ``'kJ/mol'``;
+                              any other value is recorded as an unknown unit.
+    """
+    usage = _FORCE_FIELD_USAGE.get()
+    if usage is not None:
+        normalized_unit = {'kcal/mol': 'kcal/mol', 'kj/mol': 'kJ/mol'}.get(str(unit).strip().lower())
+        usage.add((backend, force_field, normalized_unit))
+
+
+def describe_force_field_usage(usage: set) -> tuple[str | None, str | None]:
+    """
+    Name the force field and the energy unit of a conformer generation.
+
+    Args:
+        usage (set): ``(backend, force_field, unit)`` triples that produced energies during the generation.
+
+    Returns:
+        tuple[str | None, str | None]: The force field and backend, e.g. ``'MMFF94s (rdkit)'``, and the energy unit
+                                       (``'kcal/mol'`` or ``'kJ/mol'``). The name is ``None`` unless exactly one
+                                       force field, backend and unit produced the energies, and the unit is
+                                       ``None`` unless the backend reported a known one.
+    """
+    if len(usage) != 1:
+        return None, None
+    backend, force_field, unit = next(iter(usage))
+    return f'{force_field} ({backend})', unit
+
 
 CHEAT_SHEET = {'[H][H]': {'xyz': converter.str_to_xyz("""H  0.0  0.0  0.3715170
                                                          H  0.0  0.0 -0.3715170"""),
@@ -274,37 +313,46 @@ def generate_conformers(mol_list: list[Molecule] | Molecule,
 
     if torsions is None or tops is None:
         torsions, tops = determine_rotors(mol_list)
-    conformers = generate_force_field_conformers(
-        mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
-        num_confs=num_confs_to_generate, force_field=force_field, economic_generation=economic_generation)
+    usage = set()
+    token = _FORCE_FIELD_USAGE.set(usage)
+    try:
+        conformers = generate_force_field_conformers(
+            mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
+            num_confs=num_confs_to_generate, force_field=force_field, economic_generation=economic_generation)
 
-    lowest_confs = list()
-    if len(conformers):
-        conformers = determine_dihedrals(conformers, torsions)
+        lowest_confs = list()
+        if len(conformers):
+            conformers = determine_dihedrals(conformers, torsions)
 
-        new_conformers, symmetries = deduce_new_conformers(
-            label, conformers, torsions, tops, mol_list, smeared_scan_res, plot_path=plot_path,
-            combination_threshold=combination_threshold, force_field=force_field,
-            max_combination_iterations=max_combination_iterations, diastereomers=diastereomers,
-            de_threshold=de_threshold)
+            new_conformers, symmetries = deduce_new_conformers(
+                label, conformers, torsions, tops, mol_list, smeared_scan_res, plot_path=plot_path,
+                combination_threshold=combination_threshold, force_field=force_field,
+                max_combination_iterations=max_combination_iterations, diastereomers=diastereomers,
+                de_threshold=de_threshold)
 
-        new_conformers = determine_chirality(conformers=new_conformers, label=label, mol=mol_list[0])
+            new_conformers = determine_chirality(conformers=new_conformers, label=label, mol=mol_list[0])
 
-        if len(new_conformers):
-            lowest_confs = get_lowest_confs(label, new_conformers, n=n_confs, e=e_confs)
-            lowest_confs.sort(key=lambda x: x['FF energy'], reverse=False)  # Sort by output confs, lowest to highest energy.
+            if len(new_conformers):
+                lowest_confs = get_lowest_confs(label, new_conformers, n=n_confs, e=e_confs)
+                lowest_confs.sort(key=lambda x: x['FF energy'], reverse=False)
 
-        execution_time = time.time() - t0
-        t, s = divmod(execution_time, 60)
-        t, m = divmod(t, 60)
-        d, h = divmod(t, 24)
-        days = f'{int(d)} days and ' if d else ''
-        if execution_time > 10:
-            logger.info(f'Conformer execution time using {force_field}: {days}{int(h):02d}:{int(m):02d}:{int(s):02d}')
+            execution_time = time.time() - t0
+            t, s = divmod(execution_time, 60)
+            t, m = divmod(t, 60)
+            d, h = divmod(t, 24)
+            days = f'{int(d)} days and ' if d else ''
+            if execution_time > 10:
+                logger.info(f'Conformer execution time using {force_field}: {days}{int(h):02d}:{int(m):02d}:{int(s):02d}')
 
-    else:
-        logger.error(f'Could not generate conformers for {label}: {mol_list[0].copy(deep=True).to_smiles()}')
-        lowest_confs, new_conformers = list(), list()
+        else:
+            logger.error(f'Could not generate conformers for {label}: {mol_list[0].copy(deep=True).to_smiles()}')
+            lowest_confs, new_conformers = list(), list()
+    finally:
+        _FORCE_FIELD_USAGE.reset(token)
+    force_field_name, force_field_unit = describe_force_field_usage(usage)
+    for conf in chain(lowest_confs, new_conformers):
+        conf['force_field'] = force_field_name
+        conf['force_field_unit'] = force_field_unit
 
     if not return_all_conformers:
         return lowest_confs
@@ -960,6 +1008,15 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
     We don't care about the actual rotor symmetry number here, since we plan to just use the first well
     (they're all the same).
 
+    A torsion sampled at a single angle gives one zero-width well, and a scan whose every well
+    consists of exactly repeated angles -- two conformers landing on the same dihedral, which is
+    common -- gives all-zero widths as well. Widths are absolute values, so a zero mean means every
+    width is identically zero: uniform by definition rather than by tolerance. The uniformity test
+    is therefore satisfied without dividing by the mean, and the structural group comparison below
+    decides the symmetry. That choice is observable, not inert -- for a degenerate multi-well scan
+    it can yield a symmetry the early-return alternative would not -- and is preferred because the
+    group comparison is structural evidence that does not depend on the scan.
+
     Args:
         label (str): The species' label.
         top1 (list): A list of atom indices on one side of the torsion, including the pivotal atom.
@@ -999,11 +1056,13 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
         well_widths.append(abs(wells[i]['end_angle'] - wells[i]['start_angle']))
         if i > 0:
             distances.append(int(round(abs(wells[i]['start_angle'] - wells[i - 1]['end_angle'])) / 10) * 10)
-    mean_well_width = sum(well_widths) / len(well_widths)
+    mean_well_width = sum(well_widths) / len(well_widths) if well_widths else 0.0
+    widths_are_uniform = not mean_well_width or all(
+        [abs(width - mean_well_width) / mean_well_width < determine_well_width_tolerance(mean_well_width)
+         for width in well_widths])
 
     if len(wells) in [1, 2, 3, 4, 6, 9] and all([distance == distances[0] for distance in distances]) \
-            and all([abs(width - mean_well_width) / mean_well_width < determine_well_width_tolerance(mean_well_width)
-                     for width in well_widths]):
+            and widths_are_uniform:
         # All well distances and widths are equal. The torsion scan might be symmetric, check the groups
         for j, top in enumerate([top1, top2]):
             if check_tops[j]:
@@ -1302,6 +1361,8 @@ def openbabel_force_field_on_rdkit_conformers(label, rd_mol, force_field='MMFF94
         energies.append(ff.Energy())
         xyz_str = '\n'.join(obconversion.WriteString(ob_mol).splitlines()[2:])
         xyzs.append(converter.str_to_xyz(xyz_str))
+    if energies:
+        record_force_field_usage('openbabel', force_field, ff.GetUnit())
     return xyzs, energies
 
 
@@ -1451,6 +1512,8 @@ def openbabel_force_field(label, mol, num_confs=None, xyz=None, force_field='GAF
                                    for j in range(len(xyz_dict['coords'])))
         xyzs.append(xyz_dict)
         energies.append(ff.Energy())
+    if energies:
+        record_force_field_usage('openbabel', force_field, ff.GetUnit())
     return xyzs, energies
 
 
@@ -1465,7 +1528,8 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
         xyz (dict, optional): The 3D coordinates.
 
     Returns:
-        RDMol | None: An RDKIt molecule with embedded conformers.
+        RDMol | None: An RDKIt molecule with embedded conformers,
+                      or ``None`` if no conformers could be embedded.
     """
     if num_confs is None and xyz is None:
         raise ConformerError(f'Either num_confs or xyz must be set when calling embed_rdkit() for {label}')
@@ -1481,6 +1545,10 @@ def embed_rdkit(label, mol, num_confs=None, xyz=None):
             AllChem.EmbedMultipleConfs(rd_mol, numConfs=num_confs, randomSeed=1, enforceChirality=True)
         except Exception as e:
             logger.warning(f'Could not embed conformers using RDKit for {label}, failed with: {e}')
+            return None
+        if not rd_mol.GetNumConformers():
+            logger.warning(f'Could not embed conformers using RDKit for {label}, '
+                           f'RDKit returned no conformers without raising an error.')
             return None
     elif xyz is not None:
         rd_conf = Chem.Conformer(rd_mol.GetNumAtoms())
@@ -1575,8 +1643,9 @@ def rdkit_force_field(label: str,
     xyzs, energies = list(), list()
     if rd_mol is None:
         return xyzs, energies
-    mol_properties = AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
-    for i in range(rd_mol.GetNumConformers()):
+    is_uff = force_field.lower() == 'uff'
+    mol_properties = None if is_uff else AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
+    for i in range(0 if is_uff else rd_mol.GetNumConformers()):
         optimization_failed = False
         if optimize:
             v, j = 1, 0
@@ -1604,7 +1673,9 @@ def rdkit_force_field(label: str,
                 if optimize:
                     energies.append(ff.CalcEnergy())
                 xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
-    if not len(xyzs) and 'MMFF' in force_field and try_uff:
+    if energies:
+        record_force_field_usage('rdkit', 'MMFF94s' if force_field == 'MMFF94s' else 'MMFF94', 'kcal/mol')
+    if not len(xyzs) and (is_uff or ('MMFF' in force_field and try_uff)):
         output = None
         if optimize:
             try:
@@ -1634,12 +1705,19 @@ def rdkit_force_field(label: str,
             elif output[i][0] == 0:  # The optimization converged.
                 energies.append(output[i][1])
                 xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
+        if energies:
+            record_force_field_usage('rdkit', 'UFF', 'kcal/mol')
     return xyzs, energies
 
 
 def get_wells(label, angles, blank=WELL_GAP):
     """
     Determine the distinct wells from a list of angles.
+
+    Wells are delimited by comparing consecutive angles, so a single angle has no consecutive pair
+    and is reported as one zero-width well rather than as no wells at all. Returning an empty list
+    for it would be read by callers as "this torsion has no wells", and both of them divide by a
+    quantity derived from the well count.
 
     Args:
         label (str): The species' label.
@@ -1662,6 +1740,9 @@ def get_wells(label, angles, blank=WELL_GAP):
                 new_angles = angles[i:] + part2
                 break
     wells = list()
+    if len(new_angles) == 1:
+        return [{'start_idx': 0, 'end_idx': 0, 'start_angle': new_angles[0], 'end_angle': new_angles[0],
+                 'angles': [new_angles[0]]}]
     new_well = True
     for i in range(len(new_angles) - 1):
         if new_well:

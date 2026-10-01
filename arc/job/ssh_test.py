@@ -6,6 +6,7 @@ This module contains unit tests of the arc.job.ssh module
 """
 
 import base64
+import datetime
 import hashlib
 import os
 import shlex
@@ -19,7 +20,7 @@ from unittest.mock import MagicMock, patch
 import paramiko
 
 import arc.job.ssh as ssh
-from arc.exceptions import ServerError
+from arc.exceptions import ServerError, SettingsError
 
 
 class FakeHostKey(object):
@@ -50,6 +51,11 @@ class TestSSH(unittest.TestCase):
     Contains unit tests for the SSH module
     """
 
+    def setUp(self):
+        """A function that is run before every unit test in this class"""
+        ssh.reset_queue_query_history()
+        self.addCleanup(ssh.reset_queue_query_history)
+
     def test_check_job_status_in_stdout(self):
         """Test checking the job status in stdout"""
         # OGE
@@ -76,6 +82,118 @@ class TestSSH(unittest.TestCase):
         self.assertEqual(status1, 'running')
         status1 = ssh.check_job_status_in_stdout(job_id=4000, stdout=stdout_2, server='local')
         self.assertEqual(status1, 'done')
+
+    def test_check_job_status_in_stdout_failed_query(self):
+        """Test that a queue status command which failed is not reported as a finished job"""
+        stdout = ['5231.0 R 10 7885 a20596 130']
+        self.assertEqual(ssh.check_job_status_in_stdout(job_id=4000, stdout=stdout, server='local'), 'done')
+        self.assertEqual(ssh.check_job_status_in_stdout(job_id=4000, stdout=stdout, server='local',
+                                                        return_code=0), 'done')
+        self.assertEqual(ssh.check_job_status_in_stdout(job_id=4000, stdout=[], server='local', return_code=2,
+                                                        stderr=['qstat: cannot connect to server']), 'running')
+        self.assertEqual(ssh.check_job_status_in_stdout(job_id=4000, stdout=[], server='local',
+                                                        return_code=ssh.COMMAND_NOT_FOUND_RETURN_CODE,
+                                                        stderr=['/usr/local/bin/qstat: not found']), 'running')
+        self.assertEqual(ssh.check_job_status_in_stdout(job_id=5231, stdout=stdout, server='local',
+                                                        return_code=0), 'running')
+
+    def test_queue_query_failed(self):
+        """Test identifying a queue status query which failed to answer"""
+        self.assertFalse(ssh.queue_query_failed())
+        self.assertFalse(ssh.queue_query_failed(return_code=0, stderr=[]))
+        self.assertFalse(ssh.queue_query_failed(return_code=0, stderr=['a warning was printed']))
+        self.assertFalse(ssh.queue_query_failed(return_code=1, stderr=[]))
+        self.assertFalse(ssh.queue_query_failed(return_code=1, stderr=['\n', '  ']))
+        self.assertTrue(ssh.queue_query_failed(return_code=1, stderr=['qstat: cannot connect to server']))
+        self.assertTrue(ssh.queue_query_failed(return_code=127, stderr='/usr/local/bin/qstat: not found'))
+
+    def test_queue_query_failed_without_a_diagnostic_on_stderr(self):
+        """Test identifying a queue status query which failed silently"""
+        self.assertTrue(ssh.queue_query_failed(return_code=124, stderr=[]))
+        self.assertTrue(ssh.queue_query_failed(return_code=-9, stderr=[]))
+        self.assertTrue(ssh.queue_query_failed(return_code=2, stderr=[]))
+        self.assertTrue(ssh.queue_query_failed(return_code=ssh.COMMAND_NOT_FOUND_RETURN_CODE, stderr=[]))
+        self.assertFalse(ssh.queue_query_failed(return_code=ssh.AMBIGUOUS_RETURN_CODE, stderr=[]))
+
+    def test_register_queue_query_tolerates_a_transient_outage(self):
+        """Test that a queue which has been failing for less than the tolerance is tolerated"""
+        stderr = ['qstat: cannot connect to server']
+        ssh.register_queue_query(failed=False, server='local', return_code=0)
+        for _ in range(5):
+            ssh.register_queue_query(failed=True, server='local', return_code=1, stderr=stderr)
+        history = ssh._queue_query_history['local']
+        self.assertEqual(history['consecutive_failures'], 5)
+        self.assertIsNotNone(history['failing_since'])
+        ssh.register_queue_query(failed=False, server='local', return_code=0)
+        self.assertEqual(ssh._queue_query_history['local']['consecutive_failures'], 0)
+        self.assertIsNone(ssh._queue_query_history['local']['failing_since'])
+
+    def test_register_queue_query_gives_up_after_the_tolerance(self):
+        """Test that a queue which has been failing for longer than the tolerance stops the run"""
+        stderr = ['qstat: cannot connect to server']
+        ssh.register_queue_query(failed=False, server='local', return_code=0)
+        ssh.register_queue_query(failed=True, server='local', return_code=1, stderr=stderr)
+        self.assertGreater(ssh.QUEUE_QUERY_TOLERANCE, datetime.timedelta(hours=2))
+        ssh._queue_query_history['local']['failing_since'] = \
+            datetime.datetime.now() - ssh.QUEUE_QUERY_TOLERANCE - datetime.timedelta(minutes=1)
+        with self.assertRaises(ServerError) as cm:
+            ssh.register_queue_query(failed=True, server='local', return_code=1, stderr=stderr)
+        self.assertIn('cannot tell which of its jobs are still running', str(cm.exception))
+
+    def test_register_queue_query_command_not_found(self):
+        """Test that a queue status command which was never found is reported as a settings error"""
+        stderr = ['/usr/local/bin/qstat: not found']
+        ssh.register_queue_query(failed=True, server='local', return_code=ssh.COMMAND_NOT_FOUND_RETURN_CODE,
+                                 stderr=stderr)
+        ssh._queue_query_history['local']['failing_since'] = \
+            datetime.datetime.now() - ssh.COMMAND_NOT_FOUND_TOLERANCE - datetime.timedelta(minutes=1)
+        with self.assertRaises(SettingsError) as cm:
+            ssh.register_queue_query(failed=True, server='local', return_code=ssh.COMMAND_NOT_FOUND_RETURN_CODE,
+                                     stderr=stderr)
+        self.assertIn('check_status_command', str(cm.exception))
+        self.assertIn('arc/settings/settings.py', str(cm.exception))
+        self.assertIn('~/.arc/settings.py', str(cm.exception))
+        self.assertIn(ssh.get_check_status_command('local'), str(cm.exception))
+
+    def test_register_queue_query_tolerates_a_transient_command_not_found(self):
+        """Test that a queue status command which was not found is tolerated for a short while"""
+        self.assertLess(ssh.COMMAND_NOT_FOUND_TOLERANCE, ssh.QUEUE_QUERY_TOLERANCE)
+        for _ in range(10):
+            ssh.register_queue_query(failed=True, server='local', return_code=ssh.COMMAND_NOT_FOUND_RETURN_CODE,
+                                     stderr=['/opt/sge/bin/lx24-amd64/qstat: No such file or directory'])
+        self.assertEqual(ssh._queue_query_history['local']['consecutive_failures'], 10)
+
+    def test_register_queue_query_does_not_repeat_the_warning(self):
+        """Test that a persistently failing queue is not warned about on every query"""
+        stderr = ['qstat: cannot connect to server']
+        with self.assertLogs(logger='arc', level='WARNING') as cm:
+            for _ in range(20):
+                ssh.register_queue_query(failed=True, server='local', return_code=2, stderr=stderr)
+        self.assertEqual(len(cm.output), 1)
+        ssh._queue_query_history['local']['last_warned'] = \
+            datetime.datetime.now() - ssh.QUEUE_QUERY_WARNING_INTERVAL - datetime.timedelta(minutes=1)
+        with self.assertLogs(logger='arc', level='WARNING') as cm:
+            ssh.register_queue_query(failed=True, server='local', return_code=2, stderr=stderr)
+        self.assertEqual(len(cm.output), 1)
+
+    def test_register_queue_query_command_not_found_after_the_queue_answered(self):
+        """Test that a command not found error is tolerated once the server has answered before"""
+        ssh.register_queue_query(failed=False, server='local', return_code=0)
+        ssh.register_queue_query(failed=True, server='local', return_code=ssh.COMMAND_NOT_FOUND_RETURN_CODE,
+                                 stderr=['/usr/local/bin/qstat: not found'])
+        self.assertEqual(ssh._queue_query_history['local']['consecutive_failures'], 1)
+
+    def test_register_queue_query_tracks_servers_separately(self):
+        """Test that an answering server does not clear the failures recorded for another server"""
+        ssh.register_queue_query(failed=True, server='server1', return_code=1, stderr=['qstat: cannot connect'])
+        ssh.register_queue_query(failed=False, server='local', return_code=0)
+        self.assertEqual(ssh._queue_query_history['server1']['consecutive_failures'], 1)
+        self.assertEqual(ssh._queue_query_history['local']['consecutive_failures'], 0)
+
+    def test_get_check_status_command(self):
+        """Test getting the configured queue status command without raising on an unknown server"""
+        self.assertIsNotNone(ssh.get_check_status_command('local'))
+        self.assertIsNone(ssh.get_check_status_command('a_server_that_is_not_configured'))
 
 
 
@@ -1131,6 +1249,152 @@ class TestDeleteCheckFilesOnServers(unittest.TestCase):
                           lambda ssh_client: attempts.append(ssh_client.connection_attempts)):
             ssh.delete_check_files_on_servers({self.server: self.project_path})
         self.assertEqual(attempts, [1])
+
+
+class TestClusterSoftNormalisation(unittest.TestCase):
+    """``get_canonical_cluster_soft()`` and the SSHClient methods that call it must resolve a
+    non-canonical ``cluster_soft`` spelling on both the status and submission paths, alias SGE to
+    OGE, and refuse an unsupported value naming the actual server rather than a hardcoded one."""
+
+    def _server(self, cluster_soft):
+        """Build a minimal server config dict carrying the given cluster_soft spelling."""
+        return {'address': 'host.example.edu', 'un': 'user', 'key': '/dev/null', 'cluster_soft': cluster_soft}
+
+    def _client(self, cluster_soft):
+        """Build an SSHClient without connecting to anything."""
+        with patch.object(ssh, 'servers', {'srv': self._server(cluster_soft)}):
+            return ssh.SSHClient('srv')
+
+    def _call(self, client, cluster_soft, method_name, sender_return, *args, **kwargs):
+        """Invoke a method on client with _send_command_to_server mocked to return sender_return."""
+        sender = MagicMock(return_value=sender_return)
+        with patch.object(ssh, 'servers', {'srv': self._server(cluster_soft)}), \
+                patch.object(client, '_send_command_to_server', sender):
+            return getattr(client, method_name)(*args, **kwargs)
+
+    # --- get_canonical_cluster_soft(): the most granular layer ---
+
+    def test_resolves_one_non_canonical_spelling_per_cluster_software(self):
+        """A lowercase or otherwise differently-cased spelling resolves to the settings-dict key."""
+        cases = {'slurm': 'Slurm', 'SLURM': 'Slurm',
+                 'oge': 'OGE', 'Oge': 'OGE',
+                 'pbs': 'PBS', 'Pbs': 'PBS',
+                 'htcondor': 'HTCondor', 'HTCONDOR': 'HTCondor'}
+        for raw, canonical in cases.items():
+            with self.subTest(raw=raw):
+                with patch.object(ssh, 'servers', {'srv': self._server(raw)}):
+                    self.assertEqual(ssh.get_canonical_cluster_soft('srv'), canonical)
+
+    def test_aliases_sge_to_oge(self):
+        """SGE, in any case or with surrounding whitespace, resolves to the OGE settings-dict key."""
+        for raw in ('sge', 'SGE', 'Sge', ' sge '):
+            with self.subTest(raw=raw):
+                with patch.object(ssh, 'servers', {'srv': self._server(raw)}):
+                    self.assertEqual(ssh.get_canonical_cluster_soft('srv'), 'OGE')
+
+    def test_canonical_value_passes_through_unchanged(self):
+        """A value already spelled exactly as the settings-dict key resolves to itself."""
+        for canonical in ssh.CANONICAL_CLUSTER_SOFT.values():
+            with self.subTest(canonical=canonical):
+                with patch.object(ssh, 'servers', {'srv': self._server(canonical)}):
+                    self.assertEqual(ssh.get_canonical_cluster_soft('srv'), canonical)
+
+    def test_unsupported_value_names_the_server_and_the_value(self):
+        """An unrecognised cluster_soft raises ValueError naming the actual server, not 'local'."""
+        with patch.object(ssh, 'servers', {'srv': self._server('sun grid engine')}):
+            with self.assertRaises(ValueError) as cm:
+                ssh.get_canonical_cluster_soft('srv')
+        self.assertIn('srv', str(cm.exception))
+        self.assertIn('sun grid engine', str(cm.exception))
+
+    # --- status path: check_running_jobs_ids() ---
+
+    STATUS_STDOUT = {
+        'slurm': (['             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)',
+                   '          10990729    normal     a207   alongd PD       0:00      1 (None)'], []),
+        'oge': (['header0', 'header1',
+                 '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'], []),
+        'pbs': (['h0', 'h1', 'h2', 'h3', 'h4',
+                 '2016614.zeldo.local     u780444     workq    scan.pbs         75380     1     10       --  730:00:00 R  00:00:20'], []),
+        'htcondor': (['11224.0 R 8 6759 a2495 7'], []),
+    }
+    STATUS_EXPECTED_FIRST_ID = {'slurm': '10990729', 'oge': '540420', 'pbs': '2016614', 'htcondor': '11224'}
+
+    def test_check_running_jobs_ids_resolves_non_canonical_spelling_per_software(self):
+        """The status path resolves a non-canonical spelling for every supported cluster software."""
+        non_canonical = {'slurm': 'SLURM', 'oge': 'Oge', 'pbs': 'Pbs', 'htcondor': 'HTCONDOR'}
+        for canonical_lower, raw in non_canonical.items():
+            with self.subTest(raw=raw):
+                client = self._client(raw)
+                job_ids = self._call(client, raw, 'check_running_jobs_ids', self.STATUS_STDOUT[canonical_lower])
+                self.assertEqual(job_ids[0], self.STATUS_EXPECTED_FIRST_ID[canonical_lower])
+
+    def test_check_running_jobs_ids_aliases_sge_to_oge(self):
+        """The status path treats SGE as OGE."""
+        client = self._client('sge')
+        job_ids = self._call(client, 'sge', 'check_running_jobs_ids', self.STATUS_STDOUT['oge'])
+        self.assertEqual(job_ids[0], self.STATUS_EXPECTED_FIRST_ID['oge'])
+
+    def test_check_running_jobs_ids_rejects_unsupported_value_naming_the_server(self):
+        """The status path refuses an unrecognised cluster_soft, naming the actual server."""
+        client = self._client('sun grid engine')
+        with patch.object(ssh, 'servers', {'srv': self._server('sun grid engine')}), \
+                patch.object(client, '_send_command_to_server', MagicMock(return_value=([], []))):
+            with self.assertRaises(ValueError) as cm:
+                client.check_running_jobs_ids()
+        self.assertIn('srv', str(cm.exception))
+        self.assertIn('sun grid engine', str(cm.exception))
+
+    def test_check_running_jobs_ids_canonical_value_still_works(self):
+        """A canonical spelling on the status path still resolves and parses as before."""
+        client = self._client('PBS')
+        job_ids = self._call(client, 'PBS', 'check_running_jobs_ids', self.STATUS_STDOUT['pbs'])
+        self.assertEqual(job_ids[0], self.STATUS_EXPECTED_FIRST_ID['pbs'])
+
+    # --- submission path: submit_job() ---
+
+    SUBMIT_STDOUT = {
+        'slurm': (['Submitted batch job 17670585'], []),
+        'oge': (['Your job 540420 ("job") has been submitted'], []),
+        'pbs': (['2016614.zeldo.local'], []),
+        'htcondor': (['Submitting job(s).', '1 job(s) submitted to cluster 5263.'], []),
+    }
+    SUBMIT_EXPECTED_ID = {'slurm': '17670585', 'oge': '540420', 'pbs': '2016614', 'htcondor': '5263'}
+
+    def test_submit_job_resolves_non_canonical_spelling_per_software(self):
+        """The submission path resolves a non-canonical spelling for every supported cluster software."""
+        non_canonical = {'slurm': 'SLURM', 'oge': 'Oge', 'pbs': 'Pbs', 'htcondor': 'HTCONDOR'}
+        for canonical_lower, raw in non_canonical.items():
+            with self.subTest(raw=raw):
+                client = self._client(raw)
+                status, job_id = self._call(client, raw, 'submit_job', self.SUBMIT_STDOUT[canonical_lower],
+                                            remote_path='/tmp')
+                self.assertEqual(status, 'running')
+                self.assertEqual(job_id, self.SUBMIT_EXPECTED_ID[canonical_lower])
+
+    def test_submit_job_aliases_sge_to_oge(self):
+        """The submission path treats SGE as OGE."""
+        client = self._client('sge')
+        status, job_id = self._call(client, 'sge', 'submit_job', self.SUBMIT_STDOUT['oge'], remote_path='/tmp')
+        self.assertEqual(status, 'running')
+        self.assertEqual(job_id, self.SUBMIT_EXPECTED_ID['oge'])
+
+    def test_submit_job_rejects_unsupported_value_naming_the_server(self):
+        """The submission path refuses an unrecognised cluster_soft, naming the actual server."""
+        client = self._client('sun grid engine')
+        with patch.object(ssh, 'servers', {'srv': self._server('sun grid engine')}), \
+                patch.object(client, '_send_command_to_server', MagicMock(return_value=([], []))):
+            with self.assertRaises(ValueError) as cm:
+                client.submit_job(remote_path='/tmp')
+        self.assertIn('srv', str(cm.exception))
+        self.assertIn('sun grid engine', str(cm.exception))
+
+    def test_submit_job_canonical_value_still_works(self):
+        """A canonical spelling on the submission path still resolves and parses as before."""
+        client = self._client('Slurm')
+        status, job_id = self._call(client, 'Slurm', 'submit_job', self.SUBMIT_STDOUT['slurm'], remote_path='/tmp')
+        self.assertEqual(status, 'running')
+        self.assertEqual(job_id, self.SUBMIT_EXPECTED_ID['slurm'])
 
 
 if __name__ == '__main__':

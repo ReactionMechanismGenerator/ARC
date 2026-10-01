@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.checks.nmd module
 """
 
+import copy
 import unittest
 import math
 import os
@@ -16,7 +17,8 @@ import numpy as np
 
 import arc.checks.nmd as nmd
 from arc.checks.ts import check_ts
-from arc.common import ARC_PATH, ARC_TESTING_PATH, get_element_mass
+from arc.common import ARC_PATH, ARC_TESTING_PATH, get_element_mass, get_test_project_directory
+from arc.exceptions import ReactionError
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.molecule import Molecule
@@ -38,12 +40,13 @@ class TestNMD(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.project_directory = get_test_project_directory('tmp_nmd_project')
         cls.generic_job = job_factory(job_adapter='gaussian',
                                       species=[ARCSpecies(label='SPC', smiles='C')],
                                       job_type='composite',
                                       level=Level(method='CBS-QB3'),
                                       project='test_project',
-                                      project_directory=os.path.join(ARC_PATH, 'Projects', 'tmp_nmd_project'),
+                                      project_directory=cls.project_directory,
                                       )
         cls.xyz_1 = {'symbols': ('C', 'N', 'H', 'H', 'H', 'H'),
                      'isotopes': (13, 14, 1, 1, 1, 1),
@@ -771,6 +774,45 @@ class TestNMD(unittest.TestCase):
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_file_paths['TS7'])
         valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=amplitude)
         self.assertFalse(valid)
+
+    def test_analyze_ts_normal_mode_displacement_when_the_bonds_are_undetermined(self):
+        """Test analyze_ts_normal_mode_displacement() when the bonds that change cannot be determined."""
+        def raise_reaction_error():
+            raise ReactionError('Cannot get bonds without an atom map.')
+
+        def raise_value_error():
+            raise ValueError('11 is not in list')
+
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        rxn = copy.deepcopy(self.rxn_1)
+        rxn.get_formed_and_broken_bonds = raise_reaction_error
+        valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
+        self.assertIsNone(valid)
+        self.assertIn(nmd.NMD_UNDETERMINED_BONDS_WARNING, rxn.ts_species.ts_checks['warnings'])
+
+        rxn.get_formed_and_broken_bonds = raise_value_error
+        with self.assertRaises(ValueError):
+            nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
+
+
+    def test_analyze_ts_nmd_records_the_position_of_the_mode_it_analysed(self):
+        """Test that the recorded mode_index is the position of the most negative frequency of the parsed list, whatever
+        the verdict, together with the number of modes of that list and the log it was parsed from."""
+        base_path = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C',
+                                                xyz=os.path.join(base_path, 'iC3H7.gjf'))],
+                          p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC',
+                                                xyz=os.path.join(base_path, 'nC3H7.gjf'))])
+        for name, verdict in (('TS3', True), ('TS1', False)):
+            log_path = os.path.join(base_path, f'{name}.log')
+            self.generic_job.local_path_to_output_file = log_path
+            rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+            self.assertIs(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job,
+                                                                  amplitude=0.25), verdict)
+            freqs, _ = parse_normal_mode_displacement(log_file_path=log_path)
+            self.assertEqual(rxn.ts_species.nmd_record['mode_index'], list(freqs).index(min(freqs)))
+            self.assertEqual(rxn.ts_species.nmd_record['n_modes'], len(freqs))
+            self.assertEqual(rxn.ts_species.nmd_record['freq_log_path'], log_path)
 
     def test_analyze_ts_normal_mode_displacement_for_hypervalence_nitrogen(self):
         """Test the analyze_ts_normal_mode_displacement() function for a hypervalence nitrogen."""
@@ -1510,10 +1552,7 @@ class TestNMD(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['tmp_nmd_project']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
+        shutil.rmtree(cls.project_directory, ignore_errors=True)
         file_paths = [os.path.join(ARC_PATH, 'arc', 'checks', 'nul'), os.path.join(ARC_PATH, 'arc', 'checks', 'run.out')]
         for file_path in file_paths:
             if os.path.isfile(file_path):

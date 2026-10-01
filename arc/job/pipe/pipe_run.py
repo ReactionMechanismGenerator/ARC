@@ -28,6 +28,9 @@ import arc.parser.parser as parser
 from arc.common import get_logger
 from arc.imports import pipe_submit, settings
 
+from arc.level import Level, set_recorded_irc_level, set_recorded_irc_log_level, set_recorded_level
+from arc.species.species import CONFORMER_ENERGY_KIND_ELECTRONIC
+
 from arc.job.pipe.pipe_state import (
     PipeRunState,
     TaskState,
@@ -41,6 +44,7 @@ from arc.job.pipe.pipe_state import (
 logger = get_logger()
 
 RESUBMIT_GRACE = 120  # seconds – grace period after resubmission before flagging again
+SCHEDULER_VISIBILITY_GRACE = 60  # seconds – trust a just-submitted pipe is alive even if the scheduler snapshot doesn't yet list it
 
 pipe_settings = settings['pipe_settings']
 default_job_settings = settings['default_job_settings']
@@ -238,10 +242,8 @@ class PipeRun:
             lines.append(engine_setup)
         scratch_base = pipe_settings.get('scratch_base', '')
         if scratch_base:
-            # Each worker needs its own scratch directory. Without a queueing system there is no
-            # job id to key it on, so fall back to the run id and the worker id.
             if self.cluster_software == 'local':
-                subdir = f'{self.run_id}/$WORKER_ID'
+                subdir = f'{os.path.relpath(self.pipe_root, os.path.join(self.project_directory, "calcs"))}/$WORKER_ID'
             else:
                 subdir = '${PBS_JOBID%%[*}/$PBS_ARRAY_INDEX'
             lines.append(f'export TMPDIR="{scratch_base}/{subdir}"\nmkdir -p "$TMPDIR"')
@@ -353,10 +355,16 @@ class PipeRun:
         logger.info(f'Launched a local pipe worker pool for {self.run_id} (pid {process.pid}).')
         return 'running', str(process.pid)
 
-    def reconcile(self) -> dict[str, int]:
+    def reconcile(self, scheduler_job_alive: bool = True) -> dict[str, int]:
         """
         Poll all tasks, detect orphans, schedule retries, and check for completion.
         Does not regress an already-terminal run status.
+
+        Args:
+            scheduler_job_alive: Whether the scheduler (PBS/Slurm) job for this
+                pipe run is still present in the queue.  When False, any
+                CLAIMED/RUNNING tasks are immediately orphaned (the workers
+                are gone) and unreachable PENDING tasks are failed terminally.
 
         Returns:
             dict[str, int]: Counts of tasks in each state.
@@ -384,9 +392,11 @@ class PipeRun:
             except (FileNotFoundError, ValueError, KeyError):
                 continue
             current = TaskState(state.status)
+            # Orphan detection: lease expired OR the scheduler job is gone.
             if current in (TaskState.CLAIMED, TaskState.RUNNING) \
-                    and state.lease_expires_at is not None \
-                    and now > state.lease_expires_at:
+                    and (not scheduler_job_alive
+                         or (state.lease_expires_at is not None
+                             and now > state.lease_expires_at)):
                 try:
                     update_task_state(self.pipe_root, task_id,
                                      new_status=TaskState.ORPHANED,
@@ -421,7 +431,9 @@ class PipeRun:
                 try:
                     # FAILED_ESS tasks are handled separately (ejected to Scheduler).
                     # Only FAILED_RETRYABLE and ORPHANED reach here.
-                    if state.attempt_index + 1 < state.max_attempts:
+                    # Only retry if the scheduler job is alive (workers exist
+                    # to claim the retried task); otherwise fail terminally.
+                    if state.attempt_index + 1 < state.max_attempts and scheduler_job_alive:
                         update_task_state(self.pipe_root, task_id,
                                           new_status=TaskState.PENDING,
                                           attempt_index=state.attempt_index + 1,
@@ -462,6 +474,30 @@ class PipeRun:
                              f'waiting, but {fresh_pending} fresh tasks still pending — '
                              f'scheduler workers still starting, skipping resubmission.')
             self._needs_resubmission = False
+
+        # If the scheduler job is gone, any PENDING tasks will never be
+        # claimed.  Mark them as terminally failed so the pipe can finish.
+        if not scheduler_job_alive and counts[TaskState.PENDING.value] > 0:
+            for task_id in task_ids:
+                if not os.path.isdir(os.path.join(tasks_dir, task_id)):
+                    continue
+                try:
+                    state = read_task_state(self.pipe_root, task_id)
+                except (FileNotFoundError, ValueError, KeyError):
+                    continue
+                if TaskState(state.status) != TaskState.PENDING:
+                    continue
+                try:
+                    update_task_state(self.pipe_root, task_id,
+                                     new_status=TaskState.FAILED_TERMINAL,
+                                     ended_at=now)
+                    counts[TaskState.PENDING.value] -= 1
+                    counts[TaskState.FAILED_TERMINAL.value] += 1
+                    logger.info(f'Task {task_id}: no workers remain '
+                                f'(scheduler job gone). Marked FAILED_TERMINAL.')
+                except (ValueError, TimeoutError) as e:
+                    logger.warning(f'Task {task_id}: failed to mark stranded pending task '
+                                   f'during reconciliation: {e}')
 
         terminal = (counts[TaskState.COMPLETED.value]
                     + counts[TaskState.FAILED_ESS.value]
@@ -614,8 +650,17 @@ def ingest_completed_task(pipe_run_id: str, pipe_root: str, spec: TaskSpec,
         _ingest_rotor_scan_1d(pipe_run_id, pipe_root, spec, state, species_dict, label)
 
 
+def _task_level(spec) -> Level | None:
+    """The level a pipe task requested, as a ``Level``, or ``None`` if the task states none."""
+    return Level(repr=spec.level) if spec.level else None
+
+
 def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, conformer_index):
-    """Ingest a completed conf_opt task: update geometry and opt-level energy."""
+    """
+    Ingest a completed conf_opt task: update the geometry and the opt-level energy, and record the task's level and
+    log.
+    Where the optimized geometry parses but the energy does not, the energy is ``None`` with no recorded kind.
+    """
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
     species = species_dict[label]
     try:
@@ -632,12 +677,16 @@ def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, confor
         return
     if conformer_index < len(species.conformers) and xyz is not None:
         species.conformers[conformer_index] = xyz
-    if conformer_index < len(species.conformer_energies) and e_elect is not None:
-        species.conformer_energies[conformer_index] = e_elect
+        species.record_conformer_geometry_level(conformer_index, _task_level(spec), log_path=str(output_file))
+        if conformer_index < len(species.conformer_energies):
+            species.conformer_energies[conformer_index] = e_elect
+            species.record_conformer_energy_source(
+                conformer_index, CONFORMER_ENERGY_KIND_ELECTRONIC if e_elect is not None else None,
+                _task_level(spec))
 
 
 def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conformer_index):
-    """Ingest a completed conf_sp task: update energy only."""
+    """Ingest a completed conf_sp task: update the energy and record the task's level as its source."""
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
     species = species_dict[label]
     try:
@@ -653,6 +702,7 @@ def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conform
         return
     if conformer_index < len(species.conformer_energies) and e_elect is not None:
         species.conformer_energies[conformer_index] = e_elect
+        species.record_conformer_energy_source(conformer_index, CONFORMER_ENERGY_KIND_ELECTRONIC, _task_level(spec))
 
 
 def _ingest_ts_guess_batch(run_id, pipe_root, spec, state, species_dict, label):
@@ -754,6 +804,7 @@ def _ingest_species_freq(run_id, pipe_root, spec, state, species_dict, label, ou
         elif 'paths' not in output[label]:
             output[label]['paths'] = {}
         output[label]['paths']['freq'] = output_file
+        set_recorded_level(output[label].setdefault('levels', dict()), 'freq', _task_level(spec))
 
 
 def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
@@ -776,6 +827,12 @@ def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
         irc_paths = output[label]['paths'].get('irc', [])
         irc_paths.append(output_file)
         output[label]['paths']['irc'] = irc_paths
+        irc_directions = output[label]['paths'].setdefault('irc_directions', list())
+        del irc_directions[len(irc_paths) - 1:]
+        irc_directions.extend([None] * (len(irc_paths) - 1 - len(irc_directions)))
+        irc_directions.append((spec.ingestion_metadata or dict()).get('irc_direction'))
+        set_recorded_irc_level(output[label].setdefault('levels', dict()), _task_level(spec), len(irc_paths))
+        set_recorded_irc_log_level(output[label]['paths'], _task_level(spec))
 
 
 def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):

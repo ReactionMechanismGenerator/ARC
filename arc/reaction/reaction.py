@@ -6,7 +6,8 @@ from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
 from arc.molecule.resonance import generate_resonance_structures_safely
-from arc.species.converter import (check_xyz_dict,
+from arc.species.converter import (align_xyz_to_ref_coords,
+                                   check_xyz_dict,
                                    sort_xyz_using_indices,
                                    translate_to_center_of_mass,
                                    translate_xyz,
@@ -14,10 +15,57 @@ from arc.species.converter import (check_xyz_dict,
                                    )
 from arc.mapping.cluster import map_reaction_clusters
 from arc.mapping.driver import map_reaction
+from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 
 logger = get_logger()
+
+ATOM_MAP_SOURCES = ('declared', 'inferred')
+
+
+
+def get_resonance_bond_orders(mol: Molecule,
+                              index_1: int,
+                              index_2: int,
+                              ) -> list[float]:
+    """
+    Get the order of the bond between two atom indices of ``mol`` in each of its resonance structures.
+
+    Atoms are located in each resonance structure by their atom ID rather than by their index.
+    If ``mol`` has no valid atom IDs, a copy of ``mol`` carrying freshly assigned IDs is used instead
+    and ``mol`` itself is left unchanged. A resonance structure in which the two atoms are not bonded
+    is skipped, and an empty list is returned if the bond was located in no resonance structure.
+
+    Args:
+        mol (Molecule): The molecule to generate resonance structures for.
+        index_1 (int): The index in ``mol`` of the first atom of the bond.
+        index_2 (int): The index in ``mol`` of the second atom of the bond.
+
+    Returns:
+        list[float]: The bond order in each resonance structure in which the bond was located.
+    """
+    if not mol.atom_ids_valid():
+        mol = mol.copy(deep=True)
+        mol.assign_atom_ids()
+    mol_list = generate_resonance_structures_safely(mol,
+                                                    keep_isomorphic=True,
+                                                    filter_structures=True,
+                                                    save_order=True,
+                                                    ) or [mol]
+    id_1, id_2 = mol.atoms[index_1].id, mol.atoms[index_2].id
+    bond_orders, skipped = list(), 0
+    for structure in mol_list:
+        atoms_by_id = {atom.id: atom for atom in structure.atoms}
+        atom_1, atom_2 = atoms_by_id[id_1], atoms_by_id[id_2]
+        if not structure.has_bond(atom_1, atom_2):
+            skipped += 1
+            continue
+        bond_orders.append(structure.get_bond(atom_1, atom_2).order)
+    if skipped:
+        logger.debug(f'Could not locate the bond between atoms {index_1} and {index_2} of '
+                     f'{mol.get_formula()} in {skipped} of its {len(mol_list)} resonance structures.')
+    return bond_orders
 
 
 class ARCReaction(object):
@@ -81,9 +129,18 @@ class ARCReaction(object):
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
         product_dicts (list[dict]): A list of dictionaries with the RMG reaction family products.
-        atom_map (list[int]): An atom map, mapping the reactant atoms to the product atoms.
+        atom_map (list[int]): An atom map, mapping the reactant atoms to the product atoms. Entry ``i`` is the 0-based
+                              index of the product atom that reactant atom ``i`` becomes. Reactant atoms are counted
+                              over the species of ``get_reactants_and_products`` in that order (``r_species`` order,
+                              not the sorted ``reactants`` labels), each species contributing its atoms in its own
+                              atom order once per occurrence, and product atoms are counted the same way over the
+                              products before ``get_products_xyz`` sorts them with this map.
                               I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
                               reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+        atom_map_source (str): ``'inferred'`` when ARC computed the map with ``map_reaction``, ``'declared'`` when it
+                               was explicitly declared (an ``atom_map_source: declared`` entry of the reaction
+                               dict), ``None`` when there is no map or its origin was not recorded.
+        atom_map_method (str): The algorithm that computed an inferred map, ``None`` otherwise.
         done_opt_r_n_p (bool): Whether the optimization of all reactants and products is complete.
     """
     def __init__(self,
@@ -124,6 +181,8 @@ class ARCReaction(object):
         self.ts_xyz_guess = ts_xyz_guess or xyz or list()
         self.preserve_param_in_scan = preserve_param_in_scan
         self._atom_map = None
+        self._atom_map_source = None
+        self._atom_map_method = None
         self._atom_map_clusters = None
         self._charge = charge
         self._multiplicity = multiplicity
@@ -153,6 +212,7 @@ class ARCReaction(object):
             self.ts_xyz_guess = [self.ts_xyz_guess]
         self.remove_dup_species()
         self.check_atom_balance()
+        self.check_charge_balance()
 
     @property
     def atom_map(self):
@@ -161,15 +221,46 @@ class ARCReaction(object):
                 and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
             _atom_map = map_reaction(rxn=self, backend='ARC')
             if _atom_map is not None:
-                self._atom_map = _atom_map
+                method = 'arc.mapping.driver.map_reaction'
+                if self.family:
+                    method = f'{method} (family: {self.family})'
+                self._set_atom_map(_atom_map, 'inferred', method)
         if self._atom_map is None:
             logger.error(f"The requested ARC reaction {self} could not be atom mapped.")
         return self._atom_map
 
     @atom_map.setter
     def atom_map(self, value):
-        """Allow setting the atom map"""
+        """Allow setting the atom map. The origin of a map set this way is not recorded."""
+        self._set_atom_map(value, None)
+
+    @property
+    def atom_map_source(self) -> str | None:
+        """Where the stored atom map came from, ``'declared'`` or ``'inferred'``. Never computes a map."""
+        return self._atom_map_source if self._atom_map is not None else None
+
+    @property
+    def atom_map_method(self) -> str | None:
+        """The algorithm that computed the stored atom map if it is inferred. Never computes a map."""
+        return self._atom_map_method if self._atom_map is not None and self._atom_map_source == 'inferred' else None
+
+    def _set_atom_map(self,
+                      value: list[int] | None,
+                      source: str | None,
+                      method: str | None = None,
+                      ):
+        """Set the atom map together with its origin, a ``None`` map having neither source nor method."""
         self._atom_map = value
+        self._atom_map_source = source if value is not None and source in ATOM_MAP_SOURCES else None
+        self._atom_map_method = method if self._atom_map_source == 'inferred' else None
+
+    def _get_atom_map_state(self) -> tuple[list[int] | None, str | None, str | None]:
+        """The stored atom map with its source and method, without computing a map."""
+        return self._atom_map, self._atom_map_source, self._atom_map_method
+
+    def _restore_atom_map_state(self, state: tuple[list[int] | None, str | None, str | None]):
+        """Restore an atom map state obtained from ``_get_atom_map_state``."""
+        self._atom_map, self._atom_map_source, self._atom_map_method = state
 
     @property
     def atom_map_clusters(self):
@@ -330,6 +421,10 @@ class ARCReaction(object):
             reaction_dict['ts_species'] = self.ts_species.as_dict()
         if self._atom_map is not None:
             reaction_dict['atom_map'] = self._atom_map
+            if self._atom_map_source is not None:
+                reaction_dict['atom_map_source'] = self._atom_map_source
+            if self._atom_map_method is not None:
+                reaction_dict['atom_map_method'] = self._atom_map_method
         if self.done_opt_r_n_p is not None:
             reaction_dict['done_opt_r_n_p'] = self.done_opt_r_n_p
         if self.preserve_param_in_scan is not None:
@@ -358,7 +453,7 @@ class ARCReaction(object):
         self.index = reaction_dict['index'] if 'index' in reaction_dict else None
         self.label = reaction_dict['label'] if 'label' in reaction_dict else ''
         self.multiplicity = reaction_dict['multiplicity'] if 'multiplicity' in reaction_dict else None
-        self.charge = reaction_dict['charge'] if 'charge' in reaction_dict else 0
+        self.charge = reaction_dict.get('charge')
         self.reactants = reaction_dict.get('reactants') or list()
         self.products = reaction_dict.get('products') or list()
         if 'family' in reaction_dict and reaction_dict['family'] is not None:
@@ -398,6 +493,10 @@ class ARCReaction(object):
         self.preserve_param_in_scan = reaction_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in reaction_dict else None
         self.atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
+        self._set_atom_map(self._atom_map,
+                           reaction_dict.get('atom_map_source'),
+                           reaction_dict['atom_map_method'] if isinstance(reaction_dict.get('atom_map_method'), str)
+                           else None)
         self.done_opt_r_n_p = reaction_dict['done_opt_r_n_p'] if 'done_opt_r_n_p' in reaction_dict else None
 
     def copy(self):
@@ -421,7 +520,8 @@ class ARCReaction(object):
             ARCReaction: A copy of this object instance with flipped reactants and products.
         """
         reaction_dict = self.as_dict(reset_atom_ids=True, report_family=report_family)
-        reset_keys = ['label', 'index', 'atom_map', 'family', 'family_own_reverse', 'long_kinetic_description']
+        reset_keys = ['label', 'index', 'atom_map', 'atom_map_source', 'atom_map_method', 'family',
+                      'family_own_reverse', 'long_kinetic_description']
         if 'r_species' in reaction_dict.keys() and 'p_species' in reaction_dict.keys():
             reaction_dict['r_species'], reaction_dict['p_species'] = reaction_dict['p_species'], reaction_dict['r_species']
         else:
@@ -510,10 +610,18 @@ class ARCReaction(object):
             raise ReactionError(f'Both the reactants and products must be specified for a reaction, '
                                 f'got: reactants = {self.reactants}, products = {self.products}.')
 
-    def get_rxn_charge(self):
-        """A helper function for determining the surface charge"""
+    def get_rxn_charge(self) -> int | None:
+        """
+        Get the net charge of the reaction PES as the stoichiometric sum of the reactant charges,
+        counting a species once per occurrence in the reactants well.
+
+        Returns:
+            int | None: The reaction charge, ``None`` if the reactant species are not set.
+        """
         if len(self.r_species):
-            return sum([r.charge for r in self.r_species])
+            reactants = self.get_reactants_and_products(return_copies=False)[0] or self.r_species
+            return sum(r.charge for r in reactants)
+        return None
 
     def get_rxn_multiplicity(self):
         """A helper function for determining the surface multiplicity"""
@@ -869,6 +977,25 @@ class ARCReaction(object):
 
         return True
 
+    def check_charge_balance(self) -> None:
+        """
+        Check that the reactants and products carry the same net charge, and that it matches the reaction charge.
+
+        Raises:
+            ReactionError: If the reactant and product charges differ, or the reaction charge does not match them.
+        """
+        if not len(self.r_species) or not len(self.p_species):
+            return
+        r_charge = self.get_rxn_charge()
+        products = self.get_reactants_and_products(return_copies=False)[1] or self.p_species
+        p_charge = sum(p.charge for p in products)
+        if r_charge != p_charge:
+            raise ReactionError(f'Reaction {self.label} is not charge balanced: the reactants carry a net charge of '
+                                f'{r_charge}, the products {p_charge}.')
+        if self.charge != r_charge:
+            raise ReactionError(f'Reaction {self.label} was given charge {self.charge}, '
+                                f'but its reactants and products carry a net charge of {r_charge}.')
+
     def get_species_count(self,
                           species: ARCSpecies | None = None,
                           label: str | None = None,
@@ -1022,7 +1149,10 @@ class ARCReaction(object):
             xyz_dict = xyz_to_str(xyz_dict)
         return xyz_dict
 
-    def get_products_xyz(self, return_format='str') -> dict | str:
+    def get_products_xyz(self,
+                         return_format='str',
+                         align_to_reactants: bool = False,
+                         ) -> dict | str:
         """
         Get a combined string/dict representation of the cartesian coordinates of all product species.
         The resulting coordinates are ordered as the reactants using an atom map.
@@ -1032,31 +1162,99 @@ class ARCReaction(object):
         Args:
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
                                  Default: ``'str'``.
+            align_to_reactants (bool, optional): Whether to rigidly superimpose (Kabsch) each product fragment
+                                                 onto the reactant atoms it maps to, so that each product atom
+                                                 starts near the reactant atom it corresponds to. This gives
+                                                 double-ended TS search methods (e.g., NEB, QST2) a short and
+                                                 physical interpolation path. If the alignment cannot be
+                                                 performed (e.g., no atom map), the default (unaligned)
+                                                 placement is returned instead. Default: ``False``.
 
         Returns: dict | str
             The combined cartesian coordinates.
-
-        Todo:
-            Orient the fragments according to the reactive site.
         """
+        # Expand each species by its count in the product well (see get_reactants_xyz) so that a
+        # repeated product contributes all of its atoms and the combined geometry matches the atom map.
         products = [spc for spc in self.p_species
                     for _ in range(self.get_species_count(species=spc, well=1))]
-        if len(products) == 1:
-            xyz_dict = products[0].get_xyz()
-        else:
-            xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-            for i, product in enumerate(products):
-                xyz = translate_to_center_of_mass(product.get_xyz())
-                if i:
-                    xyz = translate_xyz(xyz_dict=xyz,
-                                        translation=(sum(spc.radius for spc in products[:i]) * 1.1 * i, 0, 0))
-                xyz_dict['symbols'] += xyz['symbols']
-                xyz_dict['isotopes'] += xyz['isotopes']
-                xyz_dict['coords'] += xyz['coords']
-        xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
-        xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
+        xyz_dict = self._get_products_xyz_aligned_to_reactants(products) if align_to_reactants else None
+        if xyz_dict is None:
+            if len(products) == 1:
+                xyz_dict = products[0].get_xyz()
+            else:
+                xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+                for i, product in enumerate(products):
+                    xyz = translate_to_center_of_mass(product.get_xyz())
+                    if i:
+                        xyz = translate_xyz(xyz_dict=xyz,
+                                            translation=(sum(spc.radius for spc in products[:i]) * 1.1 * i, 0, 0))
+                    xyz_dict['symbols'] += xyz['symbols']
+                    xyz_dict['isotopes'] += xyz['isotopes']
+                    xyz_dict['coords'] += xyz['coords']
+            xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
+            xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
         if return_format == 'str':
             xyz_dict = xyz_to_str(xyz_dict)
+        return xyz_dict
+
+    def _get_products_xyz_aligned_to_reactants(self, products: list) -> dict | None:
+        """
+        Build the combined product coordinates with each product fragment rigidly superimposed (Kabsch)
+        onto the reactant atoms it maps to via the reaction's atom map.
+
+        Each fragment keeps its own (e.g., optimized) internal geometry, but is rotated and translated
+        so that its atoms overlay the corresponding reactant atoms. The combined coordinates are returned
+        in the reactant frame (as returned by :meth:`get_reactants_xyz`) and ordered as the reactants
+        (i.e., already sorted using the atom map).
+
+        Args:
+            products (list): The product ARCSpecies, expanded by their respective counts in the product well
+                             (a species formed more than once, e.g. 'A <=> B + B', appears once per occurrence).
+
+        Returns: dict | None
+            The combined, aligned, reactant-ordered cartesian coordinates,
+            or ``None`` if the alignment cannot be performed.
+        """
+        if self.atom_map is None:
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants '
+                           f'without an atom map. Using the unaligned product placement instead.')
+            return None
+        product_xyzs = [product.get_xyz() for product in products]
+        reactant_xyzs = [reactant.get_xyz() for reactant in self.r_species]
+        if any(xyz is None for xyz in product_xyzs + reactant_xyzs):
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants, '
+                           f'since not all species have coordinates. '
+                           f'Using the unaligned product placement instead.')
+            return None
+        num_atoms = sum(len(xyz['symbols']) for xyz in product_xyzs)
+        if len(self.atom_map) != num_atoms or sorted(self.atom_map) != list(range(num_atoms)):
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants: '
+                           f'the atom map is not a valid permutation of the {num_atoms} product atoms. '
+                           f'Using the unaligned product placement instead.')
+            return None
+        reactants_xyz = self.get_reactants_xyz(return_format='dict')
+        if len(reactants_xyz['symbols']) != num_atoms:
+            logger.warning(f'Cannot align the products of reaction {self.label} to the reactants: '
+                           f'the reactants have {len(reactants_xyz["symbols"])} atoms, '
+                           f'while the products have {num_atoms} atoms. '
+                           f'Using the unaligned product placement instead.')
+            return None
+        # self.atom_map[reactant_index] = product_index; invert it to look up reactant atoms by product index.
+        inverse_map = [0] * num_atoms
+        for r_index, p_index in enumerate(self.atom_map):
+            inverse_map[p_index] = r_index
+        combined_xyz = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
+        offset = 0
+        for product_xyz in product_xyzs:
+            fragment_size = len(product_xyz['symbols'])
+            ref_coords = [reactants_xyz['coords'][inverse_map[offset + j]] for j in range(fragment_size)]
+            aligned_xyz = align_xyz_to_ref_coords(xyz_dict=product_xyz, ref_coords=ref_coords)
+            combined_xyz['symbols'] += aligned_xyz['symbols']
+            combined_xyz['isotopes'] += aligned_xyz['isotopes']
+            combined_xyz['coords'] += aligned_xyz['coords']
+            offset += fragment_size
+        xyz_dict = check_xyz_dict(combined_xyz)
+        xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
         return xyz_dict
 
     def get_element_mass(self) -> list[float]:
@@ -1216,6 +1414,10 @@ class ARCReaction(object):
     def get_changed_bonds(self) -> list[tuple[int, int]]:
         """
         Get all bonds that change their bond order in the reaction.
+
+        The bond order of a shared bond is averaged over the resonance structures in which it could be
+        located; a bond that could not be located in any resonance structure is not reported as changed.
+
         Returns:
             list[tuple[int, int]]: The bonds that change their bond order.
         """
@@ -1234,28 +1436,14 @@ class ARCReaction(object):
             len_atoms = 0
             for reactant in reactants:
                 if bond[0] - len_atoms < len(reactant.mol.atoms) and bond[1] - len_atoms < len(reactant.mol.atoms):
-                    mol_list = generate_resonance_structures_safely(reactant.mol,
-                                                                    keep_isomorphic=True,
-                                                                    filter_structures=True,
-                                                                    save_order=True,
-                                                                    )
-                    for mol in mol_list:
-                        atom1, atom2 = mol.atoms[bond[0] - len_atoms], mol.atoms[bond[1] - len_atoms]
-                        r_bos.append(mol.get_bond(atom1, atom2).order)
+                    r_bos = get_resonance_bond_orders(reactant.mol, bond[0] - len_atoms, bond[1] - len_atoms)
                 len_atoms += reactant.number_of_atoms
                 break
             len_atoms = 0
             for product in products:
                 mapped_bond = (self.atom_map[bond[0]], self.atom_map[bond[1]])
                 if mapped_bond[0] - len_atoms < len(product.mol.atoms) and mapped_bond[1] - len_atoms < len(product.mol.atoms):
-                    mol_list = generate_resonance_structures_safely(product.mol,
-                                                                    keep_isomorphic=True,
-                                                                    filter_structures=True,
-                                                                    save_order=True,
-                                                                    )
-                    for mol in mol_list:
-                        atom1, atom2 = mol.atoms[mapped_bond[0] - len_atoms], mol.atoms[mapped_bond[1] - len_atoms]
-                        p_bos.append(mol.get_bond(atom1, atom2).order)
+                    p_bos = get_resonance_bond_orders(product.mol, mapped_bond[0] - len_atoms, mapped_bond[1] - len_atoms)
                 len_atoms += product.number_of_atoms
                 break
             if len(r_bos) and len(p_bos) and sum(r_bos) / len(r_bos) != sum(p_bos) / len(p_bos):
@@ -1265,17 +1453,18 @@ class ARCReaction(object):
     def copy_e0_values(self, other_rxn: ARCReaction | None):
         """
         Copy the E0 values from another reaction object instance for the TS
-        and for all species if they have corresponding labels.
+        and for all species if they have corresponding labels, together with the correction switches
+        of the Arkane run that wrote each of them.
 
         Args:
             other_rxn (ARCReaction): An ARCReaction object instance from which E0 values will be copied.
         """
         if other_rxn is not None:
-            self.ts_species.e0 = self.ts_species.e0 or other_rxn.ts_species.e0
+            self.ts_species.copy_e0_from(other_rxn.ts_species)
             for spc in self.r_species + self.p_species:
                 for other_spc in other_rxn.r_species + other_rxn.p_species:
                     if spc.label == other_spc.label:
-                        spc.e0 = spc.e0 or other_spc.e0
+                        spc.copy_e0_from(other_spc)
 
     def get_rxn_smiles(self) -> str | None:
         """

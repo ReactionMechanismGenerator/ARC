@@ -2,6 +2,7 @@
 An adapter for executing Arkane.
 """
 
+import hashlib
 import os
 import re
 import shutil
@@ -31,6 +32,15 @@ if TYPE_CHECKING:
 
 RMG_DB_PATH = settings['RMG_DB_PATH']
 logger = get_logger()
+
+ARKANE_ONE_DIMENSIONAL_ROTOR_MODES = ('HinderedRotor', 'FreeRotor')
+ARKANE_MULTI_DIMENSIONAL_ROTOR_MODES = ('HinderedRotor2D', 'HinderedRotorClassicalND')
+ARKANE_UNKNOWN_ROTOR_MODE = 'Mode'
+ARKANE_ROTOR_MODE_REGEX = re.compile(
+    rf"\b({'|'.join(ARKANE_ONE_DIMENSIONAL_ROTOR_MODES + ARKANE_MULTI_DIMENSIONAL_ROTOR_MODES)}"
+    rf"|{ARKANE_UNKNOWN_ROTOR_MODE})\(")
+
+ARKANE_STANDARD_STATE_PRESSURE_PA = 101325.0
 
 # Section boundary markers in the RMG quantum_corrections/data.py file.
 AEC_SECTION_START = "atom_energies = {"
@@ -119,6 +129,10 @@ energy = Log('${sp_path}')
 geometry = Log('${freq_path}')
 frequencies = Log('${freq_path}')
 
+% if bonds:
+bonds = ${bonds}
+
+% endif
 %if use_hindered_rotors:
 rotors = [
 % for rotor in rotors:
@@ -156,6 +170,17 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, 'K').
         T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         T_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
+
+    Attributes:
+        use_aec (bool | None): The ``useAtomCorrections`` value of the last Arkane input this adapter rendered,
+                               recorded onto the thermo that run produces. ``None`` until an input is rendered.
+        use_bac (bool | None): The ``useBondCorrections`` value of the last Arkane input this adapter rendered.
+                               ``None`` until an input is rendered.
+        aec_yml_sha256 (str | None): The SHA-256 of ARC's ``data/AEC.yml`` that the last Arkane input this adapter
+                                     rendered took its ``atomEnergies`` from, recorded onto the E0 that run produces.
+                                     ``None`` until an input is rendered, and when the last one did not use it.
+        aec_yml_sha256s (set[str]): The SHA-256 digests of ARC's ``data/AEC.yml`` recorded each time this adapter
+                                    rendered ``atomEnergies`` from it. Empty when it never did.
     """
     def __init__(self,
                  output_directory: str,
@@ -187,6 +212,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.T_min = T_min
         self.T_max = T_max
         self.T_count = T_count
+        self.use_aec = None
+        self.use_bac = None
+        self.aec_yml_sha256 = None
+        self.aec_yml_sha256s = set()
         if not self.output_directory or not self.calcs_directory:
             raise InputError(f'Output and calcs directories must be given, got: {self.output_directory}, {self.calcs_directory}')
 
@@ -230,7 +259,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                                            delete_existing_subdir=True)
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors, e0_only=e0_only)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=not e0_only)
-        run_arkane(statmech_dir)
+        if not run_arkane(statmech_dir):
+            # No output.py was produced — parsing would either error or
+            # silently miss data. Skip cleanly; matches the kinetics
+            # caller's gate.
+            return
         self.parse_arkane_thermo_output(statmech_dir)
 
     def compute_high_p_rate_coefficient(self,
@@ -258,10 +291,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=False)
         self.generate_ts_files(statmech_dir, skip_rotors)
-        success = run_arkane(statmech_dir)
-        if not success:
+        if run_arkane(statmech_dir):
+            self.parse_arkane_kinetics_output(statmech_dir)
+        if not any(reaction.kinetics for reaction in self.reactions):
             return
-        self.parse_arkane_kinetics_output(statmech_dir)
         for reaction in self.reactions:
             plotter.log_kinetics(reaction.ts_species.label, path=statmech_dir)
             ts_validation = get_ts_validation_comment(reaction.ts_species)
@@ -392,11 +425,17 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                                                      freq_scale_factor=self.freq_scale_factor
                                                      ) or ''
 
-        aec_dict = read_yaml_file(os.path.join(ARC_PATH, 'data', 'AEC.yml'))
-        atom_energies = f'\natomEnergies = {aec_dict[self.sp_level.simple()]}' \
-            if self.sp_level.simple() in aec_dict else ''
+        aec_yml_path = os.path.join(ARC_PATH, 'data', 'AEC.yml')
+        aec_dict = read_yaml_file(aec_yml_path)
+        aec_yml_key = _match_aec_yml_key(self.sp_level, aec_dict)
+        atom_energies = f'\natomEnergies = {aec_dict[aec_yml_key]}' if aec_yml_key is not None else ''
+        self.aec_yml_sha256 = get_file_sha256(aec_yml_path) if aec_yml_key is not None else None
+        if self.aec_yml_sha256 is not None:
+            self.aec_yml_sha256s.add(self.aec_yml_sha256)
 
-        if not model_chemistry and not atom_energies:
+        self.use_aec = bool(model_chemistry or atom_energies)
+        self.use_bac = self.bac_type is not None and self.use_aec
+        if not self.use_aec:
             logger.warning(f'SP level {self.sp_level} is not recognized by Arkane and has no AEC entry in ARC. '
                            f'Atom and bond energy corrections will be DISABLED for this Arkane run. '
                            f'Thermo and kinetics results will lack these corrections.')
@@ -411,8 +450,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             atom_energies=atom_energies,
             freq_scale_factor=freq_scale_factor,
             use_hindered_rotors=True if not skip_rotors else False,
-            use_aec=bool(model_chemistry or atom_energies),
-            use_bac=True if self.bac_type is not None and bool(model_chemistry or atom_energies) else False,
+            use_aec=self.use_aec,
+            use_bac=self.use_bac,
             bac_type=self.bac_type,
             species_list=species_list,
             ts_list=ts_list,
@@ -484,6 +523,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             freq_path=self.output_dict[species.label]['paths']['freq'] or self.output_dict[species.label]['paths']['sp'],
             use_hindered_rotors=use_rotors,
             rotors=rotors,
+            bonds=dict(species.bond_corrections or dict()),
         )
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -496,8 +536,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             return
         with open(output_path, 'r', encoding='utf-8') as f:
             output_content = f.read()
+        thermo_parsed_from_output = set()
         for species in self.species:
-            parse_species_thermo(species, output_content)
+            if parse_species_thermo(species, output_content, use_aec=self.use_aec, use_bac=self.use_bac,
+                                    aec_yml_sha256=self.aec_yml_sha256):
+                thermo_parsed_from_output.add(species.label)
             clean_output_directory(os.path.join(self.output_directory, 'Species', species.label))
 
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'save_arkane_thermo.py')
@@ -550,6 +593,14 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     spc.thermo.nasa_low = content[lbl].get('nasa_low')
                     spc.thermo.nasa_high = content[lbl].get('nasa_high')
                     spc.thermo.thermo_points = content[lbl].get('thermo_points')
+                    if spc.yml_path:
+                        spc.thermo.atom_corrections_applied = None
+                        spc.thermo.bond_corrections_applied = None
+                        spc.thermo.atom_corrections_level = None
+                    else:
+                        spc.thermo.atom_corrections_applied = self.use_aec
+                        spc.thermo.bond_corrections_applied = self.use_bac
+                        spc.thermo.atom_corrections_level = self.sp_level if self.use_aec else None
 
                     line = (
                         f"   {lbl:<{label_width}}  "
@@ -561,7 +612,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         pressure_pa = get_standard_state_pressure(content)
         for species in self.species:
             if species.thermo is not None and species.thermo.H298 is not None:
-                species.thermo.standard_state_pressure_pa = pressure_pa
+                if pressure_pa is None and species.label in thermo_parsed_from_output:
+                    species.thermo.standard_state_pressure_pa = ARKANE_STANDARD_STATE_PRESSURE_PA
+                else:
+                    species.thermo.standard_state_pressure_pa = pressure_pa
 
     def parse_arkane_kinetics_output(self, statmech_dir: str) -> None:
         """Parse Arkane kinetic output and assign results to reactions."""
@@ -574,7 +628,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             output_content = f.read()
 
         for rxn in self.reactions:
-            parse_reaction_kinetics(rxn, output_content)
+            parse_reaction_kinetics(rxn, output_content, use_aec=self.use_aec, use_bac=self.use_bac,
+                                    aec_yml_sha256=self.aec_yml_sha256)
 
         # Parse conformer statmech (external_symmetry, optical_isomers) for all
         # species involved in the kinetics — the thermo path handles this via
@@ -812,13 +867,33 @@ def _extract_section(file_path: str, section_start: str, section_end: str | None
     return text[start_idx:end_idx + len(section_end)]
 
 
-def get_qm_corrections_files() -> list[str]:
+def get_file_sha256(path: str) -> str | None:
+    """
+    The SHA-256 of the bytes of the file at ``path``, which identifies a correction table. ``None`` when the file
+    cannot be read.
+
+    Args:
+        path (str): The file path.
+    """
+    try:
+        with open(path, 'rb') as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        logger.debug(f"Could not hash '{path}'", exc_info=True)
+        return None
+
+
+def get_qm_corrections_files(rmg_db_path: str | None = None) -> list[str]:
     """
     Return quantum corrections data.py paths from the RMG database.
+
+    Args:
+        rmg_db_path (str, optional): The RMG database path. Defaults to ``RMG_DB_PATH``.
     """
+    rmg_db_path = rmg_db_path or RMG_DB_PATH
     candidates = [
-        os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py'),
-        os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py'),
+        os.path.join(rmg_db_path, 'input', 'quantum_corrections', 'data.py'),
+        os.path.join(rmg_db_path, 'quantum_corrections', 'data.py'),
     ]
     existing = [path for path in candidates if os.path.isfile(path)]
     if not existing:
@@ -858,6 +933,238 @@ def _split_method_year(method_norm: str) -> tuple:
         return method_norm, None
     base, year_str = m.groups()
     return base, int(year_str)
+
+
+DISPERSION_SUFFIX_REGEX = re.compile(r'g?d[234](\(?bj\)?)?$')
+
+
+def _canonical_dispersion(dispersion: str | None) -> str:
+    """
+    Return a dispersion correction in one canonical spelling, so that ``gd3bj``, ``D3(BJ)``, ``d3-bj`` and
+    ``EmpiricalDispersion=GD3BJ`` all read ``d3bj``. Gaussian's ``g``-prefixed spellings (``gd2``, ``gd3``, ``gd3bj``)
+    lose the prefix.
+
+    Args:
+        dispersion (str | None): The dispersion correction, as a method suffix or a ``Level.dispersion`` value.
+
+    Returns:
+        str: The canonical dispersion, ``''`` if there is none.
+    """
+    if not dispersion:
+        return ''
+    dispersion = dispersion.lower()
+    for character in ('-', ' ', '(', ')'):
+        dispersion = dispersion.replace(character, '')
+    dispersion = dispersion.removeprefix('empiricaldispersion=')
+    if dispersion in ('gd2', 'gd3', 'gd3bj'):
+        dispersion = dispersion[1:]
+    return dispersion
+
+
+SEPARATELY_PARAMETRIZED_DISPERSION_BASES = ('b97', 'wb97x', 'wb97m')
+
+
+def _effective_method(method: str | None, dispersion: str | None = None) -> tuple:
+    """
+    Split a method into the normalized base it is matched on and its refit year, with the dispersion correction
+    folded into the base in a canonical spelling. The dispersion may be carried in the method string or passed
+    separately (a ``Level.dispersion`` value), so ``b3lyp`` + ``gd3bj``, ``b3lyp-d3bj`` and ``b3lyp-d3(bj)`` all
+    give ``b3lypd3bj``, while ``wb97xd`` and ``wb97xd3`` stay two methods.
+
+    The dispersion suffix of a normalized method is matched by ``DISPERSION_SUFFIX_REGEX`` (e.g., the ``d3(bj)`` of
+    ``b3lypd3(bj)``).
+
+    ``SEPARATELY_PARAMETRIZED_DISPERSION_BASES`` lists the functionals whose dispersion-suffixed name is a separately
+    parametrized functional, not the functional with an added dispersion correction: B97-D/B97-D3 (Grimme's refit of
+    B97, Arkane's ``b97d3``), wB97X-D/wB97X-D3 (Chai & Head-Gordon; Lin et al., Arkane's ``wb97xd``/``wb97xd3``), and
+    wB97M-D3(BJ) (Najibi & Goerigk, not in Arkane's database).
+
+    For a functional in ``SEPARATELY_PARAMETRIZED_DISPERSION_BASES`` a dispersion correction given separately, or
+    in Gaussian's ``g``-prefixed spelling of an added correction (``b97-gd3``), is not folded: B97 + D3 is not the
+    B97-D3 functional. The base is then ``'<functional> + <dispersion>'``, which contains a space, so it never
+    equals a method as written in an Arkane key other than one in that same added-correction spelling. The
+    functional's own name (``b97-d3``, ``b97d3``, ``wb97xd3``) is still folded as for any method.
+
+    Examples:
+        ("B3LYP-D3(BJ)", None) -> ("b3lypd3bj", None)
+        ("b3lyp", "gd3bj")     -> ("b3lypd3bj", None)
+        ("b2plyp-gd3", None)   -> ("b2plypd3", None)
+        ("b2plypd32023", None) -> ("b2plypd3", 2023)
+        ("wb97xd", None)       -> ("wb97xd", None)
+        ("b97-d3", None)       -> ("b97d3", None)
+        ("b97", "gd3")         -> ("b97 + d3", None)
+        ("wb97x-gd3", None)    -> ("wb97x + d3", None)
+
+    Args:
+        method (str | None): The method, as written in a level or an Arkane key.
+        dispersion (str | None): A dispersion correction carried outside the method string.
+
+    Returns:
+        tuple: The normalized ``(base, year)``; ``(None, None)`` without a method.
+    """
+    method_norm = _normalize_name(method)
+    if method_norm is None:
+        return None, None
+    base, year = _split_method_year(method_norm)
+    added = ''
+    suffix = DISPERSION_SUFFIX_REGEX.search(base)
+    if suffix is not None:
+        stem = base[:suffix.start()]
+        if stem in SEPARATELY_PARAMETRIZED_DISPERSION_BASES and suffix.group().startswith('g'):
+            base, added = stem, _canonical_dispersion(suffix.group())
+        else:
+            base = stem + _canonical_dispersion(suffix.group())
+    if base in SEPARATELY_PARAMETRIZED_DISPERSION_BASES:
+        added += _canonical_dispersion(dispersion)
+    else:
+        base += _canonical_dispersion(dispersion)
+    return (f'{base} + {added}' if added else base), year
+
+
+def _legacy_key_method(method: str | None) -> tuple:
+    """
+    Split a method into the normalized base and refit year without folding in a dispersion correction. Used for
+    frequency keys (see ``_key_method``).
+
+    Args:
+        method (str | None): The method.
+
+    Returns:
+        tuple: The normalized ``(base, year)``; ``(None, None)`` without a method.
+    """
+    method_norm = _normalize_name(method)
+    if method_norm is None:
+        return None, None
+    return _split_method_year(method_norm)
+
+
+def _reads_level_fields(section_start: str) -> bool:
+    """
+    Whether matching in a data.py section reads a level's ``dispersion`` and ``solvation_method`` fields.
+
+    The energy-correction sections (atom energies, PBAC, MBAC) do: those corrections belong to the exact model
+    chemistry, and Arkane has none for a solvated level or for a dispersion variant it does not list. The frequency
+    section does not: its keys are matched on the method and basis strings alone.
+
+    Args:
+        section_start (str): The start marker of the section.
+
+    Returns:
+        bool: Whether the level's dispersion and solvation fields are matched.
+    """
+    return section_start != FREQ_SECTION_START
+
+
+def _key_method(method: str | None, dispersion: str | None, section_start: str) -> tuple:
+    """
+    Return the normalized ``(base, year)`` a method is matched on in a data.py section: with the dispersion folded
+    in (``_effective_method``) for energy-correction sections, without it (``_legacy_key_method``) for frequencies.
+
+    Args:
+        method (str | None): The method.
+        dispersion (str | None): A dispersion correction carried outside the method string.
+        section_start (str): The start marker of the section.
+
+    Returns:
+        tuple: The normalized ``(base, year)``.
+    """
+    if _reads_level_fields(section_start):
+        return _effective_method(method, dispersion)
+    return _legacy_key_method(method)
+
+
+def normalized_method_and_basis(level: 'Level') -> tuple:
+    """
+    Return a level's effective method and basis, normalized the way ARC matches levels against Arkane's database:
+    case, hyphens and spaces are ignored, a trailing four-digit refit year is stripped from the method, and the
+    dispersion correction is folded into the method (see ``_effective_method``).
+
+    Args:
+        level (Level): The level of theory.
+
+    Returns:
+        tuple: The normalized ``(method, basis)``.
+    """
+    return _effective_method(level.method, level.dispersion)[0], _normalize_name(level.basis)
+
+
+def _no_match_note(level: 'Level') -> str:
+    """
+    Return why a level may have no Arkane energy corrections although its method and basis string does: a
+    solvation method (Arkane has no energy corrections for solvated levels), or a separate dispersion field
+    (matched as part of the method). ``''`` for a level with neither.
+
+    Args:
+        level (Level): The level of theory.
+
+    Returns:
+        str: The note, starting with a space, or ``''``.
+    """
+    if level.solvation_method is not None:
+        return (f' The level has solvation method {level.solvation_method}, and Arkane has no energy corrections '
+                f'for solvated levels.')
+    if level.dispersion is not None:
+        effective = _effective_method(level.method, level.dispersion)[0]
+        if ' + ' in effective:
+            return (f' The level adds a dispersion correction ({level.dispersion}) to {level.method}, whose '
+                    f'dispersion-corrected variants are separately parametrized functionals, so it matches none of '
+                    f'them.')
+        return (f' The level\'s dispersion correction ({level.dispersion}) is matched as part of its method, '
+                f'i.e., as {effective}.')
+    return ''
+
+
+def _startup_remedy_note(level: 'Level') -> str:
+    """
+    Return the remedies for a level that has no Arkane energy corrections because of its solvation method or
+    dispersion field, for the startup AEC/BAC check. ``''`` for a level with neither.
+
+    Args:
+        level (Level): The level of theory.
+
+    Returns:
+        str: The note, starting with a space, or ``''``.
+    """
+    note = _no_match_note(level)
+    if not note:
+        return ''
+    kind = 'gas-phase' if level.solvation_method is not None else 'non-dispersion'
+    return (f'{note} To proceed, set compute_thermo to False, or set a {kind} arkane_level_of_theory that Arkane '
+            f'has corrections for: ARC then warns that its atom energies are subtracted from energies at another '
+            f'level, and H298 is not a formation enthalpy for these energies. An entry in data/AEC.yml does not '
+            f'satisfy this check.')
+
+
+def _match_aec_yml_key(level: 'Level', aec_dict: dict) -> str | None:
+    """
+    Return the key of ARC's ``data/AEC.yml`` whose atom energies belong to ``level``, ``None`` if there is none.
+
+    A key is written as ``Level.simple()`` writes a level: ``method[/basis][ (year)]``. It is compared with the
+    level as Arkane keys are, with the dispersion folded into the method (see ``_effective_method``). The entries
+    are gas-phase, so a level with a solvation method matches none.
+
+    Args:
+        level (Level): The level of theory.
+        aec_dict (dict): The ``data/AEC.yml`` content.
+
+    Returns:
+        str | None: The matching key.
+    """
+    if level is None or level.method is None or level.solvation_method is not None:
+        return None
+    if level.dispersion is None and level.simple() in aec_dict:
+        return level.simple()
+    base, method_year = _effective_method(level.method, level.dispersion)
+    target = (base, _normalize_name(level.basis), level.year if level.year is not None else method_year)
+    for key in aec_dict:
+        match = re.fullmatch(r'(?P<method>[^/]+?)(?:/(?P<basis>.+?))?(?: \((?P<year>\d{4})\))?', str(key))
+        if match is None:
+            continue
+        cand_base, cand_method_year = _effective_method(match['method'])
+        cand_year = int(match['year']) if match['year'] is not None else cand_method_year
+        if (cand_base, _normalize_name(match['basis']), cand_year) == target:
+            return key
+    return None
 
 
 def _parse_lot_params(lot_str: str) -> dict:
@@ -900,12 +1207,16 @@ def _available_years_for_level(level: "Level",
                                section_end: str | None = None) -> list[int | None]:
     """
     Return a sorted list of available year suffixes for a given Level in a section.
+    In the energy-correction sections the method is matched with the dispersion folded in (see
+    ``_effective_method``), and a solvated level, which Arkane has no entries for, has none; frequency keys are
+    matched on the method and basis strings alone (see ``_reads_level_fields``).
     """
     if level is None or level.method is None:
         return []
+    if level.solvation_method is not None and _reads_level_fields(section_start):
+        return []
 
-    target_method_norm = _normalize_name(level.method)
-    target_base, _ = _split_method_year(target_method_norm)
+    target_base, _ = _key_method(level.method, level.dispersion, section_start)
     target_basis_norm = _normalize_name(level.basis)
     target_software = level.software.lower() if level.software else None
 
@@ -919,8 +1230,7 @@ def _available_years_for_level(level: "Level",
         if cand_method is None:
             continue
 
-        cand_method_norm = _normalize_name(cand_method)
-        cand_base, cand_year = _split_method_year(cand_method_norm)
+        cand_base, cand_year = _key_method(cand_method, None, section_start)
 
         if cand_base != target_base:
             continue
@@ -988,20 +1298,21 @@ def _warn_no_match(level: "Level",
     Log a warning when no matching LevelOfTheory key was found, listing available years.
     """
     years = _all_available_years(level, qm_corr_files, section_start, section_end)
+    note = _no_match_note(level) if _reads_level_fields(section_start) else ''
     if level.year is not None:
         logger.warning(
             f"No Arkane {label} entry found for year {level.year} at {level.simple()}; "
-            f"available years: {_format_years(years)}"
+            f"available years: {_format_years(years)}.{note}"
         )
     elif years:
         logger.warning(
             f"No Arkane {label} entry found for {level.simple()} without a year; "
             f"available years: {_format_years(years)}. "
-            f"Specify a year to select a matching entry."
+            f"Specify a year to select a matching entry.{note}"
         )
     else:
         logger.warning(
-            f"No Arkane {label} entry found for {level.simple()} in the RMG database."
+            f"No Arkane {label} entry found for {level.simple()} in the RMG database.{note}"
         )
 
 
@@ -1015,12 +1326,17 @@ def _find_best_level_key_for_sp_level(level: "Level",
       - hyphen-insensitive comparison
       - an optional 4-digit year suffix in Arkane's method
     and choose the *no-year* entry when no year is specified.
+
+    The level's dispersion correction is part of its method whether it is carried in the method string or in the
+    separate ``dispersion`` field (see ``_effective_method``), so ``b3lyp`` with ``dispersion: gd3bj`` matches only
+    a ``b3lypd3bj`` key, never a plain ``b3lyp`` one. A level with a ``solvation_method`` matches no key: Arkane's
+    energy corrections are all gas-phase. Both rules apply to the energy-correction sections only; frequency keys
+    are matched on the method and basis strings alone (see ``_reads_level_fields``).
     """
     if level is None or level.method is None:
         return None
 
-    target_method_norm = _normalize_name(level.method)
-    target_base, method_year = _split_method_year(target_method_norm)
+    target_base, method_year = _key_method(level.method, level.dispersion, section_start)
     explicit_year = level.year
     if explicit_year is not None and method_year is not None and explicit_year != method_year:
         raise InputError(
@@ -1028,6 +1344,8 @@ def _find_best_level_key_for_sp_level(level: "Level",
             f"explicit year={explicit_year}, method suffix year={method_year}. "
             "Please remove the year suffix from the method name or update the 'year' attribute to match."
         )
+    if level.solvation_method is not None and _reads_level_fields(section_start):
+        return None
     target_year = explicit_year if explicit_year is not None else method_year
     target_basis_norm = _normalize_name(level.basis)
     target_software = level.software.lower() if level.software else None
@@ -1044,10 +1362,8 @@ def _find_best_level_key_for_sp_level(level: "Level",
         if cand_method is None:
             continue
 
-        cand_method_norm = _normalize_name(cand_method)
-        cand_base, cand_year = _split_method_year(cand_method_norm)
+        cand_base, cand_year = _key_method(cand_method, None, section_start)
 
-        # method base must match
         if cand_base != target_base:
             continue
 
@@ -1187,7 +1503,8 @@ def check_arkane_aec(sp_level: Level, raise_error: bool = False) -> bool:
     else:
         _warn_no_match(sp_level, qm_corr_files, AEC_SECTION_START, AEC_SECTION_END, label="AEC")
         if raise_error:
-            raise ValueError(f'Arkane has no atom energy corrections (AEC) for {_level_to_str(sp_level)}.')
+            raise ValueError(f'Arkane has no atom energy corrections (AEC) for {_level_to_str(sp_level)}.'
+                             f'{_startup_remedy_note(sp_level)}')
     return best_aec_key is not None
 
 
@@ -1244,6 +1561,7 @@ def check_arkane_bacs(sp_level: Level,
                 f"available BAC years: {_format_years(bac_years)}. "
                 f"Specify a year to select a matching entry."
             )
+        year_note += _startup_remedy_note(sp_level)
         if has_aec and not has_bac:
             mssg = (
                 f"Arkane atom energy corrections (AEC) matched for {repr_level}, "
@@ -1290,12 +1608,55 @@ def get_standard_state_pressure(content: dict) -> float | None:
     return None
 
 
-def parse_species_thermo(species, output_content: str) -> None:
-    """Parse thermodynamic data for a single species."""
-    # Parse E0
+def _stamp_e0_corrections(species,
+                          use_aec: bool | None,
+                          use_bac: bool | None,
+                          aec_yml_sha256: str | None = None,
+                          ) -> None:
+    """
+    Record on a species the correction switches and the ``AEC.yml`` digest of the Arkane run that wrote its ``e0``.
+
+    A species declared by an Arkane YAML is loaded as-is (``StatMechJob.load`` returns before applying any
+    correction), so the switches and the digest of the run say nothing about its energy and it is stamped ``None``.
+
+    Args:
+        species (ARCSpecies): The species whose ``e0`` was just parsed.
+        use_aec (bool | None): The ``useAtomCorrections`` value of the run, ``None`` if not known.
+        use_bac (bool | None): The ``useBondCorrections`` value of the run, ``None`` if not known.
+        aec_yml_sha256 (str | None): The SHA-256 of the ``data/AEC.yml`` the run rendered its atom energies from,
+                                     ``None`` if it did not render them from it.
+    """
+    if species.yml_path:
+        use_aec, use_bac, aec_yml_sha256 = None, None, None
+    species.e0_atom_corrections_applied = use_aec
+    species.e0_bond_corrections_applied = use_bac
+    species.e0_aec_yml_sha256 = aec_yml_sha256
+
+
+def parse_species_thermo(species,
+                         output_content: str,
+                         use_aec: bool | None = None,
+                         use_bac: bool | None = None,
+                         aec_yml_sha256: str | None = None,
+                         ) -> bool:
+    """
+    Parse thermodynamic data for a single species.
+
+    Args:
+        species (ARCSpecies): The species to populate.
+        output_content (str): The full Arkane output file content.
+        use_aec (bool, optional): The ``useAtomCorrections`` value of the Arkane run that wrote the output.
+        use_bac (bool, optional): The ``useBondCorrections`` value of the Arkane run that wrote the output.
+        aec_yml_sha256 (str, optional): The SHA-256 of the ``data/AEC.yml`` the Arkane run that wrote the output
+                                        rendered its atom energies from.
+
+    Returns:
+        bool: Whether the output holds a thermo block of the species, and it was parsed into ``species.thermo``.
+    """
     e0 = parse_e0(species.label, output_content)
     if e0 is not None:
         species.e0 = e0
+        _stamp_e0_corrections(species, use_aec, use_bac, aec_yml_sha256)
     # Parse statmech properties from the conformer block
     _parse_conformer_statmech(species, output_content)
     # Parse thermo data
@@ -1307,22 +1668,34 @@ def parse_species_thermo(species, output_content: str) -> None:
     if thermo_match:
         thermo_block = thermo_match.group(1)
         species.thermo.update(parse_thermo_block(thermo_block))
+    return thermo_match is not None
 
 
-def parse_reaction_kinetics(reaction, output_content: str) -> None:
+def parse_reaction_kinetics(reaction,
+                            output_content: str,
+                            use_aec: bool | None = None,
+                            use_bac: bool | None = None,
+                            aec_yml_sha256: str | None = None,
+                            ) -> None:
     """
     Parse Arrhenius kinetics data for a single reaction from Arkane output.
 
     Args:
         reaction: The reaction object (must have a .label attribute).
         output_content (str): The full Arkane output file content.
+        use_aec (bool, optional): The ``useAtomCorrections`` value of the Arkane run that wrote the output.
+        use_bac (bool, optional): The ``useBondCorrections`` value of the Arkane run that wrote the output.
+        aec_yml_sha256 (str, optional): The SHA-256 of the ``data/AEC.yml`` the Arkane run that wrote the output
+                                        rendered its atom energies from.
 
     Populates:
-        reaction.kinetics (dict): A dictionary with Arrhenius parameters and units.
+        reaction.kinetics (dict): A dictionary with Arrhenius parameters and units, and the ``use_aec`` switch
+            of the run as ``atom_corrections_applied``.
     """
     e0 = parse_e0(reaction.ts_species.label, output_content)
     if e0 is not None:
         reaction.ts_species.e0 = e0
+        _stamp_e0_corrections(reaction.ts_species, use_aec, use_bac, aec_yml_sha256)
     label_pat = rf"kinetics\(\s*label\s*=\s*['\"]{re.escape(reaction.label)}['\"],"
     m_label = re.search(label_pat, output_content)
     if not m_label:
@@ -1396,6 +1769,8 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
     # produced by a future non-Arkane StatmechAdapter, none of which carry the
     # correction.
     kinetics['tunneling'] = ARKANE_TUNNELING_METHOD
+    yml_species = [reaction.ts_species] + list(reaction.r_species) + list(reaction.p_species)
+    kinetics['atom_corrections_applied'] = None if any(spc.yml_path for spc in yml_species) else use_aec
     reaction.kinetics = kinetics
 
 
@@ -1423,22 +1798,15 @@ def mark_ts_validation_in_kinetics(reaction, kinetics: dict) -> None:
                  f'TS checks: {ts_species.ts_checks}')
 
 
-def _parse_conformer_statmech(species, content: str) -> None:
+def _get_conformer_block(label: str, content: str) -> str | None:
     """
-    Parse external_symmetry and optical_isomers from the Arkane conformer block.
-
-    These live inside the conformer's modes list, e.g.::
-
-        NonlinearRotor(symmetry=2, ...)
-        optical_isomers = 1,
+    Return the ``conformer(label='<label>', ...)`` block of an Arkane output, or ``None`` when it is absent
+    or unbalanced.
     """
-    label = species.label
-    # Find the start of the conformer block, then use balanced-paren matching
-    # to find the full block (regex `.*?)` fails because of nested parens).
     start_pattern = rf"conformer\(\s*label\s*=\s*['\"]{re.escape(label)}['\"]"
     m_start = re.search(start_pattern, content, re.DOTALL)
     if not m_start:
-        return
+        return None
     idx = m_start.start() + len('conformer(')
     depth = 1
     while idx < len(content) and depth > 0:
@@ -1448,8 +1816,56 @@ def _parse_conformer_statmech(species, content: str) -> None:
             depth -= 1
         idx += 1
     if depth != 0:
+        return None
+    return content[m_start.start():idx]
+
+
+def get_arkane_treatment(rotor_modes: list[str] | None) -> str | None:
+    """
+    The statistical-mechanics treatment of an Arkane conformer, as a TCKDB ``StatmechTreatmentKind``.
+
+    Args:
+        rotor_modes (list[str], optional): The rotor modes of the conformer block, ``None`` if not parsed.
+
+    Returns:
+        str | None: ``None`` when the modes were not parsed, or when any rotor mode is of unknown kind (Arkane
+            writes a multi-dimensional rotor as ``Mode(quantum=...)``). ``'rrho'`` when the conformer has no rotor
+            mode, ``'rrho_1d'`` when every rotor mode is a ``HinderedRotor`` or ``FreeRotor``, ``'rrho_nd'`` when
+            every one is a ``HinderedRotor2D`` or ``HinderedRotorClassicalND``, and ``'rrho_1d_nd'`` when both
+            kinds are present.
+    """
+    if rotor_modes is None or ARKANE_UNKNOWN_ROTOR_MODE in rotor_modes:
+        return None
+    has_1d = any(mode in ARKANE_ONE_DIMENSIONAL_ROTOR_MODES for mode in rotor_modes)
+    has_nd = any(mode in ARKANE_MULTI_DIMENSIONAL_ROTOR_MODES for mode in rotor_modes)
+    if has_1d and has_nd:
+        return 'rrho_1d_nd'
+    if has_nd:
+        return 'rrho_nd'
+    return 'rrho_1d' if has_1d else 'rrho'
+
+
+def _parse_conformer_statmech(species, content: str) -> None:
+    """
+    Parse external_symmetry, optical_isomers and the rotor modes from the Arkane conformer block.
+
+    These live inside the conformer's modes list, e.g.::
+
+        NonlinearRotor(symmetry=2, ...)
+        optical_isomers = 1,
+
+    The rotor modes Arkane kept (``HinderedRotor``, ``FreeRotor``, ``HinderedRotor2D``,
+    ``HinderedRotorClassicalND``, and ``Mode``, which is how Arkane writes a multi-dimensional rotor, in order)
+    are recorded as ``species.arkane_rotor_modes``. Arkane drops every
+    rotor, and treats the species as a rigid rotor and harmonic oscillator, when the frequency log carries no
+    force-constant matrix, so the list can be empty where ARC found rotors. A block without a ``modes`` list
+    leaves ``arkane_rotor_modes`` as it was.
+    """
+    block = _get_conformer_block(species.label, content)
+    if block is None:
         return
-    block = content[m_start.start():idx]
+    if re.search(r'\bmodes\s*=\s*\[', block):
+        species.arkane_rotor_modes = ARKANE_ROTOR_MODE_REGEX.findall(block)
     # optical_isomers
     oi_match = re.search(r'optical_isomers\s*=\s*(\d+)', block)
     if oi_match and species.optical_isomers is None:

@@ -602,6 +602,99 @@ H       0.68104300    0.74807180    0.61546062""")]
         self.assertEqual(len(confs_economic), 250)
         self.assertLess(len(confs_economic), len(confs_default))
 
+    def test_the_force_field_and_unit_of_a_generation_are_stamped_on_its_conformers(self):
+        """Test that generated conformers name the force field and backend, and the known energy unit"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        confs = conformers.generate_conformers(mol_list=[spc.mol], label='ethanol', n_confs=2, force_field='MMFF94s')
+        self.assertGreater(len(confs), 0)
+        for conf in confs:
+            self.assertEqual(conf['force_field'], 'MMFF94s (rdkit)')
+            self.assertEqual(conf['force_field_unit'], 'kcal/mol')
+
+    def test_the_silent_rdkit_uff_fallback_is_named_in_the_stamp(self):
+        """Test that energies that fell back from MMFF to UFF are not attributed to MMFF"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        with unittest.mock.patch.object(conformers.AllChem, 'MMFFGetMoleculeForceField', return_value=None):
+            confs = conformers.generate_conformers(mol_list=[spc.mol], label='ethanol', n_confs=2,
+                                                   force_field='MMFF94s')
+        self.assertGreater(len(confs), 0)
+        for conf in confs:
+            self.assertEqual(conf['force_field'], 'UFF (rdkit)')
+            self.assertEqual(conf['force_field_unit'], 'kcal/mol')
+
+    def test_describe_force_field_usage(self):
+        """Test the force field name and energy unit derived from the backends that produced energies"""
+        describe = conformers.describe_force_field_usage
+        self.assertEqual(describe({('rdkit', 'MMFF94s', 'kcal/mol')}), ('MMFF94s (rdkit)', 'kcal/mol'))
+        self.assertEqual(describe({('openbabel', 'GAFF', 'kJ/mol')}), ('GAFF (openbabel)', 'kJ/mol'))
+        self.assertEqual(describe({('openbabel', 'X', None)}), ('X (openbabel)', None))
+        self.assertEqual(describe({('rdkit', 'MMFF94s', 'kcal/mol'), ('rdkit', 'UFF', 'kcal/mol')}), (None, None))
+        self.assertEqual(describe(set()), (None, None))
+
+    def test_the_energy_unit_is_read_from_openbabel(self):
+        """Test that OpenBabel force fields are recorded in the unit OpenBabel reports for them"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        expected = {'MMFF94': 'kcal/mol', 'MMFF94s': 'kcal/mol', 'GAFF': 'kJ/mol', 'UFF': 'kJ/mol',
+                    'Ghemical': 'kJ/mol'}
+        for force_field, unit in expected.items():
+            with self.subTest(force_field=force_field):
+                usage = set()
+                token = conformers._FORCE_FIELD_USAGE.set(usage)
+                try:
+                    conformers.openbabel_force_field(label='', mol=spc.mol, num_confs=1, force_field=force_field,
+                                                     method='diverse')
+                finally:
+                    conformers._FORCE_FIELD_USAGE.reset(token)
+                self.assertEqual(conformers.describe_force_field_usage(usage),
+                                 (f'{force_field} (openbabel)', unit))
+
+    def test_the_recorded_rdkit_force_field_is_the_one_rdkit_ran(self):
+        """Test that MMFF94s is named only when RDKit ran MMFF94s, and a UFF request runs UFF"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        expected = {'MMFF94s': 'MMFF94s (rdkit)', 'MMFF94': 'MMFF94 (rdkit)', 'mmff94s': 'MMFF94 (rdkit)',
+                    'UFF': 'UFF (rdkit)'}
+        for force_field, name in expected.items():
+            with self.subTest(force_field=force_field):
+                usage = set()
+                token = conformers._FORCE_FIELD_USAGE.set(usage)
+                try:
+                    rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=1)
+                    with unittest.mock.patch.object(conformers.AllChem, 'MMFFOptimizeMolecule',
+                                                    wraps=conformers.AllChem.MMFFOptimizeMolecule) as mmff:
+                        conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field=force_field)
+                finally:
+                    conformers._FORCE_FIELD_USAGE.reset(token)
+                self.assertEqual(conformers.describe_force_field_usage(usage), (name, 'kcal/mol'))
+                self.assertEqual(mmff.called, force_field != 'UFF')
+
+    def test_an_explicit_uff_request_runs_uff_whatever_try_uff_says(self):
+        """Test that a UFF request is not silently empty when the UFF fallback for MMFF failures is disabled"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        for try_uff in (True, False):
+            with self.subTest(try_uff=try_uff):
+                usage = set()
+                token = conformers._FORCE_FIELD_USAGE.set(usage)
+                try:
+                    rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=2)
+                    xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='UFF',
+                                                                  try_uff=try_uff)
+                finally:
+                    conformers._FORCE_FIELD_USAGE.reset(token)
+                self.assertEqual(len(xyzs), 2)
+                self.assertEqual(len(energies), 2)
+                self.assertEqual(conformers.describe_force_field_usage(usage), ('UFF (rdkit)', 'kcal/mol'))
+
+    def test_try_uff_false_still_disables_the_uff_fallback_of_an_mmff_request(self):
+        """Test that only an MMFF request is gated by try_uff"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=1)
+        with unittest.mock.patch.object(conformers.AllChem, 'MMFFOptimizeMolecule', side_effect=RuntimeError('boom')), \
+                unittest.mock.patch.object(conformers.AllChem, 'UFFOptimizeMoleculeConfs') as uff:
+            xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s',
+                                                          try_uff=False)
+        uff.assert_not_called()
+        self.assertEqual((xyzs, energies), ([], []))
+
     def test_openbabel_force_field(self):
         """Test Open Babel force field"""
         xyz = """S      -0.19093478    0.57933906    0.00000000
@@ -672,6 +765,16 @@ H       0.68104300    0.74807180    0.61546062""")]
         for atom, symbol in zip(self.cj_spc.mol.atoms, xyzs[0]['symbols']):
             self.assertEqual(atom.symbol, symbol)
 
+    def test_embed_rdkit_does_not_return_a_conformer_less_molecule(self):
+        """Test that an embedding which yields no conformers returns None rather than an unusable molecule"""
+        spc = ARCSpecies(label='c-C3H2', smiles='C1#CC1')
+        with self.assertLogs('arc', level='WARNING') as captured:
+            rd_mol = conformers.embed_rdkit(label='c-C3H2', mol=spc.mol, num_confs=5)
+            if rd_mol is not None:
+                xyzs = conformers.read_rdkit_embedded_conformers(label='c-C3H2', rd_mol=rd_mol)
+                self.assertIsInstance(xyzs[0], dict)
+        self.assertIsNone(rd_mol)
+        self.assertIn('c-C3H2', '\n'.join(captured.output))
     def test_embed_rdkit_reports_why_embedding_failed(self):
         """Test that a failure to embed names the underlying error instead of swallowing it"""
         with unittest.mock.patch('rdkit.Chem.AllChem.EmbedMultipleConfs',
@@ -889,6 +992,15 @@ O       1.40839617    0.14303696    0.00000000"""
         self.assertEqual(torsions, [[5, 1, 2, 3], [1, 2, 3, 4], [2, 3, 4, 12]])
         self.assertEqual(sum(tops[0]), 19)
         self.assertEqual(sum(tops[1]), 40)
+
+    def test_get_wells_single_angle(self):
+        """Test that a single angle is reported as one zero-width well, not as no wells"""
+        wells = conformers.get_wells(label='', angles=[-59.1])
+        self.assertEqual(wells, [{'angles': [-59.1],
+                                  'end_angle': -59.1,
+                                  'end_idx': 0,
+                                  'start_angle': -59.1,
+                                  'start_idx': 0}])
 
     def test_get_wells(self):
         """Test determining wells characteristics from a list of angles"""
@@ -1283,6 +1395,39 @@ O       1.40839617    0.14303696    0.00000000"""
                              for angle in torsion_angles[tuple(torsions[0])]]))  # batch check almost equal
         self.assertTrue(all([int(round(angle / 5.0) * 5.0) in [60, 300]
                              for angle in torsion_angles[tuple(torsions[1])]]))  # batch check almost equal
+
+    def test_determine_torsion_symmetry_single_angle_scan(self):
+        """Test a torsion sampled at a single angle, which yields a single zero-width well"""
+        mol = Molecule(smiles='CCO')
+        mol.update()
+        self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=[2, 5, 6, 7],
+                                                               mol_list=[mol], torsion_scan=[-59.1]), 3)
+        # the hydroxyl side of the same torsion is not symmetric; a single angle must not inflate it
+        self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=[1, 9],
+                                                               mol_list=[mol], torsion_scan=[-59.1]), 1)
+
+    def test_determine_torsion_symmetry_degenerate_wells(self):
+        """Test a scan whose wells are all exactly repeated angles, so every well width is zero"""
+        mol = Molecule(smiles='CCO')
+        mol.update()
+        symmetry = conformers.determine_torsion_symmetry(
+            label='', top1=[2, 5, 6, 7], mol_list=[mol],
+            torsion_scan=[-120.0, -120.0, 0.0, 0.0, 120.0, 120.0])
+        self.assertEqual(symmetry, 3)
+
+    def test_determine_torsion_sampling_points_single_angle(self):
+        """Test the other consumer of the well count, which divides by it
+
+        With one well the symmetry is forced to one, so the sampling points are the scan itself.
+        """
+        sampling_points, wells = conformers.determine_torsion_sampling_points(label='',
+                                                                              torsion_angles=[-59.1])
+        self.assertEqual(sampling_points, [-59.1])
+        self.assertEqual(wells, [{'angles': [-59.1],
+                                  'end_angle': -59.1,
+                                  'end_idx': 0,
+                                  'start_angle': -59.1,
+                                  'start_idx': 0}])
 
     def test_determine_torsion_symmetry(self):
         """Test that we correctly determine the torsion symmetry"""

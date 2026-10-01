@@ -70,8 +70,12 @@ def _make_spec(task_id, task_family='conf_opt', engine='mockter', level=None,
 def _make_mock_sched(project_directory, ess_settings=None):
     """Create a mock Scheduler with the attributes PipeCoordinator needs."""
     sched = MagicMock()
+    sched.project = 'pipe_test_project'
     sched.project_directory = project_directory
+    sched.ess_settings = {'orca': ['local'], 'mockter': ['local']}
+    sched.testing = True
     sched.server_job_ids = list()
+    sched.completed_job_records = list()
     sched.ess_settings = ess_settings if ess_settings is not None else {'mockter': ['local']}
     spc = ARCSpecies(label='H2O', smiles='O')
     spc.conformers = [None] * 5
@@ -203,8 +207,8 @@ class TestSubmitPipeRun(unittest.TestCase):
         tasks = [_make_spec(f't_{i}') for i in range(3)]
         pipe = self.coord.submit_pipe_run('run_001', tasks)
         self.assertIsInstance(pipe, PipeRun)
-        self.assertIn('run_001', self.coord.active_pipes)
-        self.assertIs(self.coord.active_pipes['run_001'], pipe)
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+        self.assertIs(self.coord.active_pipes[pipe.pipe_root], pipe)
 
     def test_submit_stages_on_disk(self):
         tasks = [_make_spec(f't_{i}') for i in range(2)]
@@ -228,6 +232,39 @@ class TestSubmitPipeRun(unittest.TestCase):
         self.assertEqual(pipe.scheduler_job_id, '12345[]')
 
 
+class TestLocalWorkerScratch(unittest.TestCase):
+    """Tests that local pipe workers get scratch directories that never coincide between pipe runs."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_scratch_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        sched = _make_mock_sched(self.tmpdir)
+        sched.species_dict['CH4'] = ARCSpecies(label='CH4', smiles='C')
+        self.coord = PipeCoordinator(sched)
+
+    def _tmpdir_line(self, pipe):
+        with patch.dict('arc.job.pipe.pipe_run.pipe_settings', {'scratch_base': '/scratch'}):
+            preamble = pipe._build_env_preamble()
+        return [line for line in preamble.splitlines() if line.startswith('export TMPDIR=')][0]
+
+    def test_scratch_differs_between_per_species_and_cross_species_pipes(self):
+        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '1')):
+            pipes = [self.coord.submit_pipe_run('H2O_conf_opt', [_make_spec('t_a', species_label='H2O')],
+                                                cluster_software='local'),
+                     self.coord.submit_pipe_run('CH4_conf_opt', [_make_spec('t_b', species_label='CH4')],
+                                                cluster_software='local'),
+                     self.coord.submit_pipe_run('species_freq_batch',
+                                                [_make_spec('t_c', species_label='H2O'),
+                                                 _make_spec('t_d', species_label='CH4')],
+                                                cluster_software='local'),
+                     self.coord.submit_pipe_run('species_freq_batch',
+                                                [_make_spec('t_e', species_label='H2O'),
+                                                 _make_spec('t_f', species_label='CH4')],
+                                                cluster_software='local')]
+        lines = [self._tmpdir_line(pipe) for pipe in pipes]
+        self.assertEqual(len(set(lines)), 4)
+
+
 class TestRegisterFromDir(unittest.TestCase):
     """Tests for PipeCoordinator.register_pipe_run_from_dir()."""
 
@@ -242,9 +279,9 @@ class TestRegisterFromDir(unittest.TestCase):
         tasks = [_make_spec(f't_{i}') for i in range(2)]
         original = self.coord.submit_pipe_run('run_restore', tasks, cluster_software='pbs')
         pipe_root = original.pipe_root
-        del self.coord.active_pipes['run_restore']
+        del self.coord.active_pipes[pipe_root]
         restored = self.coord.register_pipe_run_from_dir(pipe_root)
-        self.assertIn('run_restore', self.coord.active_pipes)
+        self.assertIn(pipe_root, self.coord.active_pipes)
         self.assertEqual(restored.run_id, 'run_restore')
         self.assertEqual(restored.cluster_software, 'pbs')
 
@@ -263,40 +300,58 @@ class TestPollPipes(unittest.TestCase):
         pipe = self.coord.submit_pipe_run('run_done', [_make_spec('t_done')])
         _complete_task(pipe.pipe_root, 't_done')
         self.coord.poll_pipes()
-        self.assertNotIn('run_done', self.coord.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_keeps_pending_pipe(self):
-        self.coord.submit_pipe_run('run_pending', [_make_spec('t_pending')])
+        pipe = self.coord.submit_pipe_run('run_pending', [_make_spec('t_pending')])
         self.coord.poll_pipes()
-        self.assertIn('run_pending', self.coord.active_pipes)
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_removes_failed_pipe(self):
         pipe = self.coord.submit_pipe_run('run_fail', [_make_spec('t_fail')])
         pipe.status = PipeRunState.FAILED
         pipe._save_run_metadata()
         self.coord.poll_pipes()
-        self.assertNotIn('run_fail', self.coord.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_removes_after_repeated_reconcile_failures(self):
         pipe = self.coord.submit_pipe_run('run_stuck', [_make_spec('t_stuck')])
         with patch.object(pipe, 'reconcile', side_effect=RuntimeError('corrupt')):
             for _ in range(3):
                 self.coord.poll_pipes()
-        self.assertNotIn('run_stuck', self.coord.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_resets_failure_count_on_success(self):
         pipe = self.coord.submit_pipe_run('run_flaky', [_make_spec('t_flaky')])
         with patch.object(pipe, 'reconcile', side_effect=RuntimeError('transient')):
             self.coord.poll_pipes()
-        self.assertEqual(self.coord._pipe_poll_failures.get('run_flaky'), 1)
-        self.coord.poll_pipes()  # succeeds this time
-        self.assertNotIn('run_flaky', self.coord._pipe_poll_failures)
+        self.assertEqual(self.coord._pipe_poll_failures.get(pipe.pipe_root), 1)
+        self.coord.poll_pipes()
+        self.assertNotIn(pipe.pipe_root, self.coord._pipe_poll_failures)
+
+    def test_same_named_concurrent_batches_are_tracked_separately(self):
+        first = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_first')])
+        second = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_second')])
+        self.assertNotEqual(first.pipe_root, second.pipe_root)
+        self.assertEqual(len(self.coord.active_pipes), 2)
+        self.assertIs(self.coord.active_pipes[first.pipe_root], first)
+        self.assertIs(self.coord.active_pipes[second.pipe_root], second)
+
+    def test_poll_ingests_first_batch_when_a_same_named_batch_is_submitted_later(self):
+        first = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_first')])
+        second = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_second')])
+        _complete_task(first.pipe_root, 't_first')
+        with patch.object(self.coord, 'ingest_pipe_results') as mock_ingest:
+            self.coord.poll_pipes()
+        mock_ingest.assert_called_once_with(first)
+        self.assertNotIn(first.pipe_root, self.coord.active_pipes)
+        self.assertIn(second.pipe_root, self.coord.active_pipes)
 
     def test_resubmission_adds_job_id_to_server_job_ids(self):
         """Resubmitted pipe job ID is added to server_job_ids."""
         pipe = self.coord.submit_pipe_run('run_resub', [_make_spec('t_resub')])
 
-        def fake_reconcile():
+        def fake_reconcile(scheduler_job_alive=True):
             pipe._needs_resubmission = True
             return {TaskState.PENDING.value: 1}
 
@@ -304,6 +359,89 @@ class TestPollPipes(unittest.TestCase):
              patch.object(pipe, 'submit_to_scheduler', return_value=('submitted', '77777[]')):
             self.coord.poll_pipes()
         self.assertIn('77777[]', self.coord.sched.server_job_ids)
+
+
+class TestIsSchedulerJobAlive(unittest.TestCase):
+    """Tests for PipeCoordinator._is_scheduler_job_alive()."""
+
+    def test_none_server_ids_returns_true(self):
+        pipe = MagicMock()
+        pipe.submitted_at = None
+        pipe.scheduler_job_id = '12345[]'
+        self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, None))
+
+    def test_none_scheduler_job_id_returns_true(self):
+        pipe = MagicMock()
+        pipe.submitted_at = None
+        pipe.scheduler_job_id = None
+        self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, ['12345[0]']))
+
+    def test_pbs_array_element_in_queue(self):
+        pipe = MagicMock()
+        pipe.submitted_at = None
+        pipe.scheduler_job_id = '4018898[]'
+        self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, ['4018898[2]', '9999']))
+
+    def test_pbs_array_not_in_queue(self):
+        pipe = MagicMock()
+        pipe.submitted_at = None
+        pipe.scheduler_job_id = '4018898[]'
+        self.assertFalse(PipeCoordinator._is_scheduler_job_alive(pipe, ['9999', '5555']))
+
+    def test_non_array_job_in_queue(self):
+        pipe = MagicMock()
+        pipe.submitted_at = None
+        pipe.scheduler_job_id = '12345'
+        self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, ['12345', '9999']))
+
+    def test_non_array_job_not_in_queue(self):
+        pipe = MagicMock()
+        pipe.submitted_at = None
+        pipe.scheduler_job_id = '12345'
+        self.assertFalse(PipeCoordinator._is_scheduler_job_alive(pipe, ['9999']))
+
+    def test_empty_queue(self):
+        pipe = MagicMock()
+        pipe.submitted_at = None
+        pipe.scheduler_job_id = '12345[]'
+        self.assertFalse(PipeCoordinator._is_scheduler_job_alive(pipe, []))
+
+    def test_slurm_array_element_in_queue(self):
+        pipe = MagicMock()
+        pipe.submitted_at = None
+        pipe.scheduler_job_id = '12345'
+        self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, ['12345_7', '9999']))
+
+    def test_slurm_array_not_in_queue(self):
+        pipe = MagicMock()
+        pipe.submitted_at = None
+        pipe.scheduler_job_id = '12345'
+        self.assertFalse(PipeCoordinator._is_scheduler_job_alive(pipe, ['99999_7']))
+
+
+class TestPollPipesJobGone(unittest.TestCase):
+    """Test that poll_pipes passes server_job_ids to reconcile for orphan detection."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_gone_')
+        self.coord = PipeCoordinator(_make_mock_sched(self.tmpdir))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_poll_with_server_job_ids_cleans_stuck_pipe(self):
+        """A pipe whose scheduler job left the queue gets cleaned up."""
+        pipe = self.coord.submit_pipe_run('run_stuck', [_make_spec('t0')])
+        pipe.scheduler_job_id = '99999[]'
+        now = time.time()
+        update_task_state(pipe.pipe_root, 't0', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok',
+                          claimed_at=now, lease_expires_at=now + 86400)
+        update_task_state(pipe.pipe_root, 't0', new_status=TaskState.RUNNING, started_at=now)
+        # Job 99999 is NOT in the queue — pass empty list.
+        self.coord.poll_pipes(server_job_ids=[])
+        # The pipe should have been cleaned up (orphaned → failed_terminal → ingested).
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
 
 class TestIngestPipeResults(unittest.TestCase):
@@ -325,6 +463,50 @@ class TestIngestPipeResults(unittest.TestCase):
             self.coord.ingest_pipe_results(pipe)
             mock_ingest.assert_called_once()
 
+    def test_ingest_records_task_cost(self):
+        """A terminal task yields one cost record shaped like Scheduler job records."""
+        task = _make_spec('t_cost', conformer_index=1)
+        pipe = self.coord.submit_pipe_run('run_cost', [task])
+        _complete_task(pipe.pipe_root, 't_cost')
+        with patch('arc.job.pipe.pipe_coordinator.ingest_completed_task'):
+            self.coord.ingest_pipe_results(pipe)
+        self.assertEqual(len(self.sched.completed_job_records), 1)
+        record = self.sched.completed_job_records[0]
+        self.assertEqual(record['job_name'], 'pipe_run_cost/t_cost')
+        self.assertEqual(record['label'], 'H2O')
+        self.assertEqual(record['job_type'], 'conf_opt')
+        self.assertEqual(record['job_adapter'], 'mockter')
+        self.assertEqual(record['server'], 'pipe')
+        self.assertEqual(record['cpu_cores'], 4)
+        self.assertIsNotNone(record['run_time_sec'])
+        self.assertGreaterEqual(record['run_time_sec'], 0.0)
+        self.assertEqual(record['job_status'], TaskState.COMPLETED.value)
+
+    def test_ingest_cost_dedup_on_reingest(self):
+        """Re-ingesting the same pipe run (e.g., after a restart) must not double-count."""
+        task = _make_spec('t_dedup')
+        pipe = self.coord.submit_pipe_run('run_dedup', [task])
+        _complete_task(pipe.pipe_root, 't_dedup')
+        with patch('arc.job.pipe.pipe_coordinator.ingest_completed_task'):
+            self.coord.ingest_pipe_results(pipe)
+            self.coord.ingest_pipe_results(pipe)
+        self.assertEqual(len(self.sched.completed_job_records), 1)
+
+    def test_ingest_cost_skips_non_terminal_and_handles_missing_timing(self):
+        """Non-terminal tasks are not recorded; cancelled tasks are, with a None run time."""
+        now = time.time()
+        pending_task = _make_spec('t_pending')
+        cancelled_task = _make_spec('t_cancelled')
+        pipe = self.coord.submit_pipe_run('run_mixed', [pending_task, cancelled_task])
+        update_task_state(pipe.pipe_root, 't_cancelled', new_status=TaskState.CANCELLED,
+                          ended_at=now)
+        self.coord.ingest_pipe_results(pipe)
+        self.assertEqual(len(self.sched.completed_job_records), 1)
+        record = self.sched.completed_job_records[0]
+        self.assertEqual(record['job_name'], 'pipe_run_mixed/t_cancelled')
+        self.assertIsNone(record['run_time_sec'])
+        self.assertEqual(record['job_status'], TaskState.CANCELLED.value)
+
     def test_ingest_skips_unreadable_state(self):
         """Ingestion continues when a task's state.json is missing."""
         task = _make_spec('t_missing')
@@ -334,6 +516,62 @@ class TestIngestPipeResults(unittest.TestCase):
         # Remove state.json to simulate corruption
         os.remove(os.path.join(pipe.pipe_root, 'tasks', 't_missing', 'state.json'))
         self.coord.ingest_pipe_results(pipe)  # should not raise
+
+    @patch('arc.job.pipe.pipe_coordinator.job_factory')
+    def test_failed_ess_ejects_to_scheduler_troubleshooting_with_parser_summary(self, mock_job_factory):
+        """FAILED_ESS tasks with parser_summary should be troubleshooted immediately, not blindly rerun."""
+        task = _make_spec('t_ess', task_family='species_sp', engine='orca', cores=12, mem=37888)
+        pipe = self.coord.submit_pipe_run('run_ess', [task])
+        now = time.time()
+        update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok',
+                          claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 't_ess', new_status=TaskState.FAILED_ESS,
+                          ended_at=now + 1, failure_class='ess_error')
+        result_path = os.path.join(pipe.pipe_root, 'tasks', 't_ess', 'attempts', '0', 'result.json')
+        os.makedirs(os.path.dirname(result_path), exist_ok=True)
+        with open(result_path, 'w') as f:
+            json.dump({'parser_summary': {'status': 'errored',
+                                          'keywords': ['MDCI', 'Memory', 'max_total_job_memory'],
+                                          'error': 'Orca suggests to increase per cpu core memory to 10218 MB.',
+                                          'line': 'Please increase MaxCore'}}, f)
+
+        fake_job = MagicMock()
+        mock_job_factory.return_value = fake_job
+
+        self.coord.ingest_pipe_results(pipe)
+
+        self.coord.sched.troubleshoot_ess.assert_called_once()
+        self.coord.sched.run_job.assert_not_called()
+        kwargs = self.coord.sched.troubleshoot_ess.call_args.kwargs
+        self.assertEqual(kwargs['label'], 'H2O')
+        self.assertIs(kwargs['job'], fake_job)
+        self.assertEqual(kwargs['conformer'], 0)
+        mock_job_factory.assert_called_once()
+        factory_kwargs = mock_job_factory.call_args.kwargs
+        self.assertEqual(factory_kwargs['cpu_cores'], 12)
+        self.assertAlmostEqual(factory_kwargs['job_memory_gb'], 37.0)
+
+    def test_failed_ess_without_parser_summary_preserves_resources_on_rerun(self):
+        """FAILED_ESS tasks without parser_summary fall back to Scheduler.run_job with original resources."""
+        task = _make_spec('t_ess_fallback', task_family='species_sp', engine='orca', cores=10, mem=20480)
+        pipe = self.coord.submit_pipe_run('run_ess_fallback', [task])
+        now = time.time()
+        update_task_state(pipe.pipe_root, 't_ess_fallback', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok',
+                          claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 't_ess_fallback', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 't_ess_fallback', new_status=TaskState.FAILED_ESS,
+                          ended_at=now + 1, failure_class='ess_error')
+
+        self.coord.ingest_pipe_results(pipe)
+
+        self.coord.sched.troubleshoot_ess.assert_not_called()
+        self.coord.sched.run_job.assert_called_once()
+        kwargs = self.coord.sched.run_job.call_args.kwargs
+        self.assertEqual(kwargs['cpu_cores'], 10)
+        self.assertAlmostEqual(kwargs['memory'], 20.0)
 
 
 class TestFinalizeSpeciesLeafTask(unittest.TestCase):

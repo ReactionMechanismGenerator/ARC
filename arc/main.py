@@ -29,7 +29,7 @@ from arc.common import (VERSION,
                         )
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
-from arc.level import Level, assign_frequency_scale_factor
+from arc.level import Level, adaptive_levels_as_list, assign_frequency_scale_factor
 from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
 from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
@@ -40,7 +40,7 @@ from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
-from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs
+from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs, normalized_method_and_basis
 from arc.utils.scale import determine_scaling_factors
 
 
@@ -129,6 +129,8 @@ class ARC(object):
                                          if xyz is given.
         compare_to_rmg (bool, optional): If ``True`` data calculated from the RMG-database will be calculated and
                                          included on the parity plot.
+        completed_job_records (list, optional): Per-job cost records accumulated by the Scheduler. Only used for
+                                                restarting, so that a restarted run keeps its cost history.
         compute_thermo (bool, optional): Whether to compute thermodynamic properties for converged species.
         compute_rates (bool, optional): Whether to compute rate coefficients for converged reactions.
         compute_transport (bool, optional): Whether to compute transport properties for converged species.
@@ -204,6 +206,7 @@ class ARC(object):
                                if xyz is given.
         compare_to_rmg (bool): If ``True`` data calculated from the RMG-database will be calculated and included on the
                                parity plot.
+        completed_job_records (list): Per-job cost records accumulated by the Scheduler, carried across a restart.
         compute_thermo (bool): Whether to compute thermodynamic properties for converged species.
         compute_rates (bool): Whether to compute rate coefficients for converged reactions.
         compute_transport (bool): Whether to compute transport properties for converged species.
@@ -227,6 +230,7 @@ class ARC(object):
                  bath_gas: str | None = None,
                  calc_freq_factor: bool = True,
                  compare_to_rmg: bool = True,
+                 completed_job_records: list | None = None,
                  composite_method: str | dict | Level | None = None,
                  compute_rates: bool = True,
                  compute_thermo: bool = True,
@@ -299,6 +303,7 @@ class ARC(object):
         self.calc_freq_factor = calc_freq_factor
         self.keep_checks = keep_checks
         self.compare_to_rmg = compare_to_rmg
+        self.completed_job_records = completed_job_records or list()
         self.compute_thermo = compute_thermo
         self.compute_rates = compute_rates
         self.trsh_ess_jobs = trsh_ess_jobs
@@ -413,6 +418,10 @@ class ARC(object):
         self._warn_year_on_non_arkane_levels()
         if self.thermo_adapter == 'arkane':
             self.check_arkane_level_of_theory()
+            if self.compute_thermo:
+                warn_if_arkane_level_differs(arkane_level=self.arkane_level_of_theory,
+                                             energy_level=self.composite_method or self.sp_level,
+                                             adaptive_levels=self.adaptive_levels)
 
         if self.job_types['freq'] or self.composite_method is not None:
             self.check_freq_scaling_factor()
@@ -436,10 +445,7 @@ class ARC(object):
         """
         restart_dict = dict()
         if self.adaptive_levels is not None:
-            restart_dict['adaptive_levels'] = [
-                {'atom_range': [atom_range[0], atom_range[1]],
-                 'levels': {' '.join(job_types): level.as_dict() for job_types, level in levels_dict.items()}}
-                for atom_range, levels_dict in self.adaptive_levels.items()]
+            restart_dict['adaptive_levels'] = adaptive_levels_as_list(self.adaptive_levels)
         if self.allow_nonisomorphic_2d:
             restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
         if self.arkane_level_of_theory is not None:
@@ -453,6 +459,8 @@ class ARC(object):
             restart_dict['calc_freq_factor'] = self.calc_freq_factor
         if not self.compare_to_rmg:
             restart_dict['compare_to_rmg'] = self.compare_to_rmg
+        if self.completed_job_records:
+            restart_dict['completed_job_records'] = self.completed_job_records
         if self.composite_method is not None:
             restart_dict['composite_method'] = self.composite_method.as_dict()
         if not self.compute_rates:
@@ -640,36 +648,38 @@ class ARC(object):
 
         self.save_project_info_file()
 
-        process_arc_project(thermo_adapter=self.thermo_adapter.lower(),
-                            kinetics_adapter=self.kinetics_adapter.lower(),
-                            project=self.project,
-                            project_directory=self.project_directory,
-                            species_dict=self.scheduler.species_dict,
-                            reactions=self.scheduler.rxn_list,
-                            output_dict=self.output,
-                            bac_type=self.bac_type,
-                            freq_scale_factor=self.freq_scale_factor,
-                            compute_thermo=self.compute_thermo,
-                            compute_rates=self.compute_rates,
-                            compute_transport=self.compute_transport,
-                            T_min=self.T_min,
-                            T_max=self.T_max,
-                            T_count=self.T_count or 50,
-                            lib_long_desc=self.lib_long_desc,
-                            compare_to_rmg=self.compare_to_rmg,
-                            sp_level=self.arkane_level_of_theory,
-                            freq_level=self.freq_level,
-                            skip_nmd=self.skip_nmd,
-                            )
+        aec_yml_sha256s = process_arc_project(thermo_adapter=self.thermo_adapter.lower(),
+                                              kinetics_adapter=self.kinetics_adapter.lower(),
+                                              project=self.project,
+                                              project_directory=self.project_directory,
+                                              species_dict=self.scheduler.species_dict,
+                                              reactions=self.scheduler.rxn_list,
+                                              output_dict=self.output,
+                                              bac_type=self.bac_type,
+                                              freq_scale_factor=self.freq_scale_factor,
+                                              compute_thermo=self.compute_thermo,
+                                              compute_rates=self.compute_rates,
+                                              compute_transport=self.compute_transport,
+                                              T_min=self.T_min,
+                                              T_max=self.T_max,
+                                              T_count=self.T_count or 50,
+                                              lib_long_desc=self.lib_long_desc,
+                                              compare_to_rmg=self.compare_to_rmg,
+                                              sp_level=self.arkane_level_of_theory,
+                                              freq_level=self.freq_level,
+                                              skip_nmd=self.skip_nmd,
+                                              )
 
         # Determine whether the user supplied the scale factor explicitly, or ARC looked it up.
         _freq_level_for_lookup = self.composite_method if self.composite_method is not None else self.freq_level
         _yml_scale = assign_frequency_scale_factor(level=_freq_level_for_lookup) if _freq_level_for_lookup is not None else None
         _user_provided_scale = (_yml_scale is None or _yml_scale != self.freq_scale_factor)
 
-        neb_level = resolve_neb_level(self.ts_adapters)
-
         try:
+            has_ts_or_reaction = bool(self.scheduler.rxn_list) \
+                or any(spc.is_ts for spc in self.scheduler.species_dict.values())
+            neb_level = resolve_neb_level(self.scheduler.ts_adapters) if has_ts_or_reaction else None
+            requested_levels = self.get_requested_levels_for_output()
             write_output_yml(
                 project=self.project,
                 project_directory=self.project_directory,
@@ -680,6 +690,11 @@ class ARC(object):
                 freq_level=self.freq_level,
                 sp_level=self.sp_level,
                 neb_level=neb_level,
+                scan_level=requested_levels['scan_level'],
+                irc_level=requested_levels['irc_level'],
+                conformer_opt_level=requested_levels['conformer_opt_level'],
+                conformer_sp_level=requested_levels['conformer_sp_level'],
+                ts_guess_level=requested_levels['ts_guess_level'],
                 composite_method=self.composite_method,
                 freq_scale_factor=self.freq_scale_factor,
                 freq_scale_factor_user_provided=_user_provided_scale,
@@ -688,6 +703,9 @@ class ARC(object):
                 arkane_level_of_theory=self.arkane_level_of_theory,
                 irc_requested=self.job_types.get('irc', True),
                 t0=self.t0,
+                completed_job_records=self.scheduler.completed_job_records,
+                adaptive_levels=self.adaptive_levels,
+                arc_aec_yml_sha256s=aec_yml_sha256s,
             )
         except Exception as e:
             logger.error(f'Could not write output.yml: {e}')
@@ -699,6 +717,9 @@ class ARC(object):
     def save_project_info_file(self):
         """
         Save a project info file.
+
+        Species that are absent from ``self.output`` (e.g., an IRC species deleted mid-run)
+        are logged and are not listed in the info file nor in the accompanying YAML file.
         """
         self.execution_time = time_lapse(t0=self.t0)
         path = os.path.join(self.project_directory, f'{self.project}.info')
@@ -732,7 +753,13 @@ class ARC(object):
             txt += 'NOT using bond additivity corrections for thermo\n'
         txt += f'\nUsing the following ESS settings: {self.ess_settings}\n'
         txt += '\nConsidered the following species and TSs:\n'
+        unreported_labels = [species.label for species in self.species if species.label not in self.output]
+        if unreported_labels:
+            logger.warning(f'The following species are missing from the output dictionary and will not be '
+                           f'reported in {self.project}.info nor in {self.project}_info.yml: {unreported_labels}')
         for species in self.species:
+            if species.label not in self.output:
+                continue
             descriptor = 'TS' if species.is_ts else 'Species'
             failed = '' if self.output[species.label]['convergence'] else ' (Failed!)'
             txt += f'{descriptor} {species.label}{failed} (run time: {species.run_time})\n'
@@ -753,7 +780,7 @@ class ARC(object):
         if os.path.exists(path):
             os.remove(path)
         for species in self.species:
-            if not species.is_ts:
+            if not species.is_ts and species.label in self.output:
                 spc_dict = dict()
                 spc_dict['label'] = species.label
                 spc_dict['success'] = self.output[species.label]['convergence']
@@ -1024,6 +1051,46 @@ class ARC(object):
                 # no H species defined, make one
                 h = ARCSpecies(label='H', smiles='[H]', compute_thermo=False, e0_only=True)
                 self.species.append(h)
+
+    def get_requested_levels_for_output(self) -> dict[str, Level | None]:
+        """
+        Get the run-level requested levels of the job types that output.yml states in its header.
+
+        A level is returned only if a job of that type could have run in this run and no adaptive level
+        replaces it, otherwise ``None``. ``scan_level`` needs rotor scans to be requested (``job_types['rotors']``)
+        and no adaptive ``scan`` entry; ``irc_level`` needs IRC to be requested, the run to have a TS, and no
+        adaptive ``irc`` entry; ``conformer_opt_level`` needs a non-TS, non-monoatomic species without an Arkane
+        yml file, either ``job_types['conf_opt']`` or a conformer that was actually optimized, and no adaptive
+        ``conf_opt`` entry; ``conformer_sp_level`` needs the same species, ``job_types['conf_sp']``, a level that
+        differs from ``conformer_opt_level``, and no adaptive ``conf_sp`` entry; ``ts_guess_level`` needs a TS
+        species and no adaptive ``conf_opt`` entry, the job type of the TS guess optimizations.
+
+        Returns:
+            dict: ``scan_level``, ``irc_level``, ``conformer_opt_level``, ``conformer_sp_level`` and
+                  ``ts_guess_level`` mapped to a ``Level`` or ``None``.
+        """
+        species = list(self.scheduler.species_dict.values()) if self.scheduler is not None else list(self.species)
+        adaptive_job_types = {job_type for levels_by_job_type in (self.adaptive_levels or dict()).values()
+                              for job_types in levels_by_job_type for job_type in job_types}
+        has_ts = any(spc.is_ts for spc in species)
+        conformer_species = [spc for spc in species
+                             if not spc.is_ts and spc.yml_path is None and spc.is_monoatomic() is not True]
+        conformers_optimized = any(level for spc in conformer_species
+                                   for level in (getattr(spc, 'conformer_levels', None) or list()))
+        conf_opt_ran = bool(conformer_species) and (bool(self.job_types.get('conf_opt')) or conformers_optimized)
+        conformer_opt_level = self.conformer_opt_level if conf_opt_ran and 'conf_opt' not in adaptive_job_types \
+            else None
+        conformer_sp_level = self.conformer_sp_level \
+            if conf_opt_ran and self.job_types.get('conf_sp') and 'conf_sp' not in adaptive_job_types \
+            and self.conformer_sp_level is not None and self.conformer_sp_level != self.conformer_opt_level else None
+        return {'scan_level': self.scan_level
+                if self.job_types.get('rotors') and 'scan' not in adaptive_job_types else None,
+                'irc_level': self.irc_level
+                if self.job_types.get('irc') and has_ts and 'irc' not in adaptive_job_types else None,
+                'conformer_opt_level': conformer_opt_level,
+                'conformer_sp_level': conformer_sp_level,
+                'ts_guess_level': self.ts_guess_level if has_ts and 'conf_opt' not in adaptive_job_types else None,
+                }
 
     def set_levels_of_theory(self):
         """
@@ -1337,6 +1404,89 @@ def check_rotor_scan_resolution(rotor_scan_resolution: float | None) -> float | 
                          f'number of steps. Got: {rotor_scan_resolution}, which leaves a remainder of '
                          f'{divmod(360, rotor_scan_resolution)[1]}.')
     return rotor_scan_resolution
+
+
+def _level_label(level: Level) -> str:
+    """
+    Name a level in a warning by its method and basis (``Level.simple()``) plus the dispersion and solvation
+    fields, which ``simple()`` omits, so two levels that differ only in those fields read differently.
+
+    Args:
+        level (Level): The level of theory.
+
+    Returns:
+        str: The label, e.g., ``'b3lyp/def2tzvp, dispersion: gd3bj'``.
+    """
+    label = level.simple()
+    if level.dispersion is not None:
+        label += f', dispersion: {level.dispersion}'
+    if level.solvation_method is not None:
+        label += f', solvation_method: {level.solvation_method}'
+        if level.solvent is not None:
+            label += f', solvent: {level.solvent}'
+    return label
+
+
+def warn_if_arkane_level_differs(arkane_level: Level | None,
+                                 energy_level: Level | None,
+                                 adaptive_levels: dict | None = None,
+                                 ) -> bool:
+    """
+    Warn when Arkane will subtract the atom energies of a level other than the one the species' energies were
+    computed at. Arkane still applies the correction, but the resulting H298 and NASA polynomials then mix two
+    levels and are not formation enthalpies. A dummy ``arkane_level_of_theory`` (for a project whose level Arkane
+    does not know, e.g., when only differences such as bond dissociation energies are of interest) triggers the
+    warning and does not stop the run.
+
+    Levels are compared on their method (with the dispersion correction folded in) and basis, normalized as in
+    Arkane database matching, so spelling variants (``def2-TZVP`` vs. ``def2tzvp``) and refit years are not
+    differences.
+
+    Arkane has energy corrections for gas-phase levels only, so ARC matches no corrections for a solvated Arkane
+    level (and the startup check treats it as a level without corrections). A gas-phase Arkane level set for
+    solvated energy levels does match, and Arkane then subtracts gas-phase atom energies from solvated energies:
+    this function also warns about that, since the two levels compare equal on method and basis.
+
+    Args:
+        arkane_level (Level | None): The level ARC hands Arkane (``arkane_level_of_theory``).
+        energy_level (Level | None): The level the species' energies were computed at (the composite method or
+                                     the sp level).
+        adaptive_levels (dict, optional): The processed adaptive levels. Every sp or composite level in them is
+                                          the energy level of the species in its heavy-atom range, and is checked
+                                          as well.
+
+    Returns:
+        bool: Whether a warning was issued.
+    """
+    if arkane_level is None:
+        return False
+    energy_levels = [energy_level] if energy_level is not None else list()
+    for levels_by_job_type in (adaptive_levels or dict()).values():
+        for job_types, level in levels_by_job_type.items():
+            if 'sp' in job_types or 'composite' in job_types:
+                energy_levels.append(level)
+    arkane_key = normalized_method_and_basis(arkane_level)
+    differing, solvated = list(), list()
+    for level in energy_levels:
+        if normalized_method_and_basis(level) != arkane_key and _level_label(level) not in differing:
+            differing.append(_level_label(level))
+        if level.solvation_method is not None and _level_label(level) not in solvated:
+            solvated.append(_level_label(level))
+    warned = False
+    if differing:
+        logger.warning(f'The Arkane level of theory ({_level_label(arkane_level)}) differs from the level some '
+                       f'species energies are computed at ({"; ".join(differing)}). Arkane will subtract '
+                       f'{_level_label(arkane_level)} atom energies from energies at another level, so the computed '
+                       f'H298 and NASA polynomials of those species are not formation enthalpies.')
+        warned = True
+    if solvated and arkane_level.solvation_method is None:
+        logger.warning(f'Species energies are computed with a solvation method ({"; ".join(solvated)}), but the '
+                       f'Arkane level of theory ({_level_label(arkane_level)}) is a gas-phase level: Arkane will '
+                       f'subtract its gas-phase atom energies from solvated energies (Arkane has no energy '
+                       f'corrections for solvated levels), so the computed H298 and NASA polynomials of those species '
+                       f'are not formation enthalpies.')
+        warned = True
+    return warned
 
 
 def process_adaptive_levels(adaptive_levels: list | None) -> dict | None:

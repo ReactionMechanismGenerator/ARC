@@ -13,9 +13,11 @@ import unittest
 import unittest.mock
 import pytest
 
+from arc.common import ARC_TESTING_PATH
 from arc.exceptions import SettingsError
 from arc.job.adapters.ts.orca_neb import OrcaNEBAdapter
 from arc.level import Level
+from arc.output import _get_neb_succeeded
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 
@@ -242,6 +244,70 @@ class TestOrcaNEB(unittest.TestCase):
         # Verify coordinates match the last one in the log
         # C -1.406738 -0.055989 0.104836
         self.assertAlmostEqual(tsg.initial_xyz['coords'][0][0], -1.406738, places=5)
+
+    def test_task_3_ess_status_of_a_normally_terminated_neb_log(self):
+        """
+        Task 3: Orca NEB keeps its adapter identity while using Orca's ESS status classification,
+        so that a normally terminated run is marked 'done' and its guesses may be ingested.
+        """
+        # This test owns its fixture: a private project directory and a private adapter instance, so it
+        # neither races the shared class-level project directory under xdist nor depends on the state
+        # (initial_time / final_time / job_status) that the other tests in this class mutate in place.
+        project_directory = os.path.join(ARC_TESTING_PATH, 'test_OrcaNEBAdapter_ess_status')
+        if os.path.exists(project_directory):
+            shutil.rmtree(project_directory, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = OrcaNEBAdapter(project='test_orca_neb_ess_status',
+                             job_type='tsg',
+                             project_directory=project_directory,
+                             reactions=[ARCReaction(r_species=[ARCSpecies(label='i-C3H7', smiles='C[CH]C')],
+                                                    p_species=[ARCSpecies(label='n-C3H7', smiles='CC[CH2]')])],
+                             level=self.level,
+                             server='local')
+
+        log_path = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+        output_path = job.local_path_to_output_file
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        shutil.copy(log_path, output_path)
+
+        job.initial_time = datetime.datetime(2026, 2, 16, 10, 0, 0)
+        job.final_time = datetime.datetime(2026, 2, 16, 10, 15, 42)
+        with unittest.mock.patch.object(OrcaNEBAdapter, '_get_additional_job_info', return_value=None):
+            job._check_job_ess_status()
+
+        self.assertEqual(job.job_adapter, 'orca_neb')
+        self.assertEqual(job.ess_software, 'orca')
+        self.assertEqual(job.job_status[1]['status'], 'done')
+        self.assertEqual(job.job_status[1]['keywords'], list())
+        self.assertEqual(job.job_status[1]['error'], '')
+        self.assertEqual(job.job_status[1]['line'], '')
+
+    def test_task_3_neb_succeeded_follows_the_convergence_line_of_the_log(self):
+        """
+        Task 3: A converged NEB log is exported as a successful NEB, and the same log cut before the convergence
+        banner is not, although both give the in-core guess a geometry.
+        """
+        converged_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+                                      'testing', 'neb', 'neb_res.out')
+        with open(converged_path, 'r') as f:
+            lines = f.readlines()
+        cut = next(i for i, line in enumerate(lines) if 'THE NEB OPTIMIZATION HAS CONVERGED' in line)
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, ignore_errors=True)
+        truncated_path = os.path.join(scratch, 'truncated.out')
+        with open(truncated_path, 'w') as f:
+            f.writelines(lines[:cut])
+        ts_species = self.job.reactions[0].ts_species
+        self.job.initial_time = datetime.datetime(2026, 2, 16, 10, 0, 0)
+        self.job.final_time = datetime.datetime(2026, 2, 16, 10, 15, 42)
+        for path, expected in ((converged_path, True), (truncated_path, False)):
+            ts_species.ts_guesses = list()
+            with unittest.mock.patch.object(self.job, 'local_path_to_output_file', path):
+                self.job.process_run()
+            self.assertEqual(len(ts_species.ts_guesses), 1)
+            self.assertIsNotNone(ts_species.ts_guesses[0].initial_xyz)
+            self.assertEqual(ts_species.ts_guesses[0].log_path, path)
+            self.assertIs(_get_neb_succeeded(ts_species), expected)
 
     @classmethod
     def tearDownClass(cls):
