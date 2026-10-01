@@ -563,6 +563,7 @@
                     <span class="k">if</span> <span class="n">spc</span><span class="o">.</span><span class="n">label</span> <span class="ow">in</span> <span class="n">rxn</span><span class="o">.</span><span class="n">products</span><span class="p">:</span>
                         <span class="n">rxn</span><span class="o">.</span><span class="n">p_species</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="p">)</span>
                 <span class="n">rxn</span><span class="o">.</span><span class="n">check_attributes</span><span class="p">()</span>
+                <span class="n">rxn</span><span class="o">.</span><span class="n">check_charge_balance</span><span class="p">()</span>
                 <span class="n">family_text</span> <span class="o">=</span> <span class="s1">''</span>
                 <span class="k">if</span> <span class="n">rxn</span><span class="o">.</span><span class="n">family</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="n">family_text</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'identified as belonging to RMG family </span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">family</span><span class="si">}</span><span class="s1">'</span>
