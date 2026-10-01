@@ -231,7 +231,9 @@ def make_transition_state() -> ARCSpecies:
 
 def make_reaction() -> ARCReaction:
     """A reaction with fitted Arkane kinetics and a long description."""
-    rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O', ts_label='TS0')
+    rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O', ts_label='TS0',
+                      r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                      p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
     rxn.multiplicity = 2
     rxn.family = 'H_Abstraction'
     rxn.long_kinetic_description = 'Fitted by Arkane over 300-3000 K.'
@@ -1096,6 +1098,7 @@ class TestArkaneAppliedExportsValidate(SchemaAssertionMixin, unittest.TestCase):
             species_dict={'sBuOH': species},
             output_dict={'sBuOH': {'convergence': True, 'paths': {'geo': OPT_LOG, 'freq': FREQ_LOG, 'sp': OPT_LOG},
                                    'job_types': {'opt': True}}},
+            bac_type='p',
         )
         self.assert_valid(document)
         statmech = document['species'][0]['statmech']
@@ -1130,7 +1133,7 @@ class TestArkaneAppliedExportsValidate(SchemaAssertionMixin, unittest.TestCase):
                     output_dict={label: {'convergence': True, 'job_types': {'opt': True},
                                          'paths': {'geo': OPT_LOG, 'freq': FREQ_LOG, 'sp': OPT_LOG}}
                                  for label in ('sBuOH', 'TS0')},
-                    reactions=[make_reaction()], species_corrections=corrections)
+                    reactions=[make_reaction()], species_corrections=corrections, bac_type='p')
                 self.assert_valid(document)
                 records = document['transition_states'][0]['energy_corrections']
                 self.assertEqual([record['correction_type'] for record in records], expected)
@@ -1376,6 +1379,109 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.species['thermo']['atom_corrections_level'] = None
         self.assert_invalid(self.document, 'bond_corrections_applied')
 
+    def test_applied_bond_corrections_require_a_bac_type(self):
+        """A thermo block that says bond corrections were applied needs a header bac_type that names the model."""
+        self.assertIs(self.species['thermo']['bond_corrections_applied'], True)
+        for bad in (None, 'x'):
+            with self.subTest(bac_type=bad):
+                self.document['bac_type'] = bad
+                self.assert_invalid(self.document, 'bac_type')
+        del self.document['bac_type']
+        self.assert_invalid(self.document, 'bac_type')
+
+    def test_applied_e0_bond_corrections_require_a_bac_type(self):
+        """A species or TS statmech block that says its E0 had bond corrections applied needs a bac_type"""
+        for kind, index in (('species', 0), ('transition_states', 0)):
+            with self.subTest(record=kind):
+                document = copy.deepcopy(self.document)
+                document['bac_type'] = 'p'
+                for record in document['species']:
+                    record['thermo'] = None
+                for record in document['species'] + document['transition_states']:
+                    if record['statmech'] is not None:
+                        record['statmech']['e0_bond_corrections_applied'] = None
+                statmech = document[kind][index]['statmech']
+                self.assertIsNotNone(statmech)
+                statmech['e0_bond_corrections_applied'] = True
+                self.assert_valid(document)
+                document['bac_type'] = None
+                self.assert_invalid(document, 'bac_type')
+                statmech['e0_bond_corrections_applied'] = False
+                self.assert_valid(document)
+
+    def test_a_null_bac_type_is_legal_when_no_thermo_applied_bond_corrections(self):
+        """The rule is one-way: bond corrections off, or unknown, leave bac_type free"""
+        for applied, bond in ((False, False), (None, None)):
+            with self.subTest(atom_corrections_applied=applied):
+                document = copy.deepcopy(self.document)
+                thermo = document['species'][0]['thermo']
+                thermo['atom_corrections_applied'], thermo['bond_corrections_applied'] = applied, bond
+                thermo['atom_corrections_level'] = None
+                for record in document['species'] + document['transition_states']:
+                    if record['statmech'] is not None:
+                        record['statmech']['e0_bond_corrections_applied'] = bond
+                document['bac_type'] = None
+                self.assert_valid(document)
+
+    def test_the_reaction_species_labels_are_required_arrays(self):
+        """Both lists are required and may not be null, and each entry is a label"""
+        reaction = self.document['reactions'][0]
+        for key in ('reactant_species_labels', 'product_species_labels'):
+            with self.subTest(key=key):
+                self.assertIsInstance(reaction[key], list)
+                document = copy.deepcopy(self.document)
+                del document['reactions'][0][key]
+                self.assert_invalid(document, key)
+                document = copy.deepcopy(self.document)
+                document['reactions'][0][key] = None
+                self.assert_invalid(document, key)
+                document = copy.deepcopy(self.document)
+                document['reactions'][0][key] = [1]
+                self.assert_invalid(document, key)
+                document = copy.deepcopy(self.document)
+                document['reactions'][0][key] = []
+                self.assert_invalid(document, key)
+
+    def test_nmd_forced_is_required_nullable_boolean_and_ts_only(self):
+        """The key is required on a TS, may be true, false or null, and is not a species key"""
+        document = copy.deepcopy(self.document)
+        del document['transition_states'][0]['nmd_forced']
+        self.assert_invalid(document, 'nmd_forced')
+        for good in (True, False, None):
+            with self.subTest(value=good):
+                document = copy.deepcopy(self.document)
+                document['transition_states'][0]['nmd_forced'] = good
+                self.assert_valid(document)
+        document = copy.deepcopy(self.document)
+        document['transition_states'][0]['nmd_forced'] = 'yes'
+        self.assert_invalid(document, 'nmd_forced')
+        document = copy.deepcopy(self.document)
+        document['species'][0]['nmd_forced'] = False
+        self.assert_invalid(document, 'nmd_forced')
+
+    def test_the_conformer_program_lists_are_emitted_with_the_conformers(self):
+        """The two lists are emitted and omitted with conformers, hold strings or null, and need each other"""
+        self.assertIn('conformers', self.species)
+        self.assertEqual(len(self.species['conformer_ess_software']), len(self.species['conformers']))
+        self.assertEqual(len(self.species['conformer_ess_version']), len(self.species['conformers']))
+        for key in ('conformer_ess_software', 'conformer_ess_version'):
+            with self.subTest(key=key):
+                document = copy.deepcopy(self.document)
+                del document['species'][0][key]
+                self.assert_invalid(document, key)
+                document = copy.deepcopy(self.document)
+                document['species'][0][key] = [1] * len(self.species['conformers'])
+                self.assert_invalid(document, key)
+        document = copy.deepcopy(self.document)
+        document['species'][0]['conformer_ess_software'] = ['gaussian'] + [None] * (len(self.species['conformers']) - 1)
+        document['species'][0]['conformer_ess_version'] = ['Gaussian 16, Revision C.01'] \
+            + [None] * (len(self.species['conformers']) - 1)
+        self.assert_valid(document)
+        document = copy.deepcopy(self.document)
+        for key in ('conformers', 'conformer_energies', 'conformers_isotopes'):
+            del document['species'][0][key]
+        self.assert_invalid(document, 'conformer_ess_software')
+
     def test_zero_based_scan_index_is_rejected(self):
         """``index_base`` is pinned to 1: a 0 would silently shift every atom."""
         self.species['rotor_scans'][0]['result']['coordinate']['index_base'] = 0
@@ -1615,6 +1721,62 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
                 mutate(self.ts['irc_participant_mapping'])
                 self.assert_invalid(self.document, 'irc_participant_mapping')
 
+    def test_the_ts_atom_map_keys_are_required_nullable_closed_and_coupled(self):
+        """Both keys are required; the map and its reason are exactly one of null; the map needs an atom_map"""
+        reaction = self.document['reactions'][0]
+        self.assertIsNone(reaction['ts_atom_map'])
+        self.assertIsNotNone(reaction['ts_atom_map_unavailable_reason'])
+        for key in ('ts_atom_map', 'ts_atom_map_unavailable_reason'):
+            with self.subTest(missing=key):
+                document = copy.deepcopy(self.document)
+                del document['reactions'][0][key]
+                self.assert_invalid(document, key)
+        reasons = ('no_ts', 'irc_not_passed', 'irc_fallback_path', 'atom_order_mismatch', 'no_atom_map',
+                   'endpoint_perception_mismatch', 'atom_map_contradicts_ts', 'ts_geometry_contradicts_map',
+                   'species_atom_order_mismatch', 'computation_failed', 'not_recorded')
+        for reason in reasons:
+            with self.subTest(reason=reason):
+                reaction['ts_atom_map_unavailable_reason'] = reason
+                self.assert_valid(self.document)
+        for bad in ('unknown', 3, None):
+            with self.subTest(reason=bad):
+                reaction['ts_atom_map_unavailable_reason'] = bad
+                self.assert_invalid(self.document, 'ts_atom_map_unavailable_reason')
+        valid = {'ts_label': 'TS0', 'reactants': [1, 0], 'products': [1, 0],
+                 'method': 'irc_endpoint_cgr_isomorphism', 'reactant_endpoint': 2,
+                 'ts_atom_order_follows_reactants': False}
+
+        def fill(ts_atom_map, reason, atom_map=(1, 0)):
+            reaction.update({'ts_atom_map': copy.deepcopy(ts_atom_map), 'ts_atom_map_unavailable_reason': reason,
+                             'atom_map': list(atom_map) if atom_map is not None else None})
+            if atom_map is not None:
+                reaction.update({'atom_map_reactant_labels': ['A'], 'atom_map_product_labels': ['B'],
+                                 'atom_map_source': 'declared', 'atom_map_method': None})
+
+        fill(valid, None)
+        self.assert_valid(self.document)
+        fill(valid, 'not_recorded')
+        self.assert_invalid(self.document, 'ts_atom_map_unavailable_reason')
+        fill(valid, None, atom_map=None)
+        self.assert_invalid(self.document, 'atom_map')
+        for description, mutate in (
+                ('missing key', lambda m: m.pop('method')),
+                ('no reactant endpoint', lambda m: m.pop('reactant_endpoint')),
+                ('endpoint 3', lambda m: m.update(reactant_endpoint=3)),
+                ('extra key', lambda m: m.update(extra=1)),
+                ('negative atom', lambda m: m.update(reactants=[-1, 0])),
+                ('float atom', lambda m: m.update(products=[0.5, 1])),
+                ('string atom', lambda m: m.update(products=['0', '1'])),
+                ('other method', lambda m: m.update(method='other')),
+                ('flag not a bool', lambda m: m.update(ts_atom_order_follows_reactants='yes')),
+                ('label not a string', lambda m: m.update(ts_label=None)),
+                ('null reactants', lambda m: m.update(reactants=None))):
+            with self.subTest(description):
+                malformed = copy.deepcopy(valid)
+                mutate(malformed)
+                fill(malformed, None)
+                self.assert_invalid(self.document, 'ts_atom_map')
+
     def test_populated_freq_final_settings_is_rejected(self):
         """The contract states this is always null until a real signal exists."""
         self.species['freq_final_settings'] = {'grid': 'ultrafine'}
@@ -1805,6 +1967,8 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         del self.species['conformers']
         del self.species['conformer_energies']
         del self.species['conformers_isotopes']
+        del self.species['conformer_ess_software']
+        del self.species['conformer_ess_version']
         self.assert_invalid(self.document, 'conformer_levels')
         self.species['conformer_levels'] = None
         self.assert_invalid(self.document, 'conformer_energy_kind')

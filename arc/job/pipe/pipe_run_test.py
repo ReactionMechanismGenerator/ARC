@@ -822,6 +822,16 @@ class TestIngestConformerProvenance(unittest.TestCase):
                           {'kind': 'electronic_kj_mol', 'level': Level(repr=self.CONF_OPT).as_dict()}])
         self.assertAlmostEqual(self.species.conformer_energies[1], parser.parse_e_elect(log_file_path=self.log), 5)
 
+    def test_a_conf_opt_task_records_its_log_and_a_conf_sp_or_failed_task_does_not(self):
+        """Test that the log of the ingested optimization is recorded for its conformer only"""
+        self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 1)
+        self.assertEqual(self.species.conformer_logs, [None, self.log])
+        self.ingest(pipe_run_module._ingest_conf_sp, 'conf_sp', self.CONF_SP, 0)
+        self.assertEqual(self.species.conformer_logs, [None, self.log])
+        with unittest.mock.patch.object(pipe_run_module.parser, 'parse_geometry', return_value=None):
+            self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 0)
+        self.assertEqual(self.species.conformer_logs, [None, self.log])
+
     def test_a_conf_sp_task_records_the_energy_level_and_keeps_the_geometry_level(self):
         """Test that a piped conformer single point names the energy's level and leaves the geometry's level"""
         self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 1)

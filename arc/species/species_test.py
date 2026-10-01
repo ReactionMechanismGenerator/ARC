@@ -885,6 +885,36 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         ts.populate_ts_checks()
         self.assertIsNone(ts.irc_participant_mapping)
 
+    def test_the_ts_atom_map_and_its_reason_survive_a_restart_and_are_reset_with_the_ts_checks(self):
+        """Test that a TS's ts_atom_map and ts_atom_map_unavailable_reason are saved, restored, absent from an old
+        dict, ignored when malformed, and cleared."""
+        ts = ARCSpecies(label='TS0', is_ts=True, smiles='[H]')
+        ts_atom_map = {'ts_label': 'TS0', 'reactants': [1, 0], 'products': [1, 0],
+                       'method': 'irc_endpoint_cgr_isomorphism', 'ts_atom_order_follows_reactants': False}
+        self.assertIsNone(ts.ts_atom_map)
+        self.assertIsNone(ts.ts_atom_map_unavailable_reason)
+        self.assertNotIn('ts_atom_map', ts.as_dict())
+        self.assertNotIn('ts_atom_map_unavailable_reason', ts.as_dict())
+        ts.ts_checks['IRC'] = True
+        ts.ts_atom_map = ts_atom_map
+        ts_dict = ts.as_dict()
+        self.assertEqual(ts_dict['ts_atom_map'], ts_atom_map)
+        self.assertEqual(ARCSpecies(species_dict=ts_dict).ts_atom_map, ts_atom_map)
+        ts_dict['ts_atom_map'] = 'garbage'
+        self.assertIsNone(ARCSpecies(species_dict=ts_dict).ts_atom_map)
+        del ts_dict['ts_atom_map']
+        self.assertIsNone(ARCSpecies(species_dict=ts_dict).ts_atom_map)
+        ts.ts_atom_map, ts.ts_atom_map_unavailable_reason = None, 'atom_order_mismatch'
+        ts_dict = ts.as_dict()
+        self.assertEqual(ts_dict['ts_atom_map_unavailable_reason'], 'atom_order_mismatch')
+        self.assertEqual(ARCSpecies(species_dict=ts_dict).ts_atom_map_unavailable_reason, 'atom_order_mismatch')
+        ts_dict['ts_atom_map_unavailable_reason'] = 7
+        self.assertIsNone(ARCSpecies(species_dict=ts_dict).ts_atom_map_unavailable_reason)
+        ts.ts_atom_map, ts.ts_atom_map_unavailable_reason = ts_atom_map, 'no_atom_map'
+        ts.populate_ts_checks()
+        self.assertIsNone(ts.ts_atom_map)
+        self.assertIsNone(ts.ts_atom_map_unavailable_reason)
+
     def test_as_dict(self):
         """Test Species.as_dict()"""
         spc_dict = self.spc3.as_dict()
@@ -3945,6 +3975,30 @@ class TestConformerProvenance(unittest.TestCase):
         del old['conformer_levels']
         del old['conformer_energy_sources']
         self.assertEqual(ARCSpecies(species_dict=old).conformer_levels, [None] * len(spc.conformers))
+
+    def test_the_conformer_log_is_recorded_with_the_level_and_stays_in_lockstep(self):
+        """Test that a log is recorded beside the level, padded for old restarts, and dropped by a reset"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        spc.generate_conformers(n_confs=3)
+        self.assertEqual(spc.conformer_logs, [None] * len(spc.conformers))
+        spc.record_conformer_geometry_level(1, Level(method='b3lyp', basis='6-31g'),
+                                            log_path='/runs/conf_opt_1/output.out')
+        self.assertEqual(spc.conformer_logs[1], '/runs/conf_opt_1/output.out')
+        self.assertIsNone(spc.conformer_logs[0])
+        spc.record_conformer_geometry_level(0, None)
+        self.assertIsNone(spc.conformer_logs[0])
+        restored = ARCSpecies(species_dict=spc.as_dict())
+        self.assertEqual(restored.conformer_logs, spc.conformer_logs)
+        old = spc.as_dict()
+        del old['conformer_logs']
+        self.assertEqual(ARCSpecies(species_dict=old).conformer_logs, [None] * len(spc.conformers))
+        n_before = len(spc.conformers)
+        spc.generate_conformers(n_confs=2)
+        self.assertEqual(len(spc.conformer_logs), len(spc.conformers))
+        self.assertGreater(len(spc.conformers), n_before)
+        self.assertEqual(spc.conformer_logs[1], '/runs/conf_opt_1/output.out')
+        spc.reset_conformer_provenance()
+        self.assertEqual(spc.conformer_logs, [None] * len(spc.conformers))
 
     def test_the_e0_switches_and_arkane_rotor_modes_round_trip_and_default_to_null(self):
         """Test that the record of the Arkane run that wrote e0 survives a restart, and an old dict has none"""

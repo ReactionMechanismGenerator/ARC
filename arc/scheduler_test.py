@@ -5923,6 +5923,7 @@ class TestConformerProvenanceRecording(unittest.TestCase):
         self.spc.conformers = [xyz, xyz]
         self.spc.conformer_energies = [1.5, 0.0]
         self.spc.conformer_levels = [None, None]
+        self.spc.conformer_logs = [None, None]
         self.spc.conformer_energy_sources = [{'kind': 'force_field_kcal_mol', 'level': None}] * 2
         self.sched = MagicMock()
         self.sched.species_dict = {'methylamine': self.spc}
@@ -5949,6 +5950,20 @@ class TestConformerProvenanceRecording(unittest.TestCase):
                          [{'kind': 'electronic_kj_mol', 'level': self.opt_level.as_dict()},
                           {'kind': 'force_field_kcal_mol', 'level': None}])
         self.assertAlmostEqual(self.spc.conformer_energies[0], -251596.4435088726, 5)
+
+    def test_a_converged_conf_opt_records_the_log_the_geometry_came_from(self):
+        """Test that the optimization log is recorded for the conformer it produced, and nothing else gets one"""
+        self.parse(self.make_job(self.LOG_0, self.opt_level), 0)
+        self.assertEqual(self.spc.conformer_logs, [self.LOG_0, None])
+        self.parse(self.make_job(self.LOG_0, self.sp_level, job_type='conf_sp'), 0)
+        self.assertEqual(self.spc.conformer_logs, [self.LOG_0, None])
+
+    def test_a_failed_or_unparsed_conf_opt_records_no_log(self):
+        """Test that a conformer that keeps its force-field geometry has no log"""
+        self.parse(self.make_job(self.LOG_0, self.opt_level, status='errored'), 0)
+        with patch('arc.scheduler.parser.parse_geometry', return_value=None):
+            self.parse(self.make_job(self.LOG_0, self.opt_level), 1)
+        self.assertEqual(self.spc.conformer_logs, [None, None])
 
     def test_a_conf_opt_whose_geometry_cannot_be_parsed_records_no_geometry_level(self):
         """Test that no geometry level is recorded for a conformer whose optimized geometry was not read"""

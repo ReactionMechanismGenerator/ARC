@@ -56,8 +56,10 @@ from arc.parser.parser import (
     parse_geometry,
     parse_scan_args,
 )
+from arc.checks.common import TS_ATOM_MAP_METHOD, TS_ATOM_MAP_UNAVAILABLE_REASONS
 from arc.reaction.reaction import ATOM_MAP_SOURCES
 from arc.species.converter import get_element_mass_from_xyz, get_most_common_isotope_for_element, xyz_to_str
+from arc.species.species import are_coords_compliant_with_graph
 from arc.species.vectors import calculate_dihedral_angle, get_principal_moments_of_inertia
 from arc.statmech.arkane import (
     AEC_SECTION_START, AEC_SECTION_END,
@@ -850,6 +852,46 @@ def _conformer_provenance_to_fields(spc, n_conformers: int) -> tuple[list | None
     energy_levels = [_recorded_level_to_dict(source.get('level')) for source in held]
     energy_level = energy_levels[0] if all(level == energy_levels[0] for level in energy_levels) else None
     return levels, kind, energy_level, None
+
+
+def _get_conformer_ess(spc, n_conformers: int, project_directory: str) -> tuple[list[str | None], list[str | None]]:
+    """
+    Build ``conformer_ess_software`` and ``conformer_ess_version``: the program, and the version banner, stated by the
+    optimization log each exported conformer geometry was parsed from (``conformer_logs``).
+
+    An entry is ``None`` for a conformer with no recorded log (a force-field geometry, a user-supplied one, an older
+    restart), for a log that is missing or states no program, and, for the version, wherever the program is ``None``
+    or the log states no banner.
+
+    Args:
+        spc: The species (an ``ARCSpecies`` or anything with the same conformer attributes).
+        n_conformers (int): The number of exported conformers.
+        project_directory (str): The directory relative log paths resolve against.
+
+    Returns:
+        tuple: ``(conformer_ess_software, conformer_ess_version)``, each with ``n_conformers`` entries.
+    """
+    logs = getattr(spc, 'conformer_logs', None)
+    logs = list(logs) if isinstance(logs, (list, tuple)) else list()
+    logs = (logs + [None] * n_conformers)[:n_conformers]
+    observed: dict[str, tuple[str | None, str | None]] = dict()
+    software, version = list(), list()
+    for log_path in logs:
+        if not isinstance(log_path, str) or not log_path:
+            software.append(None)
+            version.append(None)
+            continue
+        if log_path not in observed:
+            observed[log_path] = _observe_log_ess(log_path, project_directory)
+        program, banner = observed[log_path]
+        software.append(program)
+        version.append(banner if program is not None else None)
+    return software, version
+
+
+def _get_exported_xyz(spc) -> dict | None:
+    """The geometry a species record exports as ``xyz``: its final geometry, else its initial one, else ``None``."""
+    return spc.final_xyz if spc.final_xyz is not None else spc.initial_xyz
 
 
 def _species_levels_to_dict(entry: dict, is_ts: bool) -> dict:
@@ -2104,7 +2146,7 @@ def _build_species_correction_inputs(species_dict: dict) -> list[dict]:
     """
     species_inputs: list[dict] = []
     for label, spc in species_dict.items():
-        xyz = spc.final_xyz if spc.final_xyz is not None else spc.initial_xyz
+        xyz = _get_exported_xyz(spc)
         if xyz is None:
             continue
         symbols = list(xyz.get('symbols') or [])
@@ -2397,7 +2439,7 @@ def _compute_point_groups(species_dict: dict, project_directory: str) -> dict[st
     # Build input dict: {label: {symbols: [...], coords: [...]}}
     pg_input: dict[str, Any] = {}
     for label, spc in species_dict.items():
-        xyz = spc.final_xyz if spc.final_xyz is not None else spc.initial_xyz
+        xyz = _get_exported_xyz(spc)
         if xyz is None:
             continue
         symbols = list(xyz.get('symbols', []))
@@ -2485,7 +2527,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d['formula'] = None
 
     # ── final geometry ──────────────────────────────────────────────────────
-    xyz = spc.final_xyz if spc.final_xyz is not None else spc.initial_xyz
+    xyz = _get_exported_xyz(spc)
     if xyz is None and converged and not spc.is_ts \
             and spc.mol is not None and len(spc.mol.atoms) == 1:
         # Monoatomic species skip opt entirely (nothing to optimize), so neither
@@ -2504,6 +2546,8 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         raw_energies = getattr(spc, 'conformer_energies', None) or []
         d['conformer_energies'] = list(raw_energies)
         d['conformers_isotopes'] = [_xyz_isotopes(c) for c in raw_conformers]
+        d['conformer_ess_software'], d['conformer_ess_version'] = \
+            _get_conformer_ess(spc, len(raw_conformers), project_directory)
     d['conformer_levels'], d['conformer_energy_kind'], d['conformer_energy_level'], d['conformer_force_field'] = \
         _conformer_provenance_to_fields(spc, len(raw_conformers))
 
@@ -2785,6 +2829,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d['irc_participant_mapping'] = _irc_participant_mapping_to_dict(spc)
         d['freq_frequencies_cm1_ess_order'], d['reaction_coordinate_mode_index'] = \
             _get_ts_frequencies_in_ess_order(spc, converged)
+        d['nmd_forced'] = _get_nmd_forced(spc)
         d['rxn_label'] = spc.rxn_label
 
     # ── thermochemistry (non-TS converged species only) ──────────────────────
@@ -2842,6 +2887,27 @@ def _get_ts_frequencies_in_ess_order(spc, converged: bool) -> tuple[list[float] 
     matches = [index for index, freq in enumerate(ess_order)
                if abs(freq - validated) <= NMD_FREQUENCY_MATCH_TOLERANCE_CM1]
     return ess_order, matches[0] + 1 if len(matches) == 1 else None
+
+
+def _get_nmd_forced(spc) -> bool | None:
+    """
+    Whether the normal mode displacement verdict of a TS was forced to a pass, as the check's own record states.
+
+    Args:
+        spc (ARCSpecies): The transition state.
+
+    Returns:
+        bool | None: ``True`` when the check failed and ``skip_nmd`` forced ``ts_checks['NMD']`` to ``True``;
+                     ``False`` when the check ran and was not forced; ``None`` when there is no check record or
+                     ``ts_checks['NMD']`` is not a boolean.
+    """
+    verdict = (getattr(spc, 'ts_checks', None) or {}).get('NMD')
+    record = getattr(spc, 'nmd_record', None)
+    if not isinstance(verdict, bool) or not isinstance(record, dict) or not record:
+        return None
+    if record.get('forced') is True:
+        return True if verdict else None
+    return False
 
 
 def _get_point_group_axis_order(point_group: str | None) -> int | str | None:
@@ -3876,8 +3942,132 @@ def _get_reaction_atom_map(rxn) -> dict:
             }
 
 
+def _get_ts_atom_map(rxn, atom_map_fields: dict) -> dict:
+    """
+    Read the TS atom map the IRC check recorded on the reaction's TS, and state whether it can be exported.
+
+    The map is exported only if every one of these holds: the reaction has a TS with a geometry, its IRC check passed,
+    the check recorded a map (not a reason it could not), the reaction exports an ``atom_map``, the recorded map is
+    well formed (lengths, a bijection onto the TS atoms, element conservation against the TS geometry, and
+    ``products[atom_map[i]] == reactants[i]``), and the geometry of every reactant and product has the atom order of
+    its ``mol``, which ``atom_map`` and the bonds the map was built from count in. Anything malformed is dropped
+    and logged.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+        atom_map_fields (dict): The result of ``_get_reaction_atom_map`` for the reaction.
+
+    Returns: dict
+        ``ts_atom_map`` (``{'ts_label', 'reactants', 'products', 'method', 'reactant_endpoint',
+        'ts_atom_order_follows_reactants'}`` or
+        ``None``) and ``ts_atom_map_unavailable_reason`` (one of ``TS_ATOM_MAP_UNAVAILABLE_REASONS``, ``None`` exactly
+        when the map is exported).
+    """
+    def _unavailable(reason: str) -> dict:
+        return {'ts_atom_map': None, 'ts_atom_map_unavailable_reason': reason}
+
+    ts = getattr(rxn, 'ts_species', None)
+    ts_xyz = _get_exported_xyz(ts) if ts is not None and hasattr(ts, 'final_xyz') else None
+    if not isinstance(getattr(ts, 'label', None), str) or not isinstance(ts_xyz, dict):
+        return _unavailable('no_ts')
+    ts_checks = getattr(ts, 'ts_checks', None)
+    if not isinstance(ts_checks, dict) or ts_checks.get('IRC') is not True:
+        return _unavailable('irc_not_passed')
+    recorded = getattr(ts, 'ts_atom_map', None)
+    reason = getattr(ts, 'ts_atom_map_unavailable_reason', None)
+    if not isinstance(recorded, dict):
+        return _unavailable(reason if reason in TS_ATOM_MAP_UNAVAILABLE_REASONS
+                            else 'no_atom_map' if atom_map_fields['atom_map'] is None else 'not_recorded')
+    atom_map = atom_map_fields['atom_map']
+    if atom_map is None:
+        return _unavailable('no_atom_map')
+    reactants, products = rxn.get_reactants_and_products(return_copies=False)
+    xyzs = [_get_exported_xyz(spc) for spc in reactants + products]
+    if any(not isinstance(xyz, dict) for xyz in xyzs):
+        return _unavailable('not_recorded')
+    r_symbols = [symbol for xyz in xyzs[:len(reactants)] for symbol in xyz['symbols']]
+    p_symbols = [symbol for xyz in xyzs[len(reactants):] for symbol in xyz['symbols']]
+    if not _is_well_formed_ts_atom_map(recorded, ts.label, atom_map, r_symbols, p_symbols, list(ts_xyz['symbols'])):
+        logger.warning(f'The TS atom map of {getattr(rxn, "label", None)} is malformed and is not exported.')
+        return _unavailable('not_recorded')
+    if any(not _geometry_follows_mol_atom_order(spc, xyz) for spc, xyz in zip(reactants + products, xyzs)):
+        return _unavailable('species_atom_order_mismatch')
+    return {'ts_atom_map': {'ts_label': recorded['ts_label'],
+                            'reactants': list(recorded['reactants']),
+                            'products': list(recorded['products']),
+                            'method': recorded['method'],
+                            'reactant_endpoint': recorded['reactant_endpoint'],
+                            'ts_atom_order_follows_reactants': recorded['ts_atom_order_follows_reactants'],
+                            },
+            'ts_atom_map_unavailable_reason': None,
+            }
+
+
+def _is_well_formed_ts_atom_map(recorded: dict,
+                                ts_label: str,
+                                atom_map: list[int],
+                                r_symbols: list[str],
+                                p_symbols: list[str],
+                                ts_symbols: list[str],
+                                ) -> bool:
+    """
+    Whether a recorded TS atom map has the documented shape and agrees with the reaction and the TS geometry.
+
+    Args:
+        recorded (dict): The recorded map.
+        ts_label (str): The label of the TS.
+        atom_map (list[int]): The reaction's atom map.
+        r_symbols (list[str]): The element of every concatenated reactant atom.
+        p_symbols (list[str]): The element of every concatenated product atom.
+        ts_symbols (list[str]): The element of every TS atom.
+
+    Returns:
+        bool: ``True`` if the map is well formed.
+    """
+    n_atoms = len(atom_map)
+    if set(recorded) != {'ts_label', 'reactants', 'products', 'method', 'reactant_endpoint',
+                         'ts_atom_order_follows_reactants'} \
+            or recorded['ts_label'] != ts_label or recorded['method'] != TS_ATOM_MAP_METHOD \
+            or not _is_int(recorded['reactant_endpoint']) or recorded['reactant_endpoint'] not in (1, 2) \
+            or not isinstance(recorded['ts_atom_order_follows_reactants'], bool):
+        return False
+    reactants, products = recorded['reactants'], recorded['products']
+    if not all(isinstance(side, list) and len(side) == n_atoms and all(_is_int(i) for i in side)
+               for side in (reactants, products)):
+        return False
+    if len(ts_symbols) != n_atoms or len(r_symbols) != n_atoms or len(p_symbols) != n_atoms:
+        return False
+    if sorted(reactants) != list(range(n_atoms)) or sorted(products) != list(range(n_atoms)):
+        return False
+    if any(r_symbols[i] != ts_symbols[reactants[i]] or p_symbols[atom_map[i]] != ts_symbols[products[atom_map[i]]]
+           for i in range(n_atoms)):
+        return False
+    if any(products[atom_map[i]] != reactants[i] for i in range(n_atoms)):
+        return False
+    return recorded['ts_atom_order_follows_reactants'] == (reactants == list(range(n_atoms)))
+
+
+def _geometry_follows_mol_atom_order(spc, xyz: dict) -> bool:
+    """
+    Whether the geometry of a species has the atom order of its ``mol``: the same number of atoms, the same
+    element in every position, and every bond of the ``mol`` at a bonded distance in the geometry.
+
+    Args:
+        spc: The species.
+        xyz (dict): The geometry that is exported for the species.
+
+    Returns:
+        bool: ``True`` if the two orders agree.
+    """
+    mol = getattr(spc, 'mol', None)
+    if mol is None or len(mol.atoms) != len(xyz['symbols']):
+        return False
+    return are_coords_compliant_with_graph(xyz=xyz, mol=mol)
+
+
 def _rxn_to_dict(rxn) -> dict:
     """Convert an ARCReaction to a plain dict for output.yml."""
+    reactants, products = rxn.get_reactants_and_products(return_copies=False)
     kinetics = rxn.kinetics
     kin_dict: dict | None = None
     if kinetics is not None:
@@ -3917,13 +4107,17 @@ def _rxn_to_dict(rxn) -> dict:
         'label': rxn.label,
         'reactant_labels': list(rxn.reactants),
         'product_labels': list(rxn.products),
+        'reactant_species_labels': [spc.label for spc in reactants],
+        'product_species_labels': [spc.label for spc in products],
         'family': rxn.family,
         'multiplicity': rxn.multiplicity,
         'ts_label': rxn.ts_label,
         'kinetics': kin_dict,
         'reversible': _get_reversible(rxn),
     }
-    rxn_dict.update(_get_reaction_atom_map(rxn))
+    atom_map_fields = _get_reaction_atom_map(rxn)
+    rxn_dict.update(atom_map_fields)
+    rxn_dict.update(_get_ts_atom_map(rxn, atom_map_fields))
     long_kin_desc = getattr(rxn, 'long_kinetic_description', None)
     if long_kin_desc:
         rxn_dict['long_kinetic_description'] = long_kin_desc

@@ -360,6 +360,104 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "properties": {
+              "species": {
+                "contains": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "thermo": {
+                          "type": "object",
+                          "properties": {
+                            "bond_corrections_applied": {
+                              "const": true
+                            }
+                          },
+                          "required": [
+                            "bond_corrections_applied"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "thermo"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "statmech": {
+                          "type": "object",
+                          "properties": {
+                            "e0_bond_corrections_applied": {
+                              "const": true
+                            }
+                          },
+                          "required": [
+                            "e0_bond_corrections_applied"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "statmech"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "species"
+            ]
+          },
+          {
+            "properties": {
+              "transition_states": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "statmech": {
+                      "type": "object",
+                      "properties": {
+                        "e0_bond_corrections_applied": {
+                          "const": true
+                        }
+                      },
+                      "required": [
+                        "e0_bond_corrections_applied"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "statmech"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "transition_states"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "bac_type": {
+            "enum": [
+              "p",
+              "m"
+            ]
+          }
+        },
+        "required": [
+          "bac_type"
+        ]
+      }
     }
   ],
   "$defs": {
@@ -1702,7 +1800,7 @@
           ]
         },
         "standard_state_pressure_pa": {
-          "description": "Standard-state pressure in Pa that s298_j_mol_k, the NASA polynomials and every thermo_points entropy and free energy belong to. arc/scripts/save_arkane_thermo.py recovers it from RMG's translational partition function, which is where the standard state enters the statmech result; Arkane runs at 1 atm (101325 Pa) and offers no way to change it. null when the thermo did not come from a statmech run that recorded one.",
+          "description": "Standard-state pressure in Pa that s298_j_mol_k, the NASA polynomials and every thermo_points entropy and free energy belong to. It is 101325 (1 atm) for every thermo ARC takes from an Arkane run: Arkane's translational partition function divides by the literal 101325. (rmgpy/statmech/translation.pyx), and nothing configures it. When the Arkane run's thermo.yaml carries the value, arc/scripts/save_arkane_thermo.py recovered it from that partition function; when the thermo.yaml is missing or carries none, ARC reads the thermo from the run's output.py and records the same constant. null for a thermo that did not come from an Arkane run ARC invoked, which no ARC path produces.",
           "type": [
             "number",
             "null"
@@ -2006,7 +2104,7 @@
           }
         },
         "conformer_energies": {
-          "description": "One ABSOLUTE energy per screened conformer, not relative to the lowest. Emitted and omitted together with 'conformers', which 'dependentRequired' enforces. The two lists are index-aligned, a relation JSON Schema cannot express; arc/output_schema_test.py asserts it against the producer instead. An entry is null for a conformer whose energy has not been filled in. The unit depends on where each energy came from: kcal/mol for a force-field energy of the conformer screen, kJ/mol for an electronic energy parsed from a conformer optimization or conformer single-point log. A conformer whose optimization failed keeps its force-field geometry and its force-field energy, so one list can mix the two units. conformer_energy_kind states the unit of the whole list, and is null when the list mixes them.",
+          "description": "One ABSOLUTE energy per screened conformer, not relative to the lowest. Emitted and omitted together with 'conformers', which 'dependentRequired' enforces. The two lists are index-aligned, a relation JSON Schema cannot express; arc/output_schema_test.py asserts it against the producer instead. An entry is null for a conformer that has no energy: upload no energy for it. conformer_energy_kind, conformer_energy_level and conformer_force_field describe only the entries that are not null. The unit of an entry depends on where it came from: kcal/mol for a force-field energy of the conformer screen, kJ/mol for an electronic energy parsed from a conformer optimization or conformer single-point log. A conformer whose optimization failed keeps its force-field geometry and its force-field energy, so one list can mix the two units. conformer_energy_kind states the unit of the entries that are not null, and is null when they mix them.",
           "type": "array",
           "items": {
             "type": [
@@ -2453,18 +2551,48 @@
               "minimum": 1
             }
           }
+        },
+        "conformer_ess_software": {
+          "description": "Index-aligned with conformers: the ESS that ran the conformer optimization that produced each conformer geometry, identified from that optimization log as for ess_software. A conformer single point does not change it: the single point's geometry, which the scheduler may write into conformers, is not what this names. An entry is null for a conformer whose geometry came from no ESS optimization (a force-field geometry, a conformer whose optimization failed, or a user-supplied one), whose log was not recorded (a restart written before this key existed), or whose log is missing or states no program. Emitted and omitted together with 'conformers' and conformer_ess_version.",
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "conformer_ess_version": {
+          "description": "Index-aligned with conformers: the full version banner the program printed in the conformer optimization log named by the matching conformer_ess_software entry, as for ess_versions. An entry is null whenever that entry is null, and when the log states no banner. Emitted and omitted together with 'conformers' and conformer_ess_software.",
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       },
       "dependentRequired": {
         "conformers": [
           "conformer_energies",
-          "conformers_isotopes"
+          "conformers_isotopes",
+          "conformer_ess_software",
+          "conformer_ess_version"
         ],
         "conformer_energies": [
           "conformers"
         ],
         "conformers_isotopes": [
           "conformers"
+        ],
+        "conformer_ess_software": [
+          "conformers",
+          "conformer_ess_version"
+        ],
+        "conformer_ess_version": [
+          "conformers",
+          "conformer_ess_software"
         ]
       },
       "allOf": [
@@ -2606,6 +2734,7 @@
         "irc_participant_mapping",
         "freq_frequencies_cm1_ess_order",
         "reaction_coordinate_mode_index",
+        "nmd_forced",
         "rxn_label"
       ],
       "properties": {
@@ -2705,6 +2834,13 @@
             "null"
           ],
           "minimum": 1
+        },
+        "nmd_forced": {
+          "description": "Whether ts_checks.NMD was forced to true after the normal mode displacement check failed (the skip_nmd option), as the check's own record states. true: the check failed and ARC forced the verdict to a pass. false: the check ran and ARC did not force it, whatever its verdict. null when no check record exists (the check did not run, or the record was not saved by an older run), including when ts_checks.NMD is not a boolean.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "irc_converged": {
           "description": "Whether the IRC JOBS COMPLETED, not whether the IRC validated the transition state. It is true once both IRC job directions finished, whatever their endpoints turned out to be, and null when the run did not request IRC at all. The validation verdict is ts_checks.IRC.",
@@ -3026,6 +3162,8 @@
         "label",
         "reactant_labels",
         "product_labels",
+        "reactant_species_labels",
+        "product_species_labels",
         "family",
         "multiplicity",
         "ts_label",
@@ -3035,7 +3173,9 @@
         "atom_map_reactant_labels",
         "atom_map_product_labels",
         "atom_map_source",
-        "atom_map_method"
+        "atom_map_method",
+        "ts_atom_map",
+        "ts_atom_map_unavailable_reason"
       ],
       "properties": {
         "label": {
@@ -3045,13 +3185,31 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "The labels of the reaction's reactant species, sorted and de-duplicated: an A + A reaction lists A once. It is not the stoichiometry; reactant_species_labels is."
         },
         "product_labels": {
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "The labels of the reaction's product species, sorted and de-duplicated: an A + A reaction lists A once. It is not the stoichiometry; product_species_labels is."
+        },
+        "reactant_species_labels": {
+          "description": "The reactant species with one entry per occurrence, in the order of ARCReaction.get_reactants_and_products, so HO2 + HO2 <=> H2O2 + O2 lists HO2 twice. When atom_map is not null this list equals atom_map_reactant_labels. Always an array for a reaction ARC ran.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "product_species_labels": {
+          "description": "The product species with one entry per occurrence, in the order of ARCReaction.get_reactants_and_products. When atom_map is not null this list equals atom_map_product_labels. Always an array for a reaction ARC ran.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
         },
         "family": {
           "type": [
@@ -3082,7 +3240,7 @@
           ]
         },
         "atom_map": {
-          "description": "ARC's reactant-to-product atom map, as the reaction holds it; it is never computed at export, so it is null when ARC had not mapped the reaction, and it is also null unless the map is a permutation that conserves the element (reactant atom i and product atom atom_map[i] have the same element). Entry i is the 0-based index of the product atom that reactant atom i becomes. Reactant atoms are counted over atom_map_reactant_labels in that order, each occurrence contributing the atoms of that species in the atom order of its exported geometry, one block per occurrence (so CH3 + CH3 has two blocks of four); product atoms are counted the same way over atom_map_product_labels. The order is that of the reaction's species lists, not that of reactant_labels, which is sorted and de-duplicated. Among symmetry-equivalent atoms (which hydrogen of CH4, which CH3 block) the choice is arbitrary and not specific to the reactive site. It says nothing about the atom order of the transition state.",
+          "description": "ARC's reactant-to-product atom map, as the reaction holds it; it is never computed at export, so it is null when ARC had not mapped the reaction, and it is also null unless the map is a permutation that conserves the element (reactant atom i and product atom atom_map[i] have the same element). Entry i is the 0-based index of the product atom that reactant atom i becomes. Reactant atoms are counted over atom_map_reactant_labels in that order, each occurrence contributing the atoms of that species in the atom order of its exported geometry, one block per occurrence (so CH3 + CH3 has two blocks of four); product atoms are counted the same way over atom_map_product_labels. The order is that of the reaction's species lists, not that of reactant_labels, which is sorted and de-duplicated. Among symmetry-equivalent atoms (which hydrogen of CH4, which CH3 block) the choice is arbitrary and not specific to the reactive site. It says nothing about the atom order of the transition state; ts_atom_map states the TS atom of every atom.",
           "type": [
             "array",
             "null"
@@ -3137,6 +3295,74 @@
           "type": [
             "boolean",
             "null"
+          ]
+        },
+        "ts_atom_map": {
+          "description": "The 0-based atom of the transition state that every atom of the reaction is, from a label-preserving isomorphism of two condensed graphs of reaction (CGRs): the reactant-indexed CGR (the concatenated reactant atoms, bonds that are in the reactants or in the products, from atom_map) and the TS-indexed CGR (the TS atoms, bonds of the two IRC endpoint geometries). That endpoint atom i is TS atom i is inferred from the endpoint geometries having the element sequence of the TS. Before the CGRs are compared, the bond graph of each endpoint must be isomorphic to that of its side, and the map is kept only if, on the TS geometry, every bond of both the reactants and the products is at a bonded distance and every bond that forms or breaks is at most a partial-bond distance. It is a constitutional (2D) correspondence: symmetry-equivalent atoms, diastereotopic ones included, are assigned by a deterministic convention. 'reactants' has one entry per concatenated reactant atom, in the order of atom_map_reactant_labels (each occurrence contributing the atoms of its species in the atom order of its exported geometry), and 'products' one per concatenated product atom, in the order of atom_map_product_labels, so products[atom_map[i]] == reactants[i]. 'reactant_endpoint' is the IRC endpoint (1 or 2, in the order the IRC check received them) whose bonds served as the reactants. 'ts_atom_order_follows_reactants' is true exactly when reactants is the identity. Null, with ts_atom_map_unavailable_reason, whenever it cannot be stated; atom_map itself is never altered by it.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "ts_label",
+                "reactants",
+                "products",
+                "method",
+                "reactant_endpoint",
+                "ts_atom_order_follows_reactants"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "ts_label": {
+                  "type": "string"
+                },
+                "reactants": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "products": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "method": {
+                  "const": "irc_endpoint_cgr_isomorphism"
+                },
+                "reactant_endpoint": {
+                  "enum": [
+                    1,
+                    2
+                  ]
+                },
+                "ts_atom_order_follows_reactants": {
+                  "type": "boolean"
+                }
+              }
+            }
+          ]
+        },
+        "ts_atom_map_unavailable_reason": {
+          "description": "Why ts_atom_map is null: no_ts (the reaction has no TS, or the TS has no geometry), irc_not_passed (ts_checks.IRC is not true), irc_fallback_path (the IRC verdict came from the bond-list fallback, which has no atom correspondence), atom_order_mismatch (the IRC endpoint geometries do not have the element sequence of the TS), no_atom_map (the reaction exports no atom_map), endpoint_perception_mismatch (the bonds perceived on an endpoint geometry are not the bond graph of its side), atom_map_contradicts_ts (the bonds the endpoints form and break are not those of atom_map, so no isomorphism exists), ts_geometry_contradicts_map (an isomorphism exists, but a bond it maps is at an implausible distance in the TS geometry), species_atom_order_mismatch (the geometry of a reactant or product does not have the atom order of the molecule the atom map counts in), computation_failed (the computation raised an error, which is logged), not_recorded (an older restart, or a malformed record that was dropped). Null exactly when ts_atom_map is not null.",
+          "enum": [
+            "no_ts",
+            "irc_not_passed",
+            "irc_fallback_path",
+            "atom_order_mismatch",
+            "no_atom_map",
+            "endpoint_perception_mismatch",
+            "atom_map_contradicts_ts",
+            "ts_geometry_contradicts_map",
+            "species_atom_order_mismatch",
+            "computation_failed",
+            "not_recorded",
+            null
           ]
         }
       },
@@ -3195,6 +3421,35 @@
             "properties": {
               "atom_map_method": {
                 "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "ts_atom_map": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "ts_atom_map"
+            ]
+          },
+          "then": {
+            "properties": {
+              "ts_atom_map_unavailable_reason": {
+                "type": "string"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "ts_atom_map_unavailable_reason": {
+                "type": "null"
+              },
+              "atom_map": {
+                "type": "array"
               }
             }
           }

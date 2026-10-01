@@ -40,6 +40,8 @@ ARKANE_ROTOR_MODE_REGEX = re.compile(
     rf"\b({'|'.join(ARKANE_ONE_DIMENSIONAL_ROTOR_MODES + ARKANE_MULTI_DIMENSIONAL_ROTOR_MODES)}"
     rf"|{ARKANE_UNKNOWN_ROTOR_MODE})\(")
 
+ARKANE_STANDARD_STATE_PRESSURE_PA = 101325.0
+
 # Section boundary markers in the RMG quantum_corrections/data.py file.
 AEC_SECTION_START = "atom_energies = {"
 AEC_SECTION_END = "pbac = {"
@@ -523,8 +525,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             return
         with open(output_path, 'r', encoding='utf-8') as f:
             output_content = f.read()
+        thermo_parsed_from_output = set()
         for species in self.species:
-            parse_species_thermo(species, output_content, use_aec=self.use_aec, use_bac=self.use_bac)
+            if parse_species_thermo(species, output_content, use_aec=self.use_aec, use_bac=self.use_bac):
+                thermo_parsed_from_output.add(species.label)
             clean_output_directory(os.path.join(self.output_directory, 'Species', species.label))
 
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'save_arkane_thermo.py')
@@ -596,7 +600,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         pressure_pa = get_standard_state_pressure(content)
         for species in self.species:
             if species.thermo is not None and species.thermo.H298 is not None:
-                species.thermo.standard_state_pressure_pa = pressure_pa
+                if pressure_pa is None and species.label in thermo_parsed_from_output:
+                    species.thermo.standard_state_pressure_pa = ARKANE_STANDARD_STATE_PRESSURE_PA
+                else:
+                    species.thermo.standard_state_pressure_pa = pressure_pa
 
     def parse_arkane_kinetics_output(self, statmech_dir: str) -> None:
         """Parse Arkane kinetic output and assign results to reactions."""
@@ -1623,7 +1630,7 @@ def parse_species_thermo(species,
                          output_content: str,
                          use_aec: bool | None = None,
                          use_bac: bool | None = None,
-                         ) -> None:
+                         ) -> bool:
     """
     Parse thermodynamic data for a single species.
 
@@ -1632,6 +1639,9 @@ def parse_species_thermo(species,
         output_content (str): The full Arkane output file content.
         use_aec (bool, optional): The ``useAtomCorrections`` value of the Arkane run that wrote the output.
         use_bac (bool, optional): The ``useBondCorrections`` value of the Arkane run that wrote the output.
+
+    Returns:
+        bool: Whether the output holds a thermo block of the species, and it was parsed into ``species.thermo``.
     """
     e0 = parse_e0(species.label, output_content)
     if e0 is not None:
@@ -1648,6 +1658,7 @@ def parse_species_thermo(species,
     if thermo_match:
         thermo_block = thermo_match.group(1)
         species.thermo.update(parse_thermo_block(thermo_block))
+    return thermo_match is not None
 
 
 def parse_reaction_kinetics(reaction,

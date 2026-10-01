@@ -3244,8 +3244,8 @@ class Scheduler(object):
         """
         Parse E0 (kJ/mol) from the conformer opt output file.
         For species, save it in the Species.conformer_energies attribute, and record the level of the job
-        (Species.conformer_levels for the geometry of a conformer opt job, and Species.conformer_energy_sources
-        for the energy).
+        (Species.conformer_levels and Species.conformer_logs for the geometry of a conformer opt job, and
+        Species.conformer_energy_sources for the energy).
         Fot TSs, save it in the TSGuess.energy attribute, and also parse the geometry.
 
         Args:
@@ -3281,7 +3281,7 @@ class Scheduler(object):
                     species.record_conformer_energy_source(
                         i, CONFORMER_ENERGY_KIND_ELECTRONIC if energy is not None else None, job.level)
                 if xyz is not None and job.job_type != 'conf_sp':
-                    species.record_conformer_geometry_level(i, job.level)
+                    species.record_conformer_geometry_level(i, job.level, log_path=job.local_path_to_output_file)
                 if energy is not None:
                     logger.debug(f'Energy for conformer {i} of {label} is {energy:.2f}')
                 else:

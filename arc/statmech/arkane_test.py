@@ -6,9 +6,12 @@ This module contains unit tests for ARC's statmech.arkane module
 """
 
 import hashlib
+import importlib
+import importlib.util
 import os
 import re
 import shutil
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -20,7 +23,7 @@ from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
-from arc.statmech.arkane import ArkaneAdapter
+from arc.statmech.arkane import ARKANE_STANDARD_STATE_PRESSURE_PA, ArkaneAdapter
 from arc.statmech.arkane import (
     AEC_SECTION_END,
     AEC_SECTION_START,
@@ -975,6 +978,72 @@ class TestArkaneCorrectionFlags(unittest.TestCase):
             arkane.parse_arkane_thermo_output(statmech_dir)
         self.assertIs(spc.thermo.atom_corrections_applied, False)
         self.assertFalse(hasattr(other.thermo, 'atom_corrections_applied'))
+
+
+THERMO_BLOCK = ("thermo(\n    label = '{label}',\n    thermo = ThermoData(\n"
+                "        Tdata = ([300.0, 400.0], 'K'),\n        Cpdata = ([33.0, 36.0], 'J/(mol*K)'),\n"
+                "        H298 = (-74.6, 'kJ/mol'),\n        S298 = (186.3, 'J/(mol*K)'),\n    )\n)\n")
+
+
+class TestArkaneStandardStatePressure(unittest.TestCase):
+    """Tests for the standard-state pressure recorded on the thermo of an Arkane run."""
+
+    def _parse(self, species, output_content, thermo_yaml):
+        """Run ``parse_arkane_thermo_output`` on a mocked run directory, with ``thermo_yaml`` (if any) in it."""
+        tmpdir = tempfile.mkdtemp(prefix='test_Arkane_pressure_')
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        statmech_dir = os.path.join(tmpdir, 'calcs', 'statmech', 'thermo')
+        os.makedirs(statmech_dir)
+        with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+            f.write(output_content)
+        if thermo_yaml is not None:
+            save_yaml_file(path=os.path.join(statmech_dir, 'thermo.yaml'), content=thermo_yaml)
+        arkane = ArkaneAdapter(output_directory=os.path.join(tmpdir, 'output'),
+                               calcs_directory=os.path.join(tmpdir, 'calcs'),
+                               output_dict=dict(),
+                               species=species)
+        with patch('arc.statmech.arkane.execute_command', return_value=('', '')):
+            arkane.parse_arkane_thermo_output(statmech_dir)
+
+    @unittest.skipUnless(importlib.util.find_spec('rmgpy') is not None, 'rmgpy is not importable')
+    def test_the_constant_is_the_pressure_the_thermo_script_measures(self):
+        """Test that the pressure recorded for thermo read from output.py is the one RMG's partition function applies"""
+        scripts_path = os.path.join(ARC_PATH, 'arc', 'scripts')
+        sys.path.insert(0, scripts_path)
+        self.addCleanup(sys.path.remove, scripts_path)
+        script = importlib.import_module('save_arkane_thermo')
+        self.assertAlmostEqual(script.standard_state_pressure_pa(), ARKANE_STANDARD_STATE_PRESSURE_PA, places=3)
+
+    def test_the_pressure_the_thermo_script_measured_is_recorded(self):
+        """Test that a pressure carried by thermo.yaml is recorded as it is, whatever its value"""
+        spc = ARCSpecies(label='CH4', smiles='C')
+        self._parse([spc], '', {'CH4': {'H298': -74.6, 'S298': 186.3, 'data': 'NASA()',
+                                         'standard_state_pressure_pa': 100000.0}})
+        self.assertEqual(spc.thermo.standard_state_pressure_pa, 100000.0)
+
+    def test_a_thermo_read_from_arkane_output_without_a_thermo_yaml_is_at_one_atmosphere(self):
+        """Test that thermo parsed from output.py when thermo.yaml is missing or carries no pressure is at 1 atm"""
+        for thermo_yaml in (None, {'CH4': {'H298': -74.6, 'S298': 186.3, 'data': 'NASA()'}}):
+            with self.subTest(thermo_yaml=thermo_yaml):
+                spc = ARCSpecies(label='CH4', smiles='C')
+                self._parse([spc], THERMO_BLOCK.format(label='CH4'), thermo_yaml)
+                self.assertEqual(spc.thermo.H298, -74.6)
+                self.assertEqual(spc.thermo.standard_state_pressure_pa, 101325.0)
+
+    def test_a_thermo_that_no_arkane_run_wrote_has_no_pressure(self):
+        """Test that thermo set by a caller, with no block in the output and no thermo.yaml entry, stays null"""
+        spc, other = ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='H2O', smiles='O')
+        other.thermo.H298 = -241.8
+        self._parse([spc, other], THERMO_BLOCK.format(label='CH4'), None)
+        self.assertEqual(spc.thermo.standard_state_pressure_pa, 101325.0)
+        self.assertIsNone(other.thermo.standard_state_pressure_pa)
+
+    def test_a_species_without_thermo_in_the_output_has_none(self):
+        """Test that the fallback needs a thermo block of the species in the output"""
+        spc = ARCSpecies(label='CH4', smiles='C')
+        self._parse([spc], '', None)
+        self.assertIsNone(spc.thermo.H298)
+        self.assertIsNone(getattr(spc.thermo, 'standard_state_pressure_pa', None))
 
 
 def conformer_block(label: str, e0: float, modes: list[str]) -> str:

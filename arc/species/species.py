@@ -257,6 +257,10 @@ class ARCSpecies(object):
         conformer_levels (list): In lockstep with ``conformers``, the level (a plain dictionary) of the conformer
                                  optimization job that produced each geometry, or ``None`` for a geometry that
                                  was never optimized (a force-field geometry, or a user-supplied one).
+        conformer_logs (list): In lockstep with ``conformers``, the path of the conformer optimization log that
+                               produced each geometry, or ``None`` for a geometry that was not parsed from a
+                               log (a force-field geometry, or a user-supplied one) and for a log that was not
+                               recorded (an older restart).
         conformer_energy_sources (list): In lockstep with ``conformers``, ``{'kind': <kind or None>, 'level': <level
                                          dict or None>}`` describing where each entry of ``conformer_energies``
                                          came from (``kind`` is ``'force_field_kcal_mol'`` or
@@ -306,6 +310,13 @@ class ARCSpecies(object):
         irc_participant_mapping (dict | None): Which atoms of each optimized IRC endpoint geometry belong to which
                                                participant species, recorded only when the IRC check established its
                                                verdict by graph isomorphism (see ``arc.checks.ts``). ``None`` otherwise.
+        ts_atom_map (dict | None): The 0-based TS atom of every reactant atom and of every product atom of the reaction
+                                   (``reactants``, ``products``), with the ``ts_label``, the ``method`` and
+                                   ``ts_atom_order_follows_reactants``, recorded only when the IRC check established its
+                                   verdict by graph isomorphism and the reaction's atom map is consistent with the TS
+                                   (see ``arc.checks.ts``). ``None`` otherwise.
+        ts_atom_map_unavailable_reason (str | None): Why the IRC check recorded no ``ts_atom_map``, ``None`` when it
+                                                     recorded one or has not run.
         rxn_zone_atom_indices (list[int]): 0-indexed atom indices of the active reaction zone.
         ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its
                                 TSGuess objects.
@@ -410,6 +421,7 @@ class ARCSpecies(object):
         self.recent_md_conformer = None
         self.conformer_energies = list()
         self.conformer_levels = list()
+        self.conformer_logs = list()
         self.conformer_energy_sources = list()
         self.initial_xyz = None
         self.thermo = ThermoData()
@@ -442,6 +454,8 @@ class ARCSpecies(object):
         self.ts_checks = dict()
         self.nmd_record = dict()
         self.irc_participant_mapping = None
+        self.ts_atom_map = None
+        self.ts_atom_map_unavailable_reason = None
         self.derived_stability_verdict = None
         self.scf_references = dict()
         self.stability_analysis_ran = False
@@ -857,6 +871,10 @@ class ARCSpecies(object):
                 species_dict['nmd_record'] = self.nmd_record
             if self.irc_participant_mapping is not None:
                 species_dict['irc_participant_mapping'] = self.irc_participant_mapping
+            if self.ts_atom_map is not None:
+                species_dict['ts_atom_map'] = self.ts_atom_map
+            if self.ts_atom_map_unavailable_reason is not None:
+                species_dict['ts_atom_map_unavailable_reason'] = self.ts_atom_map_unavailable_reason
         if self.original_label is not None:
             species_dict['original_label'] = self.original_label
         if self.e_elect is not None:
@@ -928,6 +946,7 @@ class ARCSpecies(object):
             species_dict['conformer_energies'] = self.conformer_energies
             self.sync_conformer_provenance()
             species_dict['conformer_levels'] = list(self.conformer_levels)
+            species_dict['conformer_logs'] = list(self.conformer_logs)
             species_dict['conformer_energy_sources'] = list(self.conformer_energy_sources)
         if self.conformers_before_opt is not None:
             species_dict['conformers_before_opt'] = [xyz_to_str(conf) for conf in self.conformers_before_opt]
@@ -1021,6 +1040,9 @@ class ARCSpecies(object):
             self.nmd_record = species_dict['nmd_record'] if isinstance(species_dict.get('nmd_record'), dict) else dict()
             self.irc_participant_mapping = species_dict['irc_participant_mapping'] \
                 if isinstance(species_dict.get('irc_participant_mapping'), dict) else None
+            self.ts_atom_map = species_dict['ts_atom_map'] if isinstance(species_dict.get('ts_atom_map'), dict) else None
+            self.ts_atom_map_unavailable_reason = species_dict['ts_atom_map_unavailable_reason'] \
+                if isinstance(species_dict.get('ts_atom_map_unavailable_reason'), str) else None
             self.chosen_ts_list = species_dict['chosen_ts_list'] if 'chosen_ts_list' in species_dict else list()
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
             self.renumber_ambiguous_ts_guesses()
@@ -1108,6 +1130,7 @@ class ARCSpecies(object):
             self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict \
                 else [None] * len(self.conformers)
             self.conformer_levels = list(species_dict.get('conformer_levels') or list())
+            self.conformer_logs = list(species_dict.get('conformer_logs') or list())
             self.conformer_energy_sources = list(species_dict.get('conformer_energy_sources') or list())
             self.sync_conformer_provenance()
         self.conformers_before_opt = [str_to_xyz(conf) for conf in species_dict['conformers_before_opt']] \
@@ -1342,6 +1365,7 @@ class ARCSpecies(object):
             self.conformers.extend([conf['xyz'] for conf in lowest_confs])
             self.conformer_energies.extend([conf['FF energy'] for conf in lowest_confs])
             self.conformer_levels.extend([None] * len(lowest_confs))
+            self.conformer_logs.extend([None] * len(lowest_confs))
             self.conformer_energy_sources.extend([self.get_force_field_energy_source(conf) for conf in lowest_confs])
         else:
             xyz = self.get_xyz(generate=False)
@@ -1370,36 +1394,45 @@ class ARCSpecies(object):
 
     def sync_conformer_provenance(self):
         """
-        Make ``conformer_levels`` and ``conformer_energy_sources`` the same length as ``conformers``.
+        Make ``conformer_levels``, ``conformer_logs`` and ``conformer_energy_sources`` the same length as
+        ``conformers``.
         Missing entries (an older restart, or conformers added without a record) become ``None``,
         which stands for "not recorded"; entries beyond the last conformer are dropped.
         """
         n_conformers = len(self.conformers)
-        for attr in ('conformer_levels', 'conformer_energy_sources'):
+        for attr in ('conformer_levels', 'conformer_logs', 'conformer_energy_sources'):
             values = getattr(self, attr, None)
             values = list(values) if isinstance(values, (list, tuple)) else list()
             setattr(self, attr, (values + [None] * n_conformers)[:n_conformers])
 
     def reset_conformer_provenance(self):
         """
-        Forget the provenance of every conformer: no optimization level, no energy source.
+        Forget the provenance of every conformer: no optimization level, no log, no energy source.
         Call it when ``conformers`` is replaced wholesale.
         """
         self.conformer_levels = list()
+        self.conformer_logs = list()
         self.conformer_energy_sources = list()
         self.sync_conformer_provenance()
 
-    def record_conformer_geometry_level(self, index: int, level: Level | dict | None):
+    def record_conformer_geometry_level(self,
+                                        index: int,
+                                        level: Level | dict | None,
+                                        log_path: str | None = None,
+                                        ):
         """
-        Record the level of the conformer optimization job that produced the geometry of a conformer.
+        Record the level of the conformer optimization job that produced the geometry of a conformer,
+        and the log that geometry was parsed from.
 
         Args:
             index (int): The conformer index.
             level (Level | dict, optional): The level of the job, or ``None`` if the geometry was not optimized.
+            log_path (str, optional): The path of the optimization log, ``None`` if it is not known.
         """
         self.sync_conformer_provenance()
         if 0 <= index < len(self.conformers):
             self.conformer_levels[index] = level_as_plain_dict(level)
+            self.conformer_logs[index] = log_path if isinstance(log_path, str) and log_path else None
 
     def record_conformer_energy_source(self,
                                        index: int,
@@ -2237,6 +2270,7 @@ class ARCSpecies(object):
                 self.conformers.extend(xyzs)
                 self.conformer_energies.extend(energies)
                 self.conformer_levels.extend([None] * len(xyzs))
+                self.conformer_logs.extend([None] * len(xyzs))
                 self.conformer_energy_sources.extend([None] * len(xyzs))
             else:
                 for xyz, energy in zip(xyzs, energies):
@@ -2596,6 +2630,8 @@ class ARCSpecies(object):
             self.ts_checks['warnings'] = ''
             self.nmd_record = dict()
             self.irc_participant_mapping = None
+            self.ts_atom_map = None
+            self.ts_atom_map_unavailable_reason = None
 
     def get_symmetry_number(self):
         """

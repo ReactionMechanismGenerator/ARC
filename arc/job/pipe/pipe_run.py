@@ -657,7 +657,8 @@ def _task_level(spec) -> Level | None:
 
 def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, conformer_index):
     """
-    Ingest a completed conf_opt task: update the geometry and the opt-level energy, and record the task's level.
+    Ingest a completed conf_opt task: update the geometry and the opt-level energy, and record the task's level and
+    log.
     Where the optimized geometry parses but the energy does not, the energy is ``None`` with no recorded kind.
     """
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
@@ -676,7 +677,7 @@ def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, confor
         return
     if conformer_index < len(species.conformers) and xyz is not None:
         species.conformers[conformer_index] = xyz
-        species.record_conformer_geometry_level(conformer_index, _task_level(spec))
+        species.record_conformer_geometry_level(conformer_index, _task_level(spec), log_path=str(output_file))
         if conformer_index < len(species.conformer_energies):
             species.conformer_energies[conformer_index] = e_elect
             species.record_conformer_energy_source(

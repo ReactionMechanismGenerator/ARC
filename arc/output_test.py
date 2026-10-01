@@ -76,6 +76,7 @@ from arc.output import (
     _xyz_isotopes,
     write_output_yml,
 )
+import arc.checks.ts as ts_checks
 from arc.reaction import ARCReaction
 from arc.species.converter import xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess, ThermoData
@@ -1680,6 +1681,7 @@ kinetics(
         rxn.label = 'A <=> B'
         rxn.reactants = ['A']
         rxn.products = ['B']
+        rxn.get_reactants_and_products.return_value = ([SimpleNamespace(label='A')], [SimpleNamespace(label='B')])
         rxn.family = 'intra_H_migration'
         rxn.multiplicity = 1
         rxn.ts_label = 'TS0'
@@ -1885,6 +1887,7 @@ class TestRxnToDict(unittest.TestCase):
 
     def test_no_kinetics(self):
         rxn = MagicMock()
+        rxn.get_reactants_and_products.return_value = ([], [])
         rxn.label = 'CH4 + OH <=> CH3 + H2O'
         rxn.reactants = ['CH4', 'OH']
         rxn.products = ['CH3', 'H2O']
@@ -1902,6 +1905,7 @@ class TestRxnToDict(unittest.TestCase):
 
     def test_with_kinetics(self):
         rxn = MagicMock()
+        rxn.get_reactants_and_products.return_value = ([], [])
         rxn.label = 'A <=> B'
         rxn.reactants = ['A']
         rxn.products = ['B']
@@ -2697,6 +2701,16 @@ class TestConformerProvenanceExport(unittest.TestCase):
         spc = self.make_spc([None, -98.0], levels=[None, self.CONF_OPT],
                             sources=[None, self.electronic(self.CONF_OPT)])
         self.assertEqual(self.export(spc)[1:], ('electronic_kj_mol', self.CONF_OPT_EXPORTED))
+
+    def test_a_null_energy_stays_null_and_the_description_covers_the_other_entries_only(self):
+        """Test that a null conformer_energies entry is exported as null and never changes the kind, level or force field"""
+        spc = self.make_spc([None, 1.2], levels=[None, None], sources=[None, self.FF])
+        result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}, '/abs')
+        self.assertEqual(result['conformer_energies'], [None, 1.2])
+        self.assertEqual(result['conformer_energy_kind'], 'force_field_kcal_mol')
+        self.assertIsNone(result['conformer_energy_level'])
+        self.assertEqual(result['conformer_force_field'], 'MMFF94s (rdkit)')
+        self.assertEqual(self.export_force_field(self.make_spc([None], levels=[None], sources=[None])), None)
 
     def test_unrecorded_provenance_exports_nulls_of_the_right_length(self):
         """Test that a species restored without the provenance keys gets a null list of the right length and no kind"""
@@ -5526,6 +5540,7 @@ class TestStatmechArkaneKeys(unittest.TestCase):
 
     def test_the_kinetics_block_carries_the_switch_of_its_run(self):
         rxn = MagicMock()
+        rxn.get_reactants_and_products.return_value = ([], [])
         rxn.label, rxn.reactants, rxn.products, rxn.family, rxn.multiplicity, rxn.ts_label = 'r', [], [], 'f', 1, 'TS0'
         rxn.long_kinetic_description = None
         for switch in (True, False, None):
@@ -5768,6 +5783,25 @@ class TestTsFrequenciesInEssOrder(unittest.TestCase):
         self.assertNotIn('freq_frequencies_cm1_ess_order', result)
         self.assertNotIn('reaction_coordinate_mode_index', result)
 
+    def test_nmd_forced_distinguishes_a_forced_pass_from_a_genuine_one_and_no_record(self):
+        """Test nmd_forced: true for a forced pass, false for a genuine verdict, null without a check record"""
+        freqs = [-18.2, -1235.4, 101.0]
+        self.assertIs(self._ts(freqs, True, record={'frequency_cm1': -1235.4, 'forced': True})['nmd_forced'], True)
+        self.assertIs(self._ts(freqs, True)['nmd_forced'], False)
+        self.assertIs(self._ts(freqs, True, record={'frequency_cm1': -1235.4, 'forced': False})['nmd_forced'], False)
+        self.assertIs(self._ts(freqs, False)['nmd_forced'], False)
+        self.assertIsNone(self._ts(freqs, True, record=dict())['nmd_forced'])
+        self.assertIsNone(self._ts(freqs, None)['nmd_forced'])
+
+    def test_nmd_forced_is_null_when_the_record_contradicts_the_verdict(self):
+        """Test that a forced record beside a verdict that is not a pass states nothing"""
+        result = self._ts([-18.2, -1235.4], False, record={'frequency_cm1': -1235.4, 'forced': True})
+        self.assertIsNone(result['nmd_forced'])
+
+    def test_a_species_record_has_no_nmd_forced(self):
+        """Test that nmd_forced is TS-only"""
+        self.assertNotIn('nmd_forced', _spc_to_dict(self.make_spc(), {}, '/abs'))
+
 
 class TestReactionAtomMapExport(unittest.TestCase):
     """The reaction ``atom_map`` family of keys."""
@@ -5899,6 +5933,220 @@ class TestReactionAtomMapExport(unittest.TestCase):
         self.assertEqual(result['atom_map'], [2, 0, 1])
         self.assertIsNone(result['atom_map_source'])
         self.assertIsNone(result['atom_map_method'])
+
+
+class TestReactionSpeciesLabels(unittest.TestCase):
+    """The reaction ``reactant_species_labels`` and ``product_species_labels``, one entry per occurrence."""
+
+    def test_a_repeated_reactant_is_listed_once_per_occurrence(self):
+        """Test that HO2 + HO2 <=> H2O2 + O2 states HO2 twice while reactant_labels keeps it once"""
+        rxn = ARCReaction(label='HO2 + HO2 <=> H2O2 + O2',
+                          r_species=[ARCSpecies(label='HO2', smiles='O[O]')],
+                          p_species=[ARCSpecies(label='H2O2', smiles='OO'), ARCSpecies(label='O2', smiles='[O][O]')])
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['reactant_labels'], ['HO2'])
+        self.assertEqual(result['reactant_species_labels'], ['HO2', 'HO2'])
+        self.assertEqual(result['product_labels'], ['H2O2', 'O2'])
+        self.assertEqual(result['product_species_labels'], ['H2O2', 'O2'])
+
+    def test_a_repeated_product_is_listed_once_per_occurrence(self):
+        """Test that a dissociation into two identical fragments states the fragment twice"""
+        rxn = ARCReaction(label='C2H6 <=> CH3 + CH3',
+                          r_species=[ARCSpecies(label='C2H6', smiles='CC')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]')])
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['reactant_species_labels'], ['C2H6'])
+        self.assertEqual(result['product_labels'], ['CH3'])
+        self.assertEqual(result['product_species_labels'], ['CH3', 'CH3'])
+
+    def test_a_unimolecular_reaction_lists_each_species_once(self):
+        """Test that an isomerization states one reactant and one product"""
+        rxn = ARCReaction(label='n-C4H9 <=> s-C4H9',
+                          r_species=[ARCSpecies(label='n-C4H9', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='s-C4H9', smiles='C[CH]CC')])
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['reactant_species_labels'], ['n-C4H9'])
+        self.assertEqual(result['product_species_labels'], ['s-C4H9'])
+
+    def test_the_labels_agree_with_the_atom_map_labels_when_the_map_exists(self):
+        """Test that the species labels equal atom_map_reactant_labels and atom_map_product_labels"""
+        ch3 = ARCSpecies(label='CH3', smiles='[CH3]', xyz="""C 0.0 0.0 0.0
+                                                           H 1.08 0.0 0.0
+                                                           H -0.54 0.935 0.0
+                                                           H -0.54 -0.935 0.0""")
+        c2h6 = ARCSpecies(label='C2H6', smiles='CC', xyz="""C 0.0 0.0 0.0
+                                                          H -0.36 1.028 0.0
+                                                          H -0.36 -0.514 0.89
+                                                          H -0.36 -0.514 -0.89
+                                                          C 1.54 0.0 0.0
+                                                          H 1.9 1.028 0.0
+                                                          H 1.9 -0.514 0.89
+                                                          H 1.9 -0.514 -0.89""")
+        rxn = ARCReaction(label='CH3 + CH3 <=> C2H6', r_species=[ch3], p_species=[c2h6])
+        rxn.declare_atom_map([0, 1, 2, 3, 4, 5, 6, 7])
+        result = _rxn_to_dict(rxn)
+        self.assertIsNotNone(result['atom_map'])
+        self.assertEqual(result['reactant_species_labels'], ['CH3', 'CH3'])
+        self.assertEqual(result['reactant_species_labels'], result['atom_map_reactant_labels'])
+        self.assertEqual(result['product_species_labels'], result['atom_map_product_labels'])
+
+
+class TestTsAtomMapExport(unittest.TestCase):
+    """The reaction ``ts_atom_map`` and ``ts_atom_map_unavailable_reason``."""
+
+    SYMBOLS = ('C', 'H', 'H', 'H', 'H', 'O', 'H')
+    R_COORDS = ((0.0, 0.0, 0.0), (0.629, 0.629, 0.629), (-0.629, -0.629, 0.629), (-0.629, 0.629, -0.629),
+                (0.629, -0.629, -0.629), (6.0, 0.0, 0.0), (6.97, 0.0, 0.0))
+    P_COORDS = ((0.0, 0.0, 0.0), (1.08, 0.0, 0.0), (-0.54, 0.935, 0.0), (-0.54, -0.935, 0.0),
+                (5.7597, 0.9294, 0.0), (6.0, 0.0, 0.0), (6.96, 0.0, 0.0))
+    ATOM_MAP = [0, 1, 2, 3, 5, 4, 6]
+
+    def _ts_atom_map(self):
+        return {'ts_label': 'TS0', 'reactants': list(range(7)), 'products': [0, 1, 2, 3, 5, 4, 6],
+                'method': 'irc_endpoint_cgr_isomorphism', 'reactant_endpoint': 1,
+                'ts_atom_order_follows_reactants': True}
+
+    def _rxn(self, ts_atom_map='default', reason=None, irc=True):
+        def species(label, smiles, multiplicity, atoms, coords):
+            xyz = xyz_from_data(coords=tuple(coords[i] for i in atoms), symbols=tuple(self.SYMBOLS[i] for i in atoms))
+            return ARCSpecies(label=label, smiles=smiles, multiplicity=multiplicity, xyz=xyz)
+
+        rxn = ARCReaction(r_species=[species('CH4', 'C', 1, [0, 1, 2, 3, 4], self.R_COORDS),
+                                     species('OH', '[OH]', 2, [5, 6], self.R_COORDS)],
+                          p_species=[species('CH3', '[CH3]', 2, [0, 1, 2, 3], self.P_COORDS),
+                                     species('H2O', 'O', 1, [5, 4, 6], self.P_COORDS)])
+        rxn.declare_atom_map(list(self.ATOM_MAP))
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True,
+                                    xyz=xyz_from_data(coords=self.R_COORDS, symbols=self.SYMBOLS))
+        for spc in rxn.r_species + rxn.p_species + [rxn.ts_species]:
+            spc.final_xyz = spc.get_xyz(generate=False)
+        rxn.ts_species.ts_checks['IRC'] = irc
+        rxn.ts_species.ts_atom_map = self._ts_atom_map() if ts_atom_map == 'default' else ts_atom_map
+        rxn.ts_species.ts_atom_map_unavailable_reason = reason
+        return rxn
+
+    def test_a_recorded_map_is_exported_with_no_reason(self):
+        """Test that a well-formed record is exported as recorded, beside the species labels and the atom map"""
+        result = _rxn_to_dict(self._rxn())
+        self.assertEqual(result['ts_atom_map'], self._ts_atom_map())
+        self.assertIsNone(result['ts_atom_map_unavailable_reason'])
+        self.assertEqual(result['atom_map'], self.ATOM_MAP)
+
+    def test_every_recorded_reason_is_exported_and_the_map_is_null(self):
+        """Test that a reason the check recorded is exported as it is"""
+        for reason in ('no_ts', 'irc_fallback_path', 'atom_order_mismatch', 'no_atom_map', 'atom_map_contradicts_ts'):
+            with self.subTest(reason=reason):
+                result = _rxn_to_dict(self._rxn(ts_atom_map=None, reason=reason))
+                self.assertIsNone(result['ts_atom_map'])
+                self.assertEqual(result['ts_atom_map_unavailable_reason'], reason)
+
+    def test_the_reasons_that_are_derived_at_export(self):
+        """Test no_ts, irc_not_passed, no_atom_map and not_recorded"""
+        rxn = self._rxn()
+        rxn.ts_species = None
+        self.assertEqual(_rxn_to_dict(rxn)['ts_atom_map_unavailable_reason'], 'no_ts')
+        rxn = self._rxn()
+        rxn.ts_species.xyz = None
+        rxn.ts_species.final_xyz = rxn.ts_species.initial_xyz = None
+        rxn.ts_species.conformers = list()
+        rxn.ts_species.ts_guesses = list()
+        rxn.ts_species.most_stable_conformer = rxn.ts_species.cheap_conformer = None
+        self.assertEqual(_rxn_to_dict(rxn)['ts_atom_map_unavailable_reason'], 'no_ts')
+        for irc in (None, False):
+            with self.subTest(irc=irc):
+                result = _rxn_to_dict(self._rxn(irc=irc))
+                self.assertIsNone(result['ts_atom_map'])
+                self.assertEqual(result['ts_atom_map_unavailable_reason'], 'irc_not_passed')
+        result = _rxn_to_dict(self._rxn(ts_atom_map=None))
+        self.assertEqual(result['ts_atom_map_unavailable_reason'], 'not_recorded')
+        rxn = self._rxn(ts_atom_map=None)
+        rxn._atom_map = None
+        self.assertEqual(_rxn_to_dict(rxn)['ts_atom_map_unavailable_reason'], 'no_atom_map')
+        rxn = self._rxn()
+        rxn._atom_map = None
+        self.assertEqual(_rxn_to_dict(rxn)['ts_atom_map_unavailable_reason'], 'no_atom_map')
+        result = _rxn_to_dict(self._rxn(ts_atom_map=None, reason='not-a-reason'))
+        self.assertEqual(result['ts_atom_map_unavailable_reason'], 'not_recorded')
+
+    def test_the_map_the_ts_check_records_is_exported_and_agrees_with_the_atom_map(self):
+        """Test the exported ts_atom_map, end to end, for a TS that does not follow the reactant order"""
+        order = [5, 6, 0, 4, 1, 2, 3]
+        ts_coords = ((0.0, 0.0, 0.0), (-0.36, 1.03, 0.0), (-0.36, -0.51, 0.89), (-0.36, -0.51, -0.89),
+                     (1.3, 0.0, 0.0), (2.6, 0.0, 0.0), (3.4, 0.55, 0.0))
+        symbols = tuple(self.SYMBOLS[i] for i in order)
+        rxn = self._rxn(ts_atom_map=None)
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True,
+                                    xyz=xyz_from_data(coords=tuple(ts_coords[i] for i in order), symbols=symbols))
+        endpoint_r = xyz_from_data(coords=tuple(self.R_COORDS[i] for i in order), symbols=symbols)
+        endpoint_p = xyz_from_data(coords=tuple(self.P_COORDS[i] for i in order), symbols=symbols)
+        rxn.ts_species.final_xyz = rxn.ts_species.get_xyz(generate=False)
+        ts_checks.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+        result = _rxn_to_dict(rxn)
+        recorded = rxn.ts_species.ts_atom_map
+        self.assertEqual(result['ts_atom_map'], recorded)
+        self.assertIsNone(result['ts_atom_map_unavailable_reason'])
+        self.assertEqual(result['reactant_species_labels'], ['CH4', 'OH'])
+        self.assertEqual(result['atom_map'], self.ATOM_MAP)
+        reactants = recorded['reactants']
+        self.assertEqual((reactants[0], reactants[4], reactants[5], reactants[6]), (2, 3, 0, 1))
+        for i, j in enumerate(self.ATOM_MAP):
+            self.assertEqual(recorded['products'][j], reactants[i])
+
+    def test_a_malformed_map_is_dropped_to_null_and_logged(self):
+        """Test that every way a recorded map can be malformed gives null with the reason not_recorded"""
+        valid = self._ts_atom_map()
+        swapped = list(valid['reactants'])
+        swapped[0], swapped[1] = swapped[1], swapped[0]
+        element_violation = list(valid['reactants'])
+        element_violation[0], element_violation[5] = element_violation[5], element_violation[0]
+        cases = {
+            'short reactants': dict(valid, reactants=valid['reactants'][:-1]),
+            'long products': dict(valid, products=valid['products'] + [7]),
+            'not a bijection': dict(valid, reactants=[0, 0, 2, 3, 4, 5, 6]),
+            'out of range': dict(valid, reactants=[0, 1, 2, 3, 4, 5, 7]),
+            'a bool entry': dict(valid, reactants=[False, 1, 2, 3, 4, 5, 6]),
+            'a float entry': dict(valid, reactants=[0.0, 1, 2, 3, 4, 5, 6]),
+            'an element is not conserved': dict(valid, reactants=element_violation, ts_atom_order_follows_reactants=False),
+            'two hydrogens are exchanged in reactants only': dict(valid, reactants=[0, 2, 1, 3, 4, 5, 6],
+                                                                  ts_atom_order_follows_reactants=False),
+            'the atom map is not respected': dict(valid, reactants=swapped, ts_atom_order_follows_reactants=False),
+            'wrong method': dict(valid, method='other'),
+            'wrong ts label': dict(valid, ts_label='TS1'),
+            'reactant endpoint 3': dict(valid, reactant_endpoint=3),
+            'reactant endpoint a bool': dict(valid, reactant_endpoint=True),
+            'wrong flag': dict(valid, ts_atom_order_follows_reactants=False),
+            'flag not a bool': dict(valid, ts_atom_order_follows_reactants=1),
+            'extra key': dict(valid, extra=1),
+            'missing key': {key: value for key, value in valid.items() if key != 'method'},
+            'products not a list': dict(valid, products=tuple(valid['products'])),
+        }
+        for name, malformed in cases.items():
+            with self.subTest(case=name):
+                with self.assertLogs('arc', level='WARNING') as logs:
+                    result = _rxn_to_dict(self._rxn(ts_atom_map=malformed))
+                self.assertIsNone(result['ts_atom_map'])
+                self.assertEqual(result['ts_atom_map_unavailable_reason'], 'not_recorded')
+                self.assertTrue(any('malformed' in message for message in logs.output))
+
+    def test_a_participant_geometry_that_does_not_follow_its_mol_blocks_the_export(self):
+        """Test that a species whose geometry has another atom order than its molecule gives no map"""
+        rxn = self._rxn()
+        coords = list(self.R_COORDS[:5])
+        coords[1], coords[2] = coords[2], (3.0, 3.0, 3.0)
+        rxn.r_species[0].final_xyz = xyz_from_data(coords=tuple(coords), symbols=self.SYMBOLS[:5])
+        result = _rxn_to_dict(rxn)
+        self.assertIsNone(result['ts_atom_map'])
+        self.assertEqual(result['ts_atom_map_unavailable_reason'], 'species_atom_order_mismatch')
+        rxn = self._rxn()
+        rxn.p_species[1].final_xyz = xyz_from_data(coords=((6.0, 0.0, 0.0), (9.0, 0.0, 0.0), (6.96, 0.0, 0.0)),
+                                                    symbols=('O', 'H', 'H'))
+        self.assertEqual(_rxn_to_dict(rxn)['ts_atom_map_unavailable_reason'], 'species_atom_order_mismatch')
+
+    def test_a_perceived_geometry_keeps_the_atom_order_of_the_given_geometry(self):
+        """Test that a species given an xyz has a mol in the atom order of that xyz, so the orders agree"""
+        rxn = self._rxn()
+        for spc in rxn.r_species + rxn.p_species:
+            self.assertEqual([atom.element.symbol for atom in spc.mol.atoms], list(spc.get_xyz(generate=False)['symbols']))
 
 
 class TestIrcParticipantMappingExport(unittest.TestCase):
@@ -6198,6 +6446,7 @@ class TestLatentExports(unittest.TestCase):
     def test_kinetics_comment_and_ts_validation_are_exported_or_null(self):
         """Test that the comment and the TS-validation marker of the kinetics dict reach the reaction record."""
         rxn = MagicMock()
+        rxn.get_reactants_and_products.return_value = ([], [])
         rxn.label = 'A <=> B'
         rxn.reactants, rxn.products, rxn.family, rxn.multiplicity, rxn.ts_label = ['A'], ['B'], None, 1, 'TS0'
         rxn.kinetics = {'A': (1.0, 's^-1'), 'n': 0.0, 'Ea': (1.0, 'kJ/mol'),
@@ -6259,6 +6508,56 @@ class TestLatentExports(unittest.TestCase):
         self.assertIsNone(result['xyz_isotopes'])
         self.assertIsNone(result['opt_input_xyz_isotopes'])
         self.assertNotIn('conformers_isotopes', result)
+
+    def test_each_conformer_states_the_program_of_its_own_optimization_log(self):
+        """Test that the program and banner come from each conformer's log, null where there is none"""
+        spc = TestSpcToDict._make_spc_mock(self)
+        gaussian = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        orca = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        missing = os.path.join(ARC_TESTING_PATH, 'no_such_conformer_log.out')
+        xyz = spc.final_xyz
+        spc.conformers = [xyz, xyz, xyz, xyz, xyz]
+        spc.conformer_energies = [0.0, 1.0, 2.0, 3.0, 4.0]
+        spc.conformer_logs = [gaussian, orca, None, missing]
+        result = self._species_dict(spc)
+        self.assertEqual(result['conformer_ess_software'], ['gaussian', 'orca', None, None, None])
+        self.assertEqual(result['conformer_ess_version'],
+                         ['Gaussian 09, Revision D.01', 'ORCA 5.0.4', None, None, None])
+        self.assertEqual(len(result['conformer_ess_software']), len(result['conformers']))
+
+    def test_a_relative_conformer_log_resolves_against_the_project_directory(self):
+        """Test that a log path relative to the project directory is read"""
+        spc = TestSpcToDict._make_spc_mock(self)
+        spc.conformers = [spc.final_xyz]
+        spc.conformer_energies = [0.0]
+        spc.conformer_logs = [os.path.join('opt', 'iC3H7.out')]
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, True)
+        os.makedirs(os.path.join(project_directory, 'opt'))
+        shutil.copy(os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'), os.path.join(project_directory, 'opt'))
+        result = self._species_dict(spc, project_directory=project_directory)
+        self.assertEqual(result['conformer_ess_software'], ['gaussian'])
+
+    def test_conformers_without_recorded_logs_state_null_programs(self):
+        """Test a species that has no conformer_logs attribute (an older object) and force-field conformers"""
+        spc = TestSpcToDict._make_spc_mock(self)
+        spc.conformers = [spc.final_xyz, spc.final_xyz]
+        spc.conformer_energies = [0.0, 1.0]
+        if hasattr(spc, 'conformer_logs'):
+            del spc.conformer_logs
+        result = self._species_dict(spc)
+        self.assertEqual(result['conformer_ess_software'], [None, None])
+        self.assertEqual(result['conformer_ess_version'], [None, None])
+        spc.conformer_logs = [None, None]
+        self.assertEqual(self._species_dict(spc)['conformer_ess_software'], [None, None])
+
+    def test_a_record_without_conformers_has_neither_conformer_program_key(self):
+        """Test that both keys are omitted with the conformers"""
+        spc = TestSpcToDict._make_spc_mock(self)
+        spc.conformers = []
+        result = self._species_dict(spc)
+        self.assertNotIn('conformer_ess_software', result)
+        self.assertNotIn('conformer_ess_version', result)
 
     def test_a_coarse_stage_moves_the_isotopes_of_the_opt_input_with_the_geometry(self):
         """Test that, after a coarse opt, the fine opt's input isotopes are those the coarse log states."""

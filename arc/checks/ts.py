@@ -5,11 +5,17 @@ A module for checking the quality of TS-related calculations, contains helper fu
 from itertools import product
 import os
 
+import networkx as nx
 import numpy as np
 from typing import TYPE_CHECKING
 
 from arc.parser import parser
-from arc.checks.common import get_index_of_abs_largest_neg_freq, is_ts_check_exempt, record_ts_check_warning
+from arc.checks.common import (TS_ATOM_MAP_METHOD,
+                               get_index_of_abs_largest_neg_freq,
+                               is_ts_bond_distance_plausible,
+                               is_ts_check_exempt,
+                               record_ts_check_warning,
+                               )
 from arc.checks.nmd import DEFAULT_AMPLITUDE, analyze_ts_normal_mode_displacement
 from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
@@ -543,11 +549,16 @@ def check_irc_species_and_rxn(xyz_1: dict,
     When the isomorphism comparison establishes the verdict, ``rxn.ts_species.irc_participant_mapping`` records which
     atoms of each endpoint geometry belong to which participant species (see ``_get_irc_participant_mapping``);
     otherwise it is ``None``, and it is also ``None`` when building it fails, which leaves the verdict as decided.
+    On the same path ``rxn.ts_species.ts_atom_map`` records the TS atom of every reactant and product atom of the
+    reaction (see ``get_ts_atom_map``), and ``rxn.ts_species.ts_atom_map_unavailable_reason`` says why it could not;
+    the bond-list fallback records the reason ``'irc_fallback_path'``. Neither affects the verdict or the atom map.
     """
     if rxn is None:
         return None
     rxn.ts_species.ts_checks['IRC'] = None
     rxn.ts_species.irc_participant_mapping = None
+    rxn.ts_species.ts_atom_map = None
+    rxn.ts_species.ts_atom_map_unavailable_reason = None
     xyz_1, xyz_2 = check_xyz_dict(xyz_1), check_xyz_dict(xyz_2)
 
     # Primary check: molecular graph isomorphism
@@ -570,24 +581,53 @@ def check_irc_species_and_rxn(xyz_1: dict,
                 reactant_side, product_side = ((2, assign_2_r), (1, assign_1_p)) if assign_2_r is not None \
                     else (None, None)
             if reactant_side is not None and product_side is not None:
+                mapping, order_inputs = None, None
                 try:
-                    endpoint_atoms = {1: _get_irc_fragment_atom_indices(xyz_1),
-                                      2: _get_irc_fragment_atom_indices(xyz_2)}
-                    mapping = _get_irc_participant_mapping(
-                        reactants=reactants,
-                        products=products,
-                        reactant_side=(reactant_side[0], endpoint_atoms[reactant_side[0]], reactant_side[1]),
-                        product_side=(product_side[0], endpoint_atoms[product_side[0]], product_side[1]),
-                        endpoint_labels=endpoint_labels,
-                        sides_distinguishable=_assign_fragments_to_species(r_mols, p_mols) is None,
-                        atom_order_matches_ts=_get_irc_endpoints_atom_order_matches_ts(
+                    order_inputs = (
+                        _get_irc_endpoints_atom_order_matches_ts(
                             ts_xyz=rxn.ts_species.get_xyz(generate=False), xyz_1=xyz_1, xyz_2=xyz_2),
-                    )
+                        _assign_fragments_to_species(r_mols, p_mols) is None)
                 except Exception as e:
-                    logger.warning(f'Could not build the IRC participant mapping of {rxn.ts_species.label}, '
+                    logger.warning(f'Could not compare the IRC endpoints of {rxn.ts_species.label} with its TS, '
                                    f'got:\n{e.__class__.__name__}: {e}\n'
                                    f'The IRC verdict is unaffected.')
-                    mapping = None
+                if order_inputs is not None:
+                    atom_order_matches_ts, sides_distinguishable = order_inputs
+                    try:
+                        endpoint_atoms = {1: _get_irc_fragment_atom_indices(xyz_1),
+                                          2: _get_irc_fragment_atom_indices(xyz_2)}
+                        mapping = _get_irc_participant_mapping(
+                            reactants=reactants,
+                            products=products,
+                            reactant_side=(reactant_side[0], endpoint_atoms[reactant_side[0]], reactant_side[1]),
+                            product_side=(product_side[0], endpoint_atoms[product_side[0]], product_side[1]),
+                            endpoint_labels=endpoint_labels,
+                            sides_distinguishable=sides_distinguishable,
+                            atom_order_matches_ts=atom_order_matches_ts,
+                        )
+                    except Exception as e:
+                        logger.warning(f'Could not build the IRC participant mapping of {rxn.ts_species.label}, '
+                                       f'got:\n{e.__class__.__name__}: {e}\n'
+                                       f'The IRC verdict is unaffected.')
+                        mapping = None
+                    try:
+                        rxn.ts_species.ts_atom_map, rxn.ts_species.ts_atom_map_unavailable_reason = get_ts_atom_map(
+                            rxn=rxn,
+                            reactants=reactants,
+                            endpoint_xyzs={1: xyz_1, 2: xyz_2},
+                            reactant_endpoint=reactant_side[0],
+                            atom_order_matches_ts=atom_order_matches_ts,
+                            ts_xyz=rxn.ts_species.get_xyz(generate=False),
+                            sides_distinguishable=sides_distinguishable,
+                        )
+                    except Exception as e:
+                        logger.warning(f'Could not build the TS atom map of {rxn.ts_species.label}, '
+                                       f'got:\n{e.__class__.__name__}: {e}\n'
+                                       f'The IRC verdict is unaffected.')
+                        rxn.ts_species.ts_atom_map = None
+                        rxn.ts_species.ts_atom_map_unavailable_reason = 'computation_failed'
+                else:
+                    rxn.ts_species.ts_atom_map_unavailable_reason = 'computation_failed'
                 rxn.ts_species.ts_checks['IRC'] = True
                 rxn.ts_species.irc_participant_mapping = mapping
                 return
@@ -597,6 +637,7 @@ def check_irc_species_and_rxn(xyz_1: dict,
                          'falling back to bond-list comparison.')
 
     # Fallback: bond-list connectivity comparison
+    rxn.ts_species.ts_atom_map_unavailable_reason = 'irc_fallback_path'
     try:
         r_bonds, p_bonds = rxn.get_bonds()
     except Exception as e:
@@ -823,6 +864,241 @@ def _get_irc_participant_mapping(reactants: list,
     mapping['sides_distinguishable'] = sides_distinguishable
     mapping['atom_order_matches_ts'] = atom_order_matches_ts
     return mapping
+
+
+def get_ts_atom_map(rxn: ARCReaction,
+                    reactants: list[ARCSpecies],
+                    endpoint_xyzs: dict[int, dict],
+                    reactant_endpoint: int,
+                    atom_order_matches_ts: bool | None,
+                    ts_xyz: dict | None,
+                    sides_distinguishable: bool = True,
+                    ) -> tuple[dict | None, str | None]:
+    """
+    Get the TS atom of every reactant atom and of every product atom of a reaction whose IRC endpoints were matched
+    to its reactants and products, from a label-preserving isomorphism of two condensed graphs of reaction (CGRs),
+    checked against the distances of the TS geometry.
+
+    The reactant-indexed CGR has the concatenated reactant atoms (``get_reactants_and_products`` order, repeats
+    expanded, the order ``rxn.atom_map`` counts in) as nodes labelled by element, and an edge for every bond of the
+    reactants or of the products (``rxn.get_bonds()``, both already in reactant atom indices), labelled by whether it
+    is in the reactants and whether it is in the products. The TS-indexed CGR has the TS atoms as nodes and the bonds
+    of the reactant endpoint and of the product endpoint geometries as edges, labelled the same way. Atom ``i`` of an
+    endpoint is taken to be atom ``i`` of the TS when the element sequences agree. Before the CGRs are compared, the
+    bond graph of each endpoint must be isomorphic to the bond graph of its side. An isomorphism ``t`` of the first CGR
+    onto the second states that reactant atom ``i`` is TS atom ``t[i]``, and product atom ``j`` is TS atom
+    ``t[atom_map.index(j)]``. The identity is preferred when it is a solution; otherwise the first isomorphism found
+    is taken. When the reactants and the products are isomorphic to each other (``sides_distinguishable`` is
+    ``False``), the endpoints are also tried in the opposite roles. The map is kept only if, on the TS geometry, every
+    bond of both the reactants and the products is at a bonded distance and every bond that forms or breaks is at
+    most a partial-bond distance (``is_ts_bond_distance_plausible``). Neither ``rxn.atom_map`` nor anything else is
+    altered.
+
+    Args:
+        rxn (ARCReaction): The reaction, with its atom map already set (it is never computed here).
+        reactants (list[ARCSpecies]): The reactants, repeated species included (``get_reactants_and_products``).
+        endpoint_xyzs (dict[int, dict]): The two IRC endpoint geometries, keyed ``1`` and ``2``.
+        reactant_endpoint (int): The endpoint (``1`` or ``2``) that was matched to the reactants.
+        atom_order_matches_ts (bool | None): Whether atom ``i`` of an endpoint is atom ``i`` of the TS.
+        ts_xyz (dict | None): The TS geometry.
+        sides_distinguishable (bool, optional): Whether the reactants and the products are not isomorphic.
+
+    Returns:
+        tuple[dict | None, str | None]: The map ``{'ts_label', 'reactants', 'products', 'method',
+                                        'reactant_endpoint', 'ts_atom_order_follows_reactants'}``, where ``reactants``
+                                        and ``products`` hold 0-based TS atom indices and ``reactant_endpoint`` is the
+                                        endpoint that served as the reactants, or ``None`` and one of
+                                        ``TS_ATOM_MAP_UNAVAILABLE_REASONS``.
+    """
+    if atom_order_matches_ts is None or not isinstance(ts_xyz, dict):
+        return None, 'no_ts'
+    if not atom_order_matches_ts:
+        return None, 'atom_order_mismatch'
+    atom_map = getattr(rxn, '_atom_map', None)
+    n_atoms = len(atom_map) if isinstance(atom_map, (list, tuple)) else 0
+    if not n_atoms or sorted(atom_map) != list(range(n_atoms)):
+        return None, 'no_atom_map'
+    try:
+        r_bonds, p_bonds = rxn.get_bonds()
+    except Exception as e:
+        logger.warning(f'Could not get the bonds of {rxn} to map the atoms of {rxn.ts_species.label}, '
+                       f'got:\n{e.__class__.__name__}: {e}')
+        return None, 'no_atom_map'
+    r_symbols = [atom.element.symbol for spc in reactants for atom in spc.mol.atoms]
+    ts_symbols = list(endpoint_xyzs[1]['symbols'])
+    if len(r_symbols) != n_atoms or len(ts_symbols) != n_atoms:
+        return None, 'atom_map_contradicts_ts'
+    reactant_graph = _get_condensed_graph_of_reaction(r_symbols, r_bonds, p_bonds)
+    other_endpoint = 2 if reactant_endpoint == 1 else 1
+    orientations = [(reactant_endpoint, other_endpoint)]
+    if not sides_distinguishable:
+        orientations.append((other_endpoint, reactant_endpoint))
+    endpoints_perceived, geometry_contradicts = False, False
+    for r_endpoint, p_endpoint in orientations:
+        r_endpoint_bonds = _get_endpoint_bonds(endpoint_xyzs[r_endpoint])
+        p_endpoint_bonds = _get_endpoint_bonds(endpoint_xyzs[p_endpoint])
+        if not (_are_bond_graphs_isomorphic(r_symbols, r_bonds, ts_symbols, r_endpoint_bonds)
+                and _are_bond_graphs_isomorphic(r_symbols, p_bonds, ts_symbols, p_endpoint_bonds)):
+            continue
+        endpoints_perceived = True
+        isomorphism = _find_cgr_isomorphism(reactant_graph,
+                                            _get_condensed_graph_of_reaction(ts_symbols,
+                                                                             r_endpoint_bonds,
+                                                                             p_endpoint_bonds))
+        if isomorphism is None:
+            continue
+        if not _does_ts_geometry_support_map(ts_xyz, isomorphism, r_bonds, p_bonds):
+            geometry_contradicts = True
+            continue
+        product_atom_to_reactant_atom = {product_atom: reactant_atom
+                                         for reactant_atom, product_atom in enumerate(atom_map)}
+        return {'ts_label': rxn.ts_species.label,
+                'reactants': isomorphism,
+                'products': [isomorphism[product_atom_to_reactant_atom[j]] for j in range(n_atoms)],
+                'method': TS_ATOM_MAP_METHOD,
+                'reactant_endpoint': r_endpoint,
+                'ts_atom_order_follows_reactants': isomorphism == list(range(n_atoms)),
+                }, None
+    if not endpoints_perceived:
+        logger.warning(f'The bonds perceived on the IRC endpoints of {rxn.ts_species.label} are not those of the '
+                       f'species of {rxn}, so no TS atom map is recorded.')
+        return None, 'endpoint_perception_mismatch'
+    if geometry_contradicts:
+        logger.warning(f'The distances in the TS geometry of {rxn.ts_species.label} contradict the bonds the atom map '
+                       f'of {rxn} gives it, so no TS atom map is recorded.')
+        return None, 'ts_geometry_contradicts_map'
+    logger.warning(f'The atom map of {rxn} contradicts the bonds the IRC endpoints of {rxn.ts_species.label} '
+                   f'form and break, so no TS atom map is recorded. The atom map is left as it is.')
+    return None, 'atom_map_contradicts_ts'
+
+
+def _does_ts_geometry_support_map(ts_xyz: dict,
+                                  isomorphism: list[int],
+                                  r_bonds: list[tuple[int, int]],
+                                  p_bonds: list[tuple[int, int]],
+                                  ) -> bool:
+    """
+    Check the bonds of a TS atom map against the distances of the TS geometry: a bond of both the reactants and the
+    products must be at a bonded distance, and a bond that forms or breaks at most at a partial-bond distance.
+
+    Args:
+        ts_xyz (dict): The TS geometry.
+        isomorphism (list[int]): Entry ``i`` is the TS atom of reactant atom ``i``.
+        r_bonds (list[tuple[int, int]]): The reactant bonds, in reactant atom indices.
+        p_bonds (list[tuple[int, int]]): The product bonds, in reactant atom indices.
+
+    Returns:
+        bool: Whether every bond is at a plausible distance.
+    """
+    dmat = xyz_to_dmat(ts_xyz)
+    symbols = ts_xyz['symbols']
+    r_set = {tuple(sorted(bond)) for bond in r_bonds}
+    p_set = {tuple(sorted(bond)) for bond in p_bonds}
+    for bond in r_set | p_set:
+        atom_1, atom_2 = isomorphism[bond[0]], isomorphism[bond[1]]
+        if not is_ts_bond_distance_plausible(symbols[atom_1], symbols[atom_2], float(dmat[atom_1, atom_2]),
+                                             partial=not (bond in r_set and bond in p_set)):
+            return False
+    return True
+
+
+def _are_bond_graphs_isomorphic(symbols_1: list[str],
+                                bonds_1: list[tuple[int, int]],
+                                symbols_2: list[str],
+                                bonds_2: list[tuple[int, int]],
+                                ) -> bool:
+    """
+    Check whether two bond graphs, with the atoms labelled by element, are isomorphic.
+
+    Args:
+        symbols_1 (list[str]): The element of every atom of the first graph.
+        bonds_1 (list[tuple[int, int]]): The bonds of the first graph.
+        symbols_2 (list[str]): The element of every atom of the second graph.
+        bonds_2 (list[tuple[int, int]]): The bonds of the second graph.
+
+    Returns:
+        bool: ``True`` if they are isomorphic.
+    """
+    graphs = list()
+    for symbols, bonds in ((symbols_1, bonds_1), (symbols_2, bonds_2)):
+        graph = nx.Graph()
+        graph.add_nodes_from((index, {'element': symbol}) for index, symbol in enumerate(symbols))
+        graph.add_edges_from(bonds)
+        graphs.append(graph)
+    return nx.is_isomorphic(graphs[0], graphs[1], node_match=lambda a, b: a['element'] == b['element'])
+
+
+def _get_endpoint_bonds(xyz: dict) -> list[tuple[int, int]]:
+    """
+    Get the distance-matrix-based bonds of an IRC endpoint geometry, the same bond list the endpoint fragments of
+    ``_get_irc_fragment_atom_indices`` are built from.
+
+    Args:
+        xyz (dict): The Cartesian coordinates of the IRC endpoint.
+
+    Returns:
+        list[tuple[int, int]]: The bonds, each a sorted pair of 0-based atom indices.
+    """
+    bonds = get_bonds_from_dmat(dmat=xyz_to_dmat(xyz), elements=xyz['symbols'], n_fragments=0)
+    return [tuple(sorted(bond)) for bond in bonds]
+
+
+def _get_condensed_graph_of_reaction(symbols: list[str],
+                                     bonds_a: list[tuple[int, int]],
+                                     bonds_b: list[tuple[int, int]],
+                                     ) -> nx.Graph:
+    """
+    Build the condensed graph of a reaction: the atoms as nodes labelled by element, and an edge for every bond that is
+    in either list, labelled ``(in bonds_a, in bonds_b)``.
+
+    Args:
+        symbols (list[str]): The element symbol of every atom.
+        bonds_a (list[tuple[int, int]]): The bonds of the first state (the reactants).
+        bonds_b (list[tuple[int, int]]): The bonds of the second state (the products).
+
+    Returns:
+        nx.Graph: The graph, with the node attribute ``element`` and the edge attribute ``kind``.
+    """
+    set_a = {tuple(sorted(bond)) for bond in bonds_a}
+    set_b = {tuple(sorted(bond)) for bond in bonds_b}
+    graph = nx.Graph()
+    graph.add_nodes_from((index, {'element': symbol}) for index, symbol in enumerate(symbols))
+    for bond in sorted(set_a | set_b):
+        graph.add_edge(*bond, kind=(bond in set_a, bond in set_b))
+    return graph
+
+
+def _find_cgr_isomorphism(graph_1: nx.Graph, graph_2: nx.Graph) -> list[int] | None:
+    """
+    Find a label-preserving isomorphism between two condensed graphs of reaction, preferring the identity.
+    Only the first isomorphism is looked for; the automorphisms are never enumerated or counted.
+
+    Args:
+        graph_1 (nx.Graph): The graph whose nodes are mapped.
+        graph_2 (nx.Graph): The graph they are mapped onto.
+
+    Returns:
+        list[int] | None: Entry ``i`` is the node of ``graph_2`` that node ``i`` of ``graph_1`` maps to,
+                          or ``None`` if the graphs are not isomorphic.
+    """
+    n_atoms = graph_1.number_of_nodes()
+    if n_atoms != graph_2.number_of_nodes() or graph_1.number_of_edges() != graph_2.number_of_edges():
+        return None
+
+    def _node_match(attributes_1: dict, attributes_2: dict) -> bool:
+        return attributes_1['element'] == attributes_2['element']
+
+    def _edge_match(attributes_1: dict, attributes_2: dict) -> bool:
+        return attributes_1['kind'] == attributes_2['kind']
+
+    if all(_node_match(graph_1.nodes[i], graph_2.nodes[i]) for i in range(n_atoms)) \
+            and all(graph_2.has_edge(u, v) and _edge_match(data, graph_2.edges[u, v])
+                    for u, v, data in graph_1.edges(data=True)):
+        return list(range(n_atoms))
+    matcher = nx.algorithms.isomorphism.GraphMatcher(graph_1, graph_2,
+                                                     node_match=_node_match, edge_match=_edge_match)
+    mapping = next(matcher.isomorphisms_iter(), None)
+    return [mapping[i] for i in range(n_atoms)] if mapping is not None else None
 
 
 def _get_irc_endpoints_atom_order_matches_ts(ts_xyz: dict | None,
