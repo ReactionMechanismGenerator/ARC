@@ -1796,9 +1796,12 @@ class TestRouteLoggerToArcLog(unittest.TestCase):
 
     def test_the_logger_is_restored_when_the_block_raises(self):
         self.target.setLevel(logging.ERROR)
-        with self.assertRaises(RuntimeError):
+
+        def raise_inside_the_block():
             with common.route_logger_to_arc_log(self.name):
                 raise RuntimeError('raised inside the block')
+
+        self.assertRaises(RuntimeError, raise_inside_the_block)
         self.assertEqual(self.target.handlers, [])
         self.assertEqual(self.target.level, logging.ERROR)
         self.assertTrue(self.target.propagate)

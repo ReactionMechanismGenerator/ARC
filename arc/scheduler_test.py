@@ -8,6 +8,7 @@ This module contains unit tests for the arc.scheduler module
 import datetime
 import logging
 import math
+from functools import partial
 import os
 import shutil
 import tempfile
@@ -5607,7 +5608,7 @@ H       0.91779059    1.22790192    0.72426890""")
     def test_a_gaussian_job_is_recorded_at_the_requested_level(self):
         """Test that the level recorded for a Gaussian job keeps the requested spelling"""
         requested = Level(method='wb97xd', basis='def2-tzvp', software='gaussian')
-        with patch('arc.scheduler.job_factory', side_effect=lambda **kwargs: job_factory(**kwargs, testing=True)), \
+        with patch('arc.scheduler.job_factory', side_effect=partial(job_factory, testing=True)), \
                 patch('arc.job.adapters.gaussian.GaussianAdapter.execute'), \
                 patch.object(self.sched, 'check_max_simultaneous_jobs_limit'), \
                 patch.object(self.sched, 'save_restart_dict'):
@@ -5621,7 +5622,7 @@ H       0.91779059    1.22790192    0.72426890""")
         """Test that a forward IRC and a reverse IRC respawned from the first job's level record one level"""
         requested = Level(method='wb97xd', basis='def2-tzvp', software='gaussian')
         jobs = list()
-        with patch('arc.scheduler.job_factory', side_effect=lambda **kwargs: job_factory(**kwargs, testing=True)), \
+        with patch('arc.scheduler.job_factory', side_effect=partial(job_factory, testing=True)), \
                 patch('arc.job.adapters.gaussian.GaussianAdapter.execute'), \
                 patch.object(self.sched, 'check_max_simultaneous_jobs_limit'), \
                 patch.object(self.sched, 'save_restart_dict'):

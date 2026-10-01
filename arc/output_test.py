@@ -5543,9 +5543,8 @@ class TestQuantumCorrectionsPathHelper(unittest.TestCase):
         with patch('arc.output.tempfile.mkstemp', side_effect=OSError(28, 'No space left on device')):
             self.assertIsNone(_get_arkane_quantum_corrections_path())
         fd, leftover = tempfile.mkstemp(suffix='.qm_input.yml')
-        os.close(fd)
         self.addCleanup(lambda: os.path.exists(leftover) and os.unlink(leftover))
-        with patch('arc.output.tempfile.mkstemp', side_effect=[(os.open(leftover, os.O_RDONLY), leftover),
+        with patch('arc.output.tempfile.mkstemp', side_effect=[(fd, leftover),
                                                               OSError(28, 'No space left on device')]):
             self.assertIsNone(_get_arkane_quantum_corrections_path())
         self.assertFalse(os.path.exists(leftover))
