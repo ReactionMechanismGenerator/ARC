@@ -1146,7 +1146,7 @@ def get_irc_endpoint_chain_reason(endpoint_xyzs: dict[int, dict],
         except Exception as e:
             logger.warning(f'Could not read the geometries of the logs of IRC endpoint {k + 1}, '
                            f'got:\n{e.__class__.__name__}: {e}')
-            final_xyz = opt_start_xyz = irc_last_xyz = None
+            return 'irc_start_geometry_unavailable'
         if final_xyz is None or opt_start_xyz is None or irc_last_xyz is None:
             logger.warning(f'Could not read the geometries of the logs of IRC endpoint {k + 1}, '
                            f'so no TS atom map is recorded.')

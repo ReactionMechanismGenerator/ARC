@@ -486,6 +486,7 @@ class Scheduler(object):
                     if spc.label in rxn.products:
                         rxn.p_species.append(spc)
                 rxn.check_attributes()
+                rxn.check_charge_balance()
                 family_text = ''
                 if rxn.family is not None:
                     family_text = f'identified as belonging to RMG family {rxn.family}'
