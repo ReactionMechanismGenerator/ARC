@@ -1011,7 +1011,7 @@ class ARCSpecies(object):
         # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
         # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
         if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
-            self.mol_from_xyz(get_cheap=False)
+            self.mol_from_xyz(get_cheap=False, strict='mol' not in species_dict)
         if self.mol is not None:
             if 'bond_corrections' not in species_dict and not self.is_ts:
                 self.bond_corrections = enumerate_bonds(self.mol)
@@ -1117,7 +1117,7 @@ class ARCSpecies(object):
             for mode in yml_content['conformer']['modes']:
                 self.external_symmetry = mode.get('symmetry', None)
         if self.initial_xyz is not None:
-            self.mol_from_xyz()
+            self.mol_from_xyz(strict=False)
         if self.e0 is None:
             self.e0 = yml_content['conformer']['E0']['value'] # should already be in kJ/mol
             if yml_content['conformer']['E0']['units'] == 'J/mol':
@@ -1892,6 +1892,7 @@ class ARCSpecies(object):
     def mol_from_xyz(self,
                      xyz: dict | None = None,
                      get_cheap: bool = False,
+                     strict: bool = True,
                      ) -> None:
         """
         Make sure atom order in self.mol corresponds to xyz.
@@ -1900,11 +1901,18 @@ class ARCSpecies(object):
         2D structure to confirm that the perceived molecule is correct.
         For TSs, the perceived molecule is accepted without enforcing
         2D-graph isomorphism, since TS connectivity is not strictly defined.
+        For other species, the connectivity perceived from xyz must match the species' own 2D graph, otherwise a
+        ``SpeciesError`` is raised. Differing bond orders or charge placement are tolerated.
+        Bonds the perception adds between different user-declared ``fragments`` are not counted as connectivity.
+        If ``keep_mol`` is set, the atoms of the 2D graph are reordered to follow xyz.
         If ``xyz`` is not given, the species xyz attribute will be used.
+        When ``strict`` is False (ARC's own saved state), a connectivity mismatch logs a warning
+        and leaves ``self.mol`` unchanged and unordered instead of raising.
 
         Args:
             xyz (dict, optional): Alternative coordinates to use.
             get_cheap (bool, optional): Whether to generate conformers if the species has no xyz data.
+            strict (bool, optional): Whether a connectivity mismatch raises a ``SpeciesError``.
         """
         if xyz is None:
             xyz = self.get_xyz(generate=get_cheap, return_format='dict')
@@ -1935,21 +1943,33 @@ class ARCSpecies(object):
                     if not self.keep_mol:
                         self.mol = perceived_mol
                 else:
-                    allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
-                                             or self.mol.has_charge() or perceived_mol.has_charge() \
-                                             or (self.multiplicity is not None and self.multiplicity >= 3) \
-                                             or self.mol.multiplicity >= 3 or perceived_mol.multiplicity >= 3
-                    isomorphic = self.check_xyz_isomorphism(mol=perceived_mol,
-                                                            xyz=xyz,
-                                                            allow_nonisomorphic_2d=allow_nonisomorphic_2d)
-                    if not isomorphic:
-                        logger.warning(f'XYZ and the 2D graph representation for {self.label} are not isomorphic.\nGot '
-                                       f'xyz:\n{xyz}\n\nwhich corresponds to {self.mol.copy(deep=True).to_smiles()}\n'
-                                       f'{self.mol.copy(deep=True).to_adjacency_list()}\n\nand: '
-                                       f'{perceived_mol.copy(deep=True).to_smiles()}\n'
-                                       f'{perceived_mol.copy(deep=True).to_adjacency_list()}')
-                        raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
-                    if not self.keep_mol:
+                    comparison_mol = self._without_interfragment_bonds(perceived_mol)
+                    same_bond_orders = check_isomorphism(self.mol, comparison_mol)
+                    same_connectivity = same_bond_orders or check_isomorphism(self.mol,
+                                                                              comparison_mol,
+                                                                              convert_to_single_bonds=True)
+                    if not same_connectivity:
+                        message = (f'The xyz given for {self.label} does not match its 2D graph. The graph is '
+                                   f'{self.mol.copy(deep=True).to_smiles()}, but the coordinates correspond to '
+                                   f'{perceived_mol.copy(deep=True).to_smiles()}.\n'
+                                   f'Got xyz:\n{xyz}\n\nand graph:\n'
+                                   f'{self.mol.copy(deep=True).to_adjacency_list()}\n\nperceived from xyz:\n'
+                                   f'{perceived_mol.copy(deep=True).to_adjacency_list()}')
+                        if strict:
+                            raise SpeciesError(message)
+                        logger.warning(f'{message}\n\nKeeping the 2D graph of {self.label} unchanged.')
+                        return None
+                    if not same_bond_orders:
+                        logger.warning(f'The xyz of {self.label} has the connectivity of its 2D graph '
+                                       f'{self.mol.copy(deep=True).to_smiles()} but a different bond order or charge '
+                                       f'assignment: {perceived_mol.copy(deep=True).to_smiles()}.')
+                    if self.keep_mol:
+                        try:
+                            order_atoms(ref_mol=perceived_mol, mol=self.mol)
+                        except SanitizationError as e:
+                            raise SpeciesError(f'Could not order the atoms of {self.label} '
+                                               f'({self.mol.copy(deep=True).to_smiles()}) by its xyz: {e}') from e
+                    else:
                         if is_mol_valid(perceived_mol, charge=self.charge, multiplicity=self.multiplicity, n_radicals=self.number_of_radicals):
                             self.mol = perceived_mol
                         else:
@@ -1975,6 +1995,28 @@ class ARCSpecies(object):
                 self.mol = perceived_mol
             else:
                 logger.error(f'Could not infer a 2D graph for species {self.label}')
+
+    def _without_interfragment_bonds(self, mol: Molecule) -> Molecule:
+        """
+        Get a copy of a molecule, whose atoms follow the xyz order, without the bonds
+        that join atoms of different user-declared fragments.
+        Returns the molecule itself if no fragments were declared.
+
+        Args:
+            mol (Molecule): The molecule perceived from xyz.
+
+        Returns:
+            Molecule: The molecule to compare against the species' own 2D graph.
+        """
+        if not self.fragments or len(self.fragments) < 2:
+            return mol
+        fragment_of = {index: i for i, fragment in enumerate(self.fragments) for index in fragment}
+        mol = mol.copy(deep=True)
+        for atom_1, atom_2 in [(bond.atom1, bond.atom2) for bond in mol.get_all_edges()
+                               if bond.atom1 is not bond.atom2]:
+            if fragment_of.get(mol.atoms.index(atom_1)) != fragment_of.get(mol.atoms.index(atom_2)):
+                mol.remove_bond(mol.get_bond(atom_1, atom_2))
+        return mol
 
     def process_xyz(self, xyz_list: list | str | dict):
         """

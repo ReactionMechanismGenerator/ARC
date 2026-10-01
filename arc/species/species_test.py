@@ -2114,6 +2114,146 @@ H       1.32129900    0.71837500    0.38017700
             radical_count += atom.radical_electrons
         self.assertEqual(radical_count, 2)
 
+    @staticmethod
+    def _symbols_of(spc):
+        """Element symbols of a species' mol, in atom order."""
+        return tuple(atom.element.symbol for atom in spc.mol.atoms)
+
+    def test_xyz_that_contradicts_the_smiles_is_rejected(self):
+        """Test that an xyz with different connectivity than the given SMILES raises, with and without keep_mol."""
+        dme_xyz = ARCSpecies(label='dme', smiles='COC').get_xyz()
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='etoh', smiles='CCO', xyz=dme_xyz)
+        for keep_mol in (False, True):
+            spc = ARCSpecies(label='etoh', smiles='CCO', keep_mol=keep_mol)
+            with self.assertRaises(SpeciesError):
+                spc.mol_from_xyz(xyz=dme_xyz)
+            self.assertEqual(spc.mol.to_smiles(), 'CCO')
+
+    def test_xyz_that_contradicts_a_charged_or_triplet_graph_is_rejected(self):
+        """Test that the nonisomorphic-2D tolerance for charged and triplet species does not cover connectivity."""
+        dme_xyz = ARCSpecies(label='dme', smiles='COC').get_xyz()
+        h_index = dme_xyz['symbols'].index('H')
+        keep = [i for i in range(len(dme_xyz['symbols'])) if i != h_index]
+        methoxymethanide_xyz = {key: tuple(dme_xyz[key][i] for i in keep) for key in ('symbols', 'isotopes', 'coords')}
+        cyclopropane_xyz = ARCSpecies(label='cyclopropane', smiles='C1CC1').get_xyz()
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='ethoxide', smiles='CC[O-]', charge=-1, xyz=methoxymethanide_xyz)
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='propanediyl', smiles='[CH2]C[CH2]', multiplicity=3, xyz=cyclopropane_xyz)
+        for keep_mol in (False, True):
+            ethoxide = ARCSpecies(label='ethoxide', smiles='CC[O-]', charge=-1, keep_mol=keep_mol)
+            with self.assertRaises(SpeciesError):
+                ethoxide.mol_from_xyz(xyz=methoxymethanide_xyz)
+            propanediyl = ARCSpecies(label='propanediyl', smiles='[CH2]C[CH2]', multiplicity=3, keep_mol=keep_mol)
+            with self.assertRaises(SpeciesError):
+                propanediyl.mol_from_xyz(xyz=cyclopropane_xyz)
+
+    def test_xyz_that_matches_the_smiles_is_accepted_in_xyz_order(self):
+        """Test that a matching xyz is accepted and the mol atom order follows the xyz, with and without keep_mol."""
+        etoh_xyz = ARCSpecies(label='etoh_ref', smiles='CCO').get_xyz()
+        reordered_xyz = ARCSpecies(label='oet', smiles='OCC').get_xyz()
+        for xyz in (etoh_xyz, reordered_xyz):
+            spc = ARCSpecies(label='etoh', smiles='CCO', xyz=xyz)
+            self.assertEqual(spc.mol.to_smiles(), 'CCO')
+            self.assertEqual(self._symbols_of(spc), tuple(xyz['symbols']))
+            self.assertTrue(are_coords_compliant_with_graph(xyz, spc.mol))
+            spc = ARCSpecies(label='etoh', smiles='CCO', keep_mol=True)
+            spc.mol_from_xyz(xyz=xyz)
+            self.assertEqual(spc.mol.to_smiles(), 'CCO')
+            self.assertEqual(self._symbols_of(spc), tuple(xyz['symbols']))
+            self.assertTrue(are_coords_compliant_with_graph(xyz, spc.mol))
+
+    def test_keep_mol_reorders_the_given_mol_to_the_xyz_order(self):
+        """Test that keep_mol keeps the user's graph but reorders its atoms to follow a differently ordered xyz."""
+        reordered_xyz = ARCSpecies(label='oet', smiles='OCC').get_xyz()
+        mol = Molecule(smiles='CCO')
+        self.assertNotEqual(tuple(atom.element.symbol for atom in mol.atoms), tuple(reordered_xyz['symbols']))
+        spc = ARCSpecies(label='etoh', mol=mol, keep_mol=True)
+        spc.mol_from_xyz(xyz=reordered_xyz)
+        self.assertEqual(self._symbols_of(spc), tuple(reordered_xyz['symbols']))
+        self.assertTrue(are_coords_compliant_with_graph(reordered_xyz, spc.mol))
+        self.assertEqual(spc.mol.to_smiles(), 'CCO')
+
+    def test_xyz_with_other_bond_orders_but_same_connectivity_is_accepted(self):
+        """Test that charge placement and bond order differences do not reject an xyz with matching connectivity."""
+        nitro_xyz = ARCSpecies(label='nitromethane', smiles='C[N+](=O)[O-]').get_xyz()
+        zwitterion_xyz = ARCSpecies(label='glycine_zwitterion', smiles='[NH3+]CC([O-])=O').get_xyz()
+        for label, smiles, xyz in (('nitro', 'C[N+](=O)[O-]', nitro_xyz), ('gly', '[NH3+]CC([O-])=O', zwitterion_xyz)):
+            spc = ARCSpecies(label=label, smiles=smiles, xyz=xyz)
+            self.assertEqual(self._symbols_of(spc), tuple(xyz['symbols']))
+            self.assertTrue(are_coords_compliant_with_graph(xyz, spc.mol))
+            kept = ARCSpecies(label=label, smiles=smiles, keep_mol=True)
+            kept.mol_from_xyz(xyz=xyz)
+            self.assertEqual(self._symbols_of(kept), tuple(xyz['symbols']))
+            self.assertTrue(are_coords_compliant_with_graph(xyz, kept.mol))
+
+    def test_xyz_with_other_bond_orders_is_accepted_for_a_ylide(self):
+        """Test that a ylide graph is accepted against the xyz of its ylene form, which has other bond orders."""
+        ylene_xyz = ARCSpecies(label='ylene', smiles='CP(C)(C)=C').get_xyz()
+        spc = ARCSpecies(label='ylide', smiles='[CH2-][P+](C)(C)C', xyz=ylene_xyz)
+        self.assertEqual(self._symbols_of(spc), tuple(ylene_xyz['symbols']))
+        self.assertTrue(are_coords_compliant_with_graph(ylene_xyz, spc.mol))
+        kept = ARCSpecies(label='ylide', smiles='[CH2-][P+](C)(C)C', keep_mol=True)
+        kept.mol_from_xyz(xyz=ylene_xyz)
+        self.assertEqual(self._symbols_of(kept), tuple(ylene_xyz['symbols']))
+        self.assertTrue(are_coords_compliant_with_graph(ylene_xyz, kept.mol))
+
+    def test_van_der_waals_complex_with_declared_fragments_is_accepted(self):
+        """Test that bonds the perception adds between declared fragments do not reject a correct complex."""
+        water_dimer_xyz = {'symbols': ('O', 'H', 'H', 'O', 'H', 'H'),
+                           'isotopes': (16, 1, 1, 16, 1, 1),
+                           'coords': ((-1.4639, 0.0, 0.1146), (-1.8109, 0.7640, -0.3668), (-0.4949, 0.0, 0.0731),
+                                      (1.4296, 0.0, -0.1074), (1.7937, -0.7590, 0.3720), (1.7937, 0.7590, 0.3720))}
+        spc = ARCSpecies(label='water_dimer', smiles='O.O', xyz=water_dimer_xyz, fragments=[[0, 1, 2], [3, 4, 5]])
+        self.assertEqual(self._symbols_of(spc), tuple(water_dimer_xyz['symbols']))
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='water_dimer', smiles='OO', xyz=water_dimer_xyz, fragments=[[0, 1, 2], [3, 4, 5]])
+
+    def test_species_state_with_a_drifted_xyz_survives_serialization_and_copy(self):
+        """Test that ARC's own saved state keeps its graph, and warns, when its xyz has other connectivity."""
+        dme_xyz = ARCSpecies(label='dme', smiles='COC').get_xyz()
+        spc = ARCSpecies(label='etoh', smiles='CCO')
+        spc.final_xyz = dme_xyz
+        species_dict = spc.as_dict()
+        self.assertIn('mol', species_dict)
+        with self.assertLogs('arc', level='WARNING') as logs:
+            loaded = ARCSpecies(species_dict=species_dict)
+            copied = spc.copy()
+        self.assertGreaterEqual(len(logs.output), 2)
+        for other in (loaded, copied):
+            self.assertEqual(other.mol.to_smiles(), 'CCO')
+            self.assertEqual(self._symbols_of(other), self._symbols_of(spc))
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='etoh', smiles='CCO', xyz=dme_xyz)
+
+    def test_cyclic_scissors_fragment_copy_keeps_its_graph(self):
+        """Test that copying a cyclic BDE scissors fragment, whose xyz is the parent ring, keeps its graph."""
+        ring = ARCSpecies(label='cyclohexane', smiles='C1CCCCC1')
+        ring.final_xyz = ring.get_xyz()
+        ring.bdes = [(1, 2)]
+        fragments = ring.scissors(skip_conformers=True)
+        cyclic = [fragment for fragment in fragments if fragment.label.endswith('_cyclic')]
+        self.assertEqual(len(cyclic), 1)
+        cyclic[0].initial_xyz = ring.final_xyz
+        smiles = cyclic[0].mol.to_smiles()
+        with self.assertLogs('arc', level='WARNING'):
+            copied = cyclic[0].copy()
+        self.assertEqual(copied.mol.to_smiles(), smiles)
+
+    def test_triplet_xyz_that_matches_the_smiles_is_accepted(self):
+        """Test that triplet and radical species with a matching xyz are still accepted."""
+        o2_xyz = {'symbols': ('O', 'O'), 'isotopes': (16, 16), 'coords': ((0.0, 0.0, 0.6029), (0.0, 0.0, -0.6029))}
+        ethyl_xyz = ARCSpecies(label='ethyl_ref', smiles='[CH2]C').get_xyz()
+        o2 = ARCSpecies(label='O2', smiles='[O][O]', multiplicity=3, xyz=o2_xyz)
+        self.assertEqual(o2.mol.multiplicity, 3)
+        ethyl = ARCSpecies(label='ethyl', smiles='[CH2]C', xyz=ethyl_xyz)
+        self.assertEqual(self._symbols_of(ethyl), tuple(ethyl_xyz['symbols']))
+        for label, smiles, multiplicity, xyz in (('O2', '[O][O]', 3, o2_xyz), ('ethyl', '[CH2]C', 2, ethyl_xyz)):
+            kept = ARCSpecies(label=label, smiles=smiles, multiplicity=multiplicity, keep_mol=True)
+            kept.mol_from_xyz(xyz=xyz)
+            self.assertEqual(self._symbols_of(kept), tuple(xyz['symbols']))
+
     def test_ts_mol_from_xyz_skips_isomorphism_enforcement(self):
         """Test that a TS accepts the perceived xyz-derived molecule even if a stored 2D graph disagrees."""
         xyz = {'symbols': ('O', 'O', 'H', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
