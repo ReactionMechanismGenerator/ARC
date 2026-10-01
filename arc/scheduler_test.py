@@ -3759,6 +3759,46 @@ H      -0.38158795    1.01273118   -0.02607927""")),
             shutil.rmtree(project_directory, ignore_errors=True)
 
 
+class TestMonoatomicRestart(unittest.TestCase):
+    """
+    A monoatomic species gets its sp/composite job straight from Scheduler.__init__, in the same loop
+    that runs right after restore_running_jobs() has rebuilt the previous session's jobs. Anything
+    that discards running_jobs there silently un-tracks a job that is still on the server.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.ess_settings = {'gaussian': ['server1']}
+        cls.project = 'arc_project_for_testing_delete_after_usage_monoatomic'
+        cls.project_directory = os.path.join(ARC_PATH, 'Projects', cls.project)
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        A method that is run ONCE after all unit tests in this class.
+        """
+        shutil.rmtree(cls.project_directory, ignore_errors=True)
+
+    def test_a_restored_monoatomic_sp_job_survives_scheduler_initialization(self):
+        """Test that a monoatomic species' pending sp job is still tracked after a restart"""
+        # The restored job sits in job_dict, which suppresses submitting a replacement, so dropping it
+        # from running_jobs means nothing ever polls it and the species stays unconverged all run.
+        spc = ARCSpecies(label='H', smiles='[H]')
+        job = job_factory(job_adapter='gaussian', project=self.project, ess_settings=self.ess_settings,
+                          species=[spc], job_type='sp', level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory, job_num=911)
+        sched = Scheduler(project=self.project, ess_settings=self.ess_settings, species_list=[spc],
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory, testing=True,
+                          job_types={'conf_opt': False, 'opt': False, 'freq': False, 'sp': True, 'rotors': False},
+                          restart_dict={'running_jobs': {'H': [job.as_dict()]}})
+        self.assertEqual(sched.running_jobs['H'], [job.job_name])
+        self.assertIn(job.job_name, sched.job_dict['H']['sp'])
+
+
 class StubJob(object):
     """
     A stand-in for a job object, so that Scheduler.run_job() can be driven without executing anything.
@@ -4404,6 +4444,92 @@ class TestSchedulerReactionChargeBalance(unittest.TestCase):
         rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-')
         self.build_scheduler(rxn, species)
         self.assertEqual(rxn.charge, -1)
+
+
+class TestOnlyProcessCompletionValidation(unittest.TestCase):
+    """In processing-only mode the scheduling loop never runs, so convergence has to be finalized
+    without submitting anything - otherwise a species with complete results is skipped."""
+
+    @classmethod
+    def setUpClass(cls):
+        worker = os.environ.get('PYTEST_XDIST_WORKER', 'master')
+        cls.project_directory = os.path.join(ARC_PATH, 'Projects', f'arc_test_only_process_sched_{worker}')
+        if os.path.isdir(cls.project_directory):
+            shutil.rmtree(cls.project_directory, ignore_errors=True)
+        os.makedirs(cls.project_directory, exist_ok=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir(cls.project_directory):
+            shutil.rmtree(cls.project_directory, ignore_errors=True)
+
+    def _make_sched(self, only_process=False, testing=True):
+        spc = ARCSpecies(label='CH4', smiles='C')
+        spc.final_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                         'isotopes': (12, 1, 1, 1, 1),
+                         'coords': ((0, 0, 0), (0.63, 0.63, 0.63), (-0.63, -0.63, 0.63),
+                                    (-0.63, 0.63, -0.63), (0.63, -0.63, -0.63))}
+        return Scheduler(project='only_process_sched',
+                         ess_settings={'gaussian': ['server1']},
+                         species_list=[spc],
+                         project_directory=self.project_directory,
+                         opt_level=Level(repr=default_levels_of_theory['opt']),
+                         freq_level=Level(repr=default_levels_of_theory['freq']),
+                         sp_level=Level(repr=default_levels_of_theory['sp']),
+                         conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                         scan_level=Level(repr=default_levels_of_theory['scan']),
+                         ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                         orbitals_level=default_levels_of_theory['orbitals'],
+                         job_types=initialize_job_types(),
+                         testing=testing,
+                         only_process=only_process,
+                         )
+
+    def test_completion_is_validated_without_submitting_anything(self):
+        """A species whose job-type flags are all set is marked converged with no scheduling.
+
+        This is the interrupted-restart shape: a job check saves the restart as soon as the job
+        succeeds, while convergence is only settled later by the scheduling loop, so a restart file
+        can carry every flag with ``convergence`` still unset.
+        """
+        sched = self._make_sched()
+        for job_type in sched.output['CH4']['job_types']:
+            sched.output['CH4']['job_types'][job_type] = True
+        sched.output['CH4']['convergence'] = False
+        sched.validate_completion_without_scheduling()
+        self.assertTrue(sched.output['CH4']['convergence'])
+
+    def test_a_species_with_running_jobs_is_not_declared_converged(self):
+        """Results are not known to be final while jobs are still recorded as running."""
+        sched = self._make_sched()
+        for job_type in sched.output['CH4']['job_types']:
+            sched.output['CH4']['job_types'][job_type] = True
+        sched.output['CH4']['convergence'] = False
+        sched.running_jobs['CH4'] = ['sp_a1234']
+        sched.validate_completion_without_scheduling()
+        self.assertFalse(sched.output['CH4']['convergence'])
+
+    def test_an_incomplete_species_is_not_declared_converged(self):
+        """A missing required job type must still read as unconverged."""
+        sched = self._make_sched()
+        for job_type in sched.output['CH4']['job_types']:
+            sched.output['CH4']['job_types'][job_type] = True
+        sched.output['CH4']['job_types']['sp'] = False
+        sched.output['CH4']['convergence'] = False
+        sched.validate_completion_without_scheduling()
+        self.assertFalse(sched.output['CH4']['convergence'])
+
+    def test_only_process_validates_instead_of_scheduling(self):
+        """only_process must reach the validation and never the scheduling loop, and vice versa."""
+        # Only the only_process arm is exercised with testing=False. The opposite arm is deliberately
+        # not: Scheduler.__init__ spawns jobs directly (run_opt_job, ~l.612) for a normal run, so
+        # constructing one here would attempt a real submission and then block in the SSH retry loop.
+        # That the normal path reaches schedule_jobs() is covered by the rest of this module.
+        with patch.object(Scheduler, 'schedule_jobs') as mock_schedule, \
+                patch.object(Scheduler, 'validate_completion_without_scheduling') as mock_validate:
+            self._make_sched(only_process=True, testing=False)
+            self.assertFalse(mock_schedule.called, 'only_process must not reach schedule_jobs().')
+            self.assertTrue(mock_validate.called, 'only_process must validate completion.')
 
 
 if __name__ == '__main__':
