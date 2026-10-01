@@ -13,6 +13,24 @@ if TYPE_CHECKING:
 
 CONFORMER_JOB_TYPES = ('conf_opt', 'conf_sp')
 TS_IRC_FAILED_MARKER = 'INVALID TS (failed IRC validation)'
+TS_ATOM_MAP_METHOD = 'irc_endpoint_cgr_isomorphism'
+TS_ATOM_MAP_UNAVAILABLE_REASONS = ('no_ts',
+                                   'irc_not_passed',
+                                   'irc_fallback_path',
+                                   'no_atom_map',
+                                   'atom_map_contradicts_ts',
+                                   'species_atom_order_mismatch',
+                                   'endpoint_perception_mismatch',
+                                   'irc_start_geometry_unavailable',
+                                   'irc_start_geometry_differs',
+                                   'irc_endpoint_geometry_differs',
+                                   'computation_failed',
+                                   'not_recorded',
+                                   )
+IRC_START_GEOMETRY_TOLERANCE = 1e-3
+"""Largest root of the summed squared deviations (Angstrom) between an IRC log's starting geometry and the TS geometry
+it was started from, after superposition. It covers the print precision of the coordinates in the logs and inputs,
+and carries no chemical meaning."""
 
 
 def get_conformer_job_name(job_type: str, i: int) -> str:

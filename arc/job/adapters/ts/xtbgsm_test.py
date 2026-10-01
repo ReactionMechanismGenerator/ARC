@@ -6,10 +6,12 @@ This module contains unit tests of the arc.job.adapters.ts.xtb_gsm module
 """
 
 import os
+import re
 import shutil
 import tarfile
+import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 from arc.common import ARC_TESTING_PATH
 from arc.job.adapter import JobAdapter
@@ -88,7 +90,7 @@ class TestxTBGSMAdapter(unittest.TestCase):
                                   'source': 'path',
                                   'make_x': False},
                                  {'file_name': 'ograd',
-                                  'local': os.path.join(self.job_1.xtb_gsm_scripts_path, 'ograd'),
+                                  'local': self.job_1.ograd_path,
                                   'remote': os.path.join(self.job_1.remote_path, 'ograd'),
                                   'source': 'path', 'make_x': True},
                                  {'file_name': 'tm2orca.py',
@@ -200,6 +202,64 @@ H      -1.24880926   -0.46263779    0.00000000
         self.assertIn('${node_label}.energy', ograd)
         self.assertIn('${node_label}.gradient', ograd)
         self.assertIn('${node_label}.xtbout', ograd)
+
+    def _staged_ograd(self, r_species, p_species) -> str:
+        """Stage the ograd of a GSM job for the given reaction and return its text."""
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = xTBGSMAdapter(project='test_ograd',
+                            job_type='tsg',
+                            server='local',
+                            project_directory=project_directory,
+                            reactions=[ARCReaction(r_species=r_species, p_species=p_species)],
+                            )
+        job.write_input_file()
+        with open(job.ograd_path, 'r') as f:
+            return f.read()
+
+    def test_an_unknown_multiplicity_or_charge_refuses_to_stage_the_job(self):
+        """Test that no input file, inpfileq or ograd is staged, and no job is built, for a reaction whose spin or charge is unknown"""
+        for attribute in ('multiplicity', 'charge'):
+            with self.subTest(attribute=attribute):
+                project_directory = tempfile.mkdtemp()
+                self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+                reaction = ARCReaction(r_species=[ARCSpecies(label='HNO', smiles='N=O')],
+                                       p_species=[ARCSpecies(label='HON', smiles='[N-]=[OH+]')])
+                with patch.object(ARCReaction, attribute, new_callable=PropertyMock, return_value=None), \
+                        self.assertRaises(ValueError):
+                    xTBGSMAdapter(project='test_unknown', job_type='tsg', server='local',
+                                  project_directory=project_directory, reactions=[reaction])
+                staged = [name for _, _, names in os.walk(project_directory) for name in names]
+                for name in ('ograd', 'initial0000.xyz', 'inpfileq'):
+                    self.assertNotIn(name, staged)
+
+    def test_ograd_neutral_closed_shell(self):
+        """A neutral singlet reaction stages charge 0, no unpaired electrons, and an explicit GFN2-xTB."""
+        ograd = self._staged_ograd([ARCSpecies(label='HNO', smiles='N=O')],
+                                   [ARCSpecies(label='HON', smiles='[N-]=[OH+]')])
+        xtb_line = next(line for line in ograd.splitlines() if line.startswith('xtb '))
+        self.assertIn('--gfn 2', xtb_line)
+        self.assertIn('--chrg 0', xtb_line)
+        self.assertIn('--uhf 0', xtb_line)
+        self.assertNotIn('@', ograd)
+
+    def test_ograd_anion(self):
+        """An anionic reaction stages the net charge of the reactants."""
+        xyz = {'symbols': ('O', 'H'), 'isotopes': (16, 1), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 0.97))}
+        with patch.object(ARCReaction, 'get_reactants_xyz', return_value=xyz), \
+                patch.object(ARCReaction, 'get_products_xyz', return_value=xyz):
+            ograd = self._staged_ograd([ARCSpecies(label='OH-', smiles='[OH-]', charge=-1),
+                                        ARCSpecies(label='CH3OH', smiles='CO')],
+                                       [ARCSpecies(label='H2O', smiles='O'),
+                                        ARCSpecies(label='CH3O-', smiles='C[O-]', charge=-1)])
+        self.assertRegex(ograd, r'xtb \S+ --grad --gfn 2 --chrg -1 --uhf 0 ')
+
+    def test_ograd_doublet(self):
+        """A doublet reaction stages one unpaired electron (multiplicity minus one)."""
+        ograd = self._staged_ograd([ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='CH4', smiles='C')],
+                                   [ARCSpecies(label='H2', smiles='[H][H]'), ARCSpecies(label='CH3', smiles='[CH3]')])
+        self.assertRegex(ograd, r'xtb \S+ --grad --gfn 2 --chrg 0 --uhf 1 ')
+        self.assertIsNone(re.search(r'--uhf 0', ograd))
 
     def test_set_inpfileq_keywords(self):
         """Test the set_inpfileq_keywords() method."""
