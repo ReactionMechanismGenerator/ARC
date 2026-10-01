@@ -801,24 +801,6 @@ class TestTSChecks(unittest.TestCase):
                                      )
         self.assertTrue(rxn.ts_species.ts_checks['IRC'])
 
-    def test_check_equal_bonds_list(self):
-        """Test the _check_equal_bonds_list() function."""
-        bonds_1 = [(0, 1), (0, 2), (0, 3), (0, 4), (5, 6)]
-        bonds_2 = [(0, 1), (0, 2), (0, 3), (4, 5), (4, 6)]
-        self.assertTrue(ts._check_equal_bonds_list(bonds_1, bonds_1))
-        self.assertTrue(ts._check_equal_bonds_list(bonds_2, bonds_2))
-        self.assertFalse(ts._check_equal_bonds_list(bonds_1, bonds_2))
-        self.assertFalse(ts._check_equal_bonds_list(bonds_2, bonds_1))
-
-        dmat_bonds_1 = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (2, 6), (2, 7)]
-        dmat_bonds_2 = [(0, 1), (1, 2), (2, 3), (3, 4), (1, 5), (2, 6), (2, 7)]
-        r_bonds = [(0, 1), (1, 2), (2, 3), (2, 6), (2, 7), (3, 4), (4, 5)]
-        p_bonds = [(0, 1), (1, 2), (1, 5), (2, 3), (2, 6), (2, 7), (3, 4)]
-        self.assertTrue(ts._check_equal_bonds_list(dmat_bonds_1, dmat_bonds_1))
-        self.assertFalse(ts._check_equal_bonds_list(dmat_bonds_1, dmat_bonds_2))
-        self.assertTrue(ts._check_equal_bonds_list(dmat_bonds_1, r_bonds))
-        self.assertTrue(ts._check_equal_bonds_list(dmat_bonds_2, p_bonds))
-
     def test_check_imaginary_frequencies(self):
         """Test the check_imaginary_frequencies() function."""
         imaginary_freqs = None
@@ -1244,6 +1226,112 @@ class TestTSChecks(unittest.TestCase):
                 patch.object(rxn, 'get_bonds', side_effect=ReactionError('Cannot get bonds without an atom map.')):
             ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
         self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
+
+    @staticmethod
+    def _make_irc_endpoints(rxn, permutation=None):
+        """
+        Build IRC endpoint geometries in the reactant atom order from the species of ``rxn``, optionally permuted.
+
+        The reactant endpoint holds the separated reactants, and the product endpoint holds the separated products
+        with their atoms reordered according to the atom map of the reaction.
+        """
+        def concatenate(species_list):
+            symbols, coords = list(), list()
+            for i, spc in enumerate(species_list):
+                xyz = spc.get_xyz()
+                symbols.extend(xyz['symbols'])
+                coords.extend((x + 8.0 * i, y, z) for x, y, z in xyz['coords'])
+            return symbols, coords
+        r_symbols, r_coords = concatenate(rxn.r_species)
+        p_symbols, p_coords = concatenate(rxn.p_species)
+        order = permutation if permutation is not None else list(range(len(r_symbols)))
+        xyz_r = xyz_from_data(coords=[r_coords[i] for i in order], symbols=[r_symbols[i] for i in order])
+        xyz_p = xyz_from_data(coords=[p_coords[rxn.atom_map[i]] for i in order],
+                              symbols=[p_symbols[rxn.atom_map[i]] for i in order])
+        return xyz_r, xyz_p
+
+    def _check_irc_fallback(self, rxn, xyz_1, xyz_2):
+        """Run check_irc_species_and_rxn() with molecule perception forced to fail and return the IRC verdict."""
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        with patch.object(ts, '_perceive_irc_fragments', return_value=None):
+            ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+        return rxn.ts_species.ts_checks['IRC']
+
+    def test_check_irc_bond_list_fallback_is_independent_of_atom_order(self):
+        """
+        Test that the bond-list fallback accepts IRC endpoints listed in a different atom order than the reactants.
+
+        The IRC endpoints keep the TS atom order, which no TS method guarantees to be the reactant order.
+        """
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        order = list(reversed(range(len(xyz_1['symbols']))))
+        permuted_1 = xyz_from_data(coords=[xyz_1['coords'][i] for i in order],
+                                   symbols=[xyz_1['symbols'][i] for i in order])
+        permuted_2 = xyz_from_data(coords=[xyz_2['coords'][i] for i in order],
+                                   symbols=[xyz_2['symbols'][i] for i in order])
+        for endpoints in ((xyz_1, xyz_2), (permuted_1, permuted_2), (permuted_2, permuted_1)):
+            self.assertIs(self._check_irc_fallback(rxn, *endpoints), True)
+
+    def test_check_irc_bond_list_fallback_still_rejects_wrong_endpoints(self):
+        """Guard: the bond-list fallback rejects endpoints that are not the reactant and product, in any order."""
+        xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
+        xyz_2 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out'))
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
+        order = list(reversed(range(len(xyz_2['symbols']))))
+        permuted_2 = xyz_from_data(coords=[xyz_2['coords'][i] for i in order],
+                                   symbols=[xyz_2['symbols'][i] for i in order])
+        self.assertIs(self._check_irc_fallback(rxn, permuted_2, permuted_2), False)
+
+    def test_check_irc_bond_list_fallback_rejects_an_irc_that_stays_in_one_well(self):
+        """
+        Test that the bond-list fallback rejects endpoints that are both the same well of a degenerate reaction.
+
+        The reactant and product graphs of the ethyl 1,2-H shift are isomorphic, so each endpoint matches each side
+        by itself. Only the comparison of the condensed graph of reaction distinguishes a real shift.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='ethyl', smiles='C[CH2]')],
+                          p_species=[ARCSpecies(label='ethyl_p', smiles='[CH2]C')])
+        xyz_r, xyz_p = self._make_irc_endpoints(rxn)
+        self.assertIs(self._check_irc_fallback(rxn, xyz_r, xyz_r), False)
+        self.assertIs(self._check_irc_fallback(rxn, xyz_p, xyz_p), False)
+        self.assertIs(self._check_irc_fallback(rxn, xyz_r, xyz_p), True)
+        self.assertIs(self._check_irc_fallback(rxn, xyz_p, xyz_r), True)
+        order = list(reversed(range(len(xyz_r['symbols']))))
+        permuted_r, permuted_p = self._make_irc_endpoints(rxn, permutation=order)
+        self.assertIs(self._check_irc_fallback(rxn, permuted_r, permuted_p), True)
+        self.assertIs(self._check_irc_fallback(rxn, permuted_r, permuted_r), False)
+
+    def test_check_irc_bond_list_fallback_with_different_element_order_in_the_products(self):
+        """
+        Test the bond-list fallback of H + CH4 <=> H2 + CH3, whose products list the elements in another order.
+
+        The reaction graph must be labelled with the reactant elements, because the reaction bonds are in the
+        reactant atom indices.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='CH4', smiles='C')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2', smiles='[H][H]')])
+        self.assertNotEqual([a.element.symbol for spc in rxn.r_species for a in spc.mol.atoms],
+                            [a.element.symbol for spc in rxn.p_species for a in spc.mol.atoms])
+        xyz_r, xyz_p = self._make_irc_endpoints(rxn)
+        self.assertIs(self._check_irc_fallback(rxn, xyz_r, xyz_p), True)
+        self.assertIs(self._check_irc_fallback(rxn, xyz_p, xyz_r), True)
+        order = [3, 0, 5, 1, 4, 2]
+        permuted_r, permuted_p = self._make_irc_endpoints(rxn, permutation=order)
+        self.assertIs(self._check_irc_fallback(rxn, permuted_r, permuted_p), True)
+        self.assertIs(self._check_irc_fallback(rxn, permuted_r, permuted_r), False)
+
+    def test_find_cgr_isomorphism(self):
+        """Test the _get_condensed_graph_of_reaction() and _find_cgr_isomorphism() functions."""
+        graph_1 = ts._get_condensed_graph_of_reaction(['C', 'O', 'H'], [(0, 1)], [(1, 2)])
+        graph_2 = ts._get_condensed_graph_of_reaction(['H', 'O', 'C'], [(1, 2)], [(0, 1)])
+        graph_3 = ts._get_condensed_graph_of_reaction(['H', 'O', 'C'], [(0, 1)], [(1, 2)])
+        self.assertEqual(ts._find_cgr_isomorphism(graph_1, graph_1), [0, 1, 2])
+        self.assertEqual(ts._find_cgr_isomorphism(graph_1, graph_2), [2, 1, 0])
+        self.assertIsNone(ts._find_cgr_isomorphism(graph_1, graph_3))
 
     @classmethod
     def tearDownClass(cls):

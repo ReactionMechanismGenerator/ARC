@@ -648,8 +648,15 @@ def check_irc_species_and_rxn(xyz_1: dict,
     dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
     dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1, elements=xyz_1['symbols'], n_fragments=0)
     dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2, elements=xyz_2['symbols'], n_fragments=0)
-    if _check_equal_bonds_list(dmat_bonds_1, r_bonds) and _check_equal_bonds_list(dmat_bonds_2, p_bonds) \
-            or _check_equal_bonds_list(dmat_bonds_2, r_bonds) and _check_equal_bonds_list(dmat_bonds_1, p_bonds):
+    rxn_symbols = [atom.element.symbol for spc in reactants for atom in spc.mol.atoms]
+    bonds_1 = {tuple(sorted(bond)) for bond in dmat_bonds_1}
+    bonds_2 = {tuple(sorted(bond)) for bond in dmat_bonds_2}
+    reaction_graph = _get_condensed_graph_of_reaction(rxn_symbols, r_bonds, p_bonds)
+    if bonds_1 != bonds_2 and any(
+            _find_cgr_isomorphism(reaction_graph,
+                                  _get_condensed_graph_of_reaction(list(xyz_1['symbols']), r_bonds_ts, p_bonds_ts))
+            is not None
+            for r_bonds_ts, p_bonds_ts in ((bonds_1, bonds_2), (bonds_2, bonds_1))):
         rxn.ts_species.ts_checks['IRC'] = True
     else:
         rxn.ts_species.ts_checks['IRC'] = False
@@ -1122,26 +1129,6 @@ def _get_irc_endpoints_atom_order_matches_ts(ts_xyz: dict | None,
     if not isinstance(ts_xyz, dict) or not ts_xyz.get('symbols'):
         return None
     return tuple(xyz_1['symbols']) == tuple(ts_xyz['symbols']) == tuple(xyz_2['symbols'])
-
-
-def _check_equal_bonds_list(bonds_1: list[tuple[int, int]],
-                            bonds_2: list[tuple[int, int]],
-                            ) -> bool:
-    """
-    Check whether two lists of bonds are equal.
-
-    Args:
-        bonds_1 (list[tuple[int, int]]): List 1 of bonds.
-        bonds_2 (list[tuple[int, int]]): List 2 of bonds.
-
-    Returns:
-        bool: Whether the two lists of bonds are equal.
-    """
-    if len(bonds_1) != len(bonds_2):
-        return False
-    if all(bond in bonds_2 for bond in bonds_1):
-        return True
-    return False
 
 
 def check_imaginary_frequencies(imaginary_freqs: list[float] | None) -> bool:
