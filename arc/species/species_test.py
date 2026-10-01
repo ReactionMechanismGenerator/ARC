@@ -36,6 +36,8 @@ from arc.species.species import (ARCSpecies,
                                  check_label,
                                  check_xyz,
                                  colliding_atoms,
+                                 cyclic_index_i_minus_1,
+                                 cyclic_index_i_plus_1,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
                                  process_run_time,
@@ -1664,6 +1666,45 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(sym5, 6)
         self.assertAlmostEqual(e5, 0.099359417)
         self.assertEqual(n5, 6)
+
+    def test_rotor_symmetry_second_criterion_applies_in_kj_mol(self):
+        """Test that the 10%-of-the-highest-peak criterion fires, and fires on kJ/mol energies.
+
+        The gate used to be the bare literal ``2000`` -- 2 kJ/mol written in J/mol -- while
+        ``parse_1d_scan_energies`` returns kJ/mol, so ``max_e > 2000`` was false for every
+        realistic torsional barrier and the criterion never ran at all.
+        """
+        # Two peaks at 10 and 12 kJ/mol. The spread of 2 is INSIDE the worst peak-to-neighbour
+        # step (6), so the resolution criterion cannot decide this rotor -- only the 10% criterion
+        # can, and 2 > 0.1 * 12. A scan shaped like this must come back asymmetric.
+        energies = [0.0, 5.0, 10.0, 5.0, 0.0, 6.0, 12.0, 6.0]
+        symmetry, max_e, num_wells = determine_rotor_symmetry(label='label', pivots=[1, 2],
+                                                              energies=energies,
+                                                              return_num_wells=True, log=False)
+        self.assertEqual(symmetry, 1)
+        self.assertAlmostEqual(max_e, 12.0)
+        self.assertEqual(num_wells, 2)
+
+        # The same shape scaled below the 2 kJ/mol floor: the criterion does not apply there, and
+        # a shallow scan's peak spread must not be allowed to decide the symmetry.
+        shallow = [0.1 * e for e in energies]
+        symmetry, max_e, _ = determine_rotor_symmetry(label='label', pivots=[1, 2],
+                                                      energies=shallow, log=False)
+        self.assertEqual(symmetry, 2)
+        self.assertAlmostEqual(max_e, 1.2)
+
+    def test_cyclic_index_i_minus_1(self):
+        """Test that the cyclic predecessor is correct at the start of a scan.
+
+        The former ``i - 1 if i - 1 > 0 else -1`` used a strict ``>``, so index 1 also returned
+        ``-1`` and was compared against the LAST scan point instead of index 0 -- which can invent
+        a spurious peak or valley at the start of a scan and trip the "peaks != valleys" guard.
+        """
+        self.assertEqual(cyclic_index_i_minus_1(0), -1)  # wraps to the last point, as intended
+        self.assertEqual(cyclic_index_i_minus_1(1), 0)
+        self.assertEqual(cyclic_index_i_minus_1(2), 1)
+        self.assertEqual(cyclic_index_i_plus_1(2, 8), 3)
+        self.assertEqual(cyclic_index_i_plus_1(7, 8), 0)  # wraps to the first point
 
     def test_xyz_from_file(self):
         """Test parsing xyz from a file and saving it in the .initial_xyz attribute"""
