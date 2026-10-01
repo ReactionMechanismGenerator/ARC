@@ -91,10 +91,22 @@ def check_ts(reaction: ARCReaction,
                                       output=output,
                                       sp_level=sp_level,
                                       freq_scale_factor=freq_scale_factor)
-            reaction.copy_e0_values(rxn_copy)
-        check_rxn_e0(reaction=reaction, verbose=verbose)
+            if rxn_copy is not None:
+                reaction.copy_e0_values(rxn_copy)
+                if rxn_copy.ts_species.e0 is not None:
+                    reaction.ts_species.e0 = rxn_copy.ts_species.e0
+                    reaction.ts_species.e0_atom_corrections_applied = rxn_copy.ts_species.e0_atom_corrections_applied
+                    reaction.ts_species.e0_bond_corrections_applied = rxn_copy.ts_species.e0_bond_corrections_applied
+                check_rxn_e0(reaction=rxn_copy, verbose=verbose)
+                reaction.ts_species.ts_checks['E0'] = rxn_copy.ts_species.ts_checks['E0']
+            else:
+                reaction.ts_species.ts_checks['E0'] = None
+                logger.warning(f'Could not compute E0 values under the same settings for all species of reaction '
+                               f'{reaction.label}, e.g., because a freq calculation is not done, a species E0 is '
+                               f'taken from a yml file, or the statmech inputs are missing. '
+                               f'The E0 check of TS {reaction.ts_species.label} is left undetermined.')
         if reaction.ts_species.ts_checks['E0'] is None and not reaction.ts_species.ts_checks['e_elect']:
-            check_rxn_e_elect(reaction=reaction, verbose=verbose)
+            check_rxn_e_elect(reaction=reaction, verbose=verbose, check_e0=False)
 
     if 'NMD' in checks and not reaction.ts_species.ts_checks['NMD']:
         check_normal_mode_displacement(reaction, job=job)
@@ -146,6 +158,7 @@ def ts_passed_checks(species: ARCSpecies,
 
 def check_rxn_e_elect(reaction: ARCReaction,
                       verbose: bool = True,
+                      check_e0: bool = True,
                       ) -> None:
     """
     Check that the TS electronic energy is above both reactant and product wells in a ``reaction``.
@@ -154,10 +167,12 @@ def check_rxn_e_elect(reaction: ARCReaction,
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
         verbose (bool, optional): Whether to print logging messages.
+        check_e0 (bool, optional): Whether to run the E0 check first, and skip this check if the E0 check passed.
     """
-    check_rxn_e0(reaction=reaction, verbose=verbose)
-    if reaction.ts_species.ts_checks['E0']:
-        return
+    if check_e0:
+        check_rxn_e0(reaction=reaction, verbose=verbose)
+        if reaction.ts_species.ts_checks['E0']:
+            return
     r_ee = sum_list_entries([r.e_elect for r in reaction.r_species],
                             multipliers=[reaction.get_species_count(species=r, well=0) for r in reaction.r_species])
     p_ee = sum_list_entries([p.e_elect for p in reaction.p_species],
@@ -193,7 +208,10 @@ def compute_rxn_e0(reaction: ARCReaction,
                    ) -> ARCReaction | None:
     """
     Checking the E0 values between wells and a TS in a ``reaction`` using ZPE from statmech.
-    This function computed E0 values and populates them in a copy of the given reaction instance.
+    This function computes the E0 values of the wells and of the TS in a single statmech run, without bond
+    additivity corrections, and populates them in a copy of the given reaction instance.
+    E0 values already set on the given reaction are ignored and left unchanged.
+    The E0 of a species with a ``yml_path`` is taken from that file as is.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
@@ -215,23 +233,31 @@ def compute_rxn_e0(reaction: ARCReaction,
         freq_path = os.path.join(project_directory, 'output', folder, spc.label, 'geometry', 'freq.out')
         if not spc.yml_path and not os.path.isfile(freq_path) and not species_dict[spc.label].is_monoatomic():
             return None
-    considered_labels = list()
     rxn_copy = reaction.copy()
     species_list = rxn_copy.r_species + rxn_copy.p_species + [rxn_copy.ts_species]
+    unique_species = dict()
     for species in species_list:
-        if species.label in considered_labels or species.e0:
-            continue
-        considered_labels.append(species.label)
+        species.e0 = None
+        species.e0_atom_corrections_applied = None
+        species.e0_bond_corrections_applied = None
+        unique_species.setdefault(species.label, species)
+        if species.yml_path:
+            logger.warning(f'The E0 of {species.label} is taken from its yml file as is, '
+                           f'and may include bond additivity corrections.')
     statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                         output_directory=os.path.join(project_directory, 'output'),
                                         calcs_directory=os.path.join(project_directory, 'calcs'),
                                         output_dict=output,
-                                        species=[spc for spc in species_list if spc.label in considered_labels],
+                                        species=list(unique_species.values()),
                                         bac_type=None,
                                         sp_level=sp_level,
                                         freq_scale_factor=freq_scale_factor,
                                         )
     statmech_adapter.compute_thermo(e0_only=True, skip_rotors=True)
+    for species in species_list:
+        species.e0 = unique_species[species.label].e0
+        species.e0_atom_corrections_applied = unique_species[species.label].e0_atom_corrections_applied
+        species.e0_bond_corrections_applied = unique_species[species.label].e0_bond_corrections_applied
     return rxn_copy
 
 

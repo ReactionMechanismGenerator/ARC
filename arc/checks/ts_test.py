@@ -8,7 +8,8 @@ This module contains unit tests for the arc.checks.ts module
 import unittest
 import os
 import shutil
-from unittest.mock import patch
+import tempfile
+from unittest.mock import Mock, patch
 
 import networkx as nx
 import numpy as np
@@ -389,6 +390,163 @@ class TestTSChecks(unittest.TestCase):
         self.assertIsNone(rxn_copy.ts_species.ts_checks['E0'])
         ts.check_rxn_e0(reaction=rxn_copy, verbose=True)
         self.assertTrue(rxn_copy.ts_species.ts_checks['E0'])
+
+    def _make_project_with_freq_files(self, labels, species_dict, output_dict, copy_files=True):
+        """Create a temporary project directory that holds a real freq.out for each of ``labels``."""
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        if copy_files:
+            for label in labels:
+                folder = 'rxns' if species_dict[label].is_ts else 'Species'
+                base_path = os.path.join(project_directory, 'output', folder, label, 'geometry')
+                os.makedirs(base_path)
+                shutil.copy(src=next(iter(output_dict.values()))['paths']['freq'],
+                            dst=os.path.join(base_path, 'freq.out'))
+        return project_directory
+
+    def _fake_statmech_factory(self, e0_by_label, calls):
+        """Return a ``statmech_factory`` replacement whose ``compute_thermo()`` sets E0 values by species label."""
+        def factory(**kwargs):
+            calls.append(kwargs)
+            adapter = Mock()
+            def compute_thermo(e0_only=False, skip_rotors=False):
+                for spc in kwargs['species']:
+                    if spc.label in e0_by_label:
+                        spc.e0 = e0_by_label[spc.label]
+            adapter.compute_thermo.side_effect = compute_thermo
+            return adapter
+        return factory
+
+    def _rxn_8_with_preset_e0(self, well_e0=500.0, ts_e0=None):
+        """Return a copy of rxn_8 whose wells (and optionally TS) carry preset E0 values."""
+        rxn = self.rxn_8.copy()
+        rxn.ts_species.populate_ts_checks()
+        for spc in rxn.r_species + rxn.p_species:
+            spc.e0 = well_e0
+        rxn.ts_species.e0 = ts_e0
+        return rxn
+
+    def _compute_rxn_8_e0(self, rxn, e0_by_label, calls, project_directory):
+        with patch.object(ts, 'statmech_factory', side_effect=self._fake_statmech_factory(e0_by_label, calls)):
+            return ts.compute_rxn_e0(reaction=rxn,
+                                     species_dict=self.species_dict_8,
+                                     project_directory=project_directory,
+                                     kinetics_adapter='arkane',
+                                     output=self.output_dict_8,
+                                     sp_level=Level(repr='cbs-qb3'),
+                                     freq_scale_factor=1.0,
+                                     )
+
+    def test_compute_rxn_e0_ignores_preset_e0_values(self):
+        """Test that compute_rxn_e0() computes E0 for all participants and leaves the given reaction untouched."""
+        rxn = self._rxn_8_with_preset_e0()
+        project_directory = self._make_project_with_freq_files(['nC3H7', 'iC3H7', 'TS8'],
+                                                               self.species_dict_8, self.output_dict_8)
+        calls = list()
+        rxn_copy = self._compute_rxn_8_e0(rxn, {'nC3H7': 100.0, 'iC3H7': 90.0, 'TS8': 200.0}, calls,
+                                          project_directory)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(sorted(spc.label for spc in calls[0]['species']), ['TS8', 'iC3H7', 'nC3H7'])
+        self.assertIsNone(calls[0]['bac_type'])
+        self.assertAlmostEqual(rxn_copy.r_species[0].e0, 100.0)
+        self.assertAlmostEqual(rxn_copy.p_species[0].e0, 90.0)
+        self.assertAlmostEqual(rxn_copy.ts_species.e0, 200.0)
+        self.assertAlmostEqual(rxn.r_species[0].e0, 500.0)
+        self.assertAlmostEqual(rxn.p_species[0].e0, 500.0)
+        self.assertIsNone(rxn.ts_species.e0)
+
+    def test_compute_rxn_e0_does_not_keep_a_preset_e0_the_statmech_run_did_not_produce(self):
+        """Test that a preset well E0 is dropped, not kept, when the statmech run yields no E0 for that well."""
+        rxn = self._rxn_8_with_preset_e0()
+        project_directory = self._make_project_with_freq_files(['nC3H7', 'iC3H7', 'TS8'],
+                                                               self.species_dict_8, self.output_dict_8)
+        rxn_copy = self._compute_rxn_8_e0(rxn, {'iC3H7': 90.0, 'TS8': 200.0}, list(), project_directory)
+        self.assertIsNone(rxn_copy.r_species[0].e0)
+        self.assertAlmostEqual(rxn_copy.p_species[0].e0, 90.0)
+        self.assertAlmostEqual(rxn.r_species[0].e0, 500.0)
+
+    def test_compute_rxn_e0_passes_each_label_once(self):
+        """Test that compute_rxn_e0() gives the statmech run one object per label for an identity reaction."""
+        ch3, ch4, ts_spc = (ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='CH4', smiles='C'),
+                            ARCSpecies(label='TS_id', is_ts=True))
+        rxn = ARCReaction(r_species=[ch3, ch4],
+                          p_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='CH3', smiles='[CH3]')])
+        rxn.ts_species = ts_spc
+        rxn.ts_label = 'TS_id'
+        species_dict = {'CH3': ch3, 'CH4': ch4, 'TS_id': ts_spc}
+        output_dict = {label: {'paths': {'freq': self.output_dict_8['nC3H7']['paths']['freq']}}
+                       for label in species_dict}
+        project_directory = self._make_project_with_freq_files(list(species_dict), species_dict, output_dict)
+        calls = list()
+        with patch.object(ts, 'statmech_factory',
+                          side_effect=self._fake_statmech_factory({'CH3': 10.0, 'CH4': 20.0, 'TS_id': 30.0}, calls)):
+            rxn_copy = ts.compute_rxn_e0(reaction=rxn, species_dict=species_dict,
+                                         project_directory=project_directory, kinetics_adapter='arkane',
+                                         output=output_dict, sp_level=Level(repr='cbs-qb3'), freq_scale_factor=1.0)
+        self.assertEqual(sorted(spc.label for spc in calls[0]['species']), ['CH3', 'CH4', 'TS_id'])
+        self.assertEqual([spc.e0 for spc in rxn_copy.r_species + rxn_copy.p_species], [10.0, 20.0, 20.0, 10.0])
+
+    def test_check_ts_energy_compares_e0_values_computed_with_the_same_settings(self):
+        """Test that the E0 check ignores well and TS E0 values that came from a run with different corrections."""
+        rxn = self._rxn_8_with_preset_e0(ts_e0=999.0)
+        project_directory = self._make_project_with_freq_files(['nC3H7', 'iC3H7', 'TS8'],
+                                                               self.species_dict_8, self.output_dict_8)
+        with patch.object(ts, 'statmech_factory',
+                          side_effect=self._fake_statmech_factory({'nC3H7': 100.0, 'iC3H7': 90.0, 'TS8': 200.0},
+                                                                  list())):
+            ts.check_ts(reaction=rxn,
+                        checks=['energy'],
+                        species_dict=self.species_dict_8,
+                        project_directory=project_directory,
+                        kinetics_adapter='arkane',
+                        output=self.output_dict_8,
+                        sp_level=Level(repr='cbs-qb3'),
+                        freq_scale_factor=1.0,
+                        verbose=False,
+                        )
+        self.assertIs(rxn.ts_species.ts_checks['E0'], True)
+        self.assertAlmostEqual(rxn.r_species[0].e0, 500.0)
+        self.assertAlmostEqual(rxn.p_species[0].e0, 500.0)
+        self.assertAlmostEqual(rxn.ts_species.e0, 200.0)
+
+    def test_check_ts_energy_does_not_compare_preset_e0_values_when_they_cannot_be_recomputed(self):
+        """Test that preset E0 values are never compared if the consistent E0 values cannot be computed."""
+        rxn = self._rxn_8_with_preset_e0(ts_e0=200.0)
+        project_directory = self._make_project_with_freq_files(['nC3H7', 'iC3H7', 'TS8'],
+                                                               self.species_dict_8, self.output_dict_8,
+                                                               copy_files=False)
+        with patch.object(ts, 'statmech_factory') as factory, patch.object(ts.logger, 'warning') as warning:
+            ts.check_ts(reaction=rxn,
+                        checks=['energy'],
+                        species_dict=self.species_dict_8,
+                        project_directory=project_directory,
+                        kinetics_adapter='arkane',
+                        output=self.output_dict_8,
+                        sp_level=Level(repr='cbs-qb3'),
+                        freq_scale_factor=1.0,
+                        verbose=False,
+                        )
+        factory.assert_not_called()
+        self.assertIsNone(rxn.ts_species.ts_checks['E0'])
+        self.assertTrue(any('left undetermined' in str(call.args[0]) for call in warning.call_args_list))
+
+    def test_check_ts_energy_does_not_compare_preset_e0_values_when_statmech_yields_nothing(self):
+        """Test that an empty statmech result leaves the E0 check undetermined instead of failing it."""
+        rxn = self._rxn_8_with_preset_e0(ts_e0=200.0)
+        project_directory = self._make_project_with_freq_files(['nC3H7', 'iC3H7', 'TS8'],
+                                                               self.species_dict_8, self.output_dict_8)
+        with patch.object(ts, 'statmech_factory', side_effect=self._fake_statmech_factory(dict(), list())):
+            ts.check_ts(reaction=rxn,
+                        checks=['energy'],
+                        species_dict=self.species_dict_8,
+                        project_directory=project_directory,
+                        kinetics_adapter='arkane',
+                        output=self.output_dict_8,
+                        sp_level=Level(repr='cbs-qb3'),
+                        freq_scale_factor=1.0,
+                        verbose=False,
+                        )
+        self.assertIsNone(rxn.ts_species.ts_checks['E0'])
 
     def test_check_normal_mode_displacement(self):
         """Test the check_normal_mode_displacement() function."""
