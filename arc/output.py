@@ -49,6 +49,7 @@ from arc.parser.parser import (
     parse_ess_version,
     parse_opt_steps,
     parse_s_squared,
+    parse_t1,
     parse_wavefunction_stability,
     parse_zpe_correction,
     s_squared_expected_from_multiplicity,
@@ -58,14 +59,14 @@ from arc.parser.parser import (
 )
 from arc.checks.common import TS_ATOM_MAP_METHOD, TS_ATOM_MAP_UNAVAILABLE_REASONS
 from arc.reaction.reaction import ATOM_MAP_SOURCES
-from arc.species.converter import get_element_mass_from_xyz, get_most_common_isotope_for_element, xyz_to_str
+from arc.species.converter import get_most_common_isotope_for_element, xyz_to_str
 from arc.species.species import are_coords_compliant_with_graph
-from arc.species.vectors import calculate_dihedral_angle, get_principal_moments_of_inertia
+from arc.species.vectors import calculate_dihedral_angle
 from arc.statmech.arkane import (
     AEC_SECTION_START, AEC_SECTION_END,
     MBAC_SECTION_START, MBAC_SECTION_END,
     PBAC_SECTION_START, PBAC_SECTION_END,
-    find_best_across_files, get_arc_aec_yml_sha256, get_arkane_treatment, get_file_sha256,
+    find_best_across_files, get_arkane_treatment, get_file_sha256,
     get_qm_corrections_files,
 )
 from arc.parser_evidence import (
@@ -126,10 +127,6 @@ ARKANE_GIT_HASH_REGEX = re.compile(r'^[0-9a-f]{7,40}$')
 ARKANE_TORSION_TREATMENT_BY_MODE = {'HinderedRotor': 'hindered_rotor', 'FreeRotor': 'free_rotor'}
 RMG_DATABASE_CONDA_PACKAGE = 'rmgdatabase'
 RMG_DATABASE_CONDA_SEARCH_DEPTH = 6
-RIGID_ROTOR_MOMENT_RELATIVE_TOLERANCE = 1e-3
-RIGID_ROTOR_POINT_GROUP_TOLERANCE = 1e-2
-RIGID_ROTOR_LINEAR_MOMENT_RATIO = 1e-6
-NMD_FREQUENCY_MATCH_TOLERANCE_CM1 = 0.01
 GIT_COMMIT_HASH_REGEX = re.compile(r'^[0-9a-f]{40}$')
 RMG_PY_VERSION_REGEX = re.compile(r'''^__version__\s*=\s*(['"])([^'"]+)\1''', re.MULTILINE)
 
@@ -159,6 +156,7 @@ def write_output_yml(
     t0: float | None = None,
     completed_job_records: list | None = None,
     adaptive_levels: dict | None = None,
+    arc_aec_yml_sha256s: list[str] | None = None,
 ) -> None:
     """
     Write the consolidated output.yml to <project_directory>/output/output.yml.
@@ -199,6 +197,11 @@ def write_output_yml(
         adaptive_levels (dict, optional): The processed adaptive levels of the run, keyed by
             ``(min_heavy_atoms, max_heavy_atoms)`` tuples, each mapping job-type tuples to ``Level`` objects.
             ``None`` when the run does not use adaptive levels.
+        arc_aec_yml_sha256s (list[str], optional): The SHA-256 digests of ARC's ``data/AEC.yml`` that the Arkane
+            adapters of the final processing recorded when they rendered atom energies from it. The digest recorded
+            with the E0 of every exported species and TS (``e0_aec_yml_sha256``, which covers the E0 computed by the TS
+            check) is collected with them. ``None`` or empty when none was recorded (and for a run restarted from
+            before the digest was recorded).
     """
     doc: dict[str, Any] = {}
 
@@ -213,9 +216,7 @@ def write_output_yml(
     doc['arkane_git_commit'] = arkane_git_commit
     corrections = _get_energy_corrections(arkane_level_of_theory, bac_type)
     doc['rmg_database'] = _get_rmg_database_identity(arkane_path=corrections.quantum_corrections_path)
-    aec_levels = (arkane_level_of_theory, composite_method, sp_level) if reactions else (arkane_level_of_theory,)
-    doc['arc_aec_yml_sha256'] = next(
-        (digest for digest in (get_arc_aec_yml_sha256(level) for level in aec_levels) if digest), None)
+    doc['arc_aec_yml_sha256'] = None
     doc['datetime_started'] = (
         datetime.datetime.fromtimestamp(t0).strftime('%Y-%m-%d %H:%M') if t0 is not None else None
     )
@@ -268,7 +269,10 @@ def write_output_yml(
     )
     doc['species'] = []
     doc['transition_states'] = []
+    aec_yml_sha256s = list(arc_aec_yml_sha256s or list())
     for spc in species_dict.values():
+        if getattr(spc, 'e0', None) is not None:
+            aec_yml_sha256s.append(getattr(spc, 'e0_aec_yml_sha256', None))
         d = _spc_to_dict(spc, output_dict, project_directory, point_groups,
                          irc_requested=irc_requested, software_by_job=software_by_job,
                          freq_level=freq_level or opt_level)
@@ -284,7 +288,8 @@ def write_output_yml(
         else:
             doc['species'].append(d)
 
-    doc['gsm_level'] = _gsm_level(doc['transition_states'], project_directory)
+    doc['arc_aec_yml_sha256'] = _get_recorded_aec_yml_sha256(aec_yml_sha256s)
+    doc['gsm_level'] = _state_gsm_provenance(doc['transition_states'], project_directory)
 
     # ---- reactions --------------------------------------------------------------
     doc['reactions'] = [_rxn_to_dict(rxn) for rxn in reactions]
@@ -390,48 +395,43 @@ def _parse_gsm_xtbout(path: str) -> dict[str, Any]:
     return observed
 
 
-def _get_gsm_ess(gsm_log: str | None, project_directory: str) -> tuple[str | None, str | None]:
+def _state_gsm_provenance(ts_records: list[dict], project_directory: str) -> dict | None:
     """
-    The program and version banner the archived xtb outputs of a GSM run state, each ``None`` unless there is
-    at least one output and every output states the same value.
-    """
-    xtbouts = _gsm_xtbout_paths(gsm_log, project_directory)
-    softwares = {_identify_log_ess(path, project_directory) for path in xtbouts}
-    versions = {_parse_gsm_xtbout(path)['version'] for path in xtbouts}
-    software = softwares.pop() if len(softwares) == 1 else None
-    version = versions.pop() if len(versions) == 1 else None
-    return software, version
+    Read the archived per-node xtb outputs of every GSM log once, state the program and version they report on the
+    converged records, and return the level of the xtb_gsm path searches of the run.
 
+    A converged record with a GSM log gains ``gsm`` in its ``ess_software`` and ``ess_versions``, each only when
+    there is at least one archived output and every output states the same program, or the same version banner.
 
-def _gsm_level(ts_records: list[dict], project_directory: str) -> dict | None:
-    """
-    The level of the xtb_gsm path searches of a run: ``{'method': 'gfn2', 'software': 'xtb'}``, or ``None``.
-
-    It is stated only when the run has at least one GSM log and, beside every GSM log, every archived per-node
-    xtb output shows the GFN2-xTB Hamiltonian and a program call with the charge and the number of unpaired
-    electrons (multiplicity minus one) of the TS record.
+    The level is ``{'method': 'gfn2', 'software': 'xtb'}`` only when the run has at least one GSM log and, beside
+    every GSM log, every archived per-node xtb output shows the GFN2-xTB Hamiltonian and a program call with the
+    charge and the number of unpaired electrons (multiplicity minus one) of the TS record; otherwise it is ``None``.
 
     Args:
-        ts_records (list[dict]): The transition-state records of the document.
+        ts_records (list[dict]): The transition-state records of the document, updated in place.
         project_directory (str): Root directory of the project, against which relative log paths resolve.
 
     Returns:
         dict | None: The level, or ``None``.
     """
+    stated_by_every_gsm_log = True
     with_gsm = [record for record in ts_records if record.get('gsm_log')]
-    if not with_gsm:
-        return None
     for record in with_gsm:
-        multiplicity = record.get('multiplicity')
         xtbouts = _gsm_xtbout_paths(record['gsm_log'], project_directory)
-        if not xtbouts or not isinstance(multiplicity, int):
-            return None
-        for path in xtbouts:
-            observed = _parse_gsm_xtbout(path)
-            if not observed['gfn2'] or observed['charge'] != record.get('charge') \
-                    or observed['uhf'] != multiplicity - 1:
-                return None
-    return {'method': 'gfn2', 'software': 'xtb'}
+        observations = [_parse_gsm_xtbout(path) for path in xtbouts]
+        if record.get('converged') is True:
+            softwares = {_identify_log_ess(path, project_directory) for path in xtbouts}
+            versions = {observed['version'] for observed in observations}
+            if len(softwares) == 1 and None not in softwares:
+                record['ess_software'] = {**(record.get('ess_software') or dict()), 'gsm': softwares.pop()}
+            if len(versions) == 1 and None not in versions:
+                record['ess_versions'] = {**(record.get('ess_versions') or dict()), 'gsm': versions.pop()}
+        multiplicity = record.get('multiplicity')
+        if not observations or not isinstance(multiplicity, int) or any(
+                not observed['gfn2'] or observed['charge'] != record.get('charge')
+                or observed['uhf'] != multiplicity - 1 for observed in observations):
+            stated_by_every_gsm_log = False
+    return {'method': 'gfn2', 'software': 'xtb'} if with_gsm and stated_by_every_gsm_log else None
 
 
 def _discard_stale_evidence(output_directory: str) -> None:
@@ -588,6 +588,25 @@ def _run_qm_corrections_script(aec_key: str | None = None,
                 logger.debug(f'Failed to remove temporary file {temporary_path!r}', exc_info=True)
 
 
+def _get_recorded_aec_yml_sha256(digests: list[str] | None) -> str | None:
+    """
+    The SHA-256 of ARC's ``data/AEC.yml`` that the run recorded when it rendered atom energies from it.
+
+    Args:
+        digests (list[str], optional): The digests recorded during the run.
+
+    Returns:
+        str | None: The digest when exactly one distinct digest was recorded; ``None`` when none was, and, with a
+                    warning, when several differing ones were.
+    """
+    distinct = sorted({digest for digest in digests or list() if isinstance(digest, str) and digest})
+    if len(distinct) > 1:
+        logger.warning(f'ARC rendered atom energies from {len(distinct)} different versions of data/AEC.yml during '
+                       f'this run ({", ".join(distinct)}); arc_aec_yml_sha256 is not exported.')
+        return None
+    return distinct[0] if distinct else None
+
+
 def _get_arkane_quantum_corrections_path() -> str | None:
     """
     The ``quantum_corrections/data.py`` that Arkane loaded, as ``arkane.encorr.data.quantum_corrections_path`` in the
@@ -604,15 +623,14 @@ def _get_rmg_database_identity(rmg_db_path: str | None = None,
     ``rmgpy`` settings point at (``arkane.encorr.data.quantum_corrections_path``), not necessarily the file under
     ARC's ``RMG_DB_PATH``.
 
-    Returns ``{path_kind, git_commit, version, quantum_corrections_path, quantum_corrections_sha256,
-    matches_arc_rmg_db_path}``. ``quantum_corrections_sha256`` is the SHA-256 of Arkane's file. ``path_kind`` is
+    Returns ``{path_kind, git_commit, version, quantum_corrections_sha256}``. ``quantum_corrections_sha256`` is the
+    SHA-256 of Arkane's file. ``path_kind`` is
     ``'git'`` when that file lies in a git checkout (``git_commit`` is then its ``HEAD``), ``'package'`` when it lies
     inside a conda prefix that lists the ``rmgdatabase`` package (``version`` is then that package's version), and
     ``'unknown'`` otherwise. A git checkout is recognised only at the database root, three directories above the
     file (``<root>/input/quantum_corrections/data.py``), so an unrelated repository further up is not mistaken for it.
-    ``matches_arc_rmg_db_path`` is whether the first file :func:`get_qm_corrections_files`
-    lists for ``rmg_db_path`` has the same digest, and is logged as a warning when ``False``. Every value that
-    cannot be determined is ``None``. Never raises.
+    A warning is logged when the first file :func:`get_qm_corrections_files` lists for ``rmg_db_path`` has another
+    digest than Arkane's file. Every value that cannot be determined is ``None``. Never raises.
 
     Args:
         rmg_db_path (str, optional): ARC's RMG database path. Defaults to ``settings['RMG_DB_PATH']``.
@@ -620,13 +638,11 @@ def _get_rmg_database_identity(rmg_db_path: str | None = None,
                                      asking the RMG environment.
     """
     identity: dict[str, Any] = {'path_kind': 'unknown', 'git_commit': None, 'version': None,
-                                'quantum_corrections_path': None, 'quantum_corrections_sha256': None,
-                                'matches_arc_rmg_db_path': None}
+                                'quantum_corrections_sha256': None}
     if not isinstance(arkane_path, str) or not arkane_path:
         arkane_path = _get_arkane_quantum_corrections_path()
     if arkane_path is None:
         return identity
-    identity['quantum_corrections_path'] = arkane_path
     identity['quantum_corrections_sha256'] = get_file_sha256(arkane_path)
     database_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(arkane_path))))
     if os.path.exists(os.path.join(database_root, '.git')):
@@ -644,12 +660,10 @@ def _get_rmg_database_identity(rmg_db_path: str | None = None,
         except (InputError, OSError):
             logger.debug(f"Could not locate the quantum corrections under '{rmg_db_path}'", exc_info=True)
             arc_sha256 = None
-        if arc_sha256 is not None:
-            identity['matches_arc_rmg_db_path'] = arc_sha256 == identity['quantum_corrections_sha256']
-            if not identity['matches_arc_rmg_db_path']:
-                logger.warning(f"The quantum corrections Arkane loaded ({arkane_path}) differ from the ones ARC reads "
-                               f"under RMG_DB_PATH ({rmg_db_path}). ARC matches the correction keys against the "
-                               f"latter, so a matched key may be missing or different in the file Arkane loaded.")
+        if arc_sha256 is not None and arc_sha256 != identity['quantum_corrections_sha256']:
+            logger.warning(f"The quantum corrections Arkane loaded ({arkane_path}) differ from the ones ARC reads "
+                           f"under RMG_DB_PATH ({rmg_db_path}). ARC matches the correction keys against the "
+                           f"latter, so a matched key may be missing or different in the file Arkane loaded.")
     return identity
 
 
@@ -794,11 +808,6 @@ def _recorded_level_to_dict(level) -> dict | None:
         if isinstance(level, dict) or hasattr(level, 'as_dict') else None
 
 
-def _str_or_none(value: Any) -> str | None:
-    """``value`` if it is a string, ``None`` for anything else (a value of unknown type is an unknown value)."""
-    return value if isinstance(value, str) else None
-
-
 def _conformer_provenance_to_fields(spc, n_conformers: int) -> tuple[list | None, str | None, dict | None,
                                                                      str | None]:
     """
@@ -816,7 +825,7 @@ def _conformer_provenance_to_fields(spc, n_conformers: int) -> tuple[list | None
     ``conformer_energy_level`` is the shared level of those entries when the kind is electronic and all of them
     were computed at the same level, and ``None`` otherwise (force-field energies have no level).
     ``conformer_force_field`` is the force field and backend that produced those entries when every one of them
-    names the same, and ``None`` otherwise. A kind or force field that is not a string counts as unknown.
+    names the same, and ``None`` otherwise. A kind or force field that is not a non-empty string counts as unknown.
 
     Args:
         spc: The species (an ``ARCSpecies`` or anything with the same conformer attributes).
@@ -887,6 +896,30 @@ def _get_conformer_ess(spc, n_conformers: int, project_directory: str) -> tuple[
         software.append(program)
         version.append(banner if program is not None else None)
     return software, version
+
+
+def _get_conformers_isotopes(spc, conformers: list, project_directory: str) -> list[list[int] | None]:
+    """
+    Build ``conformers_isotopes``: for each exported conformer, the isotope mass numbers the optimization log it was
+    parsed from (``conformer_logs``) states, one per atom, or ``None`` when that log is missing, not recorded or
+    states no masses.
+
+    Args:
+        spc: The species (an ``ARCSpecies`` or anything with the same conformer attributes).
+        conformers (list): The exported conformer geometries, as dictionaries or strings.
+        project_directory (str): The directory relative log paths resolve against.
+
+    Returns:
+        list: One entry per conformer.
+    """
+    logs = getattr(spc, 'conformer_logs', None)
+    logs = list(logs) if isinstance(logs, (list, tuple)) else list()
+    logs = (logs + [None] * len(conformers))[:len(conformers)]
+    result = list()
+    for conformer, log_path in zip(conformers, logs):
+        symbols = conformer.get('symbols') if isinstance(conformer, dict) else None
+        result.append(_get_log_stated_isotopes(_abs_existing_path(log_path, project_directory), symbols))
+    return result
 
 
 def _get_exported_xyz(spc) -> dict | None:
@@ -1358,24 +1391,6 @@ def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
     return n_steps, e_hartree, final_xyz, final_isotopes
 
 
-def _xyz_isotopes(xyz) -> list[int] | None:
-    """
-    The isotope mass numbers an ARC xyz dict carries, one per atom in the atom order of its ``symbols``.
-
-    ``xyz_to_str`` drops them. ``None`` when ``xyz`` is not a dict, carries no isotopes, carries a different number of
-    isotopes than symbols, or holds an entry that is not an integer mass number.
-    """
-    if not isinstance(xyz, dict):
-        return None
-    isotopes, symbols = xyz.get('isotopes'), xyz.get('symbols')
-    if not isinstance(isotopes, (list, tuple)) or not isotopes or not isinstance(symbols, (list, tuple)) \
-            or len(isotopes) != len(symbols):
-        return None
-    if not all(_is_int(isotope) and isotope > 0 for isotope in isotopes):
-        return None
-    return [int(isotope) for isotope in isotopes]
-
-
 def _get_log_stated_isotopes(log_path: str | None, symbols) -> list[int] | None:
     """
     The isotope mass numbers a Gaussian log states it used, one per atom of ``symbols``, ``None`` for any other log.
@@ -1410,20 +1425,27 @@ def _get_log_stated_isotopes(log_path: str | None, symbols) -> list[int] | None:
     return [int(round(mass)) for _, mass in block]
 
 
-def _is_coupled_cluster_level(level: dict | None) -> bool:
-    """Whether a recorded level dict names a coupled-cluster (``cc``) or ``qcisd`` method."""
-    method = level.get('method') if isinstance(level, dict) else None
-    return isinstance(method, str) and ('cc' in method.lower() or 'qcisd' in method.lower())
-
-
-def _get_t1_diagnostic(spc, sp_level: dict | None) -> float | None:
+def _get_t1_diagnostic(sp_log_path: str | None, project_directory: str) -> float | None:
     """
-    The species' ``t1`` value when the recorded sp level ``sp_level`` (a level dict) has a method name containing
-    ``cc`` or ``qcisd``, else ``None``. ``None`` as well when ``t1`` is not a finite number.
+    The T1 diagnostic the exported single-point log prints for its correlated method (for example coupled cluster, or
+    the coupled-pair methods of ORCA, which also print one), parsed through ARC's parser for that log's program.
+
+    Args:
+        sp_log_path (str, optional): The path of the exported sp log, absolute or relative to ``project_directory``.
+        project_directory (str): The directory a relative path resolves against.
+
+    Returns:
+        float | None: The T1 value; ``None`` when there is no log, the log prints none, the parsed value is not a
+                      finite number, or the log cannot be parsed. Never raises.
     """
-    if not _is_coupled_cluster_level(sp_level):
+    abs_path = _abs_existing_path(sp_log_path, project_directory)
+    if abs_path is None:
         return None
-    t1 = getattr(spc, 't1', None)
+    try:
+        t1 = parse_t1(abs_path)
+    except Exception:
+        logger.debug(f"Could not parse a T1 diagnostic from '{abs_path}'", exc_info=True)
+        return None
     if isinstance(t1, bool) or not isinstance(t1, (int, float)) or not math.isfinite(t1):
         return None
     return float(t1)
@@ -1450,7 +1472,7 @@ def _abs_existing_path(path: str | None, project_directory: str) -> str | None:
     ``project_directory`` (as the fields this module emits store it); both forms are
     resolved here.
     """
-    if not path:
+    if not path or not isinstance(path, str):
         return None
     abs_path = path if os.path.isabs(path) else os.path.join(project_directory, path)
     return abs_path if os.path.isfile(abs_path) else None
@@ -1542,44 +1564,70 @@ def _derive_input_path(
     return _make_rel_path(candidate, project_directory)
 
 
-def _gaussian_route_text(path: str) -> str | None:
-    """Return the Gaussian route section of an input deck or log as a single line.
+def _gaussian_route_texts(path: str, first_only: bool = False) -> list[str]:
+    """Return the Gaussian route sections of an input deck or log, each as a single line, in file order.
 
-    The route starts at the first line whose first non-blank character is ``#`` and ends
-    at the following blank line (an input deck) or rule of dashes (a log's echoed route).
-    Only the first route of the file is read, so a ``--Link1--`` file yields its first job's route.
+    A route starts at a line whose first non-blank character is ``#`` and ends at the following
+    blank line (an input deck) or rule of dashes (a log's echoed route). The first route of the
+    file is the first such line. Every later route must directly follow a rule of dashes, which is
+    how a log opens each ``Link1`` step, so a ``#`` line wrapped out of an archive block is not
+    read as a route. With ``first_only`` the file is read only as far as its first route.
 
     A log wraps the route mid-token at a fixed column and indents every echoed line by one
     space; its lines are joined after dropping that single leading space and without
     inserting one, so ``integral=(grid=ultr`` + ``afine, ...`` rejoins as written. A deck
     block has no wrapping, so its lines are stripped and joined by a single space.
 
-    Returns ``None`` when the file cannot be read or holds no route.
+    Returns an empty list when the file cannot be read or holds no route.
     """
+    routes: list[str] = []
     collected: list[str] = []
-    ended_on_dash_rule = False
+    in_route = False
+    previous_was_rule = False
+
+    def finish(ended_on_dash_rule: bool) -> None:
+        if ended_on_dash_rule:
+            routes.append(''.join(part[1:] if part.startswith(' ') else part for part in collected))
+        else:
+            routes.append(' '.join(part.strip() for part in collected))
+
     try:
         with open(path, 'r', errors='ignore') as f:
             for line in f:
                 stripped = line.strip()
-                if not collected:
-                    if stripped.startswith('#'):
-                        collected.append(line.rstrip('\n'))
+                is_rule = bool(stripped) and set(stripped) == {'-'}
+                if not in_route:
+                    if stripped.startswith('#') and (not routes or previous_was_rule):
+                        in_route = True
+                        collected = [line.rstrip('\n')]
+                    previous_was_rule = is_rule
                     continue
-                if not stripped:
-                    break
-                if set(stripped) == {'-'}:
-                    ended_on_dash_rule = True
-                    break
+                if not stripped or is_rule:
+                    finish(is_rule)
+                    in_route = False
+                    previous_was_rule = is_rule
+                    if first_only:
+                        return routes
+                    continue
                 collected.append(line.rstrip('\n'))
+            if in_route:
+                finish(False)
     except OSError as exc:
         logger.debug("Could not read a Gaussian route from '%s': %s", path, exc)
-        return None
-    if not collected:
-        return None
-    if ended_on_dash_rule:
-        return ''.join(part[1:] if part.startswith(' ') else part for part in collected)
-    return ' '.join(part.strip() for part in collected)
+        return []
+    return routes
+
+
+def _gaussian_route_text(path: str) -> str | None:
+    """Return the first Gaussian route section of an input deck or log as a single line.
+
+    The joining rules are those of ``_gaussian_route_texts``. Only the first route of the file is
+    read, so a ``--Link1--`` file yields its first job's route.
+
+    Returns ``None`` when the file cannot be read or holds no route.
+    """
+    routes = _gaussian_route_texts(path, first_only=True)
+    return routes[0] if routes else None
 
 
 def _gaussian_freq_keyword_options(route: str) -> str | None:
@@ -1831,7 +1879,7 @@ def _get_ess_route(log_path: str | None, project_directory: str) -> str | None:
     ``_orca_route_text``). ``None`` for any other program, when the log is missing, and when neither file holds a
     keyword line. Never raises.
     """
-    abs_log = _existing_log_path(log_path, project_directory)
+    abs_log = _abs_existing_path(log_path, project_directory)
     if abs_log is None:
         return None
     software = _identify_log_ess(abs_log, project_directory)
@@ -1852,6 +1900,25 @@ def _get_ess_route(log_path: str | None, project_directory: str) -> str | None:
     return None
 
 
+def _get_composite_step_routes(log_path: str | None, project_directory: str) -> list[str] | None:
+    """
+    The route of every internal step of a composite-method job, as the Gaussian log echoes them in file order.
+
+    Gaussian prints one route section per ``Link1`` step, so a CBS-QB3 or G4 log yields one entry per step. Only the
+    log is read, never the input deck beside it, and only a log the program identifies as Gaussian is read. ``None``
+    for any other program, when the log is missing, and when it echoes no route. Never raises.
+    """
+    abs_log = _abs_existing_path(log_path, project_directory)
+    if abs_log is None or _identify_log_ess(abs_log, project_directory) != 'gaussian':
+        return None
+    try:
+        routes = _gaussian_route_texts(abs_log)
+    except Exception:
+        logger.debug(f"Could not read the step routes of '{abs_log}'", exc_info=True)
+        return None
+    return routes or None
+
+
 def _get_gaussian_dipole_moment(log_path: str | None, project_directory: str) -> tuple[float | None, str | None]:
     """
     The total dipole moment in Debye of a Gaussian log and the density it was computed from.
@@ -1862,7 +1929,7 @@ def _get_gaussian_dipole_moment(log_path: str | None, project_directory: str) ->
     missing log and a log that prints no block, and the density is ``None`` when no header precedes the block. Never
     raises.
     """
-    abs_log = _existing_log_path(log_path, project_directory)
+    abs_log = _abs_existing_path(log_path, project_directory)
     if abs_log is None or _identify_log_ess(abs_log, project_directory) != 'gaussian':
         return None, None
     try:
@@ -1902,7 +1969,7 @@ def _get_gaussian_polarizability(log_path: str | None, project_directory: str) -
     for any other program, a missing log, a log that prints no such line, a last such line that cannot be read, and a
     last line whose six elements are all zero. Never raises.
     """
-    abs_log = _existing_log_path(log_path, project_directory)
+    abs_log = _abs_existing_path(log_path, project_directory)
     if abs_log is None or _identify_log_ess(abs_log, project_directory) != 'gaussian':
         return None
     tensor = None
@@ -1935,11 +2002,11 @@ def _iter_ess_logs(paths: dict, project_directory: str):
     """
     key_map = {'sp': 'sp', 'geo': 'opt', 'freq': 'freq', 'composite': 'composite', 'neb': 'neb'}
     for path_key, label in key_map.items():
-        log_path = _existing_log_path(paths.get(path_key), project_directory)
+        log_path = _abs_existing_path(paths.get(path_key), project_directory)
         if log_path is not None:
             yield label, log_path
     for irc_path in _irc_log_paths(paths):
-        log_path = _existing_log_path(irc_path, project_directory)
+        log_path = _abs_existing_path(irc_path, project_directory)
         if log_path is not None:
             yield 'irc', log_path
 
@@ -1949,16 +2016,6 @@ def _irc_log_paths(paths: dict) -> list[str]:
     irc_paths = paths.get('irc')
     irc_paths = irc_paths if isinstance(irc_paths, (list, tuple)) else list()
     return [path for path in irc_paths if isinstance(path, str) and path]
-
-
-def _existing_log_path(log_path: str | None, project_directory: str) -> str | None:
-    """The absolute path of ``log_path`` (relative paths resolve against ``project_directory``), or ``None`` if it
-    is empty or not a file on disk."""
-    if not log_path or not isinstance(log_path, str):
-        return None
-    if not os.path.isabs(log_path):
-        log_path = os.path.join(project_directory, log_path)
-    return log_path if os.path.isfile(log_path) else None
 
 
 def _collapse_ess_observations(observed: dict[str, list[str]], paths: dict) -> dict[str, str]:
@@ -2033,7 +2090,7 @@ def _get_ess_software(paths: dict, project_directory: str) -> dict[str, str] | N
 
 def _identify_log_ess(log_path: str | None, project_directory: str) -> str | None:
     """The ESS name a single log states, ``None`` where the log is missing or states none. Never raises."""
-    abs_path = _existing_log_path(log_path, project_directory)
+    abs_path = _abs_existing_path(log_path, project_directory)
     if abs_path is None:
         return None
     try:
@@ -2048,7 +2105,7 @@ def _observe_log_ess(log_path: str | None, project_directory: str) -> tuple[str 
     The ESS name and full version banner a single log states, ``(None, None)`` where the log is missing or
     states none. Never raises.
     """
-    abs_path = _existing_log_path(log_path, project_directory)
+    abs_path = _abs_existing_path(log_path, project_directory)
     if abs_path is None:
         return None, None
     software = _identify_log_ess(abs_path, project_directory)
@@ -2204,18 +2261,19 @@ def _correction_switches(spc) -> tuple[bool | None, bool | None]:
 
 
 def _drop_unapplied_corrections(records: list[dict], atom_applied: bool | None, bond_applied: bool | None) -> list[dict]:
-    """Remove the correction records the Arkane run behind the exported energy did not apply.
+    """Keep only the correction records the Arkane run behind the exported energy is recorded as having applied.
 
     The records are recomputed from the Arkane key matched for the run's level, which says nothing about whether
-    Arkane was told to apply them. The ``atom_energy`` records go when ``atom_applied`` is ``False`` and the
-    ``bond_additivity`` records when ``bond_applied`` is ``False``. A ``None`` switch, which is an unknown one,
-    leaves its records as they are."""
-    dropped = set()
-    if atom_applied is False:
-        dropped.add('atom_energy')
-    if bond_applied is False:
-        dropped.add('bond_additivity')
-    return [record for record in records if record.get('correction_type') not in dropped]
+    Arkane was told to apply them. The ``atom_energy`` records stay only when ``atom_applied`` is ``True`` and the
+    ``bond_additivity`` records only when ``bond_applied`` is ``True``; a ``False`` or a ``None`` (unrecorded) switch
+    drops its records, so no correction is stated that the run is not known to have applied."""
+    kept = set()
+    if atom_applied is True:
+        kept.add('atom_energy')
+    if bond_applied is True:
+        kept.add('bond_additivity')
+    return [record for record in records if record.get('correction_type') not in ('atom_energy', 'bond_additivity')
+            or record.get('correction_type') in kept]
 
 
 def _compute_species_corrections(
@@ -2537,7 +2595,9 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         xyz = {'symbols': (spc.mol.atoms[0].element.symbol,),
                'coords': ((0.0, 0.0, 0.0),)}
     d['xyz'] = xyz_to_str(xyz) if xyz is not None else None
-    d['xyz_isotopes'] = _xyz_isotopes(xyz)
+    d['xyz_isotopes'] = _get_log_stated_isotopes(
+        _abs_existing_path(paths.get('geo') or paths.get('composite') or None, project_directory),
+        xyz['symbols']) if xyz is not None and spc.final_xyz is not None else None
 
     raw_conformers = getattr(spc, 'conformers', None) or []
     if raw_conformers:
@@ -2545,7 +2605,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
                            for c in raw_conformers]
         raw_energies = getattr(spc, 'conformer_energies', None) or []
         d['conformer_energies'] = list(raw_energies)
-        d['conformers_isotopes'] = [_xyz_isotopes(c) for c in raw_conformers]
+        d['conformers_isotopes'] = _get_conformers_isotopes(spc, raw_conformers, project_directory)
         d['conformer_ess_software'], d['conformer_ess_version'] = \
             _get_conformer_ess(spc, len(raw_conformers), project_directory)
     d['conformer_levels'], d['conformer_energy_kind'], d['conformer_energy_level'], d['conformer_force_field'] = \
@@ -2590,11 +2650,12 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     # the fine opt's final geometry via ``spc.final_xyz``, and re-parsing
     # the log would just produce the same content with different rounding.
     if converged:
-        d['opt_n_steps'], d['opt_final_energy_hartree'], _, _ = _parse_opt_log(
+        d['opt_n_steps'], d['opt_final_energy_hartree'], _, fine_opt_isotopes = _parse_opt_log(
             paths.get('geo') or None, project_directory
         )
     else:
         d['opt_n_steps'], d['opt_final_energy_hartree'] = None, None
+        fine_opt_isotopes = None
 
     # ── opt input/output geometry semantics ────────────────────────────────
     # When coarse ran (a real two-stage opt), the geometry chain is:
@@ -2608,15 +2669,14 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     # ``coarse_opt_input_xyz`` and ``coarse_opt_output_xyz`` are non-null
     # only when a coarse opt actually ran AND its log was parseable.
     initial_xyz_str = xyz_to_str(spc.initial_xyz) if spc.initial_xyz is not None else None
-    initial_isotopes = _xyz_isotopes(spc.initial_xyz)
     if coarse_final_xyz is not None:
         # Real two-stage opt with parseable coarse output.
         d['coarse_opt_input_xyz'] = initial_xyz_str
-        d['coarse_opt_input_xyz_isotopes'] = initial_isotopes
+        d['coarse_opt_input_xyz_isotopes'] = coarse_final_isotopes
         d['coarse_opt_output_xyz'] = coarse_final_xyz
         d['coarse_opt_output_xyz_isotopes'] = coarse_final_isotopes
         d['opt_input_xyz'] = coarse_final_xyz
-        d['opt_input_xyz_isotopes'] = coarse_final_isotopes
+        d['opt_input_xyz_isotopes'] = fine_opt_isotopes
     else:
         # Either no coarse stage, or coarse ran but its geometry wasn't
         # parseable. Consumers cannot reconstruct the standalone coarse stage
@@ -2626,7 +2686,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d['coarse_opt_output_xyz'] = None
         d['coarse_opt_output_xyz_isotopes'] = None
         d['opt_input_xyz'] = initial_xyz_str
-        d['opt_input_xyz_isotopes'] = initial_isotopes
+        d['opt_input_xyz_isotopes'] = fine_opt_isotopes if initial_xyz_str is not None else None
 
     # ── freq results ────────────────────────────────────────────────────────
     if is_mono or not converged:
@@ -2648,6 +2708,8 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     d['freq_route'] = _get_ess_route(paths.get('freq') or None, project_directory) if converged else None
     d['sp_route'] = _get_ess_route(paths.get('sp') or None, project_directory) if converged else None
     d['composite_route'] = _get_ess_route(paths.get('composite') or None, project_directory) if converged else None
+    d['composite_step_routes'] = _get_composite_step_routes(paths.get('composite') or None, project_directory) \
+        if converged else None
     d['opt_dipole_moment_debye'], d['opt_dipole_moment_density'] = _get_gaussian_dipole_moment(
         paths.get('geo') or None, project_directory) if converged and not is_mono and spc.charge == 0 \
         else (None, None)
@@ -2744,7 +2806,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     d['ess_versions'] = _get_ess_versions(paths, project_directory) if converged else None
     d['ess_software'] = _get_ess_software(paths, project_directory) if converged else None
     d['levels'] = _species_levels_to_dict(entry, spc.is_ts)
-    d['sp_t1_diagnostic'] = _get_t1_diagnostic(spc, d['levels'].get('sp')) if converged else None
+    d['sp_t1_diagnostic'] = _get_t1_diagnostic(paths.get('sp') or None, project_directory) if converged else None
     if not spc.is_ts:
         irc_label = getattr(spc, 'irc_label', None)
         endpoint_of = irc_label if isinstance(irc_label, str) and irc_label else None
@@ -2802,13 +2864,6 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         else:
             d['ts_guesses'] = []
 
-        if converged:
-            gsm_software, gsm_version = _get_gsm_ess(d.get('gsm_log'), project_directory)
-            if gsm_software:
-                d['ess_software'] = {**(d['ess_software'] or dict()), 'gsm': gsm_software}
-            if gsm_version:
-                d['ess_versions'] = {**(d['ess_versions'] or dict()), 'gsm': gsm_version}
-
         irc_paths = list(paths.get('irc') or [])
         d['irc_logs'] = [_make_rel_path(path, project_directory) for path in irc_paths]
         d['irc_log_routes'] = [_get_ess_route(path or None, project_directory) for path in irc_paths]
@@ -2828,8 +2883,9 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d['ts_checks'] = _ts_checks_to_dict(spc)
         d['irc_participant_mapping'] = _irc_participant_mapping_to_dict(spc)
         d['freq_frequencies_cm1_ess_order'], d['reaction_coordinate_mode_index'] = \
-            _get_ts_frequencies_in_ess_order(spc, converged)
+            _get_ts_frequencies_in_ess_order(spc, converged, d['freq_log'], project_directory)
         d['nmd_forced'] = _get_nmd_forced(spc)
+        d['neb_succeeded'] = _get_neb_succeeded(spc)
         d['rxn_label'] = spc.rxn_label
 
     # ── thermochemistry (non-TS converged species only) ──────────────────────
@@ -2855,15 +2911,31 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     return d
 
 
-def _get_ts_frequencies_in_ess_order(spc, converged: bool) -> tuple[list[float] | None, int | None]:
+def _get_ts_frequencies_in_ess_order(spc,
+                                     converged: bool,
+                                     freq_log: str | None = None,
+                                     project_directory: str | None = None,
+                                     ) -> tuple[list[float] | None, int | None]:
     """
     Return the frequencies of a transition state as the frequency job printed them, and the 1-based index into that
     list of the reaction-coordinate mode.
 
     ``ARCSpecies.freqs`` is the list the frequency job reported, unsorted and with its imaginary modes in place. The
-    index is given only when the normal mode displacement check genuinely passed (``ts_checks['NMD']`` is ``True`` and
-    was not forced by ``skip_nmd``) and exactly one listed frequency equals, within
-    ``NMD_FREQUENCY_MATCH_TOLERANCE_CM1``, the frequency of the mode that check analysed.
+    normal mode displacement check indexes the frequencies it parsed from an output file, which need not be the same
+    list: a parser may concatenate several frequency blocks (Gaussian does), and a composite log yields a prefix. The
+    check therefore records the 0-based position of the mode it analysed (``nmd_record['mode_index']``), the number of
+    modes it indexed (``n_modes``) and the output file it parsed (``freq_log_path``). The index here is that position
+    plus one. It is given only when the check genuinely passed (``ts_checks['NMD']`` is ``True`` and was not forced by
+    ``skip_nmd``), ``n_modes`` equals the number of listed frequencies, ``freq_log_path`` is the exported frequency
+    log, the record holds an integer position within the listed frequencies, and the frequency at that position is
+    imaginary, which the analysed mode always is. A record without ``n_modes`` or ``freq_log_path`` (an older
+    restart) gives no index.
+
+    Args:
+        spc (ARCSpecies): The transition state.
+        converged (bool): Whether the species converged.
+        freq_log (str, optional): The exported frequency log, relative to ``project_directory`` or absolute.
+        project_directory (str, optional): The directory a relative ``freq_log`` resolves against.
 
     Returns:
         tuple[list[float] | None, int | None]: The frequencies, ``None`` when the species is not converged or has
@@ -2881,12 +2953,20 @@ def _get_ts_frequencies_in_ess_order(spc, converged: bool) -> tuple[list[float] 
         return ess_order, None
     record = getattr(spc, 'nmd_record', None)
     record = record if isinstance(record, dict) else dict()
-    validated = record.get('frequency_cm1')
-    if record.get('forced') is True or isinstance(validated, bool) or not isinstance(validated, (int, float)):
+    mode_index = record.get('mode_index')
+    if record.get('forced') is True or not _is_int(mode_index) or not 0 <= mode_index < len(ess_order) \
+            or ess_order[mode_index] >= 0:
         return ess_order, None
-    matches = [index for index, freq in enumerate(ess_order)
-               if abs(freq - validated) <= NMD_FREQUENCY_MATCH_TOLERANCE_CM1]
-    return ess_order, matches[0] + 1 if len(matches) == 1 else None
+    n_modes = record.get('n_modes')
+    if not _is_int(n_modes) or n_modes != len(ess_order):
+        return ess_order, None
+    recorded_log, exported_log = record.get('freq_log_path'), freq_log
+    if not isinstance(recorded_log, str) or not recorded_log or not isinstance(exported_log, str) or not exported_log:
+        return ess_order, None
+    base = project_directory or os.getcwd()
+    if os.path.normpath(os.path.join(base, recorded_log)) != os.path.normpath(os.path.join(base, exported_log)):
+        return ess_order, None
+    return ess_order, mode_index + 1
 
 
 def _get_nmd_forced(spc) -> bool | None:
@@ -2910,24 +2990,65 @@ def _get_nmd_forced(spc) -> bool | None:
     return False
 
 
-def _get_point_group_axis_order(point_group: str | None) -> int | str | None:
+NEB_CONVERGENCE_BANNER = 'THE NEB OPTIMIZATION HAS CONVERGED'
+
+
+def _neb_log_states_convergence(path: str) -> bool | None:
     """
-    The order of the principal symmetry axis of a point group symbol that makes two principal moments equal:
-    ``'cubic'`` for T, O and I groups, the ``n`` of ``C<n>``, ``D<n>`` and ``S<n>``, ``2 * n`` for ``D<n>d`` (which
-    contains an ``S<2n>`` axis), ``1`` for ``Cs`` and ``Ci``, and ``None`` for anything else, linear groups included.
-    An ``S4`` axis counts as order 4, and ``S2`` (which is ``Ci``) as order 2.
+    Whether an ORCA NEB log prints the line stating that the NEB optimization has converged.
+
+    Args:
+        path (str): The path to the NEB log.
+
+    Returns:
+        bool | None: ``True`` when the log prints the convergence line, ``False`` when it does not, and ``None`` when
+                     the file cannot be read.
     """
-    if not isinstance(point_group, str):
+    if not isinstance(path, str) or not os.path.isfile(path):
         return None
-    if re.fullmatch(r'[TOI][dh]?', point_group):
-        return 'cubic'
-    if point_group in ('Cs', 'Ci'):
-        return 1
-    match = re.fullmatch(r'([CDS])(\d+)([vhd]?)', point_group)
-    if match is None:
+    try:
+        with open(path, 'r', errors='replace') as f:
+            return any(NEB_CONVERGENCE_BANNER in line for line in f)
+    except OSError:
+        logger.debug(f'Could not read the NEB log {path}', exc_info=True)
         return None
-    order = int(match.group(2))
-    return 2 * order if match.group(1) == 'D' and match.group(3) == 'd' else order
+
+
+def _get_neb_succeeded(spc) -> bool | None:
+    """
+    Whether the NEB log of an ``orca_neb`` guess recorded for a TS states that the NEB optimization converged.
+
+    A guess counts when its own method or any of its merged ``method_sources`` is ``orca_neb``. The log read is the
+    one recorded for that method on the guess (``log_path`` for a guess of that method, ``method_source_paths`` for a
+    merged one). A guess with no recorded log, or a log that cannot be read, states nothing. Whether the guess holds
+    a geometry is not consulted.
+
+    Args:
+        spc (ARCSpecies): The transition state.
+
+    Returns:
+        bool | None: ``True`` when the log of any recorded ``orca_neb`` guess prints ``THE NEB OPTIMIZATION HAS
+                     CONVERGED``; ``False`` when ``orca_neb`` guesses were recorded with readable logs and none prints
+                     it; ``None`` otherwise.
+    """
+    outcomes = list()
+    for guess in getattr(spc, 'ts_guesses', None) or list():
+        method = getattr(guess, 'method', None)
+        sources = [method] + list(getattr(guess, 'method_sources', None) or list())
+        if not any(isinstance(source, str) and source.strip().lower() == 'orca_neb' for source in sources):
+            continue
+        if isinstance(method, str) and method.strip().lower() == 'orca_neb':
+            path = getattr(guess, 'log_path', None)
+        else:
+            path = (getattr(guess, 'method_source_paths', None) or dict()).get('orca_neb')
+        if not path:
+            continue
+        outcome = _neb_log_states_convergence(path)
+        if outcome is not None:
+            outcomes.append(outcome)
+    if not outcomes:
+        return None
+    return any(outcomes)
 
 
 def _has_default_isotopes(xyz: dict) -> bool:
@@ -2948,68 +3069,65 @@ def _has_default_isotopes(xyz: dict) -> bool:
         return False
 
 
-def _get_rigid_rotor_kind(spc, is_linear: bool | None, point_group: str | None = None) -> str | None:
+def _get_rigid_rotor_kind(spc, point_group: str | None = None) -> str | None:
     """
-    Classify a species as a rigid rotor from the principal moments of inertia of its exported geometry.
+    The rigid-rotor kind of a species, read from its exported point group alone.
 
-    ``atom`` for a monoatomic species and ``linear`` for one flagged linear, or, when the species does not say, for
-    one whose smallest moment is within ``RIGID_ROTOR_LINEAR_MOMENT_RATIO`` of the next. Otherwise ``spherical_top``
-    when all three moments agree and ``symmetric_top`` when two do, each within
-    ``RIGID_ROTOR_MOMENT_RELATIVE_TOLERANCE`` of the larger, and ``asymmetric_top`` when none do. The masses are those
-    of the isotopes the geometry carries.
+    A species with one atom is an ``atom``. Otherwise the point group fixes how many principal moments of inertia
+    the symmetry forces to be equal, because the inertia tensor is invariant under every symmetry operation. An
+    improper rotation S_n(theta) equals the inversion times the proper rotation C(theta + pi), and the inversion acts
+    trivially on the tensor, so S_n acts on it as the proper rotation C(theta + pi) (a mirror plane, S_1, acts as a
+    C2 rotation). The mapping is:
 
-    When every atom carries its most common isotope (the point group calculation ignores isotopes), the exported
-    ``point_group`` refines that verdict: a group with no C_n (n >= 3) and no S4 axis, and that is not cubic, rules out a
-    symmetric or spherical top (the result is ``asymmetric_top``), and a group with such an axis (``spherical_top`` for
-    a cubic one) promotes a geometry whose relevant moments agree within ``RIGID_ROTOR_POINT_GROUP_TOLERANCE``.
+    - C∞v and D∞h (``Cinfv``, ``Dinfh``, ``C*v``, ``D*h``): ``linear``, one moment vanishes.
+    - T, Td, Th, O, Oh, I, Ih: ``spherical_top``, the rotations transform as a triply degenerate irreducible
+      representation, so the tensor is isotropic.
+    - C_n, C_nv, C_nh, D_n, D_nh and D_nd with n >= 3: ``symmetric_top``, a proper C_n axis with n >= 3 equates the two
+      moments perpendicular to it.
+    - D2d and S_n with even n >= 4 (S4, S6, S8, ...): ``symmetric_top``, an S_n axis acts on the tensor as the
+      rotation by 2*pi/n + pi, which has order 3 or more for every even n >= 4: S4 acts as C4 cubed (order 4), S6 as
+      C3 inverse (order 3) and S8 with order 8, although none of these contains a proper C_n axis with n >= 3.
+      Allene (D2d), whose S4 axis is the one that does this, is a prolate symmetric top.
+    - C1, Cs, Ci (S2), C2, C2v, C2h, D2, D2h: ``asymmetric_top``, no axis of order 3 or more and no S4 axis, so nothing
+      forces two moments to agree.
 
-    ``None`` when there is no final geometry, when it cannot be weighed, and when the species is flagged
-    non-linear but its atoms are collinear.
+    A symmetric top here is a symmetry-enforced one; an accidental equality of moments is not stated.
+
+    ``None`` when the point group is ``None`` or is not one of the above, and when the species carries non-default
+    isotopes, because the point group is that of the geometry without isotopic labels and does not apply to a
+    labelled one. No moment of inertia is computed and no tolerance is used.
+
+    Args:
+        spc: The species.
+        point_group (str, optional): The exported point group symbol of the exported geometry.
+
+    Returns:
+        str | None: ``atom``, ``linear``, ``spherical_top``, ``symmetric_top``, ``asymmetric_top`` or ``None``.
     """
     if spc.is_monoatomic() is True:
         return 'atom'
-    if is_linear:
+    if not isinstance(point_group, str):
+        return None
+    xyz = _get_exported_xyz(spc)
+    if xyz is not None and not _has_default_isotopes(xyz):
+        return None
+    if re.fullmatch(r'C(inf|\*|∞)v|D(inf|\*|∞)h', point_group):
         return 'linear'
-    xyz = spc.final_xyz
-    if not xyz or not xyz.get('coords'):
-        return None
-    try:
-        masses = get_element_mass_from_xyz(xyz)
-        ia, ib, ic = get_principal_moments_of_inertia(xyz['coords'], masses)
-    except Exception:
-        logger.debug(f'Could not compute the principal moments of {spc.label}', exc_info=True)
-        return None
-    if ic <= 0:
-        return None
-    if ia <= RIGID_ROTOR_LINEAR_MOMENT_RATIO * ib:
-        if is_linear is None:
-            return 'linear'
-        logger.warning(f'{spc.label} is flagged non-linear, but the atoms of its exported geometry are collinear. '
-                       f'Not stating a rigid-rotor kind.')
-        return None
-
-    def agree(small: float, large: float, tolerance: float) -> bool:
-        """Whether two moments differ by no more than ``tolerance`` of the larger."""
-        return large - small <= tolerance * large
-
-    tolerance = RIGID_ROTOR_MOMENT_RELATIVE_TOLERANCE
-    if agree(ia, ic, tolerance):
-        kind = 'spherical_top'
-    elif agree(ia, ib, tolerance) or agree(ib, ic, tolerance):
-        kind = 'symmetric_top'
-    else:
-        kind = 'asymmetric_top'
-    axis_order = _get_point_group_axis_order(point_group)
-    if axis_order is None or not _has_default_isotopes(xyz):
-        return kind
-    if axis_order == 'cubic':
-        return 'spherical_top' if agree(ia, ic, RIGID_ROTOR_POINT_GROUP_TOLERANCE) else kind
-    if axis_order < 3:
+    if re.fullmatch(r'[TOI][dh]?', point_group):
+        return 'spherical_top'
+    if point_group in ('C1', 'Cs', 'Ci', 'S2', 'C2', 'C2v', 'C2h', 'D2', 'D2h'):
         return 'asymmetric_top'
-    if kind == 'asymmetric_top' and (agree(ia, ib, RIGID_ROTOR_POINT_GROUP_TOLERANCE)
-                                     or agree(ib, ic, RIGID_ROTOR_POINT_GROUP_TOLERANCE)):
-        return 'symmetric_top'
-    return kind
+    match = re.fullmatch(r'([CDS])(\d+)([vhd]?)', point_group)
+    if match is None:
+        return None
+    family, order, suffix = match.group(1), int(match.group(2)), match.group(3)
+    if suffix not in {'C': ('', 'v', 'h'), 'D': ('', 'h', 'd'), 'S': ('',)}[family]:
+        return None
+    if family == 'S':
+        return 'symmetric_top' if order >= 4 and order % 2 == 0 else None
+    if family == 'D' and suffix == 'd':
+        return 'symmetric_top' if order >= 2 else None
+    return 'symmetric_top' if order >= 3 else None
 
 
 def _get_imaginary_freqs(spc) -> list[float] | None:
@@ -3110,7 +3228,7 @@ def _statmech_to_dict(spc,
     # Use the cached private attribute to avoid triggering a geometry re-read
     is_linear = spc._is_linear
 
-    rotor_kind = _get_rigid_rotor_kind(spc, is_linear, point_group)
+    rotor_kind = _get_rigid_rotor_kind(spc, point_group)
 
     rotor_modes = getattr(spc, 'arkane_rotor_modes', None)
     freqs = getattr(spc, 'freqs', None)
@@ -3291,7 +3409,7 @@ def _resolve_scan_path(rotor: dict, project_directory: str) -> str | None:
     scan-calc builder so they agree on which rotors qualify as "has a
     scan log we can use."
     """
-    return _existing_log_path(rotor.get('scan_path', ''), project_directory)
+    return _abs_existing_path(rotor.get('scan_path', ''), project_directory)
 
 
 def _get_rotor_barrier(rotor: dict, project_directory: str) -> float | None:
@@ -3853,10 +3971,9 @@ def _irc_participant_mapping_to_dict(spc) -> dict | None:
 
     Returns: dict | None
         ``{'reactants': side, 'products': side, 'sides_distinguishable': bool, 'atom_order_matches_ts': bool | None}``
-        where ``side`` is ``{'endpoint': 1 | 2, 'endpoint_label': str | None, 'participants': [participant, ...]}`` and
+        where ``side`` is ``{'endpoint_label': str | None, 'participants': [participant, ...]}`` and
         ``participant`` is ``{'label': str, 'position': int, 'occurrence': int, 'atom_indices': list[int]}``.
-        ``endpoint`` says whether the geometry is the first or the second IRC endpoint geometry given to the check,
-        and ``endpoint_label`` is the label of the species it belongs to. ``position`` is 1-based in the order of
+        ``endpoint_label`` is the label of the species the optimized endpoint geometry belongs to. ``position`` is 1-based in the order of
         ``atom_map_reactant_labels`` / ``atom_map_product_labels``. ``atom_indices`` are ascending 0-based
         indices into that optimized endpoint geometry. ``sides_distinguishable`` is ``False`` when the reactants and
         the products are graph-isomorphic to each other, and ``atom_order_matches_ts`` states whether the endpoint
@@ -3874,8 +3991,7 @@ def _irc_participant_mapping_to_dict(spc) -> dict | None:
               'atom_order_matches_ts': mapping['atom_order_matches_ts']}
     for well in ('reactants', 'products'):
         side = mapping[well]
-        if not isinstance(side, dict) or not isinstance(side.get('participants'), list) \
-                or side.get('endpoint') not in (1, 2) or isinstance(side.get('endpoint'), bool):
+        if not isinstance(side, dict) or not isinstance(side.get('participants'), list):
             return None
         label = side.get('endpoint_label')
         if label is not None and not isinstance(label, str):
@@ -3894,7 +4010,7 @@ def _irc_participant_mapping_to_dict(spc) -> dict | None:
                                  'occurrence': participant['occurrence'],
                                  'atom_indices': list(participant['atom_indices']),
                                  })
-        result[well] = {'endpoint': side['endpoint'], 'endpoint_label': label, 'participants': participants}
+        result[well] = {'endpoint_label': label, 'participants': participants}
     return result
 
 
@@ -3905,7 +4021,9 @@ def _get_reaction_atom_map(rxn) -> dict:
     The map is exported only if it is a permutation of the atoms of the expanded reactants that conserves the
     element: reactant atom ``i`` and product atom ``map[i]`` must have the same symbol. Reactant atoms are counted
     over ``get_reactants_and_products`` (``r_species`` order, one block per occurrence, each block in the exported
-    geometry atom order of the species), and product atoms likewise over the products.
+    geometry atom order of the species), and product atoms likewise over the products. The map counts atoms in the atom
+    order of each species' ``mol``, so it is exported only if the exported geometry of every participant has that order
+    (see ``_geometry_follows_mol_atom_order``); otherwise it is ``None`` and the reason is logged.
 
     Args:
         rxn (ARCReaction): The reaction.
@@ -3922,8 +4040,13 @@ def _get_reaction_atom_map(rxn) -> dict:
     if not isinstance(atom_map, (list, tuple)) or not all(_is_int(i) for i in atom_map):
         return nothing
     reactants, products = rxn.get_reactants_and_products(return_copies=False)
-    xyzs = [spc.get_xyz(generate=False) for spc in reactants + products]
+    xyzs = [_get_exported_xyz(spc) for spc in reactants + products]
     if any(not isinstance(xyz, dict) for xyz in xyzs):
+        return nothing
+    if _has_participant_off_mol_atom_order(reactants + products, xyzs):
+        logger.warning(f'The atom map of {getattr(rxn, "label", None)} counts atoms in the atom order of the '
+                       f'species mol, which the exported geometry of at least one participant does not follow; '
+                       f'the atom map is not exported.')
         return nothing
     r_symbols = [symbol for xyz in xyzs[:len(reactants)] for symbol in xyz['symbols']]
     p_symbols = [symbol for xyz in xyzs[len(reactants):] for symbol in xyz['symbols']]
@@ -3979,10 +4102,12 @@ def _get_ts_atom_map(rxn, atom_map_fields: dict) -> dict:
         return _unavailable(reason if reason in TS_ATOM_MAP_UNAVAILABLE_REASONS
                             else 'no_atom_map' if atom_map_fields['atom_map'] is None else 'not_recorded')
     atom_map = atom_map_fields['atom_map']
-    if atom_map is None:
-        return _unavailable('no_atom_map')
     reactants, products = rxn.get_reactants_and_products(return_copies=False)
     xyzs = [_get_exported_xyz(spc) for spc in reactants + products]
+    if atom_map is None:
+        return _unavailable('species_atom_order_mismatch'
+                            if isinstance(getattr(rxn, '_atom_map', None), (list, tuple))
+                            and _has_participant_off_mol_atom_order(reactants + products, xyzs) else 'no_atom_map')
     if any(not isinstance(xyz, dict) for xyz in xyzs):
         return _unavailable('not_recorded')
     r_symbols = [symbol for xyz in xyzs[:len(reactants)] for symbol in xyz['symbols']]
@@ -3990,8 +4115,6 @@ def _get_ts_atom_map(rxn, atom_map_fields: dict) -> dict:
     if not _is_well_formed_ts_atom_map(recorded, ts.label, atom_map, r_symbols, p_symbols, list(ts_xyz['symbols'])):
         logger.warning(f'The TS atom map of {getattr(rxn, "label", None)} is malformed and is not exported.')
         return _unavailable('not_recorded')
-    if any(not _geometry_follows_mol_atom_order(spc, xyz) for spc, xyz in zip(reactants + products, xyzs)):
-        return _unavailable('species_atom_order_mismatch')
     return {'ts_atom_map': {'ts_label': recorded['ts_label'],
                             'reactants': list(recorded['reactants']),
                             'products': list(recorded['products']),
@@ -4050,7 +4173,8 @@ def _is_well_formed_ts_atom_map(recorded: dict,
 def _geometry_follows_mol_atom_order(spc, xyz: dict) -> bool:
     """
     Whether the geometry of a species has the atom order of its ``mol``: the same number of atoms, the same
-    element in every position, and every bond of the ``mol`` at a bonded distance in the geometry.
+    element in every position, and every bond of the ``mol`` no longer than 1.2 times the single-bond length of its two
+    elements in the geometry (``are_coords_compliant_with_graph``; bond orders are not considered).
 
     Args:
         spc: The species.
@@ -4063,6 +4187,23 @@ def _geometry_follows_mol_atom_order(spc, xyz: dict) -> bool:
     if mol is None or len(mol.atoms) != len(xyz['symbols']):
         return False
     return are_coords_compliant_with_graph(xyz=xyz, mol=mol)
+
+
+def _has_participant_off_mol_atom_order(species: list, xyzs: list) -> bool:
+    """
+    Whether every species has an exported geometry and at least one geometry does not have the atom order of its
+    species' ``mol``.
+
+    Args:
+        species (list): The reaction participants.
+        xyzs (list): The exported geometry of each participant, ``None`` where it has none.
+
+    Returns:
+        bool: ``True`` if all geometries exist and any one does not follow its ``mol``.
+    """
+    if any(not isinstance(xyz, dict) for xyz in xyzs):
+        return False
+    return any(not _geometry_follows_mol_atom_order(spc, xyz) for spc, xyz in zip(species, xyzs))
 
 
 def _rxn_to_dict(rxn) -> dict:
@@ -4107,8 +4248,8 @@ def _rxn_to_dict(rxn) -> dict:
         'label': rxn.label,
         'reactant_labels': list(rxn.reactants),
         'product_labels': list(rxn.products),
-        'reactant_species_labels': [spc.label for spc in reactants],
-        'product_species_labels': [spc.label for spc in products],
+        'reactant_species_labels': [spc.label for spc in reactants] or None,
+        'product_species_labels': [spc.label for spc in products] or None,
         'family': rxn.family,
         'multiplicity': rxn.multiplicity,
         'ts_label': rxn.ts_label,

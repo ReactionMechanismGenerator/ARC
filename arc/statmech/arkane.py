@@ -176,6 +176,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                                recorded onto the thermo that run produces. ``None`` until an input is rendered.
         use_bac (bool | None): The ``useBondCorrections`` value of the last Arkane input this adapter rendered.
                                ``None`` until an input is rendered.
+        aec_yml_sha256 (str | None): The SHA-256 of ARC's ``data/AEC.yml`` that the last Arkane input this adapter
+                                     rendered took its ``atomEnergies`` from, recorded onto the E0 that run produces.
+                                     ``None`` until an input is rendered, and when the last one did not use it.
+        aec_yml_sha256s (set[str]): The SHA-256 digests of ARC's ``data/AEC.yml`` recorded each time this adapter
+                                    rendered ``atomEnergies`` from it. Empty when it never did.
     """
     def __init__(self,
                  output_directory: str,
@@ -209,6 +214,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.T_count = T_count
         self.use_aec = None
         self.use_bac = None
+        self.aec_yml_sha256 = None
+        self.aec_yml_sha256s = set()
         if not self.output_directory or not self.calcs_directory:
             raise InputError(f'Output and calcs directories must be given, got: {self.output_directory}, {self.calcs_directory}')
 
@@ -418,9 +425,13 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                                                      freq_scale_factor=self.freq_scale_factor
                                                      ) or ''
 
-        aec_dict = read_yaml_file(os.path.join(ARC_PATH, 'data', 'AEC.yml'))
+        aec_yml_path = os.path.join(ARC_PATH, 'data', 'AEC.yml')
+        aec_dict = read_yaml_file(aec_yml_path)
         aec_yml_key = _match_aec_yml_key(self.sp_level, aec_dict)
         atom_energies = f'\natomEnergies = {aec_dict[aec_yml_key]}' if aec_yml_key is not None else ''
+        self.aec_yml_sha256 = get_file_sha256(aec_yml_path) if aec_yml_key is not None else None
+        if self.aec_yml_sha256 is not None:
+            self.aec_yml_sha256s.add(self.aec_yml_sha256)
 
         self.use_aec = bool(model_chemistry or atom_energies)
         self.use_bac = self.bac_type is not None and self.use_aec
@@ -527,7 +538,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             output_content = f.read()
         thermo_parsed_from_output = set()
         for species in self.species:
-            if parse_species_thermo(species, output_content, use_aec=self.use_aec, use_bac=self.use_bac):
+            if parse_species_thermo(species, output_content, use_aec=self.use_aec, use_bac=self.use_bac,
+                                    aec_yml_sha256=self.aec_yml_sha256):
                 thermo_parsed_from_output.add(species.label)
             clean_output_directory(os.path.join(self.output_directory, 'Species', species.label))
 
@@ -616,7 +628,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             output_content = f.read()
 
         for rxn in self.reactions:
-            parse_reaction_kinetics(rxn, output_content, use_aec=self.use_aec, use_bac=self.use_bac)
+            parse_reaction_kinetics(rxn, output_content, use_aec=self.use_aec, use_bac=self.use_bac,
+                                    aec_yml_sha256=self.aec_yml_sha256)
 
         # Parse conformer statmech (external_symmetry, optical_isomers) for all
         # species involved in the kinetics — the thermo path handles this via
@@ -868,19 +881,6 @@ def get_file_sha256(path: str) -> str | None:
     except OSError:
         logger.debug(f"Could not hash '{path}'", exc_info=True)
         return None
-
-
-def get_arc_aec_yml_sha256(sp_level: 'Level | None') -> str | None:
-    """
-    The SHA-256 of ARC's ``data/AEC.yml`` when ARC renders ``atomEnergies`` from it for ``sp_level``, else ``None``.
-    """
-    aec_path = os.path.join(ARC_PATH, 'data', 'AEC.yml')
-    if sp_level is None or not os.path.isfile(aec_path):
-        return None
-    aec_dict = read_yaml_file(aec_path)
-    if not isinstance(aec_dict, dict) or _match_aec_yml_key(sp_level, aec_dict) is None:
-        return None
-    return get_file_sha256(aec_path)
 
 
 def get_qm_corrections_files(rmg_db_path: str | None = None) -> list[str]:
@@ -1608,28 +1608,36 @@ def get_standard_state_pressure(content: dict) -> float | None:
     return None
 
 
-def _stamp_e0_corrections(species, use_aec: bool | None, use_bac: bool | None) -> None:
+def _stamp_e0_corrections(species,
+                          use_aec: bool | None,
+                          use_bac: bool | None,
+                          aec_yml_sha256: str | None = None,
+                          ) -> None:
     """
-    Record on a species the correction switches of the Arkane run that wrote its ``e0``.
+    Record on a species the correction switches and the ``AEC.yml`` digest of the Arkane run that wrote its ``e0``.
 
     A species declared by an Arkane YAML is loaded as-is (``StatMechJob.load`` returns before applying any
-    correction), so the switches of the run say nothing about its energy and it is stamped ``None``.
+    correction), so the switches and the digest of the run say nothing about its energy and it is stamped ``None``.
 
     Args:
         species (ARCSpecies): The species whose ``e0`` was just parsed.
         use_aec (bool | None): The ``useAtomCorrections`` value of the run, ``None`` if not known.
         use_bac (bool | None): The ``useBondCorrections`` value of the run, ``None`` if not known.
+        aec_yml_sha256 (str | None): The SHA-256 of the ``data/AEC.yml`` the run rendered its atom energies from,
+                                     ``None`` if it did not render them from it.
     """
     if species.yml_path:
-        use_aec, use_bac = None, None
+        use_aec, use_bac, aec_yml_sha256 = None, None, None
     species.e0_atom_corrections_applied = use_aec
     species.e0_bond_corrections_applied = use_bac
+    species.e0_aec_yml_sha256 = aec_yml_sha256
 
 
 def parse_species_thermo(species,
                          output_content: str,
                          use_aec: bool | None = None,
                          use_bac: bool | None = None,
+                         aec_yml_sha256: str | None = None,
                          ) -> bool:
     """
     Parse thermodynamic data for a single species.
@@ -1639,6 +1647,8 @@ def parse_species_thermo(species,
         output_content (str): The full Arkane output file content.
         use_aec (bool, optional): The ``useAtomCorrections`` value of the Arkane run that wrote the output.
         use_bac (bool, optional): The ``useBondCorrections`` value of the Arkane run that wrote the output.
+        aec_yml_sha256 (str, optional): The SHA-256 of the ``data/AEC.yml`` the Arkane run that wrote the output
+                                        rendered its atom energies from.
 
     Returns:
         bool: Whether the output holds a thermo block of the species, and it was parsed into ``species.thermo``.
@@ -1646,7 +1656,7 @@ def parse_species_thermo(species,
     e0 = parse_e0(species.label, output_content)
     if e0 is not None:
         species.e0 = e0
-        _stamp_e0_corrections(species, use_aec, use_bac)
+        _stamp_e0_corrections(species, use_aec, use_bac, aec_yml_sha256)
     # Parse statmech properties from the conformer block
     _parse_conformer_statmech(species, output_content)
     # Parse thermo data
@@ -1665,6 +1675,7 @@ def parse_reaction_kinetics(reaction,
                             output_content: str,
                             use_aec: bool | None = None,
                             use_bac: bool | None = None,
+                            aec_yml_sha256: str | None = None,
                             ) -> None:
     """
     Parse Arrhenius kinetics data for a single reaction from Arkane output.
@@ -1674,6 +1685,8 @@ def parse_reaction_kinetics(reaction,
         output_content (str): The full Arkane output file content.
         use_aec (bool, optional): The ``useAtomCorrections`` value of the Arkane run that wrote the output.
         use_bac (bool, optional): The ``useBondCorrections`` value of the Arkane run that wrote the output.
+        aec_yml_sha256 (str, optional): The SHA-256 of the ``data/AEC.yml`` the Arkane run that wrote the output
+                                        rendered its atom energies from.
 
     Populates:
         reaction.kinetics (dict): A dictionary with Arrhenius parameters and units, and the ``use_aec`` switch
@@ -1682,7 +1695,7 @@ def parse_reaction_kinetics(reaction,
     e0 = parse_e0(reaction.ts_species.label, output_content)
     if e0 is not None:
         reaction.ts_species.e0 = e0
-        _stamp_e0_corrections(reaction.ts_species, use_aec, use_bac)
+        _stamp_e0_corrections(reaction.ts_species, use_aec, use_bac, aec_yml_sha256)
     label_pat = rf"kinetics\(\s*label\s*=\s*['\"]{re.escape(reaction.label)}['\"],"
     m_label = re.search(label_pat, output_content)
     if not m_label:

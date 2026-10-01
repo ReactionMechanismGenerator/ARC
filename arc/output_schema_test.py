@@ -42,8 +42,7 @@ OPT_LOG = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
 FREQ_LOG = os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out')
 ARKANE_PROVENANCE = ArkaneProvenance('3.3.0', '6b1368de6c19204c7ce4fda6fbecb05da4a0fe0e')
 RMG_DATABASE_IDENTITY = {'path_kind': 'package', 'git_commit': None, 'version': '4.0.0',
-                         'quantum_corrections_path': '/prefix/share/rmgdatabase/input/quantum_corrections/data.py',
-                         'quantum_corrections_sha256': 'a' * 64, 'matches_arc_rmg_db_path': True}
+                         'quantum_corrections_sha256': 'a' * 64}
 
 GAUSSIAN_DECK = """%chk=check.chk
 #P opt=(modredundant) wb97xd/def2tzvp
@@ -553,9 +552,10 @@ class TestRichDocumentValidates(SchemaAssertionMixin, unittest.TestCase):
         """The writer's own values for the T1, isotope, route, property, reversibility and kinetics keys."""
         species = self.document['species'][0]
         n_atoms = len(species['xyz'].splitlines())
-        self.assertEqual(len(species['xyz_isotopes']), n_atoms)
-        self.assertEqual(len(species['opt_input_xyz_isotopes']), n_atoms)
-        self.assertEqual(species['conformers_isotopes'], [species['xyz_isotopes']] * len(species['conformers']))
+        self.assertGreater(n_atoms, 0)
+        self.assertIsNone(species['xyz_isotopes'])
+        self.assertIsNone(species['opt_input_xyz_isotopes'])
+        self.assertEqual(species['conformers_isotopes'], [None] * len(species['conformers']))
         self.assertIsNone(species['coarse_opt_input_xyz_isotopes'])
         self.assertIsNone(species['coarse_opt_output_xyz_isotopes'])
         self.assertEqual(species['opt_route'], '#P opt=(calcfc) guess=mix uhf/3-21g IOp(2/9=2000) scf=xqc')
@@ -982,9 +982,12 @@ class TestMeliusRunValidates(SchemaAssertionMixin, unittest.TestCase):
         cls.validator = Draft202012Validator(cls.schema)
         cls.tmp_dir = tempfile.mkdtemp()
         cls.addClassCleanup(shutil.rmtree, cls.tmp_dir, ignore_errors=True)
+        melius_species = make_directed_rotor_species()
+        melius_species.thermo.atom_corrections_applied = True
+        melius_species.thermo.bond_corrections_applied = True
         cls.document = build_output_document(
             project_directory=cls.tmp_dir,
-            species_dict={'nBuOH': make_directed_rotor_species()},
+            species_dict={'nBuOH': melius_species},
             output_dict={
                 'nBuOH': {'convergence': True,
                           'paths': {'geo': OPT_LOG, 'freq': FREQ_LOG, 'sp': OPT_LOG},
@@ -1119,10 +1122,10 @@ class TestArkaneAppliedExportsValidate(SchemaAssertionMixin, unittest.TestCase):
                 self.assertIs(document['reactions'][0]['kinetics']['atom_corrections_applied'], switch)
 
     def test_the_ts_atom_energy_record_follows_the_switch_of_the_run_that_wrote_its_e0(self):
-        """The TS's atom_energy record is dropped when its own E0 run did not apply atom corrections, kept when it
-        did, and left alone when that is not known."""
+        """The TS's atom_energy record is dropped when its own E0 run did not apply atom corrections or when that is
+        not known, and kept only when it did."""
         corrections = {'TS0': make_species_corrections()['sBuOH']}
-        for switch, expected in ((False, []), (True, ['atom_energy']), (None, ['atom_energy'])):
+        for switch, expected in ((False, []), (True, ['atom_energy']), (None, [])):
             with self.subTest(switch=switch):
                 species = make_rich_species()
                 ts = make_transition_state()
@@ -1143,7 +1146,7 @@ class TestArkaneAppliedExportsValidate(SchemaAssertionMixin, unittest.TestCase):
         record is exported and follows the E0 switches, not the thermo ones."""
         corrections = {'sBuOH': make_species_corrections()['sBuOH']}
         for bond_switch, expected in ((True, ['atom_energy', 'bond_additivity']), (False, ['atom_energy']),
-                                      (None, ['atom_energy', 'bond_additivity'])):
+                                      (None, ['atom_energy'])):
             with self.subTest(bond_switch=bond_switch):
                 fragment = make_rich_species()
                 fragment.compute_thermo = False
@@ -1193,8 +1196,7 @@ class TestArkaneAppliedExportsValidate(SchemaAssertionMixin, unittest.TestCase):
                           (('species', 0, 'statmech'), 'arkane_rotors_applied'),
                           (('species', 0, 'statmech'), 'arkane_treatment'),
                           (('reactions', 0, 'kinetics'), 'atom_corrections_applied'),
-                          (('rmg_database',), 'quantum_corrections_path'),
-                          (('rmg_database',), 'matches_arc_rmg_db_path'),
+                          (('rmg_database',), 'quantum_corrections_sha256'),
                           ((), 'arc_aec_yml_sha256'),
                           ((), 'rmg_database')):
             with self.subTest(key=key):
@@ -1212,20 +1214,22 @@ class TestArkaneAppliedExportsValidate(SchemaAssertionMixin, unittest.TestCase):
                                (('species', 0, 'statmech', 'torsions', 0), 'treatment', 'rotor'),
                                (('rmg_database',), 'path_kind', 'tarball'),
                                (('rmg_database',), 'quantum_corrections_sha256', 'abc'),
-                               (('rmg_database',), 'extra', 1)):
+                               (('rmg_database',), 'extra', 1),
+                               (('rmg_database',), 'quantum_corrections_path', '/db/data.py'),
+                               (('rmg_database',), 'matches_arc_rmg_db_path', True)):
             with self.subTest(key=key, bad=bad):
                 document = copy.deepcopy(valid)
                 node = document
                 for step in path:
                     node = node[step]
                 node[key] = bad
-                self.assert_invalid(document, key if key == 'extra' else str(bad))
+                self.assert_invalid(document, key if key in ('extra', 'quantum_corrections_path',
+                                                             'matches_arc_rmg_db_path') else str(bad))
         document = copy.deepcopy(valid)
         document['species'][0]['statmech']['torsions'][0]['treatment'] = None
         document['species'][0]['statmech']['arkane_treatment'] = 'rrho_1d_nd'
         document['rmg_database'] = {'path_kind': 'unknown', 'git_commit': None, 'version': None,
-                                    'quantum_corrections_path': None, 'quantum_corrections_sha256': None,
-                                    'matches_arc_rmg_db_path': None}
+                                    'quantum_corrections_sha256': None}
         document['arc_aec_yml_sha256'] = 'b' * 64
         self.assert_valid(document)
 
@@ -1423,8 +1427,8 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
                 document['bac_type'] = None
                 self.assert_valid(document)
 
-    def test_the_reaction_species_labels_are_required_arrays(self):
-        """Both lists are required and may not be null, and each entry is a label"""
+    def test_the_reaction_species_labels_are_required_and_may_be_null_but_not_empty(self):
+        """Both lists are required, are null when the reaction holds no species, and never an empty array"""
         reaction = self.document['reactions'][0]
         for key in ('reactant_species_labels', 'product_species_labels'):
             with self.subTest(key=key):
@@ -1434,13 +1438,46 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
                 self.assert_invalid(document, key)
                 document = copy.deepcopy(self.document)
                 document['reactions'][0][key] = None
+                self.assert_valid(document)
+                document = copy.deepcopy(self.document)
+                document['reactions'][0][key] = []
                 self.assert_invalid(document, key)
                 document = copy.deepcopy(self.document)
                 document['reactions'][0][key] = [1]
                 self.assert_invalid(document, key)
+
+    def test_composite_step_routes_are_required_and_nullable_on_every_record(self):
+        """The key is a non-empty list of strings or null, and a record without it is refused"""
+        for record in (self.species, self.ts):
+            with self.subTest(record=record['label']):
+                self.assertIn('composite_step_routes', record)
+                for good in (None, ['#CBS-QB3 opt freq'], ['#a', '#b']):
+                    document = copy.deepcopy(self.document)
+                    for entry in document['species'] + document['transition_states']:
+                        entry['composite_step_routes'] = good
+                    self.assert_valid(document)
+                for bad in ([], [1], '#CBS-QB3 opt freq'):
+                    document = copy.deepcopy(self.document)
+                    for entry in document['species'] + document['transition_states']:
+                        entry['composite_step_routes'] = bad
+                    self.assert_invalid(document, 'composite_step_routes')
+
+    def test_neb_succeeded_is_required_nullable_boolean_and_ts_only(self):
+        """The key is required on a TS, may be true, false or null, and is not a species key"""
+        document = copy.deepcopy(self.document)
+        del document['transition_states'][0]['neb_succeeded']
+        self.assert_invalid(document, 'neb_succeeded')
+        for good in (True, False, None):
+            with self.subTest(value=good):
                 document = copy.deepcopy(self.document)
-                document['reactions'][0][key] = []
-                self.assert_invalid(document, key)
+                document['transition_states'][0]['neb_succeeded'] = good
+                self.assert_valid(document)
+        document = copy.deepcopy(self.document)
+        document['transition_states'][0]['neb_succeeded'] = 'yes'
+        self.assert_invalid(document, 'neb_succeeded')
+        document = copy.deepcopy(self.document)
+        document['species'][0]['neb_succeeded'] = False
+        self.assert_invalid(document, 'neb_succeeded')
 
     def test_nmd_forced_is_required_nullable_boolean_and_ts_only(self):
         """The key is required on a TS, may be true, false or null, and is not a species key"""
@@ -1690,10 +1727,10 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         document = copy.deepcopy(self.document)
         document['species'][0]['irc_participant_mapping'] = None
         self.assert_invalid(document, 'irc_participant_mapping')
-        side = {'endpoint': 1, 'endpoint_label': 'IRC_TS0_1',
+        side = {'endpoint_label': 'IRC_TS0_1',
                 'participants': [{'label': 'CH3', 'position': 1, 'occurrence': 1, 'atom_indices': [0, 1, 2, 3]}]}
         self.ts['irc_participant_mapping'] = {'reactants': copy.deepcopy(side),
-                                              'products': dict(copy.deepcopy(side), endpoint=2, endpoint_label=None),
+                                              'products': dict(copy.deepcopy(side), endpoint_label=None),
                                               'sides_distinguishable': True, 'atom_order_matches_ts': None}
         self.assert_valid(self.document)
         for order in (True, False):
@@ -1702,7 +1739,7 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.ts['irc_participant_mapping']['atom_order_matches_ts'] = None
         mapping = self.ts['irc_participant_mapping']
         for description, mutate in (
-                ('endpoint 3', lambda m: m['reactants'].update(endpoint=3)),
+                ('endpoint number key', lambda m: m['reactants'].update(endpoint=1)),
                 ('no products', lambda m: m.pop('products')),
                 ('no sides_distinguishable', lambda m: m.pop('sides_distinguishable')),
                 ('no atom_order_matches_ts', lambda m: m.pop('atom_order_matches_ts')),
@@ -1731,9 +1768,10 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
                 document = copy.deepcopy(self.document)
                 del document['reactions'][0][key]
                 self.assert_invalid(document, key)
-        reasons = ('no_ts', 'irc_not_passed', 'irc_fallback_path', 'atom_order_mismatch', 'no_atom_map',
-                   'endpoint_perception_mismatch', 'atom_map_contradicts_ts', 'ts_geometry_contradicts_map',
-                   'species_atom_order_mismatch', 'computation_failed', 'not_recorded')
+        reasons = ('no_ts', 'irc_not_passed', 'irc_fallback_path', 'no_atom_map',
+                   'endpoint_perception_mismatch', 'atom_map_contradicts_ts',
+                   'species_atom_order_mismatch', 'irc_start_geometry_unavailable', 'irc_start_geometry_differs',
+                   'computation_failed', 'not_recorded')
         for reason in reasons:
             with self.subTest(reason=reason):
                 reaction['ts_atom_map_unavailable_reason'] = reason
@@ -1984,7 +2022,7 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         """A producer that forgets a latent key cannot pass as a null, and a null of each is valid."""
         record_keys = ('xyz_isotopes', 'coarse_opt_input_xyz_isotopes', 'coarse_opt_output_xyz_isotopes',
                        'opt_input_xyz_isotopes', 'opt_route', 'freq_route', 'sp_route', 'composite_route',
-                       'sp_t1_diagnostic', 'opt_dipole_moment_debye', 'opt_dipole_moment_density',
+                       'composite_step_routes', 'sp_t1_diagnostic', 'opt_dipole_moment_debye', 'opt_dipole_moment_density',
                        'freq_polarizability_angstrom3')
         for record in (self.species, self.ts):
             for key in record_keys:

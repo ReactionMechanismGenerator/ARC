@@ -8,8 +8,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from arc.common import get_single_bond_length
-
 if TYPE_CHECKING:
     from arc.species.species import ARCSpecies
 
@@ -19,41 +17,20 @@ TS_ATOM_MAP_METHOD = 'irc_endpoint_cgr_isomorphism'
 TS_ATOM_MAP_UNAVAILABLE_REASONS = ('no_ts',
                                    'irc_not_passed',
                                    'irc_fallback_path',
-                                   'atom_order_mismatch',
                                    'no_atom_map',
                                    'atom_map_contradicts_ts',
                                    'species_atom_order_mismatch',
                                    'endpoint_perception_mismatch',
-                                   'ts_geometry_contradicts_map',
+                                   'irc_start_geometry_unavailable',
+                                   'irc_start_geometry_differs',
+                                   'irc_endpoint_geometry_differs',
                                    'computation_failed',
                                    'not_recorded',
                                    )
-TS_BONDED_DISTANCE_FACTOR = 1.2
-TS_PARTIAL_BOND_DISTANCE_FACTOR = 2.0
-
-
-def is_ts_bond_distance_plausible(symbol_1: str,
-                                  symbol_2: str,
-                                  distance: float,
-                                  partial: bool = False,
-                                  ) -> bool:
-    """
-    Check whether a distance in a TS geometry is plausible for a bond between two elements.
-    A bond that is intact in the TS may be up to ``TS_BONDED_DISTANCE_FACTOR`` times the single bond length of the
-    two elements, the tolerance ``get_bonds_from_dmat`` and ``are_coords_compliant_with_graph`` use. A bond that
-    forms or breaks may be a partial bond, up to ``TS_PARTIAL_BOND_DISTANCE_FACTOR`` times that length.
-
-    Args:
-        symbol_1 (str): The element of the first atom.
-        symbol_2 (str): The element of the second atom.
-        distance (float): The distance in Angstrom.
-        partial (bool, optional): Whether the bond forms or breaks.
-
-    Returns:
-        bool: Whether the distance is plausible.
-    """
-    factor = TS_PARTIAL_BOND_DISTANCE_FACTOR if partial else TS_BONDED_DISTANCE_FACTOR
-    return distance <= factor * get_single_bond_length(symbol_1, symbol_2)
+IRC_START_GEOMETRY_TOLERANCE = 1e-3
+"""Largest root of the summed squared deviations (Angstrom) between an IRC log's starting geometry and the TS geometry
+it was started from, after superposition. It covers the print precision of the coordinates in the logs and inputs,
+and carries no chemical meaning."""
 
 
 def get_conformer_job_name(job_type: str, i: int) -> str:

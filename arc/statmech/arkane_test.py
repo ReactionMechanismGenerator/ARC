@@ -45,7 +45,6 @@ from arc.statmech.arkane import (
     _warn_no_match,
     check_arkane_aec,
     check_arkane_bacs,
-    get_arc_aec_yml_sha256,
     get_arkane_model_chemistry,
     get_arkane_treatment,
     get_file_sha256,
@@ -1088,6 +1087,25 @@ class TestArkaneE0CorrectionsAndTreatment(unittest.TestCase):
                     self.assertAlmostEqual(spc.e0, -88.8)
                     self.assertEqual((spc.e0_atom_corrections_applied, spc.e0_bond_corrections_applied), expected)
 
+    def test_the_e0_is_stamped_with_the_aec_yml_digest_of_the_run_that_rendered_atom_energies_from_it(self):
+        """E0 carries the digest of data/AEC.yml when the run rendered atom energies from it, in the thermo and the
+        E0-only mode, and no digest when it did not or when the species is loaded from an Arkane YAML."""
+        with open(os.path.join(ARC_PATH, 'data', 'AEC.yml'), 'rb') as f:
+            expected = hashlib.sha256(f.read()).hexdigest()
+        content = conformer_block('CH4', -88.8, [])
+        for e0_only in (False, True):
+            for sp_level, digest in ((Level('gfn2'), expected), (self.no_corrections, None)):
+                with self.subTest(e0_only=e0_only, level=sp_level.simple()):
+                    spc, _ = self._compute_thermo(sp_level, None, content, e0_only=e0_only)
+                    self.assertEqual(spc.e0_aec_yml_sha256, digest)
+        yml_spc = ARCSpecies(label='H2O', smiles='O')
+        yml_spc.yml_path = os.path.join(ARC_TESTING_PATH, 'yml_testing', 'H2O.yml')
+        computed = ARCSpecies(label='CH4', smiles='C')
+        self._compute_thermo(Level('gfn2'), None, conformer_block('H2O', -240.0, []) + content,
+                             species=[yml_spc, computed])
+        self.assertIsNone(yml_spc.e0_aec_yml_sha256)
+        self.assertEqual(computed.e0_aec_yml_sha256, expected)
+
     def test_an_e0_the_run_did_not_write_keeps_its_earlier_switches(self):
         """A species Arkane's output has no conformer block for keeps the E0 and the switches it had."""
         spc = ARCSpecies(label='CH4', smiles='C')
@@ -1177,17 +1195,22 @@ class TestArkaneE0CorrectionsAndTreatment(unittest.TestCase):
                 exec(content, {'Log': lambda path: path}, local_context)
                 self.assertEqual(local_context.get('bonds'), bond_corrections or None)
 
-    def test_the_arc_aec_yml_identity_is_set_only_when_atom_energies_are_rendered_from_it(self):
-        """The digest of data/AEC.yml is stated for a level whose atomEnergies ARC renders from it."""
-        for sp_level, expected in ((Level('gfn2'), True), (None, False)):
+    def test_the_adapter_records_the_digest_of_aec_yml_when_it_renders_atom_energies_from_it(self):
+        """The digest of data/AEC.yml is recorded at render time, once however often an input is rendered, and not
+        recorded for a level whose atom energies ARC does not render from it."""
+        tmpdir = tempfile.mkdtemp(prefix='test_Arkane_aec_digest_')
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        with open(os.path.join(ARC_PATH, 'data', 'AEC.yml'), 'rb') as f:
+            expected = hashlib.sha256(f.read()).hexdigest()
+        for sp_level, recorded in ((Level('gfn2'), {expected}),
+                                   (Level(method='b3lyp', basis='sto-3g', software='gaussian'), set())):
             with self.subTest(sp_level=sp_level):
-                digest = get_arc_aec_yml_sha256(sp_level)
-                if expected:
-                    with open(os.path.join(ARC_PATH, 'data', 'AEC.yml'), 'rb') as f:
-                        self.assertEqual(digest, hashlib.sha256(f.read()).hexdigest())
-                else:
-                    self.assertIsNone(digest)
-        self.assertIsNone(get_arc_aec_yml_sha256(Level(method='b3lyp', basis='sto-3g', software='gaussian')))
+                arkane = ArkaneAdapter(output_directory=tmpdir, calcs_directory=tmpdir, output_dict=dict(),
+                                       species=[ARCSpecies(label='CH4', smiles='C')], sp_level=sp_level)
+                self.assertEqual(arkane.aec_yml_sha256s, set())
+                for _ in range(2):
+                    arkane.render_arkane_input_template(statmech_dir=tmpdir, skip_rotors=True)
+                self.assertEqual(arkane.aec_yml_sha256s, recorded)
 
     def test_get_file_sha256(self):
         """The digest is that of the file bytes, and ``None`` for a file that cannot be read."""
@@ -1253,6 +1276,17 @@ class TestArkaneE0CorrectionsAndTreatment(unittest.TestCase):
                 self.assertEqual(rxn.ts_species.arkane_rotor_modes, ['FreeRotor'])
                 self.assertEqual(rxn.r_species[0].arkane_rotor_modes, ['HinderedRotor'])
                 self.assertEqual(rxn.p_species[0].arkane_rotor_modes, [])
+
+    def test_the_kinetics_run_stamps_the_aec_yml_digest_on_the_ts_e0(self):
+        """The TS E0 written by a kinetics run carries the digest of data/AEC.yml the run rendered atom energies from."""
+        with open(os.path.join(ARC_PATH, 'data', 'AEC.yml'), 'rb') as f:
+            expected = hashlib.sha256(f.read()).hexdigest()
+        content = (conformer_block('nitroethane', -10.0, []) + conformer_block('ethyl_nitrite', -5.0, [])
+                   + TestArkaneOutputParsing.kinetics_output_content.replace(
+                       "conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)",
+                       conformer_block('TS0', 50.0, [])))
+        self.assertEqual(self._compute_kinetics(Level('gfn2'), content).ts_species.e0_aec_yml_sha256, expected)
+        self.assertIsNone(self._compute_kinetics(self.no_corrections, content).ts_species.e0_aec_yml_sha256)
 
     def test_kinetics_parsed_without_a_rendered_input_state_no_switch(self):
         """Parsing with no record of the run's switches stamps null, never a default."""

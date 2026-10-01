@@ -851,10 +851,11 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(ts.nmd_record, dict())
         self.assertNotIn('nmd_record', ts.as_dict())
         ts.ts_checks['NMD'] = True
-        ts.nmd_record = {'frequency_cm1': -1234.5, 'forced': True}
+        record = {'mode_index': 1, 'n_modes': 12, 'freq_log_path': '/runs/TS0/freq_a1/output.out', 'forced': True}
+        ts.nmd_record = dict(record)
         ts_dict = ts.as_dict()
-        self.assertEqual(ts_dict['nmd_record'], {'frequency_cm1': -1234.5, 'forced': True})
-        self.assertEqual(ARCSpecies(species_dict=ts_dict).nmd_record, {'frequency_cm1': -1234.5, 'forced': True})
+        self.assertEqual(ts_dict['nmd_record'], record)
+        self.assertEqual(ARCSpecies(species_dict=ts_dict).nmd_record, record)
         ts_dict['nmd_record'] = None
         self.assertEqual(ARCSpecies(species_dict=ts_dict).nmd_record, dict())
         del ts_dict['nmd_record']
@@ -904,10 +905,10 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertIsNone(ARCSpecies(species_dict=ts_dict).ts_atom_map)
         del ts_dict['ts_atom_map']
         self.assertIsNone(ARCSpecies(species_dict=ts_dict).ts_atom_map)
-        ts.ts_atom_map, ts.ts_atom_map_unavailable_reason = None, 'atom_order_mismatch'
+        ts.ts_atom_map, ts.ts_atom_map_unavailable_reason = None, 'irc_start_geometry_differs'
         ts_dict = ts.as_dict()
-        self.assertEqual(ts_dict['ts_atom_map_unavailable_reason'], 'atom_order_mismatch')
-        self.assertEqual(ARCSpecies(species_dict=ts_dict).ts_atom_map_unavailable_reason, 'atom_order_mismatch')
+        self.assertEqual(ts_dict['ts_atom_map_unavailable_reason'], 'irc_start_geometry_differs')
+        self.assertEqual(ARCSpecies(species_dict=ts_dict).ts_atom_map_unavailable_reason, 'irc_start_geometry_differs')
         ts_dict['ts_atom_map_unavailable_reason'] = 7
         self.assertIsNone(ARCSpecies(species_dict=ts_dict).ts_atom_map_unavailable_reason)
         ts.ts_atom_map, ts.ts_atom_map_unavailable_reason = ts_atom_map, 'no_atom_map'
@@ -3102,6 +3103,10 @@ H       1.11582953    0.94384729   -0.10134685"""
         # No coordinate-less guess was added as a successful clusterable guess.
         self.assertTrue(all(tsg.get_xyz() is not None or not tsg.success for tsg in spc.ts_guesses))
         self.assertFalse(any(tsg.success and tsg.get_xyz() is None for tsg in spc.ts_guesses))
+        orca_neb_guesses = [tsg for tsg in spc.ts_guesses if tsg.method == 'orca_neb']
+        self.assertEqual(len(orca_neb_guesses), 1)
+        self.assertIs(orca_neb_guesses[0].success, False)
+        self.assertIsNone(orca_neb_guesses[0].get_xyz())
 
     def test_next_ts_guess_index_survives_clustering(self):
         """A TSGuess identity must never be reused after clustering shrank the ts_guesses list."""
@@ -4007,9 +4012,13 @@ class TestConformerProvenance(unittest.TestCase):
         self.assertIsNone(spc.e0_bond_corrections_applied)
         self.assertIsNone(spc.arkane_rotor_modes)
         self.assertNotIn('arkane_rotor_modes', spc.as_dict())
+        self.assertIsNone(spc.e0_aec_yml_sha256)
+        self.assertNotIn('e0_aec_yml_sha256', spc.as_dict())
         spc.e0, spc.e0_atom_corrections_applied, spc.e0_bond_corrections_applied = -100.0, True, False
+        spc.e0_aec_yml_sha256 = 'a' * 64
         spc.arkane_rotor_modes = ['HinderedRotor', 'FreeRotor']
         restored = ARCSpecies(species_dict=spc.as_dict())
+        self.assertEqual(restored.e0_aec_yml_sha256, 'a' * 64)
         self.assertIs(restored.e0_atom_corrections_applied, True)
         self.assertIs(restored.e0_bond_corrections_applied, False)
         self.assertEqual(restored.arkane_rotor_modes, ['HinderedRotor', 'FreeRotor'])
@@ -4020,19 +4029,21 @@ class TestConformerProvenance(unittest.TestCase):
         """Test that copy_e0_from() brings the switches of the run along and never replaces an existing e0"""
         source = ARCSpecies(label='a', smiles='CCO')
         source.e0, source.e0_atom_corrections_applied, source.e0_bond_corrections_applied = -50.0, True, False
+        source.e0_aec_yml_sha256 = 'a' * 64
         target = ARCSpecies(label='a', smiles='CCO')
         target.copy_e0_from(source)
-        self.assertEqual((target.e0, target.e0_atom_corrections_applied, target.e0_bond_corrections_applied),
-                         (-50.0, True, False))
+        self.assertEqual((target.e0, target.e0_atom_corrections_applied, target.e0_bond_corrections_applied,
+                          target.e0_aec_yml_sha256), (-50.0, True, False, 'a' * 64))
         other = ARCSpecies(label='a', smiles='CCO')
         other.e0, other.e0_atom_corrections_applied, other.e0_bond_corrections_applied = -70.0, False, False
+        other.e0_aec_yml_sha256 = 'b' * 64
         target.copy_e0_from(other)
-        self.assertEqual((target.e0, target.e0_atom_corrections_applied, target.e0_bond_corrections_applied),
-                         (-50.0, True, False))
+        self.assertEqual((target.e0, target.e0_atom_corrections_applied, target.e0_bond_corrections_applied,
+                          target.e0_aec_yml_sha256), (-50.0, True, False, 'a' * 64))
         zero = ARCSpecies(label='a', smiles='CCO')
         zero.e0 = 0.0
         zero.copy_e0_from(source)
-        self.assertEqual((zero.e0, zero.e0_atom_corrections_applied), (0.0, None))
+        self.assertEqual((zero.e0, zero.e0_atom_corrections_applied, zero.e0_aec_yml_sha256), (0.0, None, None))
 
 
 class TestTSGuess(unittest.TestCase):

@@ -576,31 +576,3 @@ def get_delta_angle(a1: float,
     a1 %= 360
     a2 %= 360
     return min(abs(a1 - a2), abs(a1 + 360 - a2), abs(a1 - a2 - 360))
-
-
-def get_principal_moments_of_inertia(coords: list | tuple | np.ndarray,
-                                     masses: list[float] | tuple[float, ...] | np.ndarray,
-                                     ) -> list[float]:
-    """
-    Get the principal moments of inertia of a set of point masses about their center of mass.
-
-    Args:
-        coords (list | tuple | np.ndarray): The Cartesian coordinates in Angstrom, one (x, y, z) row per atom.
-        masses (list[float] | tuple[float, ...] | np.ndarray): The atomic masses in amu, one per atom.
-
-    Returns: list[float]
-        The three principal moments in amu*Angstrom^2, in ascending order.
-
-    Raises:
-        VectorsError: If there are no atoms, or the coordinates and masses do not match in length.
-    """
-    positions = np.asarray(coords, dtype=float)
-    mass_array = np.asarray(masses, dtype=float)
-    if positions.ndim != 2 or positions.shape[0] == 0 or positions.shape[1] != 3 \
-            or mass_array.shape != (positions.shape[0],):
-        raise VectorsError(f'Expected N (x, y, z) rows and N masses, got coordinates of shape {positions.shape} '
-                           f'and masses of shape {mass_array.shape}.')
-    positions = positions - np.average(positions, axis=0, weights=mass_array)
-    squares = np.einsum('ij,ij->i', positions, positions)
-    tensor = np.eye(3) * np.dot(mass_array, squares) - np.einsum('i,ij,ik->jk', mass_array, positions, positions)
-    return [float(moment) for moment in np.linalg.eigvalsh(tensor)]

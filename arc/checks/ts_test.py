@@ -15,13 +15,16 @@ import networkx as nx
 import numpy as np
 
 import arc.checks.ts as ts
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, get_test_project_directory
+from arc.common import (ARC_PATH, ARC_TESTING_PATH, NUMBER_BY_SYMBOL, almost_equal_lists, get_bonds_from_dmat,
+                        get_test_project_directory)
 from arc.exceptions import ReactionError
 from arc.job.factory import job_factory
 from arc.level import Level
-from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
+from arc.checks.common import IRC_START_GEOMETRY_TOLERANCE
+from arc.parser.parser import (parse_irc_path, parse_irc_start_geometry, parse_irc_traj, parse_normal_mode_displacement,
+                               parse_geometry)
 from arc.reaction import ARCReaction
-from arc.species.converter import xyz_from_data
+from arc.species.converter import kabsch, xyz_from_data, xyz_to_dmat
 from arc.species.species import ARCSpecies, TSGuess
 
 
@@ -465,6 +468,44 @@ class TestTSChecks(unittest.TestCase):
         self.assertAlmostEqual(rxn_copy.p_species[0].e0, 90.0)
         self.assertAlmostEqual(rxn.r_species[0].e0, 500.0)
 
+    def test_compute_rxn_e0_carries_the_correction_stamps_and_the_aec_digest(self):
+        """Test that the stamps and the AEC.yml digest of the statmech run reach the copy, and a stale one does not."""
+        rxn = self._rxn_8_with_preset_e0()
+        for spc in rxn.r_species + rxn.p_species + [rxn.ts_species]:
+            spc.e0_atom_corrections_applied = False
+            spc.e0_bond_corrections_applied = True
+            spc.e0_aec_yml_sha256 = 'f' * 64
+        project_directory = self._make_project_with_freq_files(['nC3H7', 'iC3H7', 'TS8'],
+                                                               self.species_dict_8, self.output_dict_8)
+
+        def factory(**kwargs):
+            adapter = Mock()
+
+            def compute_thermo(e0_only=False, skip_rotors=False):
+                for spc in kwargs['species']:
+                    if spc.label != 'iC3H7':
+                        spc.e0 = 100.0
+                        spc.e0_atom_corrections_applied = True
+                        spc.e0_bond_corrections_applied = False
+                        spc.e0_aec_yml_sha256 = 'a' * 64
+            adapter.compute_thermo.side_effect = compute_thermo
+            return adapter
+
+        with patch.object(ts, 'statmech_factory', side_effect=factory):
+            rxn_copy = ts.compute_rxn_e0(reaction=rxn, species_dict=self.species_dict_8,
+                                         project_directory=project_directory, kinetics_adapter='arkane',
+                                         output=self.output_dict_8, sp_level=Level(repr='cbs-qb3'),
+                                         freq_scale_factor=1.0)
+        for spc in (rxn_copy.r_species[0], rxn_copy.ts_species):
+            self.assertIs(spc.e0_atom_corrections_applied, True)
+            self.assertIs(spc.e0_bond_corrections_applied, False)
+            self.assertEqual(spc.e0_aec_yml_sha256, 'a' * 64)
+        well_without_e0 = rxn_copy.p_species[0]
+        self.assertIsNone(well_without_e0.e0)
+        self.assertIsNone(well_without_e0.e0_atom_corrections_applied)
+        self.assertIsNone(well_without_e0.e0_aec_yml_sha256)
+        self.assertEqual(rxn.ts_species.e0_aec_yml_sha256, 'f' * 64)
+
     def test_compute_rxn_e0_passes_each_label_once(self):
         """Test that compute_rxn_e0() gives the statmech run one object per label for an identity reaction."""
         ch3, ch4, ts_spc = (ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='CH4', smiles='C'),
@@ -775,7 +816,7 @@ class TestTSChecks(unittest.TestCase):
                 ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=skip_nmd)
             self.assertIs(rxn.ts_species.nmd_record.get('forced', False), forced,
                           msg=f'verdict={verdict}, skip_nmd={skip_nmd}')
-        rxn.ts_species.nmd_record = {'forced': True, 'frequency_cm1': -1000.0}
+        rxn.ts_species.nmd_record = {'forced': True, 'mode_index': 1}
         with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', return_value=True):
             ts.check_normal_mode_displacement(reaction=rxn, job=self.job1)
         self.assertEqual(rxn.ts_species.nmd_record, dict())
@@ -1224,18 +1265,59 @@ class TestTSChecks(unittest.TestCase):
         self.assertEqual(mapping['products']['participants'],
                          [{'label': 'C2H6', 'position': 1, 'occurrence': 1, 'atom_indices': list(range(8))}])
 
-    def test_check_irc_participant_mapping_states_whether_the_endpoints_follow_the_ts_atom_order(self):
-        """Test that the endpoint element sequences are compared with the TS geometry the IRC was run from."""
+    def test_check_irc_participant_mapping_states_whether_the_irc_geometries_follow_from_the_ts(self):
+        """Test atom_order_matches_ts: true only for congruent starts, a followed endpoint chain and agreeing
+        elements; false for a contradiction; null when unknown."""
         xyz_r, xyz_p = self._make_ch4_oh_endpoints()
-        shuffled_symbols = ('H', 'H', 'H', 'H', 'C', 'O', 'H')
-        for ts_xyz, expected in ((xyz_r, True),
-                                 (xyz_from_data(coords=xyz_r['coords'], symbols=xyz_r['symbols'][::-1]), False),
-                                 (xyz_from_data(coords=xyz_r['coords'], symbols=shuffled_symbols), False),
-                                 (None, None)):
-            with self.subTest(expected=expected):
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        shifted = xyz_from_data(coords=tuple((x + 0.5, y, z) for x, y, z in xyz_r['coords']), symbols=xyz_r['symbols'])
+        swapped_coords = list(xyz_r['coords'])
+        swapped_coords[0], swapped_coords[5] = swapped_coords[5], swapped_coords[0]
+        swapped = xyz_from_data(coords=tuple(swapped_coords), symbols=xyz_r['symbols'])
+        swapped_endpoint_coords = list(xyz_p['coords'])
+        swapped_endpoint_coords[1], swapped_endpoint_coords[4] = swapped_endpoint_coords[4], swapped_endpoint_coords[1]
+        swapped_endpoint = xyz_from_data(coords=tuple(swapped_endpoint_coords), symbols=xyz_p['symbols'])
+        reordered = [5, 6, 0, 1, 2, 3, 4]
+        reordered_r = xyz_from_data(coords=tuple(xyz_r['coords'][i] for i in reordered),
+                                    symbols=tuple(xyz_r['symbols'][i] for i in reordered))
+        reordered_p = xyz_from_data(coords=tuple(xyz_p['coords'][i] for i in reordered),
+                                    symbols=tuple(xyz_p['symbols'][i] for i in reordered))
+
+        def write(name, start, last, first=None, final=None):
+            paths = {'irc': [], 'endpoint': []}
+            for i, (irc_last, endpoint_final) in enumerate(zip(last, final or last)):
+                irc_path, endpoint_path = (os.path.join(scratch, f'{name}_{kind}_{i}.out') for kind in ('irc', 'opt'))
+                TestTsAtomMap._gaussian_irc_log(irc_path, start, last=irc_last)
+                TestTsAtomMap._gaussian_irc_log(endpoint_path, (first or last)[i], last=endpoint_final)
+                paths['irc'].append(irc_path)
+                paths['endpoint'].append(endpoint_path)
+            return paths
+
+        good = write('good', xyz_r, (xyz_r, xyz_p))
+        cases = (
+            ('congruent', xyz_r, (xyz_r, xyz_p), good['irc'], good['endpoint'], True),
+            ('reoriented start', xyz_r, (xyz_r, xyz_p), write('shift', shifted, (xyz_r, xyz_p))['irc'],
+             good['endpoint'], True),
+            ('differing start', xyz_r, (xyz_r, xyz_p), write('swap', swapped, (xyz_r, xyz_p))['irc'],
+             good['endpoint'], False),
+            ('endpoint swapped after the optimization', xyz_r, (xyz_r, swapped_endpoint), good['irc'],
+             good['endpoint'], False),
+            ('optimization started elsewhere', xyz_r, (xyz_r, xyz_p), good['irc'],
+             write('moved', xyz_r, (xyz_r, xyz_p), first=(xyz_r, swapped_endpoint))['endpoint'], False),
+            ('no logs', xyz_r, (xyz_r, xyz_p), None, None, None),
+            ('no endpoint logs', xyz_r, (xyz_r, xyz_p), good['irc'], None, None),
+            ('no TS', None, (xyz_r, xyz_p), good['irc'], good['endpoint'], None),
+            ('endpoint elements differ from the TS', xyz_r, (reordered_r, reordered_p),
+             write('elements', xyz_r, (reordered_r, reordered_p))['irc'],
+             write('elements', xyz_r, (reordered_r, reordered_p))['endpoint'], False),
+        )
+        for name, ts_xyz, endpoints, irc_paths, endpoint_paths, expected in cases:
+            with self.subTest(case=name):
                 rxn = self._make_ch4_oh_rxn()
                 rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=ts_xyz)
-                ts.check_irc_species_and_rxn(xyz_1=xyz_r, xyz_2=xyz_p, rxn=rxn)
+                ts.check_irc_species_and_rxn(xyz_1=endpoints[0], xyz_2=endpoints[1], rxn=rxn, irc_log_paths=irc_paths,
+                                             endpoint_log_paths=endpoint_paths)
                 self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
                 self.assertIs(rxn.ts_species.irc_participant_mapping['atom_order_matches_ts'], expected)
 
@@ -1260,9 +1342,10 @@ class TestTSChecks(unittest.TestCase):
     def test_a_participant_mapping_failure_keeps_the_verdict(self):
         """Test that a failure while building the mapping leaves the isomorphism verdict, and no mapping."""
         xyz_r, xyz_p = self._make_ch4_oh_endpoints()
-        for target in ('_get_irc_participant_mapping', '_get_irc_endpoints_atom_order_matches_ts'):
+        for target in ('_get_irc_participant_mapping', 'get_irc_start_geometry_reason'):
             with self.subTest(failing=target):
                 rxn = self._make_ch4_oh_rxn()
+                rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=xyz_r)
                 rxn.ts_species.irc_participant_mapping = {'stale': True}
                 with patch.object(ts, target, side_effect=RuntimeError('boom')):
                     ts.check_irc_species_and_rxn(xyz_1=xyz_r, xyz_2=xyz_p, rxn=rxn)
@@ -1517,6 +1600,72 @@ class TestTsAtomMap(unittest.TestCase):
     CH4_OH_TS = ((0.0, 0.0, 0.0), (-0.36, 1.03, 0.0), (-0.36, -0.51, 0.89), (-0.36, -0.51, -0.89),
                  (1.3, 0.0, 0.0), (2.6, 0.0, 0.0), (3.4, 0.55, 0.0))
 
+    def setUp(self):
+        self.scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.scratch, True)
+
+    @staticmethod
+    def _gaussian_irc_log(path, xyz, last=None):
+        """Write a minimal Gaussian log whose first Input orientation table holds ``xyz`` and, when given, whose
+        last one holds ``last``."""
+        rule = ' ' + '-' * 69 + '\n'
+
+        def table(geometry):
+            rows = ''.join(f'{i + 1:7d}{NUMBER_BY_SYMBOL[symbol]:11d}{0:12d}{x:16.6f}{y:12.6f}{z:12.6f}\n'
+                           for i, (symbol, (x, y, z)) in enumerate(zip(geometry['symbols'], geometry['coords'])))
+            return ('                          Input orientation:                          \n' + rule
+                    + ' Center     Atomic      Atomic             Coordinates (Angstroms)\n'
+                    + ' Number     Number       Type             X           Y           Z\n' + rule + rows + rule)
+
+        with open(path, 'w') as f:
+            f.write(' Entering Gaussian System, Link 0=g16\n Current Structure is TS -> form Hessian eigenvectors.\n')
+            f.write(table(xyz) + ' Point Number:   0          Path Number:   1\n')
+            if last is not None:
+                f.write(table(last))
+
+    def _irc_logs(self, rxn, xyz=None, frames=(None, None), last=None):
+        """Write the two IRC logs of a reaction's TS (or of ``xyz``), the second optionally reoriented, each ending at
+        the geometry of ``last`` of the same index (the start geometry when not given)."""
+        xyz = xyz or rxn.ts_species.get_xyz(generate=False)
+        paths = list()
+        for i, frame in enumerate(frames):
+            coords = np.array(xyz['coords'], dtype=float)
+            if frame is not None:
+                coords = coords @ frame[0].T + frame[1]
+            path = os.path.join(self.scratch, f'irc_{i}.out')
+            start = xyz_from_data(coords=coords, symbols=xyz['symbols'])
+            self._gaussian_irc_log(path, start, last=last[i] if last is not None else start)
+            paths.append(path)
+        return paths
+
+    def _endpoint_logs(self, endpoint_1, endpoint_2, first=None):
+        """Write the optimization logs of the two endpoint species, each starting at ``first`` of the same index (the
+        endpoint geometry when not given) and ending at the endpoint geometry."""
+        paths = list()
+        for i, endpoint in enumerate((endpoint_1, endpoint_2)):
+            path = os.path.join(self.scratch, f'endpoint_{i}.out')
+            self._gaussian_irc_log(path, first[i] if first is not None else endpoint, last=endpoint)
+            paths.append(path)
+        return paths
+
+    @staticmethod
+    def _verdict_inputs(endpoint_1, endpoint_2):
+        """The endpoint geometries with the fragments the IRC verdict perceives on them."""
+        return {'endpoint_xyzs': {1: endpoint_1, 2: endpoint_2},
+                'endpoint_fragments': {1: ts._perceive_irc_fragments(endpoint_1),
+                                       2: ts._perceive_irc_fragments(endpoint_2)}}
+
+    def _check(self, endpoint_1, endpoint_2, rxn, irc_log_paths='written', endpoint_log_paths='written'):
+        """Run the IRC check with IRC logs started from the TS geometry and ending at the endpoints, and endpoint
+        optimization logs that follow them, unless other logs are given."""
+        has_ts = rxn.ts_species is not None and rxn.ts_species.get_xyz(generate=False) is not None
+        if irc_log_paths == 'written':
+            irc_log_paths = self._irc_logs(rxn, last=(endpoint_1, endpoint_2)) if has_ts else None
+        if endpoint_log_paths == 'written':
+            endpoint_log_paths = self._endpoint_logs(endpoint_1, endpoint_2)
+        ts.check_irc_species_and_rxn(xyz_1=endpoint_1, xyz_2=endpoint_2, rxn=rxn, irc_log_paths=irc_log_paths,
+                                     endpoint_log_paths=endpoint_log_paths)
+
     @staticmethod
     def _shift(coords, dx):
         return tuple((x + dx, y, z) for x, y, z in coords)
@@ -1549,7 +1698,7 @@ class TestTsAtomMap(unittest.TestCase):
             a, b = crossed
             atom_map[a], atom_map[b] = atom_map[b], atom_map[a]
         rxn = ARCReaction(label=label, r_species=r_species, p_species=p_species)
-        rxn.declare_atom_map(atom_map)
+        rxn._set_atom_map(atom_map, 'declared')
         ts_symbols = tuple(symbols[i] for i in ts_order)
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=xyz_from_data(
             coords=tuple(ts_coords[i] for i in ts_order), symbols=ts_symbols))
@@ -1589,12 +1738,13 @@ class TestTsAtomMap(unittest.TestCase):
         """Test CH4 + OH with the TS atoms listed O, H, C, H(transferring), H, H, H"""
         rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=[5, 6, 0, 4, 1, 2, 3])
         self.assertEqual(atom_map, [0, 1, 2, 3, 5, 4, 6])
-        ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+        self._check(endpoint_r, endpoint_p, rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
         ts_atom_map = rxn.ts_species.ts_atom_map
         self.assertIsNone(rxn.ts_species.ts_atom_map_unavailable_reason)
         self.assertEqual(rxn.atom_map, atom_map)
         self._assert_consistent(rxn, ts_atom_map, atom_map)
+        self._assert_both_legs_are_graph_isomorphisms(rxn, ts_atom_map, endpoint_r, endpoint_p)
         reactants = ts_atom_map['reactants']
         self.assertEqual((reactants[0], reactants[4], reactants[5], reactants[6]), (2, 3, 0, 1))
         self.assertEqual(sorted(reactants[1:4]), [4, 5, 6])
@@ -1605,7 +1755,7 @@ class TestTsAtomMap(unittest.TestCase):
     def test_the_endpoints_in_either_order_give_a_map_with_the_same_pinned_atoms(self):
         """Test that swapping which endpoint is given first does not change the pinned atoms"""
         rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=[5, 6, 0, 4, 1, 2, 3])
-        ts.check_irc_species_and_rxn(xyz_1=endpoint_p, xyz_2=endpoint_r, rxn=rxn)
+        self._check(endpoint_p, endpoint_r, rxn)
         ts_atom_map = rxn.ts_species.ts_atom_map
         self._assert_consistent(rxn, ts_atom_map, atom_map)
         self.assertEqual([ts_atom_map['reactants'][i] for i in (0, 4, 5, 6)], [2, 3, 0, 1])
@@ -1614,38 +1764,330 @@ class TestTsAtomMap(unittest.TestCase):
     def test_a_ts_in_reactant_order_states_it(self):
         """Test that the identity is chosen, and the flag is true, when the TS follows the reactant order"""
         rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
-        ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+        self._check(endpoint_r, endpoint_p, rxn)
         ts_atom_map = rxn.ts_species.ts_atom_map
         self._assert_consistent(rxn, ts_atom_map, atom_map)
         self.assertEqual(ts_atom_map['reactants'], list(range(7)))
         self.assertEqual(ts_atom_map['products'], [0, 1, 2, 3, 5, 4, 6])
         self.assertIs(ts_atom_map['ts_atom_order_follows_reactants'], True)
 
-    def test_a_swap_of_two_hydrogens_between_the_ts_and_the_endpoints_is_caught_on_the_ts_geometry(self):
-        """Test that the transferring hydrogen sitting in a spectator position of the TS gives no map"""
+    def test_a_swap_of_two_hydrogens_between_the_ts_and_the_irc_start_gives_no_map(self):
+        """Test that IRC logs started from a TS whose transferring H sits elsewhere than in the recorded TS give none"""
         ts_coords = list(self.CH4_OH_TS)
         ts_coords[1], ts_coords[4] = ts_coords[4], ts_coords[1]
         rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)), ts_coords=tuple(ts_coords))
-        with self.assertLogs('arc', level='WARNING') as logs:
-            ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+        symbols = rxn.ts_species.get_xyz(generate=False)['symbols']
+        logs = self._irc_logs(rxn, xyz=xyz_from_data(coords=self.CH4_OH_TS, symbols=symbols))
+        with self.assertLogs('arc', level='WARNING') as captured:
+            self._check(endpoint_r, endpoint_p, rxn, irc_log_paths=logs)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
         self.assertIsNone(rxn.ts_species.ts_atom_map)
-        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'ts_geometry_contradicts_map')
-        self.assertTrue(any('TS geometry' in message for message in logs.output))
+        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'irc_start_geometry_differs')
+        self.assertTrue(any('does not start from the TS geometry' in message for message in captured.output))
 
-    def test_the_ts_geometry_check_uses_bonded_and_partial_bond_distances(self):
-        """Test the distance limits: an intact bond is bonded, a forming or breaking one may be partial"""
-        r_bonds, p_bonds = [(0, 1), (0, 2)], [(0, 1), (1, 2)]
-        symbols = ('C', 'H', 'O')
-        mapping = [0, 1, 2]
+    def test_a_swap_of_two_heavy_atoms_between_the_ts_and_the_irc_start_gives_no_map(self):
+        """Test that exchanging the positions of the carbon and the oxygen is refused the same way"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        ts_xyz = rxn.ts_species.get_xyz(generate=False)
+        coords = [list(c) for c in ts_xyz['coords']]
+        coords[0], coords[5] = coords[5], coords[0]
+        logs = self._irc_logs(rxn, xyz=xyz_from_data(coords=coords, symbols=ts_xyz['symbols']))
+        with self.assertLogs('arc', level='WARNING'):
+            self._check(endpoint_r, endpoint_p, rxn, irc_log_paths=logs)
+        self.assertIsNone(rxn.ts_species.ts_atom_map)
+        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'irc_start_geometry_differs')
 
-        def supported(coords):
-            return ts._does_ts_geometry_support_map(xyz_from_data(coords=coords, symbols=symbols), mapping,
-                                                    r_bonds, p_bonds)
+    def test_one_irc_log_that_starts_elsewhere_is_enough_to_refuse_the_map(self):
+        """Test that the second log differing from the TS refuses the map although the first one matches"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        ts_xyz = rxn.ts_species.get_xyz(generate=False)
+        coords = [list(c) for c in ts_xyz['coords']]
+        coords[1][0] += 0.2
+        good = self._irc_logs(rxn)[0]
+        bad = os.path.join(self.scratch, 'bad.out')
+        self._gaussian_irc_log(bad, xyz_from_data(coords=coords, symbols=ts_xyz['symbols']))
+        with self.assertLogs('arc', level='WARNING'):
+            self._check(endpoint_r, endpoint_p, rxn, irc_log_paths=[good, bad])
+        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'irc_start_geometry_differs')
 
-        self.assertTrue(supported(((0.0, 0.0, 0.0), (1.09, 0.0, 0.0), (2.4, 0.0, 0.0))))
-        self.assertFalse(supported(((0.0, 0.0, 0.0), (1.9, 0.0, 0.0), (2.4, 0.0, 0.0))))
-        self.assertFalse(supported(((0.0, 0.0, 0.0), (1.09, 0.0, 0.0), (5.0, 0.0, 0.0))))
+    def test_a_reoriented_irc_start_frame_still_gives_the_map(self):
+        """Test that a log that prints the TS rotated and translated is the TS geometry, atom for atom"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=[5, 6, 0, 4, 1, 2, 3])
+        theta = 0.7
+        rotation = np.array([[np.cos(theta), -np.sin(theta), 0.0], [np.sin(theta), np.cos(theta), 0.0],
+                             [0.0, 0.0, 1.0]])
+        logs = self._irc_logs(rxn, frames=(None, (rotation, np.array([1.5, -2.0, 0.3]))), last=(endpoint_r, endpoint_p))
+        self._check(endpoint_r, endpoint_p, rxn, irc_log_paths=logs)
+        self.assertIsNone(rxn.ts_species.ts_atom_map_unavailable_reason)
+        self._assert_consistent(rxn, rxn.ts_species.ts_atom_map, atom_map)
+
+    def test_a_mirror_image_start_is_not_the_ts_geometry(self):
+        """Test that a reflected start geometry, which no rotation superimposes, is refused"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        mirror = np.diag([1.0, 1.0, -1.0])
+        logs = self._irc_logs(rxn, frames=((mirror, np.zeros(3)), (mirror, np.zeros(3))))
+        with self.assertLogs('arc', level='WARNING'):
+            self._check(endpoint_r, endpoint_p, rxn, irc_log_paths=logs)
+        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'irc_start_geometry_differs')
+
+    def test_an_unreadable_irc_log_gives_no_map(self):
+        """Test that no logs, a missing log, a log without a geometry and an unknown program are all unavailable"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        empty = os.path.join(self.scratch, 'empty.out')
+        open(empty, 'w').close()
+        no_table = os.path.join(self.scratch, 'no_table.out')
+        with open(no_table, 'w') as f:
+            f.write(' Entering Gaussian System, Link 0=g16\n Point Number:   0          Path Number:   1\n')
+        good = self._irc_logs(rxn)[0]
+        for logs in (None, [], [good, None], [good, os.path.join(self.scratch, 'missing.out')], [good, empty],
+                     [good, no_table]):
+            with self.subTest(logs=logs), self.assertLogs('arc', level='WARNING'):
+                self._check(endpoint_r, endpoint_p, rxn, irc_log_paths=logs)
+                self.assertIsNone(rxn.ts_species.ts_atom_map)
+                self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'irc_start_geometry_unavailable')
+
+    def test_real_irc_logs_of_one_ts_start_from_the_same_geometry(self):
+        """Test the start of two real Gaussian IRC logs: each is the first input orientation, and they agree"""
+        logs = [os.path.join(ARC_TESTING_PATH, 'irc', f'rxn_1_irc_{i}.out') for i in (1, 2)]
+        starts = [parse_irc_start_geometry(log_file_path=log) for log in logs]
+        self.assertEqual(starts[0]['symbols'], ('O', 'C', 'C', 'O', 'O', 'H', 'H', 'H'))
+        self.assertEqual(starts[0]['coords'][0], (-0.975117, 1.693544, 1.019828))
+        self.assertIsNone(ts.get_irc_start_geometry_reason(starts[0], logs))
+        moved = dict(starts[0], coords=tuple((x + 0.01, y, z) for x, y, z in starts[0]['coords']))
+        self.assertIsNone(ts.get_irc_start_geometry_reason(moved, logs))
+        distorted = dict(starts[0], coords=(starts[0]['coords'][0][:1] + (5.0,) + starts[0]['coords'][0][2:],)
+                         + tuple(starts[0]['coords'][1:]))
+        self.assertEqual(ts.get_irc_start_geometry_reason(distorted, logs), 'irc_start_geometry_differs')
+
+    def test_the_start_of_a_real_irc_log_is_its_first_input_orientation_and_one_step_from_point_one(self):
+        """Test that the start is the first Input orientation block, 0.036 A RSSD from point 1, and not traj[0]"""
+        log = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
+        with open(log) as f:
+            lines = f.readlines()
+        first = next(i for i, line in enumerate(lines) if 'Input orientation:' in line)
+        rows = [line.split() for line in lines[first + 5:first + 13]]
+        expected = tuple((float(row[3]), float(row[4]), float(row[5])) for row in rows)
+        start = parse_irc_start_geometry(log_file_path=log)
+        self.assertEqual(tuple(start['coords']), expected)
+        point_1 = parse_irc_path(log_file_path=log)[0]['xyz']
+        self.assertAlmostEqual(kabsch(start, point_1), 0.036, delta=0.002)
+        self.assertGreater(kabsch(start, point_1), 10 * IRC_START_GEOMETRY_TOLERANCE)
+        self.assertNotEqual(tuple(start['coords']), tuple(parse_irc_traj(log_file_path=log)[0]['coords']))
+
+    def test_the_rssd_separates_a_rigid_copy_rounding_and_a_real_difference(self):
+        """Test the congruence criterion on a rigid copy, 1e-6 rounding, one IRC step and a same-element swap"""
+        log = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
+        start = parse_irc_start_geometry(log_file_path=log)
+        theta = 0.4
+        rotation = np.array([[np.cos(theta), -np.sin(theta), 0.0], [np.sin(theta), np.cos(theta), 0.0],
+                             [0.0, 0.0, 1.0]])
+        coords = np.array(start['coords'], dtype=float)
+        rigid = dict(start, coords=tuple(map(tuple, coords @ rotation.T + np.array([1.0, 2.0, 3.0]))))
+        rounded = dict(start, coords=tuple(map(tuple, np.round(coords, 6) + 1e-6)))
+        swapped = [list(c) for c in start['coords']]
+        swapped[5], swapped[6] = swapped[6], swapped[5]
+        step = parse_irc_path(log_file_path=log)[0]['xyz']
+        self.assertTrue(ts.are_geometries_congruent(start, rigid))
+        self.assertTrue(ts.are_geometries_congruent(start, rounded))
+        self.assertFalse(ts.are_geometries_congruent(start, step))
+        self.assertFalse(ts.are_geometries_congruent(start, dict(start, coords=tuple(map(tuple, swapped)))))
+
+    @staticmethod
+    def _bond_set(xyz):
+        """The distance-perceived bonds of a geometry, independently of the IRC verdict's perception."""
+        bonds = get_bonds_from_dmat(dmat=xyz_to_dmat(xyz), elements=xyz['symbols'], n_fragments=0)
+        return {tuple(sorted(bond)) for bond in bonds}
+
+    def _assert_both_legs_are_graph_isomorphisms(self, rxn, ts_atom_map, endpoint_r, endpoint_p):
+        """The map sends the reactant bonds onto the reactant-endpoint bonds and the product bonds onto the
+        product-endpoint bonds, bijectively, and conserves atoms through the atom map."""
+        r_bonds, p_bonds = rxn.get_bonds()
+        endpoints = {1: endpoint_r, 2: endpoint_p}
+        r_side = self._bond_set(endpoints[ts_atom_map['reactant_endpoint']])
+        p_side = self._bond_set(endpoints[3 - ts_atom_map['reactant_endpoint']])
+        m = ts_atom_map['reactants']
+        self.assertEqual(sorted(m), list(range(len(m))))
+        self.assertEqual({tuple(sorted((m[a], m[b]))) for a, b in r_bonds}, r_side)
+        self.assertEqual({tuple(sorted((m[a], m[b]))) for a, b in p_bonds}, p_side)
+        for i, j in enumerate(rxn.atom_map):
+            self.assertEqual(ts_atom_map['products'][j], m[i])
+
+    def test_a_stale_ts_geometry_refuses_the_map(self):
+        """Test that a TS whose recorded geometry changed after the IRC was started no longer matches the IRC logs"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        logs = self._irc_logs(rxn)
+        ts_xyz = rxn.ts_species.get_xyz(generate=False)
+        coords = [list(c) for c in ts_xyz['coords']]
+        coords[1][1] += 0.3
+        rxn.ts_species.final_xyz = xyz_from_data(coords=tuple(map(tuple, coords)), symbols=ts_xyz['symbols'])
+        with self.assertLogs('arc', level='WARNING'):
+            self._check(endpoint_r, endpoint_p, rxn, irc_log_paths=logs)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+        self.assertIsNone(rxn.ts_species.ts_atom_map)
+        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'irc_start_geometry_differs')
+        self.assertIs(rxn.ts_species.irc_participant_mapping['atom_order_matches_ts'], False)
+
+    def test_the_participant_mapping_states_whether_the_irc_started_from_the_ts(self):
+        """Test atom_order_matches_ts: true for congruent starts, false for a differing one, null when unreadable"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        self._check(endpoint_r, endpoint_p, rxn)
+        self.assertIs(rxn.ts_species.irc_participant_mapping['atom_order_matches_ts'], True)
+        with self.assertLogs('arc', level='WARNING'):
+            self._check(endpoint_r, endpoint_p, rxn, irc_log_paths=None)
+        self.assertIsNone(rxn.ts_species.irc_participant_mapping['atom_order_matches_ts'])
+
+    def test_a_c3_relabelling_of_equivalent_hydrogens_leaves_the_seed_congruent_and_the_map_valid(self):
+        """Test a C3-symmetric TS whose IRC input lists its three spectator hydrogens cyclically permuted"""
+        angles = (0.0, 2.0 * np.pi / 3.0, 4.0 * np.pi / 3.0)
+        spectators = tuple((-0.36, 1.03 * np.cos(a), 1.03 * np.sin(a)) for a in angles)
+        ts_coords = ((0.0, 0.0, 0.0),) + spectators + ((1.3, 0.0, 0.0), (2.6, 0.0, 0.0), (3.4, 0.0, 0.0))
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)), ts_coords=ts_coords)
+        ts_xyz = rxn.ts_species.get_xyz(generate=False)
+        relabelled = [ts_xyz['coords'][i] for i in (0, 2, 3, 1, 4, 5, 6)]
+        log_xyz = xyz_from_data(coords=tuple(map(tuple, relabelled)), symbols=ts_xyz['symbols'])
+        self.assertIsNone(ts.get_irc_start_geometry_reason(ts_xyz, self._irc_logs(rxn, xyz=log_xyz)))
+        self._check(endpoint_r, endpoint_p, rxn,
+                    irc_log_paths=self._irc_logs(rxn, xyz=log_xyz, last=(endpoint_r, endpoint_p)))
+        self.assertIsNone(rxn.ts_species.ts_atom_map_unavailable_reason)
+        self._assert_consistent(rxn, rxn.ts_species.ts_atom_map, atom_map)
+        self._assert_both_legs_are_graph_isomorphisms(rxn, rxn.ts_species.ts_atom_map, endpoint_r, endpoint_p)
+
+    def test_an_atom_map_wrong_only_by_an_automorphism_still_gives_a_valid_map(self):
+        """Test that exchanging the images of two equivalent spectator hydrogens leaves a valid exported map"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)), crossed=(1, 2))
+        self._check(endpoint_r, endpoint_p, rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+        self.assertIsNone(rxn.ts_species.ts_atom_map_unavailable_reason)
+        self._assert_consistent(rxn, rxn.ts_species.ts_atom_map, atom_map)
+        self._assert_both_legs_are_graph_isomorphisms(rxn, rxn.ts_species.ts_atom_map, endpoint_r, endpoint_p)
+
+    def test_an_atom_map_wrong_for_a_non_equivalent_hydrogen_is_contradicted_and_left_alone(self):
+        """Test that exchanging the images of a CH4 hydrogen and of the hydroxyl hydrogen gives no map"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)), crossed=(1, 6))
+        declared = list(rxn.atom_map)
+        with self.assertLogs('arc', level='WARNING'):
+            self._check(endpoint_r, endpoint_p, rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+        self.assertIsNone(rxn.ts_species.ts_atom_map)
+        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'atom_map_contradicts_ts')
+        self.assertEqual(rxn.atom_map, declared)
+
+    def test_a_perceived_molecule_that_cannot_be_tied_to_the_geometry_gives_a_perception_reason(self):
+        """Test that a fragment whose atom coordinates are not those of the endpoint geometry refuses the map"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        original = ts._perceive_irc_fragments
+
+        def perceive_and_disturb(xyz, charge=0):
+            fragments = original(xyz, charge=charge)
+            fragments[0].atoms[0].coords = fragments[0].atoms[0].coords + 1e-9
+            return fragments
+
+        with patch.object(ts, '_perceive_irc_fragments', side_effect=perceive_and_disturb), \
+                self.assertLogs('arc', level='WARNING'):
+            self._check(endpoint_r, endpoint_p, rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+        self.assertIsNone(rxn.ts_species.ts_atom_map)
+        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'endpoint_perception_mismatch')
+
+    def test_the_endpoint_connectivity_comes_from_the_fragments_and_ignores_bond_orders(self):
+        """Test that the bonds are the fragments' own, in endpoint atom indices, for a permuted TS order"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=[5, 6, 0, 4, 1, 2, 3])
+        inputs = self._verdict_inputs(endpoint_r, endpoint_p)
+        bonds = ts._get_endpoint_bonds_from_fragments(endpoint_r, inputs['endpoint_fragments'][1])
+        self.assertEqual({tuple(sorted(bond)) for bond in bonds}, self._bond_set(endpoint_r))
+        self.assertIsNone(ts._get_endpoint_bonds_from_fragments(endpoint_r, inputs['endpoint_fragments'][1][:1]))
+
+    def test_reordered_fragment_atoms_are_tied_to_the_endpoint_by_exact_coordinates(self):
+        """Test that a perception that reorders the atoms of its fragments still maps, and is valid"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=[5, 6, 0, 4, 1, 2, 3])
+        original = ts._perceive_irc_fragments
+
+        def perceive_reordered(xyz, charge=0):
+            fragments = original(xyz, charge=charge)
+            for fragment in fragments:
+                fragment.atoms.reverse()
+            return fragments
+
+        with patch.object(ts, '_perceive_irc_fragments', side_effect=perceive_reordered):
+            self._check(endpoint_r, endpoint_p, rxn)
+        self.assertIsNone(rxn.ts_species.ts_atom_map_unavailable_reason)
+        self._assert_consistent(rxn, rxn.ts_species.ts_atom_map, atom_map)
+        self._assert_both_legs_are_graph_isomorphisms(rxn, rxn.ts_species.ts_atom_map, endpoint_r, endpoint_p)
+
+    def test_fragment_atoms_without_coordinates_or_without_a_one_to_one_tie_refuse_the_map(self):
+        """Test that a fragment atom with no coordinates, a repeated atom and an uncovered endpoint atom are refused"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        fragments = ts._perceive_irc_fragments(endpoint_r)
+        self.assertIsNotNone(ts._get_endpoint_bonds_from_fragments(endpoint_r, fragments))
+        fragments[0].atoms[0].coords = None
+        self.assertIsNone(ts._get_endpoint_bonds_from_fragments(endpoint_r, fragments))
+        fragments = ts._perceive_irc_fragments(endpoint_r)
+        fragments[0].atoms[1].coords = np.array(fragments[0].atoms[0].coords)
+        self.assertIsNone(ts._get_endpoint_bonds_from_fragments(endpoint_r, fragments))
+        self.assertIsNone(ts._get_endpoint_bonds_from_fragments(endpoint_r, ts._perceive_irc_fragments(endpoint_r)[:0]))
+
+    def test_an_endpoint_whose_elements_differ_from_the_ts_is_refused_by_the_element_guard_alone(self):
+        """Test the guard in isolation: consistent fragments and no IRC geometry reason, yet permuted endpoint elements"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        reactants, products = rxn.get_reactants_and_products(return_copies=False)
+        inputs = self._verdict_inputs(endpoint_r, endpoint_p)
+        bonds_r = ts._get_endpoint_bonds_from_fragments(endpoint_r, inputs['endpoint_fragments'][1])
+        bonds_p = ts._get_endpoint_bonds_from_fragments(endpoint_p, inputs['endpoint_fragments'][2])
+        permuted = dict(endpoint_r, symbols=tuple(reversed(endpoint_r['symbols'])))
+        inputs['endpoint_xyzs'] = {1: permuted, 2: endpoint_p}
+        with patch.object(ts, '_get_endpoint_bonds_from_fragments', side_effect=[bonds_r, bonds_p]), \
+                self.assertLogs('arc', level='WARNING'):
+            ts_atom_map, reason = ts.get_ts_atom_map(
+                rxn=rxn, reactants=reactants, reactant_endpoint=1, ts_xyz=rxn.ts_species.get_xyz(generate=False),
+                irc_geometry_reason=None, **inputs)
+        self.assertIsNone(ts_atom_map)
+        self.assertEqual(reason, 'endpoint_perception_mismatch')
+
+    def test_a_swap_in_an_endpoint_after_the_irc_is_refused_through_the_endpoint_chain(self):
+        """Test that exchanging a spectator and a transferring hydrogen in the product endpoint gives no map"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        coords = list(endpoint_p['coords'])
+        coords[1], coords[4] = coords[4], coords[1]
+        swapped = xyz_from_data(coords=tuple(coords), symbols=endpoint_p['symbols'])
+        irc_logs = self._irc_logs(rxn, last=(endpoint_r, endpoint_p))
+        with self.assertLogs('arc', level='WARNING'):
+            self._check(endpoint_r, swapped, rxn, irc_log_paths=irc_logs,
+                        endpoint_log_paths=self._endpoint_logs(endpoint_r, endpoint_p))
+        self.assertIsNone(rxn.ts_species.ts_atom_map)
+        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'irc_endpoint_geometry_differs')
+        self.assertIs(rxn.ts_species.irc_participant_mapping['atom_order_matches_ts'], False)
+        with self.assertLogs('arc', level='WARNING'):
+            self._check(endpoint_r, endpoint_p, rxn, irc_log_paths=irc_logs,
+                        endpoint_log_paths=self._endpoint_logs(endpoint_r, endpoint_p,
+                                                               first=(endpoint_r, swapped)))
+        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'irc_endpoint_geometry_differs')
+
+    def test_endpoints_in_another_element_order_than_the_ts_state_it_and_give_no_map(self):
+        """Test that endpoints O, H, C, H, H, H, H against a TS C, H, H, H, H, O, H are flagged false and refused"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=[5, 6, 0, 1, 2, 3, 4])
+        natural = self._ch4_oh(ts_order=list(range(7)))[0].ts_species.get_xyz(generate=False)
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=natural)
+        self.assertEqual(endpoint_r['symbols'], ('O', 'H', 'C', 'H', 'H', 'H', 'H'))
+        self.assertEqual(natural['symbols'], ('C', 'H', 'H', 'H', 'H', 'O', 'H'))
+        with self.assertLogs('arc', level='WARNING'):
+            self._check(endpoint_r, endpoint_p, rxn)
+        self.assertIs(rxn.ts_species.irc_participant_mapping['atom_order_matches_ts'], False)
+        self.assertIsNone(rxn.ts_species.ts_atom_map)
+
+    def test_a_deuterated_ts_is_congruent_with_its_parsed_start_geometry(self):
+        """Test that the isotopes of the TS reach the superposition of a parsed geometry, which states none"""
+        rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
+        ts_xyz = rxn.ts_species.get_xyz(generate=False)
+        isotopes = list(ts_xyz['isotopes'])
+        isotopes[1] = 2
+        deuterated = xyz_from_data(coords=ts_xyz['coords'], symbols=ts_xyz['symbols'], isotopes=tuple(isotopes))
+        parsed = xyz_from_data(coords=tuple(map(tuple, np.round(np.array(ts_xyz['coords'], dtype=float), 6))),
+                               symbols=ts_xyz['symbols'])
+        self.assertGreater(kabsch(deuterated, parsed), IRC_START_GEOMETRY_TOLERANCE)
+        self.assertTrue(ts.are_geometries_congruent(deuterated, parsed))
+        rxn.ts_species.final_xyz = deuterated
+        self._check(endpoint_r, endpoint_p, rxn)
+        self.assertIsNone(rxn.ts_species.ts_atom_map_unavailable_reason)
 
     def test_a_crossed_spectator_hydrogen_contradicts_the_ts_and_records_no_map(self):
         """Test C2H6 + OH with an atom map that swaps a spectator H of each carbon: no isomorphism exists"""
@@ -1662,7 +2104,7 @@ class TestTsAtomMap(unittest.TestCase):
         products = [('C2H5', 'C[CH2]', 2, [0, 4, 2, 3, 5, 6, 7]), ('H2O', 'O', 1, [8, 1, 9])]
         rxn, endpoint_r, endpoint_p, atom_map = self._build(symbols, r_coords, tuple(p_coords), ts_coords,
                                                             reactants, products, ts_order=list(range(10)))
-        ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+        self._check(endpoint_r, endpoint_p, rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
         self._assert_consistent(rxn, rxn.ts_species.ts_atom_map, atom_map)
 
@@ -1670,7 +2112,7 @@ class TestTsAtomMap(unittest.TestCase):
                                                             reactants, products, ts_order=list(range(10)),
                                                             crossed=(2, 5))
         with self.assertLogs('arc', level='WARNING') as logs:
-            ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+            self._check(endpoint_r, endpoint_p, rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
         self.assertIsNone(rxn.ts_species.ts_atom_map)
         self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'atom_map_contradicts_ts')
@@ -1692,7 +2134,7 @@ class TestTsAtomMap(unittest.TestCase):
                     reactants=[('CH3', '[CH3]', 2, [0, 1, 2, 3], 2)],
                     products=[('C2H6', 'CC', 1, list(range(8)))],
                     ts_order=ts_order, label='CH3 + CH3 <=> C2H6')
-                ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+                self._check(endpoint_r, endpoint_p, rxn)
                 self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
                 ts_atom_map = rxn.ts_species.ts_atom_map
                 self._assert_consistent(rxn, ts_atom_map, atom_map)
@@ -1714,7 +2156,7 @@ class TestTsAtomMap(unittest.TestCase):
             products=[('H2O2', 'OO', 1, [0, 1, 5, 2]), ('O2', '[O][O]', 3, [3, 4])],
             ts_order=[5, 4, 3, 2, 1, 0], label='HO2 + HO2 <=> H2O2 + O2')
         self.assertEqual(atom_map, [0, 1, 3, 4, 5, 2])
-        ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+        self._check(endpoint_r, endpoint_p, rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
         ts_atom_map = rxn.ts_species.ts_atom_map
         self._assert_consistent(rxn, ts_atom_map, atom_map)
@@ -1733,7 +2175,7 @@ class TestTsAtomMap(unittest.TestCase):
                     reactants=[('CH3O', 'C[O]', 2, [0, 1, 2, 3, 4], 1)],
                     products=[('CH2OH', '[CH2]O', 2, [0, 1, 3, 4, 2])],
                     ts_order=ts_order)
-                ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+                self._check(endpoint_r, endpoint_p, rxn)
                 self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
                 ts_atom_map = rxn.ts_species.ts_atom_map
                 self._assert_consistent(rxn, ts_atom_map, atom_map)
@@ -1754,7 +2196,7 @@ class TestTsAtomMap(unittest.TestCase):
             reactants=[('H', '[H]', 2, [0], 1), ('C2H4', 'C=C', 1, [1, 2, 3, 4, 5, 6], 1)],
             products=[('C2H5', 'C[CH2]', 2, [2, 1, 5, 6, 3, 4, 0])],
             ts_order=[1, 2, 3, 4, 5, 6, 0])
-        ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+        self._check(endpoint_r, endpoint_p, rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
         ts_atom_map = rxn.ts_species.ts_atom_map
         self._assert_consistent(rxn, ts_atom_map, atom_map)
@@ -1766,7 +2208,7 @@ class TestTsAtomMap(unittest.TestCase):
         """Test the reason recorded for each way the check cannot state the map"""
         rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
-        ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+        self._check(endpoint_r, endpoint_p, rxn)
         self.assertIsNone(rxn.ts_species.ts_atom_map)
         self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'no_ts')
 
@@ -1774,13 +2216,13 @@ class TestTsAtomMap(unittest.TestCase):
         symbols = rxn.ts_species.get_xyz(generate=False)['symbols']
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=xyz_from_data(
             coords=endpoint_r['coords'], symbols=symbols[::-1]))
-        ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+        self._check(endpoint_r, endpoint_p, rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
-        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'atom_order_mismatch')
+        self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'endpoint_perception_mismatch')
 
         rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
         rxn._atom_map = None
-        ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+        self._check(endpoint_r, endpoint_p, rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
         self.assertEqual(rxn.ts_species.ts_atom_map_unavailable_reason, 'no_atom_map')
         self.assertIsNone(rxn._atom_map)
@@ -1808,8 +2250,8 @@ class TestTsAtomMap(unittest.TestCase):
         distorted['coords'] = tuple(tuple(c) for c in coords)
         with self.assertLogs('arc', level='WARNING') as logs:
             ts_atom_map, reason = ts.get_ts_atom_map(
-                rxn=rxn, reactants=reactants, endpoint_xyzs={1: distorted, 2: endpoint_p}, reactant_endpoint=1,
-                atom_order_matches_ts=True, ts_xyz=rxn.ts_species.get_xyz(generate=False))
+                rxn=rxn, reactants=reactants, reactant_endpoint=1, ts_xyz=rxn.ts_species.get_xyz(generate=False),
+                irc_geometry_reason=None, **self._verdict_inputs(distorted, endpoint_p))
         self.assertIsNone(ts_atom_map)
         self.assertEqual(reason, 'endpoint_perception_mismatch')
         self.assertTrue(any('perceived' in message for message in logs.output))
@@ -1818,8 +2260,8 @@ class TestTsAtomMap(unittest.TestCase):
         """Test that, when the sides are flagged isomorphic, the endpoints given in the wrong roles still map"""
         rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
         reactants, products = rxn.get_reactants_and_products(return_copies=False)
-        kwargs = dict(rxn=rxn, reactants=reactants, endpoint_xyzs={1: endpoint_p, 2: endpoint_r}, reactant_endpoint=1,
-                      atom_order_matches_ts=True, ts_xyz=rxn.ts_species.get_xyz(generate=False))
+        kwargs = dict(rxn=rxn, reactants=reactants, reactant_endpoint=1, ts_xyz=rxn.ts_species.get_xyz(generate=False),
+                      irc_geometry_reason=None, **self._verdict_inputs(endpoint_p, endpoint_r))
         with self.assertLogs('arc', level='WARNING'):
             self.assertEqual(ts.get_ts_atom_map(sides_distinguishable=True, **kwargs),
                              (None, 'endpoint_perception_mismatch'))
@@ -1833,7 +2275,7 @@ class TestTsAtomMap(unittest.TestCase):
         rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
         with patch.object(ts, 'get_ts_atom_map', side_effect=RuntimeError('boom')), \
                 self.assertLogs('arc', level='WARNING'):
-            ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+            self._check(endpoint_r, endpoint_p, rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
         self.assertIsNotNone(rxn.ts_species.irc_participant_mapping)
         self.assertIsNone(rxn.ts_species.ts_atom_map)
@@ -1845,7 +2287,7 @@ class TestTsAtomMap(unittest.TestCase):
         rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
         with patch.object(ts, '_get_irc_participant_mapping', side_effect=RuntimeError('boom')), \
                 self.assertLogs('arc', level='WARNING'):
-            ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+            self._check(endpoint_r, endpoint_p, rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
         self.assertIsNone(rxn.ts_species.irc_participant_mapping)
         self._assert_consistent(rxn, rxn.ts_species.ts_atom_map, atom_map)
@@ -1853,9 +2295,9 @@ class TestTsAtomMap(unittest.TestCase):
     def test_a_failure_comparing_the_endpoints_with_the_ts_fails_both_records(self):
         """Test that, with no atom order verdict, there is no participant mapping and the reason is computation_failed"""
         rxn, endpoint_r, endpoint_p, atom_map = self._ch4_oh(ts_order=list(range(7)))
-        with patch.object(ts, '_get_irc_endpoints_atom_order_matches_ts', side_effect=RuntimeError('boom')), \
+        with patch.object(ts, 'get_irc_start_geometry_reason', side_effect=RuntimeError('boom')), \
                 self.assertLogs('arc', level='WARNING'):
-            ts.check_irc_species_and_rxn(xyz_1=endpoint_r, xyz_2=endpoint_p, rxn=rxn)
+            self._check(endpoint_r, endpoint_p, rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
         self.assertIsNone(rxn.ts_species.irc_participant_mapping)
         self.assertIsNone(rxn.ts_species.ts_atom_map)

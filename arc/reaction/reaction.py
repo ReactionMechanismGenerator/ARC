@@ -138,9 +138,8 @@ class ARCReaction(object):
                               I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
                               reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
         atom_map_source (str): ``'inferred'`` when ARC computed the map with ``map_reaction``, ``'declared'`` when it
-                               was explicitly declared (``declare_atom_map`` or an ``atom_map_source: declared``
-                               entry of the reaction dict), ``None`` when there is no map or its origin was not
-                               recorded.
+                               was explicitly declared (an ``atom_map_source: declared`` entry of the reaction
+                               dict), ``None`` when there is no map or its origin was not recorded.
         atom_map_method (str): The algorithm that computed an inferred map, ``None`` otherwise.
         done_opt_r_n_p (bool): Whether the optimization of all reactants and products is complete.
     """
@@ -243,10 +242,6 @@ class ARCReaction(object):
     def atom_map_method(self) -> str | None:
         """The algorithm that computed the stored atom map if it is inferred. Never computes a map."""
         return self._atom_map_method if self._atom_map is not None and self._atom_map_source == 'inferred' else None
-
-    def declare_atom_map(self, value: list[int] | None):
-        """Set an atom map that is explicitly declared by the user."""
-        self._set_atom_map(value, 'declared')
 
     def _set_atom_map(self,
                       value: list[int] | None,

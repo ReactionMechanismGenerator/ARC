@@ -243,6 +243,9 @@ class ARCSpecies(object):
                                                    correction switched on. ``None`` when not known.
         e0_bond_corrections_applied (bool | None): Whether the Arkane run that wrote ``e0`` had its bond additivity
                                                    correction switched on. ``None`` when not known.
+        e0_aec_yml_sha256 (str | None): The SHA-256 of ARC's ``data/AEC.yml`` that the Arkane run that wrote ``e0``
+                                        rendered its atom energies from. ``None`` when not known, or when that run
+                                        did not render atom energies from it.
         arkane_rotor_modes (list[str] | None): The rotor modes (``HinderedRotor``, ``FreeRotor``,
                                                ``HinderedRotor2D``, ``HinderedRotorClassicalND``, ``Mode``) of the
                                                conformer block of the last Arkane run, in order. ``None`` when that
@@ -304,9 +307,12 @@ class ARCSpecies(object):
         chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
         ts_checks (dict[str, bool]): Checks that a TS species went through.
-        nmd_record (dict): What the normal mode displacement check of a TS analysed: ``frequency_cm1`` is the frequency
-                           of the mode it analysed and ``forced`` is whether a failed check was forced to pass
-                           (``skip_nmd``). Empty when the check has not run.
+        nmd_record (dict): What the normal mode displacement check of a TS analysed: ``mode_index`` is the 0-based
+                           position, in the list of frequencies and modes parsed from the frequency job's output
+                           file, of the mode it analysed (the most negative frequency), ``n_modes`` is the length of
+                           that list, ``freq_log_path`` is the output file it was parsed from, and ``forced`` is
+                           whether a failed check was forced to pass (``skip_nmd``). Empty when the check has not
+                           run.
         irc_participant_mapping (dict | None): Which atoms of each optimized IRC endpoint geometry belong to which
                                                participant species, recorded only when the IRC check established its
                                                verdict by graph isomorphism (see ``arc.checks.ts``). ``None`` otherwise.
@@ -486,6 +492,7 @@ class ARCSpecies(object):
             self.e0 = None
             self.e0_atom_corrections_applied = None
             self.e0_bond_corrections_applied = None
+            self.e0_aec_yml_sha256 = None
             self.arkane_rotor_modes = None
             self.arkane_file = None
             self.conf_is_isomorphic = None
@@ -756,16 +763,17 @@ class ARCSpecies(object):
 
     def copy_e0_from(self, other: 'ARCSpecies') -> None:
         """
-        Take the E0 of another species when this one has none, together with the correction switches of the
-        Arkane run that wrote it. A species that already has an E0 is left untouched.
+        Take the E0 of another species when this one has none, together with the correction switches and the
+        ``AEC.yml`` digest of the Arkane run that wrote it. A species that already has an E0 is left untouched.
 
         Args:
-            other (ARCSpecies): The species to take the E0 and its correction switches from.
+            other (ARCSpecies): The species to take the E0, its correction switches and its ``AEC.yml`` digest from.
         """
         if self.e0 is None:
             self.e0 = other.e0
             self.e0_atom_corrections_applied = other.e0_atom_corrections_applied
             self.e0_bond_corrections_applied = other.e0_bond_corrections_applied
+            self.e0_aec_yml_sha256 = other.e0_aec_yml_sha256
 
     def is_water(self) -> bool:
         """
@@ -889,6 +897,8 @@ class ARCSpecies(object):
             species_dict['e0_atom_corrections_applied'] = self.e0_atom_corrections_applied
         if self.e0_bond_corrections_applied is not None:
             species_dict['e0_bond_corrections_applied'] = self.e0_bond_corrections_applied
+        if self.e0_aec_yml_sha256 is not None:
+            species_dict['e0_aec_yml_sha256'] = self.e0_aec_yml_sha256
         if self.arkane_rotor_modes is not None:
             species_dict['arkane_rotor_modes'] = list(self.arkane_rotor_modes)
         if self.e0_only is not False:
@@ -996,6 +1006,7 @@ class ARCSpecies(object):
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
         self.e0_atom_corrections_applied = species_dict.get('e0_atom_corrections_applied')
         self.e0_bond_corrections_applied = species_dict.get('e0_bond_corrections_applied')
+        self.e0_aec_yml_sha256 = species_dict.get('e0_aec_yml_sha256')
         self.arkane_rotor_modes = species_dict.get('arkane_rotor_modes')
         self.tsg_spawned = species_dict['tsg_spawned'] if 'tsg_spawned' in species_dict else False
         self.active = species_dict['active'] if 'active' in species_dict else None
@@ -2099,12 +2110,10 @@ class ARCSpecies(object):
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                 self.append_ts_guess(tsg)
             else:
-                # The queue TS-search job produced no usable geometry (nothing parseable, or
-                # colliding atoms). Mark it failed and do NOT add it as a clusterable guess: a
-                # coordinate-less "successful" guess would break equivalent-guess clustering.
                 tsg.success = False
                 logger.warning(f"The queue TS-guess job at {path} produced no usable geometry; "
-                               f"marking this '{tsg.method}' guess as failed and not clustering it.")
+                               f"recording a failed '{tsg.method}' guess and not clustering the unusable one.")
+                self.append_ts_guess(TSGuess(method=tsg.method, success=False))
         elif path.endswith('.yml') or path.endswith('.yaml'):
             yml_path = path
             tsg_list = read_yaml_file(yml_path)

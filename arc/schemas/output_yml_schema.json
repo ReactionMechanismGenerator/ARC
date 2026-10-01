@@ -70,15 +70,13 @@
       ]
     },
     "rmg_database": {
-      "description": "Identity of the quantum corrections tables Arkane used: the quantum_corrections/data.py its own rmgpy settings point at (arkane.encorr.data.quantum_corrections_path, reported by the RMG conda environment), which is not necessarily the file under ARC's RMG_DB_PATH. 'quantum_corrections_sha256' is the SHA-256 of the bytes of that file. 'path_kind' is 'git' when the database root, three directories above that file, holds a .git (then 'git_commit' is its HEAD, read from the .git files), 'package' when it lies inside a conda prefix that lists the rmgdatabase package (then 'version' is that package's version), and 'unknown' otherwise. 'matches_arc_rmg_db_path' is whether the file ARC matches its correction keys against under RMG_DB_PATH has the same digest; on a mismatch a matched key may be missing or different in the file Arkane loaded. Each value that cannot be determined is null.",
+      "description": "Identity of the quantum corrections tables Arkane used: the quantum_corrections/data.py its own rmgpy settings point at (arkane.encorr.data.quantum_corrections_path, reported by the RMG conda environment), which is not necessarily the file under ARC's RMG_DB_PATH. 'quantum_corrections_sha256' is the SHA-256 of the bytes of that file. 'path_kind' is 'git' when the database root, three directories above that file, holds a .git (then 'git_commit' is its HEAD, read from the .git files), 'package' when it lies inside a conda prefix that lists the rmgdatabase package (then 'version' is that package's version), and 'unknown' otherwise. ARC logs a warning when the file it matches its correction keys against under RMG_DB_PATH has another digest, since a matched key may then be missing or different in the file Arkane loaded. Each value that cannot be determined is null.",
       "type": "object",
       "required": [
         "path_kind",
         "git_commit",
         "version",
-        "quantum_corrections_path",
-        "quantum_corrections_sha256",
-        "matches_arc_rmg_db_path"
+        "quantum_corrections_sha256"
       ],
       "properties": {
         "path_kind": {
@@ -101,30 +99,18 @@
             "null"
           ]
         },
-        "quantum_corrections_path": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "quantum_corrections_sha256": {
           "type": [
             "string",
             "null"
           ],
           "pattern": "^[0-9a-f]{64}$"
-        },
-        "matches_arc_rmg_db_path": {
-          "type": [
-            "boolean",
-            "null"
-          ]
         }
       },
       "additionalProperties": false
     },
     "arc_aec_yml_sha256": {
-      "description": "SHA-256 of ARC's own data/AEC.yml, set only when ARC renders atomEnergies from it for the Arkane level of theory (arkane_level_of_theory), or for the composite or single-point level of the TS-check E0 run (Arkane then uses those atom energies). Null when it does not.",
+      "description": "SHA-256 of ARC's own data/AEC.yml, recorded by an Arkane adapter when it rendered atomEnergies from that file during the run: the adapters of the final processing, and the adapter that computed each exported E0 (including the E0 computed by the TS check, which is recorded with the E0 where it is copied onto the TS and the wells). Exported only when exactly one distinct such digest was recorded; null when none was (the atom energies came from Arkane's own database, no Arkane input was rendered, or the run was restarted from a version that did not record it) and, with a warning, when several differing digests were.",
       "type": [
         "string",
         "null"
@@ -1611,7 +1597,7 @@
           ]
         },
         "rigid_rotor_kind": {
-          "description": "The rigid-rotor kind from the principal moments of inertia of the exported final geometry: 'linear' for a linear species, 'spherical_top' when all three moments agree and 'symmetric_top' when two do (each within a relative tolerance of 1e-3), and 'asymmetric_top' otherwise. When every atom carries its most common isotope the exported point_group refines this: a group with no C_n (n >= 3) and no S4 axis that is not cubic rules out a symmetric or spherical top, and a group with such an axis promotes a geometry whose moments agree within 1e-2. Null when there is no final geometry, when it cannot be weighed, and when the species is flagged non-linear but its atoms are collinear. 'atom' is never written here: statmech is null for monoatomic species. It is a geometric label only: Arkane treats every non-linear species as a NonlinearRotor.",
+          "description": "The rigid-rotor kind, read from the exported point_group alone (no moment of inertia is computed and no tolerance is used): 'linear' for C-infinity-v and D-infinity-h; 'spherical_top' for the cubic groups T, Td, Th, O, Oh, I and Ih; 'symmetric_top' for any other group with a proper C_n axis of n >= 3 (C_n, C_nv, C_nh, D_n, D_nh, D_nd) and for D2d and S_n with even n >= 4, since an improper rotation S_n acts on the inertia tensor as the proper rotation by 2*pi/n + pi (the inversion acts trivially), which has order 3 or more for every even n >= 4, so S4 acts as C4 cubed and S6 as C3 inverse; 'asymmetric_top' for C1, Cs, Ci, C2, C2v, C2h, D2 and D2h. A symmetry-enforced kind: an accidental equality of moments is not stated. Null when point_group is null or not one of these, and when the species carries non-default isotopes (the point group is that of the unlabelled geometry). 'atom' is never written here: statmech is null for monoatomic species. A geometric label only: Arkane treats every non-linear species as a NonlinearRotor.",
           "type": [
             "string",
             "null"
@@ -1996,6 +1982,7 @@
         "freq_route",
         "sp_route",
         "composite_route",
+        "composite_step_routes",
         "sp_t1_diagnostic",
         "opt_dipole_moment_debye",
         "opt_dipole_moment_density",
@@ -2086,7 +2073,7 @@
           ]
         },
         "xyz_isotopes": {
-          "description": "The isotope mass number of each atom of xyz, in the atom order of xyz: the isotopes on ARC's species geometry; ARC does not write isotopes into ESS input decks, so this list says nothing about the masses an ESS used. Null when ARC holds no isotope list for the geometry, including the synthesized one-atom geometry of a monoatomic species.",
+          "description": "The isotope mass number of each atom of xyz, in the atom order of xyz, as the log of that geometry states it: the opt log, or the composite log of a composite run, and only when it printed 'Atom N has atomic number Z and mass M' for every atom (a Gaussian freq or composite job does; an opt-only Gaussian log does not). ARC's own geometry dicts are never read for isotopes. Null for every other program, for a log that states none, when xyz is not the final geometry of that log's job, and for the synthesized one-atom geometry of a monoatomic species.",
           "type": [
             "array",
             "null"
@@ -2197,7 +2184,7 @@
           ]
         },
         "coarse_opt_input_xyz_isotopes": {
-          "description": "The isotopes of coarse_opt_input_xyz, which is ARC's species initial geometry: the isotopes on ARC's species geometry; ARC does not write isotopes into ESS input decks, so this list says nothing about the masses an ESS used. Null exactly when coarse_opt_input_xyz is null or ARC holds no isotope list for it.",
+          "description": "The isotopes of coarse_opt_input_xyz, stated by the coarse opt log (the job that read that geometry) and taken only from a log that states the masses it used (a Gaussian log that printed 'Atom N has atomic number Z and mass M'). Null otherwise, and whenever coarse_opt_input_xyz is null.",
           "type": [
             "array",
             "null"
@@ -2231,7 +2218,7 @@
           ]
         },
         "opt_input_xyz_isotopes": {
-          "description": "The isotopes of opt_input_xyz. When a coarse stage ran this is coarse_opt_output_xyz_isotopes (stated by the coarse log, else null); otherwise opt_input_xyz is ARC's species initial geometry and these are the isotopes on ARC's species geometry; ARC does not write isotopes into ESS input decks, so this list says nothing about the masses an ESS used. Null when opt_input_xyz is null or no list is available.",
+          "description": "The isotopes of opt_input_xyz, stated by the opt log (the job that read that geometry) and taken only from a log that states the masses it used (a Gaussian log that printed 'Atom N has atomic number Z and mass M'). Null otherwise, and whenever opt_input_xyz is null.",
           "type": [
             "array",
             "null"
@@ -2317,8 +2304,19 @@
             "null"
           ]
         },
+        "composite_step_routes": {
+          "description": "The route line of every internal step of the composite-method job, in the order the composite_log echoes them (Gaussian prints one route section per Link1 step, so a CBS-QB3 or G4 log yields one entry per step). Read from the log only, never from the input deck or from the composite method name, and joined as opt_route is. composite_route is the first entry. null for an unconverged species, when there is no composite log, when the log is not a Gaussian log, and when it echoes no route.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
         "sp_t1_diagnostic": {
-          "description": "The T1 diagnostic (unitless) ARC's parser read from the sp log. It is stated only when the recorded sp level (levels.sp) is a coupled-cluster method (its name contains 'cc') or qcisd; null for every other level, for an unconverged species, and when the log prints none.",
+          "description": "The T1 diagnostic (unitless) that the exported sp log prints for its correlated method (for example coupled cluster, or the coupled-pair methods of ORCA, which also print one), parsed from that log at export time by ARC's parser for its program; no method name is matched. Null when there is no sp log, when it prints none, when it cannot be parsed, and for an unconverged species.",
           "type": [
             "number",
             "null"
@@ -2539,7 +2537,7 @@
           }
         },
         "conformers_isotopes": {
-          "description": "Index-aligned with conformers: the isotopes of each conformer on ARC's species geometry (ARC does not write isotopes into ESS input decks). An entry is null for a conformer ARC holds only as text. Emitted and omitted together with 'conformers'.",
+          "description": "Index-aligned with conformers: the isotopes each conformer's own optimization log (conformer_logs) states, as for xyz_isotopes. An entry is null for a conformer with no recorded log, for a conformer ARC holds only as text, and for a log that is missing or states no masses. Emitted and omitted together with 'conformers'.",
           "type": "array",
           "items": {
             "type": [
@@ -2735,6 +2733,7 @@
         "freq_frequencies_cm1_ess_order",
         "reaction_coordinate_mode_index",
         "nmd_forced",
+        "neb_succeeded",
         "rxn_label"
       ],
       "properties": {
@@ -2828,7 +2827,7 @@
           }
         },
         "reaction_coordinate_mode_index": {
-          "description": "The 1-based index, into freq_frequencies_cm1_ess_order, of the mode the normal mode displacement check validated as the reaction coordinate: the most negative frequency. Null unless ts_checks.NMD is true and the check genuinely passed (a failed check that skip_nmd forced to pass leaves it null), and null unless exactly one entry of freq_frequencies_cm1_ess_order equals, within 0.01 cm-1, the frequency of the mode the check analysed.",
+          "description": "The 1-based index, into freq_frequencies_cm1_ess_order, of the mode the normal mode displacement check validated as the reaction coordinate: the most negative frequency. Null unless ts_checks.NMD is true and the check genuinely passed (a failed check that skip_nmd forced to pass leaves it null), and null unless the check's record holds the position of the mode it analysed within the frequencies it parsed from an output file, the number of modes it indexed equals the length of freq_frequencies_cm1_ess_order, the output file it parsed is the exported freq_log, and the frequency at that position is imaginary. A record without the number of modes or the file (an older restart) gives null.",
           "type": [
             "integer",
             "null"
@@ -2837,6 +2836,13 @@
         },
         "nmd_forced": {
           "description": "Whether ts_checks.NMD was forced to true after the normal mode displacement check failed (the skip_nmd option), as the check's own record states. true: the check failed and ARC forced the verdict to a pass. false: the check ran and ARC did not force it, whatever its verdict. null when no check record exists (the check did not run, or the record was not saved by an older run), including when ts_checks.NMD is not a boolean.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "neb_succeeded": {
+          "description": "Whether the NEB log of an orca_neb guess ARC recorded for this TS states that the NEB optimization converged, from the TS guesses the species holds (a guess whose method or merged method_sources include orca_neb) and the log path each records for orca_neb. true: the log of a recorded orca_neb guess prints THE NEB OPTIMIZATION HAS CONVERGED. false: orca_neb guesses were recorded with readable logs and none prints it. null when ARC holds no orca_neb guess for the TS, a guess records no log path, or no recorded log can be read. Whether the guess holds a geometry is not consulted, and nothing is inferred from neb_level, a guess success flag or the configured TS adapters.",
           "type": [
             "boolean",
             "null"
@@ -2879,7 +2885,7 @@
                   "type": "boolean"
                 },
                 "atom_order_matches_ts": {
-                  "description": "True when both IRC endpoint geometries have the element sequence of the TS geometry the IRC was run from, which states that atom i of an endpoint is atom i of the TS (ARC's IRC and optimization jobs keep the input atom order; the check cannot detect a swap of two atoms of the same element). False when the element sequences differ. Null when there was no TS geometry to compare to.",
+                  "description": "True only when the first geometry of every IRC log is congruent with the TS geometry atom for atom, each endpoint's optimization log starts from the last geometry of its IRC log and ends at the endpoint geometry, and both endpoint geometries have the element sequence of the TS (so atom i of an endpoint is atom i of the TS, given that the ESS keeps the atom order of its input within a log). False when any of those is contradicted, including endpoint element sequences that differ from the TS's. Null when there was no TS geometry or a log or geometry needed for the check could not be read (Gaussian logs only are read).",
                   "type": [
                     "boolean",
                     "null"
@@ -2955,19 +2961,11 @@
     "irc_participant_side": {
       "type": "object",
       "required": [
-        "endpoint",
         "endpoint_label",
         "participants"
       ],
       "additionalProperties": false,
       "properties": {
-        "endpoint": {
-          "description": "Whether the geometry is the first (1) or the second (2) IRC endpoint geometry the IRC check compared.",
-          "enum": [
-            1,
-            2
-          ]
-        },
         "endpoint_label": {
           "description": "The label of the IRC endpoint species whose optimized geometry the atom indices count into. Null when the check was not told the label.",
           "type": [
@@ -3196,16 +3194,22 @@
           "description": "The labels of the reaction's product species, sorted and de-duplicated: an A + A reaction lists A once. It is not the stoichiometry; product_species_labels is."
         },
         "reactant_species_labels": {
-          "description": "The reactant species with one entry per occurrence, in the order of ARCReaction.get_reactants_and_products, so HO2 + HO2 <=> H2O2 + O2 lists HO2 twice. When atom_map is not null this list equals atom_map_reactant_labels. Always an array for a reaction ARC ran.",
-          "type": "array",
+          "description": "The reactant species with one entry per occurrence, in the order of ARCReaction.get_reactants_and_products, so HO2 + HO2 <=> H2O2 + O2 lists HO2 twice. When atom_map is not null this list equals atom_map_reactant_labels. null when the reaction holds no reactant species objects (a reaction restored or built from labels alone), since the occurrences are counted from those objects; reactant_labels still states the labels.",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "string"
           },
           "minItems": 1
         },
         "product_species_labels": {
-          "description": "The product species with one entry per occurrence, in the order of ARCReaction.get_reactants_and_products. When atom_map is not null this list equals atom_map_product_labels. Always an array for a reaction ARC ran.",
-          "type": "array",
+          "description": "The product species with one entry per occurrence, in the order of ARCReaction.get_reactants_and_products. When atom_map is not null this list equals atom_map_product_labels. null when the reaction holds no product species objects, as for reactant_species_labels.",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "string"
           },
@@ -3240,7 +3244,7 @@
           ]
         },
         "atom_map": {
-          "description": "ARC's reactant-to-product atom map, as the reaction holds it; it is never computed at export, so it is null when ARC had not mapped the reaction, and it is also null unless the map is a permutation that conserves the element (reactant atom i and product atom atom_map[i] have the same element). Entry i is the 0-based index of the product atom that reactant atom i becomes. Reactant atoms are counted over atom_map_reactant_labels in that order, each occurrence contributing the atoms of that species in the atom order of its exported geometry, one block per occurrence (so CH3 + CH3 has two blocks of four); product atoms are counted the same way over atom_map_product_labels. The order is that of the reaction's species lists, not that of reactant_labels, which is sorted and de-duplicated. Among symmetry-equivalent atoms (which hydrogen of CH4, which CH3 block) the choice is arbitrary and not specific to the reactive site. It says nothing about the atom order of the transition state; ts_atom_map states the TS atom of every atom.",
+          "description": "ARC's reactant-to-product atom map, as the reaction holds it; it is never computed at export, so it is null when ARC had not mapped the reaction, and it is also null unless the map is a permutation that conserves the element (reactant atom i and product atom atom_map[i] have the same element), and unless the exported geometry of every reactant and product has the atom order of that species' molecule, which the map counts atoms in (the geometry has the element of the molecule's atom in every position and every bond of the molecule no longer than 1.2 times the single-bond length of its two elements, a check that can only turn the map into null). Entry i is the 0-based index of the product atom that reactant atom i becomes. Reactant atoms are counted over atom_map_reactant_labels in that order, each occurrence contributing the atoms of that species in the atom order of its exported geometry, one block per occurrence (so CH3 + CH3 has two blocks of four); product atoms are counted the same way over atom_map_product_labels. The order is that of the reaction's species lists, not that of reactant_labels, which is sorted and de-duplicated. Among symmetry-equivalent atoms (which hydrogen of CH4, which CH3 block) the choice is arbitrary and not specific to the reactive site. It says nothing about the atom order of the transition state; ts_atom_map states the TS atom of every atom.",
           "type": [
             "array",
             "null"
@@ -3298,7 +3302,7 @@
           ]
         },
         "ts_atom_map": {
-          "description": "The 0-based atom of the transition state that every atom of the reaction is, from a label-preserving isomorphism of two condensed graphs of reaction (CGRs): the reactant-indexed CGR (the concatenated reactant atoms, bonds that are in the reactants or in the products, from atom_map) and the TS-indexed CGR (the TS atoms, bonds of the two IRC endpoint geometries). That endpoint atom i is TS atom i is inferred from the endpoint geometries having the element sequence of the TS. Before the CGRs are compared, the bond graph of each endpoint must be isomorphic to that of its side, and the map is kept only if, on the TS geometry, every bond of both the reactants and the products is at a bonded distance and every bond that forms or breaks is at most a partial-bond distance. It is a constitutional (2D) correspondence: symmetry-equivalent atoms, diastereotopic ones included, are assigned by a deterministic convention. 'reactants' has one entry per concatenated reactant atom, in the order of atom_map_reactant_labels (each occurrence contributing the atoms of its species in the atom order of its exported geometry), and 'products' one per concatenated product atom, in the order of atom_map_product_labels, so products[atom_map[i]] == reactants[i]. 'reactant_endpoint' is the IRC endpoint (1 or 2, in the order the IRC check received them) whose bonds served as the reactants. 'ts_atom_order_follows_reactants' is true exactly when reactants is the identity. Null, with ts_atom_map_unavailable_reason, whenever it cannot be stated; atom_map itself is never altered by it.",
+          "description": "The 0-based atom of the transition state that every atom of the reaction is, from a label-preserving isomorphism of two condensed graphs of reaction (CGRs): the reactant-indexed CGR (the concatenated reactant atoms, bonds that are in the reactants or in the products, from atom_map) and the TS-indexed CGR (the TS atoms, and as bonds the connectivity of the two IRC endpoints taken from the molecule fragments the IRC verdict perceived on them, bond orders ignored). It is a constitutional (2D) correspondence. Symmetry-equivalent atoms, diastereotopic ones included, follow a deterministic convention (the identity when it is a valid map, otherwise the first match the graph matcher finds, which is not canonical across networkx versions), and the number of equivalent maps is not stated. Verified: the first geometry of every IRC log is congruent with the TS geometry atom for atom (same elements in order, same coordinates without permuting atoms after a rigid rotation and translation, within print precision); each endpoint's optimization log starts from a geometry congruent with the last geometry of the IRC log of the same index, and the endpoint geometry is exactly the final geometry of that log; atom_map is a permutation; and the endpoint graphs from the IRC verdict's perception are coupled through atom_map by the isomorphism. Resting on construction: the ESS keeps the atom order of its input within a log, and ARC's parsing and writing keep it, so endpoint atom i is TS atom i. 'reactants' has one entry per concatenated reactant atom, in the order of atom_map_reactant_labels (each occurrence contributing the atoms of its species in the atom order of its exported geometry), and 'products' one per concatenated product atom, in the order of atom_map_product_labels, so products[atom_map[i]] == reactants[i]. 'reactant_endpoint' is the IRC endpoint (1 or 2, in the order the IRC check received them) whose bonds served as the reactants. 'ts_atom_order_follows_reactants' is true exactly when reactants is the identity. Null, with ts_atom_map_unavailable_reason, whenever it cannot be stated; atom_map itself is never altered by it.",
           "oneOf": [
             {
               "type": "null"
@@ -3349,17 +3353,18 @@
           ]
         },
         "ts_atom_map_unavailable_reason": {
-          "description": "Why ts_atom_map is null: no_ts (the reaction has no TS, or the TS has no geometry), irc_not_passed (ts_checks.IRC is not true), irc_fallback_path (the IRC verdict came from the bond-list fallback, which has no atom correspondence), atom_order_mismatch (the IRC endpoint geometries do not have the element sequence of the TS), no_atom_map (the reaction exports no atom_map), endpoint_perception_mismatch (the bonds perceived on an endpoint geometry are not the bond graph of its side), atom_map_contradicts_ts (the bonds the endpoints form and break are not those of atom_map, so no isomorphism exists), ts_geometry_contradicts_map (an isomorphism exists, but a bond it maps is at an implausible distance in the TS geometry), species_atom_order_mismatch (the geometry of a reactant or product does not have the atom order of the molecule the atom map counts in), computation_failed (the computation raised an error, which is logged), not_recorded (an older restart, or a malformed record that was dropped). Null exactly when ts_atom_map is not null.",
+          "description": "Why ts_atom_map is null: no_ts (the reaction has no TS, or the TS has no geometry), irc_not_passed (ts_checks.IRC is not true), irc_fallback_path (the IRC verdict came from the bond-list fallback, which has no atom correspondence), no_atom_map (the reaction exports no atom_map), endpoint_perception_mismatch (the connectivity of the fragments the IRC verdict perceived on an endpoint is not the bond graph of its side, or those fragments cannot be tied atom for atom to the endpoint geometry and the TS atoms), atom_map_contradicts_ts (the bonds the endpoints form and break are not those of atom_map, so no isomorphism exists), species_atom_order_mismatch (the geometry of a reactant or product does not have the atom order of the molecule the atom map counts in), irc_start_geometry_unavailable (an IRC log is missing, or the first geometry of one cannot be read; only Gaussian logs are read), irc_start_geometry_differs (the first geometry of an IRC log is not congruent with the TS geometry atom for atom), irc_endpoint_geometry_differs (an endpoint's optimization did not start from the last geometry of its IRC log, or the endpoint geometry is not the final geometry of that optimization log), computation_failed (the computation raised an error, which is logged), not_recorded (an older restart, or a malformed record that was dropped). Null exactly when ts_atom_map is not null.",
           "enum": [
             "no_ts",
             "irc_not_passed",
             "irc_fallback_path",
-            "atom_order_mismatch",
             "no_atom_map",
             "endpoint_perception_mismatch",
             "atom_map_contradicts_ts",
-            "ts_geometry_contradicts_map",
             "species_atom_order_mismatch",
+            "irc_start_geometry_unavailable",
+            "irc_start_geometry_differs",
+            "irc_endpoint_geometry_differs",
             "computation_failed",
             "not_recorded",
             null

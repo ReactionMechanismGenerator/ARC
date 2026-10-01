@@ -4218,6 +4218,7 @@ class Scheduler(object):
         self.species_dict[label].e0 = None
         self.species_dict[label].e0_atom_corrections_applied = None
         self.species_dict[label].e0_bond_corrections_applied = None
+        self.species_dict[label].e0_aec_yml_sha256 = None
         self.species_dict[label].arkane_rotor_modes = None
         if self.job_types['rotors'] and self.species_dict[label].rotors_dict is not None:
             # Reset rotors so they are re-determined from the new TS geometry.
@@ -4438,6 +4439,9 @@ class Scheduler(object):
                                           xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
                                           rxn=rxn,
                                           endpoint_labels=tuple(irc_species_labels[:2]),
+                                          irc_log_paths=list(self.output[ts_label]['paths']['irc']),
+                                          endpoint_log_paths=[self.output[irc_label]['paths']['geo']
+                                                              for irc_label in irc_species_labels[:2]],
                                           )
                 self.process_irc_verdict(ts_label=ts_label, rxn=rxn)
 

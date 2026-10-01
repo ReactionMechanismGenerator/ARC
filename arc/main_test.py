@@ -965,11 +965,11 @@ class TestRequestedLevelsInOutput(unittest.TestCase):
         arc0.scheduler.ts_adapters = ts_adapters if ts_adapters is not None else list()
         return arc0.scheduler
 
-    def run_arc_and_get_output_kwargs(self, arc0, scheduler_ts_adapters):
+    def run_arc_and_get_output_kwargs(self, arc0, scheduler_ts_adapters, aec_yml_sha256s=None):
         """Run ``_execute`` with the scheduler and the post-processing replaced, and return the write_output_yml kwargs"""
         scheduler = self.stub_scheduler(arc0, scheduler_ts_adapters)
         with patch('arc.main.Scheduler', return_value=scheduler), \
-                patch('arc.main.process_arc_project'), \
+                patch('arc.main.process_arc_project', return_value=aec_yml_sha256s), \
                 patch('arc.main.write_output_yml') as write_output_yml, \
                 patch('arc.main.display'), \
                 patch.object(ARC, 'summary', return_value=dict()), \
@@ -1007,6 +1007,13 @@ class TestRequestedLevelsInOutput(unittest.TestCase):
         with patch.dict('arc.processor.settings', {'orca_neb_settings': {'level': 'wb97x-d3/def2-svp'}}):
             kwargs = self.run_arc_and_get_output_kwargs(arc0, default_adapters)
         self.assertIsNone(kwargs['neb_level'])
+
+    def test_the_aec_digests_the_statmech_run_recorded_reach_the_writer(self):
+        """Test that the digests process_arc_project returns are what write_output_yml is given"""
+        kwargs = self.run_arc_and_get_output_kwargs(self.make_arc(), list(), aec_yml_sha256s=['a' * 64])
+        self.assertEqual(kwargs['arc_aec_yml_sha256s'], ['a' * 64])
+        kwargs = self.run_arc_and_get_output_kwargs(self.make_arc(), list(), aec_yml_sha256s=list())
+        self.assertEqual(kwargs['arc_aec_yml_sha256s'], list())
 
     def test_the_header_levels_reach_the_writer(self):
         """Test that the five requested levels are passed to write_output_yml"""

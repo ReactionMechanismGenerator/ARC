@@ -17,6 +17,7 @@ from arc.common import ARC_TESTING_PATH
 from arc.exceptions import SettingsError
 from arc.job.adapters.ts.orca_neb import OrcaNEBAdapter
 from arc.level import Level
+from arc.output import _get_neb_succeeded
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 
@@ -280,6 +281,33 @@ class TestOrcaNEB(unittest.TestCase):
         self.assertEqual(job.job_status[1]['keywords'], list())
         self.assertEqual(job.job_status[1]['error'], '')
         self.assertEqual(job.job_status[1]['line'], '')
+
+    def test_task_3_neb_succeeded_follows_the_convergence_line_of_the_log(self):
+        """
+        Task 3: A converged NEB log is exported as a successful NEB, and the same log cut before the convergence
+        banner is not, although both give the in-core guess a geometry.
+        """
+        converged_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+                                      'testing', 'neb', 'neb_res.out')
+        with open(converged_path, 'r') as f:
+            lines = f.readlines()
+        cut = next(i for i, line in enumerate(lines) if 'THE NEB OPTIMIZATION HAS CONVERGED' in line)
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, ignore_errors=True)
+        truncated_path = os.path.join(scratch, 'truncated.out')
+        with open(truncated_path, 'w') as f:
+            f.writelines(lines[:cut])
+        ts_species = self.job.reactions[0].ts_species
+        self.job.initial_time = datetime.datetime(2026, 2, 16, 10, 0, 0)
+        self.job.final_time = datetime.datetime(2026, 2, 16, 10, 15, 42)
+        for path, expected in ((converged_path, True), (truncated_path, False)):
+            ts_species.ts_guesses = list()
+            with unittest.mock.patch.object(self.job, 'local_path_to_output_file', path):
+                self.job.process_run()
+            self.assertEqual(len(ts_species.ts_guesses), 1)
+            self.assertIsNotNone(ts_species.ts_guesses[0].initial_xyz)
+            self.assertEqual(ts_species.ts_guesses[0].log_path, path)
+            self.assertIs(_get_neb_succeeded(ts_species), expected)
 
     @classmethod
     def tearDownClass(cls):

@@ -413,7 +413,7 @@ class TestARCReaction(unittest.TestCase):
         rxn.atom_map = [2, 0, 1]
         self.assertIsNone(rxn.atom_map_source)
         self.assertNotIn('atom_map_source', rxn.as_dict())
-        rxn.declare_atom_map([2, 0, 1])
+        rxn._set_atom_map([2, 0, 1], 'declared')
         self.assertEqual(rxn.atom_map_source, 'declared')
         self.assertIsNone(rxn.atom_map_method)
         self.assertEqual(rxn.as_dict()['atom_map_source'], 'declared')
@@ -433,7 +433,7 @@ class TestARCReaction(unittest.TestCase):
         inferred = self._make_h2o_isomorphic_rxn()
         self.assertEqual(inferred.atom_map, [2, 0, 1])
         declared = self._make_h2o_isomorphic_rxn()
-        declared.declare_atom_map([2, 0, 1])
+        declared._set_atom_map([2, 0, 1], 'declared')
         for rxn, source in ((inferred, 'inferred'), (declared, 'declared')):
             with self.subTest(source=source):
                 with mock.patch('arc.reaction.reaction.map_reaction') as map_reaction:
@@ -1713,8 +1713,10 @@ H       1.12853146   -0.86793870    0.06973060"""
         other = rxn.copy()
         other.ts_species.e0, other.ts_species.e0_atom_corrections_applied = 50.0, True
         other.ts_species.e0_bond_corrections_applied = False
+        other.ts_species.e0_aec_yml_sha256 = 'a' * 64
         other.r_species[0].e0, other.r_species[0].e0_atom_corrections_applied = -10.0, False
         other.r_species[0].e0_bond_corrections_applied = False
+        other.r_species[0].e0_aec_yml_sha256 = 'a' * 64
         other.p_species[0].e0, other.p_species[0].e0_atom_corrections_applied = -20.0, True
         other.p_species[0].e0_bond_corrections_applied = True
         rxn.p_species[0].e0, rxn.p_species[0].e0_atom_corrections_applied = -30.0, True
@@ -1722,8 +1724,11 @@ H       1.12853146   -0.86793870    0.06973060"""
         rxn.copy_e0_values(other)
         self.assertEqual((rxn.ts_species.e0, rxn.ts_species.e0_atom_corrections_applied,
                           rxn.ts_species.e0_bond_corrections_applied), (50.0, True, False))
+        self.assertEqual(rxn.ts_species.e0_aec_yml_sha256, 'a' * 64)
         self.assertEqual((rxn.r_species[0].e0, rxn.r_species[0].e0_atom_corrections_applied,
                           rxn.r_species[0].e0_bond_corrections_applied), (-10.0, False, False))
+        self.assertEqual(rxn.r_species[0].e0_aec_yml_sha256, 'a' * 64)
+        self.assertIsNone(rxn.p_species[0].e0_aec_yml_sha256)
         self.assertEqual((rxn.p_species[0].e0, rxn.p_species[0].e0_atom_corrections_applied,
                           rxn.p_species[0].e0_bond_corrections_applied), (-30.0, True, False))
         rxn.copy_e0_values(None)

@@ -648,27 +648,27 @@ class ARC(object):
 
         self.save_project_info_file()
 
-        process_arc_project(thermo_adapter=self.thermo_adapter.lower(),
-                            kinetics_adapter=self.kinetics_adapter.lower(),
-                            project=self.project,
-                            project_directory=self.project_directory,
-                            species_dict=self.scheduler.species_dict,
-                            reactions=self.scheduler.rxn_list,
-                            output_dict=self.output,
-                            bac_type=self.bac_type,
-                            freq_scale_factor=self.freq_scale_factor,
-                            compute_thermo=self.compute_thermo,
-                            compute_rates=self.compute_rates,
-                            compute_transport=self.compute_transport,
-                            T_min=self.T_min,
-                            T_max=self.T_max,
-                            T_count=self.T_count or 50,
-                            lib_long_desc=self.lib_long_desc,
-                            compare_to_rmg=self.compare_to_rmg,
-                            sp_level=self.arkane_level_of_theory,
-                            freq_level=self.freq_level,
-                            skip_nmd=self.skip_nmd,
-                            )
+        aec_yml_sha256s = process_arc_project(thermo_adapter=self.thermo_adapter.lower(),
+                                              kinetics_adapter=self.kinetics_adapter.lower(),
+                                              project=self.project,
+                                              project_directory=self.project_directory,
+                                              species_dict=self.scheduler.species_dict,
+                                              reactions=self.scheduler.rxn_list,
+                                              output_dict=self.output,
+                                              bac_type=self.bac_type,
+                                              freq_scale_factor=self.freq_scale_factor,
+                                              compute_thermo=self.compute_thermo,
+                                              compute_rates=self.compute_rates,
+                                              compute_transport=self.compute_transport,
+                                              T_min=self.T_min,
+                                              T_max=self.T_max,
+                                              T_count=self.T_count or 50,
+                                              lib_long_desc=self.lib_long_desc,
+                                              compare_to_rmg=self.compare_to_rmg,
+                                              sp_level=self.arkane_level_of_theory,
+                                              freq_level=self.freq_level,
+                                              skip_nmd=self.skip_nmd,
+                                              )
 
         # Determine whether the user supplied the scale factor explicitly, or ARC looked it up.
         _freq_level_for_lookup = self.composite_method if self.composite_method is not None else self.freq_level
@@ -705,6 +705,7 @@ class ARC(object):
                 t0=self.t0,
                 completed_job_records=self.scheduler.completed_job_records,
                 adaptive_levels=self.adaptive_levels,
+                arc_aec_yml_sha256s=aec_yml_sha256s,
             )
         except Exception as e:
             logger.error(f'Could not write output.yml: {e}')

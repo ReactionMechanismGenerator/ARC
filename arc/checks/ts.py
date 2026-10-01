@@ -10,9 +10,9 @@ import numpy as np
 from typing import TYPE_CHECKING
 
 from arc.parser import parser
-from arc.checks.common import (TS_ATOM_MAP_METHOD,
+from arc.checks.common import (IRC_START_GEOMETRY_TOLERANCE,
+                               TS_ATOM_MAP_METHOD,
                                get_index_of_abs_largest_neg_freq,
-                               is_ts_bond_distance_plausible,
                                is_ts_check_exempt,
                                record_ts_check_warning,
                                )
@@ -26,7 +26,7 @@ from arc.common import (ARC_PATH,
                         sum_list_entries,
                         )
 from arc.imports import settings
-from arc.species.converter import check_isomorphism, check_xyz_dict, xyz_from_data, xyz_to_dmat
+from arc.species.converter import check_isomorphism, check_xyz_dict, kabsch, xyz_from_data, xyz_to_dmat
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.statmech.factory import statmech_factory
 
@@ -97,6 +97,7 @@ def check_ts(reaction: ARCReaction,
                     reaction.ts_species.e0 = rxn_copy.ts_species.e0
                     reaction.ts_species.e0_atom_corrections_applied = rxn_copy.ts_species.e0_atom_corrections_applied
                     reaction.ts_species.e0_bond_corrections_applied = rxn_copy.ts_species.e0_bond_corrections_applied
+                    reaction.ts_species.e0_aec_yml_sha256 = rxn_copy.ts_species.e0_aec_yml_sha256
                 check_rxn_e0(reaction=rxn_copy, verbose=verbose)
                 reaction.ts_species.ts_checks['E0'] = rxn_copy.ts_species.ts_checks['E0']
             else:
@@ -240,6 +241,7 @@ def compute_rxn_e0(reaction: ARCReaction,
         species.e0 = None
         species.e0_atom_corrections_applied = None
         species.e0_bond_corrections_applied = None
+        species.e0_aec_yml_sha256 = None
         unique_species.setdefault(species.label, species)
         if species.yml_path:
             logger.warning(f'The E0 of {species.label} is taken from its yml file as is, '
@@ -258,6 +260,7 @@ def compute_rxn_e0(reaction: ARCReaction,
         species.e0 = unique_species[species.label].e0
         species.e0_atom_corrections_applied = unique_species[species.label].e0_atom_corrections_applied
         species.e0_bond_corrections_applied = unique_species[species.label].e0_bond_corrections_applied
+        species.e0_aec_yml_sha256 = unique_species[species.label].e0_aec_yml_sha256
     return rxn_copy
 
 
@@ -541,6 +544,8 @@ def check_irc_species_and_rxn(xyz_1: dict,
                               xyz_2: dict,
                               rxn: ARCReaction | None,
                               endpoint_labels: tuple[str | None, str | None] | None = None,
+                              irc_log_paths: list[str] | None = None,
+                              endpoint_log_paths: list[str] | None = None,
                               ):
     """
     Check that the two species that result from optimizing the outputs of two IRC runs
@@ -571,6 +576,11 @@ def check_irc_species_and_rxn(xyz_1: dict,
         rxn (ARCReaction): The corresponding reaction object instance.
         endpoint_labels (tuple[str | None, str | None], optional): The labels of the species whose geometries are
                                                                    ``xyz_1`` and ``xyz_2``.
+        irc_log_paths (list[str], optional): The IRC logs, in the order of the endpoints. Their starting geometries
+                                             must be the TS geometry for a TS atom map to be recorded.
+        endpoint_log_paths (list[str], optional): The optimization logs of the two endpoint species, in the order of
+                                                  ``xyz_1`` and ``xyz_2``, which must start from the last geometry of
+                                                  the IRC log of the same index and end at ``xyz_1`` and ``xyz_2``.
 
     When the isomorphism comparison establishes the verdict, ``rxn.ts_species.irc_participant_mapping`` records which
     atoms of each endpoint geometry belong to which participant species (see ``_get_irc_participant_mapping``);
@@ -608,17 +618,28 @@ def check_irc_species_and_rxn(xyz_1: dict,
                     else (None, None)
             if reactant_side is not None and product_side is not None:
                 mapping, order_inputs = None, None
+                ts_xyz = rxn.ts_species.get_xyz(generate=False)
+                has_ts = isinstance(ts_xyz, dict) and bool(ts_xyz.get('symbols'))
                 try:
-                    order_inputs = (
-                        _get_irc_endpoints_atom_order_matches_ts(
-                            ts_xyz=rxn.ts_species.get_xyz(generate=False), xyz_1=xyz_1, xyz_2=xyz_2),
-                        _assign_fragments_to_species(r_mols, p_mols) is None)
+                    start_reason = get_irc_start_geometry_reason(ts_xyz, irc_log_paths) if has_ts else 'no_ts'
+                    chain_reason = get_irc_endpoint_chain_reason({1: xyz_1, 2: xyz_2},
+                                                                 endpoint_log_paths,
+                                                                 irc_log_paths) if has_ts else None
+                    order_inputs = (start_reason, chain_reason, _assign_fragments_to_species(r_mols, p_mols) is None)
                 except Exception as e:
-                    logger.warning(f'Could not compare the IRC endpoints of {rxn.ts_species.label} with its TS, '
-                                   f'got:\n{e.__class__.__name__}: {e}\n'
+                    logger.warning(f'Could not compare the IRC geometries of {rxn.ts_species.label} with its '
+                                   f'TS, got:\n{e.__class__.__name__}: {e}\n'
                                    f'The IRC verdict is unaffected.')
                 if order_inputs is not None:
-                    atom_order_matches_ts, sides_distinguishable = order_inputs
+                    start_reason, chain_reason, sides_distinguishable = order_inputs
+                    geometry_reason = start_reason or chain_reason
+                    elements_agree = has_ts and tuple(xyz_1['symbols']) == tuple(ts_xyz['symbols']) \
+                        == tuple(xyz_2['symbols'])
+                    atom_order_matches_ts = None if not has_ts \
+                        else False if (geometry_reason in ('irc_start_geometry_differs',
+                                                           'irc_endpoint_geometry_differs')
+                                       or not elements_agree) \
+                        else True if geometry_reason is None else None
                     try:
                         endpoint_atoms = {1: _get_irc_fragment_atom_indices(xyz_1),
                                           2: _get_irc_fragment_atom_indices(xyz_2)}
@@ -641,9 +662,10 @@ def check_irc_species_and_rxn(xyz_1: dict,
                             rxn=rxn,
                             reactants=reactants,
                             endpoint_xyzs={1: xyz_1, 2: xyz_2},
+                            endpoint_fragments={1: frags_1, 2: frags_2},
                             reactant_endpoint=reactant_side[0],
-                            atom_order_matches_ts=atom_order_matches_ts,
-                            ts_xyz=rxn.ts_species.get_xyz(generate=False),
+                            ts_xyz=ts_xyz,
+                            irc_geometry_reason=geometry_reason,
                             sides_distinguishable=sides_distinguishable,
                         )
                     except Exception as e:
@@ -862,8 +884,9 @@ def _get_irc_participant_mapping(reactants: list,
         sides_distinguishable (bool, optional): Whether the reactants and the products are not graph-isomorphic to
                                                 each other. When they are (e.g., ``CH3 + CH4 <=> CH4 + CH3``), which
                                                 endpoint is called the reactants is a convention.
-        atom_order_matches_ts (bool | None, optional): Whether the endpoint geometries follow the atom order of the TS
-                                                        geometry the IRC was run from; ``None`` if not checked.
+        atom_order_matches_ts (bool | None, optional): Whether every IRC started from a geometry congruent with the TS
+                                                        geometry, atom for atom (the IRC start geometry check);
+                                                        ``None`` if that could not be checked.
 
     Returns:
         dict: ``{'reactants': side, 'products': side, 'sides_distinguishable': bool,
@@ -902,38 +925,48 @@ def _get_irc_participant_mapping(reactants: list,
 def get_ts_atom_map(rxn: ARCReaction,
                     reactants: list[ARCSpecies],
                     endpoint_xyzs: dict[int, dict],
+                    endpoint_fragments: dict[int, list[Molecule]],
                     reactant_endpoint: int,
-                    atom_order_matches_ts: bool | None,
                     ts_xyz: dict | None,
+                    irc_geometry_reason: str | None,
                     sides_distinguishable: bool = True,
                     ) -> tuple[dict | None, str | None]:
     """
     Get the TS atom of every reactant atom and of every product atom of a reaction whose IRC endpoints were matched
-    to its reactants and products, from a label-preserving isomorphism of two condensed graphs of reaction (CGRs),
-    checked against the distances of the TS geometry.
+    to its reactants and products, from a label-preserving isomorphism of two condensed graphs of reaction (CGRs).
 
     The reactant-indexed CGR has the concatenated reactant atoms (``get_reactants_and_products`` order, repeats
     expanded, the order ``rxn.atom_map`` counts in) as nodes labelled by element, and an edge for every bond of the
     reactants or of the products (``rxn.get_bonds()``, both already in reactant atom indices), labelled by whether it
-    is in the reactants and whether it is in the products. The TS-indexed CGR has the TS atoms as nodes and the bonds
-    of the reactant endpoint and of the product endpoint geometries as edges, labelled the same way. Atom ``i`` of an
-    endpoint is taken to be atom ``i`` of the TS when the element sequences agree. Before the CGRs are compared, the
-    bond graph of each endpoint must be isomorphic to the bond graph of its side. An isomorphism ``t`` of the first CGR
-    onto the second states that reactant atom ``i`` is TS atom ``t[i]``, and product atom ``j`` is TS atom
-    ``t[atom_map.index(j)]``. The identity is preferred when it is a solution; otherwise the first isomorphism found
-    is taken. When the reactants and the products are isomorphic to each other (``sides_distinguishable`` is
-    ``False``), the endpoints are also tried in the opposite roles. The map is kept only if, on the TS geometry, every
-    bond of both the reactants and the products is at a bonded distance and every bond that forms or breaks is at
-    most a partial-bond distance (``is_ts_bond_distance_plausible``). Neither ``rxn.atom_map`` nor anything else is
+    is in the reactants and whether it is in the products. The TS-indexed CGR has the TS atoms as nodes and, as edges,
+    the connectivity of the reactant endpoint and of the product endpoint, taken from the ``Molecule`` fragments the
+    IRC verdict perceived (``_get_endpoint_bonds_from_fragments``), labelled the same way. Only connectivity and
+    element are used, never bond orders.
+
+    Atom ``i`` of an endpoint is taken to be atom ``i`` of the TS. That rests on ARC starting each IRC from the TS
+    geometry, which is verified from the first geometry of each IRC log, and the endpoint geometries on those
+    IRC logs through the endpoint optimization logs (``irc_geometry_reason``, from ``get_irc_start_geometry_reason``
+    and ``get_irc_endpoint_chain_reason``), and on the ESS keeping the atom order of its input within a log and ARC's
+    parsing and writing keeping it too. Before the CGRs are compared, the connectivity of each endpoint must be
+    isomorphic to the bond graph of its side. An isomorphism ``t`` of the first CGR onto the second states that
+    reactant atom ``i`` is TS atom ``t[i]``, and product atom ``j`` is TS atom ``t[atom_map.index(j)]``. The map is
+    a constitutional (2D) correspondence. The identity is preferred when it is a solution; otherwise the first
+    isomorphism the matcher finds is taken, so symmetry-equivalent atoms, diastereotopic ones included, follow a
+    deterministic convention that is not canonical across networkx versions, and the number of equivalent maps is
+    not stated. When the reactants and the products are isomorphic to each other (``sides_distinguishable`` is
+    ``False``), the endpoints are also tried in the opposite roles. Neither ``rxn.atom_map`` nor anything else is
     altered.
 
     Args:
         rxn (ARCReaction): The reaction, with its atom map already set (it is never computed here).
         reactants (list[ARCSpecies]): The reactants, repeated species included (``get_reactants_and_products``).
         endpoint_xyzs (dict[int, dict]): The two IRC endpoint geometries, keyed ``1`` and ``2``.
+        endpoint_fragments (dict[int, list[Molecule]]): The fragments the IRC verdict perceived on each endpoint.
         reactant_endpoint (int): The endpoint (``1`` or ``2``) that was matched to the reactants.
-        atom_order_matches_ts (bool | None): Whether atom ``i`` of an endpoint is atom ``i`` of the TS.
         ts_xyz (dict | None): The TS geometry.
+        irc_geometry_reason (str | None): ``None`` when every IRC log starts from the TS geometry and the endpoint
+                                          geometries follow from the IRC logs, otherwise the reason from
+                                          ``get_irc_start_geometry_reason`` or ``get_irc_endpoint_chain_reason``.
         sides_distinguishable (bool, optional): Whether the reactants and the products are not isomorphic.
 
     Returns:
@@ -943,10 +976,8 @@ def get_ts_atom_map(rxn: ARCReaction,
                                         endpoint that served as the reactants, or ``None`` and one of
                                         ``TS_ATOM_MAP_UNAVAILABLE_REASONS``.
     """
-    if atom_order_matches_ts is None or not isinstance(ts_xyz, dict):
+    if not isinstance(ts_xyz, dict) or not ts_xyz.get('symbols'):
         return None, 'no_ts'
-    if not atom_order_matches_ts:
-        return None, 'atom_order_mismatch'
     atom_map = getattr(rxn, '_atom_map', None)
     n_atoms = len(atom_map) if isinstance(atom_map, (list, tuple)) else 0
     if not n_atoms or sorted(atom_map) != list(range(n_atoms)):
@@ -958,18 +989,28 @@ def get_ts_atom_map(rxn: ARCReaction,
                        f'got:\n{e.__class__.__name__}: {e}')
         return None, 'no_atom_map'
     r_symbols = [atom.element.symbol for spc in reactants for atom in spc.mol.atoms]
-    ts_symbols = list(endpoint_xyzs[1]['symbols'])
+    ts_symbols = list(ts_xyz['symbols'])
     if len(r_symbols) != n_atoms or len(ts_symbols) != n_atoms:
         return None, 'atom_map_contradicts_ts'
+    if irc_geometry_reason is not None:
+        return None, irc_geometry_reason
+    endpoint_bonds = dict()
+    for endpoint in (1, 2):
+        bonds = _get_endpoint_bonds_from_fragments(endpoint_xyzs[endpoint], endpoint_fragments[endpoint])
+        if bonds is None or list(endpoint_xyzs[endpoint]['symbols']) != ts_symbols:
+            logger.warning(f'The fragments the IRC verdict perceived on endpoint {endpoint} of '
+                           f'{rxn.ts_species.label} cannot be tied to its geometry and to the TS atoms, '
+                           f'so no TS atom map is recorded.')
+            return None, 'endpoint_perception_mismatch'
+        endpoint_bonds[endpoint] = bonds
     reactant_graph = _get_condensed_graph_of_reaction(r_symbols, r_bonds, p_bonds)
     other_endpoint = 2 if reactant_endpoint == 1 else 1
     orientations = [(reactant_endpoint, other_endpoint)]
     if not sides_distinguishable:
         orientations.append((other_endpoint, reactant_endpoint))
-    endpoints_perceived, geometry_contradicts = False, False
+    endpoints_perceived = False
     for r_endpoint, p_endpoint in orientations:
-        r_endpoint_bonds = _get_endpoint_bonds(endpoint_xyzs[r_endpoint])
-        p_endpoint_bonds = _get_endpoint_bonds(endpoint_xyzs[p_endpoint])
+        r_endpoint_bonds, p_endpoint_bonds = endpoint_bonds[r_endpoint], endpoint_bonds[p_endpoint]
         if not (_are_bond_graphs_isomorphic(r_symbols, r_bonds, ts_symbols, r_endpoint_bonds)
                 and _are_bond_graphs_isomorphic(r_symbols, p_bonds, ts_symbols, p_endpoint_bonds)):
             continue
@@ -979,9 +1020,6 @@ def get_ts_atom_map(rxn: ARCReaction,
                                                                              r_endpoint_bonds,
                                                                              p_endpoint_bonds))
         if isomorphism is None:
-            continue
-        if not _does_ts_geometry_support_map(ts_xyz, isomorphism, r_bonds, p_bonds):
-            geometry_contradicts = True
             continue
         product_atom_to_reactant_atom = {product_atom: reactant_atom
                                          for reactant_atom, product_atom in enumerate(atom_map)}
@@ -993,46 +1031,137 @@ def get_ts_atom_map(rxn: ARCReaction,
                 'ts_atom_order_follows_reactants': isomorphism == list(range(n_atoms)),
                 }, None
     if not endpoints_perceived:
-        logger.warning(f'The bonds perceived on the IRC endpoints of {rxn.ts_species.label} are not those of the '
-                       f'species of {rxn}, so no TS atom map is recorded.')
+        logger.warning(f'The connectivity the IRC verdict perceived on the endpoints of {rxn.ts_species.label} is '
+                       f'not that of the species of {rxn}, so no TS atom map is recorded.')
         return None, 'endpoint_perception_mismatch'
-    if geometry_contradicts:
-        logger.warning(f'The distances in the TS geometry of {rxn.ts_species.label} contradict the bonds the atom map '
-                       f'of {rxn} gives it, so no TS atom map is recorded.')
-        return None, 'ts_geometry_contradicts_map'
     logger.warning(f'The atom map of {rxn} contradicts the bonds the IRC endpoints of {rxn.ts_species.label} '
                    f'form and break, so no TS atom map is recorded. The atom map is left as it is.')
     return None, 'atom_map_contradicts_ts'
 
 
-def _does_ts_geometry_support_map(ts_xyz: dict,
-                                  isomorphism: list[int],
-                                  r_bonds: list[tuple[int, int]],
-                                  p_bonds: list[tuple[int, int]],
-                                  ) -> bool:
+def are_geometries_congruent(reference_xyz: dict,
+                             xyz: dict,
+                             tolerance: float = IRC_START_GEOMETRY_TOLERANCE,
+                             ) -> bool:
     """
-    Check the bonds of a TS atom map against the distances of the TS geometry: a bond of both the reactants and the
-    products must be at a bonded distance, and a bond that forms or breaks at most at a partial-bond distance.
+    Check whether a geometry is congruent with a reference geometry, atom for atom.
+
+    The two geometries must have the same element sequence. The isotopes of the reference are then given to the
+    geometry (a parsed log states none, and the center of mass that ``kabsch`` rotates about is mass-weighted), and
+    they are superimposed by ``kabsch`` on index-matched atoms, with no permutation of the atoms, by a proper rotation
+    and a translation only (so a mirror image is not accepted). The root of the summed squared deviations it returns
+    must not exceed ``tolerance``.
+
+    Args:
+        reference_xyz (dict): The reference geometry.
+        xyz (dict): The geometry to compare.
+        tolerance (float, optional): The largest root of the summed squared deviations in Angstrom.
+
+    Returns:
+        bool: Whether the geometry is congruent with the reference.
+    """
+    if tuple(reference_xyz['symbols']) != tuple(xyz['symbols']) or len(reference_xyz['coords']) != len(xyz['coords']):
+        return False
+    if reference_xyz.get('isotopes') is not None:
+        xyz = dict(xyz, isotopes=reference_xyz['isotopes'])
+    return bool(kabsch(reference_xyz, xyz) <= tolerance)
+
+
+def get_irc_start_geometry_reason(ts_xyz: dict,
+                                  irc_log_paths: list[str] | None,
+                                  ) -> str | None:
+    """
+    Verify, from the logs, that every IRC was started from the TS geometry in the TS atom order, which is what makes
+    atom ``i`` of an IRC endpoint atom ``i`` of the TS. The first geometry of each IRC log (``parse_irc_start_geometry``)
+    is compared with the TS geometry atom for atom, without permuting atoms (see
+    ``is_irc_start_geometry_the_ts_geometry``).
 
     Args:
         ts_xyz (dict): The TS geometry.
-        isomorphism (list[int]): Entry ``i`` is the TS atom of reactant atom ``i``.
-        r_bonds (list[tuple[int, int]]): The reactant bonds, in reactant atom indices.
-        p_bonds (list[tuple[int, int]]): The product bonds, in reactant atom indices.
+        irc_log_paths (list[str], optional): The IRC logs.
 
     Returns:
-        bool: Whether every bond is at a plausible distance.
+        str | None: ``None`` when every log starts from the TS geometry, ``'irc_start_geometry_unavailable'`` when
+                    there is no log or the starting geometry of one cannot be read, and
+                    ``'irc_start_geometry_differs'`` when one differs from the TS geometry.
     """
-    dmat = xyz_to_dmat(ts_xyz)
-    symbols = ts_xyz['symbols']
-    r_set = {tuple(sorted(bond)) for bond in r_bonds}
-    p_set = {tuple(sorted(bond)) for bond in p_bonds}
-    for bond in r_set | p_set:
-        atom_1, atom_2 = isomorphism[bond[0]], isomorphism[bond[1]]
-        if not is_ts_bond_distance_plausible(symbols[atom_1], symbols[atom_2], float(dmat[atom_1, atom_2]),
-                                             partial=not (bond in r_set and bond in p_set)):
-            return False
-    return True
+    paths = [path for path in (irc_log_paths or list()) if path]
+    if not paths or len(paths) != len(irc_log_paths):
+        return 'irc_start_geometry_unavailable'
+    start_xyzs = list()
+    for path in paths:
+        try:
+            start_xyz = parser.parse_irc_start_geometry(log_file_path=path) if os.path.isfile(path) else None
+        except Exception as e:
+            logger.warning(f'Could not read the starting geometry of the IRC log {path}, '
+                           f'got:\n{e.__class__.__name__}: {e}')
+            start_xyz = None
+        if start_xyz is None:
+            logger.warning(f'Could not read the starting geometry of the IRC log {path}, '
+                           f'so no TS atom map is recorded.')
+            return 'irc_start_geometry_unavailable'
+        start_xyzs.append(start_xyz)
+    for path, start_xyz in zip(paths, start_xyzs):
+        if not are_geometries_congruent(ts_xyz, start_xyz):
+            logger.warning(f'The IRC log {path} does not start from the TS geometry, '
+                           f'so no TS atom map is recorded.')
+            return 'irc_start_geometry_differs'
+    return None
+
+
+def get_irc_endpoint_chain_reason(endpoint_xyzs: dict[int, dict],
+                                  endpoint_log_paths: list[str] | None,
+                                  irc_log_paths: list[str] | None,
+                                  ) -> str | None:
+    """
+    Verify, from the logs, that each IRC endpoint geometry follows from the IRC log of the same index, which is what
+    keeps endpoint atom ``i`` the atom ``i`` that the IRC started from. ARC optimizes the geometry parsed from the
+    last point of an IRC log (the IRC log of index ``k`` is the one whose geometry the species of endpoint ``k + 1``
+    was created from) and passes the final geometry of that optimization to the IRC check.
+
+    For each endpoint the optimization log's first geometry (``parse_irc_start_geometry``) must be congruent with
+    the last geometry of the IRC log (``are_geometries_congruent``), and the endpoint geometry must be the final
+    geometry of the optimization log, exactly.
+
+    Args:
+        endpoint_xyzs (dict[int, dict]): The two IRC endpoint geometries, keyed ``1`` and ``2``.
+        endpoint_log_paths (list[str], optional): The optimization logs of the two endpoint species, in order.
+        irc_log_paths (list[str], optional): The IRC logs, in the order of the endpoints.
+
+    Returns:
+        str | None: ``None`` when the chain holds, ``'irc_start_geometry_unavailable'`` when a log is missing or a
+                    geometry cannot be read, and ``'irc_endpoint_geometry_differs'`` when a link of the chain breaks.
+    """
+    if not endpoint_log_paths or not irc_log_paths or len(endpoint_log_paths) != 2 or len(irc_log_paths) != 2 \
+            or not all(endpoint_log_paths) or not all(irc_log_paths):
+        return 'irc_start_geometry_unavailable'
+    for k in (0, 1):
+        endpoint_xyz = endpoint_xyzs[k + 1]
+        try:
+            paths_exist = os.path.isfile(endpoint_log_paths[k]) and os.path.isfile(irc_log_paths[k])
+            final_xyz = parser.parse_geometry(log_file_path=endpoint_log_paths[k]) if paths_exist else None
+            opt_start_xyz = parser.parse_irc_start_geometry(log_file_path=endpoint_log_paths[k]) \
+                if paths_exist else None
+            irc_last_xyz = parser.parse_geometry(log_file_path=irc_log_paths[k]) if paths_exist else None
+        except Exception as e:
+            logger.warning(f'Could not read the geometries of the logs of IRC endpoint {k + 1}, '
+                           f'got:\n{e.__class__.__name__}: {e}')
+            final_xyz = opt_start_xyz = irc_last_xyz = None
+        if final_xyz is None or opt_start_xyz is None or irc_last_xyz is None:
+            logger.warning(f'Could not read the geometries of the logs of IRC endpoint {k + 1}, '
+                           f'so no TS atom map is recorded.')
+            return 'irc_start_geometry_unavailable'
+        if tuple(final_xyz['symbols']) != tuple(endpoint_xyz['symbols']) \
+                or not np.array_equal(np.array(final_xyz['coords'], dtype=float),
+                                      np.array(endpoint_xyz['coords'], dtype=float)):
+            logger.warning(f'IRC endpoint {k + 1} is not the final geometry of its optimization log, '
+                           f'so no TS atom map is recorded.')
+            return 'irc_endpoint_geometry_differs'
+        if not are_geometries_congruent(irc_last_xyz, opt_start_xyz):
+            logger.warning(f'The optimization of IRC endpoint {k + 1} did not start from the last geometry of its '
+                           f'IRC log, so no TS atom map is recorded.')
+            return 'irc_endpoint_geometry_differs'
+    return None
 
 
 def _are_bond_graphs_isomorphic(symbols_1: list[str],
@@ -1061,19 +1190,49 @@ def _are_bond_graphs_isomorphic(symbols_1: list[str],
     return nx.is_isomorphic(graphs[0], graphs[1], node_match=lambda a, b: a['element'] == b['element'])
 
 
-def _get_endpoint_bonds(xyz: dict) -> list[tuple[int, int]]:
+def _get_endpoint_bonds_from_fragments(xyz: dict,
+                                       fragments: list[Molecule],
+                                       ) -> list[tuple[int, int]] | None:
     """
-    Get the distance-matrix-based bonds of an IRC endpoint geometry, the same bond list the endpoint fragments of
-    ``_get_irc_fragment_atom_indices`` are built from.
+    Get the connectivity of an IRC endpoint from the ``Molecule`` fragments the IRC verdict perceived on it, in the
+    atom indices of the endpoint geometry. Bond orders are ignored.
+
+    A perception may rebuild and reorder a ``Molecule``, so the atoms of a fragment are tied to the endpoint atoms by
+    the exact equality of their coordinates, with no tolerance: every fragment atom must carry coordinates, equal to
+    those of exactly one endpoint atom of the same element, and the fragment atoms together must cover every
+    endpoint atom once.
 
     Args:
         xyz (dict): The Cartesian coordinates of the IRC endpoint.
+        fragments (list[Molecule]): The perceived fragments.
 
     Returns:
-        list[tuple[int, int]]: The bonds, each a sorted pair of 0-based atom indices.
+        list[tuple[int, int]] | None: The bonds, each a sorted pair of 0-based endpoint atom indices, or ``None`` when
+                                      the fragment atoms cannot be tied to the endpoint atoms one to one.
     """
-    bonds = get_bonds_from_dmat(dmat=xyz_to_dmat(xyz), elements=xyz['symbols'], n_fragments=0)
-    return [tuple(sorted(bond)) for bond in bonds]
+    atoms_at = dict()
+    for index, coords in enumerate(xyz['coords']):
+        atoms_at.setdefault(tuple(float(c) for c in coords), list()).append(index)
+    bonds, tied = list(), set()
+    for mol in fragments:
+        index_of = dict()
+        for atom in mol.atoms:
+            coords = getattr(atom, 'coords', None)
+            if coords is None or len(coords) != 3:
+                return None
+            candidates = atoms_at.get(tuple(float(c) for c in coords), list())
+            if len(candidates) != 1 or xyz['symbols'][candidates[0]] != atom.element.symbol \
+                    or candidates[0] in tied:
+                return None
+            tied.add(candidates[0])
+            index_of[id(atom)] = candidates[0]
+        for atom in mol.atoms:
+            for neighbor in atom.edges:
+                if id(neighbor) not in index_of:
+                    return None
+                if index_of[id(atom)] < index_of[id(neighbor)]:
+                    bonds.append((index_of[id(atom)], index_of[id(neighbor)]))
+    return bonds if len(tied) == len(xyz['symbols']) else None
 
 
 def _get_condensed_graph_of_reaction(symbols: list[str],
@@ -1132,29 +1291,6 @@ def _find_cgr_isomorphism(graph_1: nx.Graph, graph_2: nx.Graph) -> list[int] | N
                                                      node_match=_node_match, edge_match=_edge_match)
     mapping = next(matcher.isomorphisms_iter(), None)
     return [mapping[i] for i in range(n_atoms)] if mapping is not None else None
-
-
-def _get_irc_endpoints_atom_order_matches_ts(ts_xyz: dict | None,
-                                             xyz_1: dict,
-                                             xyz_2: dict,
-                                             ) -> bool | None:
-    """
-    Check whether both IRC endpoint geometries have the element sequence of the TS geometry the IRC was run from.
-    ARC runs the IRC from the final TS geometry and optimizes the endpoints from the IRC output, and the ESS keep
-    the input atom order throughout, so an equal element sequence states that atom ``i`` of an endpoint is atom
-    ``i`` of the TS. The check cannot detect a swap of two atoms of the same element.
-
-    Args:
-        ts_xyz (dict, optional): The TS geometry.
-        xyz_1 (dict): The first IRC endpoint geometry.
-        xyz_2 (dict): The second IRC endpoint geometry.
-
-    Returns:
-        bool | None: ``None`` if there is no TS geometry to compare to.
-    """
-    if not isinstance(ts_xyz, dict) or not ts_xyz.get('symbols'):
-        return None
-    return tuple(xyz_1['symbols']) == tuple(ts_xyz['symbols']) == tuple(xyz_2['symbols'])
 
 
 def check_imaginary_frequencies(imaginary_freqs: list[float] | None) -> bool:

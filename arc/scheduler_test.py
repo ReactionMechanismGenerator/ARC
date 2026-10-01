@@ -2114,15 +2114,18 @@ H      -0.38158795    1.01273118   -0.02607927""")),
     def test_switch_ts_forgets_the_e0_and_the_arkane_record_of_the_abandoned_guess(self):
         """Test that the next TS guess does not inherit the E0, its correction switches or the Arkane rotor modes"""
         species = self.sched1.species_dict['C2H6']
-        for attribute in ('e0', 'e0_atom_corrections_applied', 'e0_bond_corrections_applied', 'arkane_rotor_modes'):
+        for attribute in ('e0', 'e0_atom_corrections_applied', 'e0_bond_corrections_applied', 'e0_aec_yml_sha256',
+                          'arkane_rotor_modes'):
             self.addCleanup(setattr, species, attribute, getattr(species, attribute))
         self.addCleanup(setattr, species, 'ts_guesses_exhausted', species.ts_guesses_exhausted)
         species.ts_guesses_exhausted = True
         species.e0, species.e0_atom_corrections_applied, species.e0_bond_corrections_applied = 50.0, True, False
+        species.e0_aec_yml_sha256 = 'a' * 64
         species.arkane_rotor_modes = ['HinderedRotor']
         with patch.object(self.sched1, 'determine_most_likely_ts_conformer'), \
                 patch.object(self.sched1, 'delete_all_species_jobs'):
             self.sched1.switch_ts(label='C2H6')
+        self.assertIsNone(species.e0_aec_yml_sha256)
         self.assertIsNone(species.e0)
         self.assertIsNone(species.e0_atom_corrections_applied)
         self.assertIsNone(species.e0_bond_corrections_applied)
@@ -3807,6 +3810,10 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         mock_check_irc_species_and_rxn.assert_called_once()
         self.assertEqual(mock_check_irc_species_and_rxn.call_args.kwargs['endpoint_labels'],
                          (irc_label_1, irc_label_2))
+        self.assertEqual(mock_check_irc_species_and_rxn.call_args.kwargs['irc_log_paths'],
+                         ['irc_f.out', 'irc_r.out'])
+        self.assertEqual(mock_check_irc_species_and_rxn.call_args.kwargs['endpoint_log_paths'],
+                         [f'{irc_label_1}_geo.out', f'{irc_label_2}_geo.out'])
         self.assertEqual(sched.species_dict[ts_label].chosen_ts, 1)
         self.assertIn(1, sched.species_dict[ts_label].chosen_ts_list)
         self.assertNotIn(irc_label_1, sched.species_dict)
