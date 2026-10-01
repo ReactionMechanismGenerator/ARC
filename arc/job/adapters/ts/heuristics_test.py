@@ -1216,7 +1216,7 @@ H      -3.45360689    0.15275707   -0.76116277""")
         hcco = ARCSpecies(label='HCCO', smiles='[CH]=C=O', xyz=hcco_xyz)
         thf = ARCSpecies(label='THF', smiles='C1CCOC1', xyz=thf_xyz)
         ketene = ARCSpecies(label='CH2CO', smiles='C=C=O', xyz=ketene_xyz)
-        thf_rad = ARCSpecies(label='THF_rad', smiles='[CH]1CCOC1', xyz=thf_rad_xyz)
+        thf_rad = ARCSpecies(label='THF_rad', smiles='[CH]1CCCO1', xyz=thf_rad_xyz)
         rxn = ARCReaction(r_species=[hcco, thf], p_species=[ketene, thf_rad])
         self.assertEqual(rxn.family, 'H_Abstraction')
         heuristics = HeuristicsAdapter(job_type='tsg',
@@ -2293,7 +2293,7 @@ H      -1.63677149   -0.94539289   -0.13246443""")
         product_dicts = self._get_h_abs_product_dicts(rxn)
         original_mol_from_xyz = ARCSpecies.mol_from_xyz
 
-        def charge_separated_mol_from_xyz(spc, xyz=None, get_cheap=False):
+        def charge_separated_mol_from_xyz(spc, xyz=None, get_cheap=False, **kwargs):
             """Perceive isoxazole as its charge separated aromatic form, anything else as usual."""
             if spc.mol is not None and spc.mol.get_formula() == 'C3H3NO':
                 spc.mol = Molecule().from_adjacency_list(isoxazole_charge_separated_adjlist,
@@ -2301,7 +2301,7 @@ H      -1.63677149   -0.94539289   -0.13246443""")
                                                          raise_charge_exception=False,
                                                          )
                 return None
-            return original_mol_from_xyz(spc, xyz=xyz, get_cheap=get_cheap)
+            return original_mol_from_xyz(spc, xyz=xyz, get_cheap=get_cheap, **kwargs)
 
         with patch.object(ARCSpecies, 'mol_from_xyz', charge_separated_mol_from_xyz):
             self.assertTrue(any(atom.charge for atom in isoxazole.copy().mol.atoms))
