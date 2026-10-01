@@ -28,6 +28,9 @@ import arc.parser.parser as parser
 from arc.common import get_logger
 from arc.imports import pipe_submit, settings
 
+from arc.level import Level, set_recorded_irc_level, set_recorded_irc_log_level, set_recorded_level
+from arc.species.species import CONFORMER_ENERGY_KIND_ELECTRONIC
+
 from arc.job.pipe.pipe_state import (
     PipeRunState,
     TaskState,
@@ -647,8 +650,16 @@ def ingest_completed_task(pipe_run_id: str, pipe_root: str, spec: TaskSpec,
         _ingest_rotor_scan_1d(pipe_run_id, pipe_root, spec, state, species_dict, label)
 
 
+def _task_level(spec) -> Level | None:
+    """The level a pipe task requested, as a ``Level``, or ``None`` if the task states none."""
+    return Level(repr=spec.level) if spec.level else None
+
+
 def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, conformer_index):
-    """Ingest a completed conf_opt task: update geometry and opt-level energy."""
+    """
+    Ingest a completed conf_opt task: update the geometry and the opt-level energy, and record the task's level.
+    Where the optimized geometry parses but the energy does not, the energy is ``None`` with no recorded kind.
+    """
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
     species = species_dict[label]
     try:
@@ -665,12 +676,16 @@ def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, confor
         return
     if conformer_index < len(species.conformers) and xyz is not None:
         species.conformers[conformer_index] = xyz
-    if conformer_index < len(species.conformer_energies) and e_elect is not None:
-        species.conformer_energies[conformer_index] = e_elect
+        species.record_conformer_geometry_level(conformer_index, _task_level(spec))
+        if conformer_index < len(species.conformer_energies):
+            species.conformer_energies[conformer_index] = e_elect
+            species.record_conformer_energy_source(
+                conformer_index, CONFORMER_ENERGY_KIND_ELECTRONIC if e_elect is not None else None,
+                _task_level(spec))
 
 
 def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conformer_index):
-    """Ingest a completed conf_sp task: update energy only."""
+    """Ingest a completed conf_sp task: update the energy and record the task's level as its source."""
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
     species = species_dict[label]
     try:
@@ -686,6 +701,7 @@ def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conform
         return
     if conformer_index < len(species.conformer_energies) and e_elect is not None:
         species.conformer_energies[conformer_index] = e_elect
+        species.record_conformer_energy_source(conformer_index, CONFORMER_ENERGY_KIND_ELECTRONIC, _task_level(spec))
 
 
 def _ingest_ts_guess_batch(run_id, pipe_root, spec, state, species_dict, label):
@@ -787,6 +803,7 @@ def _ingest_species_freq(run_id, pipe_root, spec, state, species_dict, label, ou
         elif 'paths' not in output[label]:
             output[label]['paths'] = {}
         output[label]['paths']['freq'] = output_file
+        set_recorded_level(output[label].setdefault('levels', dict()), 'freq', _task_level(spec))
 
 
 def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
@@ -809,6 +826,12 @@ def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
         irc_paths = output[label]['paths'].get('irc', [])
         irc_paths.append(output_file)
         output[label]['paths']['irc'] = irc_paths
+        irc_directions = output[label]['paths'].setdefault('irc_directions', list())
+        del irc_directions[len(irc_paths) - 1:]
+        irc_directions.extend([None] * (len(irc_paths) - 1 - len(irc_directions)))
+        irc_directions.append((spec.ingestion_metadata or dict()).get('irc_direction'))
+        set_recorded_irc_level(output[label].setdefault('levels', dict()), _task_level(spec), len(irc_paths))
+        set_recorded_irc_log_level(output[label]['paths'], _task_level(spec))
 
 
 def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):

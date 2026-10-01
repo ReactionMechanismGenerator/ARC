@@ -10,6 +10,8 @@ file will not exist rather than be partially written.
 """
 
 import datetime
+import glob
+import json
 import math
 import os
 import re
@@ -25,21 +27,24 @@ from arc.common import (
     VERSION,
     get_git_commit,
     get_logger,
+    is_str_float,
     is_str_int,
     read_yaml_file,
     save_yaml_file,
 )
-from arc.constants import E_h_kJmol
+from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.job.adapters.common import open_shell_character_source
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
+from arc.level import RECORDED_LEVEL_STRIPPED_KEYS, adaptive_levels_as_list, level_as_plain_dict
 from arc.parser.adapters.gaussian import parse_gaussian_constraints
 from arc.parser.adapters.orca import parse_orca_constraints
 from arc.parser.parser import (
     determine_ess,
     parse_1d_scan_energies,
+    parse_dipole_moment,
     parse_e_elect,
     parse_ess_version,
     parse_opt_steps,
@@ -51,13 +56,15 @@ from arc.parser.parser import (
     parse_geometry,
     parse_scan_args,
 )
-from arc.species.converter import xyz_to_str
-from arc.species.vectors import calculate_dihedral_angle
+from arc.reaction.reaction import ATOM_MAP_SOURCES
+from arc.species.converter import get_element_mass_from_xyz, get_most_common_isotope_for_element, xyz_to_str
+from arc.species.vectors import calculate_dihedral_angle, get_principal_moments_of_inertia
 from arc.statmech.arkane import (
     AEC_SECTION_START, AEC_SECTION_END,
     MBAC_SECTION_START, MBAC_SECTION_END,
     PBAC_SECTION_START, PBAC_SECTION_END,
-    find_best_across_files, get_qm_corrections_files,
+    find_best_across_files, get_arc_aec_yml_sha256, get_arkane_treatment, get_file_sha256,
+    get_qm_corrections_files,
 )
 from arc.parser_evidence import (
     EVIDENCE_FILENAME,
@@ -71,6 +78,9 @@ from arc.parser_evidence import (
 
 
 logger = get_logger()
+
+LEVEL_JOB_KEYS = ('opt', 'freq', 'sp', 'composite', 'irc')
+LEVEL_DICT_STRIPPED_KEYS = ('repr', 'compatible_ess')
 
 HESSIAN_METHOD_ANALYTIC = 'analytic'
 HESSIAN_METHOD_FD_GRADIENT = 'finite_difference_gradient'
@@ -92,6 +102,10 @@ GAUSSIAN_FREQ_KEYWORD_REGEX = re.compile(
     r'\bfreq(?:uency)?(?![a-z])(?:\s*=?\s*\(([^)]*)\)|\s*=\s*([^\s,]+))?',
     re.IGNORECASE)
 
+GAUSSIAN_ATOM_MASS_REGEX = re.compile(r'^\s*Atom\s+\d+\s+has atomic number\s+(\d+)\s+and mass\s+(\d+\.\d+)\s*$')
+GAUSSIAN_DIPOLE_TOTAL_REGEX = re.compile(r'Tot=\s*-?\d+\.\d+')
+GAUSSIAN_POPULATION_DENSITY_REGEX = re.compile(r'Population analysis using the\s+(\S+)\s+density', re.IGNORECASE)
+
 ORCA_ANALYTIC_HESSIAN_HF_METHODS = frozenset({'hf', 'rhf', 'uhf', 'rohf'})
 ORCA_DOUBLE_HYBRID_MARKERS = ('2plyp', 'dsd', 'pwpb95', 'qidh', 'pbe0dh', 'pbe0-dh', 'wb97x-2')
 ORCA_NO_ANALYTIC_HESSIAN_MARKERS = ('ri-jk', 'rijk')
@@ -107,6 +121,14 @@ ARKANE_BANNER_SCAN_LINE_LIMIT = 40
 ARKANE_VERSION_BANNER_REGEX = re.compile(r'^#\s+Version:(.*)$')
 ARKANE_GIT_HEAD_MARKER = 'The current git HEAD for RMG-Py is:'
 ARKANE_GIT_HASH_REGEX = re.compile(r'^[0-9a-f]{7,40}$')
+ARKANE_TORSION_TREATMENT_BY_MODE = {'HinderedRotor': 'hindered_rotor', 'FreeRotor': 'free_rotor'}
+RMG_DATABASE_CONDA_PACKAGE = 'rmgdatabase'
+RMG_DATABASE_CONDA_SEARCH_DEPTH = 6
+RIGID_ROTOR_MOMENT_RELATIVE_TOLERANCE = 1e-3
+RIGID_ROTOR_POINT_GROUP_TOLERANCE = 1e-2
+RIGID_ROTOR_LINEAR_MOMENT_RATIO = 1e-6
+NMD_FREQUENCY_MATCH_TOLERANCE_CM1 = 0.01
+GIT_COMMIT_HASH_REGEX = re.compile(r'^[0-9a-f]{40}$')
 RMG_PY_VERSION_REGEX = re.compile(r'''^__version__\s*=\s*(['"])([^'"]+)\1''', re.MULTILINE)
 
 
@@ -120,6 +142,11 @@ def write_output_yml(
     freq_level=None,
     sp_level=None,
     neb_level=None,
+    scan_level=None,
+    irc_level=None,
+    conformer_opt_level=None,
+    conformer_sp_level=None,
+    ts_guess_level=None,
     composite_method=None,
     freq_scale_factor: float | None = None,
     freq_scale_factor_user_provided: bool = False,
@@ -129,6 +156,7 @@ def write_output_yml(
     irc_requested: bool = True,
     t0: float | None = None,
     completed_job_records: list | None = None,
+    adaptive_levels: dict | None = None,
 ) -> None:
     """
     Write the consolidated output.yml to <project_directory>/output/output.yml.
@@ -146,6 +174,14 @@ def write_output_yml(
         freq_level (Level, optional): Level of theory for frequency calculations.
         sp_level (Level, optional): Level of theory for single-point energies.
         neb_level (Level, optional): Level of theory for NEB TS search (from orca_neb_settings).
+        scan_level (Level, optional): The requested level of the rotor scans, ``None`` if scans were not requested.
+        irc_level (Level, optional): The requested level of the IRC jobs, ``None`` if IRC could not run.
+        conformer_opt_level (Level, optional): The requested level of the conformer optimizations,
+            ``None`` if none could run.
+        conformer_sp_level (Level, optional): The requested level of the conformer single points that follow the
+            conformer optimizations, ``None`` if none could run.
+        ts_guess_level (Level, optional): The requested level at which TS guesses are optimized and compared,
+            ``None`` if the run has no TS.
         composite_method (Level, optional): Composite method (e.g., CBS-QB3, G4).
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor used.
         freq_scale_factor_user_provided (bool): Whether the user explicitly set the scale factor.
@@ -158,6 +194,9 @@ def write_output_yml(
         t0 (float, optional): The epoch timestamp when the ARC run started.
         completed_job_records (list, optional): Lightweight per-job cost records accumulated by the Scheduler
             (see Scheduler._record_completed_job), used for the run-level cost metrics.
+        adaptive_levels (dict, optional): The processed adaptive levels of the run, keyed by
+            ``(min_heavy_atoms, max_heavy_atoms)`` tuples, each mapping job-type tuples to ``Level`` objects.
+            ``None`` when the run does not use adaptive levels.
     """
     doc: dict[str, Any] = {}
 
@@ -170,6 +209,11 @@ def write_output_yml(
     arkane_version, arkane_git_commit = _get_arkane_provenance(project_directory, t0)
     doc['arkane_version'] = arkane_version
     doc['arkane_git_commit'] = arkane_git_commit
+    corrections = _get_energy_corrections(arkane_level_of_theory, bac_type)
+    doc['rmg_database'] = _get_rmg_database_identity(arkane_path=corrections.quantum_corrections_path)
+    aec_levels = (arkane_level_of_theory, composite_method, sp_level) if reactions else (arkane_level_of_theory,)
+    doc['arc_aec_yml_sha256'] = next(
+        (digest for digest in (get_arc_aec_yml_sha256(level) for level in aec_levels) if digest), None)
     doc['datetime_started'] = (
         datetime.datetime.fromtimestamp(t0).strftime('%Y-%m-%d %H:%M') if t0 is not None else None
     )
@@ -185,7 +229,14 @@ def write_output_yml(
     doc['sp_level'] = _level_to_dict(sp_level)
     if neb_level is not None:
         doc['neb_level'] = _level_to_dict(neb_level)
+    doc['scan_level'] = _level_to_dict(scan_level)
+    doc['irc_level'] = _level_to_dict(irc_level)
+    doc['conformer_opt_level'] = _level_to_dict(conformer_opt_level)
+    doc['conformer_sp_level'] = _level_to_dict(conformer_sp_level)
+    doc['ts_guess_level'] = _level_to_dict(ts_guess_level)
+    doc['gsm_level'] = None
     doc['arkane_level_of_theory'] = _level_to_dict(arkane_level_of_theory)
+    doc['adaptive_levels'] = adaptive_levels_as_list(adaptive_levels, strip=LEVEL_DICT_STRIPPED_KEYS)
     doc['freq_scale_factor'] = freq_scale_factor
     freq_scale_factor_key, freq_scale_factor_source = (
         (None, None) if freq_scale_factor_user_provided
@@ -194,7 +245,6 @@ def write_output_yml(
     doc['freq_scale_factor_key'] = freq_scale_factor_key
     doc['freq_scale_factor_source'] = freq_scale_factor_source
     doc['bac_type'] = bac_type
-    corrections = _get_energy_corrections(arkane_level_of_theory, bac_type)
     doc['atom_energy_corrections'] = corrections.aec
     doc['bond_additivity_corrections'] = corrections.bac
 
@@ -226,11 +276,13 @@ def write_output_yml(
             aec_table=corrections.aec, bac_table=corrections.bac,
             aec_key=corrections.aec_key, bac_key=corrections.bac_key,
         )
-        d['energy_corrections'] = _drop_corrections_arkane_did_not_apply(d['energy_corrections'], spc.thermo)
+        d['energy_corrections'] = _drop_unapplied_corrections(d['energy_corrections'], *_correction_switches(spc))
         if spc.is_ts:
             doc['transition_states'].append(d)
         else:
             doc['species'].append(d)
+
+    doc['gsm_level'] = _gsm_level(doc['transition_states'], project_directory)
 
     # ---- reactions --------------------------------------------------------------
     doc['reactions'] = [_rxn_to_dict(rxn) for rxn in reactions]
@@ -291,6 +343,94 @@ def write_output_yml(
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+GSM_XTB_HAMILTONIAN_REGEX = re.compile(r'Hamiltonian\s+GFN2-xTB\b')
+GSM_XTB_PROGRAM_CALL_REGEX = re.compile(r'program call\s*:(.*)')
+GSM_XTB_CHARGE_REGEX = re.compile(r'(?:^|\s)--chrg\s+(-?\d+)(?:\s|$)')
+GSM_XTB_UHF_REGEX = re.compile(r'(?:^|\s)--uhf\s+(\d+)(?:\s|$)')
+GSM_XTB_VERSION_REGEX = re.compile(r'^\s*\*?\s*(xtb version\s+\S.*)$')
+GSM_XTB_SCAN_LINE_LIMIT = 800
+
+
+def _gsm_xtbout_paths(gsm_log: str | None, project_directory: str) -> list[str]:
+    """The archived per-node xtb outputs (``gsm_node_outputs/*.xtbout``) beside a GSM stringfile, sorted."""
+    if not gsm_log or not isinstance(gsm_log, str):
+        return list()
+    gsm_log = gsm_log if os.path.isabs(gsm_log) else os.path.join(project_directory, gsm_log)
+    return sorted(glob.glob(os.path.join(os.path.dirname(gsm_log), 'gsm_node_outputs', '*.xtbout')))
+
+
+def _parse_gsm_xtbout(path: str) -> dict[str, Any]:
+    """
+    Read what one xtb output states about the calculation: the ``version`` banner, whether it ran the GFN2-xTB
+    Hamiltonian (``gfn2``), and the ``charge`` and number of unpaired electrons (``uhf``) of its program call,
+    xtb's defaults (0 and 0) where the call omits a flag. A value of an output with no program call is ``None``
+    (``gfn2`` is ``False`` without the Hamiltonian line). Never raises.
+    """
+    observed: dict[str, Any] = {'version': None, 'gfn2': False, 'charge': None, 'uhf': None}
+    try:
+        with open(path, 'r', errors='ignore') as f:
+            for index, line in enumerate(f):
+                if index >= GSM_XTB_SCAN_LINE_LIMIT:
+                    break
+                version_match = GSM_XTB_VERSION_REGEX.match(line)
+                if version_match and observed['version'] is None:
+                    observed['version'] = version_match.group(1).strip()
+                if GSM_XTB_HAMILTONIAN_REGEX.search(line):
+                    observed['gfn2'] = True
+                call_match = GSM_XTB_PROGRAM_CALL_REGEX.search(line)
+                if call_match:
+                    charge_match = GSM_XTB_CHARGE_REGEX.search(call_match.group(1))
+                    uhf_match = GSM_XTB_UHF_REGEX.search(call_match.group(1))
+                    observed['charge'] = int(charge_match.group(1)) if charge_match else 0
+                    observed['uhf'] = int(uhf_match.group(1)) if uhf_match else 0
+    except OSError:
+        logger.debug(f"Could not read the xtb output '{path}'", exc_info=True)
+    return observed
+
+
+def _get_gsm_ess(gsm_log: str | None, project_directory: str) -> tuple[str | None, str | None]:
+    """
+    The program and version banner the archived xtb outputs of a GSM run state, each ``None`` unless there is
+    at least one output and every output states the same value.
+    """
+    xtbouts = _gsm_xtbout_paths(gsm_log, project_directory)
+    softwares = {_identify_log_ess(path, project_directory) for path in xtbouts}
+    versions = {_parse_gsm_xtbout(path)['version'] for path in xtbouts}
+    software = softwares.pop() if len(softwares) == 1 else None
+    version = versions.pop() if len(versions) == 1 else None
+    return software, version
+
+
+def _gsm_level(ts_records: list[dict], project_directory: str) -> dict | None:
+    """
+    The level of the xtb_gsm path searches of a run: ``{'method': 'gfn2', 'software': 'xtb'}``, or ``None``.
+
+    It is stated only when the run has at least one GSM log and, beside every GSM log, every archived per-node
+    xtb output shows the GFN2-xTB Hamiltonian and a program call with the charge and the number of unpaired
+    electrons (multiplicity minus one) of the TS record.
+
+    Args:
+        ts_records (list[dict]): The transition-state records of the document.
+        project_directory (str): Root directory of the project, against which relative log paths resolve.
+
+    Returns:
+        dict | None: The level, or ``None``.
+    """
+    with_gsm = [record for record in ts_records if record.get('gsm_log')]
+    if not with_gsm:
+        return None
+    for record in with_gsm:
+        multiplicity = record.get('multiplicity')
+        xtbouts = _gsm_xtbout_paths(record['gsm_log'], project_directory)
+        if not xtbouts or not isinstance(multiplicity, int):
+            return None
+        for path in xtbouts:
+            observed = _parse_gsm_xtbout(path)
+            if not observed['gfn2'] or observed['charge'] != record.get('charge') \
+                    or observed['uhf'] != multiplicity - 1:
+                return None
+    return {'method': 'gfn2', 'software': 'xtb'}
+
 
 def _discard_stale_evidence(output_directory: str) -> None:
     """Remove a ``parser_evidence.json`` left behind by an earlier run.
@@ -339,6 +479,176 @@ def _evidence_status_counts(evidence_doc: dict) -> dict[str, dict[str, int]]:
             if status in counts[evidence_kind]:
                 counts[evidence_kind][status] += 1
     return counts
+
+
+def _read_git_head_commit(repository: str) -> str | None:
+    """
+    Return the commit ``HEAD`` of the git checkout at ``repository``, read from its ``.git`` files without
+    running git, or ``None`` when it cannot be read. Follows a ``.git`` file (worktree or submodule), a
+    symbolic ``HEAD``, and ``packed-refs``. Never raises.
+    """
+    try:
+        git_dir = os.path.join(repository, '.git')
+        if os.path.isfile(git_dir):
+            with open(git_dir, 'r') as f:
+                pointer = f.read().strip()
+            if not pointer.startswith('gitdir:'):
+                return None
+            git_dir = os.path.normpath(os.path.join(repository, pointer[len('gitdir:'):].strip()))
+        common_dir = git_dir
+        if os.path.isfile(os.path.join(git_dir, 'commondir')):
+            with open(os.path.join(git_dir, 'commondir'), 'r') as f:
+                common_dir = os.path.normpath(os.path.join(git_dir, f.read().strip()))
+        with open(os.path.join(git_dir, 'HEAD'), 'r') as f:
+            head = f.read().strip()
+        if GIT_COMMIT_HASH_REGEX.match(head):
+            return head
+        if not head.startswith('ref:'):
+            return None
+        ref = head[len('ref:'):].strip()
+        for ref_dir in (git_dir, common_dir):
+            ref_path = os.path.join(ref_dir, ref)
+            if os.path.isfile(ref_path):
+                with open(ref_path, 'r') as f:
+                    commit = f.read().strip()
+                return commit if GIT_COMMIT_HASH_REGEX.match(commit) else None
+        packed_refs = os.path.join(common_dir, 'packed-refs')
+        if os.path.isfile(packed_refs):
+            with open(packed_refs, 'r') as f:
+                for line in f:
+                    fields = line.split()
+                    if len(fields) == 2 and fields[1] == ref and GIT_COMMIT_HASH_REGEX.match(fields[0]):
+                        return fields[0]
+    except (OSError, UnicodeDecodeError):
+        logger.debug(f"Could not read the git HEAD of '{repository}'", exc_info=True)
+    return None
+
+
+def _read_conda_package_version(path: str, package: str) -> str | None:
+    """
+    Return the version of the conda ``package`` that installed ``path``, read from the ``conda-meta`` record of
+    the nearest enclosing conda prefix, or ``None`` when ``path`` is not inside a prefix that lists the package.
+    Never raises.
+    """
+    directory = os.path.abspath(path)
+    try:
+        for _ in range(RMG_DATABASE_CONDA_SEARCH_DEPTH):
+            directory = os.path.dirname(directory)
+            meta_dir = os.path.join(directory, 'conda-meta')
+            if os.path.isdir(meta_dir):
+                for record_path in sorted(glob.glob(os.path.join(glob.escape(meta_dir), f'{package}-*.json'))):
+                    with open(record_path, 'r') as f:
+                        record = json.load(f)
+                    if isinstance(record, dict) and record.get('name') == package \
+                            and isinstance(record.get('version'), str):
+                        return record['version']
+                return None
+            if directory == os.path.dirname(directory):
+                break
+    except (OSError, ValueError):
+        logger.debug(f"Could not read the conda record of '{package}' for '{path}'", exc_info=True)
+    return None
+
+
+def _run_qm_corrections_script(aec_key: str | None = None,
+                               bac_key: str | None = None,
+                               bac_type: str | None = None,
+                               ) -> dict | None:
+    """
+    Run ``arc/scripts/get_qm_corrections.py`` in the RMG conda environment for the given keys and return its output
+    (``aec``, ``bac`` and ``quantum_corrections_path``), or ``None`` when it could not be run or read. The temporary
+    files are created inside the guarded block and removed whichever of them exists. Never raises.
+    """
+    script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_qm_corrections.py')
+    tmp_in = tmp_out = None
+    try:
+        fd_in, tmp_in = tempfile.mkstemp(suffix='.qm_input.yml')
+        os.close(fd_in)
+        fd_out, tmp_out = tempfile.mkstemp(suffix='.qm_output.yml')
+        os.close(fd_out)
+        save_yaml_file(path=tmp_in, content={'aec_key': aec_key, 'bac_key': bac_key, 'bac_type': bac_type})
+        command = rmg_env_command(py_args=[script_path, tmp_in, tmp_out])
+        _, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
+        if stderr:
+            logger.warning(f'get_qm_corrections.py stderr: {stderr}')
+        result = read_yaml_file(tmp_out)
+        return result if isinstance(result, dict) else {}
+    except Exception:
+        logger.debug('Could not run get_qm_corrections.py', exc_info=True)
+        return None
+    finally:
+        for temporary_path in (tmp_in, tmp_out):
+            if temporary_path is None:
+                continue
+            try:
+                os.unlink(temporary_path)
+            except OSError:
+                logger.debug(f'Failed to remove temporary file {temporary_path!r}', exc_info=True)
+
+
+def _get_arkane_quantum_corrections_path() -> str | None:
+    """
+    The ``quantum_corrections/data.py`` that Arkane loaded, as ``arkane.encorr.data.quantum_corrections_path`` in the
+    RMG conda environment, or ``None`` when it cannot be determined. Never raises.
+    """
+    path = (_run_qm_corrections_script() or {}).get('quantum_corrections_path')
+    return path if isinstance(path, str) and path else None
+
+
+def _get_rmg_database_identity(rmg_db_path: str | None = None,
+                               arkane_path: str | None = None) -> dict[str, Any]:
+    """
+    The identity of the quantum corrections tables Arkane used, which are the ``quantum_corrections/data.py`` its own
+    ``rmgpy`` settings point at (``arkane.encorr.data.quantum_corrections_path``), not necessarily the file under
+    ARC's ``RMG_DB_PATH``.
+
+    Returns ``{path_kind, git_commit, version, quantum_corrections_path, quantum_corrections_sha256,
+    matches_arc_rmg_db_path}``. ``quantum_corrections_sha256`` is the SHA-256 of Arkane's file. ``path_kind`` is
+    ``'git'`` when that file lies in a git checkout (``git_commit`` is then its ``HEAD``), ``'package'`` when it lies
+    inside a conda prefix that lists the ``rmgdatabase`` package (``version`` is then that package's version), and
+    ``'unknown'`` otherwise. A git checkout is recognised only at the database root, three directories above the
+    file (``<root>/input/quantum_corrections/data.py``), so an unrelated repository further up is not mistaken for it.
+    ``matches_arc_rmg_db_path`` is whether the first file :func:`get_qm_corrections_files`
+    lists for ``rmg_db_path`` has the same digest, and is logged as a warning when ``False``. Every value that
+    cannot be determined is ``None``. Never raises.
+
+    Args:
+        rmg_db_path (str, optional): ARC's RMG database path. Defaults to ``settings['RMG_DB_PATH']``.
+        arkane_path (str, optional): The ``quantum_corrections/data.py`` Arkane loaded, when already known. Defaults to
+                                     asking the RMG environment.
+    """
+    identity: dict[str, Any] = {'path_kind': 'unknown', 'git_commit': None, 'version': None,
+                                'quantum_corrections_path': None, 'quantum_corrections_sha256': None,
+                                'matches_arc_rmg_db_path': None}
+    if not isinstance(arkane_path, str) or not arkane_path:
+        arkane_path = _get_arkane_quantum_corrections_path()
+    if arkane_path is None:
+        return identity
+    identity['quantum_corrections_path'] = arkane_path
+    identity['quantum_corrections_sha256'] = get_file_sha256(arkane_path)
+    database_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(arkane_path))))
+    if os.path.exists(os.path.join(database_root, '.git')):
+        identity['path_kind'] = 'git'
+        identity['git_commit'] = _read_git_head_commit(database_root)
+    if identity['path_kind'] == 'unknown':
+        version = _read_conda_package_version(arkane_path, RMG_DATABASE_CONDA_PACKAGE)
+        if version is not None:
+            identity['path_kind'] = 'package'
+            identity['version'] = version
+    rmg_db_path = rmg_db_path or settings.get('RMG_DB_PATH')
+    if isinstance(rmg_db_path, str) and rmg_db_path and identity['quantum_corrections_sha256'] is not None:
+        try:
+            arc_sha256 = get_file_sha256(get_qm_corrections_files(rmg_db_path)[0])
+        except (InputError, OSError):
+            logger.debug(f"Could not locate the quantum corrections under '{rmg_db_path}'", exc_info=True)
+            arc_sha256 = None
+        if arc_sha256 is not None:
+            identity['matches_arc_rmg_db_path'] = arc_sha256 == identity['quantum_corrections_sha256']
+            if not identity['matches_arc_rmg_db_path']:
+                logger.warning(f"The quantum corrections Arkane loaded ({arkane_path}) differ from the ones ARC reads "
+                               f"under RMG_DB_PATH ({rmg_db_path}). ARC matches the correction keys against the "
+                               f"latter, so a matched key may be missing or different in the file Arkane loaded.")
+    return identity
 
 
 class ArkaneProvenance(NamedTuple):
@@ -456,25 +766,112 @@ def _parse_rmg_py_version(rmg_path: str | None) -> str | None:
 
 
 def _level_to_dict(level) -> dict | None:
-    """Convert a Level object to a dict with all non-None fields, or None.
+    """Convert a Level object or a stored level dict to a dict with all non-None fields, or None.
 
-    ``solvation_scheme_level`` is converted recursively, so the returned dict holds
-    only plain types that ``yaml.safe_load`` accepts.
+    ``repr`` and ``compatible_ess`` are removed and ``solvation_scheme_level`` is converted recursively,
+    so the returned dict holds only plain types that ``yaml.safe_load`` accepts.
     """
     if level is None:
         return None
-    if hasattr(level, 'as_dict'):
-        d = level.as_dict()
-        d.pop('repr', None)
-        d.pop('compatible_ess', None)
-        if d.get('solvation_scheme_level') is not None:
-            d['solvation_scheme_level'] = _level_to_dict(d['solvation_scheme_level'])
-        return d
+    if isinstance(level, dict) or hasattr(level, 'as_dict'):
+        return level_as_plain_dict(level, strip=LEVEL_DICT_STRIPPED_KEYS)
     return {
         'method': getattr(level, 'method', None),
         'basis': getattr(level, 'basis', None),
         'software': getattr(level, 'software', None),
     }
+
+
+def _recorded_level_to_dict(level) -> dict | None:
+    """Convert a stored per-job level to a dict without the fields ARC only deduced, or None.
+
+    ``repr``, ``compatible_ess``, ``software`` and ``solvation_scheme_level`` are removed: the program that ran a
+    job is stated by ``ess_software``, not by the level.
+    """
+    return level_as_plain_dict(level, strip=RECORDED_LEVEL_STRIPPED_KEYS) \
+        if isinstance(level, dict) or hasattr(level, 'as_dict') else None
+
+
+def _str_or_none(value: Any) -> str | None:
+    """``value`` if it is a string, ``None`` for anything else (a value of unknown type is an unknown value)."""
+    return value if isinstance(value, str) else None
+
+
+def _conformer_provenance_to_fields(spc, n_conformers: int) -> tuple[list | None, str | None, dict | None,
+                                                                     str | None]:
+    """
+    Build ``conformer_levels``, ``conformer_energy_kind``, ``conformer_energy_level`` and
+    ``conformer_force_field`` of a record.
+
+    ``conformer_levels`` has one entry per exported conformer: the level of the conformer optimization job that
+    produced the geometry, or ``None`` for a geometry that was not optimized or whose level was not recorded.
+    It is ``None`` when the record exports no conformers.
+
+    The kind, level and force field describe ``conformer_energies`` as a whole, taken over the entries that hold an
+    energy. ``conformer_energy_kind`` is set only when every such entry has the same recorded kind
+    (``'force_field_kcal_mol'`` or ``'electronic_kj_mol'``); an energy of unknown origin, or a mixture of kinds
+    (some conformers optimized, others still holding force-field energies), makes it ``None``.
+    ``conformer_energy_level`` is the shared level of those entries when the kind is electronic and all of them
+    were computed at the same level, and ``None`` otherwise (force-field energies have no level).
+    ``conformer_force_field`` is the force field and backend that produced those entries when every one of them
+    names the same, and ``None`` otherwise. A kind or force field that is not a string counts as unknown.
+
+    Args:
+        spc: The species (an ``ARCSpecies`` or anything with the same conformer attributes).
+        n_conformers (int): The number of exported conformers.
+
+    Returns:
+        tuple: ``(conformer_levels, conformer_energy_kind, conformer_energy_level, conformer_force_field)``.
+    """
+    if not n_conformers:
+        return None, None, None, None
+
+    def _padded(attr: str) -> list:
+        values = getattr(spc, attr, None)
+        values = list(values) if isinstance(values, (list, tuple)) else list()
+        return (values + [None] * n_conformers)[:n_conformers]
+
+    levels = [_recorded_level_to_dict(level) for level in _padded('conformer_levels')]
+    energies = _padded('conformer_energies')
+    sources = [source if isinstance(source, dict) else None for source in _padded('conformer_energy_sources')]
+    held = [source for energy, source in zip(energies, sources) if energy is not None]
+    if not held:
+        return levels, None, None, None
+    force_fields = {_str_or_none(source.get('force_field')) if source is not None else None for source in held}
+    force_field = force_fields.pop() if len(force_fields) == 1 else None
+    if any(source is None or _str_or_none(source.get('kind')) is None for source in held):
+        return levels, None, None, force_field
+    kinds = {source['kind'] for source in held}
+    if len(kinds) != 1:
+        return levels, None, None, force_field
+    kind = kinds.pop()
+    if kind != 'electronic_kj_mol':
+        return levels, kind, None, force_field
+    energy_levels = [_recorded_level_to_dict(source.get('level')) for source in held]
+    energy_level = energy_levels[0] if all(level == energy_levels[0] for level in energy_levels) else None
+    return levels, kind, energy_level, None
+
+
+def _species_levels_to_dict(entry: dict, is_ts: bool) -> dict:
+    """
+    Build the per-record ``levels`` object from the levels the scheduler recorded for the jobs
+    whose logs are exported (``output_dict[label]['levels']``).
+
+    Every key of ``LEVEL_JOB_KEYS`` is always present. A value is ``None`` where no such job ran, where the
+    level was not recorded (an older run or restart), and, for ``irc``, on every record that is not a TS.
+
+    Args:
+        entry (dict): The scheduler's output dictionary of one species (may be empty).
+        is_ts (bool): Whether the record is a transition state.
+
+    Returns:
+        dict: ``{'opt', 'freq', 'sp', 'composite', 'irc'}`` mapped to a level dictionary or ``None``.
+    """
+    recorded = entry.get('levels') if isinstance(entry, dict) else None
+    recorded = recorded if isinstance(recorded, dict) else dict()
+    return {key: _recorded_level_to_dict(recorded.get(key)) if isinstance(recorded.get(key), dict) and (key != 'irc' or is_ts)
+            else None
+            for key in LEVEL_JOB_KEYS}
 
 
 def _resolve_freq_scale_factor_entry(freq_level) -> tuple[str | None, str | None]:
@@ -871,11 +1268,12 @@ def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
     """
     Parse n_steps, final electronic energy, and final geometry from an opt log.
 
-    Returns a 3-tuple ``(n_steps, final_energy_hartree, final_xyz_str)``;
+    Returns a 4-tuple ``(n_steps, final_energy_hartree, final_xyz_str, final_isotopes)``;
     any element may be ``None`` if that piece couldn't be extracted (the
     others are still attempted independently). ``final_xyz_str`` is in
     the same atom-only format as ``xyz_to_str`` produces — symbol +
-    coords, one atom per line, no count header.
+    coords, one atom per line, no count header. ``final_isotopes`` is the
+    isotope list the log itself states (see ``_get_log_stated_isotopes``), ``None`` for a log that states none.
 
     The geometry is parsed via :func:`parse_geometry`, which dispatches
     to per-ESS adapters; logs from any supported ESS work without
@@ -885,11 +1283,11 @@ def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
     lineage.
     """
     if not geo_path:
-        return None, None, None
+        return None, None, None, None
     if not os.path.isabs(geo_path):
         geo_path = os.path.join(project_directory, geo_path)
     if not os.path.isfile(geo_path):
-        return None, None, None
+        return None, None, None, None
 
     # Each parse is best-effort and independent — if one fails we still
     # surface the others. The final-energy parse historically failed-fast
@@ -898,6 +1296,7 @@ def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
     n_steps = None
     e_hartree = None
     final_xyz = None
+    final_isotopes = None
     try:
         n_steps = parse_opt_steps(geo_path)
     except Exception:
@@ -911,9 +1310,95 @@ def _parse_opt_log(geo_path: str | None, project_directory: str) -> tuple:
         xyz_dict = parse_geometry(geo_path)
         if xyz_dict is not None:
             final_xyz = xyz_to_str(xyz_dict)
+            final_isotopes = _get_log_stated_isotopes(geo_path, xyz_dict['symbols'])
     except Exception:
         logger.debug("Could not parse final geometry from %s", geo_path, exc_info=True)
-    return n_steps, e_hartree, final_xyz
+    return n_steps, e_hartree, final_xyz, final_isotopes
+
+
+def _xyz_isotopes(xyz) -> list[int] | None:
+    """
+    The isotope mass numbers an ARC xyz dict carries, one per atom in the atom order of its ``symbols``.
+
+    ``xyz_to_str`` drops them. ``None`` when ``xyz`` is not a dict, carries no isotopes, carries a different number of
+    isotopes than symbols, or holds an entry that is not an integer mass number.
+    """
+    if not isinstance(xyz, dict):
+        return None
+    isotopes, symbols = xyz.get('isotopes'), xyz.get('symbols')
+    if not isinstance(isotopes, (list, tuple)) or not isotopes or not isinstance(symbols, (list, tuple)) \
+            or len(isotopes) != len(symbols):
+        return None
+    if not all(_is_int(isotope) and isotope > 0 for isotope in isotopes):
+        return None
+    return [int(isotope) for isotope in isotopes]
+
+
+def _get_log_stated_isotopes(log_path: str | None, symbols) -> list[int] | None:
+    """
+    The isotope mass numbers a Gaussian log states it used, one per atom of ``symbols``, ``None`` for any other log.
+
+    Gaussian prints ``Atom N has atomic number Z and mass M`` for every atom of a job that runs a thermochemistry
+    analysis; the mass number is ``M`` rounded. The last block of ``len(symbols)`` such lines is taken. The result is
+    ``None`` when the log is not a Gaussian log, cannot be read, prints no such lines, prints a number of lines that
+    is not a multiple of ``len(symbols)``, or prints an atomic number that is not that of the symbol at its position.
+    Never raises.
+    """
+    if not isinstance(log_path, str) or not os.path.isfile(log_path) or not isinstance(symbols, (list, tuple)) \
+            or not symbols or not all(symbol in NUMBER_BY_SYMBOL for symbol in symbols):
+        return None
+    if _identify_log_ess(log_path, os.path.dirname(log_path)) != 'gaussian':
+        return None
+    entries = list()
+    try:
+        with open(log_path, 'r', errors='ignore') as f:
+            for line in f:
+                match = GAUSSIAN_ATOM_MASS_REGEX.match(line)
+                if match is not None:
+                    entries.append((int(match.group(1)), float(match.group(2))))
+    except OSError as exc:
+        logger.debug(f"Could not read the isotopes of '{log_path}': {exc}")
+        return None
+    n_atoms = len(symbols)
+    if len(entries) < n_atoms or len(entries) % n_atoms:
+        return None
+    block = entries[-n_atoms:]
+    if any(atomic_number != NUMBER_BY_SYMBOL[symbol] for (atomic_number, _), symbol in zip(block, symbols)):
+        return None
+    return [int(round(mass)) for _, mass in block]
+
+
+def _is_coupled_cluster_level(level: dict | None) -> bool:
+    """Whether a recorded level dict names a coupled-cluster (``cc``) or ``qcisd`` method."""
+    method = level.get('method') if isinstance(level, dict) else None
+    return isinstance(method, str) and ('cc' in method.lower() or 'qcisd' in method.lower())
+
+
+def _get_t1_diagnostic(spc, sp_level: dict | None) -> float | None:
+    """
+    The species' ``t1`` value when the recorded sp level ``sp_level`` (a level dict) has a method name containing
+    ``cc`` or ``qcisd``, else ``None``. ``None`` as well when ``t1`` is not a finite number.
+    """
+    if not _is_coupled_cluster_level(sp_level):
+        return None
+    t1 = getattr(spc, 't1', None)
+    if isinstance(t1, bool) or not isinstance(t1, (int, float)) or not math.isfinite(t1):
+        return None
+    return float(t1)
+
+
+def _str_or_none(value) -> str | None:
+    """``value`` when it is a non-empty string, else ``None``."""
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _get_reversible(rxn) -> bool | None:
+    """
+    Whether a reaction is written as reversible: ``True`` for the ``<=>`` arrow, ``False`` for ``=>``, and ``None``
+    for any other arrow or a reaction that states none.
+    """
+    arrow = getattr(rxn, 'arrow', None)
+    return {'<=>': True, '=>': False}.get(arrow.strip()) if isinstance(arrow, str) else None
 
 
 def _abs_existing_path(path: str | None, project_directory: str) -> str | None:
@@ -1020,13 +1505,17 @@ def _gaussian_route_text(path: str) -> str | None:
 
     The route starts at the first line whose first non-blank character is ``#`` and ends
     at the following blank line (an input deck) or rule of dashes (a log's echoed route).
+    Only the first route of the file is read, so a ``--Link1--`` file yields its first job's route.
+
     A log wraps the route mid-token at a fixed column and indents every echoed line by one
-    space; the lines are joined after dropping that single leading space and without
-    inserting one, so ``integral=(grid=ultr`` + ``afine, ...`` rejoins as written.
+    space; its lines are joined after dropping that single leading space and without
+    inserting one, so ``integral=(grid=ultr`` + ``afine, ...`` rejoins as written. A deck
+    block has no wrapping, so its lines are stripped and joined by a single space.
 
     Returns ``None`` when the file cannot be read or holds no route.
     """
     collected: list[str] = []
+    ended_on_dash_rule = False
     try:
         with open(path, 'r', errors='ignore') as f:
             for line in f:
@@ -1035,7 +1524,10 @@ def _gaussian_route_text(path: str) -> str | None:
                     if stripped.startswith('#'):
                         collected.append(line.rstrip('\n'))
                     continue
-                if not stripped or set(stripped) == {'-'}:
+                if not stripped:
+                    break
+                if set(stripped) == {'-'}:
+                    ended_on_dash_rule = True
                     break
                 collected.append(line.rstrip('\n'))
     except OSError as exc:
@@ -1043,7 +1535,9 @@ def _gaussian_route_text(path: str) -> str | None:
         return None
     if not collected:
         return None
-    return ''.join(part[1:] if part.startswith(' ') else part for part in collected)
+    if ended_on_dash_rule:
+        return ''.join(part[1:] if part.startswith(' ') else part for part in collected)
+    return ' '.join(part.strip() for part in collected)
 
 
 def _gaussian_freq_keyword_options(route: str) -> str | None:
@@ -1146,7 +1640,7 @@ def _orca_route_text(path: str) -> str | None:
 
     Orca keyword lines start with ``!``; a log echoes the deck one line at a time behind
     an ``|  <n]> `` prefix, which is stripped here so a deck and a log yield the same
-    text. The scan stops at the ``****END OF INPUT****`` line that closes a log's echoed
+    text; a ``#`` comment, which ends at the next ``#`` or at the end of the line, is dropped. The scan stops at the ``****END OF INPUT****`` line that closes a log's echoed
     input block, and in any case after ``ORCA_ROUTE_SCAN_LINE_LIMIT`` lines. Returns
     ``None`` when the file cannot be read or holds no keyword line.
     """
@@ -1162,7 +1656,7 @@ def _orca_route_text(path: str) -> str | None:
                 if ORCA_INPUT_ECHO_END_MARKER in content:
                     break
                 if content.startswith('!'):
-                    keyword_lines.append(content[1:].strip().lower())
+                    keyword_lines.append(' '.join(re.sub(r'#[^#]*(#|$)', ' ', content[1:]).lower().split()))
     except OSError as exc:
         logger.debug("Could not read an Orca route from '%s': %s", path, exc)
         return None
@@ -1287,82 +1781,241 @@ def _get_freq_hessian_method(freq_input_path: str | None,
     return None
 
 
+def _get_ess_route(log_path: str | None, project_directory: str) -> str | None:
+    """
+    The keyword line of an ESS job: the log's echoed route, or the route of the input deck next to the log when the log
+    holds none. The program is the one the log itself states. For Gaussian the value is the route section as written
+    (see ``_gaussian_route_text``); for Orca it is the lowercase keyword lines without their ``!``, space-joined (see
+    ``_orca_route_text``). ``None`` for any other program, when the log is missing, and when neither file holds a
+    keyword line. Never raises.
+    """
+    abs_log = _existing_log_path(log_path, project_directory)
+    if abs_log is None:
+        return None
+    software = _identify_log_ess(abs_log, project_directory)
+    route_reader = {'gaussian': _gaussian_route_text, 'orca': _orca_route_text}.get(software)
+    if route_reader is None:
+        return None
+    deck = _abs_existing_path(_derive_input_path(abs_log, software, project_directory), project_directory)
+    for path in (abs_log, deck):
+        if path is None:
+            continue
+        try:
+            route = route_reader(path)
+        except Exception:
+            logger.debug(f"Could not read the route of '{path}'", exc_info=True)
+            continue
+        if route:
+            return route
+    return None
+
+
+def _get_gaussian_dipole_moment(log_path: str | None, project_directory: str) -> tuple[float | None, str | None]:
+    """
+    The total dipole moment in Debye of a Gaussian log and the density it was computed from.
+
+    The value is that of the last ``Dipole moment (field-independent basis, Debye)`` block (read by
+    ``parse_dipole_moment``) and the density is the word of the ``Population analysis using the <X> density`` header
+    that precedes that block, as printed (``SCF``, ``current``, ...). Both are ``None`` for any other program, a
+    missing log and a log that prints no block, and the density is ``None`` when no header precedes the block. Never
+    raises.
+    """
+    abs_log = _existing_log_path(log_path, project_directory)
+    if abs_log is None or _identify_log_ess(abs_log, project_directory) != 'gaussian':
+        return None, None
+    try:
+        value = parse_dipole_moment(abs_log)
+    except Exception:
+        logger.debug(f"Could not parse the dipole moment from '{abs_log}'", exc_info=True)
+        return None, None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None, None
+    density, last_block_density, header_density, expect_total, last_block_readable = None, None, None, False, True
+    try:
+        with open(abs_log, 'r', errors='ignore') as f:
+            for line in f:
+                match = GAUSSIAN_POPULATION_DENSITY_REGEX.search(line)
+                if match is not None:
+                    density = match.group(1)
+                elif 'dipole moment' in line.lower() and 'debye' in line.lower():
+                    header_density, expect_total = density, True
+                elif expect_total:
+                    last_block_readable = GAUSSIAN_DIPOLE_TOTAL_REGEX.search(line) is not None
+                    last_block_density = header_density if last_block_readable else None
+                    expect_total = False
+    except OSError as exc:
+        logger.debug(f"Could not read the dipole density of '{abs_log}': {exc}")
+        return float(value), None
+    if not last_block_readable:
+        return None, None
+    return float(value), last_block_density
+
+
+def _get_gaussian_polarizability(log_path: str | None, project_directory: str) -> float | None:
+    """
+    The isotropic static polarizability in angstrom^3 of a Gaussian freq log.
+
+    It is a third of the trace of the last ``Exact polarizability`` line (``xx xy yy xz yz zz``, atomic units, bohr^3,
+    six fixed 8-character fields after the colon) the freq job printed, converted with ``bohr_to_angstrom``. ``None``
+    for any other program, a missing log, a log that prints no such line, a last such line that cannot be read, and a
+    last line whose six elements are all zero. Never raises.
+    """
+    abs_log = _existing_log_path(log_path, project_directory)
+    if abs_log is None or _identify_log_ess(abs_log, project_directory) != 'gaussian':
+        return None
+    tensor = None
+    try:
+        with open(abs_log, 'r', errors='ignore') as f:
+            for line in f:
+                if 'Exact polarizability' in line:
+                    fields = line.rstrip('\r\n').split(':', 1)[-1]
+                    tokens = [fields[i * 8:(i + 1) * 8].strip() for i in range(6)]
+                    tensor = [float(token) for token in tokens] \
+                        if len(fields) >= 48 and all(is_str_float(token) for token in tokens) else None
+    except OSError as exc:
+        logger.debug(f"Could not read the polarizability of '{abs_log}': {exc}")
+        return None
+    if tensor is None or not any(tensor):
+        return None
+    trace = tensor[0] + tensor[2] + tensor[5]
+    return trace / 3.0 * bohr_to_angstrom ** 3
+
+
 def _iter_ess_logs(paths: dict, project_directory: str):
     """
     Yield ``(job_type, absolute_log_path)`` for every ESS log referenced by ``paths``
     that exists on disk.
 
-    The job types are ``'sp'``, ``'opt'``, ``'freq'`` and ``'neb'``, and define the key
-    space shared by ``_get_ess_versions`` and ``_get_ess_software``. Relative paths are
-    resolved against ``project_directory``; entries that are empty or not a file on disk
-    are skipped.
+    The job types are ``'sp'``, ``'opt'``, ``'freq'``, ``'composite'``, ``'neb'`` and ``'irc'``, and define the
+    key space shared by ``_get_ess_versions`` and ``_get_ess_software``. ``'irc'`` is yielded once per existing
+    log of ``paths['irc']`` (forward and reverse). Relative paths are resolved against
+    ``project_directory``; entries that are empty or not a file on disk are skipped.
     """
-    key_map = {'sp': 'sp', 'geo': 'opt', 'freq': 'freq', 'neb': 'neb'}
+    key_map = {'sp': 'sp', 'geo': 'opt', 'freq': 'freq', 'composite': 'composite', 'neb': 'neb'}
     for path_key, label in key_map.items():
-        log_path = paths.get(path_key) or None
-        if not log_path:
-            continue
-        if not os.path.isabs(log_path):
-            log_path = os.path.join(project_directory, log_path)
-        if not os.path.isfile(log_path):
-            continue
-        yield label, log_path
+        log_path = _existing_log_path(paths.get(path_key), project_directory)
+        if log_path is not None:
+            yield label, log_path
+    for irc_path in _irc_log_paths(paths):
+        log_path = _existing_log_path(irc_path, project_directory)
+        if log_path is not None:
+            yield 'irc', log_path
+
+
+def _irc_log_paths(paths: dict) -> list[str]:
+    """The non-empty IRC log paths of ``paths``."""
+    irc_paths = paths.get('irc')
+    irc_paths = irc_paths if isinstance(irc_paths, (list, tuple)) else list()
+    return [path for path in irc_paths if isinstance(path, str) and path]
+
+
+def _existing_log_path(log_path: str | None, project_directory: str) -> str | None:
+    """The absolute path of ``log_path`` (relative paths resolve against ``project_directory``), or ``None`` if it
+    is empty or not a file on disk."""
+    if not log_path or not isinstance(log_path, str):
+        return None
+    if not os.path.isabs(log_path):
+        log_path = os.path.join(project_directory, log_path)
+    return log_path if os.path.isfile(log_path) else None
+
+
+def _collapse_ess_observations(observed: dict[str, list[str]], paths: dict) -> dict[str, str]:
+    """
+    Reduce per-log observations to one value per job type.
+
+    ``'irc'`` keeps a value only when every recorded IRC log was observed and they all agree.
+    """
+    collapsed = {label: values[0] for label, values in observed.items() if label != 'irc' and values}
+    irc_values = observed.get('irc') or list()
+    if irc_values and len(irc_values) == len(_irc_log_paths(paths)) and len(set(irc_values)) == 1:
+        collapsed['irc'] = irc_values[0]
+    return collapsed
 
 
 def _get_ess_versions(paths: dict, project_directory: str) -> dict[str, str] | None:
     """
-    Parse ESS version strings from each available log file (sp, opt, freq, neb).
+    Parse ESS version strings from each available log file (sp, opt, freq, composite, neb, irc).
 
     Returns a dict like ``{'sp': 'ORCA 5.0.4', 'opt': 'Gaussian 16, Revision C.01'}``,
     keyed by job type. Each value is the full ESS banner as the program printed it, not a
-    bare version number. Caches parsed versions to avoid re-parsing shared log files.
+    bare version number. The ``'irc'`` entry is present only when every IRC log states the same banner.
+    Caches parsed versions to avoid re-parsing shared log files.
     Returns ``None`` if nothing could be parsed.
     """
-    versions: dict[str, str] = {}
+    observed: dict[str, list[str]] = {}
     parsed_cache: dict[str, str] = {}
     for label, log_path in _iter_ess_logs(paths, project_directory):
-        if log_path in parsed_cache:
-            versions[label] = parsed_cache[log_path]
-            continue
-        try:
-            version = parse_ess_version(log_path)
-            if version:
-                versions[label] = version
-                parsed_cache[log_path] = version
-        except Exception:
-            logger.debug(f"Failed to parse ESS version from log file '{log_path}'", exc_info=True)
-    return versions or None
+        if log_path not in parsed_cache:
+            try:
+                version = parse_ess_version(log_path)
+            except Exception:
+                logger.debug(f"Failed to parse ESS version from log file '{log_path}'", exc_info=True)
+                continue
+            if not version:
+                continue
+            parsed_cache[log_path] = version
+        observed.setdefault(label, list()).append(parsed_cache[log_path])
+    return _collapse_ess_observations(observed, paths) or None
 
 
 def _get_ess_software(paths: dict, project_directory: str) -> dict[str, str] | None:
     """
-    Identify the ESS that produced each available log file (sp, opt, freq, neb).
+    Identify the ESS that produced each available log file (sp, opt, freq, composite, neb, irc).
 
     Returns a dict like ``{'sp': 'orca', 'opt': 'gaussian'}``, keyed by the same job types
     ``_get_ess_versions`` uses and read from the same log files, so a consumer can pair a
     version string with the program that actually produced it instead of with the program
-    a level of theory declared. Values are ARC's lowercase ESS names.
+    a level of theory declared. Values are ARC's lowercase ESS names. The ``'irc'`` entry is present only
+    when every IRC log was identified as the same ESS.
 
     The key set is a superset of ``_get_ess_versions``' key set: a log whose ESS is
     identified but whose version banner cannot be parsed appears here and not there, while
     a parsed version always implies an identified ESS. Caches identifications to avoid
     re-reading shared log files. Returns ``None`` if no ESS could be identified.
     """
-    software: dict[str, str] = {}
+    observed: dict[str, list[str]] = {}
     identified_cache: dict[str, str] = {}
     for label, log_path in _iter_ess_logs(paths, project_directory):
-        if log_path in identified_cache:
-            software[label] = identified_cache[log_path]
-            continue
-        try:
-            ess_name = determine_ess(log_file_path=log_path, raise_error=False)
-        except Exception:
-            logger.debug(f"Failed to identify the ESS of log file '{log_path}'", exc_info=True)
-            continue
-        if ess_name:
-            software[label] = ess_name
+        if log_path not in identified_cache:
+            try:
+                ess_name = determine_ess(log_file_path=log_path, raise_error=False)
+            except Exception:
+                logger.debug(f"Failed to identify the ESS of log file '{log_path}'", exc_info=True)
+                continue
+            if not ess_name:
+                continue
             identified_cache[log_path] = ess_name
-    return software or None
+        observed.setdefault(label, list()).append(identified_cache[log_path])
+    return _collapse_ess_observations(observed, paths) or None
+
+
+def _identify_log_ess(log_path: str | None, project_directory: str) -> str | None:
+    """The ESS name a single log states, ``None`` where the log is missing or states none. Never raises."""
+    abs_path = _existing_log_path(log_path, project_directory)
+    if abs_path is None:
+        return None
+    try:
+        return determine_ess(log_file_path=abs_path, raise_error=False) or None
+    except Exception:
+        logger.debug(f"Failed to identify the ESS of log file '{abs_path}'", exc_info=True)
+        return None
+
+
+def _observe_log_ess(log_path: str | None, project_directory: str) -> tuple[str | None, str | None]:
+    """
+    The ESS name and full version banner a single log states, ``(None, None)`` where the log is missing or
+    states none. Never raises.
+    """
+    abs_path = _existing_log_path(log_path, project_directory)
+    if abs_path is None:
+        return None, None
+    software = _identify_log_ess(abs_path, project_directory)
+    version = None
+    try:
+        version = parse_ess_version(abs_path) or None
+    except Exception:
+        logger.debug(f"Failed to parse ESS version from log file '{abs_path}'", exc_info=True)
+    return software, version
 
 
 class EnergyCorrections(NamedTuple):
@@ -1377,6 +2030,7 @@ class EnergyCorrections(NamedTuple):
     bac: dict | None
     aec_key: str | None
     bac_key: str | None
+    quantum_corrections_path: str | None = None
 
 
 def _match_arkane_correction_keys(arkane_level_of_theory,
@@ -1419,42 +2073,18 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> Ene
     corrections were computed from and whether the BAC table belongs to that key.
 
     Returns:
-        EnergyCorrections: The AEC table, the BAC table, the AEC key and the BAC key,
-        each ``None`` when unavailable.
+        EnergyCorrections: The AEC table, the BAC table, the AEC key and the BAC key, and the
+        ``quantum_corrections_path`` the script reported, each ``None`` when unavailable.
     """
     aec_key, bac_key = _match_arkane_correction_keys(arkane_level_of_theory, bac_type)
     if aec_key is None and bac_key is None:
         return EnergyCorrections(None, None, None, None)
-    try:
-        script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'get_qm_corrections.py')
-
-        fd_in, tmp_in = tempfile.mkstemp(suffix='.qm_input.yml')
-        fd_out, tmp_out = tempfile.mkstemp(suffix='.qm_output.yml')
-        try:
-            os.close(fd_in)
-            os.close(fd_out)
-            save_yaml_file(path=tmp_in, content={
-                'aec_key': aec_key,
-                'bac_key': bac_key,
-                'bac_type': bac_type,
-            })
-
-            command = rmg_env_command(py_args=[script_path, tmp_in, tmp_out])
-            _, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
-            if stderr:
-                logger.warning(f'get_qm_corrections.py stderr: {stderr}')
-
-            result = read_yaml_file(tmp_out) or {}
-            return EnergyCorrections(result.get('aec'), result.get('bac'), aec_key, bac_key)
-        finally:
-            for p in (tmp_in, tmp_out):
-                try:
-                    os.unlink(p)
-                except OSError:
-                    logger.debug(f'Failed to remove temporary file {p!r}', exc_info=True)
-    except Exception:
-        logger.debug('Failed to read the Arkane correction tables', exc_info=True)
+    result = _run_qm_corrections_script(aec_key, bac_key, bac_type)
+    if result is None:
         return EnergyCorrections(None, None, aec_key, bac_key)
+    reported_path = result.get('quantum_corrections_path')
+    return EnergyCorrections(result.get('aec'), result.get('bac'), aec_key, bac_key,
+                             reported_path if isinstance(reported_path, str) and reported_path else None)
 
 
 def _safe(fn, default=None):
@@ -1500,34 +2130,48 @@ def _build_species_correction_inputs(species_dict: dict) -> list[dict]:
 
 
 def _bac_is_applied_to(spc, compute_thermo: bool) -> bool:
-    """Whether ARC routes ``spc`` through the Arkane run that applies a BAC.
+    """Whether ARC routes ``spc`` through an Arkane run that applies a BAC.
 
-    A bond additivity correction is applied only by the thermo statmech run.
-    That run does not happen at all when the project does not compute thermo,
-    it never includes a transition state, and it excludes a species whose own
-    ``compute_thermo`` is off. The kinetics statmech run — the only Arkane run
-    a rates-only project performs — is invoked with no BAC type, so nothing in
-    such a run carries one.
+    A bond additivity correction is applied by the thermo statmech run and by the E0-only run of a species
+    (for example a BDE fragment), both of which use the run's BAC type. Neither happens when the project does not
+    compute thermo, and neither includes a transition state or, for the thermo run, a species whose own
+    ``compute_thermo`` is off. The kinetics statmech run, the only Arkane run a rates-only project performs, is
+    invoked with no BAC type, so nothing in such a run carries one.
     """
     if not compute_thermo:
         return False
     if getattr(spc, 'is_ts', False):
         return False
+    if getattr(spc, 'e0_only', False) is True:
+        return True
     return bool(getattr(spc, 'compute_thermo', True))
 
 
-def _drop_corrections_arkane_did_not_apply(records: list[dict], thermo) -> list[dict]:
-    """Remove the correction records the Arkane thermo run is recorded as not having applied.
+def _correction_switches(spc) -> tuple[bool | None, bool | None]:
+    """The atom and bond correction switches of the Arkane run that produced the energy ``spc`` exports.
 
-    The records are recomputed from the Arkane key matched for the run's level, which says
-    nothing about whether Arkane was told to apply them. A thermo whose
-    ``atom_corrections_applied`` (``bond_corrections_applied``) is ``False`` loses its
-    ``atom_energy`` (``bond_additivity``) records. A ``None`` flag leaves the records as they are.
+    That is the species' own E0 run for a transition state or an E0-only species, and the thermo run otherwise.
+    A switch that is not known is ``None``.
     """
+    if getattr(spc, 'is_ts', False) or getattr(spc, 'e0_only', False) is True:
+        return (getattr(spc, 'e0_atom_corrections_applied', None),
+                getattr(spc, 'e0_bond_corrections_applied', None))
+    thermo = getattr(spc, 'thermo', None)
+    return (getattr(thermo, 'atom_corrections_applied', None),
+            getattr(thermo, 'bond_corrections_applied', None))
+
+
+def _drop_unapplied_corrections(records: list[dict], atom_applied: bool | None, bond_applied: bool | None) -> list[dict]:
+    """Remove the correction records the Arkane run behind the exported energy did not apply.
+
+    The records are recomputed from the Arkane key matched for the run's level, which says nothing about whether
+    Arkane was told to apply them. The ``atom_energy`` records go when ``atom_applied`` is ``False`` and the
+    ``bond_additivity`` records when ``bond_applied`` is ``False``. A ``None`` switch, which is an unknown one,
+    leaves its records as they are."""
     dropped = set()
-    if getattr(thermo, 'atom_corrections_applied', None) is False:
+    if atom_applied is False:
         dropped.add('atom_energy')
-    if getattr(thermo, 'bond_corrections_applied', None) is False:
+    if bond_applied is False:
         dropped.add('bond_additivity')
     return [record for record in records if record.get('correction_type') not in dropped]
 
@@ -1668,6 +2312,11 @@ def _build_energy_corrections_for_species(
     key ARC hands Arkane as its model chemistry. Consumers own any
     database-specific scheme enums, roles, nesting, or reference rows. Failure rows
     from the helper script are omitted independently.
+
+    Arkane's Petersson correction skips a bond type that has no parameter and applies the rest, so the
+    ``components`` of a bond-additivity record are the bonds with a parameter, which sum to ``total``, and
+    ``skipped_components`` lists the other bonds as ``{bond, count}``. It is ``None`` where it does not apply, for an
+    atom-energy record and a Melius record.
     """
     entry = species_corrections.get(label) or {}
     applied: list[dict] = []
@@ -1685,6 +2334,7 @@ def _build_energy_corrections_for_species(
                 'unit': aec_block.get('value_unit', 'hartree'),
             },
             'components': aec_block.get('components') or [],
+            'skipped_components': None,
         }
         if aec_table:
             # NOT per-atom corrections: these are Arkane's bare atomic
@@ -1704,12 +2354,10 @@ def _build_energy_corrections_for_species(
 
     bac_block = entry.get('bac')
     if bac_block and bac_block.get('value') is not None and bac_type in ('p', 'm'):
-        components = bac_block.get('components')
-        # Drop components when any bond is missing a parameter — partial
-        # decompositions would not sum to the total and would mislead
-        # downstream consumers.
-        if components and any(c.get('parameter_value') is None for c in components):
-            components = None
+        components = bac_block.get('components') or []
+        skipped_components = [{'bond': c['key'], 'count': c['multiplicity']}
+                              for c in components if c.get('parameter_value') is None]
+        components = [c for c in components if c.get('parameter_value') is not None]
         correction = {
             'correction_type': 'bond_additivity',
             'model': {'p': 'petersson', 'm': 'melius'}[bac_type],
@@ -1719,7 +2367,8 @@ def _build_energy_corrections_for_species(
                 'value': float(bac_block['value']),
                 'unit': bac_block.get('value_unit', 'kcal_mol'),
             },
-            'components': components or [],
+            'components': components,
+            'skipped_components': skipped_components if bac_type == 'p' else None,
         }
         if bac_type == 'p' and bac_key == aec_key:
             values = _flat_parameter_values(bac_table)
@@ -1846,27 +2495,17 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         xyz = {'symbols': (spc.mol.atoms[0].element.symbol,),
                'coords': ((0.0, 0.0, 0.0),)}
     d['xyz'] = xyz_to_str(xyz) if xyz is not None else None
+    d['xyz_isotopes'] = _xyz_isotopes(xyz)
 
-    # ── screened conformers ────────────────────────────────────────────────
-    # ARC's conformer screen often produces multiple optimized geometries
-    # at the same level. ``ARCSpecies.conformers`` holds them as xyz
-    # dicts, with ``conformer_energies`` holding one energy per conformer,
-    # relative to the lowest. The unit follows the stage the screen has
-    # reached: kcal/mol while the list still holds force-field energies
-    # (``arc/species/species.py`` fills it from ``conf['FF energy']``), kJ/mol
-    # once the conformers have been optimized at a quantum-chemical level. An
-    # entry is ``None`` for a conformer whose energy has not been filled in
-    # yet, which is an ordinary state: the list is pre-allocated per conformer
-    # and populated one job at a time. Surface both lists when populated so
-    # downstream consumers can inspect the full set rather than only the
-    # selected conformer of record. Skipped (key omitted) when ARC has no
-    # screened conformers — backward compatible.
     raw_conformers = getattr(spc, 'conformers', None) or []
     if raw_conformers:
         d['conformers'] = [xyz_to_str(c) if not isinstance(c, str) else c
                            for c in raw_conformers]
         raw_energies = getattr(spc, 'conformer_energies', None) or []
         d['conformer_energies'] = list(raw_energies)
+        d['conformers_isotopes'] = [_xyz_isotopes(c) for c in raw_conformers]
+    d['conformer_levels'], d['conformer_energy_kind'], d['conformer_energy_level'], d['conformer_force_field'] = \
+        _conformer_provenance_to_fields(spc, len(raw_conformers))
 
     # ``opt_input_xyz`` and the coarse-opt xyz fields are populated below,
     # AFTER coarse-opt parsing (we need ``coarse_final_xyz`` to set the
@@ -1892,9 +2531,10 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     # ``opt_input_xyz`` resolution below.
     coarse_path = paths.get('geo_coarse') or None
     coarse_final_xyz: str | None = None
+    coarse_final_isotopes: list[int] | None = None
     if converged and coarse_path:
         d['coarse_opt_log'] = _make_rel_path(coarse_path, project_directory)
-        d['coarse_opt_n_steps'], d['coarse_opt_final_energy_hartree'], coarse_final_xyz = \
+        d['coarse_opt_n_steps'], d['coarse_opt_final_energy_hartree'], coarse_final_xyz, coarse_final_isotopes = \
             _parse_opt_log(coarse_path, project_directory)
     else:
         d['coarse_opt_log'] = None
@@ -1906,7 +2546,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     # the fine opt's final geometry via ``spc.final_xyz``, and re-parsing
     # the log would just produce the same content with different rounding.
     if converged:
-        d['opt_n_steps'], d['opt_final_energy_hartree'], _ = _parse_opt_log(
+        d['opt_n_steps'], d['opt_final_energy_hartree'], _, _ = _parse_opt_log(
             paths.get('geo') or None, project_directory
         )
     else:
@@ -1924,18 +2564,25 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     # ``coarse_opt_input_xyz`` and ``coarse_opt_output_xyz`` are non-null
     # only when a coarse opt actually ran AND its log was parseable.
     initial_xyz_str = xyz_to_str(spc.initial_xyz) if spc.initial_xyz is not None else None
+    initial_isotopes = _xyz_isotopes(spc.initial_xyz)
     if coarse_final_xyz is not None:
         # Real two-stage opt with parseable coarse output.
         d['coarse_opt_input_xyz'] = initial_xyz_str
+        d['coarse_opt_input_xyz_isotopes'] = initial_isotopes
         d['coarse_opt_output_xyz'] = coarse_final_xyz
+        d['coarse_opt_output_xyz_isotopes'] = coarse_final_isotopes
         d['opt_input_xyz'] = coarse_final_xyz
+        d['opt_input_xyz_isotopes'] = coarse_final_isotopes
     else:
         # Either no coarse stage, or coarse ran but its geometry wasn't
         # parseable. Consumers cannot reconstruct the standalone coarse stage
         # without its output geometry. Honest-empty beats fake provenance.
         d['coarse_opt_input_xyz'] = None
+        d['coarse_opt_input_xyz_isotopes'] = None
         d['coarse_opt_output_xyz'] = None
+        d['coarse_opt_output_xyz_isotopes'] = None
         d['opt_input_xyz'] = initial_xyz_str
+        d['opt_input_xyz_isotopes'] = initial_isotopes
 
     # ── freq results ────────────────────────────────────────────────────────
     if is_mono or not converged:
@@ -1952,6 +2599,16 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     d['opt_log'] = _make_rel_path(paths.get('geo') or None, project_directory)
     d['freq_log'] = _make_rel_path(paths.get('freq') or None, project_directory)
     d['sp_log'] = _make_rel_path(paths.get('sp') or None, project_directory)
+    d['composite_log'] = _make_rel_path(paths.get('composite') or None, project_directory)
+    d['opt_route'] = _get_ess_route(paths.get('geo') or None, project_directory) if converged else None
+    d['freq_route'] = _get_ess_route(paths.get('freq') or None, project_directory) if converged else None
+    d['sp_route'] = _get_ess_route(paths.get('sp') or None, project_directory) if converged else None
+    d['composite_route'] = _get_ess_route(paths.get('composite') or None, project_directory) if converged else None
+    d['opt_dipole_moment_debye'], d['opt_dipole_moment_density'] = _get_gaussian_dipole_moment(
+        paths.get('geo') or None, project_directory) if converged and not is_mono and spc.charge == 0 \
+        else (None, None)
+    d['freq_polarizability_angstrom3'] = _get_gaussian_polarizability(
+        paths.get('freq') or None, project_directory) if converged and not is_mono else None
 
     # ── wavefunction stability diagnostic (null unless the job ran) ──────────
     stability = _parse_wavefunction_stability(paths.get('stability') or None, project_directory)
@@ -1980,6 +2637,10 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     )
     d['sp_input'] = _derive_input_path(
         paths.get('sp') or None, software_by_job.get('sp'), project_directory,
+    )
+    d['composite_input'] = _derive_input_path(
+        paths.get('composite') or None, _identify_log_ess(paths.get('composite') or None, project_directory),
+        project_directory,
     )
 
     # ── held-fixed coordinate constraints ──────────────────────────────────
@@ -2038,6 +2699,14 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     # ── ESS software version (from SP log, or fall back to geo/freq log) ──
     d['ess_versions'] = _get_ess_versions(paths, project_directory) if converged else None
     d['ess_software'] = _get_ess_software(paths, project_directory) if converged else None
+    d['levels'] = _species_levels_to_dict(entry, spc.is_ts)
+    d['sp_t1_diagnostic'] = _get_t1_diagnostic(spc, d['levels'].get('sp')) if converged else None
+    if not spc.is_ts:
+        irc_label = getattr(spc, 'irc_label', None)
+        endpoint_of = irc_label if isinstance(irc_label, str) and irc_label else None
+        direction = entry.get('irc_direction') if isinstance(entry, dict) else None
+        d['irc_endpoint_of'] = endpoint_of
+        d['irc_endpoint_direction'] = direction if endpoint_of and direction in ('forward', 'reverse') else None
 
     if spc.is_ts:
         d['chosen_ts_method'] = getattr(spc, 'chosen_ts_method', None)
@@ -2089,17 +2758,33 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         else:
             d['ts_guesses'] = []
 
+        if converged:
+            gsm_software, gsm_version = _get_gsm_ess(d.get('gsm_log'), project_directory)
+            if gsm_software:
+                d['ess_software'] = {**(d['ess_software'] or dict()), 'gsm': gsm_software}
+            if gsm_version:
+                d['ess_versions'] = {**(d['ess_versions'] or dict()), 'gsm': gsm_version}
+
         irc_paths = list(paths.get('irc') or [])
         d['irc_logs'] = [_make_rel_path(path, project_directory) for path in irc_paths]
+        d['irc_log_routes'] = [_get_ess_route(path or None, project_directory) for path in irc_paths]
         irc_directions = list(paths.get('irc_directions') or [])
         d['irc_log_directions'] = (
             irc_directions + [None] * (len(irc_paths) - len(irc_directions))
         )[:len(irc_paths)]
+        irc_levels = list(paths.get('irc_levels') or [])
+        d['irc_log_levels'] = [
+            _recorded_level_to_dict(level)
+            for level in (irc_levels + [None] * (len(irc_paths) - len(irc_levels)))[:len(irc_paths)]
+        ]
         if not irc_requested:
             d['irc_converged'] = None
         else:
             d['irc_converged'] = entry.get('job_types', {}).get('irc', False)
         d['ts_checks'] = _ts_checks_to_dict(spc)
+        d['irc_participant_mapping'] = _irc_participant_mapping_to_dict(spc)
+        d['freq_frequencies_cm1_ess_order'], d['reaction_coordinate_mode_index'] = \
+            _get_ts_frequencies_in_ess_order(spc, converged)
         d['rxn_label'] = spc.rxn_label
 
     # ── thermochemistry (non-TS converged species only) ──────────────────────
@@ -2123,6 +2808,142 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     d['rotor_scans'] = rotor_scans
 
     return d
+
+
+def _get_ts_frequencies_in_ess_order(spc, converged: bool) -> tuple[list[float] | None, int | None]:
+    """
+    Return the frequencies of a transition state as the frequency job printed them, and the 1-based index into that
+    list of the reaction-coordinate mode.
+
+    ``ARCSpecies.freqs`` is the list the frequency job reported, unsorted and with its imaginary modes in place. The
+    index is given only when the normal mode displacement check genuinely passed (``ts_checks['NMD']`` is ``True`` and
+    was not forced by ``skip_nmd``) and exactly one listed frequency equals, within
+    ``NMD_FREQUENCY_MATCH_TOLERANCE_CM1``, the frequency of the mode that check analysed.
+
+    Returns:
+        tuple[list[float] | None, int | None]: The frequencies, ``None`` when the species is not converged or has
+                                               none; and the index, ``None`` when it is not established.
+    """
+    freqs = getattr(spc, 'freqs', None)
+    if not converged or freqs is None or not len(freqs):
+        return None, None
+    try:
+        ess_order = [float(freq) for freq in freqs]
+    except (TypeError, ValueError):
+        logger.debug(f'Could not read the frequencies of {getattr(spc, "label", None)}', exc_info=True)
+        return None, None
+    if (getattr(spc, 'ts_checks', None) or {}).get('NMD') is not True:
+        return ess_order, None
+    record = getattr(spc, 'nmd_record', None)
+    record = record if isinstance(record, dict) else dict()
+    validated = record.get('frequency_cm1')
+    if record.get('forced') is True or isinstance(validated, bool) or not isinstance(validated, (int, float)):
+        return ess_order, None
+    matches = [index for index, freq in enumerate(ess_order)
+               if abs(freq - validated) <= NMD_FREQUENCY_MATCH_TOLERANCE_CM1]
+    return ess_order, matches[0] + 1 if len(matches) == 1 else None
+
+
+def _get_point_group_axis_order(point_group: str | None) -> int | str | None:
+    """
+    The order of the principal symmetry axis of a point group symbol that makes two principal moments equal:
+    ``'cubic'`` for T, O and I groups, the ``n`` of ``C<n>``, ``D<n>`` and ``S<n>``, ``2 * n`` for ``D<n>d`` (which
+    contains an ``S<2n>`` axis), ``1`` for ``Cs`` and ``Ci``, and ``None`` for anything else, linear groups included.
+    An ``S4`` axis counts as order 4, and ``S2`` (which is ``Ci``) as order 2.
+    """
+    if not isinstance(point_group, str):
+        return None
+    if re.fullmatch(r'[TOI][dh]?', point_group):
+        return 'cubic'
+    if point_group in ('Cs', 'Ci'):
+        return 1
+    match = re.fullmatch(r'([CDS])(\d+)([vhd]?)', point_group)
+    if match is None:
+        return None
+    order = int(match.group(2))
+    return 2 * order if match.group(1) == 'D' and match.group(3) == 'd' else order
+
+
+def _has_default_isotopes(xyz: dict) -> bool:
+    """
+    Whether every atom of ``xyz`` carries its most common isotope, or the geometry states no isotopes. ``False`` when
+    the symbols or isotopes cannot be compared.
+    """
+    isotopes = xyz.get('isotopes')
+    if not isotopes:
+        return True
+    symbols = xyz.get('symbols')
+    if not isinstance(isotopes, (list, tuple)) or not isinstance(symbols, (list, tuple)):
+        return False
+    try:
+        return all(isotope == get_most_common_isotope_for_element(symbol) for symbol, isotope in zip(symbols, isotopes))
+    except (KeyError, TypeError, ValueError):
+        logger.debug(f'Could not compare the isotopes {isotopes} with the most common ones of {symbols}', exc_info=True)
+        return False
+
+
+def _get_rigid_rotor_kind(spc, is_linear: bool | None, point_group: str | None = None) -> str | None:
+    """
+    Classify a species as a rigid rotor from the principal moments of inertia of its exported geometry.
+
+    ``atom`` for a monoatomic species and ``linear`` for one flagged linear, or, when the species does not say, for
+    one whose smallest moment is within ``RIGID_ROTOR_LINEAR_MOMENT_RATIO`` of the next. Otherwise ``spherical_top``
+    when all three moments agree and ``symmetric_top`` when two do, each within
+    ``RIGID_ROTOR_MOMENT_RELATIVE_TOLERANCE`` of the larger, and ``asymmetric_top`` when none do. The masses are those
+    of the isotopes the geometry carries.
+
+    When every atom carries its most common isotope (the point group calculation ignores isotopes), the exported
+    ``point_group`` refines that verdict: a group with no C_n (n >= 3) and no S4 axis, and that is not cubic, rules out a
+    symmetric or spherical top (the result is ``asymmetric_top``), and a group with such an axis (``spherical_top`` for
+    a cubic one) promotes a geometry whose relevant moments agree within ``RIGID_ROTOR_POINT_GROUP_TOLERANCE``.
+
+    ``None`` when there is no final geometry, when it cannot be weighed, and when the species is flagged
+    non-linear but its atoms are collinear.
+    """
+    if spc.is_monoatomic() is True:
+        return 'atom'
+    if is_linear:
+        return 'linear'
+    xyz = spc.final_xyz
+    if not xyz or not xyz.get('coords'):
+        return None
+    try:
+        masses = get_element_mass_from_xyz(xyz)
+        ia, ib, ic = get_principal_moments_of_inertia(xyz['coords'], masses)
+    except Exception:
+        logger.debug(f'Could not compute the principal moments of {spc.label}', exc_info=True)
+        return None
+    if ic <= 0:
+        return None
+    if ia <= RIGID_ROTOR_LINEAR_MOMENT_RATIO * ib:
+        if is_linear is None:
+            return 'linear'
+        logger.warning(f'{spc.label} is flagged non-linear, but the atoms of its exported geometry are collinear. '
+                       f'Not stating a rigid-rotor kind.')
+        return None
+
+    def agree(small: float, large: float, tolerance: float) -> bool:
+        """Whether two moments differ by no more than ``tolerance`` of the larger."""
+        return large - small <= tolerance * large
+
+    tolerance = RIGID_ROTOR_MOMENT_RELATIVE_TOLERANCE
+    if agree(ia, ic, tolerance):
+        kind = 'spherical_top'
+    elif agree(ia, ib, tolerance) or agree(ib, ic, tolerance):
+        kind = 'symmetric_top'
+    else:
+        kind = 'asymmetric_top'
+    axis_order = _get_point_group_axis_order(point_group)
+    if axis_order is None or not _has_default_isotopes(xyz):
+        return kind
+    if axis_order == 'cubic':
+        return 'spherical_top' if agree(ia, ic, RIGID_ROTOR_POINT_GROUP_TOLERANCE) else kind
+    if axis_order < 3:
+        return 'asymmetric_top'
+    if kind == 'asymmetric_top' and (agree(ia, ib, RIGID_ROTOR_POINT_GROUP_TOLERANCE)
+                                     or agree(ib, ic, RIGID_ROTOR_POINT_GROUP_TOLERANCE)):
+        return 'symmetric_top'
+    return kind
 
 
 def _get_imaginary_freqs(spc) -> list[float] | None:
@@ -2223,13 +3044,9 @@ def _statmech_to_dict(spc,
     # Use the cached private attribute to avoid triggering a geometry re-read
     is_linear = spc._is_linear
 
-    if spc.is_monoatomic() is True:
-        rotor_kind = 'atom'
-    elif is_linear:
-        rotor_kind = 'linear'
-    else:
-        rotor_kind = 'asymmetric_top'
+    rotor_kind = _get_rigid_rotor_kind(spc, is_linear, point_group)
 
+    rotor_modes = getattr(spc, 'arkane_rotor_modes', None)
     freqs = getattr(spc, 'freqs', None)
     if freqs is not None and spc.is_ts:
         # Exclude the imaginary mode (most negative frequency)
@@ -2237,6 +3054,10 @@ def _statmech_to_dict(spc,
 
     return {
         'e0_kj_mol': spc.e0,
+        'e0_atom_corrections_applied': getattr(spc, 'e0_atom_corrections_applied', None),
+        'e0_bond_corrections_applied': getattr(spc, 'e0_bond_corrections_applied', None),
+        'arkane_rotors_applied': len(rotor_modes) if rotor_modes is not None else None,
+        'arkane_treatment': get_arkane_treatment(rotor_modes),
         'spin_multiplicity': spc.multiplicity,
         'optical_isomers': spc.optical_isomers,
         'is_linear': is_linear,
@@ -2271,14 +3092,19 @@ def _get_torsions(spc, project_directory: str, scan_keys: set[str] | None = None
     if scan_keys is None:
         scan_keys = {entry['key'] for entry in _build_rotor_scans(spc, project_directory)}
     torsions = []
+    treated_rotors = [rotor for rotor in spc.rotors_dict.values() if rotor.get('success') is True]
+    rotor_modes = getattr(spc, 'arkane_rotor_modes', None)
+    arkane_treatments = (
+        [ARKANE_TORSION_TREATMENT_BY_MODE.get(mode) for mode in rotor_modes]
+        if rotor_modes is not None and len(rotor_modes) == len(treated_rotors) else [None] * len(treated_rotors)
+    )
     for rotor_index, rotor in spc.rotors_dict.items():
         if rotor.get('success') is not True:
             continue
         scan = rotor.get('scan')       # 4-atom dihedral defining atoms, 1-indexed
         pivots = rotor.get('pivots')   # 2-atom rotation axis, 1-indexed
         symmetry = rotor.get('symmetry', 1)
-        rotor_type = rotor.get('type', 'HinderedRotor')
-        treatment = 'free_rotor' if 'Free' in str(rotor_type) else 'hindered_rotor'
+        treatment = arkane_treatments[len(torsions)]
         dimension = int(rotor.get('dimensions', 1) or 1)
         candidate_key = f'scan_rotor_{rotor_index}'
         scan_key = candidate_key if candidate_key in scan_keys else None
@@ -2399,14 +3225,7 @@ def _resolve_scan_path(rotor: dict, project_directory: str) -> str | None:
     scan-calc builder so they agree on which rotors qualify as "has a
     scan log we can use."
     """
-    scan_path = rotor.get('scan_path', '')
-    if not scan_path:
-        return None
-    if not os.path.isabs(scan_path):
-        scan_path = os.path.join(project_directory, scan_path)
-    if not os.path.isfile(scan_path):
-        return None
-    return scan_path
+    return _existing_log_path(rotor.get('scan_path', ''), project_directory)
 
 
 def _get_rotor_barrier(rotor: dict, project_directory: str) -> float | None:
@@ -2502,9 +3321,13 @@ def _build_rotor_scan_entry(rotor_index,
     )
     if scan_result is None:
         return None
+    scan_path = _resolve_scan_path(rotor, project_directory)
+    ess_software, ess_version = _observe_log_ess(scan_path, project_directory)
     entry = {
         'key': f'scan_rotor_{rotor_index}',
-        'source_log': _make_rel_path(_resolve_scan_path(rotor, project_directory), project_directory),
+        'source_log': _make_rel_path(scan_path, project_directory),
+        'ess_software': ess_software,
+        'ess_version': ess_version,
         'result': scan_result,
     }
     scan_constraints = _parse_scan_constraints(rotor, project_directory)
@@ -2758,6 +3581,7 @@ def _build_scan_result_for_rotor(
     # not as ``null``.
     geometries = parsed.get('geometries')
     point_geometry_xyz_texts: list[str] | None = None
+    point_geometry_isotopes: list[list[int] | None] = []
     if geometries is not None:
         if len(geometries) != len(rel_energies):
             logger.warning(
@@ -2769,6 +3593,17 @@ def _build_scan_result_for_rotor(
             try:
                 point_geometry_xyz_texts = [
                     _xyz_dict_to_output_text(g) for g in geometries
+                ]
+                stated_isotopes: dict = dict()
+                for g in geometries:
+                    if isinstance(g, dict) and isinstance(g.get('symbols'), (list, tuple)):
+                        symbols = tuple(g['symbols'])
+                        if symbols not in stated_isotopes:
+                            stated_isotopes[symbols] = _get_log_stated_isotopes(scan_path, symbols)
+                point_geometry_isotopes = [
+                    stated_isotopes.get(tuple(g['symbols'])) if isinstance(g, dict)
+                    and isinstance(g.get('symbols'), (list, tuple)) else None
+                    for g in geometries
                 ]
             except Exception as exc:
                 logger.warning(
@@ -2887,6 +3722,7 @@ def _build_scan_result_for_rotor(
             sample['electronic_energy_hartree'] = float(abs_energies[source_index])
         if point_geometry_xyz_texts is not None:
             sample['geometry_xyz'] = point_geometry_xyz_texts[source_index]
+            sample['geometry_isotopes'] = point_geometry_isotopes[source_index]
         samples.append(sample)
 
     scan_result: dict[str, Any] = {
@@ -2931,6 +3767,115 @@ def _ts_checks_to_dict(spc) -> dict:
     return result
 
 
+def _is_int(value) -> bool:
+    """Whether ``value`` is an ``int`` and not a ``bool``."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _irc_participant_mapping_to_dict(spc) -> dict | None:
+    """
+    Return which atoms of each IRC endpoint geometry belong to which participant species, or ``None``.
+
+    The mapping is recorded only when the IRC check established its verdict by graph isomorphism of the perceived
+    endpoint fragments, so it is ``None`` when the bond-list fallback decided, when IRC was not run or failed, and
+    unless ``ts_checks['IRC']`` is ``True``. A recorded value that does not have the documented shape, or that
+    violates the schema (positions and occurrences below 1, negative or repeated atom indices), is dropped rather
+    than exported.
+
+    Args:
+        spc (ARCSpecies): The transition state species.
+
+    Returns: dict | None
+        ``{'reactants': side, 'products': side, 'sides_distinguishable': bool, 'atom_order_matches_ts': bool | None}``
+        where ``side`` is ``{'endpoint': 1 | 2, 'endpoint_label': str | None, 'participants': [participant, ...]}`` and
+        ``participant`` is ``{'label': str, 'position': int, 'occurrence': int, 'atom_indices': list[int]}``.
+        ``endpoint`` says whether the geometry is the first or the second IRC endpoint geometry given to the check,
+        and ``endpoint_label`` is the label of the species it belongs to. ``position`` is 1-based in the order of
+        ``atom_map_reactant_labels`` / ``atom_map_product_labels``. ``atom_indices`` are ascending 0-based
+        indices into that optimized endpoint geometry. ``sides_distinguishable`` is ``False`` when the reactants and
+        the products are graph-isomorphic to each other, and ``atom_order_matches_ts`` states whether the endpoint
+        geometries follow the atom order of the TS geometry the IRC was run from (``None`` when not checked).
+    """
+    if (getattr(spc, 'ts_checks', None) or {}).get('IRC') is not True:
+        return None
+    mapping = getattr(spc, 'irc_participant_mapping', None)
+    if not isinstance(mapping, dict) \
+            or set(mapping) != {'reactants', 'products', 'sides_distinguishable', 'atom_order_matches_ts'} \
+            or not isinstance(mapping['sides_distinguishable'], bool) \
+            or not (mapping['atom_order_matches_ts'] is None or isinstance(mapping['atom_order_matches_ts'], bool)):
+        return None
+    result = {'sides_distinguishable': mapping['sides_distinguishable'],
+              'atom_order_matches_ts': mapping['atom_order_matches_ts']}
+    for well in ('reactants', 'products'):
+        side = mapping[well]
+        if not isinstance(side, dict) or not isinstance(side.get('participants'), list) \
+                or side.get('endpoint') not in (1, 2) or isinstance(side.get('endpoint'), bool):
+            return None
+        label = side.get('endpoint_label')
+        if label is not None and not isinstance(label, str):
+            return None
+        participants = list()
+        for participant in side['participants']:
+            if not isinstance(participant, dict) or not isinstance(participant.get('label'), str) \
+                    or not all(_is_int(participant.get(key)) and participant[key] >= 1
+                               for key in ('position', 'occurrence')) \
+                    or not isinstance(participant.get('atom_indices'), list) \
+                    or not all(_is_int(i) and i >= 0 for i in participant['atom_indices']) \
+                    or len(set(participant['atom_indices'])) != len(participant['atom_indices']):
+                return None
+            participants.append({'label': participant['label'],
+                                 'position': participant['position'],
+                                 'occurrence': participant['occurrence'],
+                                 'atom_indices': list(participant['atom_indices']),
+                                 })
+        result[well] = {'endpoint': side['endpoint'], 'endpoint_label': label, 'participants': participants}
+    return result
+
+
+def _get_reaction_atom_map(rxn) -> dict:
+    """
+    Read the atom map a reaction already holds, without computing one, and state what it maps.
+
+    The map is exported only if it is a permutation of the atoms of the expanded reactants that conserves the
+    element: reactant atom ``i`` and product atom ``map[i]`` must have the same symbol. Reactant atoms are counted
+    over ``get_reactants_and_products`` (``r_species`` order, one block per occurrence, each block in the exported
+    geometry atom order of the species), and product atoms likewise over the products.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+
+    Returns: dict
+        ``atom_map``, ``atom_map_reactant_labels`` and ``atom_map_product_labels`` (one label per occurrence, in map
+        order), ``atom_map_source`` (``'declared'`` or ``'inferred'``) and ``atom_map_method``; every value is ``None``
+        when the reaction holds no (well-formed, element-conserving) map, and the source and method are ``None`` when
+        the origin of the map was not recorded.
+    """
+    nothing = {key: None for key in ('atom_map', 'atom_map_reactant_labels', 'atom_map_product_labels',
+                                     'atom_map_source', 'atom_map_method')}
+    atom_map = getattr(rxn, '_atom_map', None)
+    if not isinstance(atom_map, (list, tuple)) or not all(_is_int(i) for i in atom_map):
+        return nothing
+    reactants, products = rxn.get_reactants_and_products(return_copies=False)
+    xyzs = [spc.get_xyz(generate=False) for spc in reactants + products]
+    if any(not isinstance(xyz, dict) for xyz in xyzs):
+        return nothing
+    r_symbols = [symbol for xyz in xyzs[:len(reactants)] for symbol in xyz['symbols']]
+    p_symbols = [symbol for xyz in xyzs[len(reactants):] for symbol in xyz['symbols']]
+    if len(atom_map) != len(r_symbols) or len(r_symbols) != len(p_symbols) \
+            or sorted(atom_map) != list(range(len(atom_map))) \
+            or any(r_symbols[i] != p_symbols[j] for i, j in enumerate(atom_map)):
+        return nothing
+    source = getattr(rxn, '_atom_map_source', None)
+    source = source if source in ATOM_MAP_SOURCES else None
+    method = getattr(rxn, '_atom_map_method', None)
+    return {'atom_map': list(atom_map),
+            'atom_map_reactant_labels': [spc.label for spc in reactants],
+            'atom_map_product_labels': [spc.label for spc in products],
+            'atom_map_source': source,
+            'atom_map_method': method if source == 'inferred' and isinstance(method, str) else None,
+            }
+
+
 def _rxn_to_dict(rxn) -> dict:
     """Convert an ARCReaction to a plain dict for output.yml."""
     kinetics = rxn.kinetics
@@ -2963,6 +3908,9 @@ def _rxn_to_dict(rxn) -> dict:
             # the template constant. A provenance field that cannot be false
             # carries no information.
             'tunneling': kinetics.get('tunneling'),
+            'atom_corrections_applied': kinetics.get('atom_corrections_applied'),
+            'comment': _str_or_none(kinetics.get('comment')),
+            'ts_validation': _str_or_none(kinetics.get('ts_validation')),
         }
 
     rxn_dict: dict = {
@@ -2973,7 +3921,9 @@ def _rxn_to_dict(rxn) -> dict:
         'multiplicity': rxn.multiplicity,
         'ts_label': rxn.ts_label,
         'kinetics': kin_dict,
+        'reversible': _get_reversible(rxn),
     }
+    rxn_dict.update(_get_reaction_atom_map(rxn))
     long_kin_desc = getattr(rxn, 'long_kinetic_description', None)
     if long_kin_desc:
         rxn_dict['long_kinetic_description'] = long_kin_desc

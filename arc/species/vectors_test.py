@@ -495,6 +495,26 @@ H      -0.56460509    0.87663914    1.25780346""")
         self.assertEqual(vectors.get_delta_angle(372, 359), 13.0)
         self.assertAlmostEqual(vectors.get_delta_angle(730, 10.1), 0.1)
 
+    def test_get_principal_moments_of_inertia(self):
+        """Test the principal moments of point masses about their center of mass"""
+        dumbbell = vectors.get_principal_moments_of_inertia([[-1, 0, 0], [1, 0, 0]], [1.0, 1.0])
+        for moment, expected in zip(dumbbell, [0.0, 2.0, 2.0]):
+            self.assertAlmostEqual(moment, expected)
+        shifted = vectors.get_principal_moments_of_inertia([[5, 7, 9], [7, 7, 9]], [1.0, 1.0])
+        for moment, expected in zip(shifted, [0.0, 2.0, 2.0]):
+            self.assertAlmostEqual(moment, expected)
+        cube = [[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]
+        for moment in vectors.get_principal_moments_of_inertia(cube, [2.0] * 8):
+            self.assertAlmostEqual(moment, 32.0)
+        rotated = vectors.get_principal_moments_of_inertia([[0, 0, 1], [0, 2, 0], [3, 0, 0]], [1.0, 2.0, 3.0])
+        unrotated = vectors.get_principal_moments_of_inertia([[1, 0, 0], [0, 2, 0], [0, 0, 3]], [1.0, 2.0, 3.0])
+        for moment, expected in zip(rotated, unrotated):
+            self.assertAlmostEqual(moment, expected)
+        with self.assertRaises(VectorsError):
+            vectors.get_principal_moments_of_inertia([], [])
+        with self.assertRaises(VectorsError):
+            vectors.get_principal_moments_of_inertia([[0, 0, 0], [1, 0, 0]], [1.0])
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

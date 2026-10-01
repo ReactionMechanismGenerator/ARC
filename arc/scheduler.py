@@ -61,8 +61,9 @@ from arc.job.trsh import (scan_quality_check,
                           trsh_negative_freq,
                           trsh_scan_job,
                           )
-from arc.level import Level
+from arc.level import Level, set_recorded_irc_level, set_recorded_irc_log_level, set_recorded_level
 from arc.species.species import (ARCSpecies,
+                                 CONFORMER_ENERGY_KIND_ELECTRONIC,
                                  are_coords_compliant_with_graph,
                                  check_label,
                                  determine_rotor_symmetry,
@@ -2784,8 +2785,10 @@ class Scheduler(object):
 
         # Spawn post sp actions if this is a composite job.
         if composite and self.composite_method:
+            composite_job = self.job_dict[label]['composite'][job_name]
             self.post_sp_actions(label=label,
-                                 sp_path=self.job_dict[label]['composite'][job_name].local_path_to_output_file)
+                                 sp_path=composite_job.local_path_to_output_file,
+                                 level=composite_job.level)
 
         # Spawn orbitals job.
         if self.job_types['orbitals'] and 'orbitals' not in self.job_dict[label].keys():
@@ -2827,13 +2830,14 @@ class Scheduler(object):
         """
         Check if any new reaction has all of its reactants and products optimized,
         and if so spawn the respective TSG jobs.
-        Don't spawn TS jobs if the multiplicity of the reaction could not be determined.
+        Don't spawn TS jobs if the multiplicity or the charge of the reaction could not be determined.
         """
         for rxn in self.rxn_list:
             rxn.check_done_opt_r_n_p()
             if rxn.done_opt_r_n_p and not rxn.ts_species.tsg_spawned:
-                if rxn.multiplicity is None:
-                    logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
+                if rxn.multiplicity is None or rxn.charge is None:
+                    logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity '
+                                f'or the charge is unknown.')
                 else:
                     rxn.ts_species.tsg_spawned = True
                     tsg_index, eligible_methods = 0, list()
@@ -3239,7 +3243,9 @@ class Scheduler(object):
                         ):
         """
         Parse E0 (kJ/mol) from the conformer opt output file.
-        For species, save it in the Species.conformer_energies attribute.
+        For species, save it in the Species.conformer_energies attribute, and record the level of the job
+        (Species.conformer_levels for the geometry of a conformer opt job, and Species.conformer_energy_sources
+        for the energy).
         Fot TSs, save it in the TSGuess.energy attribute, and also parse the geometry.
 
         Args:
@@ -3267,8 +3273,15 @@ class Scheduler(object):
                 else:
                     logger.debug(f'Energy for TSGuess {i} of {label} is None')
             else:
-                self.species_dict[label].conformer_energies[i] = energy
-                self.species_dict[label].conformers[i] = xyz
+                species = self.species_dict[label]
+                if xyz is not None:
+                    species.conformers[i] = xyz
+                if xyz is not None or job.job_type == 'conf_sp':
+                    species.conformer_energies[i] = energy
+                    species.record_conformer_energy_source(
+                        i, CONFORMER_ENERGY_KIND_ELECTRONIC if energy is not None else None, job.level)
+                if xyz is not None and job.job_type != 'conf_sp':
+                    species.record_conformer_geometry_level(i, job.level)
                 if energy is not None:
                     logger.debug(f'Energy for conformer {i} of {label} is {energy:.2f}')
                 else:
@@ -3617,8 +3630,9 @@ class Scheduler(object):
             if self.job_types['fine']:
                 self.output[label]['job_types']['fine'] = True  # all composite jobs are fine if fine was asked for
             self.output[label]['paths']['composite'] = os.path.join(job.local_path_to_output_file)
-            if self.composite_method is not None:
-                self.species_dict[label].opt_level = self.composite_method.simple()
+            self.record_job_level(label=label, job_key='composite', level=job.level)
+            if job.level is not None:
+                self.species_dict[label].opt_level = job.level.simple()
             rxn_str = ''
             if self.species_dict[label].is_ts:
                 rxn_str = f' of reaction {self.species_dict[label].rxn_label}' \
@@ -3778,7 +3792,8 @@ class Scheduler(object):
         self.output[spc_label]['job_types']['opt'] = True
         if self.job_types['fine']:
             self.output[spc_label]['job_types']['fine'] = True
-        self.species_dict[spc_label].opt_level = self.opt_level.simple()
+        if job.level is not None:
+            self.species_dict[spc_label].opt_level = job.level.simple()
         plotter.save_geo(species=self.species_dict[spc_label], project_directory=self.project_directory)
         if self.species_dict[spc_label].is_ts:
             rxn_str = f' of reaction {self.species_dict[spc_label].rxn_label}' \
@@ -3788,6 +3803,7 @@ class Scheduler(object):
         logger.info(f'\nOptimized geometry for {spc_label}{rxn_str} at {job.level.simple()}:\n'
                     f'{xyz_to_str(self.species_dict[spc_label].final_xyz)}\n')
         self.output[spc_label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
+        self.record_job_level(label=spc_label, job_key='opt', level=job.level)
 
     def get_chosen_tsg(self, label: str) -> TSGuess | None:
         """
@@ -3958,6 +3974,7 @@ class Scheduler(object):
             else:
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
+                self.record_job_level(label=label, job_key='freq', level=self.freq_level_of_job(job))
                 if not self.testing:
                     # Update restart dictionary and save the yaml restart file:
                     self.save_restart_dict()
@@ -4014,6 +4031,7 @@ class Scheduler(object):
                 self.output[label]['info'] += f'Imaginary frequency: {neg_freqs[0] if len(neg_freqs) == 1 else neg_freqs}; '
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
+                self.record_job_level(label=label, job_key='freq', level=self.freq_level_of_job(job))
                 if len(self.species_dict[label].ts_guesses):
                     plotter.save_conformers_file(
                         project_directory=self.project_directory,
@@ -4195,6 +4213,10 @@ class Scheduler(object):
         if os.path.isfile(freq_path):
             os.remove(freq_path)
         self.species_dict[label].populate_ts_checks()  # Restart the TS checks dict.
+        self.species_dict[label].e0 = None
+        self.species_dict[label].e0_atom_corrections_applied = None
+        self.species_dict[label].e0_bond_corrections_applied = None
+        self.species_dict[label].arkane_rotor_modes = None
         if self.job_types['rotors'] and self.species_dict[label].rotors_dict is not None:
             # Reset rotors so they are re-determined from the new TS geometry.
             # rotors_dict=None is a sentinel meaning "skip rotor scans"; preserve it.
@@ -4222,6 +4244,7 @@ class Scheduler(object):
         if ('mrci' in self.sp_level.method or 'rs2' in self.sp_level.method) and job.level is not None \
                 and 'mrci' not in job.level.method and 'rs2' not in job.level.method:
             self.output[label]['paths']['sp'] = job.local_path_to_output_file
+            self.record_job_level(label=label, job_key='sp', level=job.level)
             self.run_sp_job(label)
         elif job.job_status[1]['status'] == 'done':
             self.post_sp_actions(label,
@@ -4249,19 +4272,17 @@ class Scheduler(object):
         """
         Perform post-sp actions.
 
-        ``job`` is the job whose log the electronic energy is read from, which is the sp job
-        where one ran and the optimization job where the sp level equals the opt level and no
-        sp job was submitted. Its SCF reference is recorded here, under 'sp', because it is the
-        job that supplied the energy whichever of the two it is. A caller that has no job to
-        name, a species restored from a restart among them, records nothing.
+        ``job`` is the job whose log the electronic energy is read from: the sp job, or the optimization job where
+        the sp level equals the opt level and no sp job was submitted. Its SCF reference is recorded under 'sp'.
+        Without a job (a species restored from a restart, the composite path of ``spawn_post_opt_jobs``, the pipe
+        finalizer of an ``species_sp`` task, or ``run_sp_job`` reading the optimization log) no SCF reference is
+        recorded.
 
-        THE ONE CALLER THAT NAMES NO JOB is ``run_sp_job``'s path for a project restarted with no
-        opt job left in its job dictionary, which reaches the optimization log through
-        ``output[label]['paths']['geo']`` and has no job object to hand over. It is reached only
-        where the sp level equals the opt level, where one job supplied both the geometry and the
-        energy and the two therefore share one SCF reference by construction, so the reference
-        comparison that record feeds has nothing to find. What it costs is that ``output.yml``
-        reports a null ``reference_mismatch`` for such a project rather than ``false``.
+        The level recorded under 'sp' is that of ``job``; without a job it is the recorded opt level when
+        ``sp_path`` is the geometry log, and otherwise ``level``.
+
+        With a solvation scheme, the extra sp jobs record only ``sp_sol`` and ``sp_no_sol`` paths, and the 'sp'
+        path, level and electronic energy of the original sp job are restored.
 
         Args:
             label (str): The species label.
@@ -4271,8 +4292,16 @@ class Scheduler(object):
         """
         if job is not None:
             self.record_scf_reference(label=label, job=job, reference_key='sp')
+        if job is not None:
+            sp_recorded_level = job.level
+        elif sp_path == self.output[label]['paths'].get('geo'):
+            sp_recorded_level = self.output[label].get('levels', dict()).get('opt')
+        else:
+            sp_recorded_level = level
         original_sp_path = self.output[label]['paths']['sp'] if 'sp' in self.output[label]['paths'] else None
+        original_sp_level = self.output[label].get('levels', dict()).get('sp')
         self.output[label]['paths']['sp'] = sp_path
+        self.record_job_level(label=label, job_key='sp', level=sp_recorded_level)
         if self.sp_level is not None and 'ccsd' in self.sp_level.method:
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
         self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'])
@@ -4304,7 +4333,12 @@ class Scheduler(object):
                     self.output[label]['paths']['sp_sol'] = sp_path
                 else:
                     self.output[label]['paths']['sp_no_sol'] = sp_path
-                self.output[label]['paths']['sp'] = original_sp_path  # restore the original path
+                self.output[label]['paths']['sp'] = original_sp_path
+                self.record_job_level(label=label, job_key='sp', level=original_sp_level)
+                if original_sp_path is not None:
+                    if 'ccsd' in self.sp_level.method:
+                        self.species_dict[label].t1 = parser.parse_t1(original_sp_path)
+                    self.species_dict[label].e_elect = parser.parse_e_elect(original_sp_path)
 
         if species_is_ready_for_e0(self.output[label], self.species_dict[label]):
             self.check_rxn_e0_by_spc(label)
@@ -4327,9 +4361,9 @@ class Scheduler(object):
             job (JobAdapter): The IRC job object.
         """
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
-        self.output[label]['paths'].setdefault('irc_directions', list()).append(
-            getattr(job, 'irc_direction', None)
-        )
+        irc_direction = getattr(job, 'irc_direction', None)
+        self.output[label]['paths'].setdefault('irc_directions', list()).append(irc_direction)
+        self.record_irc_level(label=label, level=job.level)
         index = 1
         if len(self.output[label]['paths']['irc']) == 2:
             index = 2
@@ -4353,6 +4387,7 @@ class Scheduler(object):
         self.species_list.append(irc_spc)
         self.species_dict[irc_spc.label] = irc_spc
         self.initialize_output_dict(label=irc_spc.label)
+        self.output[irc_spc.label]['irc_direction'] = irc_direction if irc_direction in ('forward', 'reverse') else None
         self.run_job(label=irc_spc.label,
                      xyz=self.species_dict[irc_spc.label].get_xyz(),
                      level_of_theory=self.opt_level if not self.composite_method else self.freq_level,
@@ -4394,6 +4429,7 @@ class Scheduler(object):
                 check_irc_species_and_rxn(xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
                                           xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
                                           rxn=rxn,
+                                          endpoint_labels=tuple(irc_species_labels[:2]),
                                           )
                 self.process_irc_verdict(ts_label=ts_label, rxn=rxn)
 
@@ -4845,6 +4881,7 @@ class Scheduler(object):
             self.delete_all_species_jobs(label)
             self.species_dict[label].conformers = confs
             self.species_dict[label].conformer_energies = [None] * len(confs)
+            self.species_dict[label].reset_conformer_provenance()
             self.job_dict[label]['conf_opt'] = dict()  # initialize the conformer job dictionary
             for i, xyz in enumerate(self.species_dict[label].conformers):
                 self.run_job(label=label,
@@ -5377,7 +5414,7 @@ class Scheduler(object):
                     job.delete()
         self.running_jobs[label] = list()
         self.output[label]['paths'] = {
-            key: list() if key in ('irc', 'irc_directions') else ''
+            key: list() if key in ('irc', 'irc_directions', 'irc_levels') else ''
             for key in self.output[label]['paths'].keys()
         }
         for job_type in self.output[label]['job_types']:
@@ -5389,6 +5426,7 @@ class Scheduler(object):
             else:
                 self.output[label]['job_types'][job_type] = False
         self.output[label]['convergence'] = None
+        self.output[label]['levels'] = dict()
         self._pending_pipe_sp.discard(label)
         self._pending_pipe_freq.discard(label)
         self._pending_pipe_irc.discard((label, 'forward'))
@@ -5659,6 +5697,62 @@ class Scheduler(object):
                     participants[pos] = copy_label
             rxn.label = rxn.arrow.join([rxn.plus.join(rxn.reactants), rxn.plus.join(rxn.products)])
 
+    def record_job_level(self,
+                         label: str,
+                         job_key: str,
+                         level: Level | dict | None,
+                         ):
+        """
+        Record the level of theory of the job whose log path was just stored in ``self.output[label]['paths']``.
+
+        The record lives in ``self.output[label]['levels'][job_key]`` as an independent plain dictionary
+        (``Level.as_dict()`` without a ``solvation_scheme_level``), so it is saved to and restored from restart.yml.
+        A ``None`` level, or one that is empty, removes the record.
+        The entry is created if the output dictionary is of an older restart that has no ``levels``.
+
+        Args:
+            label (str): The species label.
+            job_key (str): 'opt', 'freq', 'sp', 'composite', or 'irc'.
+            level (Level | dict, optional): The level of the job, either a Level object or a stored level dictionary.
+        """
+        if label not in self.output:
+            return
+        set_recorded_level(self.output[label].setdefault('levels', dict()), job_key, level)
+
+    @staticmethod
+    def freq_level_of_job(job: JobAdapter) -> Level | None:
+        """
+        The level of the frequency calculation whose log a job wrote.
+
+        A composite job's log holds the frequencies of the composite method's own geometry level, which the
+        job's level (the composite method) does not name, so the level is unknown and ``None`` is returned;
+        a record of such a log's frequencies pairs with ``levels.composite`` instead.
+
+        Args:
+            job (JobAdapter): The job whose log is the frequency log.
+
+        Returns:
+            Level | None: The job's level, or ``None`` for a composite job.
+        """
+        return None if getattr(job, 'job_type', None) == 'composite' else job.level
+
+    def record_irc_level(self, label: str, level: Level | None):
+        """
+        Record the level of the IRC jobs of a TS.
+
+        Forward and reverse IRC logs are exported together under one key. The first log records its level;
+        a second log at a different level makes the level of the pair undeterminable, so it is removed.
+
+        Args:
+            label (str): The TS label.
+            level (Level, optional): The level of the IRC job whose log was just recorded.
+        """
+        if label not in self.output:
+            return
+        set_recorded_irc_level(self.output[label].setdefault('levels', dict()), level,
+                               len(self.output[label]['paths']['irc']))
+        set_recorded_irc_log_level(self.output[label]['paths'], level)
+
     def initialize_output_dict(self, label: str | None = None):
         """
         Initialize self.output.
@@ -5687,10 +5781,14 @@ class Scheduler(object):
                             self.output[species.label]['paths']['irc'] = list()
                         if 'irc_directions' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['irc_directions'] = list()
+                        if 'irc_levels' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['irc_levels'] = list()
                         if 'neb' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['neb'] = ''
                         if 'gsm' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['gsm'] = ''
+                    if 'levels' not in self.output[species.label]:
+                        self.output[species.label]['levels'] = dict()
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:

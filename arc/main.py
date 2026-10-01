@@ -29,7 +29,7 @@ from arc.common import (VERSION,
                         )
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
-from arc.level import Level, assign_frequency_scale_factor
+from arc.level import Level, adaptive_levels_as_list, assign_frequency_scale_factor
 from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
 from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
@@ -40,7 +40,7 @@ from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
-from arc.statmech.arkane import _normalized_method_and_basis, check_arkane_aec, check_arkane_bacs
+from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs, normalized_method_and_basis
 from arc.utils.scale import determine_scaling_factors
 
 
@@ -417,7 +417,7 @@ class ARC(object):
         self.set_levels_of_theory()  # All level of theories should be Level types after this call.
         self._warn_year_on_non_arkane_levels()
         if self.thermo_adapter == 'arkane':
-            self.check_arkane_level_of_theory()  # Also defaults arkane_level_of_theory.
+            self.check_arkane_level_of_theory()
             if self.compute_thermo:
                 warn_if_arkane_level_differs(arkane_level=self.arkane_level_of_theory,
                                              energy_level=self.composite_method or self.sp_level,
@@ -445,10 +445,7 @@ class ARC(object):
         """
         restart_dict = dict()
         if self.adaptive_levels is not None:
-            restart_dict['adaptive_levels'] = [
-                {'atom_range': [atom_range[0], atom_range[1]],
-                 'levels': {' '.join(job_types): level.as_dict() for job_types, level in levels_dict.items()}}
-                for atom_range, levels_dict in self.adaptive_levels.items()]
+            restart_dict['adaptive_levels'] = adaptive_levels_as_list(self.adaptive_levels)
         if self.allow_nonisomorphic_2d:
             restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
         if self.arkane_level_of_theory is not None:
@@ -678,9 +675,11 @@ class ARC(object):
         _yml_scale = assign_frequency_scale_factor(level=_freq_level_for_lookup) if _freq_level_for_lookup is not None else None
         _user_provided_scale = (_yml_scale is None or _yml_scale != self.freq_scale_factor)
 
-        neb_level = resolve_neb_level(self.ts_adapters)
-
         try:
+            has_ts_or_reaction = bool(self.scheduler.rxn_list) \
+                or any(spc.is_ts for spc in self.scheduler.species_dict.values())
+            neb_level = resolve_neb_level(self.scheduler.ts_adapters) if has_ts_or_reaction else None
+            requested_levels = self.get_requested_levels_for_output()
             write_output_yml(
                 project=self.project,
                 project_directory=self.project_directory,
@@ -691,6 +690,11 @@ class ARC(object):
                 freq_level=self.freq_level,
                 sp_level=self.sp_level,
                 neb_level=neb_level,
+                scan_level=requested_levels['scan_level'],
+                irc_level=requested_levels['irc_level'],
+                conformer_opt_level=requested_levels['conformer_opt_level'],
+                conformer_sp_level=requested_levels['conformer_sp_level'],
+                ts_guess_level=requested_levels['ts_guess_level'],
                 composite_method=self.composite_method,
                 freq_scale_factor=self.freq_scale_factor,
                 freq_scale_factor_user_provided=_user_provided_scale,
@@ -700,6 +704,7 @@ class ARC(object):
                 irc_requested=self.job_types.get('irc', True),
                 t0=self.t0,
                 completed_job_records=self.scheduler.completed_job_records,
+                adaptive_levels=self.adaptive_levels,
             )
         except Exception as e:
             logger.error(f'Could not write output.yml: {e}')
@@ -1046,6 +1051,46 @@ class ARC(object):
                 h = ARCSpecies(label='H', smiles='[H]', compute_thermo=False, e0_only=True)
                 self.species.append(h)
 
+    def get_requested_levels_for_output(self) -> dict[str, Level | None]:
+        """
+        Get the run-level requested levels of the job types that output.yml states in its header.
+
+        A level is returned only if a job of that type could have run in this run and no adaptive level
+        replaces it, otherwise ``None``. ``scan_level`` needs rotor scans to be requested (``job_types['rotors']``)
+        and no adaptive ``scan`` entry; ``irc_level`` needs IRC to be requested, the run to have a TS, and no
+        adaptive ``irc`` entry; ``conformer_opt_level`` needs a non-TS, non-monoatomic species without an Arkane
+        yml file, either ``job_types['conf_opt']`` or a conformer that was actually optimized, and no adaptive
+        ``conf_opt`` entry; ``conformer_sp_level`` needs the same species, ``job_types['conf_sp']``, a level that
+        differs from ``conformer_opt_level``, and no adaptive ``conf_sp`` entry; ``ts_guess_level`` needs a TS
+        species and no adaptive ``conf_opt`` entry, the job type of the TS guess optimizations.
+
+        Returns:
+            dict: ``scan_level``, ``irc_level``, ``conformer_opt_level``, ``conformer_sp_level`` and
+                  ``ts_guess_level`` mapped to a ``Level`` or ``None``.
+        """
+        species = list(self.scheduler.species_dict.values()) if self.scheduler is not None else list(self.species)
+        adaptive_job_types = {job_type for levels_by_job_type in (self.adaptive_levels or dict()).values()
+                              for job_types in levels_by_job_type for job_type in job_types}
+        has_ts = any(spc.is_ts for spc in species)
+        conformer_species = [spc for spc in species
+                             if not spc.is_ts and spc.yml_path is None and spc.is_monoatomic() is not True]
+        conformers_optimized = any(level for spc in conformer_species
+                                   for level in (getattr(spc, 'conformer_levels', None) or list()))
+        conf_opt_ran = bool(conformer_species) and (bool(self.job_types.get('conf_opt')) or conformers_optimized)
+        conformer_opt_level = self.conformer_opt_level if conf_opt_ran and 'conf_opt' not in adaptive_job_types \
+            else None
+        conformer_sp_level = self.conformer_sp_level \
+            if conf_opt_ran and self.job_types.get('conf_sp') and 'conf_sp' not in adaptive_job_types \
+            and self.conformer_sp_level is not None and self.conformer_sp_level != self.conformer_opt_level else None
+        return {'scan_level': self.scan_level
+                if self.job_types.get('rotors') and 'scan' not in adaptive_job_types else None,
+                'irc_level': self.irc_level
+                if self.job_types.get('irc') and has_ts and 'irc' not in adaptive_job_types else None,
+                'conformer_opt_level': conformer_opt_level,
+                'conformer_sp_level': conformer_sp_level,
+                'ts_guess_level': self.ts_guess_level if has_ts and 'conf_opt' not in adaptive_job_types else None,
+                }
+
     def set_levels_of_theory(self):
         """
         Set all levels of theory by job type to be :ref:`Level <level>` types.
@@ -1388,9 +1433,9 @@ def warn_if_arkane_level_differs(arkane_level: Level | None,
     """
     Warn when Arkane will subtract the atom energies of a level other than the one the species' energies were
     computed at. Arkane still applies the correction, but the resulting H298 and NASA polynomials then mix two
-    levels and are not formation enthalpies. This is a warning rather than an error: a dummy
-    ``arkane_level_of_theory`` is a legitimate way to process a project whose level Arkane does not know, e.g.,
-    when only differences such as bond dissociation energies are of interest.
+    levels and are not formation enthalpies. A dummy ``arkane_level_of_theory`` (for a project whose level Arkane
+    does not know, e.g., when only differences such as bond dissociation energies are of interest) triggers the
+    warning and does not stop the run.
 
     Levels are compared on their method (with the dispersion correction folded in) and basis, normalized as in
     Arkane database matching, so spelling variants (``def2-TZVP`` vs. ``def2tzvp``) and refit years are not
@@ -1419,10 +1464,10 @@ def warn_if_arkane_level_differs(arkane_level: Level | None,
         for job_types, level in levels_by_job_type.items():
             if 'sp' in job_types or 'composite' in job_types:
                 energy_levels.append(level)
-    arkane_key = _normalized_method_and_basis(arkane_level)
+    arkane_key = normalized_method_and_basis(arkane_level)
     differing, solvated = list(), list()
     for level in energy_levels:
-        if _normalized_method_and_basis(level) != arkane_key and _level_label(level) not in differing:
+        if normalized_method_and_basis(level) != arkane_key and _level_label(level) not in differing:
             differing.append(_level_label(level))
         if level.solvation_method is not None and _level_label(level) not in solvated:
             solvated.append(_level_label(level))

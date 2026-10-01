@@ -5,6 +5,7 @@
 This module contains unit tests for ARC's statmech.arkane module
 """
 
+import hashlib
 import os
 import re
 import shutil
@@ -41,7 +42,11 @@ from arc.statmech.arkane import (
     _warn_no_match,
     check_arkane_aec,
     check_arkane_bacs,
+    get_arc_aec_yml_sha256,
     get_arkane_model_chemistry,
+    get_arkane_treatment,
+    get_file_sha256,
+    normalized_method_and_basis,
     parse_e0,
     parse_reaction_kinetics,
     parse_thermo_data_block,
@@ -159,7 +164,6 @@ class TestArkaneAdapter(unittest.TestCase):
             self.fail(f'Arkane did not generate {plot_path}.\nstdout.log:\n{stdout_text}\nstderr.log:\n{stderr_text}')
         self.assertTrue(os.path.isfile(plot_path))
         self.assertAlmostEqual(self.ic3h7.e0, 6.75565e+07)
-        # gfn2 has atom energies only in ARC's data/AEC.yml, and no BAC was requested.
         self.assertIsNotNone(self.ic3h7.thermo.H298)
         self.assertIs(self.ic3h7.thermo.atom_corrections_applied, True)
         self.assertIs(self.ic3h7.thermo.bond_corrections_applied, False)
@@ -569,7 +573,6 @@ class TestDispersionAndSolvationMatching(unittest.TestCase):
         self.assertEqual(_effective_method('dlpnoccsd(t)f122023'), ('dlpnoccsd(t)f12', 2023))
         self.assertEqual(_effective_method(None, 'gd3bj'), (None, None))
         self.assertEqual(_effective_method('b2plyp-gd3'), ('b2plypd3', None))
-        # A dispersion correction added to a separately parametrized "-D" functional stays apart from its name.
         self.assertEqual(_effective_method('b97', 'gd3'), ('b97 + d3', None))
         self.assertEqual(_effective_method('b97-gd3'), ('b97 + d3', None))
         self.assertEqual(_effective_method('wb97x', 'gd3'), ('wb97x + d3', None))
@@ -764,7 +767,8 @@ class TestArkaneCorrectionFlags(unittest.TestCase):
     """
 
     def _compute_thermo_with_mocked_arkane(self, sp_level, bac_type, species=None,
-                                           freq_level=None, freq_scale_factor=1.0):
+                                           freq_level=None, freq_scale_factor=1.0,
+                                           output_content='', e0_only=False):
         """
         Run ``compute_thermo`` with the Arkane and RMG subprocesses mocked out.
 
@@ -774,6 +778,8 @@ class TestArkaneCorrectionFlags(unittest.TestCase):
         Args:
             species (list, optional): The species to run; a single CH4 by default.
             freq_level (Level, optional): Defaults to ``sp_level``.
+            output_content (str, optional): The text of the ``output.py`` the mocked Arkane run writes.
+            e0_only (bool, optional): Whether to run the E0-only mode.
 
         Returns:
             tuple: The first species and the text of the ``input.py`` Arkane was handed.
@@ -795,7 +801,7 @@ class TestArkaneCorrectionFlags(unittest.TestCase):
             with open(os.path.join(statmech_dir, 'input.py'), 'r') as f:
                 inputs.append(f.read())
             with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
-                f.write('')
+                f.write(output_content)
             save_yaml_file(path=os.path.join(statmech_dir, 'thermo.yaml'),
                            content={spc.label: {'H298': -74.6, 'S298': 186.3, 'data': 'NASA()'} for spc in species})
             return True
@@ -803,7 +809,7 @@ class TestArkaneCorrectionFlags(unittest.TestCase):
         with patch('arc.statmech.arkane.run_arkane', side_effect=fake_run_arkane), \
                 patch.object(ArkaneAdapter, 'generate_species_files'), \
                 patch('arc.statmech.arkane.execute_command', return_value=('', '')):
-            arkane.compute_thermo()
+            arkane.compute_thermo(e0_only=e0_only)
         self.assertEqual(len(inputs), 1)
         return species[0], inputs[0]
 
@@ -969,6 +975,244 @@ class TestArkaneCorrectionFlags(unittest.TestCase):
             arkane.parse_arkane_thermo_output(statmech_dir)
         self.assertIs(spc.thermo.atom_corrections_applied, False)
         self.assertFalse(hasattr(other.thermo, 'atom_corrections_applied'))
+
+
+def conformer_block(label: str, e0: float, modes: list[str]) -> str:
+    """A ``conformer(...)`` block in the syntax Arkane writes to ``output.py``, with the given mode reprs."""
+    mode_lines = ''.join(f'        {mode},\n' for mode in modes)
+    return (f"conformer(\n    label = '{label}',\n    E0 = ({e0}, 'kJ/mol'),\n    modes = [\n"
+            f"        IdealGasTranslation(mass=(16.0313, 'amu')),\n"
+            f"        NonlinearRotor(inertia=([3.2, 3.2, 3.2], 'amu*angstrom^2'), symmetry=12),\n"
+            f"        HarmonicOscillator(frequencies=([1300.0, 1500.0], 'cm^-1')),\n{mode_lines}    ],\n"
+            f"    spin_multiplicity = 1,\n    optical_isomers = 1,\n)\n\n")
+
+
+HINDERED_ROTOR = "HinderedRotor(inertia=(1.5, 'amu*angstrom^2'), symmetry=3, barrier=(12.0, 'kJ/mol'))"
+FREE_ROTOR = "FreeRotor(inertia=(1.1, 'amu*angstrom^2'), symmetry=1)"
+ND_ROTOR = "Mode(quantum=False)"
+
+
+class TestArkaneE0CorrectionsAndTreatment(unittest.TestCase):
+    """
+    Tests for the correction switches stamped on every E0 an Arkane run writes, on the kinetics of a run, and for
+    the rotor treatment read back from the conformer blocks of Arkane's own output. The Arkane and RMG subprocesses
+    are mocked, and the rendered input and the parsed output come from the same adapter call.
+    """
+    wb97xd = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+    no_corrections = Level(method='b3lyp', basis='sto-3g', software='gaussian')
+
+    def _compute_thermo(self, sp_level, bac_type, output_content, species=None, e0_only=False):
+        return TestArkaneCorrectionFlags._compute_thermo_with_mocked_arkane(
+            self, sp_level=sp_level, bac_type=bac_type, species=species, output_content=output_content,
+            e0_only=e0_only)
+
+    def test_the_thermo_and_e0_only_runs_stamp_their_own_switches_on_e0(self):
+        """E0 is stamped with the atom and bond switches of the run that rendered the input: BAC on for a run
+        with a bac_type, off without one, and both off at a level Arkane has no atom energies for."""
+        content = conformer_block('CH4', -88.8, [])
+        for e0_only in (False, True):
+            for sp_level, bac_type, expected in ((self.wb97xd, 'p', (True, True)),
+                                                 (self.wb97xd, None, (True, False)),
+                                                 (self.no_corrections, 'p', (False, False))):
+                with self.subTest(e0_only=e0_only, level=sp_level.simple(), bac_type=bac_type):
+                    spc, _ = self._compute_thermo(sp_level, bac_type, content, e0_only=e0_only)
+                    self.assertAlmostEqual(spc.e0, -88.8)
+                    self.assertEqual((spc.e0_atom_corrections_applied, spc.e0_bond_corrections_applied), expected)
+
+    def test_an_e0_the_run_did_not_write_keeps_its_earlier_switches(self):
+        """A species Arkane's output has no conformer block for keeps the E0 and the switches it had."""
+        spc = ARCSpecies(label='CH4', smiles='C')
+        spc.e0, spc.e0_atom_corrections_applied, spc.e0_bond_corrections_applied = -90.0, True, True
+        self._compute_thermo(self.no_corrections, None, '', species=[spc])
+        self.assertEqual((spc.e0, spc.e0_atom_corrections_applied, spc.e0_bond_corrections_applied),
+                         (-90.0, True, True))
+
+    def test_the_e0_of_a_species_loaded_from_an_arkane_yaml_has_unknown_switches(self):
+        """Arkane loads a YAML species as-is, so the run's switches say nothing about its E0."""
+        yml_spc = ARCSpecies(label='H2O', smiles='O')
+        yml_spc.yml_path = os.path.join(ARC_TESTING_PATH, 'yml_testing', 'H2O.yml')
+        computed = ARCSpecies(label='CH4', smiles='C')
+        self._compute_thermo(self.wb97xd, 'p', conformer_block('H2O', -240.0, []) + conformer_block('CH4', -88.8, []),
+                             species=[yml_spc, computed])
+        self.assertAlmostEqual(yml_spc.e0, -240.0)
+        self.assertIsNone(yml_spc.e0_atom_corrections_applied)
+        self.assertIsNone(yml_spc.e0_bond_corrections_applied)
+        self.assertIs(computed.e0_atom_corrections_applied, True)
+
+    def test_the_rotor_modes_arkane_kept_are_read_from_its_own_output(self):
+        """The hindered and free rotors in the modes list are recorded in order, and so is a ``Mode``, which is how
+        Arkane writes a multi-dimensional rotor and whose treatment is unknown. An output with no rotor, which is
+        what Arkane writes after dropping every rotor for lack of a force-constant matrix, is an empty list."""
+        for modes, expected, treatment in (([HINDERED_ROTOR, FREE_ROTOR, HINDERED_ROTOR],
+                                            ['HinderedRotor', 'FreeRotor', 'HinderedRotor'], 'rrho_1d'),
+                                           ([], [], 'rrho'),
+                                           ([ND_ROTOR], ['Mode'], None),
+                                           ([HINDERED_ROTOR, ND_ROTOR], ['HinderedRotor', 'Mode'], None)):
+            with self.subTest(expected=expected):
+                spc, _ = self._compute_thermo(self.wb97xd, 'p', conformer_block('CH4', -88.8, modes))
+                self.assertEqual(spc.arkane_rotor_modes, expected)
+                self.assertEqual(get_arkane_treatment(spc.arkane_rotor_modes), treatment)
+
+    def test_a_conformer_block_without_modes_leaves_the_rotor_modes_unparsed(self):
+        spc, _ = self._compute_thermo(self.wb97xd, 'p', "conformer(label='CH4', E0=(-88.8, 'kJ/mol'))\n")
+        self.assertIsNone(spc.arkane_rotor_modes)
+        spc, _ = self._compute_thermo(self.wb97xd, 'p', '')
+        self.assertIsNone(spc.arkane_rotor_modes)
+
+    def test_the_treatment_names_follow_the_rotor_modes(self):
+        self.assertIsNone(get_arkane_treatment(None))
+        self.assertEqual(get_arkane_treatment([]), 'rrho')
+        self.assertEqual(get_arkane_treatment(['FreeRotor']), 'rrho_1d')
+        self.assertEqual(get_arkane_treatment(['HinderedRotor2D']), 'rrho_nd')
+        self.assertEqual(get_arkane_treatment(['HinderedRotor2D', 'FreeRotor']), 'rrho_1d_nd')
+        self.assertIsNone(get_arkane_treatment(['Mode']))
+        self.assertIsNone(get_arkane_treatment(['HinderedRotor', 'Mode']))
+
+    def test_a_yml_ts_or_well_leaves_the_kinetics_switch_unknown(self):
+        """Arkane applies no correction to a species it loads from a YAML, so the kinetics run's switch is not
+        stated for a reaction with such a TS or well, and the TS's own E0 switches are unknown too."""
+        content = conformer_block('TS0', 50.0, []) + TestArkaneOutputParsing.kinetics_output_content.replace(
+            "conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)", '')
+        yml_path = os.path.join(ARC_TESTING_PATH, 'yml_testing', 'H2O.yml')
+        for yml_holder in ('ts', 'well', None):
+            with self.subTest(yml_holder=yml_holder):
+                rxn = TestArkaneOutputParsing.isomerization_reaction()
+                if yml_holder == 'ts':
+                    rxn.ts_species.yml_path = yml_path
+                elif yml_holder == 'well':
+                    rxn.r_species[0].yml_path = yml_path
+                parse_reaction_kinetics(rxn, content, use_aec=True, use_bac=False)
+                self.assertEqual(rxn.kinetics['atom_corrections_applied'], None if yml_holder else True)
+                self.assertEqual(rxn.ts_species.e0_atom_corrections_applied, None if yml_holder == 'ts' else True)
+
+    def test_the_species_file_declares_the_bonds_the_corrections_are_computed_from(self):
+        """``bonds`` is written from ``bond_corrections`` so Arkane's BAC and ARC's exported components use one
+        dictionary, and is not written when ARC has none."""
+        tmpdir = tempfile.mkdtemp(prefix='test_Arkane_bonds_')
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        spc = ARCSpecies(label='CH4', smiles='C')
+        output_dict = {'CH4': {'paths': {'composite': '', 'sp': 'sp.log', 'freq': 'freq.log'}}}
+        arkane = ArkaneAdapter(output_directory=tmpdir, calcs_directory=tmpdir, output_dict=output_dict,
+                               species=[spc], sp_level=self.wb97xd)
+        for bond_corrections in ({'C-H': 4}, dict()):
+            with self.subTest(bond_corrections=bond_corrections):
+                spc.bond_corrections = bond_corrections
+                arkane.generate_species_file(spc, tmpdir, skip_rotors=True)
+                with open(spc.arkane_file, 'r') as f:
+                    content = f.read()
+                if bond_corrections:
+                    self.assertIn("bonds = {'C-H': 4}\n", content)
+                else:
+                    self.assertNotIn('bonds', content)
+                local_context = dict()
+                exec(content, {'Log': lambda path: path}, local_context)
+                self.assertEqual(local_context.get('bonds'), bond_corrections or None)
+
+    def test_the_arc_aec_yml_identity_is_set_only_when_atom_energies_are_rendered_from_it(self):
+        """The digest of data/AEC.yml is stated for a level whose atomEnergies ARC renders from it."""
+        for sp_level, expected in ((Level('gfn2'), True), (None, False)):
+            with self.subTest(sp_level=sp_level):
+                digest = get_arc_aec_yml_sha256(sp_level)
+                if expected:
+                    with open(os.path.join(ARC_PATH, 'data', 'AEC.yml'), 'rb') as f:
+                        self.assertEqual(digest, hashlib.sha256(f.read()).hexdigest())
+                else:
+                    self.assertIsNone(digest)
+        self.assertIsNone(get_arc_aec_yml_sha256(Level(method='b3lyp', basis='sto-3g', software='gaussian')))
+
+    def test_get_file_sha256(self):
+        """The digest is that of the file bytes, and ``None`` for a file that cannot be read."""
+        tmpdir = tempfile.mkdtemp(prefix='test_Arkane_file_sha256_')
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        path = os.path.join(tmpdir, 'table.txt')
+        with open(path, 'wb') as f:
+            f.write(b'atom energies\n')
+        self.assertEqual(get_file_sha256(path), hashlib.sha256(b'atom energies\n').hexdigest())
+        self.assertIsNone(get_file_sha256(os.path.join(tmpdir, 'missing.txt')))
+
+    def test_normalized_method_and_basis(self):
+        """A level's method carries its dispersion, and its basis is normalized."""
+        self.assertEqual(normalized_method_and_basis(Level(method='B3LYP-D3(BJ)', basis='def2-TZVP')),
+                         ('b3lypd3bj', 'def2tzvp'))
+        self.assertEqual(normalized_method_and_basis(Level(method='b3lyp', basis='def2tzvp', dispersion='gd3bj')),
+                         ('b3lypd3bj', 'def2tzvp'))
+
+    def _compute_kinetics(self, sp_level, output_content):
+        """Run ``compute_high_p_rate_coefficient`` with Arkane mocked, for the nitroethane isomerization."""
+        tmpdir = tempfile.mkdtemp(prefix='test_Arkane_kinetics_corrections_')
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        rxn = TestArkaneOutputParsing.isomerization_reaction()
+        arkane = ArkaneAdapter(output_directory=os.path.join(tmpdir, 'output'),
+                               calcs_directory=os.path.join(tmpdir, 'calcs'),
+                               output_dict=dict(),
+                               bac_type=None,
+                               species=rxn.r_species + rxn.p_species,
+                               reactions=[rxn],
+                               sp_level=sp_level,
+                               freq_level=sp_level,
+                               freq_scale_factor=1.0)
+
+        def fake_run_arkane(statmech_dir):
+            with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+                f.write(output_content)
+            return True
+
+        with patch('arc.statmech.arkane.run_arkane', side_effect=fake_run_arkane), \
+                patch.object(ArkaneAdapter, 'generate_species_files'), \
+                patch.object(ArkaneAdapter, 'generate_ts_files'), \
+                patch.object(ArkaneAdapter, 'filter_out_unconverged_reactions'), \
+                patch('arc.statmech.arkane.plotter.log_kinetics'), \
+                patch('arc.statmech.arkane.clean_output_directory'):
+            arkane.compute_high_p_rate_coefficient()
+        return rxn
+
+    def test_the_kinetics_run_stamps_its_switches_on_the_ts_e0_and_on_the_kinetics(self):
+        """The kinetics run applies no BAC. Its atom switch is stamped on the TS's E0 and recorded as
+        ``atom_corrections_applied`` of the kinetics; the rotor modes of the TS and the wells are read as well."""
+        content = (conformer_block('nitroethane', -10.0, [HINDERED_ROTOR])
+                   + conformer_block('ethyl_nitrite', -5.0, [])
+                   + TestArkaneOutputParsing.kinetics_output_content.replace(
+                       "conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)",
+                       conformer_block('TS0', 50.0, [FREE_ROTOR])))
+        for sp_level, expected_atom in ((self.wb97xd, True), (self.no_corrections, False)):
+            with self.subTest(level=sp_level.simple()):
+                rxn = self._compute_kinetics(sp_level, content)
+                self.assertIs(rxn.kinetics['atom_corrections_applied'], expected_atom)
+                self.assertAlmostEqual(rxn.ts_species.e0, 50.0)
+                self.assertIs(rxn.ts_species.e0_atom_corrections_applied, expected_atom)
+                self.assertIs(rxn.ts_species.e0_bond_corrections_applied, False)
+                self.assertEqual(rxn.ts_species.arkane_rotor_modes, ['FreeRotor'])
+                self.assertEqual(rxn.r_species[0].arkane_rotor_modes, ['HinderedRotor'])
+                self.assertEqual(rxn.p_species[0].arkane_rotor_modes, [])
+
+    def test_kinetics_parsed_without_a_rendered_input_state_no_switch(self):
+        """Parsing with no record of the run's switches stamps null, never a default."""
+        rxn = TestArkaneOutputParsing.isomerization_reaction()
+        parse_reaction_kinetics(rxn, TestArkaneOutputParsing.kinetics_output_content)
+        self.assertIsNone(rxn.kinetics['atom_corrections_applied'])
+        self.assertIsNone(rxn.ts_species.e0_atom_corrections_applied)
+        self.assertIsNone(rxn.ts_species.e0_bond_corrections_applied)
+
+    def test_the_ts_check_e0_run_switches_travel_with_the_copied_e0(self):
+        """``compute_rxn_e0`` runs an E0-only Arkane job without BAC on a copy of the reaction, and
+        ``copy_e0_values`` brings each E0 and its switches back, so the TS carries the switches of that run while a
+        well that already has an E0 keeps its own E0 and switches."""
+        rxn = TestArkaneOutputParsing.isomerization_reaction()
+        well = rxn.r_species[0]
+        well.e0, well.e0_atom_corrections_applied, well.e0_bond_corrections_applied = -10.0, True, True
+        rxn_copy = rxn.copy()
+        content = (conformer_block('nitroethane', -11.0, []) + conformer_block('ethyl_nitrite', -5.0, [])
+                   + conformer_block('TS0', 50.0, []))
+        species = rxn_copy.r_species + rxn_copy.p_species + [rxn_copy.ts_species]
+        self._compute_thermo(self.wb97xd, None, content, species=species, e0_only=True)
+        rxn.copy_e0_values(rxn_copy)
+        self.assertEqual((rxn.ts_species.e0, rxn.ts_species.e0_atom_corrections_applied,
+                          rxn.ts_species.e0_bond_corrections_applied), (50.0, True, False))
+        self.assertEqual((well.e0, well.e0_atom_corrections_applied, well.e0_bond_corrections_applied),
+                         (-10.0, True, True))
+        product = rxn.p_species[0]
+        self.assertEqual((product.e0, product.e0_atom_corrections_applied, product.e0_bond_corrections_applied),
+                         (-5.0, True, False))
 
 
 class TestArkaneOutputParsing(unittest.TestCase):

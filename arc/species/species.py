@@ -26,7 +26,7 @@ from arc.common import (almost_equal_coords,
 from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError, \
     SanitizationError
 from arc.imports import settings
-from arc.level import Level
+from arc.level import Level, level_as_plain_dict
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.resonance import generate_aromatic_resonance_structure, generate_kekule_structure, generate_resonance_structures_safely
@@ -60,6 +60,9 @@ from arc.species.vectors import calculate_angle, calculate_distance, calculate_d
 logger = get_logger()
 
 valid_chars, minimum_barrier = settings['valid_chars'], settings['minimum_barrier']
+
+CONFORMER_ENERGY_KIND_FORCE_FIELD = 'force_field_kcal_mol'
+CONFORMER_ENERGY_KIND_ELECTRONIC = 'electronic_kj_mol'
 
 
 class ARCSpecies(object):
@@ -236,11 +239,30 @@ class ARCSpecies(object):
                                       across a restart.
         e_elect (float): The total electronic energy (without ZPE) at the chosen sp level, in kJ/mol.
         e0 (float): The 0 Kelvin energy (total electronic energy plus ZPE) at the chosen sp level, in kJ/mol.
+        e0_atom_corrections_applied (bool | None): Whether the Arkane run that wrote ``e0`` had its atom energy
+                                                   correction switched on. ``None`` when not known.
+        e0_bond_corrections_applied (bool | None): Whether the Arkane run that wrote ``e0`` had its bond additivity
+                                                   correction switched on. ``None`` when not known.
+        arkane_rotor_modes (list[str] | None): The rotor modes (``HinderedRotor``, ``FreeRotor``,
+                                               ``HinderedRotor2D``, ``HinderedRotorClassicalND``, ``Mode``) of the
+                                               conformer block of the last Arkane run, in order. ``None`` when that
+                                               block was not parsed.
         is_ts (bool):  Whether the species represents a transition state. `True` if it does.
         number_of_rotors (int): The number of potential rotors to scan.
         rotors_dict (dict): A dictionary of rotors. structure given below.
         conformers (list): A list of selected conformers XYZs (dict format).
-        conformer_energies (list): A list of conformers E0 (in kJ/mol).
+        conformer_energies (list): One absolute energy per conformer, in lockstep with ``conformers``. The unit is
+                                   kcal/mol for a force-field energy and kJ/mol for a parsed electronic energy;
+                                   ``conformer_energy_sources`` says which.
+        conformer_levels (list): In lockstep with ``conformers``, the level (a plain dictionary) of the conformer
+                                 optimization job that produced each geometry, or ``None`` for a geometry that
+                                 was never optimized (a force-field geometry, or a user-supplied one).
+        conformer_energy_sources (list): In lockstep with ``conformers``, ``{'kind': <kind or None>, 'level': <level
+                                         dict or None>}`` describing where each entry of ``conformer_energies``
+                                         came from (``kind`` is ``'force_field_kcal_mol'`` or
+                                         ``'electronic_kj_mol'``), with a ``'force_field'`` key naming the force
+                                         field and backend (e.g. ``'MMFF94s (rdkit)'``) of a force-field energy,
+                                         or ``None`` for an energy of unknown origin.
         cheap_conformer (str): A string format xyz of a cheap conformer (not necessarily the best/lowest one).
         most_stable_conformer (int): The index of the best/lowest conformer in self.conformers.
         recent_md_conformer (list): A length three list containing the coordinates of the recent conformer
@@ -278,6 +300,12 @@ class ARCSpecies(object):
         chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
         ts_checks (dict[str, bool]): Checks that a TS species went through.
+        nmd_record (dict): What the normal mode displacement check of a TS analysed: ``frequency_cm1`` is the frequency
+                           of the mode it analysed and ``forced`` is whether a failed check was forced to pass
+                           (``skip_nmd``). Empty when the check has not run.
+        irc_participant_mapping (dict | None): Which atoms of each optimized IRC endpoint geometry belong to which
+                                               participant species, recorded only when the IRC check established its
+                                               verdict by graph isomorphism (see ``arc.checks.ts``). ``None`` otherwise.
         rxn_zone_atom_indices (list[int]): 0-indexed atom indices of the active reaction zone.
         ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its
                                 TSGuess objects.
@@ -381,6 +409,8 @@ class ARCSpecies(object):
         self.most_stable_conformer = None
         self.recent_md_conformer = None
         self.conformer_energies = list()
+        self.conformer_levels = list()
+        self.conformer_energy_sources = list()
         self.initial_xyz = None
         self.thermo = ThermoData()
         self.rmg_thermo = ThermoData()
@@ -410,6 +440,8 @@ class ARCSpecies(object):
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
         self.ts_checks = dict()
+        self.nmd_record = dict()
+        self.irc_participant_mapping = None
         self.derived_stability_verdict = None
         self.scf_references = dict()
         self.stability_analysis_ran = False
@@ -438,6 +470,9 @@ class ARCSpecies(object):
             self.ts_guesses_exhausted = False
             self.e_elect = None
             self.e0 = None
+            self.e0_atom_corrections_applied = None
+            self.e0_bond_corrections_applied = None
+            self.arkane_rotor_modes = None
             self.arkane_file = None
             self.conf_is_isomorphic = None
             self.bdes = bdes
@@ -705,6 +740,19 @@ class ARCSpecies(object):
         species_dict = self.as_dict(reset_atom_ids=True)
         return ARCSpecies(species_dict=species_dict)
 
+    def copy_e0_from(self, other: 'ARCSpecies') -> None:
+        """
+        Take the E0 of another species when this one has none, together with the correction switches of the
+        Arkane run that wrote it. A species that already has an E0 is left untouched.
+
+        Args:
+            other (ARCSpecies): The species to take the E0 and its correction switches from.
+        """
+        if self.e0 is None:
+            self.e0 = other.e0
+            self.e0_atom_corrections_applied = other.e0_atom_corrections_applied
+            self.e0_bond_corrections_applied = other.e0_bond_corrections_applied
+
     def is_water(self) -> bool:
         """
         Check whether this species is a water molecule (H2O).
@@ -805,6 +853,10 @@ class ARCSpecies(object):
                 species_dict['chosen_ts_list'] = self.chosen_ts_list
             if self.ts_checks:
                 species_dict['ts_checks'] = self.ts_checks
+            if self.nmd_record:
+                species_dict['nmd_record'] = self.nmd_record
+            if self.irc_participant_mapping is not None:
+                species_dict['irc_participant_mapping'] = self.irc_participant_mapping
         if self.original_label is not None:
             species_dict['original_label'] = self.original_label
         if self.e_elect is not None:
@@ -815,6 +867,12 @@ class ARCSpecies(object):
             species_dict['fragments'] = self.fragments
         if self.e0 is not None:
             species_dict['e0'] = self.e0
+        if self.e0_atom_corrections_applied is not None:
+            species_dict['e0_atom_corrections_applied'] = self.e0_atom_corrections_applied
+        if self.e0_bond_corrections_applied is not None:
+            species_dict['e0_bond_corrections_applied'] = self.e0_bond_corrections_applied
+        if self.arkane_rotor_modes is not None:
+            species_dict['arkane_rotor_modes'] = list(self.arkane_rotor_modes)
         if self.e0_only is not False:
             species_dict['e0_only'] = self.e0_only
         if self.tsg_spawned is not False:
@@ -868,6 +926,9 @@ class ARCSpecies(object):
         if self.conformers:
             species_dict['conformers'] = [xyz_to_str(conf) for conf in self.conformers]
             species_dict['conformer_energies'] = self.conformer_energies
+            self.sync_conformer_provenance()
+            species_dict['conformer_levels'] = list(self.conformer_levels)
+            species_dict['conformer_energy_sources'] = list(self.conformer_energy_sources)
         if self.conformers_before_opt is not None:
             species_dict['conformers_before_opt'] = [xyz_to_str(conf) for conf in self.conformers_before_opt]
         if self.bdes is not None:
@@ -914,6 +975,9 @@ class ARCSpecies(object):
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
         self.freqs = species_dict.get('freqs')
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
+        self.e0_atom_corrections_applied = species_dict.get('e0_atom_corrections_applied')
+        self.e0_bond_corrections_applied = species_dict.get('e0_bond_corrections_applied')
+        self.arkane_rotor_modes = species_dict.get('arkane_rotor_modes')
         self.tsg_spawned = species_dict['tsg_spawned'] if 'tsg_spawned' in species_dict else False
         self.active = species_dict['active'] if 'active' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
@@ -954,6 +1018,9 @@ class ARCSpecies(object):
             self.rxn_zone_atom_indices = species_dict['rxn_zone_atom_indices'] \
                 if 'rxn_zone_atom_indices' in species_dict else None
             self.ts_checks = species_dict['ts_checks'] if 'ts_checks' in species_dict else dict()
+            self.nmd_record = species_dict['nmd_record'] if isinstance(species_dict.get('nmd_record'), dict) else dict()
+            self.irc_participant_mapping = species_dict['irc_participant_mapping'] \
+                if isinstance(species_dict.get('irc_participant_mapping'), dict) else None
             self.chosen_ts_list = species_dict['chosen_ts_list'] if 'chosen_ts_list' in species_dict else list()
             self.checkfile = species_dict['checkfile'] if 'checkfile' in species_dict else None
             self.renumber_ambiguous_ts_guesses()
@@ -1040,6 +1107,9 @@ class ARCSpecies(object):
             self.conformers = [str_to_xyz(conf) for conf in species_dict['conformers']]
             self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict \
                 else [None] * len(self.conformers)
+            self.conformer_levels = list(species_dict.get('conformer_levels') or list())
+            self.conformer_energy_sources = list(species_dict.get('conformer_energy_sources') or list())
+            self.sync_conformer_provenance()
         self.conformers_before_opt = [str_to_xyz(conf) for conf in species_dict['conformers_before_opt']] \
             if 'conformers_before_opt' in species_dict else None
         if self.mol is None and self.initial_xyz is None and self.final_xyz is None and not self.conformers \
@@ -1268,12 +1338,90 @@ class ARCSpecies(object):
                                                       economic_generation=economic_generation,
                                                       )
         if len(lowest_confs):
+            self.sync_conformer_provenance()
             self.conformers.extend([conf['xyz'] for conf in lowest_confs])
             self.conformer_energies.extend([conf['FF energy'] for conf in lowest_confs])
+            self.conformer_levels.extend([None] * len(lowest_confs))
+            self.conformer_energy_sources.extend([self.get_force_field_energy_source(conf) for conf in lowest_confs])
         else:
             xyz = self.get_xyz(generate=False)
             if xyz is None or not xyz:
                 logger.error(f'No 3D coordinates available for species {self.label}!')
+
+    @staticmethod
+    def get_force_field_energy_source(conf: dict) -> dict | None:
+        """
+        Get the energy source record of a generated conformer.
+
+        Args:
+            conf (dict): A conformer dictionary of ``conformers.generate_conformers``.
+
+        Returns:
+            dict | None: ``None`` for a conformer without a force field energy, and for a placeholder energy
+                         (the cheat sheet, monoatomic and diatomic species) that no force field computed.
+                         Otherwise the force field and backend, with a kind of ``'force_field_kcal_mol'`` only if
+                         the energy unit is kcal/mol.
+        """
+        force_field = conf.get('force_field')
+        if conf.get('FF energy') is None or force_field is None:
+            return None
+        kind = CONFORMER_ENERGY_KIND_FORCE_FIELD if conf.get('force_field_unit') == 'kcal/mol' else None
+        return {'kind': kind, 'level': None, 'force_field': force_field}
+
+    def sync_conformer_provenance(self):
+        """
+        Make ``conformer_levels`` and ``conformer_energy_sources`` the same length as ``conformers``.
+        Missing entries (an older restart, or conformers added without a record) become ``None``,
+        which stands for "not recorded"; entries beyond the last conformer are dropped.
+        """
+        n_conformers = len(self.conformers)
+        for attr in ('conformer_levels', 'conformer_energy_sources'):
+            values = getattr(self, attr, None)
+            values = list(values) if isinstance(values, (list, tuple)) else list()
+            setattr(self, attr, (values + [None] * n_conformers)[:n_conformers])
+
+    def reset_conformer_provenance(self):
+        """
+        Forget the provenance of every conformer: no optimization level, no energy source.
+        Call it when ``conformers`` is replaced wholesale.
+        """
+        self.conformer_levels = list()
+        self.conformer_energy_sources = list()
+        self.sync_conformer_provenance()
+
+    def record_conformer_geometry_level(self, index: int, level: Level | dict | None):
+        """
+        Record the level of the conformer optimization job that produced the geometry of a conformer.
+
+        Args:
+            index (int): The conformer index.
+            level (Level | dict, optional): The level of the job, or ``None`` if the geometry was not optimized.
+        """
+        self.sync_conformer_provenance()
+        if 0 <= index < len(self.conformers):
+            self.conformer_levels[index] = level_as_plain_dict(level)
+
+    def record_conformer_energy_source(self,
+                                       index: int,
+                                       kind: str | None,
+                                       level: Level | dict | None = None,
+                                       force_field: str | None = None,
+                                       ):
+        """
+        Record where the energy of a conformer came from.
+
+        Args:
+            index (int): The conformer index.
+            kind (str, optional): ``'force_field_kcal_mol'`` or ``'electronic_kj_mol'``; ``None`` if unknown.
+            level (Level | dict, optional): The level of the job that computed an electronic energy.
+            force_field (str, optional): The force field and backend that computed a force-field energy.
+        """
+        self.sync_conformer_provenance()
+        if 0 <= index < len(self.conformers):
+            source = {'kind': kind, 'level': level_as_plain_dict(level)}
+            if force_field is not None:
+                source['force_field'] = force_field
+            self.conformer_energy_sources[index] = source if kind is not None or force_field is not None else None
 
     def get_cheap_conformer(self):
         """
@@ -2085,8 +2233,11 @@ class ARCSpecies(object):
                 elif i:
                     check_atom_balance(xyz, xyzs[0])
             if not self.is_ts:
+                self.sync_conformer_provenance()
                 self.conformers.extend(xyzs)
                 self.conformer_energies.extend(energies)
+                self.conformer_levels.extend([None] * len(xyzs))
+                self.conformer_energy_sources.extend([None] * len(xyzs))
             else:
                 for xyz, energy in zip(xyzs, energies):
                     tsg_index = self.next_ts_guess_index()
@@ -2443,6 +2594,8 @@ class ARCSpecies(object):
             keys = ['E0', 'e_elect', 'IRC', 'freq', 'NMD']
             self.ts_checks = {key: None for key in keys}
             self.ts_checks['warnings'] = ''
+            self.nmd_record = dict()
+            self.irc_participant_mapping = None
 
     def get_symmetry_number(self):
         """

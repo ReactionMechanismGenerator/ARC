@@ -794,6 +794,22 @@ class TestNMD(unittest.TestCase):
         with self.assertRaises(ValueError):
             nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25)
 
+    def test_analyze_ts_nmd_records_the_frequency_of_the_mode_it_analysed(self):
+        """Test that the analysed frequency is the most negative one of the parsed list, whatever the verdict."""
+        base_path = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C',
+                                                xyz=os.path.join(base_path, 'iC3H7.gjf'))],
+                          p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC',
+                                                xyz=os.path.join(base_path, 'nC3H7.gjf'))])
+        for name, verdict in (('TS3', True), ('TS1', False)):
+            log_path = os.path.join(base_path, f'{name}.log')
+            self.generic_job.local_path_to_output_file = log_path
+            rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+            self.assertIs(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job,
+                                                                  amplitude=0.25), verdict)
+            freqs, _ = parse_normal_mode_displacement(log_file_path=log_path)
+            self.assertAlmostEqual(rxn.ts_species.nmd_record['frequency_cm1'], float(min(freqs)))
+
     def test_analyze_ts_normal_mode_displacement_for_hypervalence_nitrogen(self):
         """Test the analyze_ts_normal_mode_displacement() function for a hypervalence nitrogen."""
         # C2H5NO2 <=> C2H5ONO

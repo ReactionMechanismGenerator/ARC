@@ -95,6 +95,7 @@ def check_ts(reaction: ARCReaction,
         if skip_nmd and reaction.ts_species.ts_checks['NMD'] is False:
             logger.warning(f'Skipping failed normal mode displacement check for TS {reaction.ts_species.label}')
             reaction.ts_species.ts_checks['NMD'] = True
+            reaction.ts_species.nmd_record['forced'] = True
 
     if 'rotors' in checks or (ts_passed_checks(species=reaction.ts_species, exemptions=['E0', 'warnings'])
                               and job is not None):
@@ -311,6 +312,7 @@ def check_normal_mode_displacement(reaction: ARCReaction,
                                         leave no amplitude to probe.
     """
     amplitude = DEFAULT_AMPLITUDE if amplitude is None else amplitude
+    reaction.ts_species.nmd_record = dict()
     reaction.ts_species.ts_checks['NMD'] = analyze_ts_normal_mode_displacement(reaction=reaction,
                                                                                job=job,
                                                                                amplitude=amplitude,
@@ -506,6 +508,7 @@ def get_rxn_normal_mode_disp_atom_number(rxn_family: str | None = None,
 def check_irc_species_and_rxn(xyz_1: dict,
                               xyz_2: dict,
                               rxn: ARCReaction | None,
+                              endpoint_labels: tuple[str | None, str | None] | None = None,
                               ):
     """
     Check that the two species that result from optimizing the outputs of two IRC runs
@@ -534,10 +537,17 @@ def check_irc_species_and_rxn(xyz_1: dict,
         xyz_1 (dict): The coordinates of IRC species 1.
         xyz_2 (dict): The coordinates of IRC species 2.
         rxn (ARCReaction): The corresponding reaction object instance.
+        endpoint_labels (tuple[str | None, str | None], optional): The labels of the species whose geometries are
+                                                                   ``xyz_1`` and ``xyz_2``.
+
+    When the isomorphism comparison establishes the verdict, ``rxn.ts_species.irc_participant_mapping`` records which
+    atoms of each endpoint geometry belong to which participant species (see ``_get_irc_participant_mapping``);
+    otherwise it is ``None``, and it is also ``None`` when building it fails, which leaves the verdict as decided.
     """
     if rxn is None:
         return None
     rxn.ts_species.ts_checks['IRC'] = None
+    rxn.ts_species.irc_participant_mapping = None
     xyz_1, xyz_2 = check_xyz_dict(xyz_1), check_xyz_dict(xyz_2)
 
     # Primary check: molecular graph isomorphism
@@ -550,11 +560,36 @@ def check_irc_species_and_rxn(xyz_1: dict,
         frags_1 = _perceive_irc_fragments(xyz_1, charge=charge)
         frags_2 = _perceive_irc_fragments(xyz_2, charge=charge)
         if frags_1 is not None and frags_2 is not None:
-            if (_match_fragments_to_species(frags_1, r_mols)
-                    and _match_fragments_to_species(frags_2, p_mols)) \
-                    or (_match_fragments_to_species(frags_1, p_mols)
-                        and _match_fragments_to_species(frags_2, r_mols)):
+            assign_1_r = _assign_fragments_to_species(frags_1, r_mols)
+            assign_2_p = _assign_fragments_to_species(frags_2, p_mols) if assign_1_r is not None else None
+            if assign_1_r is not None and assign_2_p is not None:
+                reactant_side, product_side = (1, assign_1_r), (2, assign_2_p)
+            else:
+                assign_1_p = _assign_fragments_to_species(frags_1, p_mols)
+                assign_2_r = _assign_fragments_to_species(frags_2, r_mols) if assign_1_p is not None else None
+                reactant_side, product_side = ((2, assign_2_r), (1, assign_1_p)) if assign_2_r is not None \
+                    else (None, None)
+            if reactant_side is not None and product_side is not None:
+                try:
+                    endpoint_atoms = {1: _get_irc_fragment_atom_indices(xyz_1),
+                                      2: _get_irc_fragment_atom_indices(xyz_2)}
+                    mapping = _get_irc_participant_mapping(
+                        reactants=reactants,
+                        products=products,
+                        reactant_side=(reactant_side[0], endpoint_atoms[reactant_side[0]], reactant_side[1]),
+                        product_side=(product_side[0], endpoint_atoms[product_side[0]], product_side[1]),
+                        endpoint_labels=endpoint_labels,
+                        sides_distinguishable=_assign_fragments_to_species(r_mols, p_mols) is None,
+                        atom_order_matches_ts=_get_irc_endpoints_atom_order_matches_ts(
+                            ts_xyz=rxn.ts_species.get_xyz(generate=False), xyz_1=xyz_1, xyz_2=xyz_2),
+                    )
+                except Exception as e:
+                    logger.warning(f'Could not build the IRC participant mapping of {rxn.ts_species.label}, '
+                                   f'got:\n{e.__class__.__name__}: {e}\n'
+                                   f'The IRC verdict is unaffected.')
+                    mapping = None
                 rxn.ts_species.ts_checks['IRC'] = True
+                rxn.ts_species.irc_participant_mapping = mapping
                 return
             logger.debug('IRC isomorphism check failed, falling back to bond-list comparison.')
         else:
@@ -579,27 +614,18 @@ def check_irc_species_and_rxn(xyz_1: dict,
         rxn.ts_species.ts_checks['IRC'] = False
 
 
-def _perceive_irc_fragments(xyz: dict,
-                            charge: int = 0,
-                            ) -> list[Molecule] | None:
+def _get_irc_fragment_atom_indices(xyz: dict) -> list[list[int]]:
     """
-    Perceive individual molecular fragments from an IRC endpoint geometry.
-
-    Detects connected components from the distance-matrix-based bond list,
-    then perceives fragments as ``Molecule`` objects. For multi-fragment systems,
-    charge distribution across fragments is handled by brute-force search over
-    charge splits that sum to the total charge, preferring minimal total absolute charge.
+    Get the atoms of each connected component of an IRC endpoint geometry, from its distance-matrix-based bond list.
 
     Args:
         xyz (dict): The Cartesian coordinates of the IRC endpoint.
-        charge (int): The net charge of the full system.
 
     Returns:
-        list[Molecule] | None: A list of perceived ``Molecule`` objects (one per fragment),
-                                  or ``None`` if perception fails for any fragment.
+        list[list[int]]: The ascending 0-based atom indices of each component, the components ordered by their
+                         lowest atom index.
     """
     symbols = xyz['symbols']
-    coords = xyz['coords']
     n_atoms = len(symbols)
 
     dmat = xyz_to_dmat(xyz)
@@ -628,6 +654,31 @@ def _perceive_irc_fragments(xyz: dict,
                 if neighbor not in visited:
                     stack.append(neighbor)
         fragment_indices.append(sorted(component))
+    return fragment_indices
+
+
+def _perceive_irc_fragments(xyz: dict,
+                            charge: int = 0,
+                            ) -> list[Molecule] | None:
+    """
+    Perceive individual molecular fragments from an IRC endpoint geometry.
+
+    Detects connected components from the distance-matrix-based bond list,
+    then perceives fragments as ``Molecule`` objects. For multi-fragment systems,
+    charge distribution across fragments is handled by brute-force search over
+    charge splits that sum to the total charge, preferring minimal total absolute charge.
+
+    Args:
+        xyz (dict): The Cartesian coordinates of the IRC endpoint.
+        charge (int): The net charge of the full system.
+
+    Returns:
+        list[Molecule] | None: A list of perceived ``Molecule`` objects (one per fragment, in the order of
+                               ``_get_irc_fragment_atom_indices``), or ``None`` if perception fails for any fragment.
+    """
+    symbols = xyz['symbols']
+    coords = xyz['coords']
+    fragment_indices = _get_irc_fragment_atom_indices(xyz)
 
     n_frags = len(fragment_indices)
     frag_xyzs = []
@@ -668,34 +719,36 @@ def _perceive_irc_fragments(xyz: dict,
     return best_mols
 
 
-def _match_fragments_to_species(fragments: list[Molecule],
-                                expected_mols: list[Molecule],
-                                ) -> bool:
+def _assign_fragments_to_species(fragments: list[Molecule],
+                                 expected_mols: list[Molecule],
+                                 ) -> list[int] | None:
     """
-    Check whether a list of perceived molecular fragments matches a list of expected species
-    via graph isomorphism. Handles multi-species reactions (e.g., A + B) by finding a
-    one-to-one matching between fragments and expected species using backtracking with pruning.
+    Find a one-to-one matching between perceived molecular fragments and expected species via graph isomorphism.
+    Handles multi-species reactions (e.g., A + B) using backtracking with pruning. When several matchings exist
+    (e.g., a species occurring twice), the first one found is returned.
 
     Args:
         fragments (list[Molecule]): Perceived fragment molecules from an IRC endpoint.
         expected_mols (list[Molecule]): Expected species molecules from the reaction.
 
     Returns:
-        bool: Whether a valid one-to-one isomorphic matching exists.
+        list[int] | None: Entry ``i`` is the index in ``expected_mols`` matched to ``fragments[i]``,
+                          or ``None`` if no valid one-to-one isomorphic matching exists.
     """
     n = len(fragments)
     if n != len(expected_mols):
-        return False
+        return None
     if n == 0:
-        return True
+        return list()
     frag_formulas = sorted(frag.get_formula() for frag in fragments)
     expected_formulas = sorted(mol.get_formula() for mol in expected_mols)
     if frag_formulas != expected_formulas:
-        return False
+        return None
     if n == 1:
-        return check_isomorphism(fragments[0], expected_mols[0])
+        return [0] if check_isomorphism(fragments[0], expected_mols[0]) else None
     iso_matrix = [[check_isomorphism(fragments[i], expected_mols[j]) for j in range(n)] for i in range(n)]
     used = [False] * n
+    assignment = [-1] * n
 
     def _backtrack(i: int) -> bool:
         if i == n:
@@ -703,12 +756,96 @@ def _match_fragments_to_species(fragments: list[Molecule],
         for j in range(n):
             if not used[j] and iso_matrix[i][j]:
                 used[j] = True
+                assignment[i] = j
                 if _backtrack(i + 1):
                     return True
                 used[j] = False
         return False
 
-    return _backtrack(0)
+    return assignment if _backtrack(0) else None
+
+
+def _get_irc_participant_mapping(reactants: list,
+                                 products: list,
+                                 reactant_side: tuple[int, list[list[int]], list[int]],
+                                 product_side: tuple[int, list[list[int]], list[int]],
+                                 endpoint_labels: tuple[str | None, str | None] | None = None,
+                                 sides_distinguishable: bool = True,
+                                 atom_order_matches_ts: bool | None = None,
+                                 ) -> dict:
+    """
+    Describe which atoms of each IRC endpoint geometry belong to which participant species.
+
+    Args:
+        reactants (list[ARCSpecies]): The reactants, repeated species included (``get_reactants_and_products``).
+        products (list[ARCSpecies]): The products, repeated species included.
+        reactant_side (tuple): ``(endpoint, fragment atom indices, assignment)`` of the endpoint matched to the
+                               reactants, where ``endpoint`` is ``1`` or ``2`` for the first or second geometry given
+                               to the check.
+        product_side (tuple): The same for the endpoint matched to the products.
+        endpoint_labels (tuple[str | None, str | None], optional): The labels of the species of the first and second
+                                                                   endpoint geometries.
+        sides_distinguishable (bool, optional): Whether the reactants and the products are not graph-isomorphic to
+                                                each other. When they are (e.g., ``CH3 + CH4 <=> CH4 + CH3``), which
+                                                endpoint is called the reactants is a convention.
+        atom_order_matches_ts (bool | None, optional): Whether the endpoint geometries follow the atom order of the TS
+                                                        geometry the IRC was run from; ``None`` if not checked.
+
+    Returns:
+        dict: ``{'reactants': side, 'products': side, 'sides_distinguishable': bool,
+              'atom_order_matches_ts': bool | None}``, where each side is
+              ``{'endpoint': 1 | 2, 'endpoint_label': str | None, 'participants': [...]}`` and each participant is
+              ``{'label': str, 'position': int, 'occurrence': int, 'atom_indices': list[int]}``. Participants are
+              listed in the order of ``reactants`` / ``products``; ``position`` is 1-based there and ``occurrence``
+              is the 1-based count of that label among the participants up to it. ``atom_indices`` are ascending
+              0-based atom indices into the geometry of the endpoint (not of the TS). Which fragment of the endpoint
+              is which occurrence of a repeated species is arbitrary, and the order of the atoms within a participant
+              is not matched to the species' own atom order: only atom-set membership is recorded.
+    """
+    mapping = dict()
+    for well, (endpoint, fragment_indices, assignment), species in (('reactants', reactant_side, reactants),
+                                                                     ('products', product_side, products)):
+        fragment_by_species = {species_index: fragment_index
+                               for fragment_index, species_index in enumerate(assignment)}
+        seen = dict()
+        participants = list()
+        for position, spc in enumerate(species, start=1):
+            seen[spc.label] = seen.get(spc.label, 0) + 1
+            participants.append({'label': spc.label,
+                                 'position': position,
+                                 'occurrence': seen[spc.label],
+                                 'atom_indices': list(fragment_indices[fragment_by_species[position - 1]]),
+                                 })
+        mapping[well] = {'endpoint': endpoint,
+                         'endpoint_label': endpoint_labels[endpoint - 1] if endpoint_labels is not None else None,
+                         'participants': participants,
+                         }
+    mapping['sides_distinguishable'] = sides_distinguishable
+    mapping['atom_order_matches_ts'] = atom_order_matches_ts
+    return mapping
+
+
+def _get_irc_endpoints_atom_order_matches_ts(ts_xyz: dict | None,
+                                             xyz_1: dict,
+                                             xyz_2: dict,
+                                             ) -> bool | None:
+    """
+    Check whether both IRC endpoint geometries have the element sequence of the TS geometry the IRC was run from.
+    ARC runs the IRC from the final TS geometry and optimizes the endpoints from the IRC output, and the ESS keep
+    the input atom order throughout, so an equal element sequence states that atom ``i`` of an endpoint is atom
+    ``i`` of the TS. The check cannot detect a swap of two atoms of the same element.
+
+    Args:
+        ts_xyz (dict, optional): The TS geometry.
+        xyz_1 (dict): The first IRC endpoint geometry.
+        xyz_2 (dict): The second IRC endpoint geometry.
+
+    Returns:
+        bool | None: ``None`` if there is no TS geometry to compare to.
+    """
+    if not isinstance(ts_xyz, dict) or not ts_xyz.get('symbols'):
+        return None
+    return tuple(xyz_1['symbols']) == tuple(ts_xyz['symbols']) == tuple(xyz_2['symbols'])
 
 
 def _check_equal_bonds_list(bonds_1: list[tuple[int, int]],

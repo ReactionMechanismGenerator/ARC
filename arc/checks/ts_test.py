@@ -606,6 +606,21 @@ class TestTSChecks(unittest.TestCase):
             ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=True)
         self.assertIs(rxn.ts_species.ts_checks['NMD'], True)
 
+    def test_check_ts_records_whether_a_passing_nmd_verdict_was_forced(self):
+        """Test that only a failed check promoted by skip_nmd is recorded as forced."""
+        for verdict, skip_nmd, forced in ((False, True, True), (True, True, False), (True, False, False),
+                                         (False, False, False)):
+            rxn = self.make_c3h7_intra_h_rxn()
+            rxn.ts_species.populate_ts_checks()
+            with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', return_value=verdict):
+                ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=skip_nmd)
+            self.assertIs(rxn.ts_species.nmd_record.get('forced', False), forced,
+                          msg=f'verdict={verdict}, skip_nmd={skip_nmd}')
+        rxn.ts_species.nmd_record = {'forced': True, 'frequency_cm1': -1000.0}
+        with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', return_value=True):
+            ts.check_normal_mode_displacement(reaction=rxn, job=self.job1)
+        self.assertEqual(rxn.ts_species.nmd_record, dict())
+
     def test_check_ts_reaches_the_rotor_block_for_an_ess_reporting_no_normal_modes(self):
         """Test that a TS whose ESS reports no normal mode displacements does not end the run."""
         self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
@@ -873,18 +888,18 @@ class TestTSChecks(unittest.TestCase):
         for frag in frags_multi:
             self.assertEqual(frag.get_net_charge(), 0)
 
-    def test_match_fragments_to_species_single(self):
-        """Test _match_fragments_to_species with a single fragment."""
+    def test_assign_fragments_to_species_single(self):
+        """Test _assign_fragments_to_species with a single fragment."""
         r_spc = ARCSpecies(label='R', smiles='O=[C]COO')
         p_spc = ARCSpecies(label='P', smiles='O=CCO[O]')
         xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
         frags = ts._perceive_irc_fragments(xyz_1, charge=0)
         self.assertIsNotNone(frags)
-        self.assertTrue(ts._match_fragments_to_species(frags, [r_spc.mol]))
-        self.assertFalse(ts._match_fragments_to_species(frags, [p_spc.mol]))
+        self.assertEqual(ts._assign_fragments_to_species(frags, [r_spc.mol]), [0])
+        self.assertIsNone(ts._assign_fragments_to_species(frags, [p_spc.mol]))
 
-    def test_match_fragments_to_species_multi(self):
-        """Test _match_fragments_to_species with two well-separated fragments."""
+    def test_assign_fragments_to_species_multi(self):
+        """Test _assign_fragments_to_species with two well-separated fragments."""
         coords = (
             (0.0000, 0.0000, 0.1173),
             (0.0000, 0.7572, -0.4692),
@@ -905,19 +920,17 @@ class TestTSChecks(unittest.TestCase):
         nh3_mol = ARCSpecies(label='NH3', smiles='N').mol
 
         # Correct match (either order of expected species should work due to permutations)
-        self.assertTrue(ts._match_fragments_to_species(frags, [water_mol, methane_mol]))
-        self.assertTrue(ts._match_fragments_to_species(frags, [methane_mol, water_mol]))
-        # Wrong species
-        self.assertFalse(ts._match_fragments_to_species(frags, [water_mol, nh3_mol]))
-        # Wrong count
-        self.assertFalse(ts._match_fragments_to_species(frags, [water_mol]))
-        self.assertFalse(ts._match_fragments_to_species(frags, [water_mol, methane_mol, nh3_mol]))
+        self.assertIsNotNone(ts._assign_fragments_to_species(frags, [water_mol, methane_mol]))
+        self.assertIsNotNone(ts._assign_fragments_to_species(frags, [methane_mol, water_mol]))
+        self.assertIsNone(ts._assign_fragments_to_species(frags, [water_mol, nh3_mol]))
+        self.assertIsNone(ts._assign_fragments_to_species(frags, [water_mol]))
+        self.assertIsNone(ts._assign_fragments_to_species(frags, [water_mol, methane_mol, nh3_mol]))
 
-    def test_match_fragments_to_species_empty(self):
-        """Test _match_fragments_to_species edge cases."""
-        self.assertTrue(ts._match_fragments_to_species([], []))
+    def test_assign_fragments_to_species_empty(self):
+        """Test _assign_fragments_to_species edge cases."""
+        self.assertEqual(ts._assign_fragments_to_species([], []), [])
         water_mol = ARCSpecies(label='water', smiles='O').mol
-        self.assertFalse(ts._match_fragments_to_species([], [water_mol]))
+        self.assertIsNone(ts._assign_fragments_to_species([], [water_mol]))
 
     def test_check_irc_isomorphism_path(self):
         """Test that the full check_irc_species_and_rxn uses isomorphism when mol objects are available."""
@@ -995,6 +1008,184 @@ class TestTSChecks(unittest.TestCase):
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
         ts.check_irc_species_and_rxn(xyz_1=xyz_2, xyz_2=xyz_2, rxn=rxn)
         self.assertIs(rxn.ts_species.ts_checks['IRC'], False)
+
+    @staticmethod
+    def _make_ch4_oh_endpoints():
+        """Endpoint geometries of CH4 + OH <=> CH3 + H2O, in one atom order: C0 H1 H2 H3 H4 O5 H6."""
+        symbols = ('C', 'H', 'H', 'H', 'H', 'O', 'H')
+        reactant_coords = ((0.0, 0.0, 0.0), (0.629, 0.629, 0.629), (-0.629, -0.629, 0.629),
+                           (-0.629, 0.629, -0.629), (0.629, -0.629, -0.629), (6.0, 0.0, 0.0), (6.97, 0.0, 0.0))
+        product_coords = ((0.0, 0.0, 0.0), (1.08, 0.0, 0.0), (-0.54, 0.935, 0.0), (-0.54, -0.935, 0.0),
+                          (5.7597, 0.9294, 0.0), (6.0, 0.0, 0.0), (6.96, 0.0, 0.0))
+        return (xyz_from_data(coords=reactant_coords, symbols=symbols),
+                xyz_from_data(coords=product_coords, symbols=symbols))
+
+    def _make_ch4_oh_rxn(self):
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        return rxn
+
+    def test_check_irc_records_which_endpoint_atoms_belong_to_which_participant(self):
+        """Test that an isomorphism verdict records the atom indices of each participant, per endpoint geometry."""
+        xyz_r, xyz_p = self._make_ch4_oh_endpoints()
+        expected = {'reactants': {'endpoint': 1, 'endpoint_label': 'IRC_TS_1',
+                                  'participants': [{'label': 'CH4', 'position': 1, 'occurrence': 1,
+                                                    'atom_indices': [0, 1, 2, 3, 4]},
+                                                   {'label': 'OH', 'position': 2, 'occurrence': 1,
+                                                    'atom_indices': [5, 6]}]},
+                    'products': {'endpoint': 2, 'endpoint_label': 'IRC_TS_2',
+                                 'participants': [{'label': 'CH3', 'position': 1, 'occurrence': 1,
+                                                   'atom_indices': [0, 1, 2, 3]},
+                                                  {'label': 'H2O', 'position': 2, 'occurrence': 1,
+                                                   'atom_indices': [4, 5, 6]}]},
+                    'sides_distinguishable': True, 'atom_order_matches_ts': None}
+        rxn = self._make_ch4_oh_rxn()
+        ts.check_irc_species_and_rxn(xyz_1=xyz_r, xyz_2=xyz_p, rxn=rxn, endpoint_labels=('IRC_TS_1', 'IRC_TS_2'))
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+        self.assertEqual(rxn.ts_species.irc_participant_mapping, expected)
+
+        rxn = self._make_ch4_oh_rxn()
+        ts.check_irc_species_and_rxn(xyz_1=xyz_p, xyz_2=xyz_r, rxn=rxn, endpoint_labels=('IRC_TS_1', 'IRC_TS_2'))
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+        mapping = rxn.ts_species.irc_participant_mapping
+        self.assertEqual((mapping['reactants']['endpoint'], mapping['reactants']['endpoint_label']), (2, 'IRC_TS_2'))
+        self.assertEqual((mapping['products']['endpoint'], mapping['products']['endpoint_label']), (1, 'IRC_TS_1'))
+        self.assertEqual([p['atom_indices'] for p in mapping['reactants']['participants']], [[0, 1, 2, 3, 4], [5, 6]])
+        self.assertEqual([p['atom_indices'] for p in mapping['products']['participants']], [[0, 1, 2, 3], [4, 5, 6]])
+
+        rxn = self._make_ch4_oh_rxn()
+        ts.check_irc_species_and_rxn(xyz_1=xyz_r, xyz_2=xyz_p, rxn=rxn)
+        self.assertIsNone(rxn.ts_species.irc_participant_mapping['reactants']['endpoint_label'])
+
+    def test_check_irc_participant_mapping_expands_a_repeated_species_per_occurrence(self):
+        """Test that CH3 + CH3 <=> C2H6 lists the two CH3 occurrences as separate participants."""
+        symbols = ('C', 'H', 'H', 'H', 'C', 'H', 'H', 'H')
+        xyz_r = xyz_from_data(coords=((0.0, 0.0, 0.0), (1.08, 0.0, 0.0), (-0.54, 0.935, 0.0), (-0.54, -0.935, 0.0),
+                                      (8.0, 0.0, 0.0), (9.08, 0.0, 0.0), (7.46, 0.935, 0.0), (7.46, -0.935, 0.0)),
+                              symbols=symbols)
+        xyz_p = xyz_from_data(coords=((0.0, 0.0, 0.0), (-0.36, 1.03, 0.0), (-0.36, -0.51, 0.89),
+                                      (-0.36, -0.51, -0.89), (1.54, 0.0, 0.0), (1.90, 1.03, 0.0),
+                                      (1.90, -0.51, 0.89), (1.90, -0.51, -0.89)),
+                              symbols=symbols)
+        rxn = ARCReaction(label='CH3 + CH3 <=> C2H6',
+                          r_species=[ARCSpecies(label='CH3', smiles='[CH3]')],
+                          p_species=[ARCSpecies(label='C2H6', smiles='CC')])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts.check_irc_species_and_rxn(xyz_1=xyz_r, xyz_2=xyz_p, rxn=rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+        mapping = rxn.ts_species.irc_participant_mapping
+        self.assertEqual(mapping['reactants']['participants'],
+                         [{'label': 'CH3', 'position': 1, 'occurrence': 1, 'atom_indices': [0, 1, 2, 3]},
+                          {'label': 'CH3', 'position': 2, 'occurrence': 2, 'atom_indices': [4, 5, 6, 7]}])
+        self.assertEqual(mapping['products']['participants'],
+                         [{'label': 'C2H6', 'position': 1, 'occurrence': 1, 'atom_indices': list(range(8))}])
+
+    def test_check_irc_participant_mapping_states_whether_the_endpoints_follow_the_ts_atom_order(self):
+        """Test that the endpoint element sequences are compared with the TS geometry the IRC was run from."""
+        xyz_r, xyz_p = self._make_ch4_oh_endpoints()
+        shuffled_symbols = ('H', 'H', 'H', 'H', 'C', 'O', 'H')
+        for ts_xyz, expected in ((xyz_r, True),
+                                 (xyz_from_data(coords=xyz_r['coords'], symbols=xyz_r['symbols'][::-1]), False),
+                                 (xyz_from_data(coords=xyz_r['coords'], symbols=shuffled_symbols), False),
+                                 (None, None)):
+            with self.subTest(expected=expected):
+                rxn = self._make_ch4_oh_rxn()
+                rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=ts_xyz)
+                ts.check_irc_species_and_rxn(xyz_1=xyz_r, xyz_2=xyz_p, rxn=rxn)
+                self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+                self.assertIs(rxn.ts_species.irc_participant_mapping['atom_order_matches_ts'], expected)
+
+    def test_check_irc_participant_mapping_states_whether_the_sides_are_distinguishable(self):
+        """Test that graph-isomorphic reactants and products are flagged, since the endpoint naming is a convention."""
+        xyz_r, xyz_p = self._make_ch4_oh_endpoints()
+        rxn = self._make_ch4_oh_rxn()
+        ts.check_irc_species_and_rxn(xyz_1=xyz_r, xyz_2=xyz_p, rxn=rxn)
+        self.assertIs(rxn.ts_species.irc_participant_mapping['sides_distinguishable'], True)
+        coords = ((0.0, 0.0, 0.0), (1.08, 0.0, 0.0), (-0.54, 0.935, 0.0), (-0.54, -0.935, 0.0),
+                  (8.0, 0.0, 0.0), (8.629, 0.629, 0.629), (7.371, -0.629, 0.629), (7.371, 0.629, -0.629),
+                  (8.629, -0.629, -0.629))
+        xyz = xyz_from_data(coords=coords, symbols=('C', 'H', 'H', 'H', 'C', 'H', 'H', 'H', 'H'))
+        rxn = ARCReaction(label='CH3 + CH4 <=> CH4 + CH3',
+                          r_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='CH4', smiles='C')],
+                          p_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='CH3', smiles='[CH3]')])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts.check_irc_species_and_rxn(xyz_1=xyz, xyz_2=xyz, rxn=rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+        self.assertIs(rxn.ts_species.irc_participant_mapping['sides_distinguishable'], False)
+
+    def test_a_participant_mapping_failure_keeps_the_verdict(self):
+        """Test that a failure while building the mapping leaves the isomorphism verdict, and no mapping."""
+        xyz_r, xyz_p = self._make_ch4_oh_endpoints()
+        for target in ('_get_irc_participant_mapping', '_get_irc_endpoints_atom_order_matches_ts'):
+            with self.subTest(failing=target):
+                rxn = self._make_ch4_oh_rxn()
+                rxn.ts_species.irc_participant_mapping = {'stale': True}
+                with patch.object(ts, target, side_effect=RuntimeError('boom')):
+                    ts.check_irc_species_and_rxn(xyz_1=xyz_r, xyz_2=xyz_p, rxn=rxn)
+                self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+                self.assertIsNone(rxn.ts_species.irc_participant_mapping)
+
+    def test_check_irc_participant_mapping_is_none_without_an_isomorphism_verdict(self):
+        """Test that the bond-list fallback, a failed check and a stale record all leave no participant mapping."""
+        for r_smiles, r_multiplicity, p_smiles, symbols, coords_r, coords_p in [
+                ('[O]', 3, '[OH]', ('O', 'H', 'H'),
+                 ((0.0, 0.0, 0.0), (5.0, 0.0, 0.0), (5.0, 0.0, 0.74)),
+                 ((0.0, 0.0, 0.0), (3.2, 0.0, 0.0), (0.0, 0.0, 0.97)))]:
+            with self.subTest(case='bond-list fallback'):
+                rxn = ARCReaction(r_species=[ARCSpecies(label='X', smiles=r_smiles, multiplicity=r_multiplicity),
+                                             ARCSpecies(label='H2', smiles='[H][H]')],
+                                  p_species=[ARCSpecies(label='XH', smiles=p_smiles),
+                                             ARCSpecies(label='H', smiles='[H]')])
+                rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+                rxn.ts_species.irc_participant_mapping = {'stale': True}
+                ts.check_irc_species_and_rxn(xyz_1=xyz_from_data(coords=coords_r, symbols=symbols),
+                                             xyz_2=xyz_from_data(coords=coords_p, symbols=symbols),
+                                             rxn=rxn)
+                self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+                self.assertIsNone(rxn.ts_species.irc_participant_mapping)
+        xyz_r, xyz_p = self._make_ch4_oh_endpoints()
+        rxn = self._make_ch4_oh_rxn()
+        rxn.ts_species.irc_participant_mapping = {'stale': True}
+        ts.check_irc_species_and_rxn(xyz_1=xyz_r, xyz_2=xyz_r, rxn=rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], False)
+        self.assertIsNone(rxn.ts_species.irc_participant_mapping)
+
+    def test_check_irc_verdict_is_that_of_the_boolean_isomorphism_logic(self):
+        """Test that the verdict equals the one the boolean fragment matching decides, for every endpoint pairing."""
+        xyz_r, xyz_p = self._make_ch4_oh_endpoints()
+        rxn = self._make_ch4_oh_rxn()
+        reactants, products = rxn.get_reactants_and_products(return_copies=True)
+        r_mols, p_mols = [r.mol for r in reactants], [p.mol for p in products]
+        for first, second in ((xyz_r, xyz_p), (xyz_p, xyz_r), (xyz_r, xyz_r), (xyz_p, xyz_p)):
+            frags_1, frags_2 = ts._perceive_irc_fragments(first), ts._perceive_irc_fragments(second)
+
+            def match(fragments, mols):
+                return ts._assign_fragments_to_species(fragments, mols) is not None
+
+            expected = (match(frags_1, r_mols) and match(frags_2, p_mols)) \
+                or (match(frags_1, p_mols) and match(frags_2, r_mols))
+            rxn = self._make_ch4_oh_rxn()
+            ts.check_irc_species_and_rxn(xyz_1=first, xyz_2=second, rxn=rxn)
+            self.assertIs(rxn.ts_species.ts_checks['IRC'], expected)
+            self.assertEqual(rxn.ts_species.irc_participant_mapping is not None, expected)
+
+    def test_assign_fragments_to_species(self):
+        """Test that _assign_fragments_to_species returns the expected index of each fragment."""
+        coords = ((0.0, 0.0, 0.1173), (0.0, 0.7572, -0.4692), (0.0, -0.7572, -0.4692),
+                  (10.0, 0.0, 0.0), (10.6276, 0.6276, 0.6276), (10.6276, -0.6276, -0.6276),
+                  (9.3724, 0.6276, -0.6276), (9.3724, -0.6276, 0.6276))
+        xyz = xyz_from_data(coords=coords, symbols=('O', 'H', 'H', 'C', 'H', 'H', 'H', 'H'))
+        frags = ts._perceive_irc_fragments(xyz, charge=0)
+        self.assertEqual(ts._get_irc_fragment_atom_indices(xyz), [[0, 1, 2], [3, 4, 5, 6, 7]])
+        water_mol = ARCSpecies(label='water', smiles='O').mol
+        methane_mol = ARCSpecies(label='methane', smiles='C').mol
+        self.assertEqual(ts._assign_fragments_to_species(frags, [water_mol, methane_mol]), [0, 1])
+        self.assertEqual(ts._assign_fragments_to_species(frags, [methane_mol, water_mol]), [1, 0])
+        self.assertIsNone(ts._assign_fragments_to_species(frags, [water_mol, water_mol]))
+        self.assertEqual(ts._assign_fragments_to_species([], []), [])
 
     def test_check_irc_unknown_if_no_comparison_was_performed(self):
         """

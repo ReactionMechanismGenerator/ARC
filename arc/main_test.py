@@ -739,7 +739,7 @@ class TestWarnIfArkaneLevelDiffers(unittest.TestCase):
                                                   adaptive_levels=adaptive_levels)
         self.assertTrue(warned)
         self.assertTrue(any('dlpno-ccsd(t)/def2-tzvp' in record for record in captured.output))
-        self.assertFalse(any('b3lyp' in record for record in captured.output))  # opt/freq levels are not energies
+        self.assertFalse(any('b3lyp' in record for record in captured.output))
 
     def test_adaptive_sp_levels_matching_the_arkane_level_are_not_warned_about(self):
         """Adaptive levels that vary only the opt/freq level, or repeat the Arkane level for sp, are fine."""
@@ -944,6 +944,183 @@ class ReachedTheCleanup(Exception):
     """Raised to stop a run right after its check file cleanup, so the rest of the run is not needed."""
 
 
+class TestRequestedLevelsInOutput(unittest.TestCase):
+    """Tests the header levels ARC passes to write_output_yml, and the NEB level of a default-config run."""
+
+    def setUp(self):
+        self.project_directory = tempfile.mkdtemp(prefix='arc_requested_levels_')
+        self.addCleanup(shutil.rmtree, self.project_directory, ignore_errors=True)
+
+    def make_arc(self, species=None, **kwargs):
+        species = species if species is not None else [ARCSpecies(label='ethane', smiles='CC', compute_thermo=False)]
+        return ARC(project='requested_levels', project_directory=self.project_directory, species=species,
+                   level_of_theory='b3lyp/6-31g', compute_thermo=False, freq_scale_factor=1.0, **kwargs)
+
+    def make_ts(self):
+        return ARCSpecies(label='TS0', is_ts=True, xyz=None, multiplicity=1, charge=0, compute_thermo=False)
+
+    def stub_scheduler(self, arc0, ts_adapters=None):
+        arc0.scheduler = SchedulerStub(dict())
+        arc0.scheduler.species_dict = {spc.label: spc for spc in arc0.species}
+        arc0.scheduler.ts_adapters = ts_adapters if ts_adapters is not None else list()
+        return arc0.scheduler
+
+    def run_arc_and_get_output_kwargs(self, arc0, scheduler_ts_adapters):
+        """Run ``_execute`` with the scheduler and the post-processing replaced, and return the write_output_yml kwargs"""
+        scheduler = self.stub_scheduler(arc0, scheduler_ts_adapters)
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch('arc.main.process_arc_project'), \
+                patch('arc.main.write_output_yml') as write_output_yml, \
+                patch('arc.main.display'), \
+                patch.object(ARC, 'summary', return_value=dict()), \
+                patch.object(ARC, 'save_project_info_file'), \
+                patch.object(ARC, 'clean_check_files'), \
+                patch.object(ARC, 'delete_leftovers'), \
+                patch('arc.main.log_footer'):
+            arc0._execute()
+        return write_output_yml.call_args.kwargs
+
+    def test_neb_level_is_exported_when_the_scheduler_falls_back_to_the_default_ts_adapters(self):
+        """Test that a run listing no ts_adapters exports neb_level, since the scheduler uses the default adapters"""
+        arc0 = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False), self.make_ts()])
+        self.assertIsNone(arc0.ts_adapters)
+        default_adapters = [adapter.lower() for adapter in settings['ts_adapters']]
+        self.assertIn('orca_neb', default_adapters)
+        with patch.dict('arc.processor.settings', {'orca_neb_settings': {'level': 'wb97x-d3/def2-svp'}}):
+            kwargs = self.run_arc_and_get_output_kwargs(arc0, default_adapters)
+        self.assertIsNotNone(kwargs['neb_level'])
+        self.assertEqual(kwargs['neb_level'].method, 'wb97x-d3')
+
+    def test_neb_level_follows_the_adapters_the_scheduler_uses(self):
+        """Test that an explicit list without orca_neb exports no neb_level"""
+        arc0 = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False), self.make_ts()],
+                             ts_adapters=['heuristics'])
+        with patch.dict('arc.processor.settings', {'orca_neb_settings': {'level': 'wb97x-d3/def2-svp'}}):
+            kwargs = self.run_arc_and_get_output_kwargs(arc0, ['heuristics'])
+        self.assertIsNone(kwargs['neb_level'])
+
+    def test_neb_level_needs_a_ts_or_a_reaction(self):
+        """Test that a species-only run with the default TS adapters exports no neb_level"""
+        arc0 = self.make_arc()
+        default_adapters = [adapter.lower() for adapter in settings['ts_adapters']]
+        self.assertIn('orca_neb', default_adapters)
+        with patch.dict('arc.processor.settings', {'orca_neb_settings': {'level': 'wb97x-d3/def2-svp'}}):
+            kwargs = self.run_arc_and_get_output_kwargs(arc0, default_adapters)
+        self.assertIsNone(kwargs['neb_level'])
+
+    def test_the_header_levels_reach_the_writer(self):
+        """Test that the five requested levels are passed to write_output_yml"""
+        arc0 = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False), self.make_ts()],
+                             job_types={'rotors': True, 'conf_opt': True, 'conf_sp': True, 'irc': True},
+                             conformer_sp_level='dlpno-ccsd(t)/cc-pvtz')
+        kwargs = self.run_arc_and_get_output_kwargs(arc0, list())
+        for key in ('scan_level', 'irc_level', 'conformer_opt_level', 'conformer_sp_level', 'ts_guess_level'):
+            with self.subTest(key=key):
+                self.assertIsInstance(kwargs[key], Level)
+
+    def test_scan_level_needs_rotor_scans_to_be_requested(self):
+        """Test that a scan level the user set is not stated when rotor scans were not requested"""
+        arc0 = self.make_arc(job_types={'rotors': False}, scan_level='b3lyp/6-31g')
+        self.assertIsInstance(arc0.scan_level, Level)
+        self.stub_scheduler(arc0)
+        self.assertIsNone(arc0.get_requested_levels_for_output()['scan_level'])
+        arc0.job_types['rotors'] = True
+        self.assertIsInstance(arc0.get_requested_levels_for_output()['scan_level'], Level)
+
+    def test_irc_level_needs_irc_to_be_requested_and_a_ts(self):
+        """Test that irc_level is null without a requested IRC and without a transition state in the run"""
+        arc0 = self.make_arc(job_types={'irc': True}, irc_level='b3lyp/6-31g')
+        self.stub_scheduler(arc0)
+        self.assertIsNone(arc0.get_requested_levels_for_output()['irc_level'])
+        arc0.species.append(self.make_ts())
+        self.stub_scheduler(arc0)
+        self.assertIsInstance(arc0.get_requested_levels_for_output()['irc_level'], Level)
+        arc0.job_types['irc'] = False
+        self.assertIsNone(arc0.get_requested_levels_for_output()['irc_level'])
+
+    def test_ts_guess_level_needs_a_ts(self):
+        """Test that ts_guess_level is null in a run with no transition state"""
+        without_ts = self.make_arc()
+        self.stub_scheduler(without_ts)
+        self.assertIsNone(without_ts.get_requested_levels_for_output()['ts_guess_level'])
+        user_level = self.make_arc(ts_guess_level='pm7')
+        self.stub_scheduler(user_level)
+        self.assertIsNone(user_level.get_requested_levels_for_output()['ts_guess_level'])
+        with_ts = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False),
+                                         self.make_ts()])
+        self.stub_scheduler(with_ts)
+        self.assertIsInstance(with_ts.get_requested_levels_for_output()['ts_guess_level'], Level)
+
+    def test_conformer_opt_level_needs_conformer_optimization_to_have_been_possible(self):
+        """Test the conformer_opt_level rules: the job type, the species, and conformers optimized anyway"""
+        arc0 = self.make_arc(job_types={'conf_opt': False})
+        scheduler = self.stub_scheduler(arc0)
+        self.assertIsNone(arc0.get_requested_levels_for_output()['conformer_opt_level'])
+        scheduler.species_dict['ethane'].conformer_levels = [{'method': 'b3lyp', 'basis': '6-31g'}]
+        self.assertIsInstance(arc0.get_requested_levels_for_output()['conformer_opt_level'], Level)
+        scheduler.species_dict['ethane'].conformer_levels = list()
+        arc0.job_types['conf_opt'] = True
+        self.assertIsInstance(arc0.get_requested_levels_for_output()['conformer_opt_level'], Level)
+        atom = ARCSpecies(label='H', smiles='[H]', compute_thermo=False)
+        arc_atoms = self.make_arc(species=[atom], job_types={'conf_opt': True})
+        self.stub_scheduler(arc_atoms)
+        self.assertIsNone(arc_atoms.get_requested_levels_for_output()['conformer_opt_level'])
+        arc_ts = self.make_arc(species=[self.make_ts()], job_types={'conf_opt': True})
+        self.stub_scheduler(arc_ts)
+        self.assertIsNone(arc_ts.get_requested_levels_for_output()['conformer_opt_level'])
+
+    def test_conformer_sp_level_needs_conf_sp_and_a_different_level(self):
+        """Test that conformer_sp_level is null unless conf_sp was requested at a level other than the conf_opt one"""
+        arc0 = self.make_arc(job_types={'conf_sp': False}, conformer_sp_level='dlpno-ccsd(t)/cc-pvtz')
+        self.stub_scheduler(arc0)
+        self.assertIsNone(arc0.get_requested_levels_for_output()['conformer_sp_level'])
+        arc0.job_types['conf_sp'] = True
+        self.assertIsInstance(arc0.get_requested_levels_for_output()['conformer_sp_level'], Level)
+        arc0.conformer_sp_level = Level(repr=arc0.conformer_opt_level.as_dict())
+        self.assertIsNone(arc0.get_requested_levels_for_output()['conformer_sp_level'])
+        arc0.conformer_sp_level = None
+        self.assertIsNone(arc0.get_requested_levels_for_output()['conformer_sp_level'])
+
+    def test_a_header_level_is_null_where_an_adaptive_entry_covers_its_job_type(self):
+        """Test that scan, irc, conformer and TS guess levels are null when an adaptive entry names their job type"""
+        job_types = {'rotors': True, 'irc': True, 'conf_opt': True, 'conf_sp': True}
+        expected_null = {'scan': ['scan_level'], 'irc': ['irc_level'], 'conf_opt': ['conformer_opt_level',
+                                                                                   'ts_guess_level'],
+                         'conf_sp': ['conformer_sp_level']}
+        all_keys = ('scan_level', 'irc_level', 'conformer_opt_level', 'conformer_sp_level', 'ts_guess_level')
+        for job_type, null_keys in expected_null.items():
+            with self.subTest(job_type=job_type):
+                arc0 = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False),
+                                              self.make_ts()],
+                                     job_types=job_types, conformer_sp_level='dlpno-ccsd(t)/cc-pvtz',
+                                     adaptive_levels=[{'atom_range': [1, 'inf'],
+                                                       'levels': {job_type: 'b3lyp/6-311+g(d,p)'}}])
+                self.stub_scheduler(arc0)
+                levels = arc0.get_requested_levels_for_output()
+                for key in all_keys:
+                    if key in null_keys:
+                        self.assertIsNone(levels[key], key)
+                    else:
+                        self.assertIsInstance(levels[key], Level, key)
+
+    def test_a_failure_in_building_the_header_levels_does_not_abort_the_run(self):
+        """Test that an error while resolving the header levels is logged and the run still finishes"""
+        arc0 = self.make_arc(species=[ARCSpecies(label='ethane', smiles='CC', compute_thermo=False), self.make_ts()])
+        scheduler = self.stub_scheduler(arc0)
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch('arc.main.process_arc_project'), \
+                patch('arc.main.write_output_yml') as write_output_yml, \
+                patch('arc.main.display'), \
+                patch('arc.main.resolve_neb_level', side_effect=RuntimeError('boom')), \
+                patch.object(ARC, 'summary', return_value=dict()), \
+                patch.object(ARC, 'save_project_info_file'), \
+                patch.object(ARC, 'clean_check_files'), \
+                patch.object(ARC, 'delete_leftovers'), \
+                patch('arc.main.log_footer'):
+            self.assertEqual(arc0._execute(), dict())
+        write_output_yml.assert_not_called()
+
+
 class SchedulerStub(object):
     """Stands in for a Scheduler that has finished running a project's jobs on a server."""
 
@@ -952,6 +1129,7 @@ class SchedulerStub(object):
         self.output = dict()
         self.species_dict = dict()
         self.rxn_list = list()
+        self.completed_job_records = list()
 
 
 class TestCheckFileCleanup(unittest.TestCase):

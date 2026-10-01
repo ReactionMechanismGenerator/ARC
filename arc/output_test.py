@@ -2,20 +2,24 @@
 Tests for the arc.output module (consolidated output.yml writer).
 """
 
+import copy
 import datetime
+import hashlib
 import json
+import math
 import os
 import shutil
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import yaml
 
 from arc.common import ARC_PATH, read_yaml_file
-from arc.constants import E_h_kJmol
+from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.exceptions import InputError
-from arc.level import Level
+from arc.level import Level, adaptive_levels_as_list, set_recorded_irc_log_level, set_recorded_level
 from arc.common import ARC_TESTING_PATH
 from arc.output import (
     EnergyCorrections,
@@ -29,19 +33,32 @@ from arc.output import (
     _compute_species_corrections,
     _evidence_status_counts,
     _get_arkane_provenance,
+    _get_arkane_quantum_corrections_path,
+    _has_default_isotopes,
+    _get_rmg_database_identity,
     _get_rmg_py_git_commit,
     _get_energy_corrections,
     _match_arkane_correction_keys,
+    _get_ess_route,
+    _get_gaussian_dipole_moment,
+    _get_gaussian_polarizability,
+    _get_log_stated_isotopes,
     _get_ess_software,
+    _get_reversible,
+    _get_t1_diagnostic,
     _gaussian_route_text,
     _get_freq_hessian_method,
     _get_ess_versions,
+    _get_gsm_ess,
+    _gsm_level,
     _get_rejected_torsions,
     _get_rotor_barrier,
     _get_torsions,
     _get_imaginary_freqs,
     _flat_parameter_values,
+    LEVEL_DICT_STRIPPED_KEYS,
     _level_to_dict,
+    _recorded_level_to_dict,
     _make_rel_path,
     _orca_route_text,
     _parse_arkane_log_provenance,
@@ -56,9 +73,23 @@ from arc.output import (
     _statmech_to_dict,
     _thermo_to_dict,
     _timedelta_to_seconds,
+    _xyz_isotopes,
     write_output_yml,
 )
+from arc.reaction import ARCReaction
+from arc.species.converter import xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess, ThermoData
+
+
+def setUpModule():
+    """Keep ``write_output_yml`` from starting the RMG environment to ask where Arkane loaded its tables from."""
+    global _arkane_path_patcher
+    _arkane_path_patcher = patch('arc.output._get_arkane_quantum_corrections_path', return_value=None)
+    _arkane_path_patcher.start()
+
+
+def tearDownModule():
+    _arkane_path_patcher.stop()
 
 
 class TestLevelToDict(unittest.TestCase):
@@ -547,6 +578,9 @@ class TestStatmechToDict(unittest.TestCase):
         spc._is_linear = is_linear
         spc.is_monoatomic.return_value = False
         spc.e0 = 100.5
+        spc.e0_atom_corrections_applied = None
+        spc.e0_bond_corrections_applied = None
+        spc.arkane_rotor_modes = None
         spc.multiplicity = 1
         spc.optical_isomers = 1
         spc.external_symmetry = 2
@@ -556,6 +590,7 @@ class TestStatmechToDict(unittest.TestCase):
 
     def test_nonlinear_species(self):
         spc = self._make_spc(freqs=[100.0, 200.0, 300.0])
+        spc.final_xyz = _xyz_dict(*_water_coords())
         result = _statmech_to_dict(spc, '/tmp/project')
         self.assertEqual(result['rigid_rotor_kind'], 'asymmetric_top')
         self.assertFalse(result['is_linear'])
@@ -616,32 +651,40 @@ class TestGetTorsions(unittest.TestCase):
 
     def test_no_rotors_dict(self):
         spc = MagicMock()
+        spc.e0_atom_corrections_applied = None
+        spc.e0_bond_corrections_applied = None
+        spc.arkane_rotor_modes = None
         spc.rotors_dict = None
         self.assertEqual(_get_torsions(spc, '/tmp'), [])
 
     def test_empty_rotors_dict(self):
         spc = MagicMock()
+        spc.e0_atom_corrections_applied = None
+        spc.e0_bond_corrections_applied = None
+        spc.arkane_rotor_modes = None
         spc.rotors_dict = {}
         self.assertEqual(_get_torsions(spc, '/tmp'), [])
 
     def test_failed_rotor_skipped(self):
         spc = MagicMock()
+        spc.e0_atom_corrections_applied = None
+        spc.e0_bond_corrections_applied = None
+        spc.arkane_rotor_modes = None
         spc.rotors_dict = {0: {'success': False, 'scan': [1, 2, 3, 4], 'pivots': [2, 3]}}
         self.assertEqual(_get_torsions(spc, '/tmp'), [])
 
-    def test_successful_rotor(self):
+    @staticmethod
+    def make_spc(rotor_modes, rotor_count=1):
+        """A species with ``rotor_count`` successful rotors, each labelled ``HinderedRotor``, and the rotor modes
+        Arkane is recorded as having kept."""
         spc = MagicMock()
-        spc.rotors_dict = {
-            0: {
-                'success': True,
-                'scan': [1, 2, 3, 4],
-                'pivots': [2, 3],
-                'symmetry': 3,
-                'type': 'HinderedRotor',
-                'scan_path': '',
-            }
-        }
-        result = _get_torsions(spc, '/tmp')
+        spc.rotors_dict = {index: {'success': True, 'scan': [1, 2, 3, 4], 'pivots': [2, 3], 'symmetry': 3,
+                                   'type': 'HinderedRotor', 'scan_path': ''} for index in range(rotor_count)}
+        spc.arkane_rotor_modes = rotor_modes
+        return spc
+
+    def test_successful_rotor(self):
+        result = _get_torsions(self.make_spc(['HinderedRotor']), '/tmp')
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]['atom_indices'], [1, 2, 3, 4])
         self.assertEqual(result[0]['pivot_atoms'], [2, 3])
@@ -650,19 +693,22 @@ class TestGetTorsions(unittest.TestCase):
         self.assertIsNone(result[0]['barrier_kj_mol'])
 
     def test_free_rotor(self):
-        spc = MagicMock()
-        spc.rotors_dict = {
-            0: {
-                'success': True,
-                'scan': [1, 2, 3, 4],
-                'pivots': [2, 3],
-                'symmetry': 1,
-                'type': 'FreeRotor',
-                'scan_path': '',
-            }
-        }
-        result = _get_torsions(spc, '/tmp')
+        result = _get_torsions(self.make_spc(['FreeRotor']), '/tmp')
         self.assertEqual(result[0]['treatment'], 'free_rotor')
+
+    def test_treatment_is_taken_per_rotor_from_the_arkane_modes(self):
+        result = _get_torsions(self.make_spc(['FreeRotor', 'HinderedRotor'], rotor_count=2), '/tmp')
+        self.assertEqual([torsion['treatment'] for torsion in result], ['free_rotor', 'hindered_rotor'])
+
+    def test_treatment_is_null_unless_arkane_is_known_to_have_kept_every_rotor(self):
+        """ARC's own ``type`` never decides the treatment. With no parsed Arkane output, with Arkane having
+        dropped every rotor, with a different number of rotors kept, or with a multi-dimensional mode, it is null."""
+        for rotor_modes, rotor_count in ((None, 1), ([], 1), (['HinderedRotor'], 2), (['Mode'], 1),
+                                         (['HinderedRotorClassicalND'], 1)):
+            with self.subTest(rotor_modes=rotor_modes, rotor_count=rotor_count):
+                result = _get_torsions(self.make_spc(rotor_modes, rotor_count), '/tmp')
+                self.assertEqual(len(result), rotor_count)
+                self.assertEqual([torsion['treatment'] for torsion in result], [None] * rotor_count)
 
 
 class TestGetRejectedTorsions(unittest.TestCase):
@@ -796,20 +842,20 @@ class TestParseOptLog(unittest.TestCase):
     def test_gaussian_opt_log(self):
         """Parse a real Gaussian opt log for step count and final energy."""
         opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
-        n_steps, e_hartree, final_xyz = _parse_opt_log(opt_path, '/dummy')
+        n_steps, e_hartree, final_xyz, final_isotopes = _parse_opt_log(opt_path, '/dummy')
         self.assertEqual(n_steps, 4)
         self.assertIsNotNone(e_hartree)
         self.assertAlmostEqual(e_hartree, -116.986089069, places=6)
         self.assertIsNotNone(final_xyz)
 
     def test_missing_file(self):
-        n_steps, e_hartree, final_xyz = _parse_opt_log('/nonexistent/file.log', '/tmp')
+        n_steps, e_hartree, final_xyz, final_isotopes = _parse_opt_log('/nonexistent/file.log', '/tmp')
         self.assertIsNone(n_steps)
         self.assertIsNone(e_hartree)
         self.assertIsNone(final_xyz)
 
     def test_none_path(self):
-        n_steps, e_hartree, final_xyz = _parse_opt_log(None, '/tmp')
+        n_steps, e_hartree, final_xyz, final_isotopes = _parse_opt_log(None, '/tmp')
         self.assertIsNone(n_steps)
         self.assertIsNone(e_hartree)
         self.assertIsNone(final_xyz)
@@ -1669,6 +1715,9 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.is_monoatomic.return_value = False
         spc.e_elect = -100.0
         spc.e0 = -95.0
+        spc.e0_atom_corrections_applied = None
+        spc.e0_bond_corrections_applied = None
+        spc.arkane_rotor_modes = None
         spc._is_linear = False
         spc.optical_isomers = 1
         spc.external_symmetry = 1
@@ -1699,6 +1748,9 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.is_monoatomic.return_value = False
         spc.e_elect = -100.0
         spc.e0 = -95.0
+        spc.e0_atom_corrections_applied = None
+        spc.e0_bond_corrections_applied = None
+        spc.arkane_rotor_modes = None
         spc._is_linear = False
         spc.optical_isomers = 1
         spc.external_symmetry = 1
@@ -1718,6 +1770,9 @@ class TestTsWithSmiles(unittest.TestCase):
 
     def test_ts_path_logs_and_irc_directions(self):
         spc = MagicMock()
+        spc.e0_atom_corrections_applied = None
+        spc.e0_bond_corrections_applied = None
+        spc.arkane_rotor_modes = None
         spc.label = 'TS_paths'
         spc.original_label = None
         spc.charge = 0
@@ -1759,6 +1814,9 @@ class TestTsWithSmiles(unittest.TestCase):
 
     def test_merged_ts_guess_recovers_path_artifact_by_index(self):
         spc = MagicMock()
+        spc.e0_atom_corrections_applied = None
+        spc.e0_bond_corrections_applied = None
+        spc.arkane_rotor_modes = None
         spc.label = 'TS_merged'
         spc.original_label = None
         spc.charge = 0
@@ -1897,6 +1955,9 @@ class TestSpcToDict(unittest.TestCase):
         spc.is_monoatomic.return_value = monoatomic
         spc.e_elect = -105236.6  # kJ/mol
         spc.e0 = -105136.6      # kJ/mol (e_elect + ZPE in kJ/mol)
+        spc.e0_atom_corrections_applied = None
+        spc.e0_bond_corrections_applied = None
+        spc.arkane_rotor_modes = None
         spc._is_linear = False
         spc.optical_isomers = 1
         spc.external_symmetry = 12
@@ -2184,6 +2245,547 @@ class TestSpcToDict(unittest.TestCase):
         self.assertIsNone(result['statmech']['point_group'])
 
 
+class TestSpeciesLevelsAndIrcEndpoints(unittest.TestCase):
+    """Tests for the per-record ``levels`` object, the header ``adaptive_levels`` and the IRC endpoint markers."""
+
+    OPT = {'method': 'wb97xd', 'basis': 'def2-tzvp', 'software': 'gaussian'}
+    FREQ = {'method': 'wb97xd', 'basis': 'def2-svp', 'software': 'gaussian'}
+    SP = {'method': 'dlpno-ccsd(t)', 'basis': 'cc-pvtz', 'software': 'orca', 'repr': 'dlpno-ccsd(t)/cc-pvtz',
+          'compatible_ess': ['orca']}
+
+    def make_spc(self, label='CH4', is_ts=False, irc_label=None):
+        spc = TestSpcToDict._make_spc_mock(self, label=label, is_ts=is_ts)
+        spc.irc_label = irc_label
+        if is_ts:
+            spc.thermo = None
+            spc.rxn_label = 'A <=> B'
+        return spc
+
+    def entry(self, label='CH4', **kwargs):
+        return {label: {'convergence': True, 'paths': {}, 'job_types': {}, **kwargs}}
+
+    def test_a_non_adaptive_species_exports_the_recorded_levels(self):
+        """Test that every level key is present, recorded ones are level dicts without repr and compatible_ess"""
+        result = _spc_to_dict(self.make_spc(), self.entry(levels={'opt': self.OPT, 'freq': self.OPT, 'sp': self.SP}),
+                              '/abs')
+        self.assertEqual(list(result['levels']), ['opt', 'freq', 'sp', 'composite', 'irc'])
+        self.assertEqual(result['levels']['opt'], {'method': 'wb97xd', 'basis': 'def2-tzvp'})
+        self.assertEqual(result['levels']['sp'], {'method': 'dlpno-ccsd(t)', 'basis': 'cc-pvtz'})
+        self.assertIsNone(result['levels']['composite'])
+        self.assertIsNone(result['levels']['irc'])
+
+    def test_levels_differ_between_species_and_a_ts_copy_under_adaptive_levels(self):
+        """Test that each record exports its own levels, including an adaptive-level ``<label>_TS<i>`` copy"""
+        plain = _spc_to_dict(self.make_spc('CH4'), self.entry('CH4', levels={'opt': self.OPT}), '/abs')
+        ts_copy = _spc_to_dict(self.make_spc('CH4_TS0'), self.entry('CH4_TS0', levels={'opt': self.FREQ}), '/abs')
+        self.assertEqual(plain['levels']['opt'], {'method': 'wb97xd', 'basis': 'def2-tzvp'})
+        self.assertEqual(ts_copy['levels']['opt'], {'method': 'wb97xd', 'basis': 'def2-svp'})
+
+    def test_levels_are_null_where_nothing_was_recorded(self):
+        """Test that an entry with no levels (an older restart), an empty one, or no entry at all exports all null"""
+        for output_dict in (self.entry(), self.entry(levels=dict()), self.entry(levels=None), dict()):
+            with self.subTest(output_dict=output_dict):
+                result = _spc_to_dict(self.make_spc(), output_dict, '/abs')
+                self.assertEqual(result['levels'], {key: None for key in ('opt', 'freq', 'sp', 'composite', 'irc')})
+
+    def test_irc_level_is_exported_for_a_ts_only(self):
+        """Test that the irc level is exported on a TS record and is null on a non-TS record"""
+        levels = {'opt': self.OPT, 'irc': self.FREQ}
+        ts = _spc_to_dict(self.make_spc('TS0', is_ts=True), self.entry('TS0', levels=levels), '/abs')
+        species = _spc_to_dict(self.make_spc(), self.entry(levels=levels), '/abs')
+        self.assertEqual(ts['levels']['irc'], {'method': 'wb97xd', 'basis': 'def2-svp'})
+        self.assertIsNone(species['levels']['irc'])
+
+    def test_a_level_stored_by_the_scheduler_exports_without_the_scheme_and_the_software(self):
+        """Test the shape the scheduler stores for a solvation scheme level: no scheme, no deduced software"""
+        level = Level(method='wb97xd', basis='def2-tzvp', software='gaussian', solvation_method='smd',
+                      solvent='water', solvation_scheme_level=Level(method='b3lyp', basis='6-31g'))
+        levels = dict()
+        set_recorded_level(levels, 'sp', level)
+        self.assertNotIn('solvation_scheme_level', levels['sp'])
+        result = _spc_to_dict(self.make_spc(), self.entry(levels=levels), '/abs')
+        self.assertEqual(result['levels']['sp'], {'method': 'wb97xd', 'basis': 'def2-tzvp', 'method_type': 'dft',
+                                                  'solvation_method': 'smd', 'solvent': 'water'})
+
+    def test_the_deduced_software_is_not_exported_in_a_recorded_level(self):
+        """Test that a record's levels never state a software, whatever the stored level carries"""
+        result = _spc_to_dict(self.make_spc(), self.entry(levels={'opt': self.OPT, 'sp': self.SP}), '/abs')
+        for key in ('opt', 'sp'):
+            self.assertNotIn('software', result['levels'][key])
+
+    def test_an_irc_endpoint_species_names_its_ts_and_direction(self):
+        """Test the endpoint markers of a species created from an IRC, and that <n> in the label is not the direction"""
+        result = _spc_to_dict(self.make_spc('IRC_TS0_1', irc_label='TS0'),
+                              self.entry('IRC_TS0_1', irc_direction='reverse'), '/abs')
+        self.assertEqual(result['irc_endpoint_of'], 'TS0')
+        self.assertEqual(result['irc_endpoint_direction'], 'reverse')
+
+    def test_an_irc_endpoint_without_a_recorded_direction_has_a_null_direction(self):
+        """Test that an endpoint restored from a restart with no recorded direction exports null, not a guess"""
+        for entry in (self.entry('IRC_TS0_2'), self.entry('IRC_TS0_2', irc_direction=None),
+                      self.entry('IRC_TS0_2', irc_direction='sideways')):
+            with self.subTest(entry=entry):
+                result = _spc_to_dict(self.make_spc('IRC_TS0_2', irc_label='TS0'), entry, '/abs')
+                self.assertEqual(result['irc_endpoint_of'], 'TS0')
+                self.assertIsNone(result['irc_endpoint_direction'])
+
+    def test_an_ordinary_species_is_not_an_endpoint(self):
+        """Test that a species with no irc_label has null markers, whatever a stale output entry says"""
+        result = _spc_to_dict(self.make_spc(), self.entry(irc_direction='forward'), '/abs')
+        self.assertIsNone(result['irc_endpoint_of'])
+        self.assertIsNone(result['irc_endpoint_direction'])
+
+    def test_a_ts_carries_no_endpoint_markers_although_its_irc_label_lists_endpoints(self):
+        """Test that the TS's own irc_label (its endpoint labels) is not exported as irc_endpoint_of"""
+        result = _spc_to_dict(self.make_spc('TS0', is_ts=True, irc_label='IRC_TS0_1 IRC_TS0_2'),
+                              self.entry('TS0'), '/abs')
+        self.assertNotIn('irc_endpoint_of', result)
+        self.assertNotIn('irc_endpoint_direction', result)
+
+    def test_a_stored_level_that_is_not_a_dict_exports_null(self):
+        """Test that a corrupt stored level exports null rather than a schema-invalid stub"""
+        result = _spc_to_dict(self.make_spc(), self.entry(levels={'opt': 'wb97xd/def2-tzvp', 'freq': 7}), '/abs')
+        self.assertIsNone(result['levels']['opt'])
+        self.assertIsNone(result['levels']['freq'])
+
+    def test_the_adaptive_levels_header_uses_the_restart_list_form(self):
+        """Test the header list form, the 'inf' bound, joined job types, and null for a non-adaptive run"""
+        levels = {(1, 5): {('opt', 'freq'): Level(method='wb97xd', basis='def2-svp'),
+                           ('sp',): Level(method='dlpno-ccsd(t)', basis='cc-pvtz')},
+                  (6, 'inf'): {('opt', 'freq'): Level(method='b3lyp', basis='6-31g')}}
+        result = adaptive_levels_as_list(levels, strip=LEVEL_DICT_STRIPPED_KEYS)
+        self.assertEqual([entry['atom_range'] for entry in result], [[1, 5], [6, 'inf']])
+        self.assertEqual(set(result[0]['levels']), {'opt freq', 'sp'})
+        self.assertEqual(result[0]['levels']['opt freq']['method'], 'wb97xd')
+        self.assertNotIn('repr', result[1]['levels']['opt freq'])
+        self.assertIsNone(adaptive_levels_as_list(None))
+
+    def test_the_writer_puts_the_adaptive_levels_in_the_header(self):
+        """Test that write_output_yml writes adaptive_levels, and null when it is not given"""
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        documents = dict()
+        for name, adaptive in (('adaptive', {(1, 'inf'): {('opt',): Level(method='wb97xd', basis='def2-svp')}}),
+                               ('plain', None)):
+            with patch('arc.output._compute_point_groups', return_value={}), \
+                    patch('arc.output._get_arkane_provenance', return_value=('3.3.0', 'abc123')), \
+                    patch('arc.output.get_git_commit', return_value=('def456', '2026-01-01')):
+                write_output_yml(project=name, project_directory=scratch, species_dict=dict(), reactions=[],
+                                 output_dict=dict(), adaptive_levels=adaptive)
+            documents[name] = read_yaml_file(os.path.join(scratch, 'output', 'output.yml'))
+        self.assertEqual(documents['adaptive']['adaptive_levels'][0]['atom_range'], [1, 'inf'])
+        self.assertIsNone(documents['plain']['adaptive_levels'])
+
+    def test_a_stored_level_dict_is_a_valid_input_of_level_to_dict(self):
+        """Test that _level_to_dict accepts the plain dict the scheduler stores"""
+        self.assertEqual(_level_to_dict(self.SP), {'method': 'dlpno-ccsd(t)', 'basis': 'cc-pvtz', 'software': 'orca'})
+        self.assertIsNone(_level_to_dict(dict()))
+        self.assertEqual(_recorded_level_to_dict(self.SP), {'method': 'dlpno-ccsd(t)', 'basis': 'cc-pvtz'})
+
+
+class TestIrcAndCompositeEssPrograms(unittest.TestCase):
+    """Tests for the ``irc`` and ``composite`` keys of ``ess_versions`` and ``ess_software``, and ``composite_*``."""
+
+    gaussian_log = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+    orca_log = os.path.join(ARC_TESTING_PATH, 'orca_example_opt.log')
+
+    def test_irc_logs_that_agree_state_the_program_and_banner(self):
+        """Both IRC logs from one program export that program and banner under ``irc``"""
+        paths = {'irc': [self.gaussian_log, self.gaussian_log]}
+        self.assertEqual(_get_ess_software(paths, '/dummy'), {'irc': 'gaussian'})
+        self.assertIn('Gaussian 09', _get_ess_versions(paths, '/dummy')['irc'])
+
+    def test_irc_logs_that_disagree_state_nothing(self):
+        """Two IRC logs from different programs cannot be stated as one program, so ``irc`` is absent"""
+        paths = {'irc': [self.gaussian_log, self.orca_log], 'geo': self.gaussian_log}
+        self.assertEqual(_get_ess_software(paths, '/dummy'), {'opt': 'gaussian'})
+        self.assertEqual(list(_get_ess_versions(paths, '/dummy')), ['opt'])
+
+    def test_irc_logs_with_different_banners_state_no_version_but_the_program(self):
+        """Two logs of one program at different versions agree on the program and not on the banner"""
+        paths = {'irc': [self.gaussian_log, self.gaussian_log]}
+        with patch('arc.output.parse_ess_version', side_effect=['Gaussian 09, Revision D.01',
+                                                                   'Gaussian 16, Revision C.01']), \
+                patch('arc.output._existing_log_path', side_effect=lambda path, _: path):
+            self.assertIsNone(_get_ess_versions({'irc': ['/a.log', '/b.log']}, '/dummy'))
+        self.assertEqual(_get_ess_software(paths, '/dummy'), {'irc': 'gaussian'})
+
+    def test_a_missing_irc_log_leaves_the_program_unstated(self):
+        """One recorded IRC log that cannot be read leaves ``irc`` absent, since the pair is not known to agree"""
+        paths = {'irc': [self.gaussian_log, '/nonexistent.log']}
+        self.assertIsNone(_get_ess_software(paths, '/dummy'))
+        self.assertIsNone(_get_ess_versions(paths, '/dummy'))
+
+    def test_a_single_irc_log_states_its_program(self):
+        """A run with one IRC log exports it"""
+        self.assertEqual(_get_ess_software({'irc': [self.orca_log]}, '/dummy'), {'irc': 'orca'})
+
+    def test_every_exported_irc_log_counts(self):
+        """``irc`` covers every IRC log the record exports, so a third log from another program leaves it absent"""
+        paths = {'irc': [self.gaussian_log, self.gaussian_log, self.orca_log]}
+        self.assertIsNone(_get_ess_software(paths, '/dummy'))
+        paths = {'irc': [self.gaussian_log, self.gaussian_log, self.gaussian_log]}
+        self.assertEqual(_get_ess_software(paths, '/dummy'), {'irc': 'gaussian'})
+
+    def test_composite_log_states_its_program(self):
+        """A composite run's only log is exported under ``composite``"""
+        paths = {'composite': self.gaussian_log}
+        self.assertEqual(_get_ess_software(paths, '/dummy'), {'composite': 'gaussian'})
+        self.assertIn('Gaussian', _get_ess_versions(paths, '/dummy')['composite'])
+
+    def test_composite_log_and_input_are_exported_and_null_for_a_non_composite_run(self):
+        """``composite_log`` and ``composite_input`` come from ``paths['composite']`` and are null otherwise"""
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        calc_dir = os.path.join(scratch, 'calcs', 'Species', 'CH4', 'composite')
+        os.makedirs(calc_dir)
+        shutil.copyfile(self.gaussian_log, os.path.join(calc_dir, 'output.out'))
+        with open(os.path.join(calc_dir, 'input.gjf'), 'w') as f:
+            f.write('#p cbs-qb3\n')
+        spc = TestSpcToDict._make_spc_mock(self)
+        composite = _spc_to_dict(spc, {'CH4': {'convergence': True, 'job_types': {},
+                                               'paths': {'composite': os.path.join(calc_dir, 'output.out')}}},
+                                 scratch)
+        self.assertEqual(composite['composite_log'], os.path.join('calcs', 'Species', 'CH4', 'composite', 'output.out'))
+        self.assertEqual(composite['composite_input'], os.path.join('calcs', 'Species', 'CH4', 'composite', 'input.gjf'))
+        self.assertEqual(composite['ess_software'], {'composite': 'gaussian'})
+        plain = _spc_to_dict(spc, {'CH4': {'convergence': True, 'job_types': {}, 'paths': {'composite': ''}}}, scratch)
+        self.assertIsNone(plain['composite_log'])
+        self.assertIsNone(plain['composite_input'])
+        os.remove(os.path.join(calc_dir, 'input.gjf'))
+        no_deck = _spc_to_dict(spc, {'CH4': {'convergence': True, 'job_types': {},
+                                             'paths': {'composite': os.path.join(calc_dir, 'output.out')}}}, scratch)
+        self.assertIsNone(no_deck['composite_input'])
+        self.assertIsNotNone(no_deck['composite_log'])
+
+
+class TestIrcLogLevels(unittest.TestCase):
+    """Tests for the TS-only ``irc_log_levels``."""
+
+    FORWARD = {'method': 'wb97xd', 'basis': 'def2-svp', 'software': 'gaussian', 'repr': 'wb97xd/def2svp'}
+    REVERSE = {'method': 'b3lyp', 'basis': '6-31g', 'software': 'gaussian'}
+
+    def _ts(self, **paths):
+        spc = TestSpeciesLevelsAndIrcEndpoints.make_spc(self, 'TS0', is_ts=True)
+        entry = {'TS0': {'convergence': True, 'job_types': {}, 'paths': paths}}
+        return _spc_to_dict(spc, entry, '/abs')
+
+    make_spc = TestSpeciesLevelsAndIrcEndpoints.make_spc
+
+    def test_each_log_keeps_its_own_level_without_the_software(self):
+        """Two IRC logs at different levels export both, where ``levels.irc`` is null for the pair"""
+        result = self._ts(irc=['/abs/f.log', '/abs/r.log'], irc_levels=[self.FORWARD, self.REVERSE])
+        self.assertEqual(result['irc_log_levels'], [{'method': 'wb97xd', 'basis': 'def2-svp'},
+                                                    {'method': 'b3lyp', 'basis': '6-31g'}])
+
+    def test_the_list_is_in_lockstep_with_the_logs(self):
+        """A level not recorded (a restart) is null and the list is as long as ``irc_logs``"""
+        self.assertEqual(self._ts(irc=['/abs/f.log', '/abs/r.log'], irc_levels=[self.FORWARD])['irc_log_levels'],
+                         [{'method': 'wb97xd', 'basis': 'def2-svp'}, None])
+        self.assertEqual(self._ts(irc=['/abs/f.log'])['irc_log_levels'], [None])
+        self.assertEqual(self._ts()['irc_log_levels'], [])
+        self.assertEqual(self._ts(irc=['/abs/f.log'], irc_levels=['wb97xd/def2svp'])['irc_log_levels'], [None])
+
+    def test_a_species_record_has_no_irc_log_levels(self):
+        """The key is TS-only"""
+        result = _spc_to_dict(TestSpeciesLevelsAndIrcEndpoints.make_spc(self), {}, '/abs')
+        self.assertNotIn('irc_log_levels', result)
+
+    def test_the_recorder_keeps_the_list_aligned_with_the_irc_paths(self):
+        """``set_recorded_irc_log_level`` appends one entry per log, padding entries for logs recorded without one"""
+        paths = {'irc': ['f.log']}
+        set_recorded_irc_log_level(paths, Level(method='wb97xd', basis='def2svp', software='gaussian',
+                                                solvation_scheme_level=Level(method='b3lyp', basis='6-31g')))
+        self.assertEqual(len(paths['irc_levels']), 1)
+        self.assertEqual(paths['irc_levels'][0]['method'], 'wb97xd')
+        self.assertNotIn('solvation_scheme_level', paths['irc_levels'][0])
+        paths['irc'].append('r.log')
+        set_recorded_irc_log_level(paths, None)
+        self.assertEqual([bool(level) for level in paths['irc_levels']], [True, False])
+        late = {'irc': ['f.log', 'r.log']}
+        set_recorded_irc_log_level(late, Level(method='b3lyp', basis='6-31g'))
+        self.assertEqual([bool(level) for level in late['irc_levels']], [False, True])
+
+
+class TestGsmLevel(unittest.TestCase):
+    """Tests for the header ``gsm_level`` and the ``gsm`` program key, both read from archived xtb outputs."""
+
+    BANNER = """      -----------------------------------------------------------
+     |                           x T B                           |
+      -----------------------------------------------------------
+
+   * xtb version 6.5.1 (b24c23e) compiled by 'conda@728c89f4b128' on 2022-07-12
+
+           -------------------------------------------------
+          |                Calculation Setup                |
+           -------------------------------------------------
+
+          program call               : xtb orcain1.in.xyz --grad {flags}
+          coordinate file            : orcain1.in.xyz
+"""
+    GFN2 = "          :  Hamiltonian                  GFN2-xTB          :\n"
+    GFN1 = "          :  Hamiltonian                  GFN1-xTB          :\n"
+
+    def _run(self, *xtbouts, multiplicity=1, charge=0):
+        """A project holding a GSM stringfile with the given xtb output texts archived beside it."""
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        os.makedirs(os.path.join(scratch, 'gsm', 'gsm_node_outputs'))
+        for index, text in enumerate(xtbouts):
+            with open(os.path.join(scratch, 'gsm', 'gsm_node_outputs', f'{index}.xtbout'), 'w') as f:
+                f.write(text)
+        with open(os.path.join(scratch, 'gsm', 'stringfile.xyz0000'), 'w') as f:
+            f.write('string\n')
+        record = {'gsm_log': 'gsm/stringfile.xyz0000', 'charge': charge, 'multiplicity': multiplicity}
+        return scratch, record
+
+    def _out(self, flags='--gfn 2 --chrg 0 --uhf 0', hamiltonian=None):
+        return self.BANNER.format(flags=flags) + (hamiltonian or self.GFN2)
+
+    def test_stated_when_every_archived_output_shows_gfn2_and_the_records_charge_and_spin(self):
+        """Neutral singlet, anion and doublet records each match the charge and spin xtb was called with, and a
+        call without ``--uhf`` is xtb's default of zero unpaired electrons"""
+        for flags, charge, multiplicity in (('--gfn 2 --chrg 0 --uhf 0', 0, 1), ('--gfn 2 --chrg -1 --uhf 0', -1, 1),
+                                            ('--gfn 2 --chrg 0 --uhf 1', 0, 2), ('--chrg 0', 0, 1)):
+            with self.subTest(flags=flags):
+                scratch, record = self._run(self._out(flags), self._out(flags), multiplicity=multiplicity,
+                                            charge=charge)
+                self.assertEqual(_gsm_level([record], scratch), {'method': 'gfn2', 'software': 'xtb'})
+
+    def test_null_for_a_run_started_before_the_method_charge_and_spin_were_staged(self):
+        """A pre-fix run (charge 0, no --uhf) is null for a doublet or an anion, whatever ograd is staged locally now"""
+        for charge, multiplicity in ((0, 2), (-1, 1)):
+            with self.subTest(charge=charge, multiplicity=multiplicity):
+                scratch, record = self._run(self._out('--chrg 0'), charge=charge, multiplicity=multiplicity)
+                self.assertIsNone(_gsm_level([record], scratch))
+
+    def test_null_when_any_output_differs_or_nothing_was_archived(self):
+        """One output with another Hamiltonian, charge or spin, or no archived output at all, states nothing"""
+        good = self._out()
+        for outputs in ((good, self._out(hamiltonian=self.GFN1)), (good, self._out('--gfn 2 --chrg 1 --uhf 0')),
+                        (good, self._out('--gfn 2 --chrg 0 --uhf 1')), ()):
+            with self.subTest(outputs=outputs):
+                scratch, record = self._run(*outputs)
+                self.assertIsNone(_gsm_level([record], scratch))
+
+    def test_null_without_a_gsm_log_or_when_any_gsm_log_fails(self):
+        """No GSM log gives null, and two GSM logs both need their outputs to match"""
+        scratch, record = self._run(self._out())
+        self.assertIsNone(_gsm_level([{'gsm_log': None}, {}], scratch))
+        os.makedirs(os.path.join(scratch, 'other'))
+        self.assertIsNone(_gsm_level([record, dict(record, gsm_log='other/stringfile.xyz0000')], scratch))
+
+    def test_the_program_and_version_are_the_ones_the_outputs_state(self):
+        """``_get_gsm_ess`` names xtb and the banner only when every output agrees"""
+        scratch, record = self._run(self._out(), self._out())
+        self.assertEqual(_get_gsm_ess(record['gsm_log'], scratch),
+                         ('xtb', "xtb version 6.5.1 (b24c23e) compiled by 'conda@728c89f4b128' on 2022-07-12"))
+        scratch, record = self._run(self._out(), self._out().replace('6.5.1', '6.6.0'))
+        self.assertEqual(_get_gsm_ess(record['gsm_log'], scratch)[0], 'xtb')
+        self.assertIsNone(_get_gsm_ess(record['gsm_log'], scratch)[1])
+        scratch, record = self._run()
+        self.assertEqual(_get_gsm_ess(record['gsm_log'], scratch), (None, None))
+
+    def test_a_converged_ts_record_carries_the_gsm_program_keys(self):
+        """The TS record's ess_software and ess_versions gain ``gsm``; without outputs they stay as they were"""
+        scratch, record = self._run(self._out())
+        spc = TestSpeciesLevelsAndIrcEndpoints.make_spc(self, 'TS0', is_ts=True)
+        entry = {'TS0': {'convergence': True, 'job_types': {}, 'paths': {'gsm': os.path.join(scratch, 'gsm', 'stringfile.xyz0000')}}}
+        result = _spc_to_dict(spc, entry, scratch)
+        self.assertEqual(result['ess_software'], {'gsm': 'xtb'})
+        self.assertIn('xtb version 6.5.1', result['ess_versions']['gsm'])
+        shutil.rmtree(os.path.join(scratch, 'gsm', 'gsm_node_outputs'))
+        self.assertIsNone(_spc_to_dict(spc, entry, scratch)['ess_software'])
+
+    def test_the_writer_exports_the_header_key_as_null_without_a_gsm_run(self):
+        """``gsm_level`` is always in the header, null when the run has no GSM log"""
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        with patch('arc.output._compute_point_groups', return_value={}), \
+                patch('arc.output._get_arkane_provenance', return_value=(None, None)), \
+                patch('arc.output.get_git_commit', return_value=('', '')):
+            write_output_yml(project='no_gsm', project_directory=scratch, species_dict=dict(), reactions=[],
+                             output_dict=dict())
+        document = read_yaml_file(os.path.join(scratch, 'output', 'output.yml'))
+        self.assertIn('gsm_level', document)
+        self.assertIsNone(document['gsm_level'])
+
+
+class TestConformerProvenanceExport(unittest.TestCase):
+    """Tests for ``conformer_levels``, ``conformer_energy_kind`` and ``conformer_energy_level`` of a record."""
+
+    CONF_OPT = {'method': 'wb97xd', 'basis': 'def2-svp', 'software': 'gaussian', 'repr': 'wb97xd/def2-svp',
+                'compatible_ess': ['gaussian']}
+    CONF_SP = {'method': 'dlpno-ccsd(t)', 'basis': 'cc-pvtz', 'software': 'orca'}
+    CONF_SP_EXPORTED = {'method': 'dlpno-ccsd(t)', 'basis': 'cc-pvtz'}
+    CONF_OPT_EXPORTED = {'method': 'wb97xd', 'basis': 'def2-svp'}
+    FF = {'kind': 'force_field_kcal_mol', 'level': None, 'force_field': 'MMFF94s (rdkit)'}
+
+    def make_spc(self, energies, levels=None, sources=None, is_ts=False):
+        spc = TestSpcToDict._make_spc_mock(self, is_ts=is_ts)
+        xyz = spc.final_xyz
+        spc.conformers = [xyz] * len(energies)
+        spc.conformer_energies = list(energies)
+        if levels is not None:
+            spc.conformer_levels = levels
+        else:
+            del spc.conformer_levels
+        if sources is not None:
+            spc.conformer_energy_sources = sources
+        else:
+            del spc.conformer_energy_sources
+        return spc
+
+    def export(self, spc):
+        result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}, '/abs')
+        return result['conformer_levels'], result['conformer_energy_kind'], result['conformer_energy_level']
+
+    def export_force_field(self, spc):
+        result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}, '/abs')
+        return result['conformer_force_field']
+
+    def electronic(self, level):
+        return {'kind': 'electronic_kj_mol', 'level': level}
+
+    def test_optimized_conformers_carry_their_level_and_the_electronic_kind(self):
+        """Test that all-optimized conformers export each level, kJ/mol as the kind and the shared energy level"""
+        spc = self.make_spc([-100.0, -98.0], levels=[self.CONF_OPT, self.CONF_OPT],
+                            sources=[self.electronic(self.CONF_OPT)] * 2)
+        levels, kind, energy_level = self.export(spc)
+        self.assertEqual(levels, [self.CONF_OPT_EXPORTED, self.CONF_OPT_EXPORTED])
+        self.assertEqual(kind, 'electronic_kj_mol')
+        self.assertEqual(energy_level, self.CONF_OPT_EXPORTED)
+
+    def test_force_field_conformers_have_null_levels_and_no_energy_level(self):
+        """Test that never-optimized conformers export null levels, the force-field kind and a null energy level"""
+        spc = self.make_spc([1.2, 0.0], levels=[None, None], sources=[self.FF, self.FF])
+        self.assertEqual(self.export(spc), ([None, None], 'force_field_kcal_mol', None))
+
+    def test_force_field_energies_never_state_a_level(self):
+        """Test that a level attached to a force-field energy source is not exported as the energy level"""
+        spc = self.make_spc([1.2], levels=[None], sources=[{'kind': 'force_field_kcal_mol', 'level': self.CONF_OPT}])
+        self.assertEqual(self.export(spc), ([None], 'force_field_kcal_mol', None))
+
+    def test_a_conformer_single_point_sets_the_energy_level_but_not_the_geometry_level(self):
+        """Test that conf_sp energies name the sp level while conformer_levels keep the conf_opt level"""
+        spc = self.make_spc([-100.0, -98.0], levels=[self.CONF_OPT, self.CONF_OPT],
+                            sources=[self.electronic(self.CONF_SP)] * 2)
+        levels, kind, energy_level = self.export(spc)
+        self.assertEqual(levels, [self.CONF_OPT_EXPORTED] * 2)
+        self.assertEqual(kind, 'electronic_kj_mol')
+        self.assertEqual(energy_level, self.CONF_SP_EXPORTED)
+
+    def test_a_failed_conformer_optimization_makes_the_kind_null(self):
+        """Test that some optimized conformers next to one keeping its force-field energy give a null kind and level"""
+        spc = self.make_spc([-100.0, 1.2], levels=[self.CONF_OPT, None],
+                            sources=[self.electronic(self.CONF_OPT), self.FF])
+        levels, kind, energy_level = self.export(spc)
+        self.assertEqual(levels, [self.CONF_OPT_EXPORTED, None])
+        self.assertIsNone(kind)
+        self.assertIsNone(energy_level)
+
+    def test_energies_from_different_levels_make_the_energy_level_null(self):
+        """Test that only some conformers getting a single point keeps the kind but drops the energy level"""
+        spc = self.make_spc([-100.0, -98.0], levels=[self.CONF_OPT] * 2,
+                            sources=[self.electronic(self.CONF_SP), self.electronic(self.CONF_OPT)])
+        levels, kind, energy_level = self.export(spc)
+        self.assertEqual(kind, 'electronic_kj_mol')
+        self.assertIsNone(energy_level)
+
+    def test_an_entry_without_an_energy_does_not_affect_the_kind(self):
+        """Test that a conformer whose energy is null is ignored when stating the kind"""
+        spc = self.make_spc([None, -98.0], levels=[None, self.CONF_OPT],
+                            sources=[None, self.electronic(self.CONF_OPT)])
+        self.assertEqual(self.export(spc)[1:], ('electronic_kj_mol', self.CONF_OPT_EXPORTED))
+
+    def test_unrecorded_provenance_exports_nulls_of_the_right_length(self):
+        """Test that a species restored without the provenance keys gets a null list of the right length and no kind"""
+        spc = self.make_spc([-100.0, -98.0, None])
+        self.assertEqual(self.export(spc), ([None, None, None], None, None))
+
+    def test_a_short_or_long_provenance_list_is_fitted_to_the_conformers(self):
+        """Test that stale lists of the wrong length never produce a mis-sized conformer_levels"""
+        short = self.make_spc([-100.0, -98.0, -97.0], levels=[self.CONF_OPT], sources=[])
+        long = self.make_spc([-100.0], levels=[self.CONF_OPT, self.CONF_OPT, self.CONF_OPT], sources=[None] * 4)
+        self.assertEqual(self.export(short)[0], [self.CONF_OPT_EXPORTED, None, None])
+        self.assertEqual(self.export(long)[0], [self.CONF_OPT_EXPORTED])
+
+    def test_a_known_force_field_is_named_and_states_the_kcal_kind(self):
+        """Test that energies of one force field and backend export that name and the kcal/mol kind"""
+        spc = self.make_spc([1.2, 0.0], levels=[None, None], sources=[self.FF, self.FF])
+        self.assertEqual(self.export_force_field(spc), 'MMFF94s (rdkit)')
+
+    def test_a_force_field_whose_unit_is_not_kcal_is_named_without_a_kind(self):
+        """Test that a kJ/mol force field gives a null kind but still names the force field"""
+        source = {'kind': None, 'level': None, 'force_field': 'UFF (openbabel)'}
+        spc = self.make_spc([1.2], levels=[None], sources=[source])
+        self.assertEqual(self.export(spc), ([None], None, None))
+        self.assertEqual(self.export_force_field(spc), 'UFF (openbabel)')
+
+    def test_placeholder_energies_have_no_kind_and_no_force_field(self):
+        """Test that an energy no force field computed (cheat sheet, monoatomic, diatomic) states no origin"""
+        spc = self.make_spc([0.0], levels=[None], sources=[None])
+        self.assertEqual(self.export(spc), ([None], None, None))
+        self.assertIsNone(self.export_force_field(spc))
+
+    def test_a_hand_edited_kind_or_force_field_that_is_not_a_string_is_unknown(self):
+        """Test that an unhashable or non-string kind or force field exports null instead of raising"""
+        for value in (['force_field_kcal_mol'], {'kind': 1}, 7):
+            with self.subTest(value=value):
+                kind = self.make_spc([1.2], levels=[None], sources=[{'kind': value, 'level': None,
+                                                                     'force_field': 'MMFF94s (rdkit)'}])
+                self.assertEqual(self.export(kind), ([None], None, None))
+                self.assertEqual(self.export_force_field(kind), 'MMFF94s (rdkit)')
+                force_field = self.make_spc([1.2], levels=[None], sources=[dict(self.FF, force_field=value)])
+                self.assertEqual(self.export(force_field), ([None], 'force_field_kcal_mol', None))
+                self.assertIsNone(self.export_force_field(force_field))
+
+    def test_different_force_fields_or_electronic_energies_have_no_single_force_field(self):
+        """Test that a mixture of force fields, or of a force field and an ESS energy, names none"""
+        other = dict(self.FF, force_field='UFF (rdkit)')
+        mixed = self.make_spc([1.2, 0.3], levels=[None, None], sources=[self.FF, other])
+        self.assertIsNone(self.export_force_field(mixed))
+        electronic = self.make_spc([1.2, -100.0], levels=[None, self.CONF_OPT],
+                                   sources=[self.FF, self.electronic(self.CONF_OPT)])
+        self.assertIsNone(self.export_force_field(electronic))
+        optimized = self.make_spc([-100.0], levels=[self.CONF_OPT], sources=[self.electronic(self.CONF_OPT)])
+        self.assertIsNone(self.export_force_field(optimized))
+
+    def test_no_conformers_exports_all_null(self):
+        """Test that a record with no conformers, including a TS, exports null for the three keys and no conformers"""
+        for is_ts in (False, True):
+            with self.subTest(is_ts=is_ts):
+                spc = self.make_spc([], levels=[], sources=[], is_ts=is_ts)
+                result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}}, '/abs')
+                self.assertNotIn('conformers', result)
+                self.assertEqual((result['conformer_levels'], result['conformer_energy_kind'],
+                                  result['conformer_energy_level'], result['conformer_force_field']),
+                                 (None, None, None, None))
+
+    def test_the_writer_puts_the_requested_levels_in_the_header(self):
+        """Test that write_output_yml writes the five header levels, and null for each one not given"""
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        levels = {'scan_level': Level(method='b3lyp', basis='6-31g'),
+                  'irc_level': Level(method='wb97xd', basis='def2-svp'),
+                  'conformer_opt_level': Level(method='wb97xd', basis='def2-svp'),
+                  'conformer_sp_level': Level(method='dlpno-ccsd(t)', basis='cc-pvtz'),
+                  'ts_guess_level': Level(method='pm7')}
+        documents = dict()
+        for name, kwargs in (('given', levels), ('absent', dict())):
+            with patch('arc.output._compute_point_groups', return_value={}), \
+                    patch('arc.output._get_arkane_provenance', return_value=('3.3.0', 'abc123')), \
+                    patch('arc.output.get_git_commit', return_value=('def456', '2026-01-01')):
+                write_output_yml(project=name, project_directory=scratch, species_dict=dict(), reactions=[],
+                                 output_dict=dict(), **kwargs)
+            documents[name] = read_yaml_file(os.path.join(scratch, 'output', 'output.yml'))
+        for key, level in levels.items():
+            with self.subTest(key=key):
+                self.assertEqual(documents['given'][key]['method'], level.method)
+                self.assertIn(key, documents['absent'])
+                self.assertIsNone(documents['absent'][key])
+
+
 class TestFlatCalculationContract(unittest.TestCase):
     """Pin the flat per-calculation shape that downstream uploaders consume.
 
@@ -2382,6 +2984,9 @@ class TestWriteOutputYml(unittest.TestCase):
         spc.is_monoatomic.return_value = False
         spc.e_elect = -105236.6
         spc.e0 = -105136.6
+        spc.e0_atom_corrections_applied = None
+        spc.e0_bond_corrections_applied = None
+        spc.arkane_rotor_modes = None
         spc._is_linear = False
         spc.optical_isomers = 1
         spc.external_symmetry = 12
@@ -2413,7 +3018,7 @@ class TestWriteOutputYml(unittest.TestCase):
         out_path = os.path.join(self.tmp_dir, 'output', 'output.yml')
         self.assertTrue(os.path.isfile(out_path))
         doc = read_yaml_file(out_path)
-        self.assertEqual(doc['schema_version'], '1.2')
+        self.assertEqual(doc['schema_version'], '1.3')
         self.assertEqual(doc['parser_evidence']['path'], 'parser_evidence.json')
         evidence_path = os.path.join(self.tmp_dir, 'output', 'parser_evidence.json')
         self.assertTrue(os.path.isfile(evidence_path))
@@ -2463,7 +3068,6 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertIsNone(thermo['C3H8']['bond_corrections_applied'])
         self.assertIsNone(thermo['CH4']['atom_corrections_level'])
         self.assertIsNone(thermo['C3H8']['atom_corrections_level'])
-        # A dummy Arkane level differs from the sp level, and the two sit in comparable shapes.
         self.assertEqual(thermo['C2H6']['atom_corrections_level'],
                          _level_to_dict(Level(method='bmk', basis='cbsb7', software='gaussian')))
         self.assertNotEqual(thermo['C2H6']['atom_corrections_level'], doc['sp_level'])
@@ -3005,7 +3609,7 @@ class TestWriteOutputYml(unittest.TestCase):
         )
         from arc.common import read_yaml_file
         doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
-        self.assertEqual(doc['schema_version'], '1.2')
+        self.assertEqual(doc['schema_version'], '1.3')
         self.assertNotIn('parser_evidence', doc)
 
     @patch('arc.output._compute_point_groups', return_value={})
@@ -3328,14 +3932,30 @@ class TestBuildAppliedCorrectionsForSpecies(unittest.TestCase):
         self.assertEqual(bac['model'], 'melius')
         self.assertEqual(bac['components'], [])
 
-    def test_pbac_omits_components_when_param_missing(self):
+    def test_pbac_keeps_the_applied_components_and_lists_the_skipped_bonds(self):
+        """Arkane applies the bonds it has a parameter for and skips the rest, so the components sum to the total."""
         block = self._pbac_block()
-        block['components'][0]['parameter_value'] = None
+        block['value'] = -0.694
+        block['components'].append({'component_kind': 'bond', 'key': 'C#N', 'multiplicity': 2,
+                                    'parameter_value': None, 'parameter_unit': 'kcal_mol',
+                                    'contribution_value': None})
         sc = {'X': {'aec': self._aec_block(), 'bac': block}}
         out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
         bac = next(e for e in out if e['correction_type'] == 'bond_additivity')
-        # Components dropped entirely (partial decomposition would mislead).
-        self.assertEqual(bac['components'], [])
+        self.assertEqual([component['key'] for component in bac['components']], ['C-H'])
+        self.assertAlmostEqual(sum(component['contribution_value'] for component in bac['components']),
+                               bac['total']['value'])
+        self.assertEqual(bac['skipped_components'], [{'bond': 'C#N', 'count': 2}])
+
+    def test_skipped_components_apply_to_a_petersson_record_only(self):
+        """Empty when every Petersson bond has a parameter, and null for an atom-energy or a Melius record."""
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'p')
+        self.assertEqual({record['correction_type']: record['skipped_components'] for record in out},
+                         {'atom_energy': None, 'bond_additivity': []})
+        sc = {'X': {'aec': self._aec_block(), 'bac': self._mbac_block()}}
+        out = _build_energy_corrections_for_species('X', sc, self._lot(), 'm')
+        self.assertEqual([record['skipped_components'] for record in out], [None, None])
 
     def test_units_are_explicit(self):
         sc = {'X': {'aec': self._aec_block(), 'bac': self._pbac_block()}}
@@ -3825,6 +4445,31 @@ class TestScanCalculations(unittest.TestCase):
         self.assertIn('source_log', calcs[0])
         self.assertEqual(calcs[0]['result']['dimension'], 1)
 
+    def test_a_scan_record_states_the_program_of_its_own_log(self):
+        """``ess_software`` and ``ess_version`` are identified from the scan log's banner, per rotor"""
+        orca_log = os.path.join(ARC_TESTING_PATH, 'orca_example_opt.log')
+        calcs = _build_rotor_scans(MagicMock(rotors_dict={0: self._rotor()}), '/tmp/project')
+        self.assertEqual(calcs[0]['ess_software'], 'gaussian')
+        self.assertIn('Gaussian', calcs[0]['ess_version'])
+        with patch('arc.output._build_scan_result_for_rotor', return_value={'dimension': 1}):
+            orca_calcs = _build_rotor_scans(MagicMock(rotors_dict={0: self._rotor(scan_path=orca_log)}), '/tmp/project')
+        self.assertEqual(orca_calcs[0]['ess_software'], 'orca')
+        self.assertIn('ORCA', orca_calcs[0]['ess_version'])
+
+    def test_a_scan_record_without_a_readable_banner_states_null(self):
+        """A missing log, or one that states no program, gives null and never raises"""
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        bannerless = os.path.join(scratch, 'scan.log')
+        with open(bannerless, 'w') as f:
+            f.write('no program banner here\n')
+        for scan_path in ('/nonexistent/scan.log', bannerless):
+            with self.subTest(scan_path=scan_path), \
+                    patch('arc.output._build_scan_result_for_rotor', return_value={'dimension': 1}):
+                calcs = _build_rotor_scans(MagicMock(rotors_dict={0: self._rotor(scan_path=scan_path)}), '/tmp/project')
+                self.assertIsNone(calcs[0]['ess_software'])
+                self.assertIsNone(calcs[0]['ess_version'])
+
     def test_build_scan_calculations_skips_failed_rotor(self):
         """An unsuccessful rotor (success is not True) is filtered, even with a real scan log.
 
@@ -4106,6 +4751,28 @@ class TestScanCalculations(unittest.TestCase):
             xyz_text = point['geometry_xyz']
             lines = xyz_text.splitlines()
             self.assertEqual(len(lines), 5)
+
+    def test_scan_points_state_the_isotopes_the_scan_log_states_for_their_geometry(self):
+        """Every point carries the isotopes stated for its own geometry, beside ``geometry_xyz``."""
+        parsed = self._stub_parsed(n_points=3)
+        parsed['geometries'][0] = {key: value[:4] for key, value in parsed['geometries'][0].items()}
+        with patch('arc.output.parse_1d_scan_full_result', return_value=parsed), \
+                patch('arc.output._get_log_stated_isotopes',
+                      side_effect=lambda path, symbols: [1 + (len(symbols) % 2)] * len(symbols)):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        self.assertEqual([point['geometry_isotopes'] for point in result['samples']],
+                         [[1] * 4, [2] * 5, [2] * 5])
+        for point in result['samples']:
+            self.assertEqual(len(point['geometry_isotopes']), len(point['geometry_xyz'].splitlines()))
+
+    def test_scan_points_state_no_isotopes_a_scan_log_does_not_state(self):
+        """A scan log that states no masses (the Gaussian opt-type scan) leaves every point's isotopes null."""
+        with patch('arc.output.parse_1d_scan_full_result', return_value=self._stub_parsed(n_points=3)):
+            result = _build_scan_result_for_rotor(self._rotor(), '/tmp/project')
+        self.assertIsNotNone(result)
+        for point in result['samples']:
+            self.assertIsNone(point['geometry_isotopes'])
 
     def test_scan_point_geometry_uses_only_xyz_text_no_db_id(self):
         """No ``geometry_id`` (or any DB id) anywhere under scan_result."""
@@ -4490,6 +5157,7 @@ class TestScanCalculations(unittest.TestCase):
         self.assertIsNotNone(result)
         for point in result['samples']:
             self.assertNotIn('geometry_xyz', point)
+            self.assertNotIn('geometry_isotopes', point)
             self.assertIn('angle_degrees', point)
         self.assertTrue(
             any('serialization failed' in m or 'empty text' in m for m in cm.output),
@@ -4684,6 +5352,1164 @@ class TestComputeCostMetrics(unittest.TestCase):
         records = [{'job_adapter': None, 'cpu_cores': 2, 'run_time_sec': 3600.0}]
         cm = _compute_cost_metrics(records, None)
         self.assertIn('unknown', cm['per_ess'])
+
+
+class TestRmgDatabaseIdentity(unittest.TestCase):
+    """Tests for ``_get_rmg_database_identity``, the identity of the quantum corrections Arkane loaded."""
+
+    DATA = b"atom_energies = {}\npbac = {}\nmbac = {}\n"
+    COMMIT = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+
+    def make_database(self, prefix: str | None = None, data: bytes | None = None) -> str:
+        """An RMG database directory holding ``input/quantum_corrections/data.py``, under a fresh temporary
+        directory. Returns the path of that ``data.py``."""
+        root = tempfile.mkdtemp(prefix='test_rmg_database_')
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        corrections = os.path.join(root, prefix or 'rmgdatabase', 'input', 'quantum_corrections')
+        os.makedirs(corrections)
+        data_path = os.path.join(corrections, 'data.py')
+        with open(data_path, 'wb') as f:
+            f.write(self.DATA if data is None else data)
+        return data_path
+
+    @staticmethod
+    def database_root(data_path: str) -> str:
+        return os.path.dirname(os.path.dirname(os.path.dirname(data_path)))
+
+    @staticmethod
+    def write(path: str, text: str) -> None:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
+            f.write(text)
+
+    @staticmethod
+    def identity(arkane_path, arc_root=None) -> dict:
+        """The identity with Arkane reporting ``arkane_path`` and ARC reading the database at ``arc_root``."""
+        with patch('arc.output._get_arkane_quantum_corrections_path', return_value=arkane_path):
+            return _get_rmg_database_identity(arc_root)
+
+    def test_a_git_checkout_states_its_head_and_the_hash_of_the_file_arkane_loaded(self):
+        """A symbolic HEAD resolves through its loose ref, and a detached HEAD is the hash itself."""
+        data_path = self.make_database()
+        root = self.database_root(data_path)
+        self.write(os.path.join(root, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+        self.write(os.path.join(root, '.git', 'refs', 'heads', 'main'), f'{self.COMMIT}\n')
+        self.assertEqual(self.identity(data_path, root),
+                         {'path_kind': 'git', 'git_commit': self.COMMIT, 'version': None,
+                          'quantum_corrections_path': data_path,
+                          'quantum_corrections_sha256': hashlib.sha256(self.DATA).hexdigest(),
+                          'matches_arc_rmg_db_path': True})
+        self.write(os.path.join(root, '.git', 'HEAD'), f'{self.COMMIT}\n')
+        self.assertEqual(self.identity(data_path, root)['git_commit'], self.COMMIT)
+
+    def test_an_unrelated_repository_further_up_is_not_the_database(self):
+        """Only the database root, three directories above the file, can make the path a git checkout."""
+        data_path = self.make_database()
+        root = self.database_root(data_path)
+        self.write(os.path.join(os.path.dirname(root), '.git', 'HEAD'), f'{self.COMMIT}\n')
+        identity = self.identity(data_path, root)
+        self.assertEqual((identity['path_kind'], identity['git_commit']), ('unknown', None))
+
+    def test_a_packed_ref_and_a_worktree_gitfile_are_followed(self):
+        data_path = self.make_database()
+        root = self.database_root(data_path)
+        common = os.path.join(os.path.dirname(root), 'main.git')
+        self.write(os.path.join(common, 'packed-refs'), f'# pack-refs\n{self.COMMIT} refs/heads/main\n')
+        worktree_git = os.path.join(common, 'worktrees', 'db')
+        self.write(os.path.join(worktree_git, 'HEAD'), 'ref: refs/heads/main\n')
+        self.write(os.path.join(worktree_git, 'commondir'), '../..\n')
+        self.write(os.path.join(root, '.git'), f'gitdir: {worktree_git}\n')
+        identity = self.identity(data_path, root)
+        self.assertEqual((identity['path_kind'], identity['git_commit']), ('git', self.COMMIT))
+
+    def test_an_unreadable_git_head_is_a_git_checkout_without_a_commit(self):
+        data_path = self.make_database()
+        root = self.database_root(data_path)
+        self.write(os.path.join(root, '.git', 'HEAD'), 'garbage\n')
+        identity = self.identity(data_path, root)
+        self.assertEqual((identity['path_kind'], identity['git_commit']), ('git', None))
+        self.assertIsNotNone(identity['quantum_corrections_sha256'])
+
+    def test_a_conda_package_states_its_version_and_no_commit(self):
+        data_path = self.make_database(prefix=os.path.join('envs', 'rmg_env', 'share', 'rmgdatabase'))
+        prefix = os.path.dirname(os.path.dirname(os.path.dirname(self.database_root(data_path))))
+        self.write(os.path.join(prefix, 'conda-meta', 'rmgdatabase-4.0.0.rc1-py39_0.json'),
+                   json.dumps({'name': 'rmgdatabase', 'version': '4.0.0.rc1'}))
+        self.write(os.path.join(prefix, 'conda-meta', 'rmgdatabase-extras-1.0-0.json'),
+                   json.dumps({'name': 'rmgdatabase-extras', 'version': '1.0'}))
+        identity = self.identity(data_path)
+        self.assertEqual((identity['path_kind'], identity['git_commit'], identity['version']),
+                         ('package', None, '4.0.0.rc1'))
+        self.assertIsNotNone(identity['quantum_corrections_sha256'])
+
+    def test_a_conda_record_that_is_not_a_mapping_is_ignored(self):
+        data_path = self.make_database(prefix=os.path.join('envs', 'rmg_env', 'share', 'rmgdatabase'))
+        prefix = os.path.dirname(os.path.dirname(os.path.dirname(self.database_root(data_path))))
+        self.write(os.path.join(prefix, 'conda-meta', 'rmgdatabase-4.0.0-0.json'), json.dumps(['rmgdatabase']))
+        identity = self.identity(data_path)
+        self.assertEqual((identity['path_kind'], identity['version']), ('unknown', None))
+
+    def test_the_hash_is_of_the_file_arkane_loaded_not_the_one_arc_reads(self):
+        """When the two differ, the digest is Arkane's, ``matches_arc_rmg_db_path`` is false and a warning says so."""
+        arkane_path = self.make_database(data=b'arkane = {}\n')
+        arc_root = self.database_root(self.make_database(data=b'arc = {}\n'))
+        with self.assertLogs('arc', level='WARNING') as captured:
+            identity = self.identity(arkane_path, arc_root)
+        self.assertEqual(identity['quantum_corrections_sha256'], hashlib.sha256(b'arkane = {}\n').hexdigest())
+        self.assertIs(identity['matches_arc_rmg_db_path'], False)
+        self.assertTrue(any('differ' in record.getMessage() for record in captured.records))
+
+    def test_nothing_is_guessed_and_nothing_raises(self):
+        """An Arkane path that is unavailable or unreadable, and an ARC path that is missing or unset, give null."""
+        unknown = {'path_kind': 'unknown', 'git_commit': None, 'version': None, 'quantum_corrections_path': None,
+                   'quantum_corrections_sha256': None, 'matches_arc_rmg_db_path': None}
+        self.assertEqual(self.identity(None), unknown)
+        missing = os.path.join(tempfile.gettempdir(), 'test_rmg_database_missing', 'data.py')
+        self.assertEqual(self.identity(missing), dict(unknown, quantum_corrections_path=missing))
+        data_path = self.make_database()
+        with patch.dict('arc.output.settings', {'RMG_DB_PATH': None}):
+            identity = self.identity(data_path)
+        self.assertIsNone(identity['matches_arc_rmg_db_path'])
+        self.assertIsNotNone(identity['quantum_corrections_sha256'])
+        identity = self.identity(data_path, os.path.join(os.path.dirname(data_path), 'missing'))
+        self.assertIsNone(identity['matches_arc_rmg_db_path'])
+
+    def test_arkanes_path_is_read_from_the_rmg_environment_helper(self):
+        """The path comes from the ``quantum_corrections_path`` the rmg_env script writes, and a failure is null."""
+        with patch('arc.output.execute_command', return_value=('', '')), \
+                patch('arc.output.read_yaml_file', return_value={'quantum_corrections_path': '/db/data.py'}):
+            self.assertEqual(_get_arkane_quantum_corrections_path(), '/db/data.py')
+        with patch('arc.output.execute_command', return_value=('', '')), \
+                patch('arc.output.read_yaml_file', return_value={'aec': None}):
+            self.assertIsNone(_get_arkane_quantum_corrections_path())
+        with patch('arc.output.execute_command', side_effect=OSError('no rmg_env')):
+            self.assertIsNone(_get_arkane_quantum_corrections_path())
+
+    def test_the_header_of_the_document_carries_the_identity(self):
+        identity = {'path_kind': 'git', 'git_commit': self.COMMIT, 'version': None, 'quantum_corrections_path': 'p',
+                    'quantum_corrections_sha256': None, 'matches_arc_rmg_db_path': None}
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        with patch('arc.output._get_rmg_database_identity', return_value=identity), \
+                patch('arc.output._get_arkane_provenance', return_value=(None, None)), \
+                patch('arc.output.get_git_commit', return_value=('', '')):
+            write_output_yml(project='p', project_directory=tmp_dir, species_dict=dict(), reactions=[],
+                             output_dict=dict())
+        document = read_yaml_file(os.path.join(tmp_dir, 'output', 'output.yml'))
+        self.assertEqual(document['rmg_database'], identity)
+        self.assertIsNone(document['arc_aec_yml_sha256'])
+
+
+class TestStatmechArkaneKeys(unittest.TestCase):
+    """The E0 correction switches and the Arkane treatment in ``_statmech_to_dict``."""
+
+    def test_the_keys_come_from_the_species(self):
+        spc = TestStatmechToDict()._make_spc(freqs=[100.0])
+        spc.e0_atom_corrections_applied = True
+        spc.e0_bond_corrections_applied = False
+        spc.arkane_rotor_modes = ['HinderedRotor', 'HinderedRotorClassicalND']
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertIs(result['e0_atom_corrections_applied'], True)
+        self.assertIs(result['e0_bond_corrections_applied'], False)
+        self.assertEqual(result['arkane_rotors_applied'], 2)
+        self.assertEqual(result['arkane_treatment'], 'rrho_1d_nd')
+
+    def test_an_unparsed_arkane_output_is_null_and_an_empty_one_is_a_rigid_rotor(self):
+        spc = TestStatmechToDict()._make_spc(freqs=[100.0])
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertIsNone(result['arkane_rotors_applied'])
+        self.assertIsNone(result['arkane_treatment'])
+        spc.arkane_rotor_modes = []
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertEqual(result['arkane_rotors_applied'], 0)
+        self.assertEqual(result['arkane_treatment'], 'rrho')
+
+    def test_the_kinetics_block_carries_the_switch_of_its_run(self):
+        rxn = MagicMock()
+        rxn.label, rxn.reactants, rxn.products, rxn.family, rxn.multiplicity, rxn.ts_label = 'r', [], [], 'f', 1, 'TS0'
+        rxn.long_kinetic_description = None
+        for switch in (True, False, None):
+            rxn.kinetics = {'A': (1.0, 's^-1'), 'atom_corrections_applied': switch}
+            self.assertIs(_rxn_to_dict(rxn)['kinetics']['atom_corrections_applied'], switch)
+        rxn.kinetics = {'A': (1.0, 's^-1')}
+        self.assertIsNone(_rxn_to_dict(rxn)['kinetics']['atom_corrections_applied'])
+
+
+class TestQuantumCorrectionsPathHelper(unittest.TestCase):
+    """Reading the path Arkane loaded must survive a full disk and be skipped when it is already known."""
+
+    def test_a_failing_mkstemp_gives_none_and_leaves_no_file_behind(self):
+        """Test that a failing mkstemp gives none and leaves no file behind"""
+        with patch('arc.output.tempfile.mkstemp', side_effect=OSError(28, 'No space left on device')):
+            self.assertIsNone(_get_arkane_quantum_corrections_path())
+        fd, leftover = tempfile.mkstemp(suffix='.qm_input.yml')
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(leftover) and os.unlink(leftover))
+        with patch('arc.output.tempfile.mkstemp', side_effect=[(os.open(leftover, os.O_RDONLY), leftover),
+                                                              OSError(28, 'No space left on device')]):
+            self.assertIsNone(_get_arkane_quantum_corrections_path())
+        self.assertFalse(os.path.exists(leftover))
+
+    def test_the_output_is_still_written_when_no_temporary_file_can_be_made(self):
+        """Test that the output is still written when no temporary file can be made"""
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        real_mkstemp = tempfile.mkstemp
+
+        def full_disk_for_arkane_scratch(*args, **kwargs):
+            """Helper: full disk for arkane scratch"""
+            if str(kwargs.get('suffix', '')).startswith('.qm_'):
+                raise OSError(28, 'No space left on device')
+            return real_mkstemp(*args, **kwargs)
+
+        with patch('arc.output._get_arkane_quantum_corrections_path', _get_arkane_quantum_corrections_path), \
+                patch('arc.output._get_arkane_provenance', return_value=(None, None)), \
+                patch('arc.output.get_git_commit', return_value=('', '')), \
+                patch('arc.output.tempfile.mkstemp', side_effect=full_disk_for_arkane_scratch):
+            write_output_yml(project='p', project_directory=tmp_dir, species_dict=dict(), reactions=[],
+                             output_dict=dict())
+        document = read_yaml_file(os.path.join(tmp_dir, 'output', 'output.yml'))
+        self.assertIsNone(document['rmg_database']['quantum_corrections_path'])
+        self.assertEqual(document['rmg_database']['path_kind'], 'unknown')
+
+    def test_the_corrections_lookup_survives_a_failing_second_mkstemp(self):
+        """Test that the corrections lookup survives a failing second mkstemp"""
+        fd, leftover = tempfile.mkstemp(suffix='.qm_input.yml')
+        self.addCleanup(lambda: os.path.exists(leftover) and os.unlink(leftover))
+        lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        with patch('arc.output._match_arkane_correction_keys', return_value=('aec-key', 'bac-key')), \
+                patch('arc.output.tempfile.mkstemp', side_effect=[(fd, leftover),
+                                                                  OSError(28, 'No space left on device')]), \
+                patch('arc.output.execute_command') as execute:
+            corrections = _get_energy_corrections(lot, 'p')
+        execute.assert_not_called()
+        self.assertEqual(corrections, EnergyCorrections(None, None, 'aec-key', 'bac-key', None))
+        self.assertFalse(os.path.exists(leftover))
+
+    def test_the_script_reports_its_path_with_the_tables(self):
+        """Test that the script reports its path with the tables"""
+        lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        with patch('arc.output._match_arkane_correction_keys', return_value=('aec', None)), \
+                patch('arc.output.execute_command', return_value=('', '')), \
+                patch('arc.output.read_yaml_file', return_value={'aec': {'H': -0.5}, 'bac': None,
+                                                                 'quantum_corrections_path': '/db/data.py'}):
+            corrections = _get_energy_corrections(lot, None)
+        self.assertEqual(corrections.quantum_corrections_path, '/db/data.py')
+        self.assertEqual(corrections.aec, {'H': -0.5})
+        with patch('arc.output._match_arkane_correction_keys', return_value=(None, None)):
+            self.assertIsNone(_get_energy_corrections(lot, None).quantum_corrections_path)
+
+    def test_a_known_path_spares_the_dedicated_call(self):
+        """Test that a known path spares the dedicated call"""
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        data_path = os.path.join(tmp_dir, 'db', 'input', 'quantum_corrections', 'data.py')
+        os.makedirs(os.path.dirname(data_path))
+        with open(data_path, 'w') as f:
+            f.write('atom_energies = {}\n')
+        with patch('arc.output._get_arkane_quantum_corrections_path') as helper:
+            identity = _get_rmg_database_identity(arkane_path=data_path)
+        helper.assert_not_called()
+        self.assertEqual(identity['quantum_corrections_path'], data_path)
+
+    def test_the_header_takes_the_path_from_the_corrections_and_asks_only_when_it_is_missing(self):
+        """Test that the header takes the path from the corrections and asks only when it is missing"""
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        for reported, asked in (('/db/data.py', False), (None, True)):
+            with self.subTest(reported=reported):
+                corrections = EnergyCorrections(None, None, None, None, reported)
+                with patch('arc.output._get_energy_corrections', return_value=corrections), \
+                        patch('arc.output._get_rmg_database_identity', return_value={}) as identity, \
+                        patch('arc.output._get_arkane_provenance', return_value=(None, None)), \
+                        patch('arc.output.get_git_commit', return_value=('', '')):
+                    write_output_yml(project='p', project_directory=tmp_dir, species_dict=dict(), reactions=[],
+                                     output_dict=dict())
+                identity.assert_called_once_with(arkane_path=reported)
+
+
+class TestArcAecYmlDigestLevel(unittest.TestCase):
+    """``arc_aec_yml_sha256`` is set when AEC.yml atomEnergies are rendered for the Arkane level of theory or for the
+    composite or single-point level of the TS-check E0 run."""
+
+    DIGEST = 'a' * 64
+
+    def _digest(self, rendered_for: list, reactions=None, **levels):
+        """Helper: digest"""
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+
+        def digest_for(level):
+            """Helper: digest for"""
+            return self.DIGEST if any(level is candidate for candidate in rendered_for) else None
+
+        with patch('arc.output.get_arc_aec_yml_sha256', side_effect=digest_for), \
+                patch('arc.output._get_rmg_database_identity', return_value={}), \
+                patch('arc.output._get_energy_corrections', return_value=EnergyCorrections(None, None, None, None)), \
+                patch('arc.output._get_arkane_provenance', return_value=(None, None)), \
+                patch('arc.output._rxn_to_dict', return_value={}), \
+                patch('arc.output.get_git_commit', return_value=('', '')):
+            write_output_yml(project='p', project_directory=tmp_dir, species_dict=dict(),
+                             reactions=[MagicMock()] if reactions else [], output_dict=dict(), **levels)
+        return read_yaml_file(os.path.join(tmp_dir, 'output', 'output.yml'))['arc_aec_yml_sha256']
+
+    def test_a_composite_run_has_no_sp_level_and_still_uses_the_arkane_level(self):
+        """Test that a composite run has no sp level and still uses the arkane level"""
+        arkane_level = Level(method='cbs-qb3', software='gaussian')
+        self.assertEqual(self._digest([arkane_level], sp_level=None, arkane_level_of_theory=arkane_level), self.DIGEST)
+
+    def test_an_explicit_arkane_level_is_judged_even_when_the_sp_level_is_not_rendered(self):
+        """Test that an explicit arkane level is judged even when the sp level is not rendered"""
+        arkane_level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        sp_level = Level(method='dlpno-ccsd(t)', basis='cc-pvtz', software='orca')
+        self.assertEqual(self._digest([arkane_level], sp_level=sp_level, arkane_level_of_theory=arkane_level),
+                         self.DIGEST)
+
+    def test_the_e0_run_levels_count_only_for_a_run_with_reactions(self):
+        """Test that the e0 run levels count only for a run with reactions"""
+        arkane_level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        sp_level = Level(method='dlpno-ccsd(t)', basis='cc-pvtz', software='orca')
+        composite = Level(method='cbs-qb3', software='gaussian')
+        self.assertEqual(self._digest([sp_level], reactions=True, sp_level=sp_level,
+                                      arkane_level_of_theory=arkane_level), self.DIGEST)
+        self.assertEqual(self._digest([composite], reactions=True, composite_method=composite,
+                                      arkane_level_of_theory=arkane_level), self.DIGEST)
+        self.assertIsNone(self._digest([], reactions=True, sp_level=sp_level, composite_method=composite,
+                                       arkane_level_of_theory=arkane_level))
+        self.assertIsNone(self._digest([sp_level], sp_level=sp_level, arkane_level_of_theory=arkane_level))
+        self.assertIsNone(self._digest([composite], composite_method=composite,
+                                       arkane_level_of_theory=arkane_level))
+        self.assertEqual(self._digest([arkane_level], sp_level=sp_level, arkane_level_of_theory=arkane_level),
+                         self.DIGEST)
+
+
+class TestTsFrequenciesInEssOrder(unittest.TestCase):
+    """The TS-only ``freq_frequencies_cm1_ess_order`` and ``reaction_coordinate_mode_index``."""
+
+    make_spc = TestSpeciesLevelsAndIrcEndpoints.make_spc
+
+    def _ts(self, freqs, nmd, converged=True, record=None):
+        """Helper: ts"""
+        spc = self.make_spc('TS0', is_ts=True)
+        spc.freqs = freqs
+        spc.ts_checks = {'NMD': nmd, 'warnings': ''}
+        spc.nmd_record = {'frequency_cm1': min(freqs)} if record is None and freqs else (record or dict())
+        return _spc_to_dict(spc, {'TS0': {'convergence': converged, 'job_types': {}, 'paths': {}}}, '/abs')
+
+    def test_the_validated_mode_is_indexed_even_when_it_is_not_first(self):
+        """With synthetic frequencies whose validated mode is listed second, the index counts from one"""
+        freqs = [-18.2, -1235.4, 101.0, 350.5, 1500.0]
+        result = self._ts(freqs, True)
+        self.assertEqual(result['freq_frequencies_cm1_ess_order'], freqs)
+        self.assertEqual(result['reaction_coordinate_mode_index'], 2)
+        self.assertEqual(result['imaginary_frequencies_cm1'], [-1235.4, -18.2])
+
+    def test_the_order_is_the_esss_not_a_sorted_one(self):
+        """With a synthetic unsorted list, the frequencies are exported in the order given"""
+        freqs = [300.0, -50.0, 1500.0, -900.0, 120.0]
+        result = self._ts(freqs, True)
+        self.assertEqual(result['freq_frequencies_cm1_ess_order'], freqs)
+        self.assertEqual(result['reaction_coordinate_mode_index'], 4)
+
+    def test_the_index_is_null_unless_the_displacement_check_passed(self):
+        """Test that the index is null unless the displacement check passed"""
+        freqs = [-18.2, -1235.4, 101.0]
+        for nmd in (False, None):
+            with self.subTest(nmd=nmd):
+                result = self._ts(freqs, nmd)
+                self.assertEqual(result['freq_frequencies_cm1_ess_order'], freqs)
+                self.assertIsNone(result['reaction_coordinate_mode_index'])
+
+    def test_a_check_forced_to_pass_by_skip_nmd_gives_no_index(self):
+        """Test that a check forced to pass by skip nmd gives no index"""
+        freqs = [-18.2, -1235.4, 101.0]
+        result = self._ts(freqs, True, record={'frequency_cm1': -1235.4, 'forced': True})
+        self.assertEqual(result['freq_frequencies_cm1_ess_order'], freqs)
+        self.assertIsNone(result['reaction_coordinate_mode_index'])
+
+    def test_the_index_needs_exactly_one_frequency_matching_the_validated_one(self):
+        """Test that the index needs exactly one frequency matching the validated one"""
+        freqs = [-18.2, -1235.4, 101.0]
+        for validated, expected in ((-1235.405, 2), (-1235.4 + 0.02, None), (-900.0, None), (-18.2, 1)):
+            with self.subTest(validated=validated):
+                result = self._ts(freqs, True, record={'frequency_cm1': validated})
+                self.assertEqual(result['reaction_coordinate_mode_index'], expected)
+        result = self._ts([-500.0, -500.004, 100.0], True, record={'frequency_cm1': -500.0})
+        self.assertIsNone(result['reaction_coordinate_mode_index'])
+
+    def test_a_restart_without_a_recorded_frequency_gives_no_index(self):
+        """Test that a restart without a recorded frequency gives no index"""
+        freqs = [-18.2, -1235.4, 101.0]
+        for record in (dict(), {'frequency_cm1': None}, {'frequency_cm1': True}):
+            with self.subTest(record=record):
+                spc = self.make_spc('TS0', is_ts=True)
+                spc.freqs = freqs
+                spc.ts_checks = {'NMD': True, 'warnings': ''}
+                spc.nmd_record = record
+                result = _spc_to_dict(spc, {'TS0': {'convergence': True, 'job_types': {}, 'paths': {}}}, '/abs')
+                self.assertIsNone(result['reaction_coordinate_mode_index'])
+
+    def test_both_are_null_without_recorded_frequencies_or_a_converged_run(self):
+        """Test that both are null without recorded frequencies or a converged run"""
+        for freqs, converged in ((None, True), ([], True), ([-1000.0, 100.0], False)):
+            with self.subTest(freqs=freqs, converged=converged):
+                result = self._ts(freqs, True, converged=converged)
+                self.assertIsNone(result['freq_frequencies_cm1_ess_order'])
+                self.assertIsNone(result['reaction_coordinate_mode_index'])
+
+    def test_a_validated_ts_without_a_matching_negative_mode_has_no_index(self):
+        """Test that a validated ts without a matching negative mode has no index"""
+        result = self._ts([100.0, 200.0], True, record={'frequency_cm1': -1000.0})
+        self.assertEqual(result['freq_frequencies_cm1_ess_order'], [100.0, 200.0])
+        self.assertIsNone(result['reaction_coordinate_mode_index'])
+
+    def test_a_species_record_has_neither_key(self):
+        """Test that a species record has neither key"""
+        result = _spc_to_dict(self.make_spc(), {}, '/abs')
+        self.assertNotIn('freq_frequencies_cm1_ess_order', result)
+        self.assertNotIn('reaction_coordinate_mode_index', result)
+
+
+class TestReactionAtomMapExport(unittest.TestCase):
+    """The reaction ``atom_map`` family of keys."""
+
+    keys = ('atom_map', 'atom_map_reactant_labels', 'atom_map_product_labels', 'atom_map_source', 'atom_map_method')
+
+    @staticmethod
+    def _rxn():
+        h2o_xyz_1 = """O      -0.00032832    0.39781490    0.00000000
+                       H      -0.76330345   -0.19953755    0.00000000
+                       H       0.76363177   -0.19827735    0.00000000"""
+        h2o_xyz_2 = """H      -0.76330345   -0.19953755    0.00000000
+                       H       0.76363177   -0.19827735    0.00000000
+                       O      -0.00032832    0.39781490    0.00000000"""
+        return ARCReaction(reactants=['H2O'], products=['H2O'],
+                           r_species=[ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_1)],
+                           p_species=[ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_2)])
+
+    def test_a_declared_map_is_exported_as_declared(self):
+        rxn = self._rxn()
+        rxn.declare_atom_map([2, 0, 1])
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['atom_map'], [2, 0, 1])
+        self.assertEqual(result['atom_map_source'], 'declared')
+        self.assertIsNone(result['atom_map_method'])
+
+    def test_a_map_of_unrecorded_origin_has_no_source(self):
+        rxn = self._rxn()
+        rxn.atom_map = [2, 0, 1]
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['atom_map'], [2, 0, 1])
+        self.assertIsNone(result['atom_map_source'])
+        self.assertIsNone(result['atom_map_method'])
+
+    def test_an_inferred_map_is_exported_as_inferred_with_its_method_and_stays_so_after_a_restart(self):
+        rxn = self._rxn()
+        self.assertEqual(rxn.atom_map, [2, 0, 1])
+        for exported in (rxn, ARCReaction(reaction_dict=rxn.as_dict())):
+            result = _rxn_to_dict(exported)
+            self.assertEqual((result['atom_map'], result['atom_map_source']), ([2, 0, 1], 'inferred'))
+            self.assertTrue(result['atom_map_method'].startswith('arc.mapping.driver.map_reaction'))
+
+    def test_exporting_never_computes_a_map(self):
+        rxn = self._rxn()
+        with patch('arc.reaction.reaction.map_reaction') as map_reaction:
+            result = _rxn_to_dict(rxn)
+            map_reaction.assert_not_called()
+        for key in self.keys:
+            self.assertIsNone(result[key])
+        self.assertIsNone(rxn._atom_map)
+
+    def test_a_product_without_a_geometry_exports_no_map_labels_source_or_method(self):
+        """Test that a map whose product has no geometry is withheld whole, with its provenance."""
+        rxn = self._rxn()
+        rxn.declare_atom_map([2, 0, 1])
+        product = rxn.p_species[0]
+        product.initial_xyz = None
+        product.final_xyz = None
+        product.cheap_conformer = None
+        product.most_stable_conformer = None
+        product.conformers = list()
+        self.assertIsNone(product.get_xyz(generate=False))
+        result = _rxn_to_dict(rxn)
+        for key in self.keys:
+            self.assertIsNone(result[key], key)
+
+    def test_the_labels_follow_the_species_order_the_map_counts_atoms_in_and_expand_repeats(self):
+        """Test that labels follow r_species order, not the sorted reactant_labels, one per occurrence."""
+        ch4 = ARCSpecies(label='CH4', smiles='C', xyz="""C 0.0 0.0 0.0
+                                                      H 0.629 0.629 0.629
+                                                      H -0.629 -0.629 0.629
+                                                      H -0.629 0.629 -0.629
+                                                      H 0.629 -0.629 -0.629""")
+        oh = ARCSpecies(label='OH', smiles='[OH]', xyz="""O 0.0 0.0 0.0
+                                                       H 0.97 0.0 0.0""")
+        h2o = ARCSpecies(label='H2O', smiles='O', xyz="""O 0.0 0.0 0.0
+                                                       H 0.96 0.0 0.0
+                                                       H -0.24 0.93 0.0""")
+        ch3 = ARCSpecies(label='CH3', smiles='[CH3]', xyz="""C 0.0 0.0 0.0
+                                                           H 1.08 0.0 0.0
+                                                           H -0.54 0.935 0.0
+                                                           H -0.54 -0.935 0.0""")
+        rxn = ARCReaction(r_species=[oh, ch4], p_species=[h2o, ch3])
+        rxn.declare_atom_map([0, 1, 3, 2, 4, 5, 6])
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['reactant_labels'], ['CH4', 'OH'])
+        self.assertEqual(result['atom_map_reactant_labels'], ['OH', 'CH4'])
+        self.assertEqual(result['atom_map_product_labels'], ['H2O', 'CH3'])
+        self.assertEqual(result['atom_map'], [0, 1, 3, 2, 4, 5, 6])
+        rxn = ARCReaction(label='CH3 + CH3 <=> C2H6',
+                          r_species=[ch3],
+                          p_species=[ARCSpecies(label='C2H6', smiles='CC', xyz="""C 0.0 0.0 0.0
+                                                                              H -0.36 1.028 0.0
+                                                                              H -0.36 -0.514 0.89
+                                                                              H -0.36 -0.514 -0.89
+                                                                              C 1.54 0.0 0.0
+                                                                              H 1.9 1.028 0.0
+                                                                              H 1.9 -0.514 0.89
+                                                                              H 1.9 -0.514 -0.89""")])
+        rxn.declare_atom_map([0, 1, 2, 3, 4, 5, 6, 7])
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['reactant_labels'], ['CH3'])
+        self.assertEqual(result['atom_map_reactant_labels'], ['CH3', 'CH3'])
+        self.assertEqual(result['atom_map_product_labels'], ['C2H6'])
+
+    def test_a_map_that_does_not_conserve_the_element_is_not_exported(self):
+        rxn = self._rxn()
+        rxn.declare_atom_map([2, 1, 0])
+        self.assertEqual(_rxn_to_dict(rxn)['atom_map'], [2, 1, 0])
+        rxn.declare_atom_map([0, 2, 1])
+        result = _rxn_to_dict(rxn)
+        for key in self.keys:
+            self.assertIsNone(result[key])
+        for bad in ([0, 1], [0, 1, 1], [0, 1, 3]):
+            with self.subTest(bad=bad):
+                rxn.declare_atom_map(bad)
+                self.assertIsNone(_rxn_to_dict(rxn)['atom_map'])
+
+    def test_a_malformed_map_is_not_exported_and_an_unknown_source_is_null(self):
+        rxn = self._rxn()
+        for bad in ('0,1,2', [0, 'a', 2], [True, 0, 1]):
+            with self.subTest(bad=bad):
+                rxn._atom_map = bad
+                result = _rxn_to_dict(rxn)
+                for key in self.keys:
+                    self.assertIsNone(result[key])
+        rxn._atom_map, rxn._atom_map_source = [2, 0, 1], 'guessed'
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['atom_map'], [2, 0, 1])
+        self.assertIsNone(result['atom_map_source'])
+        self.assertIsNone(result['atom_map_method'])
+
+
+class TestIrcParticipantMappingExport(unittest.TestCase):
+    """The TS-only ``irc_participant_mapping``."""
+
+    make_spc = TestSpeciesLevelsAndIrcEndpoints.make_spc
+    mapping = {'sides_distinguishable': True, 'atom_order_matches_ts': None,
+               'reactants': {'endpoint': 1, 'endpoint_label': 'IRC_TS0_1',
+                             'participants': [{'label': 'CH3', 'position': 1, 'occurrence': 1,
+                                               'atom_indices': [0, 1, 2, 3]},
+                                              {'label': 'CH3', 'position': 2, 'occurrence': 2,
+                                               'atom_indices': [4, 5, 6, 7]}]},
+               'products': {'endpoint': 2, 'endpoint_label': None,
+                            'participants': [{'label': 'C2H6', 'position': 1, 'occurrence': 1,
+                                              'atom_indices': list(range(8))}]}}
+
+    def _ts(self, mapping, irc=True):
+        spc = self.make_spc('TS0', is_ts=True)
+        spc.ts_checks = {'IRC': irc, 'warnings': ''}
+        spc.irc_participant_mapping = copy.deepcopy(mapping)
+        return _spc_to_dict(spc, {'TS0': {'convergence': True, 'job_types': {}, 'paths': {}}}, '/abs')
+
+    def test_a_recorded_mapping_is_exported_as_recorded(self):
+        self.assertEqual(self._ts(self.mapping)['irc_participant_mapping'], self.mapping)
+
+    def test_it_is_null_when_not_recorded_or_when_the_irc_did_not_validate_the_ts(self):
+        for mapping, irc in ((None, True), (self.mapping, False), (self.mapping, None)):
+            with self.subTest(recorded=mapping is not None, irc=irc):
+                self.assertIsNone(self._ts(mapping, irc=irc)['irc_participant_mapping'])
+
+    def test_a_malformed_record_is_dropped_instead_of_exported(self):
+        for path, value in ((('reactants', 'endpoint'), 3),
+                            (('reactants', 'endpoint'), True),
+                            (('products', 'endpoint_label'), 5),
+                            (('products', 'participants'), 'x'),
+                            (('reactants', 'participants', 0, 'atom_indices'), [0, 'a']),
+                            (('reactants', 'participants', 0, 'label'), None),
+                            (('reactants', 'participants', 0, 'position'), 0),
+                            (('reactants', 'participants', 0, 'occurrence'), 0),
+                            (('reactants', 'participants', 0, 'atom_indices'), [-1]),
+                            (('reactants', 'participants', 0, 'atom_indices'), [1, 1]),
+                            (('sides_distinguishable',), 'yes'),
+                            (('atom_order_matches_ts',), 'yes')):
+            with self.subTest(path=path):
+                mapping = copy.deepcopy(self.mapping)
+                target = mapping
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = value
+                self.assertIsNone(self._ts(mapping)['irc_participant_mapping'])
+        self.assertIsNone(self._ts({'reactants': self.mapping['reactants']})['irc_participant_mapping'])
+        for missing in ('sides_distinguishable', 'atom_order_matches_ts'):
+            mapping = copy.deepcopy(self.mapping)
+            del mapping[missing]
+            self.assertIsNone(self._ts(mapping)['irc_participant_mapping'])
+
+    def test_a_species_record_has_no_such_key(self):
+        self.assertNotIn('irc_participant_mapping', _spc_to_dict(self.make_spc(), {}, '/abs'))
+
+
+def _xyz_dict(symbols, coords, isotopes=None):
+    """Helper: xyz dict"""
+    return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
+
+
+def _benzene_coords(stretch=1.0):
+    """Helper: benzene coords"""
+    coords, symbols = [], []
+    for radius, symbol in ((1.397, 'C'), (2.481, 'H')):
+        for k in range(6):
+            angle = math.radians(60 * k)
+            coords.append((stretch * radius * math.cos(angle), radius * math.sin(angle), 0.0))
+            symbols.append(symbol)
+    return symbols, coords
+
+
+def _ammonia_coords():
+    """Helper: ammonia coords"""
+    bond, hnh = 1.012, math.radians(106.7)
+    theta = math.asin(2 / math.sqrt(3) * math.sin(hnh / 2))
+    rho, z = bond * math.sin(theta), -bond * math.cos(theta)
+    hydrogens = [(rho * math.cos(math.radians(a)), rho * math.sin(math.radians(a)), z) for a in (0, 120, 240)]
+    return ['N', 'H', 'H', 'H'], [(0.0, 0.0, 0.0)] + hydrogens
+
+
+def _water_coords():
+    """Helper: water coords"""
+    bond, hoh = 0.9572, math.radians(104.5)
+    return ['O', 'H', 'H'], [(0.0, 0.0, 0.0), (bond * math.sin(hoh / 2), bond * math.cos(hoh / 2), 0.0),
+                             (-bond * math.sin(hoh / 2), bond * math.cos(hoh / 2), 0.0)]
+
+
+def _allene_coords(stretch=1.0):
+    """Helper: allene coords"""
+    cc, ch, half = 1.31, 1.09, math.radians(59.2)
+    coords, symbols = [(0.0, 0.0, 0.0), (0.0, 0.0, cc), (0.0, 0.0, -cc)], ['C', 'C', 'C']
+    for sign, along_x in ((1, True), (-1, False)):
+        for side in (1, -1):
+            offset = side * ch * math.sin(half)
+            coords.append((offset * stretch, 0.0, sign * (cc + ch * math.cos(half))) if along_x
+                          else (0.0, offset, sign * (cc + ch * math.cos(half))))
+            symbols.append('H')
+    return symbols, coords
+
+
+def _sf6_coords():
+    """Helper: sf6 coords"""
+    d = 1.56
+    return ['S'] + ['F'] * 6, [(0.0, 0.0, 0.0), (d, 0, 0), (-d, 0, 0), (0, d, 0), (0, -d, 0), (0, 0, d), (0, 0, -d)]
+
+
+def _methane_coords():
+    """Helper: methane coords"""
+    d = 0.629
+    return ['C', 'H', 'H', 'H', 'H'], [(0.0, 0.0, 0.0), (d, d, d), (-d, -d, d), (-d, d, -d), (d, -d, -d)]
+
+
+class TestRigidRotorKind(unittest.TestCase):
+    """``statmech.rigid_rotor_kind`` from the principal moments of inertia of the exported geometry."""
+
+    def _kind(self, symbols, coords, is_linear=False, isotopes=None, point_group=None):
+        """Helper: kind"""
+        spc = TestStatmechToDict()._make_spc(is_linear=is_linear, freqs=[100.0])
+        spc.label = 'x'
+        spc.final_xyz, spc.initial_xyz = _xyz_dict(symbols, coords, isotopes), None
+        return _statmech_to_dict(spc, '/tmp/project', point_group=point_group)['rigid_rotor_kind']
+
+    def test_symmetric_and_spherical_tops(self):
+        """Test that symmetric and spherical tops"""
+        self.assertEqual(self._kind(*_benzene_coords()), 'symmetric_top')
+        self.assertEqual(self._kind(*_ammonia_coords()), 'symmetric_top')
+        self.assertEqual(self._kind(*_methane_coords()), 'spherical_top')
+        self.assertEqual(self._kind(*_sf6_coords()), 'spherical_top')
+
+    def test_asymmetric_and_linear(self):
+        """Test that asymmetric and linear"""
+        self.assertEqual(self._kind(*_water_coords()), 'asymmetric_top')
+        self.assertEqual(self._kind(['O', 'C', 'O'], [(-1.16, 0, 0), (0, 0, 0), (1.16, 0, 0)], is_linear=True),
+                         'linear')
+
+    def _unflagged(self, symbols, coords, is_linear=None):
+        """Helper: unflagged"""
+        spc = TestStatmechToDict()._make_spc(freqs=[100.0])
+        spc._is_linear = is_linear
+        spc.label = 'x'
+        spc.final_xyz, spc.initial_xyz = _xyz_dict(symbols, coords), None
+        return _statmech_to_dict(spc, '/tmp/project')['rigid_rotor_kind']
+
+    def test_a_linear_species_that_does_not_say_so_is_not_a_symmetric_top(self):
+        """Test that a linear species that does not say so is not a symmetric top"""
+        self.assertEqual(self._unflagged(['O', 'C', 'O'], [(-1.16, 0, 0), (0, 0, 0), (1.16, 0, 0)]), 'linear')
+
+    def test_a_bent_co2_is_not_linear(self):
+        """At 174 degrees the smallest moment is about 7.5e-4 of the next, far above the collinearity cutoff"""
+        half = math.radians(174 / 2)
+        coords = [(-1.16 * math.sin(half), -1.16 * math.cos(half), 0.0), (0.0, 0.0, 0.0),
+                  (1.16 * math.sin(half), -1.16 * math.cos(half), 0.0)]
+        self.assertNotEqual(self._unflagged(['O', 'C', 'O'], coords), 'linear')
+        self.assertNotEqual(self._unflagged(['O', 'C', 'O'], coords, is_linear=False), 'linear')
+
+    def test_collinear_atoms_of_a_species_flagged_non_linear_give_no_kind(self):
+        """Test that collinear atoms of a species flagged non linear give no kind"""
+        with self.assertLogs('arc', level='WARNING'):
+            kind = self._unflagged(['O', 'C', 'O'], [(-1.16, 0, 0), (0, 0, 0), (1.16, 0, 0)], is_linear=False)
+        self.assertIsNone(kind)
+
+    def test_a_distorted_geometry_is_judged_by_a_relative_tolerance_of_1e_3(self):
+        """Test that a distorted geometry is judged by a relative tolerance of 1e 3"""
+        self.assertEqual(self._kind(*_benzene_coords(stretch=1.0002)), 'symmetric_top')
+        self.assertEqual(self._kind(*_benzene_coords(stretch=1.02)), 'asymmetric_top')
+
+    def test_the_isotopes_the_geometry_carries_are_weighed(self):
+        """Test that the isotopes the geometry carries are weighed"""
+        symbols, coords = _methane_coords()
+        self.assertEqual(self._kind(symbols, coords, isotopes=(12, 2, 1, 1, 1)), 'symmetric_top')
+        self.assertEqual(self._kind(symbols, coords, isotopes=(12, 2, 2, 1, 1)), 'asymmetric_top')
+
+    def test_a_missing_or_unweighable_geometry_gives_no_kind(self):
+        """Test that a missing or unweighable geometry gives no kind"""
+        spc = TestStatmechToDict()._make_spc(freqs=[100.0])
+        spc.label = 'x'
+        spc.final_xyz = None
+        spc.initial_xyz = _xyz_dict(*_methane_coords())
+        self.assertIsNone(_statmech_to_dict(spc, '/tmp/project')['rigid_rotor_kind'])
+        spc.final_xyz = {'symbols': ('Xx', 'Xx', 'Xx'), 'isotopes': (1, 1, 1),
+                         'coords': ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0))}
+        self.assertIsNone(_statmech_to_dict(spc, '/tmp/project')['rigid_rotor_kind'])
+        symbols, coords = _methane_coords()
+        self.assertIsNone(self._kind(symbols, coords, isotopes=(12, 99, 1, 1, 1)))
+        self.assertIsNone(self._kind(['H', 'H', 'H'], [(0, 0, 0)] * 3))
+
+    def test_a_point_group_promotes_a_loosely_converged_symmetric_top(self):
+        """Test that a point group promotes a loosely converged symmetric top"""
+        for build, group in ((_ammonia_coords, 'C3v'), (_benzene_coords, 'D6h')):
+            symbols, coords = build()
+            loose = [(x * 1.004, y, z) for x, y, z in coords]
+            with self.subTest(group=group):
+                self.assertEqual(self._kind(symbols, loose), 'asymmetric_top')
+                self.assertEqual(self._kind(symbols, loose, point_group=group), 'symmetric_top')
+                self.assertEqual(self._kind(symbols, [(x * 1.2, y, z) for x, y, z in coords], point_group=group),
+                                 'asymmetric_top')
+
+    def test_a_cubic_point_group_promotes_a_loosely_converged_spherical_top(self):
+        """Test that a cubic point group promotes a loosely converged spherical top"""
+        symbols, coords = _methane_coords()
+        loose = [(x, y * 1.004, z * 1.008) for x, y, z in coords]
+        self.assertEqual(self._kind(symbols, loose), 'asymmetric_top')
+        self.assertEqual(self._kind(symbols, loose, point_group='Td'), 'spherical_top')
+
+    def test_a_low_symmetry_point_group_vetoes_an_accidental_degeneracy(self):
+        """Test that a low symmetry point group vetoes an accidental degeneracy"""
+        symbols, coords = _water_coords()
+        self.assertEqual(self._kind(symbols, coords), 'asymmetric_top')
+        symbols, coords = _ammonia_coords()
+        for group in ('C1', 'Cs', 'C2v', 'D2h', 'S2', 'Ci'):
+            with self.subTest(group=group):
+                self.assertEqual(self._kind(symbols, coords), 'symmetric_top')
+                self.assertEqual(self._kind(symbols, coords, point_group=group), 'asymmetric_top')
+        symbols, coords = _methane_coords()
+        self.assertEqual(self._kind(symbols, coords, point_group='C2v'), 'asymmetric_top')
+
+    def test_an_s4_axis_makes_a_symmetric_top(self):
+        """Allene (D2d, which contains S4) has equal moments, and neither D2d nor S4 may veto that"""
+        symbols, coords = _allene_coords()
+        for group in (None, 'D2d', 'S4', 'D3d', 'S6', 'D4h'):
+            with self.subTest(group=group):
+                self.assertEqual(self._kind(symbols, coords, point_group=group), 'symmetric_top')
+        self.assertEqual(self._kind(symbols, coords, point_group='D2h'), 'asymmetric_top')
+
+    def test_a_loosely_converged_d2d_geometry_is_promoted_by_its_point_group(self):
+        """Test that a loosely converged d2d geometry is promoted by its point group"""
+        symbols, coords = _allene_coords(stretch=1.03)
+        self.assertEqual(self._kind(symbols, coords), 'asymmetric_top')
+        self.assertEqual(self._kind(symbols, coords, point_group='D2d'), 'symmetric_top')
+        self.assertEqual(self._kind(symbols, coords, point_group='S4'), 'symmetric_top')
+        self.assertEqual(self._kind(symbols, coords, point_group='C2v'), 'asymmetric_top')
+
+    def test_isotopes_that_cannot_be_compared_use_the_moments_alone(self):
+        """Test that hand-edited isotopes or symbols neither raise nor enable the point group refinement"""
+        for xyz in ({'symbols': ['C'], 'isotopes': 12}, {'symbols': None, 'isotopes': [12]},
+                    {'symbols': ['Xx'], 'isotopes': [1]}, {'symbols': ['C'], 'isotopes': [[12]]}):
+            with self.subTest(xyz=xyz):
+                self.assertFalse(_has_default_isotopes(xyz))
+        self.assertTrue(_has_default_isotopes({'symbols': ['C', 'H'], 'isotopes': [12, 1]}))
+
+    def test_non_default_isotopes_use_the_moments_alone(self):
+        """Test that non default isotopes use the moments alone"""
+        symbols, coords = _methane_coords()
+        self.assertEqual(self._kind(symbols, coords, isotopes=(12, 2, 1, 1, 1), point_group='C2v'), 'symmetric_top')
+        self.assertEqual(self._kind(symbols, coords, isotopes=(12, 1, 1, 1, 1), point_group='Td'), 'spherical_top')
+
+    def test_an_unusable_point_group_leaves_the_moments_alone(self):
+        """Test that an unusable point group leaves the moments alone"""
+        for group in (None, 'Dinfh', 'nonsense', 'Kh'):
+            with self.subTest(group=group):
+                self.assertEqual(self._kind(*_methane_coords(), point_group=group), 'spherical_top')
+
+
+class TestLatentExports(unittest.TestCase):
+    """The T1 diagnostic, kinetics comment and TS validation, reversibility, isotopes, ESS routes and properties."""
+
+    gaussian_opt_log = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+    gaussian_freq_log = os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out')
+    polarizability_log = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species',
+                                      'NH2_freq.out')
+    orca_log = os.path.join(ARC_TESTING_PATH, 'orca_example_opt.log')
+
+    def _scratch(self) -> str:
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        return scratch
+
+    def _species_dict(self, spc=None, paths=None, converged=True, project_directory='/abs', sp_method=None) -> dict:
+        spc = spc or TestSpcToDict._make_spc_mock(self)
+        output_dict = {'CH4': {'convergence': converged, 'paths': paths or dict(), 'job_types': {'opt': True}}}
+        if sp_method is not None:
+            output_dict['CH4']['levels'] = {'sp': {'method': sp_method, 'basis': 'cc-pvtz'}}
+        return _spc_to_dict(spc, output_dict, project_directory)
+
+    def test_the_t1_diagnostic_is_the_recorded_number_and_null_otherwise(self):
+        """Test that sp_t1_diagnostic is spc.t1 for a converged species at a coupled-cluster sp level only."""
+        spc = TestSpcToDict._make_spc_mock(self)
+        spc.t1 = 0.0123
+        for method in ('ccsd(t)', 'CCSD(T)-F12', 'dlpno-ccsd(t)', 'qcisd(t)'):
+            with self.subTest(method=method):
+                self.assertEqual(self._species_dict(spc, sp_method=method)['sp_t1_diagnostic'], 0.0123)
+        for method in ('wb97xd', 'b3lyp', 'mp2', None):
+            with self.subTest(method=method):
+                self.assertIsNone(self._species_dict(spc, sp_method=method)['sp_t1_diagnostic'])
+        self.assertIsNone(self._species_dict(spc, converged=False, sp_method='ccsd(t)')['sp_t1_diagnostic'])
+        for value in (None, float('nan'), float('inf'), True, '0.01', MagicMock()):
+            with self.subTest(t1=value):
+                spc.t1 = value
+                self.assertIsNone(self._species_dict(spc, sp_method='ccsd(t)')['sp_t1_diagnostic'])
+                self.assertIsNone(_get_t1_diagnostic(spc, {'method': 'ccsd(t)'}))
+
+    def test_kinetics_comment_and_ts_validation_are_exported_or_null(self):
+        """Test that the comment and the TS-validation marker of the kinetics dict reach the reaction record."""
+        rxn = MagicMock()
+        rxn.label = 'A <=> B'
+        rxn.reactants, rxn.products, rxn.family, rxn.multiplicity, rxn.ts_label = ['A'], ['B'], None, 1, 'TS0'
+        rxn.kinetics = {'A': (1.0, 's^-1'), 'n': 0.0, 'Ea': (1.0, 'kJ/mol'),
+                        'comment': 'Fitted to 50 data points\nIRC failed', 'ts_validation': 'IRC failed'}
+        kinetics = _rxn_to_dict(rxn)['kinetics']
+        self.assertEqual(kinetics['comment'], 'Fitted to 50 data points\nIRC failed')
+        self.assertEqual(kinetics['ts_validation'], 'IRC failed')
+        rxn.kinetics = {'A': (1.0, 's^-1'), 'comment': '', 'ts_validation': 5}
+        kinetics = _rxn_to_dict(rxn)['kinetics']
+        self.assertIsNone(kinetics['comment'])
+        self.assertIsNone(kinetics['ts_validation'])
+        rxn.kinetics = {'A': (1.0, 's^-1')}
+        kinetics = _rxn_to_dict(rxn)['kinetics']
+        self.assertIsNone(kinetics['comment'])
+        self.assertIsNone(kinetics['ts_validation'])
+
+    def test_reversible_follows_the_reaction_arrow(self):
+        """Test that '<=>' is reversible, '=>' is not, any other arrow states nothing, and ARC reactions use '<=>'."""
+        rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O')
+        self.assertEqual(rxn.arrow.strip(), '<=>')
+        self.assertIs(_rxn_to_dict(rxn)['reversible'], True)
+        for arrow, expected in ((' <=> ', True), ('=>', False), (' => ', False), ('->', None), (None, None),
+                                (MagicMock(), None)):
+            with self.subTest(arrow=arrow):
+                self.assertIs(_get_reversible(SimpleNamespace(arrow=arrow)), expected)
+
+    def test_xyz_isotopes_reads_the_list_the_dict_carries(self):
+        """Test the isotope list of an xyz dict, and null for anything that does not state one per atom."""
+        xyz = {'symbols': ('C', 'H'), 'isotopes': (13, 2), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.1))}
+        self.assertEqual(_xyz_isotopes(xyz), [13, 2])
+        for bad in (None, 'C 0 0 0', {'symbols': ('C',), 'coords': ((0.0, 0.0, 0.0),)},
+                    {'symbols': ('C', 'H'), 'isotopes': (13,)}, {'symbols': ('C',), 'isotopes': (None,)},
+                    {'symbols': ('C',), 'isotopes': (True,)}, {'symbols': ('C',), 'isotopes': (0,)},
+                    {'symbols': ('C',), 'isotopes': ()}):
+            with self.subTest(xyz=bad):
+                self.assertIsNone(_xyz_isotopes(bad))
+
+    def test_every_exported_geometry_states_its_isotopes(self):
+        """Test the isotopes beside xyz, the conformers and the opt input, for a single-stage opt."""
+        spc = TestSpcToDict._make_spc_mock(self)
+        spc.final_xyz = dict(spc.final_xyz, isotopes=(13, 2, 1, 1, 1))
+        spc.initial_xyz = dict(spc.final_xyz, isotopes=(12, 1, 1, 1, 1))
+        spc.conformers = [dict(spc.final_xyz, isotopes=(12, 2, 2, 1, 1)), 'C 0.0 0.0 0.0']
+        spc.conformer_energies = [0.0, 1.0]
+        result = self._species_dict(spc)
+        self.assertEqual(result['xyz_isotopes'], [13, 2, 1, 1, 1])
+        self.assertEqual(result['conformers_isotopes'], [[12, 2, 2, 1, 1], None])
+        self.assertEqual(len(result['conformers_isotopes']), len(result['conformers']))
+        self.assertEqual(result['opt_input_xyz_isotopes'], [12, 1, 1, 1, 1])
+        self.assertIsNone(result['coarse_opt_input_xyz_isotopes'])
+        self.assertIsNone(result['coarse_opt_output_xyz_isotopes'])
+
+    def test_a_geometry_without_isotopes_states_null(self):
+        """Test that a geometry that carries no isotope list exports null isotopes, and no conformers no key."""
+        spc = TestSpcToDict._make_spc_mock(self)
+        spc.final_xyz = {key: value for key, value in spc.final_xyz.items() if key != 'isotopes'}
+        spc.conformers = []
+        result = self._species_dict(spc)
+        self.assertIsNone(result['xyz_isotopes'])
+        self.assertIsNone(result['opt_input_xyz_isotopes'])
+        self.assertNotIn('conformers_isotopes', result)
+
+    def test_a_coarse_stage_moves_the_isotopes_of_the_opt_input_with_the_geometry(self):
+        """Test that, after a coarse opt, the fine opt's input isotopes are those the coarse log states."""
+        spc = TestSpcToDict._make_spc_mock(self)
+        spc.initial_xyz = dict(spc.final_xyz, isotopes=(12, 2, 1, 1, 1))
+        parsed = {'symbols': ('C', 'H'), 'isotopes': (12, 1), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.1))}
+        with patch('arc.output.parse_geometry', return_value=parsed), \
+                patch('arc.output._get_log_stated_isotopes', return_value=[12, 2]):
+            result = self._species_dict(spc, paths={'geo_coarse': self.gaussian_opt_log})
+        self.assertEqual(result['coarse_opt_input_xyz_isotopes'], [12, 2, 1, 1, 1])
+        self.assertEqual(result['coarse_opt_output_xyz_isotopes'], [12, 2])
+        self.assertEqual(result['opt_input_xyz_isotopes'], [12, 2])
+
+    def test_a_log_geometry_states_no_isotopes_the_log_does_not_state(self):
+        """Test that symbol-derived isotopes of a parsed geometry are never exported for the coarse output."""
+        spc = TestSpcToDict._make_spc_mock(self)
+        parsed = {'symbols': ('C', 'H'), 'isotopes': (12, 1), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.1))}
+        for log in (self.gaussian_opt_log, self.orca_log):
+            with self.subTest(log=log), patch('arc.output.parse_geometry', return_value=parsed):
+                result = self._species_dict(spc, paths={'geo_coarse': log})
+                self.assertIsNotNone(result['coarse_opt_output_xyz'])
+                self.assertIsNone(result['coarse_opt_output_xyz_isotopes'])
+                self.assertIsNone(result['opt_input_xyz_isotopes'])
+
+    def _mass_log(self, blocks) -> str:
+        """Write a Gaussian-identified log holding the given blocks of ``(Z, mass text)`` lines and return its path."""
+        scratch = self._scratch()
+        log = os.path.join(scratch, 'output.out')
+        with open(log, 'w') as handle:
+            handle.write(' Entering Gaussian System, Link 0=g16\n')
+            for block in blocks:
+                for i, (atomic_number, mass) in enumerate(block, start=1):
+                    handle.write(f' Atom {i:5d} has atomic number {atomic_number:2d} and mass {mass}\n')
+        return log
+
+    def test_the_isotopes_a_gaussian_log_states_are_read_from_its_mass_lines(self):
+        """Test the isotopes of the mass lines, and null for other logs or atom lists."""
+        symbols = ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H')
+        self.assertEqual(_get_log_stated_isotopes(self.gaussian_freq_log, symbols),
+                         [12, 12, 12, 1, 1, 1, 1, 1, 1, 1])
+        self.assertIsNone(_get_log_stated_isotopes(self.gaussian_freq_log, symbols + ('H',)))
+        self.assertIsNone(_get_log_stated_isotopes(self.gaussian_freq_log, ()))
+        self.assertIsNone(_get_log_stated_isotopes(self.gaussian_opt_log, symbols))
+        self.assertIsNone(_get_log_stated_isotopes(self.orca_log, symbols))
+        self.assertIsNone(_get_log_stated_isotopes('/nonexistent.log', symbols))
+        self.assertIsNone(_get_log_stated_isotopes(None, symbols))
+
+    def test_the_isotopes_are_those_of_the_last_block_of_mass_lines(self):
+        """Test that a log with two blocks states the last one (a readiso deuterium block)."""
+        log = self._mass_log([[(6, '12.00000'), (1, '1.00783')], [(6, '12.00000'), (1, '2.01410')]])
+        self.assertEqual(_get_log_stated_isotopes(log, ('C', 'H')), [12, 2])
+        self.assertIsNone(_get_log_stated_isotopes(log, ('C', 'H', 'H')))
+
+    def test_a_mass_block_that_does_not_match_the_symbols_states_nothing(self):
+        """Test that a mismatched atomic number, a malformed mass and a ragged block give null and never raise."""
+        log = self._mass_log([[(6, '12.00000'), (1, '1.00783')]])
+        self.assertIsNone(_get_log_stated_isotopes(log, ('C', 'O')))
+        self.assertIsNone(_get_log_stated_isotopes(log, ('H', 'C')))
+        self.assertIsNone(_get_log_stated_isotopes(self._mass_log([[(6, '12.00000'), (1, '1.0.0')]]), ('C', 'H')))
+        self.assertIsNone(_get_log_stated_isotopes(self._mass_log([[(6, '12.00000'), (1, '*****')]]), ('C', 'H')))
+        self.assertIsNone(_get_log_stated_isotopes(self._mass_log([[(6, '12.00000'), (1, '1.00783')]]),
+                                                   ('C', 'Xx')))
+
+    def test_a_gaussian_route_is_read_from_the_log_in_preference_to_the_deck(self):
+        """Test that the route is the log's echoed line, and the deck's only when the log holds none."""
+        scratch = self._scratch()
+        calc_dir = os.path.join(scratch, 'calcs', 'CH4', 'opt')
+        os.makedirs(calc_dir)
+        log = os.path.join(calc_dir, 'output.out')
+        shutil.copyfile(self.gaussian_opt_log, log)
+        expected = '#P opt=(calcfc) guess=mix uhf/3-21g IOp(2/9=2000) scf=xqc'
+        self.assertEqual(_get_ess_route(log, scratch), expected)
+        with open(os.path.join(calc_dir, 'input.gjf'), 'w') as handle:
+            handle.write('%chk=check.chk\n#P wb97xd/def2svp opt=(tight) scf=xqc\n\nCH4\n\n0 1\nC 0.0 0.0 0.0\n')
+        self.assertEqual(_get_ess_route(log, scratch), expected)
+        self.assertEqual(_get_ess_route(os.path.relpath(log, scratch), scratch), expected)
+        with open(log, 'w') as handle:
+            handle.write(' Entering Gaussian System, Link 0=g16\n')
+        self.assertEqual(_get_ess_route(log, scratch), '#P wb97xd/def2svp opt=(tight) scf=xqc')
+
+    def test_a_gaussian_deck_route_continuation_is_joined_by_a_space(self):
+        """Test that the lines of a deck route are stripped and joined by one space, unlike a log's wrapped route."""
+        scratch = self._scratch()
+        deck = os.path.join(scratch, 'input.gjf')
+        with open(deck, 'w') as handle:
+            handle.write('%chk=check.chk\n#P opt\nfreq\n\nCH4\n\n0 1\nC 0.0 0.0 0.0\n')
+        self.assertEqual(_gaussian_route_text(deck), '#P opt freq')
+
+    def test_an_orca_route_is_the_lowercase_keyword_line(self):
+        """Test that an Orca job states its keyword lines as the input gave them, lowercased and without the '!'."""
+        self.assertEqual(_get_ess_route(self.orca_log, '/dummy'), 'rks b3lyp/g sv(p) tightscf opt')
+
+    def test_an_orca_route_drops_a_comment_and_keeps_keyword_lines_only(self):
+        """Test that text from '#' onward on a '!' line is dropped and '%' blocks are not part of the route."""
+        scratch = self._scratch()
+        deck = os.path.join(scratch, 'input.in')
+        with open(deck, 'w') as handle:
+            handle.write('! B3LYP def2-SVP Opt # a comment\n%pal nprocs 4 end\n! TightSCF\n* xyz 0 1\n')
+        self.assertEqual(_orca_route_text(deck), 'b3lyp def2-svp opt tightscf')
+        with open(deck, 'w') as handle:
+            handle.write('! B3LYP #c# def2-SVP\n')
+        self.assertEqual(_orca_route_text(deck), 'b3lyp def2-svp')
+
+    def test_no_route_is_stated_for_another_program_or_a_missing_log(self):
+        """Test that nothing is reconstructed: other programs, missing and empty logs give null, never raising."""
+        scratch = self._scratch()
+        empty = os.path.join(scratch, 'empty.log')
+        open(empty, 'w').close()
+        molpro = os.path.join(ARC_TESTING_PATH, 'sp', 'mehylamine_CCSD(T).out')
+        for log in (None, '', '/nonexistent.log', empty, molpro):
+            with self.subTest(log=log):
+                self.assertIsNone(_get_ess_route(log, scratch))
+        with patch('arc.output._gaussian_route_text', side_effect=RuntimeError('boom')):
+            self.assertIsNone(_get_ess_route(self.gaussian_opt_log, scratch))
+
+    def test_the_species_record_carries_the_route_of_each_job(self):
+        """Test the route keys of a species record: per job, from its own log, and null when unconverged."""
+        paths = {'geo': self.gaussian_opt_log, 'freq': self.gaussian_freq_log, 'sp': self.orca_log,
+                 'composite': '/nonexistent.log'}
+        result = self._species_dict(paths=paths)
+        self.assertEqual(result['opt_route'], '#P opt=(calcfc) guess=mix uhf/3-21g IOp(2/9=2000) scf=xqc')
+        self.assertIn(' freq ', result['freq_route'])
+        self.assertEqual(result['sp_route'], 'rks b3lyp/g sv(p) tightscf opt')
+        self.assertIsNone(result['composite_route'])
+        unconverged = self._species_dict(paths=paths, converged=False)
+        for key in ('opt_route', 'freq_route', 'sp_route', 'composite_route'):
+            self.assertIsNone(unconverged[key], key)
+
+    def test_the_ts_record_carries_the_route_of_each_irc_job(self):
+        """Test that irc_log_routes is index-aligned with irc_logs, null for a log without a route."""
+        ts_spc = TestSpcToDict._make_spc_mock(self, label='TS0', is_ts=True)
+        output_dict = {'TS0': {'convergence': True, 'job_types': {'opt': True},
+                               'paths': {'irc': [self.gaussian_freq_log, '/nonexistent.log', self.orca_log]}}}
+        result = _spc_to_dict(ts_spc, output_dict, '/abs')
+        self.assertEqual(len(result['irc_log_routes']), len(result['irc_logs']))
+        self.assertIn(' freq ', result['irc_log_routes'][0])
+        self.assertIsNone(result['irc_log_routes'][1])
+        self.assertEqual(result['irc_log_routes'][2], 'rks b3lyp/g sv(p) tightscf opt')
+
+    def test_the_dipole_moment_its_density_and_the_polarizability_come_from_the_gaussian_logs(self):
+        """Test the last Debye dipole and its density header of the opt log and the freq log's polarizability."""
+        result = self._species_dict(paths={'geo': self.gaussian_opt_log, 'freq': self.polarizability_log})
+        self.assertAlmostEqual(result['opt_dipole_moment_debye'], 0.2355)
+        self.assertEqual(result['opt_dipole_moment_density'], 'SCF')
+        expected = (6.926 + 11.044 + 9.431) / 3 * bohr_to_angstrom ** 3
+        self.assertAlmostEqual(result['freq_polarizability_angstrom3'], expected)
+        self.assertGreater(result['freq_polarizability_angstrom3'], 1.0)
+        self.assertLess(result['freq_polarizability_angstrom3'], 2.0)
+
+    def test_the_dipole_density_is_the_header_before_the_last_block(self):
+        """Test that the density is the one named before the last dipole block, and null when no header precedes."""
+        scratch = self._scratch()
+        log = os.path.join(scratch, 'output.out')
+        with open(log, 'w') as handle:
+            handle.write(' Entering Gaussian System, Link 0=g16\n'
+                         ' Population analysis using the SCF density.\n'
+                         ' Dipole moment (field-independent basis, Debye):\n'
+                         '    X=  0.0000    Y=  0.0000    Z=  1.0000  Tot=  1.0000\n'
+                         ' Population analysis using the current density.\n'
+                         ' Dipole moment (field-independent basis, Debye):\n'
+                         '    X=  0.0000    Y=  0.0000    Z=  2.0000  Tot=  2.0000\n')
+        self.assertEqual(_get_gaussian_dipole_moment(log, scratch), (2.0, 'current'))
+        with open(log, 'w') as handle:
+            handle.write(' Entering Gaussian System, Link 0=g16\n'
+                         ' Dipole moment (field-independent basis, Debye):\n'
+                         '    X=  0.0000    Y=  0.0000    Z=  1.0000  Tot=  1.0000\n')
+        self.assertEqual(_get_gaussian_dipole_moment(log, scratch), (1.0, None))
+
+    def test_the_dipole_density_ignores_a_header_after_the_last_block(self):
+        """Test that a population-analysis header printed after the last dipole block is not its density."""
+        scratch = self._scratch()
+        log = os.path.join(scratch, 'output.out')
+        with open(log, 'w') as handle:
+            handle.write(' Entering Gaussian System, Link 0=g16\n'
+                         ' Population analysis using the SCF density.\n'
+                         ' Dipole moment (field-independent basis, Debye):\n'
+                         '    X=  0.0000    Y=  0.0000    Z=  1.0000  Tot=  1.0000\n'
+                         ' Population analysis using the current density.\n')
+        self.assertEqual(_get_gaussian_dipole_moment(log, scratch), (1.0, 'SCF'))
+
+    def test_an_unreadable_last_dipole_block_states_neither_value_nor_density(self):
+        """Test that a last dipole block without a total leaves the value and its density null together."""
+        scratch = self._scratch()
+        log = os.path.join(scratch, 'output.out')
+        with open(log, 'w') as handle:
+            handle.write(' Entering Gaussian System, Link 0=g16\n'
+                         ' Population analysis using the SCF density.\n'
+                         ' Dipole moment (field-independent basis, Debye):\n'
+                         '    X=  0.0000    Y=  0.0000    Z=  1.0000  Tot=  1.0000\n'
+                         ' Population analysis using the current density.\n'
+                         ' Dipole moment (field-independent basis, Debye):\n'
+                         '    X=  ****    Y=  0.0000    Z=  1.0000  Tot=  ****\n')
+        self.assertEqual(_get_gaussian_dipole_moment(log, scratch), (None, None))
+
+    def _polarizability_log(self, *lines) -> tuple[str, str]:
+        scratch = self._scratch()
+        log = os.path.join(scratch, 'output.out')
+        with open(log, 'w') as handle:
+            handle.write(' Entering Gaussian System, Link 0=g16\n')
+            for line in lines:
+                handle.write(line + '\n')
+        return log, scratch
+
+    def test_the_polarizability_reads_fixed_width_fields_of_the_last_line_only(self):
+        """Test run-together fields, an unreadable last line, an all-zero last line and the ordinary value."""
+        valid = '  Exact polarizability:   6.926  -0.000  11.044  -0.000  -0.000   9.431'
+        run_together = '  Exact polarizability: 566.951-100.058  42.556   0.000   0.000  10.000'
+        expected = (566.951 + 42.556 + 10.0) / 3 * bohr_to_angstrom ** 3
+        log, scratch = self._polarizability_log(valid, run_together)
+        self.assertAlmostEqual(_get_gaussian_polarizability(log, scratch), expected)
+        log, scratch = self._polarizability_log(valid, '  Exact polarizability:   6.926  abc')
+        self.assertIsNone(_get_gaussian_polarizability(log, scratch))
+        log, scratch = self._polarizability_log(
+            valid, '  Exact polarizability:   0.000   0.000   0.000   0.000   0.000   0.000')
+        self.assertIsNone(_get_gaussian_polarizability(log, scratch))
+        log, scratch = self._polarizability_log(valid)
+        self.assertAlmostEqual(_get_gaussian_polarizability(log, scratch),
+                               (6.926 + 11.044 + 9.431) / 3 * bohr_to_angstrom ** 3)
+
+    def test_no_dipole_moment_is_stated_for_an_ion_or_an_atom(self):
+        """Test that a charged species and a monoatomic species export no dipole, and no polarizability for an atom."""
+        paths = {'geo': self.gaussian_opt_log, 'freq': self.polarizability_log}
+        ion = TestSpcToDict._make_spc_mock(self)
+        ion.charge = 1
+        result = self._species_dict(ion, paths=paths)
+        self.assertIsNone(result['opt_dipole_moment_debye'])
+        self.assertIsNone(result['opt_dipole_moment_density'])
+        self.assertIsNotNone(result['freq_polarizability_angstrom3'])
+        atom = TestSpcToDict._make_spc_mock(self, monoatomic=True)
+        result = self._species_dict(atom, paths=paths)
+        self.assertIsNone(result['opt_dipole_moment_debye'])
+        self.assertIsNone(result['opt_dipole_moment_density'])
+        self.assertIsNone(result['freq_polarizability_angstrom3'])
+
+    def test_the_dipole_moment_and_polarizability_are_null_without_a_gaussian_value(self):
+        """Test null for another program, a log that prints none, a missing log, an unconverged species."""
+        result = self._species_dict(paths={'geo': self.orca_log, 'freq': self.gaussian_freq_log})
+        self.assertIsNone(result['opt_dipole_moment_debye'])
+        self.assertIsNone(result['opt_dipole_moment_density'])
+        self.assertIsNone(result['freq_polarizability_angstrom3'])
+        result = self._species_dict(paths={'geo': '/nonexistent.log', 'freq': '/nonexistent.log'})
+        self.assertIsNone(result['opt_dipole_moment_debye'])
+        self.assertIsNone(result['freq_polarizability_angstrom3'])
+        result = self._species_dict(paths={'geo': self.gaussian_opt_log, 'freq': self.polarizability_log},
+                                    converged=False)
+        self.assertIsNone(result['opt_dipole_moment_debye'])
+        self.assertIsNone(result['freq_polarizability_angstrom3'])
+        with patch('arc.output.parse_dipole_moment', side_effect=RuntimeError('boom')):
+            result = self._species_dict(paths={'geo': self.gaussian_opt_log})
+        self.assertIsNone(result['opt_dipole_moment_debye'])
 
 
 if __name__ == '__main__':

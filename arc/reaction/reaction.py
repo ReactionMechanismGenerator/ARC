@@ -21,6 +21,8 @@ from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 logger = get_logger()
 
+ATOM_MAP_SOURCES = ('declared', 'inferred')
+
 
 
 def get_resonance_bond_orders(mol: Molecule,
@@ -127,9 +129,19 @@ class ARCReaction(object):
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
         product_dicts (list[dict]): A list of dictionaries with the RMG reaction family products.
-        atom_map (list[int]): An atom map, mapping the reactant atoms to the product atoms.
+        atom_map (list[int]): An atom map, mapping the reactant atoms to the product atoms. Entry ``i`` is the 0-based
+                              index of the product atom that reactant atom ``i`` becomes. Reactant atoms are counted
+                              over the species of ``get_reactants_and_products`` in that order (``r_species`` order,
+                              not the sorted ``reactants`` labels), each species contributing its atoms in its own
+                              atom order once per occurrence, and product atoms are counted the same way over the
+                              products before ``get_products_xyz`` sorts them with this map.
                               I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
                               reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+        atom_map_source (str): ``'inferred'`` when ARC computed the map with ``map_reaction``, ``'declared'`` when it
+                               was explicitly declared (``declare_atom_map`` or an ``atom_map_source: declared``
+                               entry of the reaction dict), ``None`` when there is no map or its origin was not
+                               recorded.
+        atom_map_method (str): The algorithm that computed an inferred map, ``None`` otherwise.
         done_opt_r_n_p (bool): Whether the optimization of all reactants and products is complete.
     """
     def __init__(self,
@@ -170,6 +182,8 @@ class ARCReaction(object):
         self.ts_xyz_guess = ts_xyz_guess or xyz or list()
         self.preserve_param_in_scan = preserve_param_in_scan
         self._atom_map = None
+        self._atom_map_source = None
+        self._atom_map_method = None
         self._atom_map_clusters = None
         self._charge = charge
         self._multiplicity = multiplicity
@@ -207,15 +221,50 @@ class ARCReaction(object):
                 and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
             _atom_map = map_reaction(rxn=self, backend='ARC')
             if _atom_map is not None:
-                self._atom_map = _atom_map
+                method = 'arc.mapping.driver.map_reaction'
+                if self.family:
+                    method = f'{method} (family: {self.family})'
+                self._set_atom_map(_atom_map, 'inferred', method)
         if self._atom_map is None:
             logger.error(f"The requested ARC reaction {self} could not be atom mapped.")
         return self._atom_map
 
     @atom_map.setter
     def atom_map(self, value):
-        """Allow setting the atom map"""
+        """Allow setting the atom map. The origin of a map set this way is not recorded."""
+        self._set_atom_map(value, None)
+
+    @property
+    def atom_map_source(self) -> str | None:
+        """Where the stored atom map came from, ``'declared'`` or ``'inferred'``. Never computes a map."""
+        return self._atom_map_source if self._atom_map is not None else None
+
+    @property
+    def atom_map_method(self) -> str | None:
+        """The algorithm that computed the stored atom map if it is inferred. Never computes a map."""
+        return self._atom_map_method if self._atom_map is not None and self._atom_map_source == 'inferred' else None
+
+    def declare_atom_map(self, value: list[int] | None):
+        """Set an atom map that is explicitly declared by the user."""
+        self._set_atom_map(value, 'declared')
+
+    def _set_atom_map(self,
+                      value: list[int] | None,
+                      source: str | None,
+                      method: str | None = None,
+                      ):
+        """Set the atom map together with its origin, a ``None`` map having neither source nor method."""
         self._atom_map = value
+        self._atom_map_source = source if value is not None and source in ATOM_MAP_SOURCES else None
+        self._atom_map_method = method if self._atom_map_source == 'inferred' else None
+
+    def _get_atom_map_state(self) -> tuple[list[int] | None, str | None, str | None]:
+        """The stored atom map with its source and method, without computing a map."""
+        return self._atom_map, self._atom_map_source, self._atom_map_method
+
+    def _restore_atom_map_state(self, state: tuple[list[int] | None, str | None, str | None]):
+        """Restore an atom map state obtained from ``_get_atom_map_state``."""
+        self._atom_map, self._atom_map_source, self._atom_map_method = state
 
     @property
     def atom_map_clusters(self):
@@ -376,6 +425,10 @@ class ARCReaction(object):
             reaction_dict['ts_species'] = self.ts_species.as_dict()
         if self._atom_map is not None:
             reaction_dict['atom_map'] = self._atom_map
+            if self._atom_map_source is not None:
+                reaction_dict['atom_map_source'] = self._atom_map_source
+            if self._atom_map_method is not None:
+                reaction_dict['atom_map_method'] = self._atom_map_method
         if self.done_opt_r_n_p is not None:
             reaction_dict['done_opt_r_n_p'] = self.done_opt_r_n_p
         if self.preserve_param_in_scan is not None:
@@ -444,6 +497,10 @@ class ARCReaction(object):
         self.preserve_param_in_scan = reaction_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in reaction_dict else None
         self.atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
+        self._set_atom_map(self._atom_map,
+                           reaction_dict.get('atom_map_source'),
+                           reaction_dict['atom_map_method'] if isinstance(reaction_dict.get('atom_map_method'), str)
+                           else None)
         self.done_opt_r_n_p = reaction_dict['done_opt_r_n_p'] if 'done_opt_r_n_p' in reaction_dict else None
 
     def copy(self):
@@ -467,7 +524,8 @@ class ARCReaction(object):
             ARCReaction: A copy of this object instance with flipped reactants and products.
         """
         reaction_dict = self.as_dict(reset_atom_ids=True, report_family=report_family)
-        reset_keys = ['label', 'index', 'atom_map', 'family', 'family_own_reverse', 'long_kinetic_description']
+        reset_keys = ['label', 'index', 'atom_map', 'atom_map_source', 'atom_map_method', 'family',
+                      'family_own_reverse', 'long_kinetic_description']
         if 'r_species' in reaction_dict.keys() and 'p_species' in reaction_dict.keys():
             reaction_dict['r_species'], reaction_dict['p_species'] = reaction_dict['p_species'], reaction_dict['r_species']
         else:
@@ -557,9 +615,10 @@ class ARCReaction(object):
                                 f'got: reactants = {self.reactants}, products = {self.products}.')
 
     def get_rxn_charge(self):
-        """A helper function for determining the surface charge"""
+        """A helper function for determining the surface charge, counting a species once per occurrence"""
         if len(self.r_species):
-            return sum([r.charge for r in self.r_species])
+            reactants = self.get_reactants_and_products(return_copies=False)[0] or self.r_species
+            return sum([r.charge for r in reactants])
 
     def get_rxn_multiplicity(self):
         """A helper function for determining the surface multiplicity"""
@@ -1372,17 +1431,18 @@ class ARCReaction(object):
     def copy_e0_values(self, other_rxn: ARCReaction | None):
         """
         Copy the E0 values from another reaction object instance for the TS
-        and for all species if they have corresponding labels.
+        and for all species if they have corresponding labels, together with the correction switches
+        of the Arkane run that wrote each of them.
 
         Args:
             other_rxn (ARCReaction): An ARCReaction object instance from which E0 values will be copied.
         """
         if other_rxn is not None:
-            self.ts_species.e0 = self.ts_species.e0 or other_rxn.ts_species.e0
+            self.ts_species.copy_e0_from(other_rxn.ts_species)
             for spc in self.r_species + self.p_species:
                 for other_spc in other_rxn.r_species + other_rxn.p_species:
                     if spc.label == other_spc.label:
-                        spc.e0 = spc.e0 or other_spc.e0
+                        spc.copy_e0_from(other_spc)
 
     def get_rxn_smiles(self) -> str | None:
         """

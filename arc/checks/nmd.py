@@ -140,6 +140,8 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
         record_ts_check_warning(species=reaction.ts_species, warning=NO_IMAGINARY_FREQUENCY_WARNING)
         return None
 
+    reaction.ts_species.nmd_record['frequency_cm1'] = float(freqs[mode_index])
+
     amplitude_list = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
     weights_array = get_weights_from_xyz(xyz=ts_xyz, weights=weights)
     r_eq_atoms, _ = find_equivalent_atoms(reaction=reaction, reactant_only=True)
