@@ -457,7 +457,7 @@ class ARCReaction(object):
         self.index = reaction_dict['index'] if 'index' in reaction_dict else None
         self.label = reaction_dict['label'] if 'label' in reaction_dict else ''
         self.multiplicity = reaction_dict['multiplicity'] if 'multiplicity' in reaction_dict else None
-        self.charge = reaction_dict['charge'] if 'charge' in reaction_dict else 0
+        self.charge = reaction_dict.get('charge')
         self.reactants = reaction_dict.get('reactants') or list()
         self.products = reaction_dict.get('products') or list()
         if 'family' in reaction_dict and reaction_dict['family'] is not None:

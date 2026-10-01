@@ -332,6 +332,33 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn.products, ['CH3', 'H2O'])
         self.assertIsNone(rxn.index)
 
+    def test_from_dict_charge(self):
+        """Test that ARCReaction.from_dict() derives, preserves and round-trips the charge."""
+        rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-',
+                          r_species=[ARCSpecies(label='HO-', smiles='[OH-]', charge=-1),
+                                     ARCSpecies(label='CH3OH', smiles='CO')],
+                          p_species=[ARCSpecies(label='H2O', smiles='O'),
+                                     ARCSpecies(label='CH3O-', smiles='C[O-]', charge=-1)])
+        self.assertEqual(rxn.charge, -1)
+        rxn_dict = rxn.as_dict()
+        self.assertEqual(rxn_dict['charge'], -1)
+
+        round_trip = ARCReaction(reaction_dict=rxn_dict)
+        self.assertEqual(round_trip.charge, -1)
+        self.assertEqual(ARCReaction(reaction_dict=round_trip.as_dict()).charge, -1)
+
+        rxn_dict.pop('charge')
+        restored = ARCReaction(reaction_dict=rxn_dict)
+        self.assertEqual(restored.charge, -1)
+
+        rxn_dict['charge'] = 0
+        explicit_zero = ARCReaction(reaction_dict=rxn_dict)
+        self.assertEqual(explicit_zero.charge, 0)
+
+        neutral_dict = self.rxn1.as_dict()
+        self.assertNotIn('charge', neutral_dict)
+        self.assertEqual(ARCReaction(reaction_dict=neutral_dict).charge, 0)
+
     def test_copy(self):
         """Test the copy() method."""
         rxn_copy = self.rxn1.copy()
