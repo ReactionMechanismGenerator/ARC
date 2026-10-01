@@ -212,6 +212,7 @@ class ARCReaction(object):
             self.ts_xyz_guess = [self.ts_xyz_guess]
         self.remove_dup_species()
         self.check_atom_balance()
+        self.check_charge_balance()
 
     @property
     def atom_map(self):
@@ -609,11 +610,18 @@ class ARCReaction(object):
             raise ReactionError(f'Both the reactants and products must be specified for a reaction, '
                                 f'got: reactants = {self.reactants}, products = {self.products}.')
 
-    def get_rxn_charge(self):
-        """A helper function for determining the surface charge, counting a species once per occurrence"""
+    def get_rxn_charge(self) -> int | None:
+        """
+        Get the net charge of the reaction PES as the stoichiometric sum of the reactant charges,
+        counting a species once per occurrence in the reactants well.
+
+        Returns:
+            int | None: The reaction charge, ``None`` if the reactant species are not set.
+        """
         if len(self.r_species):
             reactants = self.get_reactants_and_products(return_copies=False)[0] or self.r_species
-            return sum([r.charge for r in reactants])
+            return sum(r.charge for r in reactants)
+        return None
 
     def get_rxn_multiplicity(self):
         """A helper function for determining the surface multiplicity"""
@@ -968,6 +976,25 @@ class ARCReaction(object):
             return False
 
         return True
+
+    def check_charge_balance(self) -> None:
+        """
+        Check that the reactants and products carry the same net charge, and that it matches the reaction charge.
+
+        Raises:
+            ReactionError: If the reactant and product charges differ, or the reaction charge does not match them.
+        """
+        if not len(self.r_species) or not len(self.p_species):
+            return
+        r_charge = self.get_rxn_charge()
+        products = self.get_reactants_and_products(return_copies=False)[1] or self.p_species
+        p_charge = sum(p.charge for p in products)
+        if r_charge != p_charge:
+            raise ReactionError(f'Reaction {self.label} is not charge balanced: the reactants carry a net charge of '
+                                f'{r_charge}, the products {p_charge}.')
+        if self.charge != r_charge:
+            raise ReactionError(f'Reaction {self.label} was given charge {self.charge}, '
+                                f'but its reactants and products carry a net charge of {r_charge}.')
 
     def get_species_count(self,
                           species: ARCSpecies | None = None,

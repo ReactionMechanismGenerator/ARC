@@ -352,8 +352,8 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(restored.charge, -1)
 
         rxn_dict['charge'] = 0
-        explicit_zero = ARCReaction(reaction_dict=rxn_dict)
-        self.assertEqual(explicit_zero.charge, 0)
+        with self.assertRaises(ReactionError):
+            ARCReaction(reaction_dict=rxn_dict)
 
         neutral_dict = self.rxn1.as_dict()
         self.assertNotIn('charge', neutral_dict)
@@ -817,6 +817,33 @@ class TestARCReaction(unittest.TestCase):
         rxn_5 = ARCReaction(r_species=[ARCSpecies(label='N', smiles='[N]'), ARCSpecies(label='HNO', smiles='N=O')],
                             p_species=[ARCSpecies(label='NO', smiles='[N]=O'), ARCSpecies(label='NH', smiles='[NH]')])
         self.assertEqual(rxn_5.multiplicity, 4)
+
+    def test_check_charge_balance(self):
+        """Test the Reaction check_charge_balance method and the stoichiometric reaction charge"""
+        ho = ARCSpecies(label='HO-', smiles='[OH-]', charge=-1)
+        ch3oh = ARCSpecies(label='CH3OH', smiles='CO')
+        h2o = ARCSpecies(label='H2O', smiles='O')
+        ch3o_anion = ARCSpecies(label='CH3O-', smiles='C[O-]', charge=-1)
+        ch3o_radical = ARCSpecies(label='CH3O.', smiles='C[O]')
+
+        rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-', r_species=[ho, ch3oh], p_species=[h2o, ch3o_anion])
+        self.assertEqual(rxn.charge, -1)
+        self.assertIsNone(rxn.check_charge_balance())
+
+        with self.assertRaises(ReactionError):
+            ARCReaction(label='HO- + CH3OH <=> H2O + CH3O.', r_species=[ho, ch3oh], p_species=[h2o, ch3o_radical])
+
+        with self.assertRaises(ReactionError):
+            ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-', r_species=[ho, ch3oh], p_species=[h2o, ch3o_anion],
+                        charge=0)
+
+        dimerization = ARCReaction(label='NH4+ + NH4+ <=> H2 + N2H62+',
+                                   r_species=[ARCSpecies(label='NH4+', smiles='[NH4+]', charge=1)],
+                                   p_species=[ARCSpecies(label='H2', smiles='[H][H]'),
+                                              ARCSpecies(label='N2H62+', smiles='[NH3+][NH3+]', charge=2)])
+        self.assertEqual(len(dimerization.r_species), 1)
+        self.assertEqual(dimerization.get_rxn_charge(), 2)
+        self.assertEqual(dimerization.charge, 2)
 
     def test_check_atom_balance(self):
         """Test the Reaction check_atom_balance method"""
