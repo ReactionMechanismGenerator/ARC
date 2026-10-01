@@ -3977,7 +3977,7 @@ class Scheduler(object):
             else:
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
-                self.record_job_level(label=label, job_key='freq', level=self.freq_level_of_job(job))
+                self.record_job_level(label=label, job_key='freq', level=freq_level_of_job(job))
                 if not self.testing:
                     # Update restart dictionary and save the yaml restart file:
                     self.save_restart_dict()
@@ -4034,7 +4034,7 @@ class Scheduler(object):
                 self.output[label]['info'] += f'Imaginary frequency: {neg_freqs[0] if len(neg_freqs) == 1 else neg_freqs}; '
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
-                self.record_job_level(label=label, job_key='freq', level=self.freq_level_of_job(job))
+                self.record_job_level(label=label, job_key='freq', level=freq_level_of_job(job))
                 if len(self.species_dict[label].ts_guesses):
                     plotter.save_conformers_file(
                         project_directory=self.project_directory,
@@ -5732,23 +5732,6 @@ class Scheduler(object):
             return
         set_recorded_level(self.output[label].setdefault('levels', dict()), job_key, level)
 
-    @staticmethod
-    def freq_level_of_job(job: JobAdapter) -> Level | None:
-        """
-        The level of the frequency calculation whose log a job wrote.
-
-        A composite job's log holds the frequencies of the composite method's own geometry level, which the
-        job's level (the composite method) does not name, so the level is unknown and ``None`` is returned;
-        a record of such a log's frequencies pairs with ``levels.composite`` instead.
-
-        Args:
-            job (JobAdapter): The job whose log is the frequency log.
-
-        Returns:
-            Level | None: The job's level, or ``None`` for a composite job.
-        """
-        return None if getattr(job, 'job_type', None) == 'composite' else job.level
-
     def record_irc_level(self, label: str, level: Level | None):
         """
         Record the level of the IRC jobs of a TS.
@@ -5905,6 +5888,23 @@ class Scheduler(object):
                 else:
                     continue_lopping = False
             self.get_server_job_ids()
+
+
+def freq_level_of_job(job: JobAdapter) -> Level | None:
+    """
+    The level of the frequency calculation whose log a job wrote.
+
+    A composite job's log holds the frequencies of the composite method's own geometry level, which the
+    job's level (the composite method) does not name, so the level is unknown and ``None`` is returned;
+    a record of such a log's frequencies pairs with ``levels.composite`` instead.
+
+    Args:
+        job (JobAdapter): The job whose log is the frequency log.
+
+    Returns:
+        Level | None: The job's level, or ``None`` for a composite job.
+    """
+    return None if getattr(job, 'job_type', None) == 'composite' else job.level
 
 
 def species_has_freq(species_output_dict: dict,
