@@ -5,6 +5,7 @@ A module for checking the quality of TS-related calculations, contains helper fu
 from itertools import product
 import os
 
+import networkx as nx
 import numpy as np
 from typing import TYPE_CHECKING
 
@@ -571,11 +572,76 @@ def check_irc_species_and_rxn(xyz_1: dict,
     dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
     dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1, elements=xyz_1['symbols'], n_fragments=0)
     dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2, elements=xyz_2['symbols'], n_fragments=0)
-    if _check_equal_bonds_list(dmat_bonds_1, r_bonds) and _check_equal_bonds_list(dmat_bonds_2, p_bonds) \
-            or _check_equal_bonds_list(dmat_bonds_2, r_bonds) and _check_equal_bonds_list(dmat_bonds_1, p_bonds):
+    rxn_symbols = [atom.element.symbol for spc in reactants for atom in spc.mol.atoms]
+    bonds_1 = {tuple(sorted(bond)) for bond in dmat_bonds_1}
+    bonds_2 = {tuple(sorted(bond)) for bond in dmat_bonds_2}
+    reaction_graph = _get_condensed_graph_of_reaction(rxn_symbols, r_bonds, p_bonds)
+    if bonds_1 != bonds_2 and any(
+            _find_cgr_isomorphism(reaction_graph,
+                                  _get_condensed_graph_of_reaction(list(xyz_1['symbols']), r_bonds_ts, p_bonds_ts))
+            is not None
+            for r_bonds_ts, p_bonds_ts in ((bonds_1, bonds_2), (bonds_2, bonds_1))):
         rxn.ts_species.ts_checks['IRC'] = True
     else:
         rxn.ts_species.ts_checks['IRC'] = False
+
+
+def _get_condensed_graph_of_reaction(symbols: list[str],
+                                     bonds_a: list[tuple[int, int]],
+                                     bonds_b: list[tuple[int, int]],
+                                     ) -> nx.Graph:
+    """
+    Build the condensed graph of a reaction: the atoms as nodes labelled by element, and an edge for every bond that is
+    in either list, labelled ``(in bonds_a, in bonds_b)``.
+
+    Args:
+        symbols (list[str]): The element symbol of every atom.
+        bonds_a (list[tuple[int, int]]): The bonds of the first state (the reactants).
+        bonds_b (list[tuple[int, int]]): The bonds of the second state (the products).
+
+    Returns:
+        nx.Graph: The graph, with the node attribute ``element`` and the edge attribute ``kind``.
+    """
+    set_a = {tuple(sorted(bond)) for bond in bonds_a}
+    set_b = {tuple(sorted(bond)) for bond in bonds_b}
+    graph = nx.Graph()
+    graph.add_nodes_from((index, {'element': symbol}) for index, symbol in enumerate(symbols))
+    for bond in sorted(set_a | set_b):
+        graph.add_edge(*bond, kind=(bond in set_a, bond in set_b))
+    return graph
+
+
+def _find_cgr_isomorphism(graph_1: nx.Graph, graph_2: nx.Graph) -> list[int] | None:
+    """
+    Find a label-preserving isomorphism between two condensed graphs of reaction, preferring the identity.
+    Only the first isomorphism is looked for; the automorphisms are never enumerated or counted.
+
+    Args:
+        graph_1 (nx.Graph): The graph whose nodes are mapped.
+        graph_2 (nx.Graph): The graph they are mapped onto.
+
+    Returns:
+        list[int] | None: Entry ``i`` is the node of ``graph_2`` that node ``i`` of ``graph_1`` maps to,
+                          or ``None`` if the graphs are not isomorphic.
+    """
+    n_atoms = graph_1.number_of_nodes()
+    if n_atoms != graph_2.number_of_nodes() or graph_1.number_of_edges() != graph_2.number_of_edges():
+        return None
+
+    def _node_match(attributes_1: dict, attributes_2: dict) -> bool:
+        return attributes_1['element'] == attributes_2['element']
+
+    def _edge_match(attributes_1: dict, attributes_2: dict) -> bool:
+        return attributes_1['kind'] == attributes_2['kind']
+
+    if all(_node_match(graph_1.nodes[i], graph_2.nodes[i]) for i in range(n_atoms)) \
+            and all(graph_2.has_edge(u, v) and _edge_match(data, graph_2.edges[u, v])
+                    for u, v, data in graph_1.edges(data=True)):
+        return list(range(n_atoms))
+    matcher = nx.algorithms.isomorphism.GraphMatcher(graph_1, graph_2,
+                                                     node_match=_node_match, edge_match=_edge_match)
+    mapping = next(matcher.isomorphisms_iter(), None)
+    return [mapping[i] for i in range(n_atoms)] if mapping is not None else None
 
 
 def _perceive_irc_fragments(xyz: dict,
@@ -708,26 +774,6 @@ def _match_fragments_to_species(fragments: list[Molecule],
         return False
 
     return _backtrack(0)
-
-
-def _check_equal_bonds_list(bonds_1: list[tuple[int, int]],
-                            bonds_2: list[tuple[int, int]],
-                            ) -> bool:
-    """
-    Check whether two lists of bonds are equal.
-
-    Args:
-        bonds_1 (list[tuple[int, int]]): List 1 of bonds.
-        bonds_2 (list[tuple[int, int]]): List 2 of bonds.
-
-    Returns:
-        bool: Whether the two lists of bonds are equal.
-    """
-    if len(bonds_1) != len(bonds_2):
-        return False
-    if all(bond in bonds_2 for bond in bonds_1):
-        return True
-    return False
 
 
 def check_imaginary_frequencies(imaginary_freqs: list[float] | None) -> bool:
