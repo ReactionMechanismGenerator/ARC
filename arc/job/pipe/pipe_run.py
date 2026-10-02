@@ -25,7 +25,7 @@ except ImportError:
     psutil = None
 
 import arc.parser.parser as parser
-from arc.common import get_logger
+from arc.common import canonicalize_cluster_soft_value, get_cluster_soft_key, get_logger
 from arc.imports import pipe_submit, settings
 
 from arc.job.pipe.pipe_state import (
@@ -72,7 +72,7 @@ class PipeRun:
         self.project_directory = project_directory
         self.run_id = run_id
         self.tasks = tasks
-        self.cluster_software = cluster_software
+        self.cluster_software = canonicalize_cluster_soft_value(cluster_software).lower()
         self.max_workers = max_workers
         self.max_attempts = max_attempts
         self.pipe_root = pipe_root if pipe_root is not None \
@@ -258,11 +258,12 @@ class PipeRun:
         Returns:
             str: Absolute path to the generated submit script.
         """
-        template_key = 'sge' if self.cluster_software == 'oge' else self.cluster_software
-        if template_key not in pipe_submit:
+        try:
+            template_key = get_cluster_soft_key(self.cluster_software, pipe_submit, 'pipe_submit', allow_local=True)
+        except ValueError as e:
             raise NotImplementedError(
                 f'No pipe submit template for cluster software: {self.cluster_software}. '
-                f'Available templates: {list(pipe_submit.keys())}')
+                f'Available templates: {list(pipe_submit.keys())}') from e
         cpus, memory_mb, array_size = self._submission_resources()
         server = servers_dict.get('local', {})
         queue, _ = next(iter(server.get('queues', {}).items()), ('', None))
@@ -293,8 +294,8 @@ class PipeRun:
         """
         Submit the generated array script to the cluster scheduler.
 
-        Uses ``arc.job.local.submit_job`` with the cluster software mapped
-        to the canonical casing expected by ``submit_command`` in settings.
+        Resolve the configured ``submit_command`` key for preflight and pass
+        that scheduler spelling to ``arc.job.local.submit_job``.
 
         Returns:
             Tuple[str, str]: ``(job_status, job_id)`` — ``'submitted'`` on
@@ -303,15 +304,13 @@ class PipeRun:
         if self.cluster_software == 'local':
             return self.submit_locally()
         import shutil as _shutil
-        from arc.imports import settings as _settings
-        submit_command = _settings['submit_command']
-        # Map lowercase cluster_software to the casing used in settings.submit_command
-        cs_map = {'slurm': 'Slurm', 'pbs': 'PBS', 'sge': 'OGE', 'oge': 'OGE', 'htcondor': 'HTCondor'}
-        canonical_cs = cs_map.get(self.cluster_software.lower(), self.cluster_software)
-        if canonical_cs not in submit_command:
-            logger.warning(f'No submit command configured for {canonical_cs}. Cannot submit.')
+        submit_command = settings['submit_command']
+        try:
+            command_key = get_cluster_soft_key(self.cluster_software, submit_command, 'submit_command')
+        except ValueError as e:
+            logger.warning(f'{e} Cannot submit pipe run.')
             return 'errored', None
-        cmd_path = submit_command[canonical_cs].split()[0]
+        cmd_path = submit_command[command_key].split()[0]
         if not os.path.isfile(cmd_path) and _shutil.which(os.path.basename(cmd_path)) is None:
             logger.warning(f'Submit command {cmd_path} not found. Cannot submit pipe run.')
             return 'errored', None
@@ -319,7 +318,7 @@ class PipeRun:
         filename = 'submit.sub' if self.cluster_software == 'htcondor' else 'submit.sh'
         job_status, job_id = local_submit_job(
             path=self.pipe_root,
-            cluster_soft=canonical_cs,
+            cluster_soft=command_key,
             submit_filename=filename,
         )
         return job_status, job_id
@@ -923,7 +922,7 @@ def derive_cluster_software(ess_settings: dict, job_adapter: str) -> str:
     cs_alias = {'oge': 'sge'}
     for server_name in ess_settings.get(job_adapter, []):
         if server_name in servers_dict and 'cluster_soft' in servers_dict[server_name]:
-            raw = servers_dict[server_name]['cluster_soft'].lower()
+            raw = canonicalize_cluster_soft_value(servers_dict[server_name]['cluster_soft']).lower()
             return cs_alias.get(raw, raw)
     return 'slurm'
 
