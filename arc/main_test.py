@@ -241,6 +241,23 @@ class TestARC(unittest.TestCase):
         arc0 = ARC(project='arc_test_boundary_scan_res', rotor_scan_resolution=20.0)
         self.assertEqual(arc0.rotor_scan_resolution, 20.0)
 
+    def test_only_process_input_key(self):
+        """Test the only_process input key is parsed, stored, and round-tripped."""
+        arc0 = ARC(project='arc_test_only_process', only_process=True)
+        self.assertTrue(arc0.only_process)
+        self.assertTrue(arc0.as_dict()['only_process'])
+        # Absent the key it defaults to False and is not written to the restart dict, so an
+        # existing project's restart file is byte-identical to before this change.
+        arc1 = ARC(project='arc_test_no_only_process')
+        self.assertFalse(arc1.only_process)
+        self.assertNotIn('only_process', arc1.as_dict())
+        # An explicit False is likewise omitted rather than written as a falsy entry.
+        arc2 = ARC(project='arc_test_false_only_process', only_process=False)
+        self.assertNotIn('only_process', arc2.as_dict())
+        # Round-trip: the key as_dict() writes is accepted back as an input key.
+        arc3 = ARC(project='arc_test_only_process_restart', only_process=arc0.as_dict()['only_process'])
+        self.assertTrue(arc3.only_process)
+
     def test_check_project_name(self):
         """Test project name invalidity"""
         with self.assertRaises(InputError):
