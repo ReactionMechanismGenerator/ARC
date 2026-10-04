@@ -203,8 +203,8 @@ class TestSubmitPipeRun(unittest.TestCase):
         tasks = [_make_spec(f't_{i}') for i in range(3)]
         pipe = self.coord.submit_pipe_run('run_001', tasks)
         self.assertIsInstance(pipe, PipeRun)
-        self.assertIn('run_001', self.coord.active_pipes)
-        self.assertIs(self.coord.active_pipes['run_001'], pipe)
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+        self.assertIs(self.coord.active_pipes[pipe.pipe_root], pipe)
 
     def test_submit_stages_on_disk(self):
         tasks = [_make_spec(f't_{i}') for i in range(2)]
@@ -228,6 +228,39 @@ class TestSubmitPipeRun(unittest.TestCase):
         self.assertEqual(pipe.scheduler_job_id, '12345[]')
 
 
+class TestLocalWorkerScratch(unittest.TestCase):
+    """Tests that local pipe workers get scratch directories that never coincide between pipe runs."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_scratch_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        sched = _make_mock_sched(self.tmpdir)
+        sched.species_dict['CH4'] = ARCSpecies(label='CH4', smiles='C')
+        self.coord = PipeCoordinator(sched)
+
+    def _tmpdir_line(self, pipe):
+        with patch.dict('arc.job.pipe.pipe_run.pipe_settings', {'scratch_base': '/scratch'}):
+            preamble = pipe._build_env_preamble()
+        return [line for line in preamble.splitlines() if line.startswith('export TMPDIR=')][0]
+
+    def test_scratch_differs_between_per_species_and_cross_species_pipes(self):
+        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '1')):
+            pipes = [self.coord.submit_pipe_run('H2O_conf_opt', [_make_spec('t_a', species_label='H2O')],
+                                                cluster_software='local'),
+                     self.coord.submit_pipe_run('CH4_conf_opt', [_make_spec('t_b', species_label='CH4')],
+                                                cluster_software='local'),
+                     self.coord.submit_pipe_run('species_freq_batch',
+                                                [_make_spec('t_c', species_label='H2O'),
+                                                 _make_spec('t_d', species_label='CH4')],
+                                                cluster_software='local'),
+                     self.coord.submit_pipe_run('species_freq_batch',
+                                                [_make_spec('t_e', species_label='H2O'),
+                                                 _make_spec('t_f', species_label='CH4')],
+                                                cluster_software='local')]
+        lines = [self._tmpdir_line(pipe) for pipe in pipes]
+        self.assertEqual(len(set(lines)), 4)
+
+
 class TestRegisterFromDir(unittest.TestCase):
     """Tests for PipeCoordinator.register_pipe_run_from_dir()."""
 
@@ -242,9 +275,9 @@ class TestRegisterFromDir(unittest.TestCase):
         tasks = [_make_spec(f't_{i}') for i in range(2)]
         original = self.coord.submit_pipe_run('run_restore', tasks, cluster_software='pbs')
         pipe_root = original.pipe_root
-        del self.coord.active_pipes['run_restore']
+        del self.coord.active_pipes[pipe_root]
         restored = self.coord.register_pipe_run_from_dir(pipe_root)
-        self.assertIn('run_restore', self.coord.active_pipes)
+        self.assertIn(pipe_root, self.coord.active_pipes)
         self.assertEqual(restored.run_id, 'run_restore')
         self.assertEqual(restored.cluster_software, 'pbs')
 
@@ -263,34 +296,52 @@ class TestPollPipes(unittest.TestCase):
         pipe = self.coord.submit_pipe_run('run_done', [_make_spec('t_done')])
         _complete_task(pipe.pipe_root, 't_done')
         self.coord.poll_pipes()
-        self.assertNotIn('run_done', self.coord.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_keeps_pending_pipe(self):
-        self.coord.submit_pipe_run('run_pending', [_make_spec('t_pending')])
+        pipe = self.coord.submit_pipe_run('run_pending', [_make_spec('t_pending')])
         self.coord.poll_pipes()
-        self.assertIn('run_pending', self.coord.active_pipes)
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_removes_failed_pipe(self):
         pipe = self.coord.submit_pipe_run('run_fail', [_make_spec('t_fail')])
         pipe.status = PipeRunState.FAILED
         pipe._save_run_metadata()
         self.coord.poll_pipes()
-        self.assertNotIn('run_fail', self.coord.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_removes_after_repeated_reconcile_failures(self):
         pipe = self.coord.submit_pipe_run('run_stuck', [_make_spec('t_stuck')])
         with patch.object(pipe, 'reconcile', side_effect=RuntimeError('corrupt')):
             for _ in range(3):
                 self.coord.poll_pipes()
-        self.assertNotIn('run_stuck', self.coord.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_resets_failure_count_on_success(self):
         pipe = self.coord.submit_pipe_run('run_flaky', [_make_spec('t_flaky')])
         with patch.object(pipe, 'reconcile', side_effect=RuntimeError('transient')):
             self.coord.poll_pipes()
-        self.assertEqual(self.coord._pipe_poll_failures.get('run_flaky'), 1)
-        self.coord.poll_pipes()  # succeeds this time
-        self.assertNotIn('run_flaky', self.coord._pipe_poll_failures)
+        self.assertEqual(self.coord._pipe_poll_failures.get(pipe.pipe_root), 1)
+        self.coord.poll_pipes()
+        self.assertNotIn(pipe.pipe_root, self.coord._pipe_poll_failures)
+
+    def test_same_named_concurrent_batches_are_tracked_separately(self):
+        first = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_first')])
+        second = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_second')])
+        self.assertNotEqual(first.pipe_root, second.pipe_root)
+        self.assertEqual(len(self.coord.active_pipes), 2)
+        self.assertIs(self.coord.active_pipes[first.pipe_root], first)
+        self.assertIs(self.coord.active_pipes[second.pipe_root], second)
+
+    def test_poll_ingests_first_batch_when_a_same_named_batch_is_submitted_later(self):
+        first = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_first')])
+        second = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_second')])
+        _complete_task(first.pipe_root, 't_first')
+        with patch.object(self.coord, 'ingest_pipe_results') as mock_ingest:
+            self.coord.poll_pipes()
+        mock_ingest.assert_called_once_with(first)
+        self.assertNotIn(first.pipe_root, self.coord.active_pipes)
+        self.assertIn(second.pipe_root, self.coord.active_pipes)
 
     def test_resubmission_adds_job_id_to_server_job_ids(self):
         """Resubmitted pipe job ID is added to server_job_ids."""
