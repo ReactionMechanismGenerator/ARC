@@ -219,17 +219,40 @@ cdef class Graph(object):
     cpdef list get_all_edges(self):
         """
         Returns a list of all edges in the graph.
+
+        The order is deterministic: edges appear in the order their first incident vertex is
+        reached while iterating ``self.vertices``, and within a vertex in that vertex's own
+        ``edges`` insertion order. Callers may rely on it being a pure function of the graph.
+
+        This used to accumulate the edges into a ``set`` and return ``list(edge_set)``, which is
+        not an order at all -- a set's iteration order depends on the hash values of the objects
+        it holds, so the same graph could yield the edges in a different sequence from one
+        interpreter run to the next. Any caller whose result depends on which edge it visits
+        first then became non-reproducible. ``arc.species.perceive.generate_lewis_structure``
+        is one: it feeds this list straight into an A* over bond-order assignments, and for a
+        geometry admitting several equally valid Lewis structures it returned whichever the
+        search happened to reach first. Perceiving one nitrous-acid geometry gave ``[O-][O+]=N``
+        under ``PYTHONHASHSEED=0`` and ``[NH-][O+]=O`` under other seeds -- both correct
+        resonance forms of the same connectivity, but which one you got was not a function of
+        the input.
+
+        The deduplication is unchanged; only the iteration order is now fixed. Set membership is
+        order-independent, so ``seen`` is still the right structure for that half of the job.
         """
-        cdef set edge_set
+        cdef list edges
+        cdef set seen
         cdef Vertex vertex
         cdef Edge edge
 
-        edge_set = set()
+        edges = []
+        seen = set()
         for vertex in self.vertices:
             for edge in vertex.edges.values():
-                edge_set.add(edge)
+                if edge not in seen:
+                    seen.add(edge)
+                    edges.append(edge)
 
-        return list(edge_set)
+        return edges
 
     cpdef dict get_edges(self, Vertex vertex):
         """
