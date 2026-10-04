@@ -215,9 +215,6 @@ class GaussianAdapter(JobAdapter):
                             tsg=tsg,
                             xyz=xyz,
                             )
-        if isinstance(self.level, Level) and self.level.basis is not None:
-            self.level.basis = re.sub('def2-', 'def2', self.level.basis.lower())
-
         if self.checkfile is None and species_may_read_previous_orbitals(self.species[0]):
             if os.path.isfile(os.path.join(self.local_path, self.check_file_name)):
                 self.checkfile = self.readable_checkfile(os.path.join(self.local_path, self.check_file_name))
@@ -244,13 +241,13 @@ class GaussianAdapter(JobAdapter):
             input_dict[key] = ''
         update_input_dict_with_args(args=self.args, input_dict=input_dict)
         input_dict['auxiliary_basis'] = self.level.auxiliary_basis or ''
-        input_dict['basis'] = self.level.basis or ''
+        input_dict['basis'] = re.sub('def2-', 'def2', self.level.basis.lower()) if self.level.basis else ''
         input_dict['charge'] = self.charge
         input_dict['checkfile'] = '%chk=check.chk'
         input_dict['cpus'] = self.cpu_cores
         input_dict['label'] = self.species_label
         input_dict['memory'] = self.input_file_memory
-        input_dict['method'] = self.level.method
+        input_dict['method'] = 'cbs-qb3' if self.level.method == 'cbs-qb3-paraskevas' else self.level.method
         input_dict['multiplicity'] = self.multiplicity
         input_dict['scan_trsh'] = self.args['keyword']['scan_trsh'] if 'scan_trsh' in self.args['keyword'] else ''
         integral_algorithm = 'Acc2E=14' if 'Acc2E=14' in input_dict['trsh'] else 'Acc2E=12'
@@ -274,10 +271,6 @@ class GaussianAdapter(JobAdapter):
             # xqc will do qc (quadratic convergence) if the job fails w/o it, so use it by default.
             # replace qc with xqc if it's not already there
             input_dict['trsh'] = input_dict['trsh'].replace('qc', 'xqc')
-
-        if self.level.method == 'cbs-qb3-paraskevas':
-            # convert cbs-qb3-paraskevas to cbs-qb3
-            self.level.method = 'cbs-qb3'
 
         # Job type specific options
         max_c = 100

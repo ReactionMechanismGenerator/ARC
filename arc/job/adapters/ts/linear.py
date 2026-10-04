@@ -888,7 +888,7 @@ class LinearAdapter(JobAdapter):
             # (e.g., a heavy-backbone atom map or a wider-family-set product_dicts)
             # for intra-call communication between strategies; these must not
             # survive this job (the scheduler persists the reaction right after).
-            atom_map_snapshot = rxn._atom_map
+            atom_map_snapshot = rxn._get_atom_map_state()
             family_snapshot = rxn._family
             family_own_reverse_snapshot = rxn._family_own_reverse
             product_dicts_snapshot = rxn._product_dicts
@@ -947,7 +947,7 @@ class LinearAdapter(JobAdapter):
             finally:
                 # Restore only after the whole weights loop, so intra-job caching
                 # (e.g., the wider-family-set product_dicts) persists across weights.
-                rxn._atom_map = atom_map_snapshot
+                rxn._restore_atom_map_state(atom_map_snapshot)
                 rxn._family = family_snapshot
                 rxn._family_own_reverse = family_own_reverse_snapshot
                 rxn._product_dicts = product_dicts_snapshot
@@ -3757,7 +3757,7 @@ def interpolate_isomerization(rxn: ARCReaction,
                                  exc_info=True)
                     p_mol_frame_ok = False
                 if rxn.atom_map is None:
-                    rxn.atom_map = bb_map_from_reorder
+                    rxn._set_atom_map(bb_map_from_reorder, None)
                 logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
                              f'reordered P atoms via backbone atom map.')
             else:
@@ -3768,12 +3768,12 @@ def interpolate_isomerization(rxn: ARCReaction,
             # failures like singlet biradicals by matching heavy-atom
             # connectivity ignoring bond orders). Fall back to identity
             # only when backbone matching fails.
-            original_atom_map = rxn.atom_map
+            original_atom_map_state = (rxn.atom_map, rxn._atom_map_source, rxn._atom_map_method)
             bb_map = bb_map_from_reorder or (backbone_atom_map(r_mol, p_mol) if rxn.atom_map is None else None)
             fb, bb, changed = [], [], []
             try:
                 if bb_map is not None and bb_map_from_reorder is None:
-                    rxn.atom_map = bb_map
+                    rxn._set_atom_map(bb_map, None)
                     p_xyz = order_xyz_by_atom_map(xyz=p_xyz, atom_map=bb_map)
                     try:
                         p_mol = order_mol_by_atom_map(p_mol, bb_map)
@@ -3784,7 +3784,7 @@ def interpolate_isomerization(rxn: ARCReaction,
                     logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
                                  f'using backbone atom map.')
                 elif rxn.atom_map is None:
-                    rxn.atom_map = list(range(n_atoms))
+                    rxn._set_atom_map(list(range(n_atoms)), None)
                 elif bb_map_from_reorder is None:
                     # rxn.atom_map exists but the product was never reordered
                     # into the reactant frame; reorder so downstream geometry
@@ -3815,7 +3815,7 @@ def interpolate_isomerization(rxn: ARCReaction,
                     changed = []
             finally:
                 # Restore original atom_map to avoid cross-reaction side effects.
-                rxn.atom_map = original_atom_map
+                rxn._restore_atom_map_state(original_atom_map_state)
             _fallback_fb = list(fb)
             _fallback_bb = list(bb)
             _fallback_changed = list(changed)
