@@ -1818,6 +1818,79 @@ def interpolate(rxn: ARCReaction,
     return None
 
 
+def get_requested_reactive_bonds(rxn: ARCReaction,
+                                 forced_atom_map: list[int],
+                                 uni_is_product: bool,
+                                 ) -> set[tuple[int, int]] | None:
+    """
+    Get the bonds an explicitly requested atom map changes, in the unimolecular species' atom ordering.
+
+    This is the reaction center the caller asked for. The changing bonds of an RMG template path come
+    from the recipe and not from the atom map, so without comparing against this center a requested
+    map has almost no influence on which path (which leaving or migrating atom, say) gets built: the
+    map is otherwise only consulted to convert bond indices, and only when the unimolecular species is
+    the product. ``get_formed_and_broken_bonds`` reports in reactant ordering, which is already the
+    unimolecular ordering for a dissociation and is mapped through the requested map for an addition.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+        forced_atom_map (list[int]): The explicitly requested atom map.
+        uni_is_product (bool): Whether the unimolecular species is the product.
+
+    Returns:
+        set[tuple[int, int]] | None: The canonical changing bonds, or ``None`` if they could not be
+            determined, in which case no path filtering should be applied.
+    """
+    atom_map_snapshot = rxn._atom_map
+    try:
+        rxn._atom_map = list(forced_atom_map)
+        formed, broken = rxn.get_formed_and_broken_bonds()
+    except Exception as e:
+        logger.debug(f'Linear addition (rxn={rxn.label}): could not determine the reaction center of the '
+                     f'requested atom map ({type(e).__name__}: {e}); not filtering paths by it.')
+        return None
+    finally:
+        rxn._atom_map = atom_map_snapshot
+    bonds = list(formed or []) + list(broken or [])
+    try:
+        return {canonical_bond(forced_atom_map[a], forced_atom_map[b]) for a, b in bonds} if uni_is_product \
+            else {canonical_bond(a, b) for a, b in bonds}
+    except IndexError:
+        logger.debug(f'Linear addition (rxn={rxn.label}): the requested atom map does not index the reaction '
+                     f'center bonds {bonds}; not filtering paths by it.')
+        return None
+
+
+def path_matches_requested_center(reactive_bonds_r: list[tuple[int, int]],
+                                  reactive_bonds_uni: list[tuple[int, int]],
+                                  requested_reactive: set[tuple[int, int]] | None,
+                                  ) -> bool:
+    """
+    Check whether a template path changes only bonds that the requested atom map also changes.
+
+    Both readings of the path's bonds are accepted, since a path discovered in the reverse direction
+    reports its recipe bonds in the unimolecular ordering already while a forward one reports them in
+    the multi-species ordering. A subset rather than an equality test, because an enumerated map may
+    carry extra changed bonds from a spectator permutation on top of the real reaction center and
+    should still select the path whose center it contains.
+
+    Args:
+        reactive_bonds_r (list[tuple[int, int]]): The path's changing bonds as the recipe reports them.
+        reactive_bonds_uni (list[tuple[int, int]]): The same bonds converted to unimolecular ordering.
+        requested_reactive (set[tuple[int, int]], optional): The requested map's changing bonds in
+            unimolecular ordering. ``None`` disables the check.
+
+    Returns:
+        bool: Whether the path is consistent with the requested map.
+    """
+    if requested_reactive is None:
+        return True
+    for bonds in (reactive_bonds_uni, reactive_bonds_r):
+        if bonds and {canonical_bond(a, b) for a, b in bonds}.issubset(requested_reactive):
+            return True
+    return False
+
+
 def interpolate_addition(rxn: ARCReaction,
                          weight: float = 0.5,
                          existing_xyzs: list[dict] | None = None,
@@ -2016,6 +2089,12 @@ def interpolate_addition(rxn: ARCReaction,
             idx_b = atom_to_idx[neighbor]
             uni_bond_set.add(canonical_bond(idx_a, idx_b))
 
+    # The requested correspondence has to pick the reaction path: a path's recipe-derived changing
+    # bonds are independent of the atom map, so without this a requested map naming one particular
+    # leaving or migrating atom still gets whichever path the template enumerates first.
+    requested_reactive = get_requested_reactive_bonds(rxn, forced_atom_map, uni_is_product) \
+        if forced_atom_map is not None else None
+
     # ----- Strategy 1: template-guided (product_dicts) -----
     for i, product_dict in enumerate(rxn.product_dicts):
         r_label_map = product_dict['r_label_map']
@@ -2046,6 +2125,11 @@ def interpolate_addition(rxn: ARCReaction,
                                  max(atom_map[a], atom_map[b])) for a, b in all_reactive_r]
         else:
             all_reactive_uni = [canonical_bond(a, b) for a, b in all_reactive_r]
+
+        if not path_matches_requested_center(all_reactive_r, all_reactive_uni, requested_reactive):
+            logger.debug(f'Linear addition (rxn={rxn.label}, path={i}): the path changes bonds that the '
+                         f'requested atom map does not; skipping path.')
+            continue
 
         # Direction-agnostic classification.
         split_bonds = [b for b in all_reactive_uni if b in uni_bond_set]
@@ -2306,6 +2390,12 @@ def interpolate_addition(rxn: ARCReaction,
             else:
                 sb_conc = [canonical_bond(a, b) for a, b in bb_conc]
                 cb_conc = [canonical_bond(a, b) for a, b in fb_conc]
+            if not path_matches_requested_center(list(bb_conc) + list(fb_conc),
+                                                 list(sb_conc) + list(cb_conc),
+                                                 requested_reactive):
+                logger.debug(f'Linear addition (rxn={rxn.label}): the concerted path changes bonds that the '
+                             f'requested atom map does not; skipping path.')
+                continue
             split_in_uni = [b for b in sb_conc if b in uni_bond_set]
             cross_in_uni = [b for b in cb_conc if b not in uni_bond_set]
             if len(split_in_uni) >= 2 and cross_in_uni:
@@ -2444,6 +2534,14 @@ def interpolate_addition(rxn: ARCReaction,
     # 2. Composition dedup — coarser fallback: one representative per
     #    unique set of fragment element compositions.
     cut_lists = find_split_bonds_by_fragmentation(uni_mol, multi_species)
+    if forced_atom_map is not None and cut_lists:
+        # This strategy has no template paths to select between: the cuts come from combinatorial bond
+        # breaking and the fragment correspondence from subgraph isomorphism, neither of which the
+        # requested map constrains. Guesses from here may describe a correspondence other than the one
+        # asked for, so say so rather than letting them pass silently as the caller's map.
+        logger.warning(f'The linear TS search adapter is building addition/dissociation TS guesses for '
+                       f'{rxn.label} by combinatorial bond cutting, which does not consult the requested '
+                       f'atom map; the resulting guesses may describe a different correspondence.')
     isomorphism_verified: list[list[tuple[int, int]]] = []
     isomorphism_unverified: list[list[tuple[int, int]]] = []
     for cut in cut_lists:
