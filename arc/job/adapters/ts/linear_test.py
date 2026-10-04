@@ -6568,5 +6568,44 @@ class TestLinearAdapterAtomMapWithoutGuesses(unittest.TestCase):
         self.assertEqual(adapter.atom_maps_without_guesses, list())
         self.assertTrue(all(tsg.success for tsg in rxn.ts_species.ts_guesses))
 
+    def test_empty_map_does_not_abort_the_remaining_maps(self):
+        """Test that a map yielding nothing does not take the later maps' guesses down with it."""
+        # The unsuccessful guess recorded for the empty map carries no coordinates, which the
+        # deduplication of a later map's geometries must not try to compare against.
+        rxn, adapter = self._run(atom_map=[list(self.MAP_WITHOUT_GUESSES), list(self.MAP_WITH_GUESSES)])
+        self.assertEqual(adapter.atom_maps_without_guesses, [self.MAP_WITHOUT_GUESSES])
+        successful = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]
+        self.assertGreater(len(successful), 0)
+        self.assertTrue(all('map=1' in tsg.method for tsg in successful))
+
+    def test_duplicate_geometries_are_not_reported_as_empty(self):
+        """Test that a map reproducing another map's geometries is not reported as having produced none."""
+        rxn, adapter = self._run(atom_map=[list(self.MAP_WITH_GUESSES), list(self.MAP_WITH_GUESSES)])
+        self.assertEqual(adapter.atom_maps_without_guesses, list())
+        self.assertTrue(all(tsg.success for tsg in rxn.ts_species.ts_guesses))
+        # The duplicates are still deduplicated, they are just not mistaken for a failure.
+        xyzs = [xyz_to_str(tsg.initial_xyz) for tsg in rxn.ts_species.ts_guesses if tsg.initial_xyz]
+        self.assertEqual(len(xyzs), len(set(xyzs)))
+
+    def test_summary_counts_only_the_current_reaction(self):
+        """Test that one reaction's empty maps do not count against the next reaction's summary."""
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[self._make_rxn(), self._make_rxn()],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                atom_map=list(self.MAP_WITHOUT_GUESSES),
+                                )
+        with self.assertLogs(logger='arc', level='INFO') as cm:
+            adapter.execute()
+        summaries = [line for line in cm.output if 'requested atom maps' in line]
+        self.assertEqual(len(summaries), 2)
+        self.assertTrue(all('(0 of 1 requested atom maps)' in line for line in summaries))
+        self.assertEqual(len(adapter.atom_maps_without_guesses), 2)
+
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
