@@ -44,8 +44,10 @@ from arc.job.adapters.ts.linear import (GuessRecord,
                                         cleanup_after_existing_h_migration,
                                         interpolate,
                                         interpolate_addition,
+                                        get_requested_reactive_bonds,
                                         interpolate_isomerization,
                                         normalize_atom_maps,
+                                        path_matches_requested_center,
                                         postprocess_isomerization_records,
                                         trivial_fallback_scaffold_sound,
                                         )
@@ -6404,6 +6406,81 @@ class TestLinearAdapterForcedAtomMap(unittest.TestCase):
             adapter.execute()
         self.assertTrue(any('is not used for that' in line for line in cm.output))
         self.assertEqual(rxn._atom_map, list(self.maps[0]))
+
+
+
+class TestLinearAdapterAtomMapInAddition(unittest.TestCase):
+    """Test that a requested atom map selects the reaction path in the addition/dissociation route."""
+
+    # HO2 elimination from a peroxy radical, CCOO. -> C2H4 + HO2, where the unimolecular species is
+    # the reactant. The recipe-derived changing bonds of a path do not depend on the atom map, so
+    # without selecting the path by the requested map's reaction center every map built every path.
+    # These two maps eliminate a different hydrogen: H4 (bonds (0,4),(3,4)) and H5 ((0,5),(3,5)).
+    MAP_H4 = [0, 1, 7, 6, 8, 3, 2, 5, 4]
+    MAP_H5 = [0, 1, 7, 6, 3, 8, 2, 5, 4]
+
+    @staticmethod
+    def _make_rxn() -> ARCReaction:
+        """
+        Construct a fresh CCOO. <=> C2H4 + HO2 dissociation.
+
+        Returns:
+            ARCReaction: The reaction.
+        """
+        return ARCReaction(r_species=[ARCSpecies(label='r0', smiles='CCO[O]')],
+                           p_species=[ARCSpecies(label='p0', smiles='C=C'), ARCSpecies(label='p1', smiles='O[O]')])
+
+    def _guess_xyzs(self, atom_map) -> list[str]:
+        """
+        Execute the Linear adapter for one requested atom map.
+
+        Args:
+            atom_map (list[int]): The atom map to request.
+
+        Returns:
+            list[str]: The successful guess geometries, as strings.
+        """
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        LinearAdapter(job_type='tsg',
+                      reactions=[rxn],
+                      testing=True,
+                      project='test',
+                      project_directory=project_directory,
+                      atom_map=list(atom_map),
+                      ).execute()
+        return [xyz_to_str(tsg.initial_xyz) for tsg in rxn.ts_species.ts_guesses if tsg.success and tsg.initial_xyz]
+
+    def test_requested_center_selects_the_path(self):
+        """Test that two maps eliminating a different H give different guesses rather than identical ones."""
+        xyzs_h4 = self._guess_xyzs(self.MAP_H4)
+        xyzs_h5 = self._guess_xyzs(self.MAP_H5)
+        self.assertGreater(len(xyzs_h4), 0)
+        self.assertGreater(len(xyzs_h5), 0)
+        self.assertNotEqual(xyzs_h4, xyzs_h5)
+
+    def test_get_requested_reactive_bonds(self):
+        """Test reading the reaction center of a requested atom map, in unimolecular ordering."""
+        rxn = self._make_rxn()
+        # The unimolecular species is the reactant here, so the center needs no conversion.
+        self.assertEqual(get_requested_reactive_bonds(rxn, self.MAP_H4, uni_is_product=False),
+                         {(0, 4), (1, 2), (3, 4)})
+        self.assertEqual(get_requested_reactive_bonds(rxn, self.MAP_H5, uni_is_product=False),
+                         {(0, 5), (1, 2), (3, 5)})
+        # A map that cannot index the center bonds disables filtering rather than raising.
+        self.assertIsNone(get_requested_reactive_bonds(rxn, [0, 1], uni_is_product=True))
+
+    def test_path_matches_requested_center(self):
+        """Test the path/center consistency check."""
+        requested = {(0, 4), (1, 2), (3, 4)}
+        # No requested center: every path is accepted.
+        self.assertTrue(path_matches_requested_center([(0, 5)], [(0, 5)], None))
+        # Either reading of the path's bonds may match.
+        self.assertTrue(path_matches_requested_center([(0, 4), (1, 2)], [(7, 8)], requested))
+        self.assertTrue(path_matches_requested_center([(7, 8)], [(0, 4), (1, 2)], requested))
+        # A path changing a bond the map does not is rejected.
+        self.assertFalse(path_matches_requested_center([(0, 5), (1, 2)], [(0, 5), (1, 2)], requested))
 
 
 
