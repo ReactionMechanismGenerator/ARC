@@ -770,6 +770,23 @@ class SSHClient(object):
         command = 'ls -alF'
         return self._send_command_to_server(command, remote_path)[0]
 
+    @check_connections
+    def list_file_names(self, remote_path: str) -> list[str]:
+        """
+        List the names of the entries in a remote directory.
+
+        Args:
+            remote_path (str): The remote directory to list.
+
+        Returns: list[str]
+            The entry names, or an empty list if the directory cannot be listed.
+        """
+        try:
+            return self._sftp.listdir(remote_path)
+        except IOError:
+            logger.warning(f'Could not list the remote directory {remote_path} on {self.server}.')
+            return list()
+
     def find_package(self, package_name: str) -> list:
         """
         Find the path to the package.
