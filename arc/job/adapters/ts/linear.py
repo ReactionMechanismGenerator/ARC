@@ -1034,6 +1034,8 @@ class LinearAdapter(JobAdapter):
             # (e.g., a heavy-backbone atom map or a wider-family-set product_dicts)
             # for intra-call communication between strategies; these must not
             # survive this job (the scheduler persists the reaction right after).
+            # Only the maps this reaction reports empty may count towards its own summary line.
+            empty_maps_before_rxn = len(self.atom_maps_without_guesses)
             atom_map_snapshot = rxn._atom_map
             family_snapshot = rxn._family
             family_own_reverse_snapshot = rxn._family_own_reverse
@@ -1045,7 +1047,6 @@ class LinearAdapter(JobAdapter):
                                                               multiplicity=rxn.multiplicity,
                                                               )
                 weights = get_weight_grid(rxn)
-                all_xyzs_so_far: list[dict] = []
                 # Each requested atom map (or a single None, meaning "derive a map per
                 # reaction path") gets its own pass over the weight grid.
                 forced_atom_maps = self.get_forced_atom_maps(rxn)
@@ -1056,7 +1057,13 @@ class LinearAdapter(JobAdapter):
                         rxn._atom_map = list(forced_atom_map)
                     map_suffix = f', map={map_i}' if len(forced_atom_maps) > 1 else ''
                     map_t0 = datetime.datetime.now()
-                    guesses_before = len(rxn.ts_species.ts_guesses)
+                    # Deduplication is per map rather than shared across maps: a geometry another map
+                    # already produced must still reach the loop below, where it is recognized as a
+                    # duplicate of an existing guess. Suppressing it inside interpolate() instead would
+                    # make a map that legitimately reproduces a known TS indistinguishable from one that
+                    # produced nothing at all.
+                    all_xyzs_so_far: list[dict] = []
+                    map_produced_geometry = False
                     # Per-map memo: atom maps and the wider-family-set scan
                     # outcome are weight-invariant, so compute them once per map
                     # instead of once per weight iteration.
@@ -1073,8 +1080,16 @@ class LinearAdapter(JobAdapter):
                         for xyz_i, xyz in enumerate(xyzs):
                             if colliding_atoms(xyz):
                                 continue
+                            # A valid geometry, whether or not it survives deduplication below.
+                            map_produced_geometry = True
                             unique = True
                             for other_tsg in rxn.ts_species.ts_guesses:
+                                if other_tsg.initial_xyz is None:
+                                    # An unsuccessful guess (a requested atom map that produced nothing,
+                                    # recorded below) carries no coordinates, and almost_equal_coords()
+                                    # raises on a non-dict. Without this the first empty map would abort
+                                    # the whole reaction and take every later map's guesses with it.
+                                    continue
                                 if almost_equal_coords(xyz, other_tsg.initial_xyz):
                                     if 'linear' not in other_tsg.method.lower():
                                         other_tsg.method += f' and Linear (w={w:.2f}, {xyz_i}{map_suffix})'
@@ -1100,10 +1115,12 @@ class LinearAdapter(JobAdapter):
                                          comment=f'Linear w={w:.2f}, {xyz_i}{map_suffix}, family: {rxn.family}',
                                          )
 
-                    if forced_atom_map is not None and len(rxn.ts_species.ts_guesses) == guesses_before:
+                    if forced_atom_map is not None and not map_produced_geometry:
                         # An explicitly requested map that yields nothing is a distinct outcome from a
                         # derived map that happened not to work: the caller asked for this specific
-                        # correspondence and must be able to tell that it came back empty. Record it
+                        # correspondence and must be able to tell that it came back empty. A map whose
+                        # geometries merely duplicate another map's is not this case - it did describe a
+                        # reachable TS - so it is judged on geometries produced, not guesses appended. Record it
                         # both on the reaction (an unsuccessful TSGuess, which is persisted) and on the
                         # adapter, so neither a human reading the log nor a caller iterating over maps
                         # has to infer it from a guess count.
@@ -1135,9 +1152,9 @@ class LinearAdapter(JobAdapter):
             if len(self.reactions) < 5:
                 successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'linear' in tsg.method.lower()])
                 requested = len(self.forced_atom_maps) if self.forced_atom_maps is not None else 0
-                # Only the requested maps of this reaction, not those of reactions processed before it.
-                empty = len([atom_map for atom_map in self.atom_maps_without_guesses
-                             if atom_map in (self.forced_atom_maps or list())])
+                # Only this reaction's empty maps: the attribute accumulates over every reaction of the
+                # job, and counting another reaction's entries here produced summaries such as "-1 of 1".
+                empty = len(self.atom_maps_without_guesses) - empty_maps_before_rxn
                 suffix = f' ({requested - empty} of {requested} requested atom maps)' if requested else ''
                 if successes:
                     logger.info(f'Linear successfully found {successes} TS guesses for {rxn.label}{suffix}.')
