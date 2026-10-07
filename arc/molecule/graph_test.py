@@ -1,9 +1,36 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
+import os
+import subprocess
+import sys
 import unittest
 
 from arc.molecule.graph import Edge, Graph, Vertex
+
+
+REPOSITORY_DIRECTORY = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def outputs_at_hash_seeds(script, seeds):
+    """
+    Run `script` in a subprocess once per hash seed in `seeds`, and return the stripped standard
+    output of each run. The subprocesses are given the repository as their working directory and at
+    the front of PYTHONPATH, so they import the tree under test rather than an installed ARC while
+    keeping whatever else the environment already put on the path.
+
+    Raises a RuntimeError if any of the subprocesses exits with a non-zero return code.
+    """
+    python_path = os.pathsep.join(path for path in (REPOSITORY_DIRECTORY, os.environ.get('PYTHONPATH', '')) if path)
+    outputs = list()
+    for seed in seeds:
+        environment = dict(os.environ, PYTHONHASHSEED=seed, PYTHONPATH=python_path)
+        result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True,
+                                env=environment, cwd=REPOSITORY_DIRECTORY, timeout=600)
+        if result.returncode:
+            raise RuntimeError(f'The subprocess run with PYTHONHASHSEED={seed} failed:\n{result.stderr}')
+        outputs.append(result.stdout.strip())
+    return outputs
 
 
 class TestGraph(unittest.TestCase):
@@ -107,6 +134,86 @@ class TestGraph(unittest.TestCase):
         edges = self.graph.get_all_edges()
         self.assertIsInstance(edges, list)
         self.assertEqual(len(edges), 5)
+
+    def test_get_all_edges_orders_the_edges_by_vertex(self):
+        """
+        Test that Graph.get_all_edges() returns the edges in vertex order, each edge once.
+        """
+        expected = []
+        for vertex in self.graph.vertices:
+            for edge in vertex.edges.values():
+                if not any(edge is seen for seen in expected):
+                    expected.append(edge)
+        self.assertEqual(self.graph.get_all_edges(), expected)
+
+    def test_get_all_edges_order_does_not_depend_on_the_hash_seed(self):
+        """
+        Test that Graph.get_all_edges() returns the same order in processes with different hash seeds.
+        """
+        script = ('from arc.molecule.molecule import Molecule\n'
+                  'mol = Molecule(smiles="c1ccccc1Cc1ccccc1")\n'
+                  'atoms = mol.atoms\n'
+                  'print([(atoms.index(edge.vertex1), atoms.index(edge.vertex2)) '
+                  'for edge in mol.get_all_edges()])\n')
+        outputs = outputs_at_hash_seeds(script, ('1', '35'))
+        self.assertTrue(outputs[0])
+        self.assertEqual(len(set(outputs)), 1, f'The edge order differs between hash seeds: {outputs}')
+
+    def test_order_vertex_set(self):
+        """
+        Test that Graph.order_vertex_set() returns the vertices in the graph's vertex order.
+        """
+        vertices = self.graph.vertices
+        self.assertEqual(self.graph.order_vertex_set({vertices[4], vertices[1], vertices[3]}),
+                         [vertices[1], vertices[3], vertices[4]])
+        self.assertEqual(self.graph.order_vertex_set(set()), [])
+        self.assertEqual(self.graph.order_vertex_set(set(vertices)), vertices)
+
+    def test_order_vertex_set_rejects_a_vertex_that_is_not_in_the_graph(self):
+        """
+        Test that Graph.order_vertex_set() raises a ValueError instead of dropping a foreign vertex.
+        """
+        vertices = self.graph.vertices
+        with self.assertRaises(ValueError):
+            self.graph.order_vertex_set({Vertex()})
+        with self.assertRaises(ValueError):
+            self.graph.order_vertex_set({vertices[0], vertices[2], Vertex()})
+        copied = self.graph.copy(deep=True)
+        with self.assertRaises(ValueError):
+            self.graph.order_vertex_set(set(copied.vertices))
+
+    def test_order_vertex_set_counts_a_repeated_vertex_once(self):
+        """
+        Test that Graph.order_vertex_set() returns a vertex once and still rejects a foreign vertex
+        when the graph's vertex list holds the same vertex twice.
+        """
+        vertices = self.graph.vertices
+        repeated = Graph(vertices=[vertices[0], vertices[0], vertices[1]])
+        self.assertEqual(repeated.order_vertex_set({vertices[0], vertices[1]}),
+                         [vertices[0], vertices[1]])
+        with self.assertRaises(ValueError):
+            repeated.order_vertex_set({vertices[0], Vertex()})
+
+    def test_cycle_order_does_not_depend_on_the_hash_seed(self):
+        """
+        Test that the cycles a graph returns are ordered identically in processes with different hash seeds.
+
+        The comparison covers the order of the vertices within one cycle and the order of the cycles
+        within the returned list.
+        """
+        script = ('from arc.molecule.molecule import Molecule\n'
+                  'for smiles in ("C1CC2CCC1C2", "c1ccccc1Cc1ccccc1", "C1CC2CCC3CCC1C23"):\n'
+                  '    mol = Molecule(smiles=smiles)\n'
+                  '    atoms = mol.atoms\n'
+                  '    index = lambda cycle: [atoms.index(atom) for atom in cycle]\n'
+                  '    monocyclic, polycyclic = mol.get_disparate_cycles()\n'
+                  '    print(smiles, [index(cycle) for cycle in monocyclic + polycyclic])\n'
+                  '    print(smiles, [index(cycle) for cycle in mol.get_polycycles()])\n'
+                  '    print(smiles, [index(cycle) for cycle in mol.get_all_cycles_of_size(5)])\n'
+                  '    print(smiles, [index(cycle) for cycle in mol.get_smallest_set_of_smallest_rings()])\n')
+        outputs = outputs_at_hash_seeds(script, ('1', '5', '87'))
+        self.assertTrue(outputs[0])
+        self.assertEqual(len(set(outputs)), 1, f'The cycle order differs between hash seeds: {outputs}')
 
     def test_has_vertex(self):
         """

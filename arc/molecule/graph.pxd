@@ -54,6 +54,8 @@ cdef class Graph(object):
 
     cpdef list get_all_edges(self)
 
+    cpdef list order_vertex_set(self, set vertex_set)
+
     cpdef dict get_edges(self, Vertex vertex)
 
     cpdef Edge get_edge(self, Vertex vertex1, Vertex vertex2)
