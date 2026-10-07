@@ -31,6 +31,12 @@ output.yml
 ├── datetime_started?
 ├── datetime_completed
 │
+├── cost_metrics
+│   ├── wall_time_hrs?
+│   ├── total_job_count, total_execution_time_hrs, total_core_hours
+│   ├── jobs_missing_time, jobs_missing_cores
+│   └── per_ess?: {<ess>: {job_count, execution_time_hrs, core_hours, jobs_missing_time}, ...}
+│
 ├── composite_method?
 ├── opt_level?
 ├── freq_level?
@@ -138,7 +144,7 @@ TS entries share all species fields but add IRC/NEB/method fields and always hav
 
 | Field | Type | Description |
 |---|---|---|
-| `schema_version` | `str` | Output contract version. `1.1` adds the optional `parser_evidence` descriptor, renames the thermo block's `cp_data` to `thermo_points` (widened from Cp-only to Cp/H/S/G per temperature; there is no `cp_data` alias), renames the AEC `parameter_table` to `reference_atom_energies`, adds `imaginary_frequencies_cm1`, the per-correction `matched_arkane_key` and `freq_scale_factor_key`, adds `ess_software` so each `ess_versions` banner can be paired with the program that actually produced it, adds `arkane_version`, read together with `arkane_git_commit` from one install so the run carries an Arkane software identity even where there is no git repository to report a commit from, adds `freq_hessian_method`, whose three tokens are TCKDB's `HessianMethod` vocabulary and record the provenance of the frequency method ARC requested, adds the optional `statmech.rejected_torsions`, adds the TS-only `ts_checks`, adds `kinetics.T0_k` and the constraints' `target_value_units`, adds the thermo block's `standard_state_pressure_pa`, which names the standard state its entropy, free energy and NASA fit belong to, and adds the `rotor_scans` block, whose samples carry `angle_degrees` — the **absolute** dihedral measured on each sample's own geometry, never a displacement — and whose `requested_step_size` is signed, so a reversed scan records its direction instead of losing the whole requested grid. Emitted from a single constant shared with the evidence sidecar's `output_schema_version`, so the two cannot drift |
+| `schema_version` | `str` | Output contract version. `1.1` adds the optional `parser_evidence` descriptor, adds the always-present `cost_metrics` block, renames the thermo block's `cp_data` to `thermo_points` (widened from Cp-only to Cp/H/S/G per temperature; there is no `cp_data` alias), renames the AEC `parameter_table` to `reference_atom_energies`, adds `imaginary_frequencies_cm1`, the per-correction `matched_arkane_key` and `freq_scale_factor_key`, adds `ess_software` so each `ess_versions` banner can be paired with the program that actually produced it, adds `arkane_version`, read together with `arkane_git_commit` from one install so the run carries an Arkane software identity even where there is no git repository to report a commit from, adds `freq_hessian_method`, whose three tokens are TCKDB's `HessianMethod` vocabulary and record the provenance of the frequency method ARC requested, adds the optional `statmech.rejected_torsions`, adds the TS-only `ts_checks`, adds `kinetics.T0_k` and the constraints' `target_value_units`, adds the thermo block's `standard_state_pressure_pa`, which names the standard state its entropy, free energy and NASA fit belong to, and adds the `rotor_scans` block, whose samples carry `angle_degrees` — the **absolute** dihedral measured on each sample's own geometry, never a displacement — and whose `requested_step_size` is signed, so a reversed scan records its direction instead of losing the whole requested grid. Emitted from a single constant shared with the evidence sidecar's `output_schema_version`, so the two cannot drift |
 | `project` | `str` | ARC project name |
 | `arc_version` | `str` | ARC version string |
 | `arc_git_commit` | `str?` | ARC repo HEAD commit hash |
@@ -288,6 +294,28 @@ comment line, so `stringfile_relative_energy_kcal_mol` is identically zero on re
 runs and the geometry-verified attachment is the only energy a GSM point carries.
 
 `parser_version` is `arc-gsm-stringfile-1`.
+
+## Cost Metrics
+
+`cost_metrics` records the computational cost of the run, aggregated from per-job
+records collected as jobs complete (persisted in the restart file, so restarted runs
+keep their history). Jobs with unavailable run time or core count are **counted**, not
+silently dropped, so analysis scripts know the coverage. Wall time is queue-confounded
+and should be treated as a secondary metric; ESS execution time and core-hours are the
+primary cost measures. Pipe-mode tasks are not individually tracked and are therefore
+not included in the per-job aggregates.
+
+| Field | Type | Description |
+|---|---|---|
+| `wall_time_hrs` | `float?` | Wall-clock duration of the run in hours (also derivable from the `datetime_*` pair, which only has minute resolution) |
+| `total_job_count` | `int` | Total number of completed jobs recorded |
+| `total_execution_time_hrs` | `float` | Summed ESS job execution time (hours), over jobs with a known run time |
+| `total_core_hours` | `float` | Summed execution time x CPU cores (hours), over jobs with known run time and core count |
+| `jobs_missing_time` | `int` | Jobs ARC recorded with no run time. They are excluded from both `total_execution_time_hrs` and `total_core_hours`, so a non-zero value means **both totals understate the run**, by this many jobs |
+| `jobs_missing_cores` | `int` | Jobs that have a run time but no core count. They still count toward `total_execution_time_hrs`, but are excluded from `total_core_hours`, so a non-zero value means **core-hours alone understate the run**, by this many jobs |
+| `per_ess` | `dict?` | Per-ESS-software aggregates, keyed by the job adapter name (e.g. `gaussian`, `orca`, `xtb`); records with no adapter recorded are bucketed under `unknown`. `null` when no jobs were recorded |
+
+Each `per_ess` entry: `{job_count: int, execution_time_hrs: float, core_hours: float, jobs_missing_time: int}`.
 
 ## Levels of Theory
 
