@@ -187,6 +187,17 @@ class TestCleanMigratingH(unittest.TestCase):
         h_pos_2 = np.array(out2['coords'][2])
         self.assertTrue(np.allclose(h_pos_1, h_pos_2, atol=1e-10))
 
+    def test_ref_pos_selects_the_side_of_the_donor_acceptor_axis(self):
+        xyz = {'symbols': ('C', 'N', 'H'), 'isotopes': (12, 14, 1),
+            'coords': ((0.0, 0.0, 0.0), (2.5, 0.0, 0.0), (1.0, 0.5, 0.0))}
+        default = np.array(clean_migrating_h(xyz, donor=0, acceptor=1, h_idx=2)['coords'][2])
+        self.assertGreater(default[1], 0.0)
+        flipped = np.array(clean_migrating_h(xyz, donor=0, acceptor=1, h_idx=2,
+                                             ref_pos=np.array([1.0, -0.5, 0.0]))['coords'][2])
+        self.assertLess(flipped[1], 0.0)
+        self.assertAlmostEqual(default[0], flipped[0], places=10)
+        self.assertAlmostEqual(default[1], -flipped[1], places=10)
+
     def test_h_distance_to_donor_matches_target(self):
         xyz = {'symbols': ('C', 'N', 'H'), 'isotopes': (12, 14, 1),
             'coords': ((0.0, 0.0, 0.0), (2.5, 0.0, 0.0), (1.0, 0.5, 0.0))}
