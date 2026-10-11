@@ -243,7 +243,10 @@ class PipeRun:
         scratch_base = pipe_settings.get('scratch_base', '')
         if scratch_base:
             if self.cluster_software == 'local':
-                subdir = f'{os.path.relpath(self.pipe_root, os.path.join(self.project_directory, "calcs"))}/$WORKER_ID'
+                rel_root = os.path.relpath(self.pipe_root, os.path.join(self.project_directory, 'calcs'))
+                if rel_root == os.pardir or rel_root.startswith(os.pardir + os.sep) or os.path.isabs(rel_root):
+                    rel_root = self.run_id
+                subdir = f'{rel_root}/$WORKER_ID'
             else:
                 subdir = '${PBS_JOBID%%[*}/$PBS_ARRAY_INDEX'
             lines.append(f'export TMPDIR="{scratch_base}/{subdir}"\nmkdir -p "$TMPDIR"')
