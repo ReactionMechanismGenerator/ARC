@@ -329,6 +329,32 @@ class TestPollPipes(unittest.TestCase):
         self.coord.poll_pipes()
         self.assertNotIn(pipe.pipe_root, self.coord._pipe_poll_failures)
 
+    def test_removed_pipe_leaves_no_summary_or_failure_count(self):
+        def complete(pipe):
+            _complete_task(pipe.pipe_root, 't_0')
+            self.coord.poll_pipes()
+
+        def fail(pipe):
+            pipe.status = PipeRunState.FAILED
+            pipe._save_run_metadata()
+            self.coord.poll_pipes()
+
+        def stop_reconciling(pipe):
+            with patch.object(pipe, 'reconcile', side_effect=RuntimeError('corrupt')):
+                for _ in range(3):
+                    self.coord.poll_pipes()
+
+        for path, finish in (('completed', complete), ('failed', fail),
+                             ('failure limit', stop_reconciling)):
+            with self.subTest(path=path):
+                pipe = self.coord.submit_pipe_run(f'run_{path}', [_make_spec('t_0')])
+                self.coord.poll_pipes()
+                self.assertIn(pipe.pipe_root, self.coord._last_pipe_summary)
+                finish(pipe)
+                self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
+                self.assertNotIn(pipe.pipe_root, self.coord._last_pipe_summary)
+                self.assertNotIn(pipe.pipe_root, self.coord._pipe_poll_failures)
+
     def test_same_named_concurrent_batches_are_tracked_separately(self):
         first = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_first')])
         second = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_second')])

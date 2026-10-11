@@ -356,8 +356,7 @@ class PipeCoordinator:
                         pipe._save_run_metadata()
                     except Exception as e:
                         logger.debug(f'Pipe run {run_id}: best-effort FAILED persist failed: {e}')
-                    del self.active_pipes[pipe_key]
-                    self._pipe_poll_failures.pop(pipe_key, None)
+                    self._forget_pipe(pipe_key)
                 continue
             self._pipe_poll_failures.pop(pipe_key, None)
             summary = ', '.join(f'{state}: {n}' for state, n in sorted(counts.items()) if n > 0)
@@ -382,12 +381,24 @@ class PipeCoordinator:
                     logger.warning(f'Pipe run {run_id}: resubmission failed.', exc_info=True)
             if pipe.status in (PipeRunState.COMPLETED, PipeRunState.COMPLETED_PARTIAL):
                 self.ingest_pipe_results(pipe)
-                del self.active_pipes[pipe_key]
+                self._forget_pipe(pipe_key)
             elif pipe.status == PipeRunState.FAILED:
                 logger.error(f'Pipe run {run_id} has FAILED status. '
                              f'Ingesting any available results and removing from active pipes.')
                 self.ingest_pipe_results(pipe)
-                del self.active_pipes[pipe_key]
+                self._forget_pipe(pipe_key)
+
+    def _forget_pipe(self, pipe_key: str) -> None:
+        """
+        Remove a pipe run from the registry together with its poll-failure count and its last
+        logged summary.
+
+        Args:
+            pipe_key: The run's key in ``active_pipes`` (its ``pipe_root``).
+        """
+        del self.active_pipes[pipe_key]
+        self._pipe_poll_failures.pop(pipe_key, None)
+        self._last_pipe_summary.pop(pipe_key, None)
 
     def ingest_pipe_results(self, pipe: PipeRun) -> None:
         """
