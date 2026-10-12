@@ -424,6 +424,19 @@ class OrcaAdapter(JobAdapter):
         adopted unrestricted reference with no orbitals of that reference to start from. The two
         are alternatives of one another and exactly one of them is written.
 
+        A ``'scan'`` job writes a ``%geom Scan`` block holding one ``D`` line per torsion. The
+        third argument of an ORCA ``Scan`` line is the number of points the scan visits, not the
+        increment between them, so each line reads
+        ``D <atoms> = <dihedral>, <dihedral + 360>, <360 / scan_res + 1>``: a full rotation
+        starting at that torsion's current dihedral, sampled every ``scan_res`` degrees, whose
+        final point returns to the starting dihedral. The dihedral is the 0-360 value
+        ``calculate_dihedral_angle`` reports and is carried into the end value unfolded, as the
+        xtb, TeraChem and Q-Chem adapters carry theirs. Several ``D`` lines in one block are an
+        ORCA nested surface scan, so N torsions describe one N-dimensional surface of
+        ``(360 / scan_res + 1) ** N`` constrained optimizations rather than N separate rotations.
+        Both the ``Scan`` block and the enclosing ``%geom`` block are closed, whatever the number
+        of torsions.
+
         A ``stability`` job is a single point that adds ``STABPerform`` and
         ``STABRestartUHFifUnstable true`` to the ``%scf`` block. ORCA follows an instability it
         finds and analyses the relaxed solution again, so such a log holds two analyses; the
@@ -554,11 +567,13 @@ end
             for torsion_indices in self.torsions:
                 torsion_strings.append(' '.join([str(atom_index) for atom_index in torsion_indices]))
             input_dict['job_type_1'] = f"Opt{'Ts' if self.is_ts else ''}"
+            scan_steps = int(360 / self.scan_res)
             input_dict['scan'] = '\n%geom Scan'
             for i, torsion in enumerate(torsion_strings):
                 dihedral = calculate_dihedral_angle(coords=self.species[0].get_xyz(), torsion=self.torsions[i])
-                input_dict['scan'] += f'\nD {torsion} =  {dihedral:.1f}, {dihedral - self.scan_res:.1f}, {self.scan_res:.1f}\n'
-            input_dict['scan'] += '\nend\nend' if len(self.torsions) > 1 else '\nend'
+                input_dict['scan'] += f'\nD {torsion} = {dihedral:.1f}, ' \
+                                      f'{dihedral + scan_steps * self.scan_res:.1f}, {scan_steps + 1}'
+            input_dict['scan'] += '\nend\nend'
 
         if self.level.solvation_method:
             if self.level.solvation_method.lower() == 'smd':
