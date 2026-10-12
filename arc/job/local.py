@@ -8,6 +8,7 @@ import datetime
 import os
 import re
 import shutil
+import signal
 import subprocess
 import time
 
@@ -28,6 +29,7 @@ def execute_command(command: str | list[str],
                     shell: bool = True,
                     no_fail: bool = False,
                     executable: str | None = None,
+                    timeout: float | None = None,
                     ) -> tuple[list | None, list | None]:
     """
     Execute a command.
@@ -35,6 +37,8 @@ def execute_command(command: str | list[str],
     Notes:
         If ``no_fail`` is ``True``, then a warning is logged and ``False`` is returned
         so that the calling function can debug the situation.
+        A command that exceeds ``timeout`` is not retried: the point of a deadline is to bound
+        the call, so the timeout is reported through the same channels as a terminal failure.
 
     Args:
         command (str | list[str]): An array of string commands to send.
@@ -42,6 +46,20 @@ def execute_command(command: str | list[str],
         no_fail (bool, optional): If ``True`` then ARC will not crash if an error is encountered.
         executable (str, optional): Select a specific shell to run with, e.g., '/bin/bash'.
                                     Default shell of the subprocess command is '/bin/sh'.
+        timeout (float, optional): The number of seconds to wait for the command to complete.
+                                   If the command does not complete in time, it is killed along with
+                                   every process it spawned that stayed in its process group. A
+                                   descendant that puts itself in a group of its own, e.g. via
+                                   ``setsid``, is outside what signalling a group can reach and
+                                   survives. ``None``, the default, waits forever.
+                                   Note that the deadline is not exact: a timing out call returns
+                                   after ``timeout`` plus up to twice the grace period of
+                                   ``_kill_process_group()``, i.e. up to 10 seconds late by default.
+
+    Raises:
+        SettingsError: If the command timed out and ``no_fail`` is ``False``. A non-zero exit status
+                       is not an error here: the command is run without ``check=True``, so a failing
+                       command's stderr is returned as output rather than raised.
 
     Returns: tuple[list, list]:
         - A list of lines of standard output stream.
@@ -55,12 +73,28 @@ def execute_command(command: str | list[str],
     sleep_time = 60  # Seconds
     while i < max_times_to_try:
         try:
+            if timeout is not None:
+                stdout, stderr = _run_with_timeout(command=command, shell=shell,
+                                                   executable=executable, timeout=timeout)
+                return _format_stdout(stdout), _format_stdout(stderr)
             if executable is None:
                 completed_process = subprocess.run(command, shell=shell, capture_output=True)
             else:
                 completed_process = subprocess.run(command, shell=shell, capture_output=True, executable=executable)
             return _format_stdout(completed_process.stdout), _format_stdout(completed_process.stderr)
+        except subprocess.TimeoutExpired:
+            message = f'The command "{command}" did not complete within {timeout} seconds ' \
+                      f'and was terminated along with all of the processes it spawned.'
+            if no_fail:
+                logger.warning(message)
+                return None, None
+            logger.error(message)
+            raise SettingsError(f'{message}\nConsider increasing the timeout, or check whether this is a '
+                                f'server issue by executing the command manually on the server.') from None
         except subprocess.CalledProcessError as e:
+            # Note: ``subprocess.run()`` is called without ``check=True`` and therefore never
+            # raises this, so this handler and the retry loop it drives are dead code. They are
+            # left as they are; the ``TimeoutExpired`` handler above is the only live one.
             error = e  # Store the error so we can raise a SettingsError if needed.
             if no_fail:
                 _output_command_error_message(command, e, logger.warning)
@@ -80,6 +114,110 @@ def execute_command(command: str | list[str],
                         f'\nTips: use "which" command to locate cluster software commands on server.'
                         f'\nExample: type "which sbatch" on a server running Slurm to find the correct '
                         f'sbatch path required in the submit_command dictionary.')
+
+
+def _run_with_timeout(command: list[str],
+                      shell: bool,
+                      executable: str | None,
+                      timeout: float,
+                      ) -> tuple[bytes, bytes]:
+    """
+    Run a command under a deadline, killing its process group if the deadline expires.
+
+    The command is started in its own session (hence its own process group) so that the whole tree
+    can be signalled at once. Killing only the direct child is not enough: with ``shell=True`` the
+    direct child is a shell that commonly ``exec``s its last command, and anything it backgrounded
+    would survive as an orphan.
+
+    The containment this buys reaches exactly as far as the process group does. A descendant that
+    leaves the group, e.g. by calling ``setsid`` itself, receives neither signal and keeps running;
+    holding it too would take a cgroup, which is beyond what this function attempts.
+
+    Note that a timing out call returns only after the grace periods of ``_kill_process_group()``,
+    which sleeps for one before escalating to SIGKILL and then waits up to another for the child.
+    The call is therefore bounded by ``timeout + 2 * grace_period``, i.e. up to 10 seconds beyond
+    the deadline with the default grace period, rather than by ``timeout`` alone.
+
+    Args:
+        command (list[str]): The command to run, already normalized by ``execute_command()`` into
+                             the single-element list that ``subprocess`` expects.
+        shell (bool): Specifies whether the command should be executed using bash instead of Python.
+        executable (str | None): Select a specific shell to run with, e.g., '/bin/bash'.
+        timeout (float): The number of seconds to wait for the command to complete.
+
+    Raises:
+        subprocess.TimeoutExpired: If the command did not complete within ``timeout`` seconds.
+
+    Returns: tuple[bytes, bytes]:
+        - The standard output stream.
+        - The standard error stream.
+    """
+    process = subprocess.Popen(command,
+                               shell=shell,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE,
+                               executable=executable,
+                               start_new_session=True,
+                               )
+    try:
+        return process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_process_group(process=process)
+        raise
+    finally:
+        # ``Popen`` is deliberately not used as a context manager here: its ``__exit__()`` waits for
+        # the child without a timeout, which would defeat the very deadline this function enforces
+        # whenever a child cannot be reaped promptly. Closing the pipes is therefore done here, and
+        # reaping is left to ``communicate()`` on the normal path and to the bounded wait of
+        # ``_kill_process_group()`` on the timeout path.
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+
+
+def _kill_process_group(process: subprocess.Popen,
+                        grace_period: float = 5,
+                        ) -> None:
+    """
+    Kill a process and every process it spawned that is still in its process group.
+
+    SIGTERM is sent first to let the tree shut down cleanly, then SIGKILL after ``grace_period``.
+    Falls back to killing just the given process if it does not have a process group of its own,
+    which also guards against ever signalling the group ARC itself runs in.
+
+    Args:
+        process (subprocess.Popen): The process to kill, started with ``start_new_session=True``.
+        grace_period (float, optional): The number of seconds to allow the tree to exit on SIGTERM.
+    """
+    try:
+        pgid = os.getpgid(process.pid)
+    except OSError:
+        pgid = None
+    if pgid is None or pgid == os.getpgid(0):
+        process.kill()
+    else:
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except OSError:
+            pass  # The group is already gone, which is the outcome this call is after anyway.
+        # The child is deliberately not reaped here. It is the group leader, so while it remains
+        # unreaped its pid cannot be recycled and ``pgid`` stays pinned to this group, which is
+        # what makes the SIGKILL below safe to send. Reaping first would open a window in which
+        # the pid is free and the SIGKILL could land on an unrelated process group.
+        # The escalation also cannot be conditioned on the child having survived SIGTERM: with
+        # ``shell=True`` the direct child is a shell that dies on SIGTERM, while a grandchild
+        # that ignores SIGTERM is precisely the process that gets orphaned.
+        time.sleep(grace_period)
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except OSError:
+            pass  # The group exited on SIGTERM, which is the preferred outcome.
+    try:
+        process.wait(timeout=grace_period)
+    except subprocess.TimeoutExpired:
+        logger.warning(f'Could not terminate process {process.pid} after it timed out. '
+                       f'It is left unreaped rather than waited for indefinitely, so that a child '
+                       f'which cannot be killed does not also hang ARC.')
 
 
 def _output_command_error_message(command: list[str],
