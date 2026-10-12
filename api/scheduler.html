@@ -181,6 +181,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.save_restart_dict"><code class="docutils literal notranslate"><span class="pre">Scheduler.save_restart_dict()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.schedule_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.schedule_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.set_scan_resolution"><code class="docutils literal notranslate"><span class="pre">Scheduler.set_scan_resolution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.sp_reuses_opt_output"><code class="docutils literal notranslate"><span class="pre">Scheduler.sp_reuses_opt_output()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.spawn_directed_scan_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.spawn_directed_scan_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.spawn_post_irc_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.spawn_post_irc_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.spawn_post_opt_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.spawn_post_opt_jobs()</span></code></a></li>
@@ -2101,6 +2102,28 @@ is <code class="docutils literal notranslate"><span class="pre">None</span></cod
 </dl>
 <dl class="simple">
 <dt>Returns: dict</dt><dd><p>The (possibly updated) job arguments dictionary.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.sp_reuses_opt_output">
+<span class="sig-name descname"><span class="pre">sp_reuses_opt_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.sp_reuses_opt_output"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.sp_reuses_opt_output" title="Link to this definition"></a></dt>
+<dd><p>Whether the sp energy of a species is parsed from its optimization output, so that no sp job is needed.</p>
+<p>This holds when the sp level equals the optimization level, the method is not composite, the species
+is not an xtb TS, and the optimization geometry path is known.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>level</strong> (<a class="reference internal" href="level.html#arc.level.Level" title="arc.level.Level"><em>Level</em></a><em>, </em><em>optional</em>) – The sp level. Defaults to <code class="docutils literal notranslate"><span class="pre">self.sp_level</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code> if the optimization output serves as the sp output.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
 </dd>
 </dl>
 </dd></dl>

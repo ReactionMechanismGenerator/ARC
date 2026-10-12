@@ -801,7 +801,8 @@
             <span class="k">return</span>
         <span class="n">pending</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_pending_pipe_sp</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_pending_pipe_sp</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
-        <span class="n">piped</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pipe_planner</span><span class="o">.</span><span class="n">try_pipe_species_sp</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">pending</span><span class="p">))</span>
+        <span class="n">reusing_opt</span> <span class="o">=</span> <span class="p">{</span><span class="n">label</span> <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">pending</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sp_reuses_opt_output</span><span class="p">(</span><span class="n">label</span><span class="p">)}</span>
+        <span class="n">piped</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pipe_planner</span><span class="o">.</span><span class="n">try_pipe_species_sp</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">pending</span> <span class="o">-</span> <span class="n">reusing_opt</span><span class="p">))</span>
         <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">pending</span> <span class="o">-</span> <span class="n">piped</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">run_sp_job</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
 
@@ -1780,6 +1781,29 @@
                          <span class="n">level_of_theory</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">freq_level</span><span class="p">,</span> <span class="n">job_type</span><span class="o">=</span><span class="s1">'freq'</span><span class="p">)</span></div>
 
 
+<div class="viewcode-block" id="Scheduler.sp_reuses_opt_output">
+<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.sp_reuses_opt_output">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">sp_reuses_opt_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">level</span><span class="p">:</span> <span class="n">Level</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Whether the sp energy of a species is parsed from its optimization output, so that no sp job is needed.</span>
+
+<span class="sd">        This holds when the sp level equals the optimization level, the method is not composite, the species</span>
+<span class="sd">        is not an xtb TS, and the optimization geometry path is known.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            label (str): The species label.</span>
+<span class="sd">            level (Level, optional): The sp level. Defaults to ``self.sp_level``.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            bool: ``True`` if the optimization output serves as the sp output.</span>
+<span class="sd">        """</span>
+        <span class="n">level</span> <span class="o">=</span> <span class="n">level</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">sp_level</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">level</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">opt_level</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span>
+                    <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="n">level</span><span class="o">.</span><span class="n">software</span> <span class="o">==</span> <span class="s1">'xtb'</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">is_ts</span><span class="p">)</span>
+                    <span class="ow">and</span> <span class="s1">'paths'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">'geo'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="s1">'paths'</span><span class="p">]</span>
+                    <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="s1">'paths'</span><span class="p">][</span><span class="s1">'geo'</span><span class="p">])</span></div>
+
+
 <div class="viewcode-block" id="Scheduler.run_sp_job">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.run_sp_job">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">run_sp_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
@@ -1804,10 +1828,7 @@
                          <span class="n">job_type</span><span class="o">=</span><span class="s1">'conf_sp'</span><span class="p">,</span>
                          <span class="n">conformer</span><span class="o">=</span><span class="n">conformer</span><span class="p">)</span>
             <span class="k">return</span>
-        <span class="k">if</span> <span class="n">level</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">opt_level</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> \
-                <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="n">level</span><span class="o">.</span><span class="n">software</span> <span class="o">==</span> <span class="s1">'xtb'</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">is_ts</span><span class="p">)</span> \
-                <span class="ow">and</span> <span class="s1">'paths'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">'geo'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="s1">'paths'</span><span class="p">]</span> \
-                <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="s1">'paths'</span><span class="p">][</span><span class="s1">'geo'</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sp_reuses_opt_output</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">level</span><span class="p">):</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Not running an sp job for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> at </span><span class="si">{</span><span class="n">level</span><span class="si">}</span><span class="s1"> since the optimization was done at the '</span>
                         <span class="sa">f</span><span class="s1">'same level of theory. Using the optimization output to parse the sp energy.'</span><span class="p">)</span>
             <span class="n">recent_opt_job_name</span><span class="p">,</span> <span class="n">recent_opt_job</span> <span class="o">=</span> <span class="s1">'opt_a0'</span><span class="p">,</span> <span class="kc">None</span>
