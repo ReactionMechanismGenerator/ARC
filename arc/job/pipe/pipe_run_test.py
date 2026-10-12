@@ -312,6 +312,26 @@ class TestPipeRunEnvPreamble(unittest.TestCase):
         self.assertIn('module load openbabel/3.1', content)
 
 
+    def test_local_scratch_follows_pipe_root_under_calcs(self):
+        """Local runs scratch under scratch_base using pipe_root relative to <project>/calcs."""
+        run = self._make_run('local')
+        with mock.patch.dict('arc.job.pipe.pipe_run.pipe_settings', {'scratch_base': '/scratch'}):
+            preamble = run._build_env_preamble()
+        rel_root = os.path.relpath(run.pipe_root, os.path.join(self.tmpdir, 'calcs'))
+        self.assertIn(f'export TMPDIR="/scratch/{rel_root}/$WORKER_ID"', preamble)
+
+    def test_local_scratch_falls_back_to_run_id_when_project_moved(self):
+        """A pipe_root outside the recorded project directory scratches under run_id, never a '..' path."""
+        run = self._make_run('local')
+        moved = tempfile.mkdtemp(prefix='pipe_env_moved_')
+        self.addCleanup(shutil.rmtree, moved, ignore_errors=True)
+        run.project_directory = moved
+        with mock.patch.dict('arc.job.pipe.pipe_run.pipe_settings', {'scratch_base': '/scratch'}):
+            preamble = run._build_env_preamble()
+        self.assertIn('export TMPDIR="/scratch/env_test/$WORKER_ID"', preamble)
+        self.assertNotIn('..', preamble)
+
+
 class TestPipeRunReconcile(unittest.TestCase):
 
     def setUp(self):
