@@ -796,6 +796,9 @@ class LinearAdapter(JobAdapter):
     derivation (it is only consulted by the degraded fallback paths), and the adapter logs a
     warning when it encounters one. To request guesses for one specific reactants-to-products
     correspondence, pass it via the ``atom_map`` argument, which overrides the derived map.
+    A requested map for which no guess survives validation is reported: it is appended to
+    ``self.atom_maps_without_guesses``, recorded on the reaction as an unsuccessful ``TSGuess``,
+    and logged as a warning.
 
     Args:
         project (str): The project's name. Used for setting the remote path.
@@ -896,6 +899,8 @@ class LinearAdapter(JobAdapter):
         self.job_adapter = 'linear'
         # Explicitly requested atom map(s); ``None`` means "derive a map per reaction path".
         self.forced_atom_maps = normalize_atom_maps(atom_map)
+        # Requested atom maps for which no TS guess survived, in the order they were processed.
+        self.atom_maps_without_guesses: list[list[int]] = list()
         self.command = None
         self.execution_type = 'incore'  # incore-only (no server); ignore any execution_type the scheduler passes
 
@@ -1029,6 +1034,8 @@ class LinearAdapter(JobAdapter):
             # (e.g., a heavy-backbone atom map or a wider-family-set product_dicts)
             # for intra-call communication between strategies; these must not
             # survive this job (the scheduler persists the reaction right after).
+            # Only the maps this reaction reports empty may count towards its own summary line.
+            empty_maps_before_rxn = len(self.atom_maps_without_guesses)
             atom_map_snapshot = rxn._atom_map
             family_snapshot = rxn._family
             family_own_reverse_snapshot = rxn._family_own_reverse
@@ -1040,7 +1047,6 @@ class LinearAdapter(JobAdapter):
                                                               multiplicity=rxn.multiplicity,
                                                               )
                 weights = get_weight_grid(rxn)
-                all_xyzs_so_far: list[dict] = []
                 # Each requested atom map (or a single None, meaning "derive a map per
                 # reaction path") gets its own pass over the weight grid.
                 forced_atom_maps = self.get_forced_atom_maps(rxn)
@@ -1050,6 +1056,14 @@ class LinearAdapter(JobAdapter):
                         # the degraded fallback paths honor the requested correspondence too.
                         rxn._atom_map = list(forced_atom_map)
                     map_suffix = f', map={map_i}' if len(forced_atom_maps) > 1 else ''
+                    map_t0 = datetime.datetime.now()
+                    # Deduplication is per map rather than shared across maps: a geometry another map
+                    # already produced must still reach the loop below, where it is recognized as a
+                    # duplicate of an existing guess. Suppressing it inside interpolate() instead would
+                    # make a map that legitimately reproduces a known TS indistinguishable from one that
+                    # produced nothing at all.
+                    all_xyzs_so_far: list[dict] = []
+                    map_produced_geometry = False
                     # Per-map memo: atom maps and the wider-family-set scan
                     # outcome are weight-invariant, so compute them once per map
                     # instead of once per weight iteration.
@@ -1066,8 +1080,16 @@ class LinearAdapter(JobAdapter):
                         for xyz_i, xyz in enumerate(xyzs):
                             if colliding_atoms(xyz):
                                 continue
+                            # A valid geometry, whether or not it survives deduplication below.
+                            map_produced_geometry = True
                             unique = True
                             for other_tsg in rxn.ts_species.ts_guesses:
+                                if other_tsg.initial_xyz is None:
+                                    # An unsuccessful guess (a requested atom map that produced nothing,
+                                    # recorded below) carries no coordinates, and almost_equal_coords()
+                                    # raises on a non-dict. Without this the first empty map would abort
+                                    # the whole reaction and take every later map's guesses with it.
+                                    continue
                                 if almost_equal_coords(xyz, other_tsg.initial_xyz):
                                     if 'linear' not in other_tsg.method.lower():
                                         other_tsg.method += f' and Linear (w={w:.2f}, {xyz_i}{map_suffix})'
@@ -1093,6 +1115,29 @@ class LinearAdapter(JobAdapter):
                                          comment=f'Linear w={w:.2f}, {xyz_i}{map_suffix}, family: {rxn.family}',
                                          )
 
+                    if forced_atom_map is not None and not map_produced_geometry:
+                        # An explicitly requested map that yields nothing is a distinct outcome from a
+                        # derived map that happened not to work: the caller asked for this specific
+                        # correspondence and must be able to tell that it came back empty. A map whose
+                        # geometries merely duplicate another map's is not this case - it did describe a
+                        # reachable TS - so it is judged on geometries produced, not guesses appended. Record it
+                        # both on the reaction (an unsuccessful TSGuess, which is persisted) and on the
+                        # adapter, so neither a human reading the log nor a caller iterating over maps
+                        # has to infer it from a guess count.
+                        self.atom_maps_without_guesses.append(list(forced_atom_map))
+                        rxn.ts_species.append_ts_guess(TSGuess(method=f'Linear (map={map_i})',
+                                                              method_index=map_i,
+                                                              t0=map_t0,
+                                                              execution_time=datetime.datetime.now() - map_t0,
+                                                              success=False,
+                                                              family=rxn.family,
+                                                              ))
+                        logger.warning(f'The linear TS search adapter generated no TS guess for the requested '
+                                       f'atom map {forced_atom_map} of {rxn.label}: every guess built for this '
+                                       f'correspondence was discarded by the geometry validators. Run with a DEBUG '
+                                       f'log level for the per-strategy rejection reasons. Another atom map '
+                                       f'describing the same reaction center may still produce a guess.')
+
             except Exception as e:
                 logger.error(f'Linear TS adapter failed for {rxn.label}: {e}', exc_info=True)
                 continue
@@ -1106,10 +1151,15 @@ class LinearAdapter(JobAdapter):
 
             if len(self.reactions) < 5:
                 successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'linear' in tsg.method.lower()])
+                requested = len(self.forced_atom_maps) if self.forced_atom_maps is not None else 0
+                # Only this reaction's empty maps: the attribute accumulates over every reaction of the
+                # job, and counting another reaction's entries here produced summaries such as "-1 of 1".
+                empty = len(self.atom_maps_without_guesses) - empty_maps_before_rxn
+                suffix = f' ({requested - empty} of {requested} requested atom maps)' if requested else ''
                 if successes:
-                    logger.info(f'Linear successfully found {successes} TS guesses for {rxn.label}.')
+                    logger.info(f'Linear successfully found {successes} TS guesses for {rxn.label}{suffix}.')
                 else:
-                    logger.info(f'Linear did not find any successful TS guesses for {rxn.label}.')
+                    logger.info(f'Linear did not find any successful TS guesses for {rxn.label}{suffix}.')
         self.final_time = datetime.datetime.now()
 
     def execute_queue(self):
