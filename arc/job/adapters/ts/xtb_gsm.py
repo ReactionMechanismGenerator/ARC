@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from mako.template import Template
 
-from arc.common import ARC_PATH, get_logger, safe_copy_file
+from arc.common import ARC_PATH, get_cluster_soft_key, get_logger, safe_copy_file
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
@@ -287,7 +287,7 @@ class xTBGSMAdapter(JobAdapter):
             self.write_submit_script()
             self._write_queue_gsm_wrapper()
             self.files_to_upload.append(self.get_file_property_dictionary(
-                file_name=submit_filenames[servers[self.server]['cluster_soft']]))
+                file_name=submit_filenames[get_cluster_soft_key(servers[self.server]['cluster_soft'], submit_filenames, 'submit_filenames')]))
             # 1.1 initial0000.xyz
             self.files_to_upload.append(self.get_file_property_dictionary(
                 file_name='initial0000.xyz',

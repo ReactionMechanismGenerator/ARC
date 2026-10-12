@@ -10,6 +10,8 @@ import pandas as pd
 import re
 
 from arc.common import (check_torsion_change,
+                        get_canonical_cluster_soft,
+                        get_cluster_soft_key,
                         convert_to_hours,
                         estimate_orca_mem_cpu_requirement,
                         get_logger,
@@ -1316,7 +1318,7 @@ def trsh_job_queue(server: str,
     """
 
     server_queues = servers[server].get('queues', dict())
-    cluster_soft = servers[server].get('cluster_soft','Undefined')
+    cluster_soft = get_canonical_cluster_soft(server, servers)
     excluded_queues = servers[server].get('excluded_queues', list())
 
     # Check if there are any available queues in server_queues that hasn't been tried yet
@@ -1471,13 +1473,14 @@ def trsh_job_on_server(server: str,
         - Whether to re-run the job, `True` to rerun.
     """
     server_nodes = server_nodes if server_nodes is not None else list()
-    cluster_soft = servers[server]['cluster_soft']
+    raw_cluster_soft = servers[server]['cluster_soft']
+    cluster_soft = get_canonical_cluster_soft(server, servers)
     if job_server_status != 'done':
         logger.error(f'Job {job_name} has server status "{job_server_status}" on {server}.')
 
     # delete current server run
     if server == 'local':
-        cmd = delete_command[cluster_soft] + ' ' + str(job_id)
+        cmd = delete_command[get_cluster_soft_key(raw_cluster_soft, delete_command, 'delete_command')] + ' ' + str(job_id)
         execute_command(cmd)
         return None, True
     else:
@@ -1499,7 +1502,7 @@ def trsh_job_on_server(server: str,
         return None, False
 
     # modify the submit file
-    remote_submit_file = os.path.join(remote_path, submit_filenames[cluster_soft])
+    remote_submit_file = os.path.join(remote_path, submit_filenames[get_cluster_soft_key(raw_cluster_soft, submit_filenames, 'submit_filenames')])
     with borrow_ssh_client(server) as ssh:
         content = ssh.read_remote_file(remote_file_path=remote_submit_file)
     if cluster_soft.lower() == 'oge':
@@ -1524,7 +1527,7 @@ def trsh_job_on_server(server: str,
     # resubmit
     with borrow_ssh_client(server) as ssh:
         ssh.upload_file(remote_file_path=os.path.join(remote_path,
-                        submit_filenames[cluster_soft]), file_string=content)
+                        submit_filenames[get_cluster_soft_key(raw_cluster_soft, submit_filenames, 'submit_filenames')]), file_string=content)
     return node, True
 
 

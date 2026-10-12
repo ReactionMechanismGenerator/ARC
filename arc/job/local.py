@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import time
 
-from arc.common import get_logger
+from arc.common import canonicalize_cluster_soft_value, get_canonical_cluster_soft, get_cluster_soft_key, get_logger
 from arc.exceptions import SettingsError
 from arc.imports import settings
 from arc.job.ssh import check_job_status_in_stdout
@@ -151,16 +151,18 @@ def check_job_status(job_id: int) -> str:
         3270.0 P 10 28161 a2728 23
     """
     server = 'local'
-    cmd = check_status_command[servers[server]['cluster_soft']]
+    cmd = check_status_command[get_cluster_soft_key(servers['local']['cluster_soft'], check_status_command, 'check_status_command', "Server 'local'")]
     stdout = execute_command(cmd)[0]
-    return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=server)
+    return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=server,
+                                      cluster_soft=get_canonical_cluster_soft(server, servers))
 
 
 def delete_job(job_id: int | str):
     """
     Deletes a running job.
     """
-    cmd = f"{delete_command[servers['local']['cluster_soft']]} {job_id}"
+    delete_key = get_cluster_soft_key(servers['local']['cluster_soft'], delete_command, 'delete_command', "Server 'local'")
+    cmd = f'{delete_command[delete_key]} {job_id}'
     success = not bool(execute_command(cmd, no_fail=True)[1])
     if not success:
         logger.warning(f'Detected possible error when trying to delete job {job_id}. Checking to see if the job is '
@@ -181,16 +183,14 @@ def check_running_jobs_ids() -> list[str]:
     Returns:
         list[str]: List of job IDs.
     """
-    cluster_soft = servers['local']['cluster_soft'].lower()
-    if cluster_soft == 'local':
+    canonical_cluster_soft = get_canonical_cluster_soft('local', servers)
+    if canonical_cluster_soft == 'local':
         # This machine has no queueing system, so there are no queue job IDs to report.
         # Jobs here run in-core (e.g., PySCF) or as a local pipe worker pool.
         return list()
-    if cluster_soft not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
-        raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
-    cmd = check_status_command[servers['local']['cluster_soft']]
+    cmd = check_status_command[get_cluster_soft_key(servers['local']['cluster_soft'], check_status_command, 'check_status_command', "Server 'local'")]
     stdout = execute_command(cmd)[0]
-    running_job_ids = parse_running_jobs_ids(stdout, cluster_soft=cluster_soft)
+    running_job_ids = parse_running_jobs_ids(stdout, cluster_soft=canonical_cluster_soft.lower())
     return running_job_ids
 
 
@@ -207,7 +207,9 @@ def parse_running_jobs_ids(stdout: list[str],
     Returns:
         List(str): List of job IDs.
     """
-    cluster_soft = cluster_soft or servers['local']['cluster_soft'].lower()
+    cluster_soft = canonicalize_cluster_soft_value(cluster_soft or servers['local']['cluster_soft']).lower()
+    if cluster_soft == 'local':
+        return []
     i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
     split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': '.'}
     running_job_ids = list()
@@ -240,10 +242,14 @@ def submit_job(path: str,
     Returns:
         tuple[str | None, str | None]: job_status, job_id
     """
-    cluster_soft = cluster_soft or servers['local']['cluster_soft']
+    raw_cluster_soft = cluster_soft if cluster_soft is not None else servers['local']['cluster_soft']
+    cluster_soft = canonicalize_cluster_soft_value(cluster_soft, "submit_job's 'cluster_soft' argument") \
+        if cluster_soft is not None else get_canonical_cluster_soft('local', servers)
+    if cluster_soft == 'local':
+        raise ValueError("Server 'local' has no queueing system; submit_job is not applicable.")
     job_status, job_id = '', ''
-    submit_cmd = submit_cmd or submit_command[cluster_soft]
-    submit_filename = submit_filename or submit_filenames[cluster_soft]
+    submit_cmd = submit_cmd or submit_command[get_cluster_soft_key(raw_cluster_soft, submit_command, 'submit_command')]
+    submit_filename = submit_filename or submit_filenames[get_cluster_soft_key(raw_cluster_soft, submit_filenames, 'submit_filenames')]
     cmd = f'cd "{path}"; {submit_cmd} {submit_filename}'
     stdout, stderr = execute_command(cmd)
     if not len(stdout):
@@ -300,8 +306,7 @@ def _determine_job_id(stdout: list[str],
         str: The determined job ID.
     """
     job_id = ''
-    cluster_soft = cluster_soft or servers['local']['cluster_soft']
-    cluster_soft = cluster_soft.lower() if cluster_soft is not None else None
+    cluster_soft = canonicalize_cluster_soft_value(cluster_soft or servers['local']['cluster_soft']).lower()
     if cluster_soft in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
         job_id = stdout[0].split()[2]
     elif cluster_soft == 'slurm' and 'submitted' in stdout[0].lower():
@@ -415,13 +420,16 @@ def delete_all_local_arc_jobs(jobs: list[str | int] | None = None) -> None:
     server = 'local'
     if server in servers:
         print('\nDeleting all ARC jobs from local server...')
-        cmd = check_status_command[servers[server]['cluster_soft']]
+        canonical_cluster_soft = get_canonical_cluster_soft(server, servers)
+        if canonical_cluster_soft == 'local':
+            return
+        cmd = check_status_command[get_cluster_soft_key(servers['local']['cluster_soft'], check_status_command, 'check_status_command', "Server 'local'")]
         stdout = execute_command(cmd, no_fail=True)[0]
         for status_line in stdout:
             s = re.search(r' a\d+', status_line)
             if s is not None:
                 job_name = s.group()[1:]
-                cluster_soft = servers[server]['cluster_soft'].lower()
+                cluster_soft = canonical_cluster_soft.lower()
                 server_job_id = None
                 if jobs is None or job_name in jobs:
                     if cluster_soft == 'slurm':
@@ -430,7 +438,7 @@ def delete_all_local_arc_jobs(jobs: list[str | int] | None = None) -> None:
                     elif cluster_soft == 'pbs':
                         server_job_id = status_line.split()[0]
                         delete_job(server_job_id)
-                    elif cluster_soft in ['oge', 'sge']:
+                    elif cluster_soft == 'oge':
                         delete_job(job_name)
                     elif cluster_soft == 'htcondor':
                         server_job_id = status_line.split()[0].split('.')[0]
