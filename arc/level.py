@@ -495,3 +495,109 @@ def assign_frequency_scale_factor(level: str | Level) -> float | None:
     if entry is not None:
         return entry['factor'] if isinstance(entry, dict) else entry
     return None
+
+
+RECORDED_LEVEL_STRIPPED_KEYS = ('repr', 'compatible_ess', 'software', 'solvation_scheme_level')
+
+
+def level_as_plain_dict(level: 'Level | dict | None', strip: tuple = ()) -> dict | None:
+    """
+    Convert a level to a plain, independent dictionary of plain types.
+
+    The result is a deep copy, so it shares no mutable value (such as ``args``) with the level it came from,
+    and a YAML dump of it contains no anchors or aliases. A nested ``solvation_scheme_level`` is converted
+    recursively, unless ``'solvation_scheme_level'`` is in ``strip``, in which case it is dropped.
+
+    Args:
+        level (Level | dict, optional): A Level object, a stored level dictionary, or ``None``.
+        strip (tuple, optional): Keys to remove at every nesting depth, e.g. ``('repr', 'compatible_ess')``.
+
+    Returns:
+        dict | None: The plain dictionary, or ``None`` if ``level`` is ``None``, empty, or not a level.
+    """
+    if hasattr(level, 'as_dict'):
+        level = level.as_dict()
+    if not isinstance(level, dict) or not level:
+        return None
+    level_dict = copy.deepcopy(level)
+    for key in strip:
+        level_dict.pop(key, None)
+    if level_dict.get('solvation_scheme_level') is not None:
+        level_dict['solvation_scheme_level'] = level_as_plain_dict(level_dict['solvation_scheme_level'], strip=strip)
+    return level_dict
+
+
+def adaptive_levels_as_list(adaptive_levels: dict | None, strip: tuple = ()) -> list | None:
+    """
+    Convert the processed adaptive levels to the list form ARC writes to restart.yml and output.yml.
+
+    Each entry is ``{'atom_range': [min, max], 'levels': {'<job types>': level dict}}``, the job types of one
+    level joined by a space.
+
+    Args:
+        adaptive_levels (dict, optional): The processed adaptive levels, keyed by atom-range tuples.
+        strip (tuple, optional): Keys to remove from every level dict, see ``level_as_plain_dict``.
+
+    Returns:
+        list | None: The entries, or ``None`` if there are no adaptive levels.
+    """
+    if not adaptive_levels:
+        return None
+    return [{'atom_range': [atom_range[0], atom_range[1]],
+             'levels': {' '.join(job_types): level_as_plain_dict(level, strip=strip)
+                        for job_types, level in levels_dict.items()}}
+            for atom_range, levels_dict in adaptive_levels.items()]
+
+
+def set_recorded_level(levels: dict, job_key: str, level: 'Level | dict | None') -> None:
+    """
+    Record the level of the job whose log is exported under ``job_key`` in a per-species ``levels`` dictionary
+    (``Scheduler.output[label]['levels']``). The nested ``solvation_scheme_level`` is not recorded, since the
+    energies of the scheme's extra jobs are not the exported ones. A ``None`` or empty level removes the record.
+
+    Args:
+        levels (dict): The per-species levels dictionary, modified in place.
+        job_key (str): 'opt', 'freq', 'sp', 'composite', or 'irc'.
+        level (Level | dict, optional): The level of the job.
+    """
+    level_dict = level_as_plain_dict(level, strip=('solvation_scheme_level',))
+    if level_dict:
+        levels[job_key] = level_dict
+    else:
+        levels.pop(job_key, None)
+
+
+def set_recorded_irc_level(levels: dict, level: 'Level | dict | None', n_irc_logs: int) -> None:
+    """
+    Record the level of the IRC jobs of a TS. Forward and reverse logs are exported together under one key:
+    the first log records its level, and a second log at a different level makes the level of the pair
+    undeterminable, so the record is removed. Levels are compared without their ``repr``, ``compatible_ess``,
+    ``software`` and ``solvation_scheme_level``, the fields ``output.yml`` does not state for a job.
+
+    Args:
+        levels (dict): The per-species levels dictionary, modified in place.
+        level (Level | dict, optional): The level of the IRC job whose log was just recorded.
+        n_irc_logs (int): The number of IRC logs recorded, including the one just added.
+    """
+    if n_irc_logs <= 1:
+        set_recorded_level(levels, 'irc', level)
+    elif level_as_plain_dict(levels.get('irc'), strip=RECORDED_LEVEL_STRIPPED_KEYS) \
+            != level_as_plain_dict(level, strip=RECORDED_LEVEL_STRIPPED_KEYS):
+        levels.pop('irc', None)
+
+
+def set_recorded_irc_log_level(paths: dict, level: 'Level | dict | None') -> None:
+    """
+    Record the level of the IRC job whose log was just appended to ``paths['irc']``, in ``paths['irc_levels']``,
+    which stays in lockstep with ``paths['irc']`` (an entry is ``None`` where the level is not known).
+    The nested ``solvation_scheme_level`` is not recorded.
+
+    Args:
+        paths (dict): The per-species paths dictionary (``Scheduler.output[label]['paths']``), modified in place.
+        level (Level | dict, optional): The level of the IRC job whose log was just recorded.
+    """
+    irc_levels = paths.setdefault('irc_levels', list())
+    n_before = max(len(paths.get('irc') or list()) - 1, 0)
+    del irc_levels[n_before:]
+    irc_levels.extend([None] * (n_before - len(irc_levels)))
+    irc_levels.append(level_as_plain_dict(level, strip=('solvation_scheme_level',)))

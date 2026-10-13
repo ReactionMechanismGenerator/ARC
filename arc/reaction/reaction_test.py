@@ -376,6 +376,117 @@ class TestARCReaction(unittest.TestCase):
         self.assertNotIn(self.rxn8.r_species[0].mol.atoms[0].id, [atom.id for atom in rxn_copy.r_species[0].mol.atoms
                                                                   + rxn_copy.p_species[0].mol.atoms])
 
+    @staticmethod
+    def _make_h2o_isomorphic_rxn():
+        h2o_xyz_1 = """O      -0.00032832    0.39781490    0.00000000
+                       H      -0.76330345   -0.19953755    0.00000000
+                       H       0.76363177   -0.19827735    0.00000000"""
+        h2o_xyz_2 = """H      -0.76330345   -0.19953755    0.00000000
+                       H       0.76363177   -0.19827735    0.00000000
+                       O      -0.00032832    0.39781490    0.00000000"""
+        return ARCReaction(reactants=['H2O'], products=['H2O'],
+                           r_species=[ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_1)],
+                           p_species=[ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_2)])
+
+    def test_atom_map_source_is_inferred_when_arc_computes_the_map(self):
+        """Test that a computed atom map is inferred with its method, and that reading them never computes one."""
+        rxn = self._make_h2o_isomorphic_rxn()
+        with mock.patch('arc.reaction.reaction.map_reaction') as map_reaction:
+            self.assertIsNone(rxn.atom_map_source)
+            self.assertIsNone(rxn.atom_map_method)
+            self.assertIsNone(rxn._atom_map)
+            map_reaction.assert_not_called()
+        self.assertEqual(rxn.atom_map, [2, 0, 1])
+        self.assertEqual(rxn.atom_map_source, 'inferred')
+        self.assertTrue(rxn.atom_map_method.startswith('arc.mapping.driver.map_reaction'))
+        self.assertEqual(rxn.as_dict()['atom_map_source'], 'inferred')
+        self.assertEqual(rxn.as_dict()['atom_map_method'], rxn.atom_map_method)
+
+    def test_atom_map_source_is_declared_only_when_declared(self):
+        """Test that only an explicit declaration makes a map declared, and that an unstated origin stays unknown."""
+        rxn = self._make_h2o_isomorphic_rxn()
+        rxn.atom_map = [2, 0, 1]
+        self.assertIsNone(rxn.atom_map_source)
+        self.assertNotIn('atom_map_source', rxn.as_dict())
+        rxn._set_atom_map([2, 0, 1], 'declared')
+        self.assertEqual(rxn.atom_map_source, 'declared')
+        self.assertIsNone(rxn.atom_map_method)
+        self.assertEqual(rxn.as_dict()['atom_map_source'], 'declared')
+        reaction_dict = self._make_h2o_isomorphic_rxn().as_dict()
+        reaction_dict['atom_map'] = [2, 0, 1]
+        self.assertIsNone(ARCReaction(reaction_dict=reaction_dict).atom_map_source)
+        for source, expected in (('declared', 'declared'), ('inferred', 'inferred'), ('guessed', None)):
+            with self.subTest(source=source):
+                reaction_dict['atom_map_source'] = source
+                self.assertEqual(ARCReaction(reaction_dict=reaction_dict).atom_map_source, expected)
+        rxn.atom_map = None
+        self.assertIsNone(rxn.atom_map_source)
+        self.assertNotIn('atom_map_source', rxn.as_dict())
+
+    def test_atom_map_source_survives_a_restart_round_trip(self):
+        """Test that a restart keeps an inferred map inferred, with its method, and a declared map declared."""
+        inferred = self._make_h2o_isomorphic_rxn()
+        self.assertEqual(inferred.atom_map, [2, 0, 1])
+        declared = self._make_h2o_isomorphic_rxn()
+        declared._set_atom_map([2, 0, 1], 'declared')
+        for rxn, source in ((inferred, 'inferred'), (declared, 'declared')):
+            with self.subTest(source=source):
+                with mock.patch('arc.reaction.reaction.map_reaction') as map_reaction:
+                    restored = ARCReaction(reaction_dict=rxn.as_dict())
+                    self.assertEqual(restored.atom_map_source, source)
+                    self.assertEqual(restored.atom_map_method, rxn.atom_map_method)
+                    self.assertEqual(restored._atom_map, [2, 0, 1])
+                    self.assertEqual(restored.copy().atom_map_source, source)
+                    map_reaction.assert_not_called()
+
+    def test_atom_map_source_is_dropped_when_the_map_is_reset(self):
+        """Test that a flipped reaction does not carry the source of a map it does not carry."""
+        rxn = self._make_h2o_isomorphic_rxn()
+        self.assertEqual(rxn.atom_map, [2, 0, 1])
+        flipped = rxn.flip_reaction()
+        self.assertIsNone(flipped._atom_map)
+        self.assertIsNone(flipped.atom_map_source)
+        self.assertIsNone(flipped.atom_map_method)
+        self.assertNotIn('atom_map_source', flipped.as_dict())
+
+    def test_atom_map_state_round_trips_without_computing(self):
+        """Test that the atom map state is read and restored as a unit."""
+        rxn = self._make_h2o_isomorphic_rxn()
+        rxn._set_atom_map([2, 0, 1], 'inferred', 'method')
+        state = rxn._get_atom_map_state()
+        rxn._set_atom_map([0, 1, 2], None)
+        self.assertEqual(rxn._get_atom_map_state(), ([0, 1, 2], None, None))
+        rxn._restore_atom_map_state(state)
+        self.assertEqual(rxn._get_atom_map_state(), ([2, 0, 1], 'inferred', 'method'))
+        rxn._set_atom_map(None, 'inferred', 'method')
+        self.assertEqual(rxn._get_atom_map_state(), (None, None, None))
+
+    def test_atom_map_of_a_repeated_species_counts_each_occurrence(self):
+        """Test that the atom map of CH3 + CH3 <=> C2H6 spans the 8 atoms of the expanded reactants."""
+        ch3_xyz = """C   0.00000000    0.00000000    0.00000000
+                     H   1.07900000    0.00000000    0.00000000
+                     H  -0.53950000    0.93443000    0.00000000
+                     H  -0.53950000   -0.93443000    0.00000000"""
+        c2h6_xyz = """C   0.00000000    0.00000000    0.00000000
+                      H  -0.36000000    1.02800000    0.00000000
+                      H  -0.36000000   -0.51400000    0.89000000
+                      H  -0.36000000   -0.51400000   -0.89000000
+                      C   1.54000000    0.00000000    0.00000000
+                      H   1.90000000    1.02800000    0.00000000
+                      H   1.90000000   -0.51400000    0.89000000
+                      H   1.90000000   -0.51400000   -0.89000000"""
+        rxn = ARCReaction(label='CH3 + CH3 <=> C2H6',
+                          r_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=ch3_xyz)],
+                          p_species=[ARCSpecies(label='C2H6', smiles='CC', xyz=c2h6_xyz)])
+        reactant_xyz = rxn.get_reactants_xyz(return_format='dict')
+        product_symbols = ('C', 'H', 'H', 'H', 'C', 'H', 'H', 'H')
+        self.assertEqual(len(reactant_xyz['symbols']), 8)
+        self.assertEqual(sorted(rxn.atom_map), list(range(8)))
+        self.assertEqual(rxn.atom_map_source, 'inferred')
+        for i, j in enumerate(rxn.atom_map):
+            self.assertEqual(reactant_xyz['symbols'][i], product_symbols[j])
+        self.assertEqual(sorted([rxn.atom_map[0], rxn.atom_map[4]]), [0, 4])
+
     def test_flip_reaction(self):
         """Test the flip_reaction() method."""
         flipped_rxn = self.rxn1.flip_reaction()
@@ -1399,6 +1510,36 @@ H       1.12853146   -0.86793870    0.06973060"""
         self.assertEqual(self.rxn9.get_rxn_smiles(), "NCO[O]>>C=N.[O]O")
         self.assertEqual(self.rxn10.get_rxn_smiles(), "N=O.[O-][N+]=O>>[O-][NH+]=O.[N]=O")
         self.assertEqual(self.rxn11.get_rxn_smiles(), "C[CH]C>>[CH2]CC")
+
+    def test_copy_e0_values_copies_the_correction_switches_of_the_run_that_wrote_them(self):
+        """Test that copy_e0_values() takes the E0 of a TS or a well together with the atom and bond correction
+        switches of its Arkane run, and leaves a species that already has an E0 alone."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH2CHOH', smiles='C=CO')],
+                          p_species=[ARCSpecies(label='CH3CHO', smiles='CC=O')])
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True)
+        other = rxn.copy()
+        other.ts_species.e0, other.ts_species.e0_atom_corrections_applied = 50.0, True
+        other.ts_species.e0_bond_corrections_applied = False
+        other.ts_species.e0_aec_yml_sha256 = 'a' * 64
+        other.r_species[0].e0, other.r_species[0].e0_atom_corrections_applied = -10.0, False
+        other.r_species[0].e0_bond_corrections_applied = False
+        other.r_species[0].e0_aec_yml_sha256 = 'a' * 64
+        other.p_species[0].e0, other.p_species[0].e0_atom_corrections_applied = -20.0, True
+        other.p_species[0].e0_bond_corrections_applied = True
+        rxn.p_species[0].e0, rxn.p_species[0].e0_atom_corrections_applied = -30.0, True
+        rxn.p_species[0].e0_bond_corrections_applied = False
+        rxn.copy_e0_values(other)
+        self.assertEqual((rxn.ts_species.e0, rxn.ts_species.e0_atom_corrections_applied,
+                          rxn.ts_species.e0_bond_corrections_applied), (50.0, True, False))
+        self.assertEqual(rxn.ts_species.e0_aec_yml_sha256, 'a' * 64)
+        self.assertEqual((rxn.r_species[0].e0, rxn.r_species[0].e0_atom_corrections_applied,
+                          rxn.r_species[0].e0_bond_corrections_applied), (-10.0, False, False))
+        self.assertEqual(rxn.r_species[0].e0_aec_yml_sha256, 'a' * 64)
+        self.assertIsNone(rxn.p_species[0].e0_aec_yml_sha256)
+        self.assertEqual((rxn.p_species[0].e0, rxn.p_species[0].e0_atom_corrections_applied,
+                          rxn.p_species[0].e0_bond_corrections_applied), (-30.0, True, False))
+        rxn.copy_e0_values(None)
+        self.assertEqual((rxn.ts_species.e0, rxn.r_species[0].e0, rxn.p_species[0].e0), (50.0, -10.0, -30.0))
 
     def test_atom_map_property(self):
         """Test that the atom map is saved in the reaction object, and that it is quick to restore it."""

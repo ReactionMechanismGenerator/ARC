@@ -10,6 +10,7 @@ import os
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 
 from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
@@ -830,6 +831,77 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertIsNone(spc.get_number_of_electrons())
         self.assertIsNone(spc.cheap_conformer)
         self.assertEqual(spc.conformers, list())
+
+    def test_the_nmd_record_survives_a_restart_and_is_reset_with_the_ts_checks(self):
+        """Test that a TS's nmd_record is saved, restored, absent from an old dict, and cleared on a TS switch."""
+        ts = ARCSpecies(label='TS0', is_ts=True, smiles='[H]')
+        self.assertEqual(ts.nmd_record, dict())
+        self.assertNotIn('nmd_record', ts.as_dict())
+        ts.ts_checks['NMD'] = True
+        record = {'mode_index': 1, 'n_modes': 12, 'freq_log_path': '/runs/TS0/freq_a1/output.out', 'forced': True}
+        ts.nmd_record = dict(record)
+        ts_dict = ts.as_dict()
+        self.assertEqual(ts_dict['nmd_record'], record)
+        self.assertEqual(ARCSpecies(species_dict=ts_dict).nmd_record, record)
+        ts_dict['nmd_record'] = None
+        self.assertEqual(ARCSpecies(species_dict=ts_dict).nmd_record, dict())
+        del ts_dict['nmd_record']
+        self.assertEqual(ARCSpecies(species_dict=ts_dict).nmd_record, dict())
+        ts.populate_ts_checks()
+        self.assertEqual(ts.nmd_record, dict())
+
+    def test_the_irc_participant_mapping_survives_a_restart_and_is_reset_with_the_ts_checks(self):
+        """Test that a TS's irc_participant_mapping is saved, restored, absent from an old dict, and cleared."""
+        ts = ARCSpecies(label='TS0', is_ts=True, smiles='[H]')
+        mapping = {'reactants': {'endpoint': 1, 'endpoint_label': 'IRC_TS0_1',
+                                 'participants': [{'label': 'H', 'position': 1, 'occurrence': 1,
+                                                   'atom_indices': [0]}]},
+                   'products': {'endpoint': 2, 'endpoint_label': 'IRC_TS0_2',
+                                'participants': [{'label': 'H', 'position': 1, 'occurrence': 1,
+                                                  'atom_indices': [0]}]}}
+        self.assertIsNone(ts.irc_participant_mapping)
+        self.assertNotIn('irc_participant_mapping', ts.as_dict())
+        ts.ts_checks['IRC'] = True
+        ts.irc_participant_mapping = mapping
+        ts_dict = ts.as_dict()
+        self.assertEqual(ts_dict['irc_participant_mapping'], mapping)
+        self.assertEqual(ARCSpecies(species_dict=ts_dict).irc_participant_mapping, mapping)
+        ts_dict['irc_participant_mapping'] = 'garbage'
+        self.assertIsNone(ARCSpecies(species_dict=ts_dict).irc_participant_mapping)
+        del ts_dict['irc_participant_mapping']
+        self.assertIsNone(ARCSpecies(species_dict=ts_dict).irc_participant_mapping)
+        ts.populate_ts_checks()
+        self.assertIsNone(ts.irc_participant_mapping)
+
+    def test_the_ts_atom_map_and_its_reason_survive_a_restart_and_are_reset_with_the_ts_checks(self):
+        """Test that a TS's ts_atom_map and ts_atom_map_unavailable_reason are saved, restored, absent from an old
+        dict, ignored when malformed, and cleared."""
+        ts = ARCSpecies(label='TS0', is_ts=True, smiles='[H]')
+        ts_atom_map = {'ts_label': 'TS0', 'reactants': [1, 0], 'products': [1, 0],
+                       'method': 'irc_endpoint_cgr_isomorphism', 'ts_atom_order_follows_reactants': False}
+        self.assertIsNone(ts.ts_atom_map)
+        self.assertIsNone(ts.ts_atom_map_unavailable_reason)
+        self.assertNotIn('ts_atom_map', ts.as_dict())
+        self.assertNotIn('ts_atom_map_unavailable_reason', ts.as_dict())
+        ts.ts_checks['IRC'] = True
+        ts.ts_atom_map = ts_atom_map
+        ts_dict = ts.as_dict()
+        self.assertEqual(ts_dict['ts_atom_map'], ts_atom_map)
+        self.assertEqual(ARCSpecies(species_dict=ts_dict).ts_atom_map, ts_atom_map)
+        ts_dict['ts_atom_map'] = 'garbage'
+        self.assertIsNone(ARCSpecies(species_dict=ts_dict).ts_atom_map)
+        del ts_dict['ts_atom_map']
+        self.assertIsNone(ARCSpecies(species_dict=ts_dict).ts_atom_map)
+        ts.ts_atom_map, ts.ts_atom_map_unavailable_reason = None, 'irc_start_geometry_differs'
+        ts_dict = ts.as_dict()
+        self.assertEqual(ts_dict['ts_atom_map_unavailable_reason'], 'irc_start_geometry_differs')
+        self.assertEqual(ARCSpecies(species_dict=ts_dict).ts_atom_map_unavailable_reason, 'irc_start_geometry_differs')
+        ts_dict['ts_atom_map_unavailable_reason'] = 7
+        self.assertIsNone(ARCSpecies(species_dict=ts_dict).ts_atom_map_unavailable_reason)
+        ts.ts_atom_map, ts.ts_atom_map_unavailable_reason = ts_atom_map, 'no_atom_map'
+        ts.populate_ts_checks()
+        self.assertIsNone(ts.ts_atom_map)
+        self.assertIsNone(ts.ts_atom_map_unavailable_reason)
 
     def test_as_dict(self):
         """Test Species.as_dict()"""
@@ -2823,6 +2895,10 @@ H       1.11582953    0.94384729   -0.10134685"""
         # No coordinate-less guess was added as a successful clusterable guess.
         self.assertTrue(all(tsg.get_xyz() is not None or not tsg.success for tsg in spc.ts_guesses))
         self.assertFalse(any(tsg.success and tsg.get_xyz() is None for tsg in spc.ts_guesses))
+        orca_neb_guesses = [tsg for tsg in spc.ts_guesses if tsg.method == 'orca_neb']
+        self.assertEqual(len(orca_neb_guesses), 1)
+        self.assertIs(orca_neb_guesses[0].success, False)
+        self.assertIsNone(orca_neb_guesses[0].get_xyz())
 
     def test_next_ts_guess_index_survives_clustering(self):
         """A TSGuess identity must never be reused after clustering shrank the ts_guesses list."""
@@ -3592,6 +3668,159 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         mol1.atoms[0].radical_electrons = 0
         with self.assertRaises(SpeciesError):
             spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
+
+
+class TestConformerProvenance(unittest.TestCase):
+    """Test the per-conformer level and energy-source records that stay in lockstep with ``conformers``."""
+
+    def test_force_field_conformers_are_recorded_as_never_optimized_force_field_energies(self):
+        """Test that generate_conformers() records null levels and the kcal/mol force-field kind"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        spc.generate_conformers(n_confs=3)
+        self.assertGreater(len(spc.conformers), 1)
+        self.assertEqual(spc.conformer_levels, [None] * len(spc.conformers))
+        self.assertEqual(spc.conformer_energy_sources,
+                         [{'kind': 'force_field_kcal_mol', 'level': None, 'force_field': 'MMFF94s (rdkit)'}]
+                         * len(spc.conformers))
+
+    def test_a_force_field_energy_in_an_unknown_unit_is_named_without_a_kind(self):
+        """Test that an energy that is not known to be kcal/mol records the force field but no kind"""
+        confs = [{'xyz': ARCSpecies(label='ethanol', smiles='CCO').get_xyz(), 'FF energy': 1.0,
+                  'force_field': 'UFF (openbabel)', 'force_field_unit': 'kJ/mol'}]
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        with unittest.mock.patch('arc.species.species.conformers.generate_conformers', return_value=confs):
+            spc.generate_conformers(n_confs=1)
+        self.assertEqual(spc.conformer_energy_sources, [{'kind': None, 'level': None,
+                                                         'force_field': 'UFF (openbabel)'}])
+
+    def test_placeholder_conformer_energies_have_no_recorded_source(self):
+        """Test that the cheat sheet, monoatomic and diatomic conformers, whose 0 is no force-field energy, have none"""
+        for label, smiles in (('H2', '[H][H]'), ('CH2', '[CH2]'), ('C2H3', '[CH]=C'), ('H', '[H]'), ('OH', '[OH]')):
+            with self.subTest(label=label):
+                spc = ARCSpecies(label=label, smiles=smiles)
+                spc.generate_conformers(n_confs=1)
+                self.assertEqual(len(spc.conformers), 1)
+                self.assertEqual(spc.conformer_energy_sources, [None])
+
+    def test_conformers_added_after_others_keep_the_lists_in_lockstep(self):
+        """Test that a second generation appends records for the appended conformers only"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        spc.generate_conformers(n_confs=2)
+        spc.record_conformer_geometry_level(0, Level(method='b3lyp', basis='6-31g'))
+        n_before = len(spc.conformers)
+        spc.generate_conformers(n_confs=2)
+        self.assertEqual(len(spc.conformer_levels), len(spc.conformers))
+        self.assertEqual(len(spc.conformer_energy_sources), len(spc.conformers))
+        self.assertEqual(spc.conformer_levels[0]['method'], 'b3lyp')
+        self.assertGreater(len(spc.conformers), n_before)
+        self.assertTrue(all(level is None for level in spc.conformer_levels[n_before:]))
+
+    def test_user_supplied_conformers_have_no_recorded_provenance(self):
+        """Test that xyz given by the user carry null levels and energies of unknown origin"""
+        xyz = ARCSpecies(label='ethanol', smiles='CCO').get_xyz()
+        spc = ARCSpecies(label='ethanol', smiles='CCO', xyz=[xyz, xyz])
+        self.assertEqual(len(spc.conformers), 2)
+        self.assertEqual(spc.conformer_levels, [None, None])
+        self.assertEqual(spc.conformer_energy_sources, [None, None])
+
+    def test_recording_is_ignored_for_an_index_without_a_conformer(self):
+        """Test that an out of range index changes nothing and does not raise"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        spc.generate_conformers(n_confs=2)
+        levels, sources = list(spc.conformer_levels), list(spc.conformer_energy_sources)
+        spc.record_conformer_geometry_level(len(spc.conformers), Level(method='b3lyp', basis='6-31g'))
+        spc.record_conformer_energy_source(len(spc.conformers), 'electronic_kj_mol')
+        self.assertEqual(spc.conformer_levels, levels)
+        self.assertEqual(spc.conformer_energy_sources, sources)
+
+    def test_sync_fits_the_lists_to_the_conformers(self):
+        """Test that sync_conformer_provenance() pads short lists with None and drops surplus entries"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        xyz = spc.get_xyz()
+        spc.conformers = [xyz, xyz, xyz]
+        spc.conformer_levels = [{'method': 'b3lyp'}]
+        spc.conformer_energy_sources = [None] * 5
+        spc.sync_conformer_provenance()
+        self.assertEqual(spc.conformer_levels, [{'method': 'b3lyp'}, None, None])
+        self.assertEqual(spc.conformer_energy_sources, [None, None, None])
+
+    def test_as_dict_round_trips_the_records_and_an_old_dict_loads_as_nulls(self):
+        """Test the restart round trip, and that a dict without the new keys gets null lists of the right length"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        spc.generate_conformers(n_confs=2)
+        spc.record_conformer_geometry_level(1, Level(method='b3lyp', basis='6-31g'))
+        spc.record_conformer_energy_source(1, 'electronic_kj_mol', Level(method='b3lyp', basis='6-31g'))
+        restored = ARCSpecies(species_dict=spc.as_dict())
+        self.assertEqual(restored.conformer_levels, spc.conformer_levels)
+        self.assertEqual(restored.conformer_energy_sources, spc.conformer_energy_sources)
+        old = spc.as_dict()
+        del old['conformer_levels']
+        del old['conformer_energy_sources']
+        self.assertEqual(ARCSpecies(species_dict=old).conformer_levels, [None] * len(spc.conformers))
+
+    def test_the_conformer_log_is_recorded_with_the_level_and_stays_in_lockstep(self):
+        """Test that a log is recorded beside the level, padded for old restarts, and dropped by a reset"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        spc.generate_conformers(n_confs=3)
+        self.assertEqual(spc.conformer_logs, [None] * len(spc.conformers))
+        spc.record_conformer_geometry_level(1, Level(method='b3lyp', basis='6-31g'),
+                                            log_path='/runs/conf_opt_1/output.out')
+        self.assertEqual(spc.conformer_logs[1], '/runs/conf_opt_1/output.out')
+        self.assertIsNone(spc.conformer_logs[0])
+        spc.record_conformer_geometry_level(0, None)
+        self.assertIsNone(spc.conformer_logs[0])
+        restored = ARCSpecies(species_dict=spc.as_dict())
+        self.assertEqual(restored.conformer_logs, spc.conformer_logs)
+        old = spc.as_dict()
+        del old['conformer_logs']
+        self.assertEqual(ARCSpecies(species_dict=old).conformer_logs, [None] * len(spc.conformers))
+        n_before = len(spc.conformers)
+        spc.generate_conformers(n_confs=2)
+        self.assertEqual(len(spc.conformer_logs), len(spc.conformers))
+        self.assertGreater(len(spc.conformers), n_before)
+        self.assertEqual(spc.conformer_logs[1], '/runs/conf_opt_1/output.out')
+        spc.reset_conformer_provenance()
+        self.assertEqual(spc.conformer_logs, [None] * len(spc.conformers))
+
+    def test_the_e0_switches_and_arkane_rotor_modes_round_trip_and_default_to_null(self):
+        """Test that the record of the Arkane run that wrote e0 survives a restart, and an old dict has none"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        self.assertIsNone(spc.e0_atom_corrections_applied)
+        self.assertIsNone(spc.e0_bond_corrections_applied)
+        self.assertIsNone(spc.arkane_rotor_modes)
+        self.assertNotIn('arkane_rotor_modes', spc.as_dict())
+        self.assertIsNone(spc.e0_aec_yml_sha256)
+        self.assertNotIn('e0_aec_yml_sha256', spc.as_dict())
+        spc.e0, spc.e0_atom_corrections_applied, spc.e0_bond_corrections_applied = -100.0, True, False
+        spc.e0_aec_yml_sha256 = 'a' * 64
+        spc.arkane_rotor_modes = ['HinderedRotor', 'FreeRotor']
+        restored = ARCSpecies(species_dict=spc.as_dict())
+        self.assertEqual(restored.e0_aec_yml_sha256, 'a' * 64)
+        self.assertIs(restored.e0_atom_corrections_applied, True)
+        self.assertIs(restored.e0_bond_corrections_applied, False)
+        self.assertEqual(restored.arkane_rotor_modes, ['HinderedRotor', 'FreeRotor'])
+        spc.arkane_rotor_modes = []
+        self.assertEqual(ARCSpecies(species_dict=spc.as_dict()).arkane_rotor_modes, [])
+
+    def test_copy_e0_from_takes_the_switches_with_the_value_and_only_when_there_is_none(self):
+        """Test that copy_e0_from() brings the switches of the run along and never replaces an existing e0"""
+        source = ARCSpecies(label='a', smiles='CCO')
+        source.e0, source.e0_atom_corrections_applied, source.e0_bond_corrections_applied = -50.0, True, False
+        source.e0_aec_yml_sha256 = 'a' * 64
+        target = ARCSpecies(label='a', smiles='CCO')
+        target.copy_e0_from(source)
+        self.assertEqual((target.e0, target.e0_atom_corrections_applied, target.e0_bond_corrections_applied,
+                          target.e0_aec_yml_sha256), (-50.0, True, False, 'a' * 64))
+        other = ARCSpecies(label='a', smiles='CCO')
+        other.e0, other.e0_atom_corrections_applied, other.e0_bond_corrections_applied = -70.0, False, False
+        other.e0_aec_yml_sha256 = 'b' * 64
+        target.copy_e0_from(other)
+        self.assertEqual((target.e0, target.e0_atom_corrections_applied, target.e0_bond_corrections_applied,
+                          target.e0_aec_yml_sha256), (-50.0, True, False, 'a' * 64))
+        zero = ARCSpecies(label='a', smiles='CCO')
+        zero.e0 = 0.0
+        zero.copy_e0_from(source)
+        self.assertEqual((zero.e0, zero.e0_atom_corrections_applied, zero.e0_aec_yml_sha256), (0.0, None, None))
 
 
 class TestTSGuess(unittest.TestCase):
