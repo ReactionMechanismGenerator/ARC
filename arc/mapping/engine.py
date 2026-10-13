@@ -18,16 +18,17 @@ from arc.exceptions import AtomTypeError, ConformerError, InputError, SpeciesErr
 from arc.family import ReactionFamily
 from arc.molecule import Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
-from arc.species import ARCSpecies
-from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, xyz_from_data
 from arc.species.vectors import (apply_rodrigues_rotation, calculate_dihedral_angle, get_angle, get_delta_angle,
                                  get_perpendicular_axes, get_vector, get_vector_length, unit_vector)
 from arc.species.zmat import TOL_180
 
+# ``ARCSpecies`` and ``determine_chirality`` are imported locally in their
+# call-sites to break a circular import via arc.species → arc.plotter → here.
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom
     from arc.reaction import ARCReaction
+    from arc.species import ARCSpecies
 
 RESERVED_FINGERPRINT_KEYS = ['self', 'chirality', 'label']
 RMSD_TIE_TOLERANCE = 1e-6
@@ -387,7 +388,7 @@ def score_backbone_candidate(spc_1: ARCSpecies,
     return compare_confs(xyz1=xyz1, xyz2=xyz2, rmsd_score=True), fixed_spc_1, fixed_spc_2
 
 
-def get_arc_species(spc: ARCSpecies | Molecule) -> ARCSpecies:
+def get_arc_species(spc: "ARCSpecies | Molecule") -> "ARCSpecies":
     """
     Convert an object to an ARCSpecies object.
 
@@ -397,6 +398,7 @@ def get_arc_species(spc: ARCSpecies | Molecule) -> ARCSpecies:
     Returns:
         ARCSpecies: The corresponding ARCSpecies object.
     """
+    from arc.species import ARCSpecies
     if isinstance(spc, ARCSpecies):
         return spc
     if isinstance(spc, Molecule):
@@ -500,6 +502,7 @@ def fingerprint(spc: ARCSpecies,
         dict[int, dict[str, list[int]]]: Keys are indices of heavy atoms, values are dicts. keys are element symbols,
                                          values are indices of adjacent atoms corresponding to this element.
     """
+    from arc.species.conformers import determine_chirality
     fingerprint_dict = dict()
     chirality_dict = determine_chirality(conformers=[{'xyz': spc.get_xyz()}],
                                          label=spc.label,
@@ -1772,7 +1775,7 @@ def make_bond_changes(rxn: ARCReaction, r_cuts: list[ARCSpecies], r_label_dict: 
                         r_cut.mol = r_cut_mol_copy
 
 
-def update_xyz(species: list[ARCSpecies]) -> list[ARCSpecies]:
+def update_xyz(species: "list[ARCSpecies]") -> "list[ARCSpecies]":
     """
     A helper function, updates the xyz values of each species after cutting. This is important, since the
     scission sometimes scrambles the Molecule object, and updating the xyz makes up for that.
@@ -1783,6 +1786,7 @@ def update_xyz(species: list[ARCSpecies]) -> list[ARCSpecies]:
     Returns:
         list[ARCSpecies]: A newly generated copies of the ARCSpecies, with updated xyz.
     """
+    from arc.species import ARCSpecies
     new = list()
     for spc in species:
         new_spc = ARCSpecies(label="copy", mol=spc.mol.copy(deep=True))
@@ -2204,6 +2208,7 @@ def copy_species_list_for_mapping(species: list["ARCSpecies"]) -> list["ARCSpeci
     Returns:
         list[ARCSpecies]: The copied species list.
     """
+    from arc.species import ARCSpecies
     copies = list()
     for spc in species:
         new_spc = ARCSpecies(label=spc.label, mol=spc.mol.copy(deep=True), xyz=spc.get_xyz(), keep_mol=True)
@@ -2232,6 +2237,7 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
             broken bond (1-indexed), representing the atom indices to be cut.
             Returns ``None`` if ``rxn.family`` is not set or ``rxn.product_dicts`` is empty.
     """
+    from arc.species import ARCSpecies
     if rxn.family is None:
         return None
     family = ReactionFamily(label=rxn.family)
