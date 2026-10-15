@@ -3275,6 +3275,25 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         self.assertTrue(colliding_atoms(str_to_xyz(xyz_3)))
         self.assertTrue(colliding_atoms(str_to_xyz(xyz_4)))
 
+    def test_colliding_atoms_with_multiple_bond_pairs(self):
+        """Test that only the listed multiple-bond pairs get the relaxed collision threshold"""
+        # Propyne: C1#C2 is 1.20 A, below 0.8 * 1.54 A (the C-C single-bond collision limit at threshold=0.8).
+        propyne = str_to_xyz("""C      -1.89300000    0.00000000    0.00000000
+        C      -0.43300000    0.00000000    0.00000000
+        C       0.76700000    0.00000000    0.00000000
+        H      -2.28000000    1.02700000    0.00000000
+        H      -2.28000000   -0.51300000    0.88900000
+        H      -2.28000000   -0.51300000   -0.88900000
+        H       1.83000000    0.00000000    0.00000000""")
+        self.assertTrue(colliding_atoms(propyne, threshold=0.8))
+        self.assertFalse(colliding_atoms(propyne, threshold=0.8, multiple_bond_pairs={(1, 2)}))
+        # Listing a different pair does not relax the triple bond.
+        self.assertTrue(colliding_atoms(propyne, threshold=0.8, multiple_bond_pairs={(0, 1)}))
+        # A real clash elsewhere is still caught when the triple bond is relaxed.
+        clash = {'symbols': propyne['symbols'] + ('O',), 'isotopes': propyne['isotopes'] + (16,),
+                 'coords': propyne['coords'] + ((0.767, 0.9, 0.0),)}
+        self.assertTrue(colliding_atoms(clash, threshold=0.8, multiple_bond_pairs={(1, 2)}))
+
     def test_correct_representation_of_o2_and_s2(self):
         """Test that ARC represents O2 and S2 correctly."""
         o2 = ARCSpecies(label='O2', smiles='[O][O]', xyz="""O   0.0000000   0.0000000   0.6029240

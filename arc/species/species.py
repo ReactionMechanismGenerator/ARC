@@ -3274,6 +3274,8 @@ def are_coords_compliant_with_graph(xyz: dict,
 def colliding_atoms(xyz: dict,
                     mol: Molecule | None = None,
                     threshold: float = 0.60,
+                    multiple_bond_pairs: set[tuple[int, int]] | None = None,
+                    multiple_bond_threshold: float = 0.60,
                     ) -> bool:
     """
     Check whether atoms are too close to each other.
@@ -3289,6 +3291,11 @@ def colliding_atoms(xyz: dict,
         xyz (dict): The Cartesian coordinates.
         mol (Molecule, optional): The corresponding Molecule object instance with formal charge information.
         threshold (float, optional): The collision threshold to use.
+        multiple_bond_pairs (set[tuple[int, int]], optional): Sorted (i, j) atom index pairs bonded with an order
+                                                              above single (e.g., C#C), which are shorter than the
+                                                              single-bond reference length.
+        multiple_bond_threshold (float, optional): The collision threshold for ``multiple_bond_pairs``,
+                                                   never stricter than ``threshold``.
 
     Returns:
         bool: ``True`` if they are colliding, ``False`` otherwise.
@@ -3302,7 +3309,9 @@ def colliding_atoms(xyz: dict,
             charge_1 = mol.atoms[i].charge if mol is not None else 0
             charge_2 = mol.atoms[j].charge if mol is not None else 0
             single_bond_r = get_single_bond_length(xyz['symbols'][i], xyz['symbols'][j], charge_1, charge_2)
-            if actual_r < single_bond_r * threshold:
+            pair_threshold = min(threshold, multiple_bond_threshold) \
+                if multiple_bond_pairs and (i, j) in multiple_bond_pairs else threshold
+            if actual_r < single_bond_r * pair_threshold:
                 return True
     return False
 
