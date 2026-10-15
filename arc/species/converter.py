@@ -1614,6 +1614,7 @@ def to_rdkit_mol(mol, remove_h=False, sanitize=True):
 
     Returns:
         RDMol: An RDKit molecule object corresponding to the input RMG Molecule object.
+        If sanitization was requested but failed, an unsanitized molecule is returned and a warning is logged.
     """
     atom_id_map = dict()
 
@@ -1654,9 +1655,10 @@ def to_rdkit_mol(mol, remove_h=False, sanitize=True):
     if sanitize:
         try:
             Chem.SanitizeMol(rd_mol)
-        except AtomValenceException:
-            # [C-]#[O+] raises this
-            pass
+        except AtomValenceException as e:
+            logger.warning(f'Could not sanitize the RDKit molecule of {mol_copy.get_formula()} '
+                           f'(multiplicity {mol_copy.multiplicity}), returning an unsanitized RDKit molecule. '
+                           f'Got {e.__class__.__name__}: {e}')
     if remove_h:
         rd_mol = Chem.RemoveHs(rd_mol, sanitize=sanitize)
     return rd_mol
