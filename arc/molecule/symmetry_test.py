@@ -3,11 +3,26 @@
 
 import unittest
 
+from arc.molecule.graph_test import outputs_at_hash_seeds
 from arc.molecule.molecule import Molecule
 from arc.molecule.resonance import generate_optimal_aromatic_resonance_structures
 from arc.molecule.symmetry import (calculate_atom_symmetry_number, calculate_axis_symmetry_number,
     calculate_bond_symmetry_number, calculate_cyclic_symmetry_number, _indistinguishable)
 from arc.species.species import ARCSpecies
+
+
+HASH_SEED_SPECIES = ('C1CC2CCC1C2',
+                     'C1CC2CCC1CC2',
+                     'C1CC2CCC3CCC1C23',
+                     'C1CC2CCC1O2',
+                     'C1=CC2C=CC1C2',
+                     'c1cc2ccc3cccc4ccc(c1)c2c34',
+                     'c1ccc2c(c1)-c1cccc3cccc2c13',
+                     'c1cc2cccc3c4cccc5cccc(c(c1)c23)c54',
+                     'c1cc2ccc3ccc4ccc5ccc6ccc1c1c2c3c4c5c61',
+                     '[CH2]c1ccc2ccccc2c1')
+
+HASH_SEEDS = ('1', '3', '5', '13')
 
 
 class TestMoleculeSymmetry(unittest.TestCase):
@@ -675,6 +690,39 @@ multiplicity 3
         self.assertTrue(_indistinguishable(mol.atoms[1], mol.atoms[3]))
         # O is different from H
         self.assertFalse(_indistinguishable(mol.atoms[6], mol.atoms[7]))
+
+    def test_symmetry_number_does_not_depend_on_the_hash_seed(self):
+        """
+        Test that calculate_symmetry_number() returns the same value in processes with different hash seeds.
+
+        The bridged polycyclics and fused aromatics of HASH_SEED_SPECIES reach
+        calculate_cyclic_symmetry_number() through get_disparate_cycles(). Only agreement between the
+        processes is asserted, not the value they agree on.
+        """
+        script = ('from arc.molecule.molecule import Molecule\n'
+                  'from arc.molecule.symmetry import calculate_symmetry_number\n'
+                  f'print([calculate_symmetry_number(Molecule(smiles=smiles)) for smiles in {HASH_SEED_SPECIES}])\n')
+        symmetry_numbers = outputs_at_hash_seeds(script, HASH_SEEDS)
+        self.assertTrue(symmetry_numbers[0])
+        self.assertEqual(len(set(symmetry_numbers)), 1,
+                         f'The symmetry numbers differ between hash seeds: {symmetry_numbers}')
+
+    def test_species_symmetry_number_does_not_depend_on_the_hash_seed(self):
+        """
+        Test that ARCSpecies.get_symmetry_number() returns the same value in processes with different hash seeds.
+
+        This is the entry point production uses. It reaches the symmetry code through
+        get_resonance_hybrid() rather than through the molecule it was given, so the resonance layer
+        lies between the caller and the cycles. Only agreement between the processes is asserted, not
+        the value they agree on.
+        """
+        script = ('from arc.species.species import ARCSpecies\n'
+                  'print([ARCSpecies(label=f"species{index}", smiles=smiles).get_symmetry_number() '
+                  f'for index, smiles in enumerate({HASH_SEED_SPECIES})])\n')
+        symmetry_numbers = outputs_at_hash_seeds(script, HASH_SEEDS)
+        self.assertTrue(symmetry_numbers[0])
+        self.assertEqual(len(set(symmetry_numbers)), 1,
+                         f'The symmetry numbers differ between hash seeds: {symmetry_numbers}')
 
 
 if __name__ == '__main__':
