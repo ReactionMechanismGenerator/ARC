@@ -22,6 +22,8 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_modified_params_from_zmat_2,
                                             get_new_map_based_on_zmat_1,
                                             get_new_zmat_2_map,
+                                            get_h_abs_reactive_bond_length,
+                                            set_zmat_bond,
                                             stretch_zmat_bond,
                                             get_main_reactant_and_water_from_hydrolysis_reaction,
                                             setup_zmat_indices,
@@ -35,6 +37,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
 from arc.species.species import ARCSpecies
+from arc.species.vectors import calculate_distance
 from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
 from arc.species.species import check_isomorphism
@@ -477,8 +480,9 @@ H      -3.45360689    0.15275707   -0.76116277""")
         self.assertEqual(rxn1.ts_species.multiplicity, 3)
         self.assertEqual(len(rxn1.ts_species.ts_guesses), 2)
         expected_xyz = {'symbols': ('H', 'H', 'O'), 'isotopes': (1, 1, 16),
-                        'coords': ((0.0, 0.0, -1.8806939503689344),
-                                   (0.0, 0.0, -0.9839219710369642), (0.0, 0.0, 0.1804968455295033))}
+                        'coords': ((0.0, 0.0, -2.0347085461105787),
+                                   (0.0, 0.0, -1.0647085461105787),
+                                   (0.0, 0.0, 0.19529145388942126))}
         self.assertTrue(almost_equal_coords(rxn1.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
 
         # H + OH <=> H2 + O
@@ -494,9 +498,9 @@ H      -3.45360689    0.15275707   -0.76116277""")
         self.assertEqual(len(rxn2.ts_species.ts_guesses), 1)
         self.assertEqual(rxn2.ts_species.ts_guesses[0].initial_xyz['symbols'], ('H', 'O', 'H'))
         expected_xyz = {'symbols': ('H', 'O', 'H'), 'isotopes': (1, 16, 1),
-                        'coords': ((0.0, 0.0, 1.8806939503689346),
-                                   (0.0, 0.0, -0.1804968455295031),
-                                   (0.0, 0.0, 0.9839219710369642))}
+                        'coords': ((0.0, 0.0, 2.0291851410421406),
+                                   (0.0, 0.0, -0.19081485895785913),
+                                   (0.0, 0.0, 0.9991851410421408))}
         self.assertTrue(almost_equal_coords(rxn2.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
 
         # OH + H <=> H2 + O
@@ -512,9 +516,9 @@ H      -3.45360689    0.15275707   -0.76116277""")
         self.assertEqual(len(rxn3.ts_species.ts_guesses), 1)
         self.assertEqual(rxn3.ts_species.ts_guesses[0].initial_xyz['symbols'], ('O', 'H', 'H'))
         expected_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
-                        'coords': ((0.0, 0.0, -0.1804968455295031),
-                                   (0.0, 0.0, 0.9839219710369642),
-                                   (0.0, 0.0, 1.8806939503689346))}
+                        'coords': ((0.0, 0.0, -0.19081485895785913),
+                                   (0.0, 0.0, 0.9991851410421408),
+                                   (0.0, 0.0, 2.0291851410421406))}
         self.assertTrue(almost_equal_coords(rxn3.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
 
         # CH4 + H <=> CH3 + H2
@@ -541,12 +545,12 @@ H      -3.45360689    0.15275707   -0.76116277""")
         self.assertEqual(len(rxn4.ts_species.ts_guesses), 4)  # No dihedral scans for H attacking at 180 degrees.
         self.assertTrue(rxn4.ts_species.ts_guesses[0].success)
         expected_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1, 1),
-                        'coords': ((-0.14348351563387568, 3.0646463033967564e-08, 1.4446001062040636e-09),
-                                   (1.1671558180910826, -1.5372222794685086e-07, -1.0128514993379412e-07),
-                                   (-0.5075499920716767, -0.5148677050021889, -0.8917769786794892),
-                                   (-0.5075499920716767, -0.5148677050021889, 0.8917772176782378),
-                                   (-0.5075499920716767, 1.0297354786962867, 1.666119475718375e-08),
-                                   (2.063927797423041, -2.798718649055232e-07, -1.7157539600187732e-07))}
+                        'coords': ((-0.1512880212349923, -1.2868098808738182e-09, 1.581317776722102e-08),
+                                   (1.158711978764994, -5.010087766876836e-08, -1.6955692017095458e-07),
+                                   (-0.5153544690310341, -0.5148676964298985, -0.8917769993897608),
+                                   (-0.5153544690310341, -0.5148676964298985, 0.8917771969679662),
+                                   (-0.5153544690310341, 1.0297355467639049, 9.899984643180204e-08),
+                                   (2.1887119787649834, -8.848140431449991e-08, -3.153059284777271e-07))}
         self.assertTrue(almost_equal_coords(rxn4.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
 
     def test_h_abstraction_with_empty_product_dicts(self):
@@ -734,32 +738,32 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                             {'symbols': ('N', 'C', 'O', 'N', 'H', 'H'),
                                              'isotopes': (14, 12, 16, 14, 1, 1),
                                              'coords': (
-                                                 (-3.657596721635545e-09, 0.08876698337705413, 0.9329034620293603),
-                                                 (-3.657596721635545e-09, 0.8029731964901674, 0.005816759497990542),
-                                                 (9.609228590831403e-09, 1.4947776654181317, -0.9420542025729876),
-                                                 (-3.657596721635545e-09, -2.2452231277287726, 0.16101001965294726),
-                                                 (-3.657596721635545e-09, -1.0762904363668742, 0.547597552628467),
-                                                 (-3.657596721635545e-09, -2.2452231277287726, -0.8649899620469162))}))
+                                                 (-3.6575462887617986e-09, 0.10757737739576356, 0.9391243807327047),
+                                                 (-3.6575462887617986e-09, 0.821783624317804, 0.012037664531374226),
+                                                 (9.60909609371671e-09, 1.5135884700892341, -0.9358330688787585),
+                                                 (-3.6575462887617986e-09, -2.294469086264028, 0.14472348293645243),
+                                                 (-3.6575462887617986e-09, -1.126675746223892, 0.530934196094314),
+                                                 (-3.6575462887617986e-09, -2.294469086264028, -0.8812765399517312))}))
         self.assertTrue(almost_equal_coords(rxn8.ts_species.ts_guesses[1].initial_xyz,
                                             {'symbols': ('N', 'C', 'O', 'N', 'H', 'H'),
                                              'isotopes': (14, 12, 16, 14, 1, 1),
-                                             'coords': ((0.7304309896785263, 0.4813753237349452, -0.26044855417424406),
-                                                        (-0.22605518455485318, 0.6753956743209286, 0.3853614572987496),
-                                                        (-1.2013936879956266, 0.8535814918821567, 1.0130695121236126),
-                                                        (0.7304309896785263, -1.8526147873708816, -1.032341996550657),
-                                                        (0.7304309896785263, -0.6836820960089831, -0.6457544635751373),
-                                                        (0.7304309896785263, -1.8526147873708816,
-                                                         -2.0583419782505206))}))
+                                             'coords': ((0.7303762536592959, 0.500412573256596, -0.2543768165873195),
+                                                        (-0.2261099370267734, 0.6944329673857139, 0.39143321444987844),
+                                                        (-1.2012498733248753, 0.8717962950631837, 1.0196825491252155),
+                                                        (0.7303762536592959, -1.9016338904031953, -1.0487777143835717),
+                                                        (0.7303762536592959, -0.7338405503630596, -0.6625670012257101),
+                                                        (0.7303762536592959, -1.9016338904031953,
+                                                         -2.0747777372717553))}))
         self.assertTrue(almost_equal_coords(rxn8.ts_species.ts_guesses[2].initial_xyz,
                                             {'symbols': ('N', 'C', 'O', 'N', 'H', 'H'),
                                              'isotopes': (14, 12, 16, 14, 1, 1),
                                              'coords': (
-                                                 (-0.7304309882994099, 0.48137532979234665, -0.26044855803662603),
-                                                 (0.22605518593396912, 0.6753956803783296, 0.3853614534363681),
-                                                 (1.201393684372416, 0.8535814759681686, 1.0130695222708512),
-                                                 (-0.7304309882994099, -1.8526147813134801, -1.032342000413039),
-                                                 (-0.7304309882994099, -0.6836820899515816, -0.6457544674375193),
-                                                 (-0.7304309882994099, -1.8526147813134801, -2.0583419821129025))}))
+                                                 (-0.7303762521494946, 0.500412579181311, -0.2543768206033914),
+                                                 (0.22610993853657435, 0.6944329733104289, 0.39143321043380697),
+                                                 (1.2012498693583291, 0.871796279497788, 1.0196825596762298),
+                                                 (-0.7303762521494946, -1.9016338844784804, -1.0487777183996436),
+                                                 (-0.7303762521494946, -0.7338405444383447, -0.662567005241782),
+                                                 (-0.7303762521494946, -1.9016338844784804, -2.074777741287827))}))
 
     def test_heuristics_for_h_abstraction_6(self):
         # butenylnebzene + CCOO <=> butenylnebzene_rad + CCOOH
@@ -1293,7 +1297,10 @@ H      -3.45360689    0.15275707   -0.76116277""")
                              ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'))
 
     def test_combine_coordinates_with_redundant_atoms(self):
-        """Test the combine_coordinates_with_redundant_atoms() function."""
+        """
+        Test the combine_coordinates_with_redundant_atoms() function with explicit multiplicative
+        stretch factors, which must override the per-element reactive-core bond lengths.
+        """
         ts_xyz = combine_coordinates_with_redundant_atoms(
             xyz_1=self.ccooh_xyz,
             xyz_2=self.c2h6_xyz,
@@ -1304,6 +1311,8 @@ H      -3.45360689    0.15275707   -0.76116277""")
             h2=5,
             c=2,
             d=0,
+            r1_stretch=1.2,
+            r2_stretch=1.2,
             a2=180,
             d2=None,
             d3=0,
@@ -1343,6 +1352,8 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                                           h2=5,
                                                           c=2,
                                                           d=0,
+                                                          r1_stretch=1.2,
+                                                          r2_stretch=1.2,
                                                           a2=150,
                                                           d2=30,
                                                           d3=120,
@@ -1369,6 +1380,110 @@ H      -3.45360689    0.15275707   -0.76116277""")
                        (-2.5436577650309165, -0.1202574787360858, 0.6653623387328302),
                        (-1.2481402862001663, -0.961958946530624, -0.20697484805157007))}
         self.assertTrue(almost_equal_coords(ts_xyz, expected_xyz))
+
+    def test_get_h_abs_reactive_bond_length(self):
+        """
+        Test the get_h_abs_reactive_bond_length() function.
+
+        C, N, O and S assert measured elongations. H and Si assert the fallback path, in which the
+        pooled elongation is added to the element's own equilibrium X-H bond; no reference data
+        supports the Si values beyond that fallback.
+        """
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='C', bond='breaking'), 1.31, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='C', bond='forming'), 1.37, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='N', bond='breaking'), 1.23, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='N', bond='forming'), 1.30, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='O', bond='breaking'), 1.19, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='O', bond='forming'), 1.26, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='S', bond='breaking'), 1.48, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='S', bond='forming'), 1.57, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='H', bond='breaking'), 0.97, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='H', bond='forming'), 1.03, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='Si', bond='breaking'), 1.70, places=10)
+        self.assertAlmostEqual(get_h_abs_reactive_bond_length(symbol='Si', bond='forming'), 1.76, places=10)
+        with self.assertRaises(ValueError):
+            get_h_abs_reactive_bond_length(symbol='C', bond='stretching')
+
+    def test_set_zmat_bond(self):
+        """Test the set_zmat_bond() function."""
+        zmat = {'symbols': ('O', 'H'), 'coords': ((None, None, None), ('R_1_0', None, None)),
+                'vars': {'R_1_0': 0.97}, 'map': {0: 0, 1: 1}}
+        set_zmat_bond(zmat=zmat, indices=(1, 0), length=1.19)
+        self.assertAlmostEqual(zmat['vars']['R_1_0'], 1.19, places=10)
+
+    def test_combine_coordinates_per_element_reactive_bond_lengths(self):
+        """
+        Test that combine_coordinates_with_redundant_atoms() seeds the reactive core using the
+        per-element rule when no explicit stretch factor is given (here an O donor and a C acceptor).
+        """
+        ts_xyz = combine_coordinates_with_redundant_atoms(
+            xyz_1=self.ccooh_xyz,
+            xyz_2=self.c2h6_xyz,
+            mol_1=ARCSpecies(label='CCOOH', smiles='CCOO', xyz=self.ccooh_xyz).mol,
+            mol_2=ARCSpecies(label='C2H6', smiles='CC', xyz=self.c2h6_xyz).mol,
+            reactant_2=ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz),
+            h1=9,
+            h2=5,
+            c=2,
+            d=0,
+            a2=180,
+            d2=None,
+            d3=0,
+            reactants_reversed=False,
+        )
+        self.assertEqual(ts_xyz['symbols'][3], 'O')
+        self.assertEqual(ts_xyz['symbols'][9], 'H')
+        self.assertEqual(ts_xyz['symbols'][11], 'C')
+        self.assertAlmostEqual(calculate_distance(coords=ts_xyz, atoms=[3, 9]), 1.19, places=4)
+        self.assertAlmostEqual(calculate_distance(coords=ts_xyz, atoms=[9, 11]), 1.37, places=4)
+
+    def test_h_abstraction_per_element_reactive_bond_lengths(self):
+        """
+        Test that h_abstraction() seeds the breaking and forming bonds from the element of the donor
+        and of the acceptor. Covers a C acceptor, an O acceptor, an H acceptor and an H donor.
+
+        The seeded distances are population medians, not the saddle of any one of these reactions. For
+        these four small H-transfer systems in particular the seed is looser than their own saddles,
+        which lie at the short extreme of their element classes.
+        """
+        # H2 + O <=> H + OH: an H donor and an O acceptor.
+        rxn_h_donor = ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh])
+        xyz_guesses = h_abstraction(reaction=rxn_h_donor)
+        self.assertGreater(len(xyz_guesses), 0)
+        xyz = xyz_guesses[0]
+        self.assertEqual(xyz['symbols'], ('H', 'H', 'O'))
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[0, 1]), 0.97, places=4)
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[1, 2]), 1.26, places=4)
+
+        # H + OH <=> H2 + O: an O donor and an H acceptor.
+        rxn_h_acceptor = ARCReaction(r_species=[self.h, self.oh], p_species=[self.h2, self.o])
+        xyz_guesses = h_abstraction(reaction=rxn_h_acceptor)
+        self.assertGreater(len(xyz_guesses), 0)
+        xyz = xyz_guesses[0]
+        self.assertEqual(xyz['symbols'], ('H', 'O', 'H'))
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[1, 2]), 1.19, places=4)
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[0, 2]), 1.03, places=4)
+
+        # CH4 + H <=> CH3 + H2: a C donor and an H acceptor.
+        ch4 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        ch3 = ARCSpecies(label='CH3', smiles='[CH3]', xyz=self.ch3_xyz)
+        rxn_ch4 = ARCReaction(reactants=['CH4', 'H'], products=['CH3', 'H2'],
+                              r_species=[ch4, self.h], p_species=[ch3, self.h2])
+        xyz_guesses = h_abstraction(reaction=rxn_ch4)
+        self.assertGreater(len(xyz_guesses), 0)
+        xyz = xyz_guesses[0]
+        self.assertEqual(xyz['symbols'], ('C', 'H', 'H', 'H', 'H', 'H'))
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[0, 1]), 1.31, places=4)
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[1, 5]), 1.03, places=4)
+
+        # H2 + CH3 <=> H + CH4: an H donor and a C acceptor.
+        rxn_c_acceptor = ARCReaction(r_species=[self.h2, ch3], p_species=[self.h, ch4])
+        xyz_guesses = h_abstraction(reaction=rxn_c_acceptor)
+        self.assertGreater(len(xyz_guesses), 0)
+        xyz = xyz_guesses[0]
+        self.assertEqual(xyz['symbols'], ('H', 'H', 'C', 'H', 'H', 'H'))
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[0, 1]), 0.97, places=4)
+        self.assertAlmostEqual(calculate_distance(coords=xyz, atoms=[1, 2]), 1.37, places=4)
 
     def test_get_new_zmat2_map(self):
         """Test the get_new_zmat_2_map() function."""
