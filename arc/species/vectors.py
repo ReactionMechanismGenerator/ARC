@@ -5,7 +5,7 @@ A module for manipulating vectors
 import math
 import numpy as np
 
-from arc.common import logger
+from arc.common import is_angle_linear, logger
 from arc.exceptions import VectorsError
 from arc.molecule.molecule import Molecule
 from arc.species._zmat_kernels import lib as _ck, available as _ck_available
@@ -576,3 +576,22 @@ def get_delta_angle(a1: float,
     a1 %= 360
     a2 %= 360
     return min(abs(a1 - a2), abs(a1 + 360 - a2), abs(a1 - a2 - 360))
+
+
+def is_torsion_linear(xyz: dict,
+                      torsion: list[int],
+                      ) -> bool:
+    """
+    Determine whether a torsion spans a linear segment: a ~180 degree angle over either of the
+    two atom triplets it is composed of, in which case its dihedral angle is geometrically
+    undefined and cannot be set or measured.
+
+    Args:
+        xyz (dict): The 3D coordinates.
+        torsion (list[int]): The 0-indexed torsion atom indices.
+
+    Returns:
+        bool: Whether the torsion contains a linear segment.
+    """
+    return is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[:3], index=0)) \
+        or is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[1:], index=0))
