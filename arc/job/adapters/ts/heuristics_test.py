@@ -14,6 +14,8 @@ import subprocess
 import unittest
 from unittest import mock
 
+import numpy as np
+
 from arc.common import ARC_TESTING_PATH, almost_equal_coords
 from arc.family import get_reaction_family_products
 from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
@@ -39,10 +41,13 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             has_nitrile_group,
                                             get_multiple_bond_pairs,
                                             filter_ts_guesses_with_uma_sp,
+                                            get_ca_cb_staggered_rotamers,
+                                            qa_sn2,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
 from arc.species.species import ARCSpecies
+from arc.species.vectors import calculate_dihedral_angle, calculate_distance
 from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
 from arc.species.species import check_isomorphism
@@ -230,6 +235,205 @@ class TestHeuristicsAdapter(unittest.TestCase):
         H      -1.97752100   -2.44201000   -0.04640100
         H      -2.68539400    1.31802600   -0.47437800
         H      -1.90762500    0.16100700    0.15718800""")
+        # A neopentyl quaternary ammonium: Cb is quaternary, so a Cb methyl may block the backside of Ca.
+        cls.neopentyl_tma = ARCSpecies(label='neopentyl_TMA', smiles='C[N+](C)(C)CC(C)(C)C',
+                                       xyz="""C      -1.41688700   -1.00936900   -1.03515200
+        N      -1.33459400   -0.00544300    0.05928700
+        C      -2.36928200   -0.34452600    1.08253300
+        C      -1.66499300    1.34327700   -0.48414500
+        C      -0.00053000   -0.01638500    0.78525600
+        C       1.35422000    0.00280000    0.04893800
+        C       1.50295100    1.10802100   -0.99586100
+        C       1.71356600   -1.35170700   -0.57170200
+        C       2.35732200    0.27373500    1.18288000
+        H      -2.44665700   -1.04600600   -1.38017000
+        H      -1.11842800   -1.97856200   -0.64675200
+        H      -0.77130700   -0.70464800   -1.85107800
+        H      -2.19010700   -1.35410700    1.44054900
+        H      -3.34825900   -0.27994500    0.61651500
+        H      -2.29498200    0.36628600    1.90093600
+        H      -2.68063300    1.31155400   -0.86888400
+        H      -0.98134000    1.59373000   -1.28462600
+        H      -1.59194200    2.06955800    0.32015900
+        H      -0.05820300    0.84573800    1.44731700
+        H      -0.02601500   -0.91516700    1.39882400
+        H       1.21971700    2.08235200   -0.59469000
+        H       0.91045100    0.91061500   -1.88961700
+        H       2.54722600    1.16497100   -1.30767100
+        H       1.13556800   -1.57584300   -1.46559700
+        H       1.56692800   -2.16280500    0.14402900
+        H       2.76590600   -1.34586300   -0.86055900
+        H       2.27628200   -0.47654900    1.97209000
+        H       3.37394000    0.24061900    0.78997800
+        H       2.19579700    1.25708800    1.62775300""")
+        cls.neopentanol_water = ARCSpecies(label='neopentanol_water', smiles='OCC(C)(C)C.O',
+                                           xyz="""O       1.13050100    1.16290100   -0.08913400
+        C      -0.02332900    0.72961800   -0.80574400
+        C      -0.99775700   -0.12618600    0.00825700
+        C      -1.55771500    0.68066000    1.18113600
+        C      -2.13906300   -0.52024500   -0.92982200
+        C      -0.29772500   -1.38140900    0.52662800
+        O       3.32722200   -0.57806300    0.06112200
+        H       0.85323300    1.70969400    0.64989800
+        H      -0.55077200    1.60084000   -1.20785100
+        H       0.35954600    0.14984700   -1.64687900
+        H      -2.03106800    1.60223100    0.83464600
+        H      -0.78157500    0.94500100    1.90372100
+        H      -2.30803500    0.09822500    1.71898600
+        H      -1.76755800   -1.09139400   -1.78354600
+        H      -2.86871700   -1.13852200   -0.40375500
+        H      -2.65915600    0.36102100   -1.31197100
+        H       0.52416500   -1.12957800    1.19817400
+        H      -1.00039600   -2.00857800    1.07901200
+        H       0.10726300   -1.97280700   -0.29753600
+        H       2.55484400    0.01067100    0.04319200
+        H       4.00201000   -0.10923200   -0.43327200""")
+        # Beta-branched quaternary ammoniums (a ring at Cb), in conformers where a Cb substituent sits in the
+        # backside-attack path of Ca.
+        cls.cyclopentylmethyl_tma = ARCSpecies(label='cyclopentylmethyl_TMA', smiles='C[N+](C)(C)CC1CCCC1',
+                                               xyz="""C       1.76448500    1.43945100    0.34753900
+        N       1.82842900   -0.00277800   -0.01061500
+        C       2.89156000   -0.19534000   -1.03719300
+        C       2.18952700   -0.79535400    1.19680600
+        C       0.52538500   -0.49157700   -0.60012700
+        C      -0.72921600   -0.25165500    0.22380300
+        C      -1.39018100    1.14451500    0.07298400
+        C      -2.87932900    0.88589000   -0.22423300
+        C      -3.11777400   -0.56019100    0.20852000
+        C      -1.82185800   -1.24897500   -0.19629600
+        H       1.45977900    2.00367500   -0.52906300
+        H       1.05447800    1.57677200    1.15629900
+        H       2.75391100    1.75196400    0.66983000
+        H       3.84277300    0.11202000   -0.61182200
+        H       2.65306300    0.41375000   -1.90447400
+        H       2.92424300   -1.24609400   -1.31136700
+        H       1.43812300   -0.64826800    1.96509400
+        H       2.24653300   -1.84392200    0.91877200
+        H       3.15379100   -0.44783400    1.55644200
+        H       0.67608500   -1.55831700   -0.75779000
+        H       0.43388700   -0.00873400   -1.57216300
+        H      -0.51401900   -0.42943900    1.27754500
+        H      -1.27151300    1.72018700    0.99033100
+        H      -0.92400200    1.72039100   -0.72625700
+        H      -3.06552600    0.97466900   -1.29641100
+        H      -3.53395600    1.59602200    0.27987200
+        H      -3.24258100   -0.61456600    1.29317800
+        H      -3.99990900   -1.00385700   -0.25243300
+        H      -1.67737200   -2.22763700    0.26093000
+        H      -1.80252700   -1.38179700   -1.28245600""")
+        cls.cyclopentylmethanol_water = ARCSpecies(label='cyclopentylmethanol_water', smiles='OCC1CCCC1.O',
+                                                   xyz="""O      -1.87443100   -0.85577500    0.94312700
+        C      -0.78249200   -1.26301800    0.13950900
+        C       0.18217300   -0.13985400   -0.19978600
+        C       1.36680600   -0.62866100   -1.06915200
+        C       2.63918800   -0.01120900   -0.45415100
+        C       2.13145600    1.10393800    0.46159300
+        C       0.83299700    0.52724300    1.01727300
+        O      -3.41002500    0.95374400   -0.67063800
+        H      -2.40407500   -0.23059800    0.42842300
+        H      -1.14200700   -1.72907200   -0.78676600
+        H      -0.25161800   -2.03376800    0.70510400
+        H      -0.36914000    0.62510800   -0.75535800
+        H       1.23571200   -0.31767600   -2.10541300
+        H       1.42297800   -1.71926500   -1.07168000
+        H       3.33853000    0.34585400   -1.20998700
+        H       3.16334600   -0.75840900    0.14524500
+        H       1.91460400    2.00185300   -0.12371900
+        H       2.84817500    1.37883400    1.23600500
+        H       0.19101800    1.27403000    1.48329200
+        H       1.06112400   -0.23194900    1.77268400
+        H      -2.83629000    1.61530600   -1.06749100
+        H      -4.08139200    1.45667400   -0.20117400""")
+        cls.cyclohexylmethyl_tma = ARCSpecies(label='cyclohexylmethyl_TMA', smiles='C[N+](C)(C)CC1CCCCC1',
+                                              xyz="""C       2.10195000    1.37939000    0.60291900
+        N       2.13562400    0.00033200    0.04503900
+        C       3.31371500   -0.11792700   -0.85994800
+        C       2.29026600   -0.98365200    1.15157000
+        C       0.89976600   -0.30259500   -0.76815500
+        C      -0.43913700   -0.13434500   -0.04717000
+        C      -1.13235300    1.18076200   -0.41556400
+        C      -2.48398400    1.31727800    0.27718800
+        C      -3.39023000    0.13090200   -0.03526700
+        C      -2.71009500   -1.18794300    0.31847800
+        C      -1.35335200   -1.32157700   -0.36464900
+        H       1.97016700    2.08099300   -0.21579600
+        H       3.04651200    1.56378000    1.10721400
+        H       1.28538100    1.46291200    1.31284200
+        H       4.21387300    0.07038000   -0.28168100
+        H       3.33559100   -1.12231600   -1.27314600
+        H       3.21674900    0.61622000   -1.65477400
+        H       1.45543600   -0.89291200    1.83841600
+        H       2.32107600   -1.98187500    0.72435100
+        H       3.21894100   -0.76682100    1.67223200
+        H       1.03513800   -1.32937100   -1.10374900
+        H       0.95262300    0.34934100   -1.63879100
+        H      -0.27769000   -0.13752800    1.03374500
+        H      -1.27737000    1.20210700   -1.50092100
+        H      -0.49504800    2.03021300   -0.16574500
+        H      -2.96252000    2.25046300   -0.02525400
+        H      -2.32784100    1.37693600    1.35927300
+        H      -3.63095400    0.13588100   -1.10329800
+        H      -4.33485900    0.22389300    0.50381100
+        H      -2.56832300   -1.23854100    1.40293300
+        H      -3.34766600   -2.02993200    0.04300300
+        H      -0.86416700   -2.24835700   -0.05679700
+        H      -1.49368600   -1.37954900   -1.44950800""")
+        cls.cyclohexylmethanol_water = ARCSpecies(label='cyclohexylmethanol_water', smiles='OCC1CCCCC1.O',
+                                                  xyz="""O      -2.44876700   -0.76816400   -0.43571500
+        C      -1.23435600   -1.49745300   -0.24600300
+        C      -0.12323600   -0.54111400    0.13626000
+        C       0.15442400    0.49535600   -0.95351400
+        C       1.28890300    1.43533200   -0.55729600
+        C       2.55841600    0.66153100   -0.21465400
+        C       2.29279200   -0.38540100    0.86326000
+        C       1.15118500   -1.31819600    0.46898900
+        O      -2.80165400    1.72473400    0.85546900
+        H      -3.15941500   -1.38776400   -0.61203300
+        H      -1.37018600   -2.24247300    0.54349100
+        H      -0.97289300   -2.02325700   -1.17084800
+        H      -0.43866400   -0.01177300    1.04360700
+        H      -0.74853700    1.06711600   -1.17369900
+        H       0.42528200   -0.03299500   -1.87494100
+        H       0.97929100    2.02262400    0.31385700
+        H       1.48410600    2.14555100   -1.36312000
+        H       3.34361800    1.34679500    0.11085700
+        H       2.92642000    0.16171600   -1.11679700
+        H       3.19693000   -0.96520200    1.05854700
+        H       2.03290700    0.12101200    1.79849300
+        H       0.95313100   -2.03045800    1.27326600
+        H       1.44892500   -1.90286700   -0.40862600
+        H      -2.69798200    0.86028100    0.42653800
+        H      -1.92833900    2.11935300    0.80974900""")
+        # Ca alpha to an amide carbonyl (sp2 Cb): rigidly rotating the carbonyl O anti to N swings the NMe2
+        # group into the NMe3 group.
+        cls.amide_alpha_tma = ARCSpecies(label='amide_alpha_TMA', smiles='C[N+](C)(C)CC(=O)N(C)C',
+                                         xyz="""C       2.02738700   -0.77679300   -1.16988100
+        N       1.70857300    0.08455600    0.00756400
+        C       2.64270700    1.25123700   -0.00233800
+        C       1.92295700   -0.67269600    1.27585000
+        C       0.32352500    0.64423800   -0.07431300
+        C      -0.81335500   -0.37380200   -0.04893200
+        O      -0.61073400   -1.58274000   -0.02684900
+        N      -2.04151300    0.17168200   -0.06002800
+        C      -3.21063700   -0.68052400    0.05075700
+        C      -2.29830300    1.60131200   -0.00023400
+        H       3.06926800   -1.07363900   -1.09225600
+        H       1.37984900   -1.64433500   -1.15686300
+        H       1.86996300   -0.19209200   -2.07235700
+        H       2.49377100    1.80999200   -0.92205300
+        H       2.43097500    1.87638300    0.86038800
+        H       3.65897500    0.87188600    0.04795800
+        H       2.97149800   -0.95158400    1.32494300
+        H       1.29361800   -1.55373500    1.27119100
+        H       1.66859200   -0.02273500    2.10866100
+        H       0.27821000    1.21867500   -0.99748200
+        H       0.21905000    1.33367400    0.76108500
+        H      -2.90708000   -1.72141100    0.04029800
+        H      -3.88561300   -0.49119400   -0.78443100
+        H      -3.73877700   -0.46863000    0.98246400
+        H      -1.58019600    2.16808700   -0.58637700
+        H      -2.28704400    1.96380400    1.03003400
+        H      -3.28398800    1.78797500   -0.42095300""")
         cls.water = ARCSpecies(label='H2O', smiles='O', xyz="""O      -0.00032700    0.39565700    0.00000000
         H      -0.75690800   -0.19845300    0.00000000
         H       0.75723500   -0.19720400    0.00000000""")
@@ -1410,6 +1614,110 @@ H      -3.45360689    0.15275707   -0.76116277""")
         symbols = rxn.ts_species.ts_guesses[0].initial_xyz['symbols']
         self.assertEqual(len(symbols), 27)
         self.assertEqual(sorted(symbols[22:]), ['H', 'H', 'H', 'O', 'O'])
+
+    def test_get_ca_cb_staggered_rotamers(self):
+        """Test the get_ca_cb_staggered_rotamers() function and its use as the qa_sn2 Ca-Cb rotamer fallback."""
+        n_idx, ca_idx, cb_idx = 1, 4, 5
+        # A quaternary Cb bears three substituents; none is anti to N in the input conformer by less than
+        # the tolerance, so each one placed anti to N gives a distinct staggered rotamer.
+        xyz = self.neopentyl_tma.get_xyz()
+        mol = self.neopentyl_tma.mol
+        cb_side = [5, 6, 7, 8] + list(range(20, 29))
+        ca_side = [i for i in range(len(xyz['symbols'])) if i not in cb_side]
+        cb_side_bonds = [(mol.atoms.index(bond.atom1), mol.atoms.index(bond.atom2)) for bond in mol.get_all_edges()
+                         if {mol.atoms.index(bond.atom1), mol.atoms.index(bond.atom2)} <= set(cb_side + [ca_idx])]
+
+        def min_nonbonded_h_h(coords: tuple) -> float:
+            """The shortest distance between H atoms bonded to different atoms."""
+            h_parent = {i: mol.atoms.index(list(atom.edges.keys())[0])
+                        for i, atom in enumerate(mol.atoms) if atom.is_hydrogen()}
+            return min(calculate_distance(coords, [i, j], index=0)
+                       for i, j in itertools.combinations(h_parent.keys(), 2) if h_parent[i] != h_parent[j])
+
+        # If the force field cannot be set up, the rigid rotamers are kept: the Ca side does not move,
+        # and the Cb side is rotated rigidly.
+        with mock.patch('arc.job.adapters.ts.heuristics.AllChem.MMFFGetMoleculeProperties', return_value=None):
+            rigid_rotamers = get_ca_cb_staggered_rotamers(xyz=xyz, mol=mol, ca=ca_idx, n=n_idx)
+        self.assertEqual(len(rigid_rotamers), 3)
+        for rotamer, x_idx in zip(rigid_rotamers, [6, 7, 8]):
+            self.assertAlmostEqual(calculate_dihedral_angle(rotamer, [n_idx, ca_idx, cb_idx, x_idx], index=0),
+                                   180.0, places=3)
+            for i in ca_side:
+                self.assertTrue(np.allclose(rotamer['coords'][i], xyz['coords'][i]))
+            for i, j in itertools.combinations(cb_side + [ca_idx], 2):
+                self.assertAlmostEqual(calculate_distance(rotamer['coords'], [i, j], index=0),
+                                       calculate_distance(xyz['coords'], [i, j], index=0), places=4)
+
+        # By default each rotamer is relaxed with the chosen dihedral constrained at 180°:
+        # the Cb-side bond lengths are preserved, and close nonbonded H...H contacts are relieved.
+        rotamers = get_ca_cb_staggered_rotamers(xyz=xyz, mol=mol, ca=ca_idx, n=n_idx)
+        self.assertEqual(len(rotamers), 3)
+        self.assertEqual(rotamers, get_ca_cb_staggered_rotamers(xyz=xyz, mol=mol, ca=ca_idx, n=n_idx))
+        for rotamer, rigid_rotamer, x_idx in zip(rotamers, rigid_rotamers, [6, 7, 8]):
+            self.assertEqual(rotamer['symbols'], xyz['symbols'])
+            self.assertEqual(rotamer['isotopes'], xyz['isotopes'])
+            self.assertAlmostEqual(calculate_dihedral_angle(rotamer, [n_idx, ca_idx, cb_idx, x_idx], index=0),
+                                   180.0, places=1)
+            for i, j in cb_side_bonds:
+                self.assertAlmostEqual(calculate_distance(rotamer['coords'], [i, j], index=0),
+                                       calculate_distance(xyz['coords'], [i, j], index=0), delta=0.05)
+            self.assertGreaterEqual(min_nonbonded_h_h(rotamer['coords']), min_nonbonded_h_h(rigid_rotamer['coords']))
+
+        # A Ca-Cb bond in a ring is not rotatable: no rotamers.
+        pyrrolidinium = ARCSpecies(label='dimethylpyrrolidinium', smiles='C[N+]1(C)CCCC1')
+        n_idx = [i for i, atom in enumerate(pyrrolidinium.mol.atoms) if atom.is_nitrogen()][0]
+        ring_ca_idx = [pyrrolidinium.mol.atoms.index(atom) for atom in pyrrolidinium.mol.atoms[n_idx].edges.keys()
+                       if pyrrolidinium.mol.is_bond_in_cycle(pyrrolidinium.mol.get_bond(atom,
+                                                                                       pyrrolidinium.mol.atoms[n_idx]))][0]
+        self.assertEqual(get_ca_cb_staggered_rotamers(xyz=pyrrolidinium.get_xyz(), mol=pyrrolidinium.mol,
+                                                      ca=ring_ca_idx, n=n_idx), [])
+
+        # Ca without a heavy-atom neighbor other than N: no rotamers.
+        self.assertEqual(get_ca_cb_staggered_rotamers(xyz=self.tma.get_xyz(), mol=self.tma.mol, ca=0, n=1), [])
+
+        # sp2 Cb: the carbonyl O is not anti to N, but rotating it there swings the NMe2 group into
+        # the NMe3 group, so the only candidate rotamer collides and is discarded.
+        self.assertEqual(get_ca_cb_staggered_rotamers(xyz=self.amide_alpha_tma.get_xyz(), mol=self.amide_alpha_tma.mol,
+                                                      ca=4, n=1), [])
+
+        # The fallback is not attempted when the input conformer already yields guesses.
+        rxn = ARCReaction(r_species=[self.tma, self.oh_d1],
+                          p_species=[self.methanol_water, self.trimethylamine],
+                          family='qa_sn2')
+        with mock.patch('arc.job.adapters.ts.heuristics.get_ca_cb_staggered_rotamers') as rotamers_mock, \
+                mock.patch('arc.job.adapters.ts.heuristics.filter_ts_guesses_with_uma_sp',
+                           side_effect=lambda xyzs, families, **kwargs: (xyzs, families)):
+            xyz_guesses, _ = qa_sn2(rxn)
+        self.assertGreater(len(xyz_guesses), 0)
+        rotamers_mock.assert_not_called()
+
+        # Beta-branched substrates whose input conformer has a Cb substituent in the backside-attack path:
+        # qa_sn2 (without the UMA pre-filter) attempts the fallback, and every guess produced must be valid.
+        def run_beta_branched_case(substrate: ARCSpecies, alcohol_water: ARCSpecies) -> list[dict]:
+            rxn = ARCReaction(r_species=[substrate, self.oh_d1],
+                              p_species=[alcohol_water, self.trimethylamine],
+                              family='qa_sn2')
+            with mock.patch('arc.job.adapters.ts.heuristics.get_ca_cb_staggered_rotamers',
+                            wraps=get_ca_cb_staggered_rotamers) as rotamers_mock, \
+                    mock.patch('arc.job.adapters.ts.heuristics.filter_ts_guesses_with_uma_sp',
+                               side_effect=lambda xyzs, families, **kwargs: (xyzs, families)):
+                xyz_guesses, _ = qa_sn2(rxn)
+            rotamers_mock.assert_called()
+            n_qa = len(substrate.mol.atoms)
+            for xyz_guess in xyz_guesses:
+                self.assertEqual(len(xyz_guess['symbols']), n_qa + 5)
+                self.assertEqual(xyz_guess['symbols'][:n_qa], substrate.get_xyz()['symbols'])
+                self.assertTrue(check_sn2_ts_bonds(xyz_guess, [n_qa, n_qa + 1, 4, n_qa + 2, n_qa + 3]))
+            return xyz_guesses
+
+        # A ring carbon of Cb blocks the backside of Ca: C[N+](C)(C)CC1CCCC1 + [OH-].O <=> OCC1CCCC1.O + CN(C)C.
+        self.assertGreater(len(run_beta_branched_case(self.cyclopentylmethyl_tma, self.cyclopentylmethanol_water)), 0)
+        # A ring carbon of Cb blocks the backside of Ca: C[N+](C)(C)CC1CCCCC1 + [OH-].O <=> OCC1CCCCC1.O + CN(C)C.
+        self.assertGreater(len(run_beta_branched_case(self.cyclohexylmethyl_tma, self.cyclohexylmethanol_water)), 0)
+        # Neopentyl (quaternary Cb): C[N+](C)(C)CC(C)(C)C + [OH-].O <=> OCC(C)(C)C.O + CN(C)C.
+        # Every staggered Ca-Cb rotamer has a methyl anti to N, i.e., in the backside-attack path,
+        # so guesses are not required here.
+        run_beta_branched_case(self.neopentyl_tma, self.neopentanol_water)
 
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
