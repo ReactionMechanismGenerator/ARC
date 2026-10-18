@@ -19,13 +19,16 @@ import copy
 import datetime
 import itertools
 import json
+import math
 import os
 import subprocess
 import tempfile
 from typing import TYPE_CHECKING, Any
 
-from arc.common import (ARC_PATH, almost_equal_coords, get_angle_in_180_range, get_logger, is_angle_linear,
-                        is_xyz_linear, key_by_val, read_yaml_file)
+from rdkit.Chem import AllChem
+
+from arc.common import (ARC_PATH, almost_equal_coords, determine_top_group_indices, get_angle_in_180_range,
+                        get_logger, is_angle_linear, is_xyz_linear, key_by_val, read_yaml_file)
 from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
@@ -34,13 +37,14 @@ from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.settings.settings import UMA_LATEST_MODEL, UMA_PYTHON
 from arc.species.converter import (compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz,
-                                   add_atom_to_xyz_using_internal_coords, sorted_distances_of_atom,
-                                   xyz_to_xyz_file_format)
+                                   add_atom_to_xyz_using_internal_coords, rdkit_conf_from_mol,
+                                   sorted_distances_of_atom, xyz_to_xyz_file_format)
 from arc.mapping.engine import map_two_species
 from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies, TSGuess, SpeciesError, colliding_atoms
 from arc.species.zmat import get_parameter_from_atom_indices, remove_zmat_atom_0, up_param, xyz_to_zmat
-from arc.species.vectors import calculate_angle
+from arc.species.vectors import (apply_rodrigues_rotation, calculate_angle, calculate_dihedral_angle,
+                                 unit_vector)
 
 if TYPE_CHECKING:
     from arc.level import Level
@@ -1887,6 +1891,10 @@ def process_sn2_chosen_d_indices(initial_xyz: dict,
            of those dihedrals using adjustment factors of ±15°, ±25°, ±35°, ±45°, ±55°
            (via generate_dihedral_variants) and retry placement on each variant.
         3. If still no valid guesses, retry with the same dihedrals flipped by 180°.
+        4. If still no valid guesses, the backside of Ca (anti to the leaving N) may be blocked by a
+           substituent on a beta atom (Cb) in the given reactant conformer (beta-branching, e.g., neopentyl).
+           Generate the staggered Ca-Cb rotamers of the QA reactant (via get_ca_cb_staggered_rotamers),
+           and retry Step 1 on each of them. Guesses from all rotamers are collected.
 
     Args:
         initial_xyz (dict): Initial Cartesian coordinates of the QA reactant.
@@ -1921,9 +1929,6 @@ def process_sn2_chosen_d_indices(initial_xyz: dict,
     # Step 2: find backbone dihedrals involving N, Ca, and R1, then try adjusted variants
     matches = get_matching_dihedrals(current_zmat, zmat_indices['a'], zmat_indices['b'],
                                      zmat_indices['e'], zmat_indices['d'])
-    if not matches:
-        return {}, [], zmats_total
-
     adjustment_factors = [15, 25, 35, 45, 55]
     adjusted_zmats = []
     for indices in matches:
@@ -1950,7 +1955,124 @@ def process_sn2_chosen_d_indices(initial_xyz: dict,
         if ts_guesses:
             return chosen_xyz_indices, ts_guesses, zmats_total
 
+    # Step 4: retry Step 1 on staggered Ca-Cb rotamers, in case a Cb substituent blocks the backside of Ca
+    if mol is None:
+        return {}, [], zmats_total
+    rotamer_ts_guesses = []
+    for rotamer_xyz in get_ca_cb_staggered_rotamers(xyz=initial_xyz, mol=mol, ca=xyz_indices['Ca'],
+                                                    n=xyz_indices['N'], threshold=threshold,
+                                                    multiple_bond_pairs=multiple_bond_pairs):
+        rotamer_zmat, rotamer_zmat_indices = setup_zmat_indices(rotamer_xyz, infra_indices, mol=mol)
+        stretch_ab_bond(rotamer_zmat, infra_indices, rotamer_zmat_indices, sn2_parameters, 'qa_sn2')
+        ts_guesses, zmats_total = process_sn2_adjustments(
+            sn2_parameters, rotamer_zmat, oh_d1, xyz_indices, zmats_total, threshold=threshold,
+            multiple_bond_pairs=multiple_bond_pairs,
+        )
+        rotamer_ts_guesses.extend(ts_guesses)
+    if rotamer_ts_guesses:
+        return chosen_xyz_indices, rotamer_ts_guesses, zmats_total
+
     return {}, [], zmats_total
+
+
+def get_ca_cb_staggered_rotamers(xyz: dict,
+                                 mol: Molecule,
+                                 ca: int,
+                                 n: int,
+                                 threshold: float = 0.8,
+                                 multiple_bond_pairs: set[tuple[int, int]] | None = None,
+                                 tolerance: float = 5.0,
+                                 ) -> list[dict]:
+    """
+    Generate staggered rotamers about the Ca-Cb bond(s) of a QA reactant, each placing one Cb substituent anti to N.
+
+    An SN2 attack requires the backside of Ca (anti to the leaving N) to be open. The reactant conformer is
+    chosen without regard to the reaction, so a substituent on a beta atom (Cb) may occupy the attack path
+    (the beta-branching / neopentyl effect). In a staggered Ca-Cb rotamer, the Cb substituent anti to N
+    (dihedral N-Ca-Cb-X = 180°) is the one closest to the backside of Ca. Enumerating the staggered rotamers,
+    each placing a different Cb substituent X anti to N, therefore includes the rotamer in which the attack path
+    is flanked by the smallest Cb substituent (e.g., H), if Cb has one.
+
+    Each Cb is a heavy-atom neighbor of Ca other than N. A Cb is skipped if the Ca-Cb bond is in a ring
+    (not freely rotatable) or if Cb has no substituents other than Ca; a substituent X collinear with Ca-Cb
+    (e.g., an alkyne) is not considered since rotating it is meaningless. The Cb side of each Ca-Cb bond is rotated
+    rigidly about the Ca-Cb axis, the rest of the molecule is kept in place, and the atom order is preserved.
+    If Ca has several such Cb atoms, all combinations of their rotamers are generated. Combinations in which
+    every chosen X is already anti to N (within ``tolerance``) reproduce the input conformer and are skipped.
+    Rotamers that fail the collision screen (colliding_atoms) are discarded.
+
+    A rigid rotation can bring the rotated groups into close nonbonded contacts that the rest of the molecule
+    would relax away. Each rotamer that passes the collision screen is therefore relaxed with the MMFF94 force field
+    while every chosen N-Ca-Cb-X dihedral is constrained at 180°, keeping the atom order. If the force field
+    cannot be set up or the optimization fails or does not converge, the rigid rotamer is kept.
+
+    Args:
+        xyz (dict): The Cartesian coordinates of the QA reactant.
+        mol (Molecule): The QA reactant molecule, with the same atom order as ``xyz``.
+        ca (int): The 0-index of Ca, the carbon attacked by the nucleophile.
+        n (int): The 0-index of the leaving N.
+        threshold (float, optional): The collision threshold passed to colliding_atoms.
+        multiple_bond_pairs (set[tuple[int, int]], optional): Atom pairs bonded with an order above single.
+        tolerance (float, optional): The deviation in degrees from 180° within which X is considered already anti to N.
+
+    Returns:
+        list[dict]: The Cartesian coordinates of the non-colliding (relaxed) rotamers, ordered by the Cb and X atom indices.
+    """
+    ca_atom = mol.atoms[ca]
+    cb_options = list()
+    for cb_atom in sorted(ca_atom.edges.keys(), key=lambda atom: mol.atoms.index(atom)):
+        cb = mol.atoms.index(cb_atom)
+        if cb == n or cb_atom.is_hydrogen() or mol.is_bond_in_cycle(mol.get_bond(ca_atom, cb_atom)):
+            continue
+        x_indices = sorted(mol.atoms.index(atom) for atom in cb_atom.edges.keys() if atom is not ca_atom)
+        x_indices = [x for x in x_indices if not is_angle_linear(calculate_angle(xyz, [ca, cb, x], index=0))]
+        if not x_indices:
+            continue
+        cb_side, _ = determine_top_group_indices(mol=mol, atom1=ca_atom, atom2=cb_atom, index=0)
+        options = list()
+        for x in x_indices:
+            rotation = (180.0 - calculate_dihedral_angle(xyz, [n, ca, cb, x], index=0)) % 360.0
+            if min(rotation, 360.0 - rotation) < tolerance:
+                rotation = 0.0
+            options.append((cb, x, cb_side, rotation))
+        cb_options.append(options)
+
+    rotamers = list()
+    for combination in itertools.product(*cb_options):
+        if all(rotation == 0.0 for _, _, _, rotation in combination):
+            continue
+        coords = [tuple(coord) for coord in xyz['coords']]
+        for cb, _, cb_side, rotation in combination:
+            if rotation != 0.0:
+                axis = unit_vector([coords[cb][i] - coords[ca][i] for i in range(3)])
+                apply_rodrigues_rotation(coords=coords, axis_origin=coords[ca], axis_unit=axis,
+                                         angle_rad=math.radians(rotation), indices=cb_side)
+        rotamer = {'symbols': xyz['symbols'], 'isotopes': xyz['isotopes'], 'coords': tuple(coords)}
+        if colliding_atoms(rotamer, threshold=threshold, multiple_bond_pairs=multiple_bond_pairs):
+            continue
+        try:
+            conf, rd_mol = rdkit_conf_from_mol(mol=mol, xyz=rotamer)
+            mmff_properties = AllChem.MMFFGetMoleculeProperties(rd_mol)
+            if mmff_properties is None:
+                raise ValueError('MMFF94 atom typing failed')
+            force_field = AllChem.MMFFGetMoleculeForceField(rd_mol, mmff_properties, confId=conf.GetId())
+            for cb, x, _, _ in combination:
+                force_field.MMFFAddTorsionConstraint(n, ca, cb, x, False, 180.0, 180.0, 1.0e4)
+            force_field.Initialize()
+            not_converged = 1
+            for _ in range(10):
+                not_converged = force_field.Minimize(maxIts=1000)
+                if not not_converged:
+                    break
+            if not_converged:
+                raise ValueError('MMFF94 optimization did not converge')
+            positions = force_field.Positions()
+            rotamer = {'symbols': xyz['symbols'], 'isotopes': xyz['isotopes'],
+                       'coords': tuple(tuple(positions[3 * i: 3 * i + 3]) for i in range(len(xyz['symbols'])))}
+        except Exception as e:
+            logger.debug(f'Could not relax a Ca-Cb rotamer with MMFF94, keeping the rigid rotamer: {e}')
+        rotamers.append(rotamer)
+    return rotamers
 
 
 def process_sn2_adjustments(sn2_parameters: dict,
