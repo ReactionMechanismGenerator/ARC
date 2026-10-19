@@ -1,0 +1,12 @@
+
+ Primary working directories    : /scratch/user/12345
+ Secondary working directories  : /scratch/user/12345
+
+ PROGRAM SYSTEM MOLPRO
+
+ Variables initialized (889), CPU time= 0.01 sec
+ Commands  initialized (702), CPU time= 0.01 sec
+
+ Executing external program xmrcc ...
+
+ Fatal error in xmrcc: the requested excitation rank exceeds the determinant space.

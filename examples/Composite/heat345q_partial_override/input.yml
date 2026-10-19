@@ -1,0 +1,20 @@
+# Form 2 — preset with partial override.
+#
+# Keeps HEAT-345Q everywhere except for the δ[CCSDT] term, whose basis is
+# promoted from cc-pVDZ to cc-pVTZ. All other terms (δ[CCSDT(Q)], δ[CV],
+# δ[rel]) stay at the preset's defaults.
+#
+# Override target labels must match term labels in presets.yml; unknown
+# target labels raise InputError.
+project: composite_heat345q_partial_override
+
+sp_composite:
+  preset: HEAT-345Q
+  overrides:
+    delta_T:
+      high: {method: ccsdt,   basis: cc-pVTZ}
+      low:  {method: ccsd(t), basis: cc-pVTZ}
+
+species:
+  - label: OH
+    smiles: '[OH]'
