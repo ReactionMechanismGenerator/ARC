@@ -49,7 +49,9 @@ class TestARC(unittest.TestCase):
                           'bde': True,
                           }
         projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
-                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
+                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong',
+                    'arc_test_only_process_freq_factor', 'arc_test_freq_factor_is_calculated',
+                    'arc_test_only_process_keeps_checks', 'arc_test_no_only_process_deletes_checks']
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             if os.path.isdir(project_directory):
@@ -240,6 +242,66 @@ class TestARC(unittest.TestCase):
         # Exactly 20 degrees (18 points) is the coarsest still accepted.
         arc0 = ARC(project='arc_test_boundary_scan_res', rotor_scan_resolution=20.0)
         self.assertEqual(arc0.rotor_scan_resolution, 20.0)
+
+    def test_only_process_input_key(self):
+        """Test the only_process input key is parsed, stored, and round-tripped."""
+        arc0 = ARC(project='arc_test_only_process', only_process=True)
+        self.assertTrue(arc0.only_process)
+        self.assertTrue(arc0.as_dict()['only_process'])
+        # Absent the key it defaults to False and is not written to the restart dict, so an
+        # existing project's restart file is byte-identical to before this change.
+        arc1 = ARC(project='arc_test_no_only_process')
+        self.assertFalse(arc1.only_process)
+        self.assertNotIn('only_process', arc1.as_dict())
+        # An explicit False is likewise omitted rather than written as a falsy entry.
+        arc2 = ARC(project='arc_test_false_only_process', only_process=False)
+        self.assertNotIn('only_process', arc2.as_dict())
+        # Round-trip: the key as_dict() writes is accepted back as an input key.
+        arc3 = ARC(project='arc_test_only_process_restart', only_process=arc0.as_dict()['only_process'])
+        self.assertTrue(arc3.only_process)
+
+    def test_only_process_keeps_check_files(self):
+        """only_process must not delete checkfiles: jobs may still be running or be restart fodder.
+
+        Processing-only returns without waiting for jobs, yet ``_execute()`` still reaches
+        ``clean_check_files()``, which with the default ``keep_checks=False`` removes every ``.chk``
+        under ``calcs`` - including the one a running local Gaussian job is writing to.
+        """
+        def seed_chk(arc_obj):
+            chk = os.path.join(arc_obj.project_directory, 'calcs', 'Species', 'CH4', 'sp', 'check.chk')
+            os.makedirs(os.path.dirname(chk), exist_ok=True)
+            with open(chk, 'w') as fh:
+                fh.write('not a real checkpoint')
+            return chk
+
+        arc0 = ARC(project='arc_test_only_process_keeps_checks', only_process=True)
+        chk0 = seed_chk(arc0)
+        arc0.clean_check_files()
+        self.assertTrue(os.path.isfile(chk0), 'only_process must keep check files.')
+
+        # Control: the same call without only_process still cleans up as before.
+        arc1 = ARC(project='arc_test_no_only_process_deletes_checks')
+        chk1 = seed_chk(arc1)
+        arc1.clean_check_files()
+        self.assertFalse(os.path.isfile(chk1), 'a normal run must still delete check files.')
+
+    def test_only_process_does_not_spawn_frequency_scaling_jobs(self):
+        """Test that processing-only mode does not calculate a missing frequencies scaling factor"""
+        # determine_scaling_factors() builds a Scheduler of its own, which never sees only_process, so
+        # it submits calibration jobs for small species - and it is called from __init__, before
+        # execute() ever reaches the only_process-guarded project scheduler.
+        kwargs = {'freq_level': 'wb97xd/def2svpd',  # carries no tabulated factor
+                  'job_types': {'freq': True}}
+        with patch('arc.main.determine_scaling_factors') as spawn:
+            arc0 = ARC(project='arc_test_only_process_freq_factor', only_process=True, **kwargs)
+        spawn.assert_not_called()
+        self.assertEqual(arc0.freq_scale_factor, 1)
+        # The same input without only_process does reach the calculation, so what stops it above is
+        # the guard rather than the level being tabulated or calc_freq_factor being off.
+        with patch('arc.main.determine_scaling_factors', return_value=[0.95]) as spawn:
+            arc1 = ARC(project='arc_test_freq_factor_is_calculated', **kwargs)
+        spawn.assert_called_once()
+        self.assertEqual(arc1.freq_scale_factor, 0.95)
 
     def test_check_project_name(self):
         """Test project name invalidity"""
@@ -582,7 +644,9 @@ class TestARC(unittest.TestCase):
         Delete all project directories created during these unit tests
         """
         projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
-                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
+                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong',
+                    'arc_test_only_process_freq_factor', 'arc_test_freq_factor_is_calculated',
+                    'arc_test_only_process_keeps_checks', 'arc_test_no_only_process_deletes_checks']
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             if os.path.isdir(project_directory):

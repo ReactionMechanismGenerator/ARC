@@ -275,6 +275,7 @@ class Scheduler(object):
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
         skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
         output (dict, optional): Output dictionary with status per job type and final QM file paths for all species.
+        only_process (bool, optional): Whether to only run statmech and process runs from a (restart) input file.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -378,6 +379,7 @@ class Scheduler(object):
                  report_e_elect: bool | None = False,
                  skip_nmd: bool | None = False,
                  output: dict | None = None,
+                 only_process: bool = False,
                  ) -> None:
 
         self.project = project
@@ -552,7 +554,9 @@ class Scheduler(object):
                     self.running_jobs[species.label if not species.multi_species else species.multi_species] = list()
                 if self.output[species.label]['convergence']:
                     continue
-                if species.is_monoatomic():
+                if only_process:
+                    pass
+                elif species.is_monoatomic():
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
                             and 'sp' not in list(self.job_dict[species.label].keys()) \
@@ -645,7 +649,12 @@ class Scheduler(object):
         self.save_restart = True
         self.timer = True
         if not self.testing:
-            self.schedule_jobs()
+            if only_process:
+                # No jobs are submitted or monitored, but convergence still has to be settled, since
+                # the scheduling loop is the only thing that normally does it.
+                self.validate_completion_without_scheduling()
+            else:
+                self.schedule_jobs()
 
     def has_pending_pipe_work(self, label: str) -> bool:
         """
@@ -4517,6 +4526,36 @@ class Scheduler(object):
             self.troubleshoot_ess(label=label,
                                   job=job,
                                   level_of_theory=self.scan_level)
+
+    def validate_completion_without_scheduling(self) -> None:
+        """
+        Finalize convergence for species whose jobs all succeeded, without submitting anything.
+
+        In processing-only mode ``schedule_jobs()`` never runs, and the scheduling loop is the only
+        caller of :meth:`check_all_done`, so convergence is never settled. That matters because a
+        job check saves the restart file as soon as its job succeeds, while convergence is only
+        decided once the species has no jobs left: an interrupted run can therefore leave a restart
+        carrying every required job-type flag with ``convergence`` still unset. Processing filters on
+        ``convergence``, so such a species - and every reaction depending on it - would be silently
+        skipped despite having complete results, which is the opposite of what this mode is for.
+
+        A species that still has jobs recorded as running is left alone: its results are not known
+        to be final. The transition-state E0/IRC gate inside :meth:`check_all_done` keeps applying,
+        so a TS that failed its checks stays unconverged here too.
+
+        Returns:
+            None: Side-effects only. May set ``self.output[label]['convergence']`` and saves the
+            restart file via :meth:`check_all_done`.
+        """
+        for species in self.species_list:
+            label = species.label
+            if label not in self.output or self.output[label]['convergence']:
+                continue
+            if self.running_jobs.get(label):
+                logger.info(f'Not validating completion of {label}: it still has jobs recorded as '
+                            f'running ({", ".join(self.running_jobs[label])}).')
+                continue
+            self.check_all_done(label)
 
     def check_all_done(self, label: str):
         """
