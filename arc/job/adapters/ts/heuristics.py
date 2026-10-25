@@ -23,8 +23,9 @@ import math
 import os
 import subprocess
 import tempfile
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
+from rdkit import Chem
 from rdkit.Chem import AllChem
 
 from arc.common import (ARC_PATH, almost_equal_coords, determine_top_group_indices, get_angle_in_180_range,
@@ -36,9 +37,10 @@ from arc.job.adapters.ts.linear_utils.geom_utils import bond_order_map
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.settings.settings import UMA_LATEST_MODEL, UMA_PYTHON
+from arc.species.conformers import get_number_of_chiral_centers
 from arc.species.converter import (compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz,
                                    add_atom_to_xyz_using_internal_coords, rdkit_conf_from_mol,
-                                   sorted_distances_of_atom, xyz_to_xyz_file_format)
+                                   sorted_distances_of_atom, to_rdkit_mol, xyz_to_xyz_file_format)
 from arc.mapping.engine import map_two_species
 from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies, TSGuess, SpeciesError, colliding_atoms
@@ -290,17 +292,18 @@ class HeuristicsAdapter(JobAdapter):
                 except ValueError:
                     continue
 
-            if rxn.family == 'qa_sn2':
+            if rxn.family in QA_TS_GUESS_FUNCTIONS:
+                qa_ts_guess_function, family_description = QA_TS_GUESS_FUNCTIONS[rxn.family]
                 try:
                     tsg = TSGuess(method='Heuristics')
                     tsg.tic()
-                    xyzs, families = qa_sn2(reaction=rxn)
+                    xyzs, families = qa_ts_guess_function(reaction=rxn)
                     tsg.tok()
                     if not xyzs:
                         logger.warning(f'Heuristics TS search failed to generate any valid TS guesses for {rxn.label}.')
                         continue
                 except ValueError as e:
-                    logger.warning(f'Heuristics QA SN2 TS search failed for {rxn.label}:\n{e}')
+                    logger.warning(f'Heuristics {family_description} TS search failed for {rxn.label}:\n{e}')
                     continue
 
             for method_index, xyz in enumerate(xyzs):
@@ -329,7 +332,8 @@ class HeuristicsAdapter(JobAdapter):
                              )
 
             if len(self.reactions) < 5:
-                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'heuristics' in tsg.method])
+                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success
+                                 and 'heuristics' in tsg.method.lower()])
                 if successes:
                     logger.info(f'Heuristics successfully found {successes} TS guesses for {rxn.label}.')
                 else:
@@ -1728,12 +1732,34 @@ def check_ts_bonds(transition_state_xyz: dict, tested_atom_indices: list) -> boo
     return oxygen_has_valid_bonds and h1_has_valid_bonds and h2_has_valid_bonds
 
 
-def qa_sn2(reaction: 'ARCReaction') -> tuple[list[dict], list[str]]:
+def qa_ts_guesses(reaction: 'ARCReaction',
+                  family: str,
+                  parameters_file: str,
+                  no_products_message: str,
+                  extract_indices: Callable[['ARCReaction', dict], tuple['ARCSpecies', 'ARCSpecies', dict, dict]],
+                  build_guesses: Callable[..., tuple[list[dict], list[dict]]],
+                  site_filter: Callable[['ARCReaction', list[dict]], list[dict]] | None = None,
+                  ) -> tuple[list[dict], list[str]]:
     """
-    Generate TS guesses for reactions of the ARC "qa_sn2" family.
+    Generate TS guesses for a reaction of a QA (quaternary ammonium + OH_d1) TS-guess family.
+
+    The family products of the reaction are generated, each product dictionary (a reactive site) is converted
+    into atom indices, and the family builds the TS guesses of each site in turn.
+    The Z-matrices of all accepted guesses are shared across the sites, so a guess duplicating
+    an earlier one (of any site) is rejected. The guesses are finally pre-filtered by a UMA single point.
 
     Args:
         reaction (ARCReaction): The reaction to process.
+        family (str): The ARC family label.
+        parameters_file (str): The family parameters YAML file name in ARC's data directory.
+        no_products_message (str): The ValueError message raised if the reaction has no products of the family.
+        extract_indices (Callable): ``(reaction, product_dict) -> (main_reactant, oh_d1, initial_xyz, xyz_indices)``,
+                                    the reactants and the atom indices of one reactive site.
+        build_guesses (Callable): ``(parameters, main_reactant, oh_d1, initial_xyz, xyz_indices, zmats_total,
+                                  threshold, multiple_bond_pairs) -> (xyz_guesses, zmats_total)``,
+                                  the TS guesses of one reactive site.
+        site_filter (Callable, optional): ``(reaction, product_dicts) -> product_dicts``,
+                                          removes equivalent reactive sites before the guesses are built.
 
     Returns:
         Tuple containing:
@@ -1747,22 +1773,25 @@ def qa_sn2(reaction: 'ARCReaction') -> tuple[list[dict], list[str]]:
         consider_rmg_families=False,
         consider_arc_families=True,
     )
-    product_dicts = [pd for pd in product_dicts if pd.get('family') == 'qa_sn2']
+    product_dicts = [pd for pd in product_dicts if pd.get('family') == family]
     if not product_dicts:
-        raise ValueError("No qa_sn2 family products found for this reaction.")
+        raise ValueError(no_products_message)
 
-    sn2_parameters = load_family_parameters("qa_sn2_parameters.yml")
+    parameters = load_family_parameters(parameters_file)
+    if site_filter is not None:
+        product_dicts = site_filter(reaction, product_dicts)
 
     for product_dict in product_dicts:
-        main_reactant, oh_d1, initial_xyz, xyz_indices = extract_sn2_reactant_and_indices(reaction, product_dict)
+        main_reactant, oh_d1, initial_xyz, xyz_indices = extract_indices(reaction, product_dict)
         threshold = 0.6 if has_nitrile_group(main_reactant) else 0.8
-        _, xyz_guesses, zmats_total = process_sn2_chosen_d_indices(
-            initial_xyz, xyz_indices, sn2_parameters, oh_d1, zmats_total, threshold=threshold,
-            multiple_bond_pairs=get_multiple_bond_pairs(main_reactant), mol=main_reactant.mol,
+        multiple_bond_pairs = get_multiple_bond_pairs(main_reactant)
+        xyz_guesses, zmats_total = build_guesses(
+            parameters, main_reactant, oh_d1, initial_xyz, xyz_indices, zmats_total,
+            threshold, multiple_bond_pairs,
         )
         if xyz_guesses:
             xyz_guesses_total.extend(xyz_guesses)
-            reaction_families.extend(['qa_sn2'] * len(xyz_guesses))
+            reaction_families.extend([family] * len(xyz_guesses))
 
     xyz_guesses_total, reaction_families = filter_ts_guesses_with_uma_sp(
         xyz_guesses_total, reaction_families,
@@ -1772,9 +1801,62 @@ def qa_sn2(reaction: 'ARCReaction') -> tuple[list[dict], list[str]]:
     return xyz_guesses_total, reaction_families
 
 
-def get_main_reactant_and_oh_d1_from_sn2_reaction(reaction: 'ARCReaction') -> tuple['ARCSpecies', 'ARCSpecies']:
+def qa_sn2(reaction: 'ARCReaction') -> tuple[list[dict], list[str]]:
     """
-    Get the QA reactant and OH_d1 species from a SN2 reaction.
+    Generate TS guesses for reactions of the ARC "qa_sn2" family.
+
+    Args:
+        reaction (ARCReaction): The reaction to process.
+
+    Returns:
+        Tuple containing:
+            - list[dict]: Cartesian coordinates of TS guesses.
+            - list[str]: Reaction family label for each guess.
+    """
+    return qa_ts_guesses(reaction,
+                         family='qa_sn2',
+                         parameters_file='qa_sn2_parameters.yml',
+                         no_products_message='No qa_sn2 family products found for this reaction.',
+                         extract_indices=extract_sn2_reactant_and_indices,
+                         build_guesses=build_sn2_site_guesses,
+                         )
+
+
+def build_sn2_site_guesses(sn2_parameters: dict,
+                           main_reactant: 'ARCSpecies',
+                           oh_d1: 'ARCSpecies',
+                           initial_xyz: dict,
+                           xyz_indices: dict,
+                           zmats_total: list[dict],
+                           threshold: float,
+                           multiple_bond_pairs: set[tuple[int, int]],
+                           ) -> tuple[list[dict], list[dict]]:
+    """
+    Build the QA SN2 TS guesses of one reactive site (see process_sn2_chosen_d_indices).
+
+    Args:
+        sn2_parameters (dict): QA SN2 parameters loaded from YAML.
+        main_reactant (ARCSpecies): The QA reactant.
+        oh_d1 (ARCSpecies): The OH_d1 species.
+        initial_xyz (dict): Cartesian coordinates of the QA reactant.
+        xyz_indices (dict): Atom indices of the site.
+        zmats_total (list[dict]): Accumulated Z-matrices (duplicate filter).
+        threshold (float): Collision detection threshold.
+        multiple_bond_pairs (set[tuple[int, int]]): QA reactant atom pairs bonded with an order above single.
+
+    Returns:
+        tuple[list[dict], list[dict]]: The TS guess XYZ dicts and the updated Z-matrices.
+    """
+    _, xyz_guesses, zmats_total = process_sn2_chosen_d_indices(
+        initial_xyz, xyz_indices, sn2_parameters, oh_d1, zmats_total, threshold=threshold,
+        multiple_bond_pairs=multiple_bond_pairs, mol=main_reactant.mol,
+    )
+    return xyz_guesses, zmats_total
+
+
+def get_qa_and_oh_d1(reaction: 'ARCReaction') -> tuple['ARCSpecies', 'ARCSpecies']:
+    """
+    Get the QA reactant and OH_d1 species from a QA reaction (QA SN2 or QA Hofmann elimination).
 
     Args:
         reaction: An ARCReaction instance.
@@ -1799,6 +1881,7 @@ def get_main_reactant_and_oh_d1_from_sn2_reaction(reaction: 'ARCReaction') -> tu
     if qa_reactant is None or oh_d1 is None:
         raise ValueError("SN2 reaction must include a QA reactant and an OH_d1 species (with charge -1 on O).")
     return qa_reactant, oh_d1
+
 
 
 def extract_sn2_reactant_and_indices(reaction: 'ARCReaction',
@@ -1834,7 +1917,7 @@ def extract_sn2_reactant_and_indices(reaction: 'ARCReaction',
             - dict: Initial XYZ coordinates of the QA reactant
             - dict: xyz_indices with keys Ca, N, R1, d, O_r, H_r, O_w, H1_w, n_qa, atom_order
     """
-    main_reactant, oh_d1 = get_main_reactant_and_oh_d1_from_sn2_reaction(reaction)
+    main_reactant, oh_d1 = get_qa_and_oh_d1(reaction)
     Ca_xyz = product_dict['r_label_map']['*1']
     N_xyz = product_dict['r_label_map']['*2']
     O_r_xyz = product_dict['r_label_map']['*3']
@@ -1847,7 +1930,30 @@ def extract_sn2_reactant_and_indices(reaction: 'ARCReaction',
     H1_w_seq = n_qa + 2
     O_w_seq  = n_qa + 3
 
-    local_O_r_idx = O_r_xyz - n_qa
+    xyz_indices = {
+        'Ca':   Ca_xyz,
+        'N':    N_xyz,
+        'R1':   R1_xyz,
+        'O_r':  O_r_seq,
+        'H_r':  H_r_seq,
+        'H1_w': H1_w_seq,
+        'O_w':  O_w_seq,
+        'atom_order': get_oh_d1_atom_order(oh_d1, O_r_xyz - n_qa),
+    }
+    return main_reactant, oh_d1, main_reactant.get_xyz(), xyz_indices
+
+
+def get_oh_d1_atom_order(oh_d1: 'ARCSpecies', local_O_r_idx: int) -> list[int]:
+    """
+    Get the OH_d1 atom indices in the order the atoms are placed in a QA TS guess: O_r, H_r, H1_w, O_w, H2_w.
+
+    Args:
+        oh_d1 (ARCSpecies): The OH_d1 species.
+        local_O_r_idx (int): The 0-index of the hydroxide oxygen (O_r) within the OH_d1 species.
+
+    Returns:
+        list[int]: The OH_d1 atom indices of O_r, H_r, H1_w, O_w, and H2_w.
+    """
     O_r_atom = oh_d1.mol.atoms[local_O_r_idx]
     H_r_local = oh_d1.mol.atoms.index(list(O_r_atom.edges.keys())[0])
     O_w_local = next(
@@ -1858,18 +1964,7 @@ def extract_sn2_reactant_and_indices(reaction: 'ARCReaction',
     O_w_atom = oh_d1.mol.atoms[O_w_local]
     H_w_neighbors = [oh_d1.mol.atoms.index(n) for n in O_w_atom.edges.keys()]
     H1_w_local, H2_w_local = H_w_neighbors[0], H_w_neighbors[1]
-
-    xyz_indices = {
-        'Ca':   Ca_xyz,
-        'N':    N_xyz,
-        'R1':   R1_xyz,
-        'O_r':  O_r_seq,
-        'H_r':  H_r_seq,
-        'H1_w': H1_w_seq,
-        'O_w':  O_w_seq,
-        'atom_order': [local_O_r_idx, H_r_local, H1_w_local, O_w_local, H2_w_local],
-    }
-    return main_reactant, oh_d1, main_reactant.get_xyz(), xyz_indices
+    return [local_O_r_idx, H_r_local, H1_w_local, O_w_local, H2_w_local]
 
 
 def process_sn2_chosen_d_indices(initial_xyz: dict,
@@ -1982,6 +2077,7 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
                                  threshold: float = 0.8,
                                  multiple_bond_pairs: set[tuple[int, int]] | None = None,
                                  tolerance: float = 5.0,
+                                 screen_after_relax: bool = False,
                                  ) -> list[dict]:
     """
     Generate staggered rotamers about the Ca-Cb bond(s) of a QA reactant, each placing one Cb substituent anti to N.
@@ -2006,6 +2102,10 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
     while every chosen N-Ca-Cb-X dihedral is constrained at 180°, keeping the atom order. If the force field
     cannot be set up or the optimization fails or does not converge, the rigid rotamer is kept.
 
+    With ``screen_after_relax``, the collision screen is applied to the relaxed rotamer instead of the rigid one.
+    When both Ca and Cb carry bulky groups (e.g., a tert-butyl Cb next to an NMe3 leaving group), every rigid rotamer
+    can bring hydrogens of the two groups nearly on top of each other, although the relaxed rotamer is unstrained.
+
     Args:
         xyz (dict): The Cartesian coordinates of the QA reactant.
         mol (Molecule): The QA reactant molecule, with the same atom order as ``xyz``.
@@ -2014,6 +2114,7 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
         threshold (float, optional): The collision threshold passed to colliding_atoms.
         multiple_bond_pairs (set[tuple[int, int]], optional): Atom pairs bonded with an order above single.
         tolerance (float, optional): The deviation in degrees from 180° within which X is considered already anti to N.
+        screen_after_relax (bool, optional): Whether to apply the collision screen after the MMFF94 relaxation.
 
     Returns:
         list[dict]: The Cartesian coordinates of the non-colliding (relaxed) rotamers, ordered by the Cb and X atom indices.
@@ -2048,7 +2149,8 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
                 apply_rodrigues_rotation(coords=coords, axis_origin=coords[ca], axis_unit=axis,
                                          angle_rad=math.radians(rotation), indices=cb_side)
         rotamer = {'symbols': xyz['symbols'], 'isotopes': xyz['isotopes'], 'coords': tuple(coords)}
-        if colliding_atoms(rotamer, threshold=threshold, multiple_bond_pairs=multiple_bond_pairs):
+        if not screen_after_relax and colliding_atoms(rotamer, threshold=threshold,
+                                                      multiple_bond_pairs=multiple_bond_pairs):
             continue
         try:
             conf, rd_mol = rdkit_conf_from_mol(mol=mol, xyz=rotamer)
@@ -2071,6 +2173,9 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
                        'coords': tuple(tuple(positions[3 * i: 3 * i + 3]) for i in range(len(xyz['symbols'])))}
         except Exception as e:
             logger.debug(f'Could not relax a Ca-Cb rotamer with MMFF94, keeping the rigid rotamer: {e}')
+        if screen_after_relax and colliding_atoms(rotamer, threshold=threshold,
+                                                  multiple_bond_pairs=multiple_bond_pairs):
+            continue
         rotamers.append(rotamer)
     return rotamers
 
@@ -2136,30 +2241,33 @@ def process_sn2_adjustments(sn2_parameters: dict,
     a_value = params['a_value']
     d_values = params['d_values']
 
-    return generate_sn2_ts_guess(zmat_to_xyz(initial_zmat), oh_d1, r_atoms, a_atoms, d_atoms,
-                                  r_value, a_value, d_values, zmats_total, xyz_indices, threshold=threshold,
-                                  multiple_bond_pairs=multiple_bond_pairs)
+    return place_oh_d1_cluster(zmat_to_xyz(initial_zmat), oh_d1, r_atoms, a_atoms, d_atoms,
+                               r_value, a_value, d_values, zmats_total, xyz_indices, threshold=threshold,
+                               multiple_bond_pairs=multiple_bond_pairs)
 
 
-def generate_sn2_ts_guess(initial_xyz: dict,
-                           oh_d1: 'ARCSpecies',
-                           r_atoms: list[int],
-                           a_atoms: list[list[int]],
-                           d_atoms: list[list[int]],
-                           r_value: list[float],
-                           a_value: list[float],
-                           d_values: list[list],
-                           zmats_total: list[dict],
-                           xyz_indices: dict,
-                           threshold: float = 0.8,
-                           multiple_bond_pairs: set[tuple[int, int]] | None = None,
-                           ) -> tuple[list[dict], list[dict]]:
+def place_oh_d1_cluster(initial_xyz: dict,
+                        oh_d1: 'ARCSpecies',
+                        r_atoms: list[int],
+                        a_atoms: list[list[int]],
+                        d_atoms: list[list[int]],
+                        r_value: list[float],
+                        a_value: list[float],
+                        d_values: list[list],
+                        zmats_total: list[dict],
+                        xyz_indices: dict,
+                        threshold: float = 0.8,
+                        multiple_bond_pairs: set[tuple[int, int]] | None = None,
+                        scan_values: dict[int, list[float]] | None = None,
+                        check_ts_bonds_func: Callable[[dict], bool] | None = None,
+                        ) -> tuple[list[dict], list[dict]]:
     """
-    Generate Cartesian TS guesses by sequentially placing the five OH_d1 atoms.
+    Generate Cartesian TS guesses by sequentially placing the five OH_d1 atoms onto a QA reactant.
+    Shared by the QA SN2 and the QA Hofmann elimination families.
 
-    The 'scan' entry at d_values[row][1] (the N-Ca-O_r-H_r dihedral) is expanded
-    by substituting each value from HR_DIHEDRAL_SCAN_VALUES, so each YAML row
-    produces up to len(HR_DIHEDRAL_SCAN_VALUES) candidate geometries.
+    Each 'scan' entry of a d_values row is expanded by substituting each value from the respective
+    ``scan_values`` list (by default, the N-Ca-O_r-H_r dihedral at d_values[row][1] is scanned over
+    HR_DIHEDRAL_SCAN_VALUES), so each YAML row produces a candidate geometry per combination of scanned values.
 
     Args:
         initial_xyz (dict): XYZ of the QA reactant after Ca-N bond stretching.
@@ -2174,6 +2282,10 @@ def generate_sn2_ts_guess(initial_xyz: dict,
         xyz_indices (dict): Must contain O_r, H_r, Ca, N, atom_order keys.
         threshold (float, optional): Collision detection threshold. Defaults to 0.8.
         multiple_bond_pairs (set[tuple[int, int]], optional): QA reactant atom pairs bonded with an order above single.
+        scan_values (dict[int, list[float]], optional): Values to scan per 'scan' column of d_values,
+                                                         keyed by the column index. Defaults to the QA SN2 H_r scan.
+        check_ts_bonds_func (Callable[[dict], bool], optional): Validates the bonding of a TS guess.
+                                                                 Defaults to the QA SN2 bond check.
 
     Returns:
         tuple[list[dict], list[dict]]: Accepted TS guess XYZ dicts and updated Z-matrices.
@@ -2186,14 +2298,17 @@ def generate_sn2_ts_guess(initial_xyz: dict,
     Ca_xyz   = xyz_indices['Ca']
     N_xyz    = xyz_indices['N']
     atom_order = xyz_indices['atom_order']
+    scan_values = scan_values if scan_values is not None else {1: HR_DIHEDRAL_SCAN_VALUES}
+    if check_ts_bonds_func is None:
+        check_ts_bonds_func = lambda xyz: check_sn2_ts_bonds(xyz, [O_r_seq, H_r_seq, Ca_xyz, H1_w_seq, O_w_seq])
 
     for d_value_row in d_values:
-        hr_d_val = d_value_row[1]
-        hr_scan = HR_DIHEDRAL_SCAN_VALUES if hr_d_val == 'scan' else [hr_d_val]
+        scan_columns = [i for i, d_val in enumerate(d_value_row) if d_val == 'scan']
 
-        for hr_dihedral in hr_scan:
+        for scanned_dihedrals in itertools.product(*[scan_values[i] for i in scan_columns]):
             expanded_row = list(d_value_row)
-            expanded_row[1] = hr_dihedral
+            for i, dihedral in zip(scan_columns, scanned_dihedrals):
+                expanded_row[i] = dihedral
 
             xyz_guess = copy.deepcopy(initial_xyz)
             failed = False
@@ -2214,19 +2329,21 @@ def generate_sn2_ts_guess(initial_xyz: dict,
             if failed:
                 continue
 
-            are_valid_bonds = check_sn2_ts_bonds(xyz_guess, [O_r_seq, H_r_seq, Ca_xyz, H1_w_seq, O_w_seq])
+            are_valid_bonds = check_ts_bonds_func(xyz_guess)
             colliding = colliding_atoms(xyz_guess, threshold=threshold, multiple_bond_pairs=multiple_bond_pairs)
-            duplicate = any(compare_zmats(existing, xyz_to_zmat(xyz_guess)) for existing in zmats_total)
+            zmat_guess = xyz_to_zmat(xyz_guess)
+            duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmats_total)
 
             if not colliding and not duplicate and are_valid_bonds:
                 xyz_guesses.append(xyz_guess)
-                zmats_total.append(xyz_to_zmat(xyz_guess))
+                zmats_total.append(zmat_guess)
 
             else:
-                print(f"Rejected SN2 TS guess with O_r-H_r dihedral {hr_dihedral}°: "
-                      f"{xyz_guess if colliding else ''}; ")
+                logger.debug(f"Rejected TS guess with scanned dihedrals {scanned_dihedrals}°: "
+                             f"{xyz_guess if colliding else ''}; ")
 
     return xyz_guesses, zmats_total
+
 
 
 def check_sn2_ts_bonds(xyz_guess: dict, atom_indices: list[int]) -> bool:
@@ -2292,6 +2409,399 @@ def has_nitrile_group(spc: 'ARCSpecies') -> bool:
 def get_multiple_bond_pairs(spc: 'ARCSpecies') -> set[tuple[int, int]]:
     """Return the sorted (i, j) atom index pairs of all bonds with an order above single in the species."""
     return {pair for pair, order in bond_order_map(spc.mol).items() if order > 1}
+
+
+def qa_hofmann(reaction: 'ARCReaction') -> tuple[list[dict], list[str]]:
+    """
+    Generate TS guesses for reactions of the ARC "qa_hofmann" (QA Hofmann E2 elimination) family.
+
+    Each product dictionary of the family corresponds to a single beta hydrogen (Hb) abstracted by the hydroxide.
+    For each Hb, a QA reactant conformer with Hb anti-periplanar to the leaving N is used,
+    the reaction-centre bonds are adjusted, and the OH_d1 atoms are placed onto Hb.
+
+    Args:
+        reaction (ARCReaction): The reaction to process.
+
+    Returns:
+        Tuple containing:
+            - list[dict]: Cartesian coordinates of TS guesses.
+            - list[str]: Reaction family label per guess.
+    """
+    return qa_ts_guesses(reaction,
+                         family='qa_hofmann',
+                         parameters_file='qa_hofmann_parameters.yml',
+                         no_products_message='No qa_hofmann family products found for the reaction.',
+                         extract_indices=extract_hofmann_reactant_and_indices,
+                         build_guesses=build_hofmann_site_guesses,
+                         site_filter=filter_unique_hofmann_sites,
+                         )
+
+
+def filter_unique_hofmann_sites(reaction: 'ARCReaction', product_dicts: list[dict]) -> list[dict]:
+    """
+    Keep the QA Hofmann elimination product dictionaries that abstract a unique beta hydrogen
+    (see get_unique_hofmann_product_dicts).
+
+    Args:
+        reaction (ARCReaction): The reaction.
+        product_dicts (list[dict]): The qa_hofmann family product dictionaries.
+
+    Returns:
+        list[dict]: The product dictionaries with a unique abstracted Hb.
+    """
+    main_reactant, _ = get_qa_and_oh_d1(reaction)
+    return get_unique_hofmann_product_dicts(product_dicts, main_reactant)
+
+
+def build_hofmann_site_guesses(hofmann_parameters: dict,
+                               main_reactant: 'ARCSpecies',
+                               oh_d1: 'ARCSpecies',
+                               initial_xyz: dict,
+                               xyz_indices: dict,
+                               zmats_total: list[dict],
+                               threshold: float,
+                               multiple_bond_pairs: set[tuple[int, int]],
+                               ) -> tuple[list[dict], list[dict]]:
+    """
+    Build the QA Hofmann elimination TS guesses of one abstracted beta hydrogen (Hb):
+    the reaction centre of each QA reactant conformer with Hb anti-periplanar to N is adjusted
+    and the OH_d1 atoms are placed onto Hb (see process_hofmann_adjustments).
+
+    Args:
+        hofmann_parameters (dict): QA Hofmann elimination parameters loaded from YAML.
+        main_reactant (ARCSpecies): The QA reactant.
+        oh_d1 (ARCSpecies): The OH_d1 species.
+        initial_xyz (dict): Cartesian coordinates of the QA reactant.
+        xyz_indices (dict): Atom indices of the site.
+        zmats_total (list[dict]): Accumulated Z-matrices (duplicate filter).
+        threshold (float): Collision detection threshold.
+        multiple_bond_pairs (set[tuple[int, int]]): QA reactant atom pairs bonded with an order above single.
+
+    Returns:
+        tuple[list[dict], list[dict]]: The TS guess XYZ dicts and the updated Z-matrices.
+    """
+    site_guesses = list()
+    benzylic = is_pi_activated_beta_carbon(main_reactant.mol, xyz_indices['Cb'], xyz_indices['Ca'],
+                                           multiple_bond_pairs)
+    for conformer_xyz in get_hofmann_anti_periplanar_conformers(initial_xyz, main_reactant.mol, xyz_indices,
+                                                                threshold=threshold,
+                                                                multiple_bond_pairs=multiple_bond_pairs):
+        xyz_guesses, zmats_total = process_hofmann_adjustments(
+            hofmann_parameters, conformer_xyz, main_reactant.mol, oh_d1, xyz_indices, zmats_total,
+            benzylic=benzylic, threshold=threshold, multiple_bond_pairs=multiple_bond_pairs,
+        )
+        site_guesses.extend(xyz_guesses)
+    return site_guesses, zmats_total
+
+
+def get_unique_hofmann_product_dicts(product_dicts: list[dict], spc: 'ARCSpecies') -> list[dict]:
+    """
+    Remove QA Hofmann elimination product dictionaries that abstract an equivalent beta hydrogen.
+
+    Two (Ca, Cb) pairs are equivalent if their atoms are constitutionally equivalent (same canonical rank
+    without tie breaking), and only the first pair of each equivalence class is kept.
+    If the QA reactant has a chiral centre, constitutionally equivalent (Ca, Cb) pairs may be diastereotopic
+    (giving diastereomeric TSs), so all pairs are kept.
+    The hydrogens of a methyl Cb are interchanged by the methyl rotation, so a single Hb is kept for a methyl Cb.
+    The hydrogens of a methylene or methine Cb are all kept, since they may be diastereotopic (giving E/Z alkenes).
+
+    Args:
+        product_dicts (list[dict]): The qa_hofmann family product dictionaries.
+        spc (ARCSpecies): The QA reactant (its atom indices are those of the r_label_map).
+
+    Returns:
+        list[dict]: The product dictionaries with a unique abstracted Hb.
+    """
+    mol = spc.mol
+    chiral = get_number_of_chiral_centers(spc.label, mol, xyz=spc.get_xyz(), just_get_the_number=True) > 0
+    ranks = list(Chem.CanonicalRankAtoms(to_rdkit_mol(mol=mol, remove_h=False), breakTies=False))
+    kept_pairs, kept_methyl_cbs, unique_product_dicts = dict(), set(), list()
+    for product_dict in product_dicts:
+        ca, cb = product_dict['r_label_map']['*1'], product_dict['r_label_map']['*3']
+        pair_class = (ca, cb) if chiral else (ranks[ca], ranks[cb])
+        if kept_pairs.setdefault(pair_class, (ca, cb)) != (ca, cb):
+            continue
+        if sum(atom.is_hydrogen() for atom in mol.atoms[cb].edges.keys()) == 3:
+            if cb in kept_methyl_cbs:
+                continue
+            kept_methyl_cbs.add(cb)
+        unique_product_dicts.append(product_dict)
+    return unique_product_dicts
+
+
+def extract_hofmann_reactant_and_indices(reaction: 'ARCReaction',
+                                         product_dict: dict,
+                                         ) -> tuple['ARCSpecies', 'ARCSpecies', dict, dict]:
+    """
+    Extract reactant molecules and relevant atomic indices for a QA Hofmann elimination reaction.
+
+    Atom map of the TS structure::
+
+        N — Ca — Cb — Hb ··· O_r — H_r
+                 |           ·
+                 R1          H1_w — O_w — H2_w
+
+    Description:
+        - Ca (*1): Alpha carbon, loses the leaving N.
+        - N (*2): Quaternary ammonium nitrogen, leaving group.
+        - Cb (*3): Beta carbon, loses Hb and forms the C=C bond with Ca.
+        - Hb (*4): Beta hydrogen, abstracted by O_r (anti-periplanar to N).
+        - O_r (*5): Hydroxide oxygen, the base.
+        - H_r: Hydrogen on O_r.
+        - O_w, H1_w, H2_w: Water molecule of OH_d1, H1_w is H-bonded to O_r.
+        - R1: Most electronegative neighbor of Cb other than Hb (geometry reference).
+
+    Args:
+        reaction: An ARCReaction instance.
+        product_dict: Dictionary of reaction product information with atom mappings.
+
+    Returns:
+        Tuple containing:
+            - ARCSpecies: The QA reactant
+            - ARCSpecies: The OH_d1 species
+            - dict: Initial XYZ coordinates of the QA reactant
+            - dict: xyz_indices with keys Ca, N, Cb, Hb, R1, O_r, H_r, H1_w, O_w, atom_order
+    """
+    main_reactant, oh_d1 = get_qa_and_oh_d1(reaction)
+    Ca_xyz = product_dict['r_label_map']['*1']
+    N_xyz = product_dict['r_label_map']['*2']
+    Cb_xyz = product_dict['r_label_map']['*3']
+    Hb_xyz = product_dict['r_label_map']['*4']
+    O_r_xyz = product_dict['r_label_map']['*5']
+
+    R1_xyz, _ = get_neighbors_by_electronegativity(main_reactant, Cb_xyz, Hb_xyz, two_neighbors=False)
+
+    n_qa = len(main_reactant.mol.atoms)
+    xyz_indices = {
+        'Ca':   Ca_xyz,
+        'N':    N_xyz,
+        'Cb':   Cb_xyz,
+        'Hb':   Hb_xyz,
+        'R1':   R1_xyz,
+        'O_r':  n_qa,
+        'H_r':  n_qa + 1,
+        'H1_w': n_qa + 2,
+        'O_w':  n_qa + 3,
+        'atom_order': get_oh_d1_atom_order(oh_d1, O_r_xyz - n_qa),
+    }
+    return main_reactant, oh_d1, main_reactant.get_xyz(), xyz_indices
+
+
+def is_pi_activated_beta_carbon(mol: Molecule,
+                                cb: int,
+                                ca: int,
+                                multiple_bond_pairs: set[tuple[int, int]],
+                                ) -> bool:
+    """
+    Check whether a beta carbon is conjugated to a pi system, i.e., whether a neighbor of Cb (other than Ca)
+    is in a multiple bond (e.g., an aryl, C=O, C=C, or C#N group).
+    A pi system stabilizes the developing carbanion at Cb, shifting the E2 TS toward E1cb
+    (earlier proton transfer and a less stretched Ca-N bond).
+
+    Args:
+        mol (Molecule): The QA reactant molecule.
+        cb (int): The 0-index of the beta carbon.
+        ca (int): The 0-index of the alpha carbon.
+        multiple_bond_pairs (set[tuple[int, int]]): Atom pairs bonded with an order above single.
+
+    Returns:
+        bool: Whether a neighbor of Cb other than Ca is in a multiple bond.
+    """
+    pi_atoms = {index for pair in multiple_bond_pairs for index in pair}
+    return any(mol.atoms.index(neighbor) in pi_atoms
+               for neighbor in mol.atoms[cb].edges.keys() if mol.atoms.index(neighbor) != ca)
+
+
+def get_hofmann_anti_periplanar_conformers(xyz: dict,
+                                           mol: Molecule,
+                                           xyz_indices: dict,
+                                           threshold: float = 0.8,
+                                           multiple_bond_pairs: set[tuple[int, int]] | None = None,
+                                           tolerance: float = 30.0,
+                                           ) -> list[dict]:
+    """
+    Get QA reactant conformers with the beta hydrogen (Hb) anti-periplanar to the leaving N
+    (Hb-Cb-Ca-N dihedral = 180°), the geometry required for an E2 elimination.
+
+    If Hb is already anti to N in the input conformer (within ``tolerance``), only the input conformer is returned.
+    Otherwise, the staggered Ca-Cb rotamers (via get_ca_cb_staggered_rotamers) that place Hb anti to N are returned.
+    Each rotamer is relaxed before the collision screen, since an anti Hb may put bulky Ca and Cb groups gauche
+    to each other, which a rigid rotation cannot accommodate.
+    If no such rotamer exists (e.g., a Ca-Cb bond in a ring), the input conformer is returned as the best available.
+
+    Args:
+        xyz (dict): Cartesian coordinates of the QA reactant.
+        mol (Molecule): The QA reactant molecule, with the same atom order as ``xyz``.
+        xyz_indices (dict): Atom indices, must contain Ca, N, Cb, and Hb.
+        threshold (float, optional): The collision threshold passed to get_ca_cb_staggered_rotamers.
+        multiple_bond_pairs (set[tuple[int, int]], optional): Atom pairs bonded with an order above single.
+        tolerance (float, optional): The deviation in degrees from 180° within which Hb is considered anti to N.
+
+    Returns:
+        list[dict]: Cartesian coordinates of the QA reactant conformers.
+    """
+    dihedral_indices = [xyz_indices['N'], xyz_indices['Ca'], xyz_indices['Cb'], xyz_indices['Hb']]
+
+    def is_anti(conformer_xyz: dict) -> bool:
+        """Whether Hb is anti-periplanar to N in the conformer."""
+        dihedral = calculate_dihedral_angle(conformer_xyz, dihedral_indices, index=0)
+        return abs(get_angle_in_180_range(dihedral)) > 180.0 - tolerance
+
+    if is_anti(xyz):
+        return [xyz]
+    rotamers = [rotamer for rotamer in get_ca_cb_staggered_rotamers(xyz=xyz, mol=mol, ca=xyz_indices['Ca'],
+                                                                    n=xyz_indices['N'], threshold=threshold,
+                                                                    multiple_bond_pairs=multiple_bond_pairs,
+                                                                    screen_after_relax=True)
+                if is_anti(rotamer)]
+    return rotamers or [xyz]
+
+
+def stretch_xyz_bond(xyz: dict,
+                     mol: Molecule,
+                     a: int,
+                     b: int,
+                     stretch: float,
+                     ) -> dict:
+    """
+    Stretch (or shrink) the a-b bond in Cartesian coordinates by translating the atoms on the b side
+    along the a-b bond vector, keeping the a side in place.
+    If the a-b bond is in a ring, only b and its hydrogen atoms are translated.
+
+    Args:
+        xyz (dict): The Cartesian coordinates.
+        mol (Molecule): The molecule, with the same atom order as ``xyz``.
+        a (int): The 0-index of the atom kept in place.
+        b (int): The 0-index of the atom translated.
+        stretch (float): The factor by which to multiply the a-b bond length.
+
+    Returns:
+        dict: The modified Cartesian coordinates.
+    """
+    atom_a, atom_b = mol.atoms[a], mol.atoms[b]
+    if mol.is_bond_in_cycle(mol.get_bond(atom_a, atom_b)):
+        b_side = [b] + [mol.atoms.index(atom) for atom in atom_b.edges.keys() if atom.is_hydrogen()]
+    else:
+        b_side, _ = determine_top_group_indices(mol=mol, atom1=atom_a, atom2=atom_b, index=0)
+    coords = [list(coord) for coord in xyz['coords']]
+    shift = [(stretch - 1.0) * (coords[b][i] - coords[a][i]) for i in range(3)]
+    for idx in b_side:
+        coords[idx] = [coords[idx][i] + shift[i] for i in range(3)]
+    return {'symbols': xyz['symbols'], 'isotopes': xyz['isotopes'], 'coords': tuple(tuple(c) for c in coords)}
+
+
+def process_hofmann_adjustments(hofmann_parameters: dict,
+                                initial_xyz: dict,
+                                mol: Molecule,
+                                oh_d1: 'ARCSpecies',
+                                xyz_indices: dict,
+                                zmats_total: list[dict],
+                                benzylic: bool = False,
+                                threshold: float = 0.8,
+                                multiple_bond_pairs: set[tuple[int, int]] | None = None,
+                                ) -> tuple[list[dict], list[dict]]:
+    """
+    Adjust the reaction centre of the QA reactant and invoke TS guess generation for QA Hofmann elimination.
+
+    The Ca-N, Ca-Cb, and Cb-Hb bonds are scaled by the YAML stretch factors (the pi-activated set if ``benzylic``),
+    then the five OH_d1 atoms (O_r, H_r, H1_w, O_w, H2_w) are placed sequentially.
+
+    Internal coordinate definitions (L-M-N-X convention, X = new atom):
+        - O_r:  r(Hb-O_r),    a(Cb-Hb-O_r),     d(R1-Cb-Hb-O_r)    [scanned over r1_dihedral_scan_values]
+        - H_r:  r(O_r-H_r),   a(Hb-O_r-H_r),    d(Cb-Hb-O_r-H_r)   [scanned over hr_dihedral_scan_values]
+        - H1_w: r(O_r-H1_w),  a(H_r-O_r-H1_w),  d(Hb-H_r-O_r-H1_w)   [H-bond bridge: O_r accepts H1_w]
+        - O_w:  r(H1_w-O_w),  a(O_r-H1_w-O_w),  d(H_r-O_r-H1_w-O_w)
+        - H2_w: r(O_w-H2_w),  a(H1_w-O_w-H2_w), d(O_r-H1_w-O_w-H2_w)
+
+    Args:
+        hofmann_parameters (dict): QA Hofmann elimination parameters loaded from YAML.
+        initial_xyz (dict): Cartesian coordinates of the QA reactant conformer, Hb anti-periplanar to N.
+        mol (Molecule): The QA reactant molecule, with the same atom order as ``initial_xyz``.
+        oh_d1 (ARCSpecies): The OH_d1 species.
+        xyz_indices (dict): Dictionary of atom indices.
+        zmats_total (list[dict]): Accumulated Z-matrices.
+        benzylic (bool, optional): Whether Cb is conjugated to a pi system (activated beta hydrogen).
+        threshold (float, optional): Collision detection threshold. Defaults to 0.8.
+        multiple_bond_pairs (set[tuple[int, int]], optional): QA reactant atom pairs bonded with an order above single.
+
+    Returns:
+        tuple[list[dict], list[dict]]: Generated TS guess XYZ dicts and updated Z-matrices.
+    """
+    Ca_xyz   = xyz_indices['Ca']
+    N_xyz    = xyz_indices['N']
+    Cb_xyz   = xyz_indices['Cb']
+    Hb_xyz   = xyz_indices['Hb']
+    R1_xyz   = xyz_indices['R1']
+    O_r_seq  = xyz_indices['O_r']
+    H_r_seq  = xyz_indices['H_r']
+    H1_w_seq = xyz_indices['H1_w']
+    O_w_seq  = xyz_indices['O_w']
+
+    params = hofmann_parameters['family_parameters']['qa_hofmann']
+    r_value = list(params['r_value'])
+    stretch = params['stretch']
+    if benzylic:
+        r_value[0] = params['benzylic']['r_Hb-Or']
+        stretch = params['benzylic']['stretch']
+
+    stretched_xyz = stretch_xyz_bond(initial_xyz, mol, Ca_xyz, N_xyz, stretch['Ca-N'])
+    stretched_xyz = stretch_xyz_bond(stretched_xyz, mol, Ca_xyz, Cb_xyz, stretch['Ca-Cb'])
+    stretched_xyz = stretch_xyz_bond(stretched_xyz, mol, Cb_xyz, Hb_xyz, stretch['Cb-Hb'])
+
+    r_atoms = [Hb_xyz, O_r_seq, O_r_seq,  H1_w_seq, O_w_seq]
+    a_atoms = [
+        [Cb_xyz,   Hb_xyz ],
+        [Hb_xyz,   O_r_seq],
+        [H_r_seq,  O_r_seq],
+        [O_r_seq,  H1_w_seq],
+        [H1_w_seq, O_w_seq],
+    ]
+    d_atoms = [
+        [R1_xyz,  Cb_xyz,   Hb_xyz  ],
+        [Cb_xyz,  Hb_xyz,   O_r_seq ],
+        [Hb_xyz,  H_r_seq,  O_r_seq ],
+        [H_r_seq, O_r_seq,  H1_w_seq],
+        [O_r_seq, H1_w_seq, O_w_seq ],
+    ]
+    scan_values = {0: params['r1_dihedral_scan_values'], 1: params['hr_dihedral_scan_values']}
+
+    return place_oh_d1_cluster(
+        stretched_xyz, oh_d1, r_atoms, a_atoms, d_atoms, r_value, params['a_value'], params['d_values'],
+        zmats_total, xyz_indices, threshold=threshold, multiple_bond_pairs=multiple_bond_pairs,
+        scan_values=scan_values,
+        check_ts_bonds_func=lambda xyz: check_hofmann_ts_bonds(xyz, [O_r_seq, H_r_seq, Cb_xyz, H1_w_seq,
+                                                                     O_w_seq, Hb_xyz]),
+    )
+
+
+def check_hofmann_ts_bonds(xyz_guess: dict, atom_indices: list[int]) -> bool:
+    """
+    Validate the bonding geometry of a QA Hofmann elimination TS guess.
+
+    Checks:
+        1. The QA SN2 checks (check_sn2_ts_bonds) with Cb in place of Ca: O_r's nearest heavy atom is Cb,
+           the O_r-H_r bond is intact, and the water is intact and H-bonded to O_r through H1_w.
+        2. Hb's two nearest atoms are Cb and O_r (Hb is being transferred from Cb to O_r).
+
+    Args:
+        xyz_guess (dict): The TS guess coordinates.
+        atom_indices (list[int]): [O_r_seq, H_r_seq, Cb_xyz, H1_w_seq, O_w_seq, Hb_xyz].
+
+    Returns:
+        bool: True if all checks pass.
+    """
+    O_r_seq, H_r_seq, Cb_xyz, H1_w_seq, O_w_seq, Hb_xyz = atom_indices
+    if not check_sn2_ts_bonds(xyz_guess, [O_r_seq, H_r_seq, Cb_xyz, H1_w_seq, O_w_seq]):
+        return False
+    hb_bonds = sorted_distances_of_atom(xyz_guess, Hb_xyz)
+    return {hb_bonds[0][0], hb_bonds[1][0]} == {Cb_xyz, O_r_seq}
+
+
+# The QA TS-guess function of each QA family label, with a family description used in log messages.
+QA_TS_GUESS_FUNCTIONS = {
+    'qa_sn2': (qa_sn2, 'QA SN2'),
+    'qa_hofmann': (qa_hofmann, 'QA Hofmann elimination'),
+}
 
 
 def filter_ts_guesses_with_uma_sp(xyzs: list[dict],
