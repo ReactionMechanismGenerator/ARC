@@ -16,7 +16,7 @@ from unittest import mock
 
 import numpy as np
 
-from arc.common import ARC_TESTING_PATH, almost_equal_coords
+from arc.common import ARC_TESTING_PATH, almost_equal_coords, get_angle_in_180_range
 from arc.family import get_reaction_family_products
 from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             are_h_abs_wells_reversed,
@@ -43,6 +43,12 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             filter_ts_guesses_with_uma_sp,
                                             get_ca_cb_staggered_rotamers,
                                             qa_sn2,
+                                            qa_hofmann,
+                                            check_hofmann_ts_bonds,
+                                            get_hofmann_anti_periplanar_conformers,
+                                            get_unique_hofmann_product_dicts,
+                                            is_pi_activated_beta_carbon,
+                                            stretch_xyz_bond,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
@@ -235,6 +241,89 @@ class TestHeuristicsAdapter(unittest.TestCase):
         H      -1.97752100   -2.44201000   -0.04640100
         H      -2.68539400    1.31802600   -0.47437800
         H      -1.90762500    0.16100700    0.15718800""")
+        # Quaternary ammonium substrates for the qa_hoffman (Hofmann E2 elimination) family.
+        cls.ethyl_tma = ARCSpecies(label='ethyl_TMA', smiles='CC[N+](C)(C)C',
+                                   xyz="""C       2.04332265   -0.16348784   -0.59037792
+        C       1.07050142   -0.07307567    0.57401067
+        N      -0.40256562    0.03261813    0.14500682
+        C      -0.65588555    1.28943829   -0.67958677
+        C      -1.25335040    0.11529406    1.41670566
+        C      -0.84440227   -1.19441641   -0.64422628
+        H       1.86888394   -1.05040440   -1.20530934
+        H       3.06592213   -0.23560500   -0.20430421
+        H       2.00339313    0.72183063   -1.23054015
+        H       1.15746058   -0.96314852    1.20791261
+        H       1.29213396    0.81126632    1.18264999
+        H      -0.14193019    1.19475222   -1.63932691
+        H      -0.28127654    2.15171943   -0.12064960
+        H      -1.73346317    1.38103451   -0.84713996
+        H      -1.08403379   -0.79148018    2.00502591
+        H      -0.94787930    1.00241834    1.97948977
+        H      -2.30590740    0.19106571    1.12755336
+        H      -0.60299460   -2.08718119   -0.06030434
+        H      -1.92382041   -1.12706985   -0.81143297
+        H      -0.32410855   -1.20556857   -1.60515635""")
+        # A propyl quaternary ammonium whose conformer has both beta hydrogens gauche to N.
+        cls.propyl_tma = ARCSpecies(label='propyl_TMA', smiles='CCC[N+](C)(C)C',
+                                    xyz="""C       2.95844893    0.05001432    0.32699272
+        C       1.55695221   -0.52618411    0.17490150
+        C       0.52361084    0.59333433    0.05489702
+        N      -0.92293272    0.08896424   -0.10254277
+        C      -1.36638487   -0.72741375    1.10588217
+        C      -1.83385863    1.31692843   -0.20955849
+        C      -1.09247290   -0.74002527   -1.37039368
+        H       3.69267575   -0.75725285    0.41231881
+        H       3.03159470    0.67194854    1.22493034
+        H       3.22676127    0.66296415   -0.53946293
+        H       1.54460152   -1.16733695   -0.71190413
+        H       1.35037551   -1.15839410    1.04397560
+        H       0.54156689    1.22877234    0.94865698
+        H       0.73717072    1.21976544   -0.81968129
+        H      -0.80394252   -1.66401085    1.12867075
+        H      -2.43436236   -0.94331988    1.00357267
+        H      -1.18011513   -0.13886828    2.00873444
+        H      -2.86732222    0.97558894   -0.32213588
+        H      -1.52744462    1.89903054   -1.08379178
+        H      -1.72526685    1.90813920    0.70460429
+        H      -2.15723221   -0.95608155   -1.50179416
+        H      -0.71273574   -0.16038611   -2.21658670
+        H      -0.53968758   -1.67617676   -1.26028547""")
+        # A phenethyl quaternary ammonium: the phenyl group activates the beta hydrogens.
+        cls.phenethyl_tma = ARCSpecies(label='phenethyl_TMA', smiles='C[N+](C)(C)CCc1ccccc1',
+                                       xyz="""C      -2.00718970   -1.52466135   -0.55346043
+        N      -1.77997235   -0.24464020    0.23723565
+        C      -3.13452730    0.23934602    0.76877763
+        C      -1.23357766    0.83703511   -0.69147801
+        C      -0.86056010   -0.47819989    1.46039650
+        C       0.51031386   -1.11893719    1.17779020
+        C       1.52734514   -0.24362687    0.49049006
+        C       1.91567056    0.98606616    1.04294677
+        C       2.85671788    1.78805893    0.39509111
+        C       3.43083285    1.36488933   -0.80104186
+        C       3.07477342    0.13364805   -1.34534398
+        C       2.13407205   -0.67073755   -0.70046722
+        H      -2.34914363   -2.30138242    0.13645244
+        H      -2.76678377   -1.32974516   -1.31679957
+        H      -1.07087541   -1.81716959   -1.03499984
+        H      -3.80200598    0.41316132   -0.08069743
+        H      -3.54707282   -0.53575409    1.42152429
+        H      -2.97434368    1.16766645    1.32519180
+        H      -0.95834520    1.70754331   -0.09001117
+        H      -2.01925302    1.10487563   -1.40524345
+        H      -0.38017434    0.44130311   -1.24160076
+        H      -1.41861752   -1.14804752    2.12662879
+        H      -0.75972226    0.48787494    1.96832214
+        H       0.38316388   -2.06099809    0.63321059
+        H       0.94897230   -1.40804641    2.14278976
+        H       1.51133015    1.33068803    1.99224412
+        H       3.15971963    2.73751874    0.83189952
+        H       4.17407568    1.98502849   -1.29779068
+        H       3.54464384   -0.20573304   -2.26618790
+        H       1.89053351   -1.63702423   -1.13779383""")
+        cls.ethene = ARCSpecies(label='ethene', smiles='C=C')
+        cls.propene = ARCSpecies(label='propene', smiles='C=CC')
+        cls.styrene = ARCSpecies(label='styrene', smiles='C=Cc1ccccc1')
+        cls.water_dimer = ARCSpecies(label='water_dimer', smiles='O.O')
         # A neopentyl quaternary ammonium: Cb is quaternary, so a Cb methyl may block the backside of Ca.
         cls.neopentyl_tma = ARCSpecies(label='neopentyl_TMA', smiles='C[N+](C)(C)CC(C)(C)C',
                                        xyz="""C      -1.41688700   -1.00936900   -1.03515200
@@ -1719,6 +1808,238 @@ H      -3.45360689    0.15275707   -0.76116277""")
         # so guesses are not required here.
         run_beta_branched_case(self.neopentyl_tma, self.neopentanol_water)
 
+    def test_load_qa_hofmann_parameters(self):
+        """
+        Test that load_family_parameters correctly loads the QA Hofmann elimination YAML.
+        """
+        hofmann = load_family_parameters("qa_hofmann_parameters.yml")
+        self.assertIn('qa_hoffman', hofmann['family_parameters'])
+        qa = hofmann['family_parameters']['qa_hoffman']
+        self.assertEqual(len(qa['r_value']), 5)
+        self.assertEqual(len(qa['a_value']), 5)
+        self.assertEqual(len(qa['d_values']), 4)
+        for row in qa['d_values']:
+            self.assertEqual(len(row), 5)
+            self.assertEqual(row[:2], ['scan', 'scan'])
+        self.assertEqual(set(qa['stretch'].keys()), {'Ca-N', 'Ca-Cb', 'Cb-Hb'})
+        self.assertEqual(set(qa['benzylic']['stretch'].keys()), {'Ca-N', 'Ca-Cb', 'Cb-Hb'})
+        self.assertIsInstance(qa['benzylic']['r_Hb-Or'], float)
+
+    def test_check_hofmann_ts_bonds(self):
+        """
+        Test check_hofmann_ts_bonds with passing and failing geometries.
+        """
+        # Atom layout used throughout:
+        #   0=Cb, 1=Ca, 2=Hb, 3=O_r, 4=H_r, 5=H1_w, 6=O_w, 7=H2_w
+        # atom_indices = [O_r_seq=3, H_r_seq=4, Cb_xyz=0, H1_w_seq=5, O_w_seq=6, Hb_xyz=2]
+        INDICES = [3, 4, 0, 5, 6, 2]
+
+        def make_xyz(coords):
+            return {'symbols': ('C', 'C', 'H', 'O', 'H', 'H', 'O', 'H'),
+                    'isotopes': (12, 12, 1, 16, 1, 1, 16, 1),
+                    'coords': coords}
+
+        valid_coords = (
+            ( 0.0,   0.0,  0.0),
+            ( 1.46,  0.0,  0.0),
+            (-1.53,  0.0,  0.0),
+            (-2.66,  0.0,  0.0),
+            (-2.90,  0.93, 0.0),
+            (-3.10, -1.67, 0.0),
+            (-3.35, -2.63, 0.0),
+            (-4.30, -2.70, 0.0),
+        )
+        self.assertTrue(check_hofmann_ts_bonds(make_xyz(valid_coords), INDICES))
+
+        # Failing: Hb fully transferred to O_r (Hb's two nearest atoms are O_r and H_r, not Cb)
+        fail_hb = list(valid_coords)
+        fail_hb[2] = (-2.2, 0.4, 0.0)
+        self.assertFalse(check_hofmann_ts_bonds(make_xyz(tuple(fail_hb)), INDICES))
+
+        # Failing: H_r not bonded to O_r (the QA SN2 water/hydroxide checks also apply)
+        fail_hr = list(valid_coords)
+        fail_hr[4] = (-1.53, 1.0, 0.0)
+        self.assertFalse(check_hofmann_ts_bonds(make_xyz(tuple(fail_hr)), INDICES))
+
+    def test_stretch_xyz_bond(self):
+        """Test stretching a bond in Cartesian coordinates by translating one side of the bond."""
+        xyz = self.ethyl_tma.get_xyz()
+        mol = self.ethyl_tma.mol
+        ca, n, cb, hb = 1, 2, 0, 6
+        stretched = stretch_xyz_bond(xyz, mol, ca, n, 1.05)
+        self.assertAlmostEqual(calculate_distance(stretched['coords'], [ca, n], index=0),
+                               1.05 * calculate_distance(xyz['coords'], [ca, n], index=0), places=5)
+        # The N side (N, its methyl carbons and hydrogens) is translated rigidly, the Ca side does not move.
+        for i, j in itertools.combinations([2, 3, 4, 5] + list(range(11, 20)), 2):
+            self.assertAlmostEqual(calculate_distance(stretched['coords'], [i, j], index=0),
+                                   calculate_distance(xyz['coords'], [i, j], index=0), places=5)
+        for i in [0, 1, 6, 7, 8, 9, 10]:
+            self.assertTrue(np.allclose(stretched['coords'][i], xyz['coords'][i]))
+        # A terminal hydrogen: only Hb moves.
+        stretched = stretch_xyz_bond(xyz, mol, cb, hb, 1.405)
+        self.assertAlmostEqual(calculate_distance(stretched['coords'], [cb, hb], index=0),
+                               1.405 * calculate_distance(xyz['coords'], [cb, hb], index=0), places=5)
+        for i in range(len(xyz['symbols'])):
+            if i != hb:
+                self.assertTrue(np.allclose(stretched['coords'][i], xyz['coords'][i]))
+        # A ring bond: only the translated atom and its hydrogens move.
+        pyrrolidinium = ARCSpecies(label='dimethylpyrrolidinium', smiles='C[N+]1(C)CCCC1')
+        p_mol, p_xyz = pyrrolidinium.mol, pyrrolidinium.get_xyz()
+        n_idx = [i for i, atom in enumerate(p_mol.atoms) if atom.is_nitrogen()][0]
+        ring_c = [p_mol.atoms.index(atom) for atom in p_mol.atoms[n_idx].edges.keys()
+                  if p_mol.is_bond_in_cycle(p_mol.get_bond(atom, p_mol.atoms[n_idx]))][0]
+        moved = [n_idx]
+        stretched = stretch_xyz_bond(p_xyz, p_mol, ring_c, n_idx, 1.05)
+        for i in range(len(p_xyz['symbols'])):
+            self.assertEqual(np.allclose(stretched['coords'][i], p_xyz['coords'][i]), i not in moved)
+
+    def test_is_pi_activated_beta_carbon(self):
+        """Test detecting a beta carbon conjugated to a pi system."""
+        def is_activated(spc: ARCSpecies, cb: int, ca: int) -> bool:
+            return is_pi_activated_beta_carbon(spc.mol, cb=cb, ca=ca, multiple_bond_pairs=get_multiple_bond_pairs(spc))
+
+        # Aryl (Kekule ring bond on the ipso carbon), C=O, C=C, and C#N neighbors of Cb.
+        self.assertTrue(is_activated(self.phenethyl_tma, cb=5, ca=4))
+        self.assertTrue(is_activated(ARCSpecies(label='oxobutyl_TMA', smiles='CC(=O)CC[N+](C)(C)C'), cb=3, ca=4))
+        self.assertTrue(is_activated(ARCSpecies(label='butenyl_TMA', smiles='C=CCC[N+](C)(C)C'), cb=2, ca=3))
+        self.assertTrue(is_activated(ARCSpecies(label='cyanoethyl_TMA', smiles='N#CCC[N+](C)(C)C'), cb=2, ca=3))
+        # Saturated beta carbons.
+        self.assertFalse(is_activated(self.ethyl_tma, cb=0, ca=1))
+        self.assertFalse(is_activated(self.propyl_tma, cb=1, ca=2))
+        self.assertFalse(is_activated(ARCSpecies(label='isopropyl_TMA', smiles='CC(C)[N+](C)(C)C'), cb=0, ca=1))
+
+    def test_get_unique_hofmann_product_dicts(self):
+        """Test removing product dictionaries that abstract an equivalent beta hydrogen."""
+        def get_product_dicts(qa: ARCSpecies, alkene: ARCSpecies, amine: ARCSpecies) -> list[dict]:
+            rxn = ARCReaction(r_species=[qa, self.oh_d1], p_species=[alkene, amine, self.water_dimer])
+            return [pd for pd in get_reaction_family_products(rxn=rxn, rmg_family_set="default",
+                                                              consider_rmg_families=False, consider_arc_families=True)
+                    if pd.get('family') == 'qa_hoffman']
+
+        # The three hydrogens of a methyl Cb are interchanged by the methyl rotation.
+        product_dicts = get_product_dicts(self.ethyl_tma, self.ethene, self.trimethylamine)
+        self.assertEqual(len(product_dicts), 3)
+        self.assertEqual(len(get_unique_hofmann_product_dicts(product_dicts, self.ethyl_tma)), 1)
+        # Equivalent ethyl groups: a single (Ca, Cb) pair and a single Hb are kept.
+        tetraethylammonium = ARCSpecies(label='Et4N', smiles='CC[N+](CC)(CC)CC')
+        product_dicts = get_product_dicts(tetraethylammonium, self.ethene, ARCSpecies(label='Et3N', smiles='CCN(CC)CC'))
+        self.assertEqual(len(product_dicts), 12)
+        self.assertEqual(len(get_unique_hofmann_product_dicts(product_dicts, tetraethylammonium)), 1)
+        # Both hydrogens of a methylene Cb are kept.
+        product_dicts = get_product_dicts(self.propyl_tma, self.propene, self.trimethylamine)
+        unique_product_dicts = get_unique_hofmann_product_dicts(product_dicts, self.propyl_tma)
+        self.assertEqual(sorted(pd['r_label_map']['*4'] for pd in unique_product_dicts), [10, 11])
+        # Achiral isopropyl group: its two methyl Cb are equivalent, a single (Ca, Cb) pair is kept.
+        isopropyl_tma = ARCSpecies(label='isopropyl_TMA', smiles='CC(C)[N+](C)(C)C')
+        product_dicts = get_product_dicts(isopropyl_tma, self.propene, self.trimethylamine)
+        self.assertEqual(len(product_dicts), 6)
+        unique_product_dicts = get_unique_hofmann_product_dicts(product_dicts, isopropyl_tma)
+        self.assertEqual(len(unique_product_dicts), 1)
+        # Chiral QA reactant: the two isopropyl methyl Cb are diastereotopic, both (Ca, Cb) pairs are kept.
+        chiral_qa = ARCSpecies(label='chiral_QA', smiles='C[N+](C)(C(C)C)[C@@H](C)c1ccccc1')
+        product_dicts = get_product_dicts(chiral_qa, self.propene,
+                                          ARCSpecies(label='amine', smiles='CN(C)[C@@H](C)c1ccccc1'))
+        self.assertEqual(len(product_dicts), 6)
+        unique_product_dicts = get_unique_hofmann_product_dicts(product_dicts, chiral_qa)
+        self.assertEqual(sorted(pd['r_label_map']['*3'] for pd in unique_product_dicts), [4, 5])
+
+    def test_get_hofmann_anti_periplanar_conformers(self):
+        """Test getting QA conformers with the beta hydrogen anti-periplanar to N."""
+        # Both beta hydrogens of the propyl conformer are gauche to N: the Ca-Cb bond is rotated.
+        xyz, mol = self.propyl_tma.get_xyz(), self.propyl_tma.mol
+        for hb in [10, 11]:
+            xyz_indices = {'Ca': 2, 'N': 3, 'Cb': 1, 'Hb': hb}
+            self.assertLess(abs(calculate_dihedral_angle(xyz, [3, 2, 1, hb], index=0) - 180.0), 150.0)
+            conformers = get_hofmann_anti_periplanar_conformers(xyz, mol, xyz_indices)
+            self.assertGreater(len(conformers), 0)
+            for conformer in conformers:
+                self.assertAlmostEqual(calculate_dihedral_angle(conformer, [3, 2, 1, hb], index=0), 180.0, delta=1.0)
+        # A beta hydrogen already anti to N: the input conformer is kept.
+        xyz, mol = self.ethyl_tma.get_xyz(), self.ethyl_tma.mol
+        anti_hb = [hb for hb in [6, 7, 8] if abs(calculate_dihedral_angle(xyz, [2, 1, 0, hb], index=0) - 180.0) < 30][0]
+        conformers = get_hofmann_anti_periplanar_conformers(xyz, mol, {'Ca': 1, 'N': 2, 'Cb': 0, 'Hb': anti_hb})
+        self.assertEqual(conformers, [xyz])
+
+    def check_hofmann_guesses(self,
+                              xyz_guesses: list[dict],
+                              qa: ARCSpecies,
+                              ca: int,
+                              n: int,
+                              cb: int,
+                              hb_options: list[int],
+                              benzylic: bool = False):
+        """Check the reaction centre of QA Hofmann elimination TS guesses."""
+        n_qa = len(qa.mol.atoms)
+        o_r = n_qa
+        r_hb_or, r_cb_hb = (1.26, (1.30, 1.42)) if benzylic else (1.13, (1.48, 1.58))
+        self.assertGreater(len(xyz_guesses), 0)
+        for xyz_guess in xyz_guesses:
+            self.assertEqual(len(xyz_guess['symbols']), n_qa + 5)
+            self.assertEqual(xyz_guess['symbols'][:n_qa], qa.get_xyz()['symbols'])
+            self.assertEqual(sorted(xyz_guess['symbols'][n_qa:]), ['H', 'H', 'H', 'O', 'O'])
+            hb = min(hb_options, key=lambda h: calculate_distance(xyz_guess['coords'], [h, o_r], index=0))
+            self.assertTrue(check_hofmann_ts_bonds(xyz_guess, [o_r, o_r + 1, cb, o_r + 2, o_r + 3, hb]))
+            self.assertAlmostEqual(calculate_distance(xyz_guess['coords'], [hb, o_r], index=0), r_hb_or, places=2)
+            self.assertAlmostEqual(calculate_distance(xyz_guess['coords'], [o_r, o_r + 2], index=0), 1.72, places=2)
+            self.assertTrue(1.50 < calculate_distance(xyz_guess['coords'], [ca, n], index=0) < 1.72)
+            self.assertTrue(1.43 < calculate_distance(xyz_guess['coords'], [ca, cb], index=0) < 1.52)
+            self.assertTrue(r_cb_hb[0] < calculate_distance(xyz_guess['coords'], [cb, hb], index=0) < r_cb_hb[1])
+            # E2: Hb is anti-periplanar to the leaving N.
+            self.assertGreater(abs(get_angle_in_180_range(
+                calculate_dihedral_angle(xyz_guess, [n, ca, cb, hb], index=0))), 150.0)
+
+    def test_heuristics_for_qa_hofmann(self):
+        """
+        Test heuristics for QA Hofmann elimination: CC[N+](C)(C)C + [OH-].O <=> C=C + CN(C)C + O.O.
+        """
+        rxn = ARCReaction(r_species=[self.ethyl_tma, self.oh_d1],
+                          p_species=[self.ethene, self.trimethylamine, self.water_dimer])
+        self.assertEqual(rxn.family, 'qa_hoffman')
+        adapter = HeuristicsAdapter(job_type='tsg',
+                                    reactions=[rxn],
+                                    testing=True,
+                                    project='test',
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_qahofmann'))
+        adapter.execute_incore()
+        self.assertEqual(rxn.family, 'qa_hoffman')
+        self.assertTrue(rxn.ts_species.is_ts)
+        self.assertGreater(len(rxn.ts_species.ts_guesses), 0)
+        for tsg in rxn.ts_species.ts_guesses:
+            self.assertEqual(tsg.family, 'qa_hoffman')
+        self.check_hofmann_guesses([tsg.initial_xyz for tsg in rxn.ts_species.ts_guesses],
+                                   self.ethyl_tma, ca=1, n=2, cb=0, hb_options=[6, 7, 8])
+
+    def test_qa_hofmann_anti_periplanar(self):
+        """
+        Test QA Hofmann elimination guesses from a conformer with the beta hydrogens gauche to N:
+        CCC[N+](C)(C)C + [OH-].O <=> C=CC + CN(C)C + O.O.
+        """
+        rxn = ARCReaction(r_species=[self.propyl_tma, self.oh_d1],
+                          p_species=[self.propene, self.trimethylamine, self.water_dimer])
+        with mock.patch('arc.job.adapters.ts.heuristics.filter_ts_guesses_with_uma_sp',
+                        side_effect=lambda xyzs, families, **kwargs: (xyzs, families)):
+            xyz_guesses, families = qa_hofmann(rxn)
+        self.assertEqual(set(families), {'qa_hoffman'})
+        self.check_hofmann_guesses(xyz_guesses, self.propyl_tma, ca=2, n=3, cb=1, hb_options=[10, 11])
+
+    def test_qa_hofmann_benzylic(self):
+        """
+        Test QA Hofmann elimination guesses for an aryl-activated beta hydrogen:
+        C[N+](C)(C)CCc1ccccc1 + [OH-].O <=> C=Cc1ccccc1 + CN(C)C + O.O.
+        """
+        rxn = ARCReaction(r_species=[self.phenethyl_tma, self.oh_d1],
+                          p_species=[self.styrene, self.trimethylamine, self.water_dimer])
+        with mock.patch('arc.job.adapters.ts.heuristics.filter_ts_guesses_with_uma_sp',
+                        side_effect=lambda xyzs, families, **kwargs: (xyzs, families)):
+            xyz_guesses, _ = qa_hofmann(rxn)
+        self.check_hofmann_guesses(xyz_guesses, self.phenethyl_tma, ca=4, n=1, cb=5, hb_options=[23, 24],
+                                   benzylic=True)
+        # The C-N bond is not stretched for an aryl-activated beta hydrogen.
+        for xyz_guess in xyz_guesses:
+            self.assertAlmostEqual(calculate_distance(xyz_guess['coords'], [4, 1], index=0),
+                                   calculate_distance(self.phenethyl_tma.get_xyz()['coords'], [4, 1], index=0),
+                                   delta=0.05)
+
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
         # reactant_reversed, products_reversed = False, False
@@ -2899,7 +3220,8 @@ H      -0.30139889    0.23142254    3.12085495"""
         Delete all project directories created during these unit tests.
         """
         for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile',
-                    'heuristics_qasn2', 'heuristics_qasn2_triple_bond', 'heuristics_sn2_print'):
+                    'heuristics_qasn2', 'heuristics_qasn2_triple_bond', 'heuristics_sn2_print',
+                    'heuristics_qahofmann'):
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, sub), ignore_errors=True)
 
 
