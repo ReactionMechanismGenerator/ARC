@@ -1,0 +1,46 @@
+# Configuration file for QA Hofmann (E2) elimination reaction parameters
+#
+# R2Cb(Hb)-CaR2-N+R3 + [OH-.H2O] -> R2Cb=CaR2 + NR3 + 2 H2O
+#
+# OH_d1 atoms are placed onto the beta hydrogen (Hb) in the order Or, Hr, H1w, Ow, H2w.
+# Values derived from 13 QM-optimised Hofmann TS structures (wB97X-D/cc-pVTZ, SMD).
+# Family atom labels: Ca = *1, N = *2, Cb = *3, Hb = *4, Or = *5
+# Keyed by the ARC family label (the data/families/qa_hoffman.py file name).
+
+family_parameters:
+  qa_hoffman:
+    #          Hb-Or  Or-Hr  Or-H1w  H1w-Ow  Ow-H2w
+    r_value: [1.13,  0.959, 1.72,   0.988,  0.958]
+    #          Cb-Hb-Or  Hb-Or-Hr  Hr-Or-H1w  Or-H1w-Ow  H1w-Ow-H2w
+    a_value: [174.6,    104.6,    108.6,     175.7,     103.7]
+    d_values:
+      #  R1-Cb-Hb-Or  Cb-Hb-Or-Hr  Hb-Hr-Or-H1w  Hr-Or-H1w-Ow  Or-H1w-Ow-H2w
+      - [scan,  scan,  -100.9,   117.0,   19.0]
+      - [scan,  scan,  -100.9,   117.0,  -76.0]
+      - [scan,  scan,   100.9,  -117.0,  -19.0]
+      - [scan,  scan,   100.9,  -117.0,   76.0]
+
+    # Scan values for the 'scan' columns above
+    # R1 is a different atom in each molecule, so R1-Cb-Hb-Or has no single value
+    r1_dihedral_scan_values: [55.0, -55.0, 180.0]
+    # Hr is a spectator hydrogen
+    hr_dihedral_scan_values: [-110.0, -170.0, 110.0, 170.0]
+
+    # Multiplicative factors applied to reaction-centre bonds of the bare QA+ reactant
+    stretch:
+      Ca-N: 1.05
+      Ca-Cb: 0.957
+      Cb-Hb: 1.405
+
+    # Beta carbon conjugated to a pi system (aryl, C=O, C=C, C≡N): E1cb-like TS, earlier proton transfer, C-N unchanged
+    benzylic:
+      r_Hb-Or: 1.26
+      stretch:
+        Ca-N: 1.00
+        Ca-Cb: 0.97
+        Cb-Hb: 1.25
+
+units:
+  distances: Angstroms
+  angles: degrees
+  stretching_factors: dimensionless
