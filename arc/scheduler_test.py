@@ -320,6 +320,76 @@ H       1.27889520   -0.81548721   -0.22940984"""
         # And the restored names are the live '{job_type}_{i}' format, not the fossil 'conformer{i}'.
         self.assertEqual(sched.running_jobs[label], ['conf_opt_0', 'conf_sp_0'])
 
+    _METHYLAMINE_XYZ = """C      -0.57422867   -0.01669771    0.01229213
+N       0.82084044    0.08279104   -0.37769346
+H      -1.05737005   -0.84067772   -0.52007494
+H      -1.10211468    0.90879867   -0.23383011
+H      -0.66133128   -0.19490562    1.08785111
+H       0.88047852    0.26966160   -1.37780789
+H       1.27889520   -0.81548721   -0.22940984"""
+
+    def _species_with_rotor(self, label, success=None, scan_path=None, invalidation_reason=''):
+        """Build a species with a single (CN) torsion in its rotors_dict."""
+        spc = ARCSpecies(label=label, smiles='CN', xyz=self._METHYLAMINE_XYZ)
+        spc.final_xyz = spc.get_xyz()  # a restarted species whose optimization has finished
+        spc.number_of_rotors = 1
+        spc.rotors_dict = {0: {'pivots': [1, 2], 'top': [3, 4, 5], 'scan': [3, 1, 2, 6], 'torsion': [2, 0, 1, 5],
+                               'success': success, 'scan_path': scan_path,
+                               'invalidation_reason': invalidation_reason, 'directed_scan_type': 'ess'}}
+        return spc
+
+    def _restart_scheduler(self, species_list, **patched):
+        """
+        Construct a non-testing Scheduler from a restart dict in which every species already has a geometry
+        (so the restart loop in ``__init__`` runs), with ``schedule_jobs`` and the given methods patched out.
+
+        Returns:
+            dict: The mocks, keyed by method name (``schedule_jobs`` included).
+        """
+        job_types = dict(self.job_types1, rotors=True)
+        kwargs = dict(project='project_test_restart_loop', ess_settings=self.ess_settings,
+                      species_list=species_list, composite_method=None,
+                      conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                      opt_level=Level(repr=default_levels_of_theory['opt']),
+                      freq_level=Level(repr=default_levels_of_theory['freq']),
+                      sp_level=Level(repr=default_levels_of_theory['sp']),
+                      scan_level=Level(repr=default_levels_of_theory['scan']),
+                      ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                      project_directory=tempfile.mkdtemp(prefix='arc_test_restart_loop_'),
+                      job_types=job_types, orbitals_level=default_levels_of_theory['orbitals'],
+                      adaptive_levels=None)
+        self.addCleanup(shutil.rmtree, kwargs['project_directory'], ignore_errors=True)
+        output = Scheduler(testing=True, **kwargs).output
+        for spc_output in output.values():
+            spc_output['paths'].update({'geo': 'geo.out', 'freq': 'freq.out', 'sp': 'sp.out'})
+        mocks = dict()
+        with patch.object(Scheduler, 'schedule_jobs') as schedule_jobs:
+            mocks['schedule_jobs'] = schedule_jobs
+            patchers = {name: patch.object(Scheduler, name) for name in patched}
+            for name, patcher in patchers.items():
+                mocks[name] = patcher.start()
+                self.addCleanup(patcher.stop)
+            mocks['sched'] = Scheduler(testing=False, restart_dict={'output': output}, **kwargs)
+        return mocks
+
+    def test_restart_does_not_scan_irc_endpoint_rotors(self):
+        """
+        IRC endpoint species are diagnostic and the normal flow never scans their rotors, but they carry a
+        populated rotors_dict with no scan_path. The restart loop used to treat that as pending scan work,
+        both when the IRC species itself was restarted and when it was found by the scan over all species.
+        """
+        regular = self._species_with_rotor('regular', success=True, scan_path=__file__)
+        irc = self._species_with_rotor('IRC_regular_1', success=False)
+        mocks = self._restart_scheduler([regular, irc], run_scan_jobs=None)
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_still_scans_a_failed_regular_rotor(self):
+        """The IRC guard must not suppress the restart scan of an ordinary species whose rotor failed"""
+        regular = self._species_with_rotor('regular', success=False)
+        irc = self._species_with_rotor('IRC_regular_1', success=False)
+        mocks = self._restart_scheduler([regular, irc], run_scan_jobs=None)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
         label = 'C2H6'
