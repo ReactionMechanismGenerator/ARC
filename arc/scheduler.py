@@ -1620,6 +1620,11 @@ class Scheduler(object):
             piped_indices = self.pipe_planner.try_pipe_ts_opt(label, xyzs, self.ts_guess_level)
             if not piped_indices:
                 self.job_dict[label]['conf_opt'] = dict()
+            # Wiping job_dict['conf_opt'] orphans any conf_opt job name restored into running_jobs from a
+            # previous session, and save_restart_dict() cannot map such a name back to a job. Those jobs
+            # are superseded by the conformers spawned below, so stop tracking them.
+            self.running_jobs[label] = [job_name for job_name in self.running_jobs.get(label, list())
+                                        if 'conf_opt' not in job_name]
             for i, tsg in enumerate(successful_tsgs):
                 tsg.conformer_index = i  # Store the conformer index to match them later.
                 if i in piped_indices:
