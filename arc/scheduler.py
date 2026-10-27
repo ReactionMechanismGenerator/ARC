@@ -5373,16 +5373,29 @@ class Scheduler(object):
             self.restart_dict['running_jobs'] = dict()
             for spc in self.species_dict.values():
                 if spc.label in self.running_jobs:
+                    # A conformer or TS-guess name in running_jobs whose job object is not in job_dict
+                    # cannot be serialized or polled. Raising here would kill the run over one untracked
+                    # job, so warn and drop it from both the restart file and running_jobs.
+                    def _conformer_job_dicts(key, names):
+                        dicts = list()
+                        for job_name in names:
+                            job = self.job_dict[spc.label].get(key, dict()).get(get_i_from_job_name(job_name))
+                            if job is None:
+                                logger.warning(f'Job {job_name} of species {spc.label} is listed as running '
+                                               f'but has no {key} entry in job_dict; dropping it.')
+                                self.running_jobs[spc.label].remove(job_name)
+                                continue
+                            dicts.append(job.as_dict())
+                        return dicts
                     self.restart_dict['running_jobs'][spc.label] = \
                         [self.job_dict[spc.label][job_name.rsplit('_', 1)[0]][job_name].as_dict()
                          for job_name in self.running_jobs[spc.label]
                          if not is_conformer_job(job_name) and 'tsg' not in job_name] \
-                        + [self.job_dict[spc.label]['conf_opt'][get_i_from_job_name(job_name)].as_dict()
-                           for job_name in self.running_jobs[spc.label] if 'conf_opt' in job_name] \
-                        + [self.job_dict[spc.label]['conf_sp'][get_i_from_job_name(job_name)].as_dict()
-                           for job_name in self.running_jobs[spc.label] if 'conf_sp' in job_name] \
-                        + [self.job_dict[spc.label]['tsg'][get_i_from_job_name(job_name)].as_dict()
-                           for job_name in self.running_jobs[spc.label] if 'tsg' in job_name]
+                        + _conformer_job_dicts('conf_opt', [n for n in self.running_jobs[spc.label]
+                                                            if 'conf_opt' in n]) \
+                        + _conformer_job_dicts('conf_sp', [n for n in self.running_jobs[spc.label]
+                                                           if 'conf_sp' in n]) \
+                        + _conformer_job_dicts('tsg', [n for n in self.running_jobs[spc.label] if 'tsg' in n])
             save_yaml_file(path=self.restart_path, content=self.restart_dict)    
     
     def make_reaction_labels_info_file(self):

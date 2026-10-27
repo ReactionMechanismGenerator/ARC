@@ -563,6 +563,37 @@ H       1.27889520   -0.81548721   -0.22940984"""
         # No running_jobs key for a species that is not in the project; schedule_jobs() would never clear it.
         self.assertNotIn('removed_species', sched.running_jobs)
 
+    def test_save_restart_dict_skips_untracked_conformer_jobs(self):
+        """A conf_opt/conf_sp/tsg name in running_jobs with no job_dict entry is skipped with a warning"""
+        label = 'methylamine'
+        spc = ARCSpecies(label=label, smiles='CN', xyz=self._METHYLAMINE_XYZ)
+        project_directory = tempfile.mkdtemp(prefix='arc_test_save_restart_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_save_restart', ess_settings=self.ess_settings,
+                          species_list=[spc], composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory, testing=True,
+                          job_types=self.job_types1,
+                          orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+        tracked = MagicMock()
+        tracked.as_dict.return_value = {'job_name': 'conf_opt_0'}
+        sched.job_dict[label] = {'conf_opt': {0: tracked}}
+        sched.running_jobs[label] = ['conf_opt_0', 'conf_opt_5', 'conf_sp_2', 'tsg3']
+        sched.restart_dict = dict()
+        sched.save_restart = True
+        with self.assertLogs('arc', level='WARNING') as logs:
+            sched.save_restart_dict()
+        self.assertEqual(sched.restart_dict['running_jobs'][label], [{'job_name': 'conf_opt_0'}])
+        self.assertEqual(len(logs.output), 3)
+        # The untracked names leave running_jobs too, so the next poll does not KeyError on them.
+        self.assertEqual(sched.running_jobs[label], ['conf_opt_0'])
+        sched.get_completed_incore_jobs()
+
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
         label = 'C2H6'
