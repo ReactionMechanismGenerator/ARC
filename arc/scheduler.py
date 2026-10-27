@@ -5272,9 +5272,23 @@ class Scheduler(object):
                          'Assuming all jobs have finished.')
         else:
             for spc_label in jobs.keys():
+                if spc_label not in self.species_dict:
+                    # An entry left by a species that is no longer in the project. Creating a
+                    # running_jobs key for it would keep schedule_jobs() looping forever.
+                    logger.warning(f'Not restoring the running jobs of {spc_label}: it is not in this project.')
+                    continue
                 if spc_label not in self.running_jobs.keys():
                     self.running_jobs[spc_label] = list()
                 for job_description in jobs[spc_label]:
+                    # A job may reference a species that no longer exists in this session, e.g. a TS adapter
+                    # job carrying an auto-generated '<rxn>_TS' label. Restoring it would raise a KeyError
+                    # below and kill the run over one stale job, so skip it.
+                    if job_description.get('species_labels') \
+                            and any(label not in self.species_dict for label in job_description['species_labels']):
+                        logger.warning(f"Not restoring job {job_description.get('job_name')} of {spc_label}: it "
+                                       f"references species {job_description['species_labels']}, and at least one "
+                                       f"of those is not in this project. Assuming the job is no longer running.")
+                        continue
                     if ('conformer' not in job_description or job_description['conformer'] is None) \
                             and ('tsg' not in job_description or job_description['tsg'] is None):
                         self.running_jobs[spc_label].append(job_description['job_name'])

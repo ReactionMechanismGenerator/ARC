@@ -531,6 +531,38 @@ H       1.27889520   -0.81548721   -0.22940984"""
         self.assertEqual(mocks['run_job'].call_args.kwargs['job_type'], 'scan')
         self.assertEqual(mocks['run_job'].call_args.kwargs['rotor_index'], 0)
 
+    def test_restore_running_jobs_skips_a_job_of_an_unknown_species(self):
+        """A restored job referencing a species label that is not in this project is skipped, not a KeyError"""
+        label = 'methylamine'
+        spc = ARCSpecies(label=label, smiles='CN', xyz=self._METHYLAMINE_XYZ)
+        project_directory = tempfile.mkdtemp(prefix='arc_test_restore_unknown_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_restore_unknown', ess_settings=self.ess_settings,
+                          species_list=[spc], composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory, testing=True,
+                          job_types=self.job_types1,
+                          orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+        opt_job = job_factory(job_adapter='gaussian', project='project_test_restore_unknown',
+                              ess_settings=self.ess_settings, species=[spc], xyz=self._METHYLAMINE_XYZ,
+                              job_type='opt', level=Level(repr={'method': 'wb97xd', 'basis': 'def2svp'}),
+                              project_directory=project_directory, job_num=903)
+        stale = dict(opt_job.as_dict(), job_name='tsg9', species_labels=['rxn_label_TS'])
+        sched.restart_dict = {'running_jobs': {label: [stale, opt_job.as_dict()],
+                                               'removed_species': [opt_job.as_dict()]}}
+        sched.running_jobs = dict()
+        sched.job_dict = dict()
+        sched.restore_running_jobs()
+        self.assertEqual(sched.running_jobs[label], [opt_job.job_name])
+        self.assertEqual(list(sched.job_dict[label]['opt'].keys()), [opt_job.job_name])
+        # No running_jobs key for a species that is not in the project; schedule_jobs() would never clear it.
+        self.assertNotIn('removed_species', sched.running_jobs)
+
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
         label = 'C2H6'
