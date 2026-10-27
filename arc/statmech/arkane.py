@@ -2,6 +2,7 @@
 An adapter for executing Arkane.
 """
 
+import math
 import os
 import re
 import shutil
@@ -12,7 +13,7 @@ from mako.template import Template
 
 import arc.plotter as plotter
 from arc.checks.common import get_ts_validation_comment
-from arc.common import ARC_PATH, get_logger, read_yaml_file
+from arc.common import ARC_PATH, get_logger, is_str_float, read_yaml_file
 from arc.exceptions import AtomTypeError, InputError
 from arc.imports import incore_commands, settings
 from arc.molecule.molecule import Molecule
@@ -575,6 +576,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         for rxn in self.reactions:
             parse_reaction_kinetics(rxn, output_content)
+            self._reject_kinetics_on_unphysical_frequencies(rxn, output_content)
 
         # Parse conformer statmech (external_symmetry, optical_isomers) for all
         # species involved in the kinetics — the thermo path handles this via
@@ -583,6 +585,38 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             _parse_conformer_statmech(species, output_content)
         for rxn in self.reactions:
             _parse_conformer_statmech(rxn.ts_species, output_content)
+
+    @staticmethod
+    def _reject_kinetics_on_unphysical_frequencies(rxn: 'ARCReaction', output_content: str) -> None:
+        """
+        Discard a rate coefficient computed from a conformer carrying a near-zero frequency,
+        and record the reason in the reaction's ``long_kinetic_description``.
+
+        Args:
+            rxn (ARCReaction): The reaction whose kinetics were just parsed.
+            output_content (str): The contents of Arkane's ``output.py``.
+        """
+        rxn.long_kinetic_description = '\n'.join(
+            line for line in (rxn.long_kinetic_description or '').split('\n')
+            if not line.startswith(DISCARDED_KINETICS_NOTE)).strip('\n')
+        if rxn.kinetics is None:
+            return
+        labels = [spc.label for spc in rxn.r_species + rxn.p_species]
+        if rxn.ts_species is not None:
+            labels.append(rxn.ts_species.label)
+        offenders = {label: find_unphysical_frequencies(label, output_content) for label in labels}
+        offenders = {label: freqs for label, freqs in offenders.items() if freqs}
+        if not offenders:
+            return
+        detail = '; '.join(f'{label}: {freqs} cm^-1' for label, freqs in offenders.items())
+        logger.error(f'Discarding the computed rate coefficient for {rxn.label}: near-zero vibrational '
+                     f'frequencies ({detail}) give a divergent harmonic partition function. This usually means '
+                     f'the TS has a second, small imaginary frequency that Arkane kept as a vibration; treat that '
+                     f'mode explicitly (e.g., as a hindered or free rotor).')
+        rxn.kinetics = None
+        note = f'{DISCARDED_KINETICS_NOTE} near-zero vibrational frequencies ({detail}).'
+        rxn.long_kinetic_description = f'{rxn.long_kinetic_description}\n{note}' \
+            if rxn.long_kinetic_description else note
 
 
 def run_arkane(statmech_dir: str) -> bool:
@@ -1432,13 +1466,30 @@ def _parse_conformer_statmech(species, content: str) -> None:
         NonlinearRotor(symmetry=2, ...)
         optical_isomers = 1,
     """
-    label = species.label
-    # Find the start of the conformer block, then use balanced-paren matching
-    # to find the full block (regex `.*?)` fails because of nested parens).
+    block = _extract_conformer_block(species.label, content)
+    if block is None:
+        return
+    # optical_isomers
+    oi_match = re.search(r'optical_isomers\s*=\s*(\d+)', block)
+    if oi_match and species.optical_isomers is None:
+        species.optical_isomers = int(oi_match.group(1))
+    # external_symmetry from NonlinearRotor or LinearRotor
+    sym_match = re.search(r'(?:NonlinearRotor|LinearRotor)\s*\(.*?symmetry\s*=\s*(\d+)', block, re.DOTALL)
+    if sym_match and species.external_symmetry is None:
+        species.external_symmetry = int(sym_match.group(1))
+
+
+def _extract_conformer_block(label: str, content: str) -> str | None:
+    """
+    Return the full ``conformer(...)`` block for a label from Arkane's output.
+
+    Uses balanced-paren matching from the block's start rather than a regex: the block contains
+    nested parentheses, so a lazy `.*?)` stops at the first inner one.
+    """
     start_pattern = rf"conformer\(\s*label\s*=\s*['\"]{re.escape(label)}['\"]"
     m_start = re.search(start_pattern, content, re.DOTALL)
     if not m_start:
-        return
+        return None
     idx = m_start.start() + len('conformer(')
     depth = 1
     while idx < len(content) and depth > 0:
@@ -1448,16 +1499,46 @@ def _parse_conformer_statmech(species, content: str) -> None:
             depth -= 1
         idx += 1
     if depth != 0:
-        return
-    block = content[m_start.start():idx]
-    # optical_isomers
-    oi_match = re.search(r'optical_isomers\s*=\s*(\d+)', block)
-    if oi_match and species.optical_isomers is None:
-        species.optical_isomers = int(oi_match.group(1))
-    # external_symmetry from NonlinearRotor or LinearRotor
-    sym_match = re.search(r'(?:NonlinearRotor|LinearRotor)\s*\(.*?symmetry\s*=\s*(\d+)', block, re.DOTALL)
-    if sym_match and species.external_symmetry is None:
-        species.external_symmetry = int(sym_match.group(1))
+        return None
+    return content[m_start.start():idx]
+
+
+# A harmonic oscillator's partition function, 1/(1 - exp(-h*nu/kT)), diverges as nu -> 0.
+# Real vibrations of a bound species are tens of cm^-1 or more, so a mode below this is an artifact.
+MIN_PHYSICAL_FREQ = 5.0  # cm^-1
+DISCARDED_KINETICS_NOTE = 'Rate coefficient discarded:'
+
+
+def find_unphysical_frequencies(label: str, content: str) -> list[float]:
+    """
+    Return the near-zero or ``nan`` vibrational frequencies in a species' Arkane conformer block.
+
+    Arkane re-derives the frequencies from the projected Hessian whenever rotors are present, keeping
+    the ``n_vib`` largest eigenvalues (``np.sqrt(eig[-n_vib:])``). A TS with a second, small imaginary
+    mode then retains a residual ~0 eigenvalue as a vibration, or ``nan`` when it is slightly negative.
+    Hence this reads Arkane's output rather than the frequencies ARC passed in.
+
+    Args:
+        label (str): The species label whose conformer block to inspect.
+        content (str): The contents of Arkane's ``output.py``.
+
+    Returns:
+        list[float]: The offending frequencies in cm^-1; empty when the conformer is sound.
+    """
+    block = _extract_conformer_block(label, content)
+    if block is None:
+        return list()
+    unphysical = list()
+    for freq_list in re.findall(r'HarmonicOscillator\s*\(\s*frequencies\s*=\s*\(\s*\[([^\]]*)\]',
+                                block, re.DOTALL):
+        for token in freq_list.split(','):
+            token = token.strip()
+            if not is_str_float(token):
+                continue
+            freq = float(token)
+            if math.isnan(freq) or abs(freq) < MIN_PHYSICAL_FREQ:
+                unphysical.append(freq)
+    return unphysical
 
 
 def parse_e0(label: str, content: str) -> float | None:
