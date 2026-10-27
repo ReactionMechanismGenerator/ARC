@@ -6,6 +6,7 @@ Includes spawning, terminating, checking, and troubleshooting various jobs
 from __future__ import annotations
 
 import datetime
+import glob
 import itertools
 import os
 import pprint
@@ -55,6 +56,8 @@ from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
 from arc.job.ssh import reset_queue_query_history
+from arc.job.pipe.pipe_run import rotor_scan_1d_task_id
+from arc.job.pipe.pipe_state import ROTOR_SCAN_1D_TASK_FAMILY, TaskState, read_task_state
 from arc.job.ssh_pool import borrow_ssh_client
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
@@ -565,6 +568,9 @@ class Scheduler(object):
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
+                # Evaluated before determine_rotors(), which adds never-scanned rotors to any species whose
+                # restored number_of_rotors is 0; asking afterwards would re-scan every converged species.
+                restored_rotor_scans_owed = self.rotor_scans_pending_on_restart(species, include_failed=False)
                 if self.job_types['rotors'] and not species.number_of_rotors and species.rotors_dict is not None:
                     # if species.rotors_dict is None, it means the species is marked to not spawn rotor scans
                     species.determine_rotors()
@@ -577,6 +583,9 @@ class Scheduler(object):
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label if not species.multi_species else species.multi_species] = list()
                 if self.output[species.label]['convergence']:
+                    # A converged species is scheduled no further, except for a rotor that was never scanned.
+                    if restored_rotor_scans_owed:
+                        self.run_scan_jobs(species.label)
                     continue
                 if species.is_monoatomic():
                     if species.final_xyz is None:
@@ -644,15 +653,7 @@ class Scheduler(object):
                                 and not self.output[species.label]['paths']['freq'] and self.job_types['freq'] \
                                 and (species.is_ts or species.number_of_atoms > 1) and species.irc_label is None:
                             self.run_freq_job(species.label)
-                        # IRC endpoint species are diagnostic, not thermo/kinetics targets, and the normal
-                        # flow never scans their rotors. They nevertheless carry a populated rotors_dict
-                        # without a scan_path, so they must not trigger (nor be) a restart scan spawn.
-                        if self.output[species.label]['paths']['geo'] and self.job_types['rotors'] \
-                                and not species.label.startswith('IRC_') and \
-                                any(spc.rotors_dict is not None and not spc.label.startswith('IRC_') and
-                                    any(rotor_dict['success'] is False and not rotor_dict['invalidation_reason']
-                                        for rotor_dict in spc.rotors_dict.values())
-                                    for spc in self.species_list):
+                        if self.rotor_scans_pending_on_restart(species):
                             # Additional restart-related checks are performed within run_scan_jobs().
                             self.run_scan_jobs(species.label)
             else:
@@ -714,6 +715,63 @@ class Scheduler(object):
                 f"your ts_adapters in input.yml / arc/settings/settings.py."
             )
         return kept
+
+    def rotor_scans_pending_on_restart(self, species: ARCSpecies, include_failed: bool = True) -> bool:
+        """
+        Whether the restart loop still owes ``species`` a rotor scan spawn.
+
+        A rotor is owed if it was never scanned (no result and no scan_path, e.g., added to restart.yml by hand)
+        and no pipe worker currently holds it, or, if ``include_failed``, if its scan failed without an
+        invalidation reason. IRC endpoint species (non-TS species with an ``irc_label``) are never owed a scan.
+
+        Args:
+            species (ARCSpecies): The species being restarted.
+            include_failed (bool, optional): Whether a failed, non-invalidated rotor counts as owed.
+
+        Returns:
+            bool: Whether ``run_scan_jobs()`` should be called for this species.
+        """
+        if not self.output[species.label]['paths']['geo'] or not self.job_types['rotors'] \
+                or (species.irc_label is not None and not species.is_ts) or species.rotors_dict is None:
+            return False
+        return any((include_failed and rotor_dict['success'] is False and not rotor_dict['invalidation_reason'])
+                   or (rotor_dict['success'] is None and not rotor_dict['scan_path']
+                       and not self.rotor_scan_owed_to_a_pipe_run(species, rotor_index))
+                   for rotor_index, rotor_dict in species.rotors_dict.items())
+
+    def rotor_scan_owed_to_a_pipe_run(self, species: ARCSpecies, rotor_index: int) -> bool:
+        """
+        Whether a pipe worker from a previous session currently holds this rotor's scan under a live lease.
+
+        Pipe runs are not reloaded on restart, so this reads the rotor's task state from the pipe run's
+        staging directory. Only a CLAIMED or RUNNING task whose lease has not expired counts. A pending,
+        orphaned, terminal, or unreadable task does not, since no session will ingest its results.
+
+        Args:
+            species (ARCSpecies): The species being restarted.
+            rotor_index (int): The rotor's index in ``species.rotors_dict``.
+
+        Returns:
+            bool: Whether a live pipe worker holds this rotor's scan.
+        """
+        task_id = rotor_scan_1d_task_id(species.label, rotor_index)
+        task_dirs = glob.glob(os.path.join(self.project_directory, 'calcs',
+                                           'TSs' if species.is_ts else 'Species', species.label,
+                                           f'pipe_{ROTOR_SCAN_1D_TASK_FAMILY}_*', 'tasks', task_id))
+        now = time.time()
+        for task_dir in task_dirs:
+            pipe_root = os.path.dirname(os.path.dirname(task_dir))
+            try:
+                state = read_task_state(pipe_root, task_id)
+            except (OSError, ValueError, KeyError) as e:
+                logger.warning(f'Could not read the state of pipe task {task_id} under {pipe_root}: {e}')
+                continue
+            if state.status in (TaskState.CLAIMED.value, TaskState.RUNNING.value) \
+                    and state.lease_expires_at is not None and state.lease_expires_at > now:
+                logger.info(f'Rotor {rotor_index} of {species.label} is {state.status} in the pipe run at '
+                            f'{pipe_root}; not spawning a standalone scan for it on restart.')
+                return True
+        return False
 
     def has_pending_pipe_work(self, label: str) -> bool:
         """
@@ -1936,7 +1994,7 @@ class Scheduler(object):
                                 self.spawn_directed_scan_jobs(label, rotor_index=i)
                         else:
                             self.spawn_directed_scan_jobs(label, rotor_index=i)
-                else:
+                elif not self.rotor_scan_owed_to_a_pipe_run(self.species_dict[label], i):
                     # This is a "normal" ESS scan (not directed). Collect for potential pipe batching.
                     ess_rotor_indices.append(i)
 
