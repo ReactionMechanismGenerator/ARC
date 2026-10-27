@@ -1905,8 +1905,12 @@ class Scheduler(object):
                     ess_rotor_indices.append(i)
 
             # Attempt to batch ESS scans through pipe mode; fall back per-rotor for the rest.
-            piped_rotors = self.pipe_planner.try_pipe_rotor_scans_1d(label, ess_rotor_indices) \
-                if ess_rotor_indices else set()
+            # run_scan_jobs() is also called from the restart loop in __init__, which runs before the
+            # pipe planner is constructed. Batching is an optimization, so without a planner every
+            # rotor is scanned individually.
+            pipe_planner = getattr(self, 'pipe_planner', None)
+            piped_rotors = pipe_planner.try_pipe_rotor_scans_1d(label, ess_rotor_indices) \
+                if ess_rotor_indices and pipe_planner is not None else set()
             for i in ess_rotor_indices:
                 if i in piped_rotors:
                     continue
