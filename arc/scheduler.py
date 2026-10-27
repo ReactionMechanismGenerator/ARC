@@ -614,8 +614,12 @@ class Scheduler(object):
                                 and not self.output[species.label]['paths']['freq'] and self.job_types['freq'] \
                                 and (species.is_ts or species.number_of_atoms > 1) and species.irc_label is None:
                             self.run_freq_job(species.label)
-                        if self.output[species.label]['paths']['geo'] and self.job_types['rotors'] and \
-                                any(spc.rotors_dict is not None and
+                        # IRC endpoint species are diagnostic, not thermo/kinetics targets, and the normal
+                        # flow never scans their rotors. They nevertheless carry a populated rotors_dict
+                        # without a scan_path, so they must not trigger (nor be) a restart scan spawn.
+                        if self.output[species.label]['paths']['geo'] and self.job_types['rotors'] \
+                                and not species.label.startswith('IRC_') and \
+                                any(spc.rotors_dict is not None and not spc.label.startswith('IRC_') and
                                     any(rotor_dict['success'] is False and not rotor_dict['invalidation_reason']
                                         for rotor_dict in spc.rotors_dict.values())
                                     for spc in self.species_list):
