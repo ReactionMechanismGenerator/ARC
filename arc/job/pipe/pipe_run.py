@@ -30,6 +30,7 @@ from arc.imports import pipe_submit, settings
 
 from arc.job.pipe.pipe_state import (
     PipeRunState,
+    ROTOR_SCAN_1D_TASK_FAMILY,
     TaskState,
     TaskSpec,
     get_task_attempt_dir,
@@ -1048,6 +1049,23 @@ def build_ts_opt_tasks(species, label: str, xyzs: list[dict],
     return tasks
 
 
+def rotor_scan_1d_task_id(label: str, rotor_index: int) -> str:
+    """
+    The task_id of a 1D rotor scan pipe task.
+
+    Named so that a reader of a staged pipe run - e.g. the Scheduler's restart loop, which looks for
+    rotors a previous session handed to a pipe - locates a task by the same rule that wrote it.
+
+    Args:
+        label (str): The species label.
+        rotor_index (int): The rotor's index in the species' ``rotors_dict``.
+
+    Returns:
+        str: The task identifier.
+    """
+    return f'{label}_scan_r{rotor_index}'
+
+
 def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
                               level_dict: dict, job_adapter: str,
                               memory_mb: int, scan_res: float | None = None) -> list[TaskSpec]:
@@ -1074,12 +1092,13 @@ def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
         }
         if scan_res is not None:
             input_payload['scan_res'] = scan_res
+        task_id = rotor_scan_1d_task_id(label, ri)
         tasks.append(TaskSpec(
-            task_id=f'{label}_scan_r{ri}',
-            task_family='rotor_scan_1d',
+            task_id=task_id,
+            task_family=ROTOR_SCAN_1D_TASK_FAMILY,
             owner_type='species',
             owner_key=label,
-            input_fingerprint=f'{label}_scan_r{ri}',
+            input_fingerprint=task_id,
             engine=job_adapter,
             level=level_dict,
             required_cores=cores,

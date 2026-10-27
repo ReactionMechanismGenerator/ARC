@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import os
 import shutil
 import tempfile
+import time
 from types import SimpleNamespace
 
 
@@ -24,6 +25,9 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
+from arc.job.pipe.pipe_coordinator import PipeCoordinator
+from arc.job.pipe.pipe_run import build_rotor_scan_1d_tasks
+from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_state
 from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
@@ -338,10 +342,54 @@ H       1.27889520   -0.81548721   -0.22940984"""
                                'invalidation_reason': invalidation_reason, 'directed_scan_type': 'ess'}}
         return spc
 
-    def _restart_scheduler(self, species_list, **patched):
+    def _stage_rotor_scan_pipe_task(self, sched, label, rotor_index, status=TaskState.PENDING):
+        """
+        Stage a 1D rotor scan pipe task on disk as a previous session's pipe run would have left it.
+
+        This goes through the real ``PipeCoordinator`` and ``pipe_state`` writers, so the directory layout
+        the restart loop looks for is the one the pipe system actually writes rather than a replica of it:
+        a change to either side of that convention turns these tests red instead of silently detaching the
+        restart guard from the pipe runs it exists to find.
+
+        Args:
+            sched (Scheduler): A scheduler supplying the project directory and the species to stage under.
+            label (str): The species label.
+            rotor_index (int): The rotor's index in the species' ``rotors_dict``.
+            status (TaskState, optional): The state to walk the staged task to.
+
+        Returns:
+            str: The ``pipe_root`` the task was staged under.
+        """
+        tasks = build_rotor_scan_1d_tasks(sched.species_dict[label], label, [rotor_index],
+                                          {'method': 'wb97xd', 'basis': 'def2tzvp'}, 'gaussian', 14000)
+        pipe_root = PipeCoordinator(sched)._compute_pipe_root(f'{label}_scan_1d', tasks)
+        initialize_task(pipe_root, tasks[0])
+        now = time.time()
+        lifecycle = [(TaskState.CLAIMED, {'claimed_by': 'worker-0', 'claim_token': 'token',
+                                          'claimed_at': now, 'lease_expires_at': now + 3600}),
+                     (TaskState.RUNNING, {'started_at': now}),
+                     (TaskState.COMPLETED, {'ended_at': now})]
+        if status != TaskState.PENDING:
+            statuses = [task_state for task_state, _ in lifecycle]
+            if status not in statuses:
+                raise ValueError(f'Cannot stage a task in {status}, only PENDING or one of {statuses}')
+            for next_status, fields in lifecycle[:statuses.index(status) + 1]:
+                update_task_state(pipe_root, tasks[0].task_id, next_status, **fields)
+        return pipe_root
+
+    def _restart_scheduler(self, species_list, converged=(), stage=None, **patched):
         """
         Construct a non-testing Scheduler from a restart dict in which every species already has a geometry
         (so the restart loop in ``__init__`` runs), with ``schedule_jobs`` and the given methods patched out.
+
+        Args:
+            species_list (list): The species to restart.
+            converged (tuple, optional): Labels whose saved ``output[label]['convergence']`` is ``True``,
+                                         i.e. species the previous session had already finished.
+            stage (callable, optional): Called with a ``testing=True`` Scheduler before the restarted one is
+                                        constructed, to lay down on-disk state that a previous session would
+                                        have left in the project directory (e.g. a staged pipe run).
+            **patched: Scheduler method names to patch out.
 
         Returns:
             dict: The mocks, keyed by method name (``schedule_jobs`` included).
@@ -359,9 +407,14 @@ H       1.27889520   -0.81548721   -0.22940984"""
                       job_types=job_types, orbitals_level=default_levels_of_theory['orbitals'],
                       adaptive_levels=None)
         self.addCleanup(shutil.rmtree, kwargs['project_directory'], ignore_errors=True)
-        output = Scheduler(testing=True, **kwargs).output
+        testing_sched = Scheduler(testing=True, **kwargs)
+        output = testing_sched.output
         for spc_output in output.values():
             spc_output['paths'].update({'geo': 'geo.out', 'freq': 'freq.out', 'sp': 'sp.out'})
+        for label in converged:
+            output[label]['convergence'] = True
+        if stage is not None:
+            stage(testing_sched)
         mocks = dict()
         with patch.object(Scheduler, 'schedule_jobs') as schedule_jobs:
             mocks['schedule_jobs'] = schedule_jobs
@@ -388,6 +441,84 @@ H       1.27889520   -0.81548721   -0.22940984"""
         regular = self._species_with_rotor('regular', success=False)
         irc = self._species_with_rotor('IRC_regular_1', success=False)
         mocks = self._restart_scheduler([regular, irc], run_scan_jobs=None)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_scans_a_never_scanned_rotor(self):
+        """A rotor with no result and no scan_path (e.g. added by hand to restart.yml) must be spawned on restart"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], run_scan_jobs=None)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_scans_a_never_scanned_rotor_of_a_converged_species(self):
+        """A pending rotor must be spawned even when the species was saved as converged.
+
+        This is the case the fix above misses: ``output[label]['convergence']`` is restored verbatim from
+        restart.yml, and the `continue` it triggers sits BEFORE the rotor-spawn condition, so a rotor added
+        by hand to a finished species is skipped exactly as it was before the fix -- and the species is then
+        reported as converged while missing a mode, which is the failure the fix exists to prevent.
+        """
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], converged=('regular',), run_scan_jobs=None)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_does_not_rescan_a_scanned_or_invalidated_rotor(self):
+        """Rotors that already have a result, or are invalidated, are not spawned again on restart"""
+        done = self._species_with_rotor('done', success=True, scan_path=__file__)
+        invalidated = self._species_with_rotor('invalidated', success=False, invalidation_reason='not a torsion')
+        mocks = self._restart_scheduler([done, invalidated], run_scan_jobs=None)
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_does_not_duplicate_a_rotor_scan_running_in_a_pipe(self):
+        """
+        A rotor whose scan is in flight in a pipe run must not be spawned again as a standalone ESS job.
+
+        A pipe-queued rotor carries exactly the state the restart loop reads as 'never scanned' - no result
+        and no scan_path - and pipe runs are not restored on restart: the planner does not exist yet when the
+        restart loop runs, and active_pipes starts empty, so has_pending_pipe_work() cannot see it. Without
+        the staged-pipe guard, run_scan_jobs() submits a standalone duplicate of a job that is still queued.
+        """
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 0, TaskState.RUNNING))
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_scans_a_rotor_whose_pipe_task_already_terminated(self):
+        """
+        A terminated pipe task is no reason to skip the rotor: it still owes a scan.
+
+        Nothing ingests a COMPLETED task's results once its pipe run is gone, so the rotor would otherwise
+        be left unscanned while the species is reported as converged - the very failure this restart spawn
+        exists to prevent - and a standalone scan duplicates no running job.
+        """
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 0, TaskState.COMPLETED))
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_treats_an_unreadable_pipe_task_state_as_still_owed(self):
+        """A pipe task whose state cannot be read must not be assumed finished.
+
+        Reading it as terminal would submit a standalone scan of a rotor that may still be queued, which is
+        the expensive direction to be wrong in: the cheap one leaves the rotor unscanned, as it was before.
+        """
+        def stage(sched):
+            pipe_root = self._stage_rotor_scan_pipe_task(sched, 'regular', 0)
+            with open(os.path.join(pipe_root, 'tasks', 'regular_scan_r0', 'state.json'), 'w') as f:
+                f.write('{"status": ')  # truncated, as a session killed mid-write would leave it
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], run_scan_jobs=None, stage=stage)
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_pipe_guard_is_per_rotor_not_per_species(self):
+        """A pipe task staged for one rotor must not suppress the restart scan of the species' other rotor"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        regular.rotors_dict[1] = dict(regular.rotors_dict[0], pivots=[1, 3], torsion=[2, 0, 1, 6])
+        regular.number_of_rotors = 2
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 1, TaskState.RUNNING))
         self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
 
     def test_check_negative_freq(self):
