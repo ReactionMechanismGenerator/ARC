@@ -176,6 +176,11 @@ def process_arc_project(thermo_adapter: str,
                                       T_min=T_min[0],
                                       T_max=T_max[0],
                                       )
+        elif os.path.isdir(os.path.join(libraries_path, 'kinetics')):
+            # A library from a previous session of this project may hold rates that this session
+            # discarded (e.g., computed from a near-zero frequency); do not leave it to be consumed.
+            logger.warning('No rate coefficient survived; removing the kinetics library of a previous session.')
+            shutil.rmtree(os.path.join(libraries_path, 'kinetics'), ignore_errors=True)
 
     # 2. Thermo
     if compute_thermo:
