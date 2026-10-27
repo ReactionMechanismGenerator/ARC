@@ -484,13 +484,20 @@ class SSHClient(object):
                 if 'Memory specification can not be satisfied' in line:
                     logger.warning('User may be requesting more memory than is available. Please check server '
                                    'settings, such as cpus and memory, in ARC/arc/settings/settings.py.')
-                if cluster_soft.lower() == 'slurm' and 'AssocMaxSubmitJobLimit' in line:
+                if (cluster_soft.lower() == 'slurm' and 'AssocMaxSubmitJobLimit' in line) \
+                        or (cluster_soft.lower() == 'pbs' and 'Maximum number of jobs already in queue' in line):
+                    if recursion:
+                        # Already slept once for this job. Let the caller mark it errored and move on
+                        # rather than sleeping in a loop while the whole scheduler is blocked.
+                        logger.warning('Max number of submitted jobs still reached after sleeping, giving up '
+                                       'on this submission.')
+                        return job_status, job_id
                     logger.warning(f'Max number of submitted jobs was reached, sleeping...')
                     time.sleep(5 * 60)
-                    self.submit_job(remote_path=remote_path, recursion=True)
-        if recursion:
-            return None, None
-        elif cluster_soft.lower() in ['oge', 'sge'] and stdout and 'submitted' in stdout[0].lower():
+                    # Return the retry's own result: this call's stdout is empty, so falling through
+                    # to the parsing below would discard a successful resubmission.
+                    return self.submit_job(remote_path=remote_path, recursion=True)
+        if cluster_soft.lower() in ['oge', 'sge'] and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[2]
         elif cluster_soft.lower() == 'slurm' and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[3]
