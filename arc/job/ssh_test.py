@@ -1133,5 +1133,42 @@ class TestDeleteCheckFilesOnServers(unittest.TestCase):
         self.assertEqual(attempts, [1])
 
 
+
+class TestSubmitJob(unittest.TestCase):
+    """submit_job() turns a scheduler's reply into a (status, job ID) pair without killing the run."""
+
+    def make_client(self, cluster_soft: str) -> ssh.SSHClient:
+        """Build an SSHClient for a server running ``cluster_soft``."""
+        server = {'address': 'host.example.edu', 'un': 'user', 'key': '/dev/null', 'cluster_soft': cluster_soft}
+        with patch.object(ssh, 'servers', {'srv': server}):
+            client = ssh.SSHClient('srv')
+        patcher = patch.object(ssh, 'servers', {'srv': server})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return client
+
+    def submit(self, client: ssh.SSHClient, replies: list):
+        """Submit through ``client``, answering each command with the next (stdout, stderr) reply."""
+        send = MagicMock(side_effect=replies)
+        with patch.object(client, '_send_command_to_server', send), \
+                patch.object(ssh.time, 'sleep') as sleep:
+            result = client.submit_job(remote_path='/remote/job')
+        return result, send, sleep
+
+    def test_unparsable_pbs_reply_is_an_errored_job(self):
+        """An empty stdout from a known scheduler is a failed submission, not an unknown cluster."""
+        client = self.make_client('PBS')
+        (status, job_id), send, _ = self.submit(client, [([], ['qsub: Job rejected by all possible destinations'])])
+        self.assertEqual(status, 'errored')
+        self.assertFalse(job_id)
+        send.assert_called_once()
+
+    def test_unknown_cluster_software_still_raises(self):
+        """A cluster software ARC cannot parse at all is still reported as unrecognized."""
+        client = self.make_client('LSF')
+        with patch.dict(ssh.submit_command, {'LSF': 'bsub'}), patch.dict(ssh.submit_filenames, {'LSF': 'submit.sh'}):
+            with self.assertRaisesRegex(ValueError, 'Unrecognized cluster software: LSF'):
+                self.submit(client, [(['Job <1> is submitted'], [])])
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

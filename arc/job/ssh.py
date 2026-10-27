@@ -501,8 +501,17 @@ class SSHClient(object):
             # 1 job(s) submitted to cluster 443069.
             if len(stdout) and len(stdout[1].split()) and len(stdout[1].split()[-1].split('.')):
                 job_id = stdout[1].split()[-1][:-1]
-        else:
+        elif cluster_soft.lower() not in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
+        else:
+            # A recognized scheduler that returned nothing parsable on stdout. This is a failed
+            # submission (a full queue, a rejected resource request), not an unsupported cluster:
+            # raising here would kill the whole ARC process over one job, under a message that
+            # blames the scheduler name. Report it as an errored job instead, and let the
+            # scheduler's own troubleshooting decide whether to resubmit.
+            logger.error(f'Could not parse a job ID from the {cluster_soft} submission in {remote_path}. '
+                         f'stdout was:\n{stdout}\nstderr was:\n{stderr}')
+            job_status = 'errored'
         job_status = 'running' if job_id else job_status
         return job_status, job_id
 
