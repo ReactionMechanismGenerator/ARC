@@ -232,7 +232,10 @@ package to generate TS guesses from RMG reaction templates. AutoTST performs
 systematic conformer searches of the TS using distance-geometry embedding and
 RDKit force-field optimization, guided by the reaction family template distances.
 
-Runs as a subprocess. Requires the ``autotst`` conda environment.
+Runs as a subprocess. Requires the ``autotst`` conda environment. ``make install-autotst``
+registers the AutoTST clone in that environment through an ``autotst.pth`` file in its
+``site-packages`` (ARC runs the subprocess without the caller's ``PYTHONPATH``, so a
+``PYTHONPATH`` entry in ``~/.bashrc`` is not used).
 
 KinBot (``'kinbot'``)
 ^^^^^^^^^^^^^^^^^^^^^
