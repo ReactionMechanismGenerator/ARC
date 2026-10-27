@@ -892,6 +892,31 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
     pass
 
 
+#: Appended to a TS's ``long_thermo_description`` when no rotor of it was treated as a hindered
+#: rotor. Named because it is both written and stripped: see ``save_kinetics_lib``.
+NO_TS_ROTORS_NOTE = 'No rotors considered for this TS.'
+
+
+def ts_has_treated_rotors(ts_species) -> bool:
+    """
+    Whether any of a TS's torsions was actually treated as a rotor in the statmech stage.
+
+    Mirrors the filter the statmech adapter applies (``arc/statmech/arkane.py``, which keeps only
+    rotors whose ``success`` is truthy), so the library's description matches the model it was
+    generated from. Both ``False`` (the scan ran and was rejected) and ``None`` (the scan never
+    completed) mean untreated, and are indistinguishable downstream.
+
+    Args:
+        ts_species (ARCSpecies): The TS species to inspect.
+
+    Returns:
+        bool: True when at least one rotor was treated, False when the TS entered as a pure
+        rigid-rotor harmonic oscillator.
+    """
+    rotors_dict = getattr(ts_species, 'rotors_dict', None) or dict()
+    return any(rotor.get('success') for rotor in rotors_dict.values())
+
+
 def save_kinetics_lib(rxn_list: list,
                       path: str,
                       name: str,
@@ -931,8 +956,18 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
                            f'kinetics library.')
             continue
         rxn.ts_species.make_ts_report()
-        if 'rotors' not in rxn.ts_species.long_thermo_description:
-            rxn.ts_species.long_thermo_description += '\nNo rotors considered for this TS.'
+        # Decide this from the rotor data, not from whether the word "rotors" happens to occur in a
+        # free-text description. That substring test reported "No rotors considered for this TS"
+        # for a TS that Arkane had in fact modelled WITH a hindered rotor, so the shipped library
+        # asserted the opposite of the model it was generated from.
+        # The note is derived state, recomputed on every save, so any copy left by an earlier save is
+        # removed before deciding again. ``long_thermo_description`` is a persisted species attribute
+        # (it survives into restart.yml), so appending unconditionally would both stack the sentence up
+        # once per export and keep asserting "no rotors" after a rotor had since been treated.
+        rxn.ts_species.long_thermo_description = rxn.ts_species.long_thermo_description.replace(
+            f'\n{NO_TS_ROTORS_NOTE}', '').replace(NO_TS_ROTORS_NOTE, '')
+        if not ts_has_treated_rotors(rxn.ts_species):
+            rxn.ts_species.long_thermo_description += f'\n{NO_TS_ROTORS_NOTE}'
         long_desc = f'{rxn.ts_species.ts_report}\n\n' \
                     f'TS external symmetry: {rxn.ts_species.external_symmetry}, ' \
                     f'TS optical isomers: {rxn.ts_species.optical_isomers}\n\n' \
