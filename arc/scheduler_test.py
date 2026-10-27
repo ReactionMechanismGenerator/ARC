@@ -520,6 +520,16 @@ H       1.27889520   -0.81548721   -0.22940984"""
             [regular], run_scan_jobs=None,
             stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 1, TaskState.RUNNING))
         self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+    def test_restart_spawns_a_rotor_scan_before_the_pipe_planner_exists(self):
+        """
+        The restart loop in __init__ calls run_scan_jobs() before the pipe planner is constructed, so a restart
+        with a rotor to spawn used to die with AttributeError. Without a planner each rotor is scanned alone.
+        """
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], run_job=None)
+        self.assertEqual(mocks['run_job'].call_count, 1)
+        self.assertEqual(mocks['run_job'].call_args.kwargs['job_type'], 'scan')
+        self.assertEqual(mocks['run_job'].call_args.kwargs['rotor_index'], 0)
 
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
