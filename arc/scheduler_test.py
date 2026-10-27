@@ -2969,6 +2969,49 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertEqual(sched.output['TS_single']['paths']['gsm'], good.log_path)
         self.assertEqual(sched.output['TS_single']['paths']['neb'], '')
 
+    @patch('arc.scheduler.Scheduler.run_job')
+    def test_run_ts_conformer_jobs_drops_orphaned_conf_opt_running_jobs(self, mock_run_job):
+        """Respawning the TS conformers cancels the superseded conf_opt jobs and stops tracking them, piped or not."""
+        xyz_a = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        xyz_b = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       2.51402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        label = 'TS_respawn'
+        ts_spc = ARCSpecies(label=label, is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, xyz=xyz_a),
+                             TSGuess(index=1, method='heuristics', success=True, xyz=xyz_b)]
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_ts_respawn')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_ts_respawn', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        for piped_indices in [set(), {1}]:
+            with self.subTest(piped_indices=piped_indices):
+                sched.pipe_planner = MagicMock()
+                sched.pipe_planner.try_pipe_ts_opt.return_value = piped_indices
+                superseded = {0: MagicMock(), 1: MagicMock()}
+                sched.job_dict[label] = {'conf_opt': dict(superseded)}
+                sched.running_jobs[label] = ['conf_opt_0', 'conf_opt_1', 'freq_a7']
+                mock_run_job.reset_mock()
+                sched.run_ts_conformer_jobs(label=label)
+                self.assertEqual(sched.running_jobs[label], ['freq_a7'])
+                self.assertEqual(mock_run_job.call_count, 2 - len(piped_indices))
+                for job in superseded.values():
+                    job.delete.assert_called_once()
+                self.assertFalse(any(job in superseded.values()
+                                     for job in sched.job_dict[label].get('conf_opt', dict()).values()))
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
         """Test that switch_ts resets job_types, convergence, cleans up IRC species, and clears pending pipes."""

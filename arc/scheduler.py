@@ -1590,6 +1590,14 @@ class Scheduler(object):
         if len(successful_tsgs) > 1:
             xyzs = [tsg.initial_xyz for tsg in successful_tsgs]
             piped_indices = self.pipe_planner.try_pipe_ts_opt(label, xyzs, self.ts_guess_level)
+            # conf_opt jobs still running (e.g., restored from a previous session) are superseded by the
+            # conformers spawned below: cancel them and stop tracking them.
+            conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
+            for job_name in [name for name in self.running_jobs.get(label, list()) if 'conf_opt' in name]:
+                job = conf_opt_jobs.pop(get_i_from_job_name(job_name), None)
+                if job is not None:
+                    job.delete()
+                self.running_jobs[label].remove(job_name)
             if not piped_indices:
                 self.job_dict[label]['conf_opt'] = dict()
             for i, tsg in enumerate(successful_tsgs):
