@@ -6857,6 +6857,25 @@ class TestLinearAdapterAtomMapWithoutGuesses(unittest.TestCase):
         xyzs = [xyz_to_str(tsg.initial_xyz) for tsg in rxn.ts_species.ts_guesses if tsg.initial_xyz]
         self.assertEqual(len(xyzs), len(set(xyzs)))
 
+    def test_summary_separates_rejected_maps(self):
+        """Test that a map rejected as unusable is not counted as one that produced geometries."""
+        with self.assertLogs(logger='arc', level='INFO') as cm:
+            rxn, adapter = self._run(atom_map=[0])
+        summaries = [line for line in cm.output if 'requested atom maps' in line]
+        self.assertEqual(len(summaries), 1)
+        self.assertIn('(0 of 1 requested atom maps, 1 rejected as unusable)', summaries[0])
+        self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
+
+    def test_summary_counts_a_mix_of_valid_and_invalid_maps(self):
+        """Test that the summary tells a rejected map, an empty one and a productive one apart."""
+        with self.assertLogs(logger='arc', level='INFO') as cm:
+            rxn, adapter = self._run(atom_map=[list(self.MAP_WITH_GUESSES), list(self.MAP_WITHOUT_GUESSES), [0]])
+        summaries = [line for line in cm.output if 'requested atom maps' in line]
+        self.assertEqual(len(summaries), 1)
+        self.assertIn('(1 of 3 requested atom maps, 1 rejected as unusable)', summaries[0])
+        self.assertEqual(adapter.atom_maps_without_guesses, [self.MAP_WITHOUT_GUESSES])
+        self.assertGreater(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 0)
+
     def test_requested_map_survives_a_ts_guess_round_trip(self):
         """Test that the requested permutation, not just its index, is persisted with the guesses."""
         rxn, adapter = self._run(atom_map=[list(self.MAP_WITH_GUESSES), list(self.MAP_WITHOUT_GUESSES)])
