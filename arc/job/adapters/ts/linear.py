@@ -137,6 +137,7 @@ degraded-mode smoke test).
 
 import copy
 import datetime
+import operator
 import math
 from collections import deque
 from dataclasses import dataclass, field
@@ -148,7 +149,9 @@ from arc.common import almost_equal_coords, get_logger, get_single_bond_length
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
+from arc.mapping.cluster import is_permutation_map
 from arc.mapping.driver import map_rxn
+from arc.mapping.engine import check_atom_map
 from arc.plotter import save_geo
 from arc.species.converter import order_mol_by_atom_map, order_xyz_by_atom_map
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
@@ -708,16 +711,18 @@ def _finalize_ts_guesses(ts_xyzs: list,
 
 def normalize_atom_maps(atom_map: list[int] | list[list[int]] | None) -> list[list[int]] | None:
     """
-    Normalize a user-supplied atom map argument into a list of atom maps.
+    Normalize the ``atom_map`` adapter argument into a list of atom maps.
 
-    Accepts either a single map (a list of ints) or several maps (a list of lists of ints),
-    so that a caller may request TS guesses for one or for several specific correspondences.
+    Accepts a single map (a sequence of integers) or several (a sequence of such sequences), and
+    converts the entries with ``operator.index``, which accepts the numpy integers the mapping
+    pipeline produces. Whether a map suits a particular reaction is decided per reaction, by
+    :meth:`LinearAdapter.get_forced_atom_maps`.
 
     Args:
         atom_map (list[int] | list[list[int]], optional): The requested atom map(s).
 
     Raises:
-        ValueError: If an entry is not a permutation of ``range(len(entry))``.
+        ValueError: If ``atom_map`` is not a non-empty sequence of integers, or of such sequences.
 
     Returns:
         list[list[int]] | None: The requested maps, or ``None`` if none were given.
@@ -730,57 +735,13 @@ def normalize_atom_maps(atom_map: list[int] | list[list[int]] | None) -> list[li
     maps = list(atom_map) if isinstance(atom_map[0], (list, tuple)) else [atom_map]
     normalized = list()
     for entry in maps:
-        if not isinstance(entry, (list, tuple)) or not len(entry) \
-                or any(not isinstance(index, int) or isinstance(index, bool) for index in entry):
+        if not isinstance(entry, (list, tuple)) or not len(entry):
             raise ValueError(f'Each atom map must be a non-empty list of integers, got {entry}.')
-        if sorted(entry) != list(range(len(entry))):
-            raise ValueError(f'Each atom map must be a permutation of range({len(entry)}), got {entry}.')
-        normalized.append(list(entry))
+        try:
+            normalized.append([operator.index(index) for index in entry])
+        except TypeError as e:
+            raise ValueError(f'Each atom map must consist of integers, got {entry}: {e}.')
     return normalized
-
-
-def get_well_symbols(rxn: ARCReaction, well: int) -> tuple:
-    """
-    Get the chemical element symbols of a reaction well in the well's canonical atom ordering.
-
-    The ordering matches ``rxn.get_reactants_xyz()`` / the unordered product well: a species
-    participating more than once contributes its atoms once per occurrence.
-
-    Args:
-        rxn (ARCReaction): The reaction.
-        well (int): Either ``0`` or ``1`` for the reactants or the products well, respectively.
-
-    Returns:
-        tuple: The element symbols.
-    """
-    symbols = list()
-    for spc in (rxn.r_species if well == 0 else rxn.p_species):
-        for _ in range(rxn.get_species_count(species=spc, well=well)):
-            symbols.extend(spc.get_xyz()['symbols'])
-    return tuple(symbols)
-
-
-def atom_map_fits_rxn(rxn: ARCReaction, atom_map: list[int]) -> bool:
-    """
-    Check that an atom map has the reaction's atom count and maps every atom onto the same element.
-
-    Args:
-        rxn (ARCReaction): The reaction.
-        atom_map (list[int]): The atom map to check, reactant index -> product index.
-
-    Returns:
-        bool: Whether the map is usable for this reaction.
-    """
-    try:
-        r_symbols = get_well_symbols(rxn, well=0)
-        p_symbols = get_well_symbols(rxn, well=1)
-    except Exception as e:
-        logger.debug(f'Linear (rxn={rxn.label}): could not determine well symbols to validate an atom map: {e}.')
-        return False
-    if len(atom_map) != len(r_symbols) or len(r_symbols) != len(p_symbols):
-        return False
-    return all(p_symbols[p_index] == r_symbol for r_symbol, p_index in zip(r_symbols, atom_map))
-
 
 
 class LinearAdapter(JobAdapter):
@@ -964,14 +925,11 @@ class LinearAdapter(JobAdapter):
         """
         Determine the atom map(s) to generate TS guesses for.
 
-        When no ``atom_map`` argument was given, a single ``None`` entry is returned, meaning
-        "derive an atom map per reaction path", which is this adapter's default behavior. An atom map
-        that is already set on the reaction is not used for that derivation, so a warning is logged
-        to make that visible to the caller.
-
-        When maps were requested, only those that fit the reaction (right length, element-preserving)
-        are returned; unusable ones are reported and dropped. An empty list means that nothing was
-        requested that this reaction can be mapped by, so no guesses should be generated.
+        Returns a single ``None`` entry when no ``atom_map`` argument was given, which makes the
+        caller derive an atom map per reaction path. Otherwise returns the requested maps that are
+        a bijection of this reaction's reactant atoms onto its product atoms and preserve every
+        atom's element, logging the ones that are not. An empty list means nothing usable was
+        requested for this reaction, so no TS guesses should be generated for it.
 
         Args:
             rxn (ARCReaction): The reaction being processed.
@@ -981,19 +939,36 @@ class LinearAdapter(JobAdapter):
         """
         if self.forced_atom_maps is None:
             if rxn._atom_map is not None:
-                logger.warning(f'The linear TS search adapter generates TS guesses per reaction path, deriving an '
-                               f'atom map for each; the atom map already set on {rxn.label} is not used for that. '
-                               f'Pass atom_map=... to LinearAdapter to request guesses for a specific '
-                               f'reactants-to-products correspondence.')
+                logger.info(f'The linear TS search adapter generates TS guesses per reaction path, deriving an '
+                            f'atom map for each; the atom map already set on {rxn.label} does not take part in '
+                            f'that derivation.')
             return [None]
+        try:
+            reactants, products = rxn.get_reactants_and_products(return_copies=False)
+            n_r = sum(spc.number_of_atoms for spc in reactants)
+            n_p = sum(spc.number_of_atoms for spc in products)
+        except Exception as e:
+            logger.warning(f'The linear TS search adapter could not count the atoms of {rxn.label} to validate '
+                           f'the requested atom map(s) ({type(e).__name__}: {e}); not generating TS guesses for it.')
+            return list()
         valid = list()
         for atom_map in self.forced_atom_maps:
-            if atom_map_fits_rxn(rxn, atom_map):
-                valid.append(atom_map)
-            else:
-                logger.warning(f'The linear TS search adapter was given the atom map {atom_map}, which does not fit '
-                               f'{rxn.label} (wrong number of atoms or mapping atoms onto different elements); '
-                               f'ignoring it.')
+            if not is_permutation_map(atom_map, n_r, n_p):
+                logger.warning(f'The linear TS search adapter was given the atom map {atom_map}, which is not a '
+                               f'bijection of the {n_r} reactant atoms of {rxn.label} onto its {n_p} product '
+                               f'atoms; ignoring it.')
+                continue
+            try:
+                fits = check_atom_map(rxn, atom_map=atom_map)
+            except Exception as e:
+                logger.warning(f'The linear TS search adapter could not check the atom map {atom_map} against '
+                               f'{rxn.label} ({type(e).__name__}: {e}); ignoring it.')
+                continue
+            if not fits:
+                logger.warning(f'The linear TS search adapter was given the atom map {atom_map}, which maps atoms '
+                               f'of {rxn.label} onto atoms of a different element; ignoring it.')
+                continue
+            valid.append(atom_map)
         if not valid:
             logger.warning(f'The linear TS search adapter was not given any usable atom map for {rxn.label}; '
                            f'not generating TS guesses for it.')
@@ -1041,13 +1016,11 @@ class LinearAdapter(JobAdapter):
                                                               )
                 weights = get_weight_grid(rxn)
                 all_xyzs_so_far: list[dict] = []
-                # Each requested atom map (or a single None, meaning "derive a map per
-                # reaction path") gets its own pass over the weight grid.
+                # A None entry means "derive a map per reaction path".
                 forced_atom_maps = self.get_forced_atom_maps(rxn)
                 for map_i, forced_atom_map in enumerate(forced_atom_maps):
                     if forced_atom_map is not None:
-                        # Consumed by cached_map_rxn(); also set on the reaction itself so that
-                        # the degraded fallback paths honor the requested correspondence too.
+                        # Read by cached_map_rxn() and by the reaction-level fallback paths.
                         rxn._atom_map = list(forced_atom_map)
                     map_suffix = f', map={map_i}' if len(forced_atom_maps) > 1 else ''
                     # Per-map memo: atom maps and the wider-family-set scan
@@ -1820,63 +1793,83 @@ def interpolate(rxn: ARCReaction,
 
 def get_requested_reactive_bonds(rxn: ARCReaction,
                                  forced_atom_map: list[int],
-                                 uni_is_product: bool,
+                                 uni_is_product: bool = False,
                                  ) -> set[tuple[int, int]] | None:
     """
     Get the bonds an explicitly requested atom map changes, in the unimolecular species' atom ordering.
 
-    This is the reaction center the caller asked for. The changing bonds of an RMG template path come
-    from the recipe and not from the atom map, so without comparing against this center a requested
-    map has almost no influence on which path (which leaving or migrating atom, say) gets built: the
-    map is otherwise only consulted to convert bond indices, and only when the unimolecular species is
-    the product. ``get_formed_and_broken_bonds`` reports in reactant ordering, which is already the
-    unimolecular ordering for a dissociation and is mapped through the requested map for an addition.
+    ``get_formed_and_broken_bonds`` reports in reactant ordering, which is already the unimolecular
+    ordering unless the unimolecular species is the product, in which case the bonds are mapped
+    through the requested map.
 
     Args:
         rxn (ARCReaction): The reaction.
         forced_atom_map (list[int]): The explicitly requested atom map.
-        uni_is_product (bool): Whether the unimolecular species is the product.
+        uni_is_product (bool, optional): Whether the unimolecular species is the product.
 
     Returns:
         set[tuple[int, int]] | None: The canonical changing bonds, or ``None`` if they could not be
-            determined, in which case no path filtering should be applied.
+            determined, in which case paths cannot be filtered by them.
     """
     atom_map_snapshot = rxn._atom_map
     try:
         rxn._atom_map = list(forced_atom_map)
         formed, broken = rxn.get_formed_and_broken_bonds()
     except Exception as e:
-        logger.debug(f'Linear addition (rxn={rxn.label}): could not determine the reaction center of the '
-                     f'requested atom map ({type(e).__name__}: {e}); not filtering paths by it.')
+        logger.debug(f'Linear (rxn={rxn.label}): could not determine the reaction center of the requested '
+                     f'atom map ({type(e).__name__}: {e}); not filtering paths by it.')
         return None
     finally:
         rxn._atom_map = atom_map_snapshot
     bonds = list(formed or []) + list(broken or [])
+    if uni_is_product:
+        return {canonical_bond(forced_atom_map[a], forced_atom_map[b]) for a, b in bonds}
+    return {canonical_bond(a, b) for a, b in bonds}
+
+
+def get_path_bonds_in_uni_ordering(bonds: list[tuple[int, int]],
+                                   atom_map: list[int] | None,
+                                   uni_is_product: bool,
+                                   discovered_in_reverse: bool,
+                                   ) -> list[tuple[int, int]]:
+    """
+    Convert a path's recipe bonds to the unimolecular species' atom ordering.
+
+    A path discovered in the reverse direction already reports its recipe bonds in the unimolecular
+    ordering; a forward one reports them in the multi-species ordering and needs the atom map, which
+    is only applied when the unimolecular species is the product.
+
+    Args:
+        bonds (list[tuple[int, int]]): The path's changing bonds as the recipe reports them.
+        atom_map (list[int], optional): The path's atom map, reactant index -> product index.
+        uni_is_product (bool): Whether the unimolecular species is the product.
+        discovered_in_reverse (bool): Whether the path was discovered in the reverse direction.
+
+    Returns:
+        list[tuple[int, int]]: The canonical bonds in unimolecular ordering, empty if unconvertible.
+    """
+    if not uni_is_product or discovered_in_reverse:
+        return [canonical_bond(a, b) for a, b in bonds]
+    if atom_map is None:
+        return list()
     try:
-        return {canonical_bond(forced_atom_map[a], forced_atom_map[b]) for a, b in bonds} if uni_is_product \
-            else {canonical_bond(a, b) for a, b in bonds}
+        return [canonical_bond(atom_map[a], atom_map[b]) for a, b in bonds]
     except IndexError:
-        logger.debug(f'Linear addition (rxn={rxn.label}): the requested atom map does not index the reaction '
-                     f'center bonds {bonds}; not filtering paths by it.')
-        return None
+        return list()
 
 
-def path_matches_requested_center(reactive_bonds_r: list[tuple[int, int]],
-                                  reactive_bonds_uni: list[tuple[int, int]],
+def path_matches_requested_center(path_bonds_uni: list[tuple[int, int]],
                                   requested_reactive: set[tuple[int, int]] | None,
                                   ) -> bool:
     """
-    Check whether a template path changes only bonds that the requested atom map also changes.
+    Check whether a path's changing bonds are exactly the ones the requested atom map changes.
 
-    Both readings of the path's bonds are accepted, since a path discovered in the reverse direction
-    reports its recipe bonds in the unimolecular ordering already while a forward one reports them in
-    the multi-species ordering. A subset rather than an equality test, because an enumerated map may
-    carry extra changed bonds from a spectator permutation on top of the real reaction center and
-    should still select the path whose center it contains.
+    Both sets must be expressed in the unimolecular species' atom ordering. The comparison is an
+    equality: a map that changes bonds the path does not describes a different correspondence, and
+    attributing the path's guesses to it is the silent substitution this check exists to prevent.
 
     Args:
-        reactive_bonds_r (list[tuple[int, int]]): The path's changing bonds as the recipe reports them.
-        reactive_bonds_uni (list[tuple[int, int]]): The same bonds converted to unimolecular ordering.
+        path_bonds_uni (list[tuple[int, int]]): The path's changing bonds in unimolecular ordering.
         requested_reactive (set[tuple[int, int]], optional): The requested map's changing bonds in
             unimolecular ordering. ``None`` disables the check.
 
@@ -1885,10 +1878,44 @@ def path_matches_requested_center(reactive_bonds_r: list[tuple[int, int]],
     """
     if requested_reactive is None:
         return True
-    for bonds in (reactive_bonds_uni, reactive_bonds_r):
-        if bonds and {canonical_bond(a, b) for a, b in bonds}.issubset(requested_reactive):
-            return True
-    return False
+    return {canonical_bond(a, b) for a, b in path_bonds_uni} == requested_reactive
+
+
+def get_requested_product_dict(rxn: ARCReaction,
+                               requested_reactive: set[tuple[int, int]] | None,
+                               uni_is_product: bool,
+                               ) -> dict | None:
+    """
+    Get the reaction-family product dictionary whose recipe bonds the requested atom map changes.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+        requested_reactive (set[tuple[int, int]], optional): The requested map's changing bonds in
+            unimolecular ordering. ``None`` selects the first product dictionary, as before.
+        uni_is_product (bool): Whether the unimolecular species is the product.
+
+    Returns:
+        dict | None: The matching product dictionary, or ``None`` if no path matches the request.
+    """
+    if not rxn.product_dicts:
+        return None
+    if requested_reactive is None:
+        return rxn.product_dicts[0]
+    for product_dict in rxn.product_dicts:
+        r_label_map = product_dict.get('r_label_map')
+        if r_label_map is None:
+            continue
+        try:
+            bb, fb = rxn.get_expected_changing_bonds(
+                r_label_dict=r_label_map, family=product_dict.get('family') or rxn.family)
+        except KeyError:
+            continue
+        path_bonds = get_path_bonds_in_uni_ordering(
+            list(bb or []) + list(fb or []), rxn.atom_map if uni_is_product else None,
+            uni_is_product, bool(product_dict.get('discovered_in_reverse')))
+        if path_matches_requested_center(path_bonds, requested_reactive):
+            return product_dict
+    return None
 
 
 def interpolate_addition(rxn: ARCReaction,
@@ -1999,6 +2026,8 @@ def interpolate_addition(rxn: ARCReaction,
     ts_records: list[GuessRecord] = []
     seen_split_sets: set[frozenset] = set()
     verified_guess_count: int = 0
+    requested_reactive = get_requested_reactive_bonds(rxn, forced_atom_map, uni_is_product) \
+        if forced_atom_map is not None else None
 
     # --- Dedicated family builders (fire first, return immediately if matched) ---
     _family_name = rxn.family or ''
@@ -2008,8 +2037,8 @@ def interpolate_addition(rxn: ARCReaction,
             break
 
     # XY_elimination_hydroxyl: concerted 6-membered ring elimination.
-    if _family_name.startswith('XY_elimination') or (
-            not _family_name and len(multi_species) >= 3):
+    if (_family_name.startswith('XY_elimination') or (
+            not _family_name and len(multi_species) >= 3)) and requested_reactive is None:
         ts_family = build_xy_elimination_ts(uni_xyz, uni_mol)
         if ts_family is not None:
             # No per-bond metadata available; validate in degraded mode.
@@ -2033,7 +2062,7 @@ def interpolate_addition(rxn: ARCReaction,
     # Bespoke distances exceed the generic builder-stage fragment
     # threshold; skip builder-stage validation and let the finalizer
     # score it.
-    if _family_name == 'Baeyer-Villiger_step2':
+    if _family_name == 'Baeyer-Villiger_step2' and requested_reactive is None:
         frag_cuts = find_split_bonds_by_fragmentation(uni_mol, multi_species)
         for cut in frag_cuts:
             ts_bv = build_baeyer_villiger_step2_ts(uni_xyz, uni_mol, cut)
@@ -2054,8 +2083,8 @@ def interpolate_addition(rxn: ARCReaction,
 
     # Retroene: concerted 6-membered-ring fragmentation.
     if _family_name == 'Retroene' and rxn.product_dicts:
-        pd0 = rxn.product_dicts[0]
-        rl0 = pd0.get('r_label_map')
+        pd0 = get_requested_product_dict(rxn, requested_reactive, uni_is_product)
+        rl0 = pd0.get('r_label_map') if pd0 is not None else None
         if rl0 is not None:
             try:
                 bb_re, fb_re = rxn.get_expected_changing_bonds(
@@ -2089,12 +2118,6 @@ def interpolate_addition(rxn: ARCReaction,
             idx_b = atom_to_idx[neighbor]
             uni_bond_set.add(canonical_bond(idx_a, idx_b))
 
-    # The requested correspondence has to pick the reaction path: a path's recipe-derived changing
-    # bonds are independent of the atom map, so without this a requested map naming one particular
-    # leaving or migrating atom still gets whichever path the template enumerates first.
-    requested_reactive = get_requested_reactive_bonds(rxn, forced_atom_map, uni_is_product) \
-        if forced_atom_map is not None else None
-
     # ----- Strategy 1: template-guided (product_dicts) -----
     for i, product_dict in enumerate(rxn.product_dicts):
         r_label_map = product_dict['r_label_map']
@@ -2126,10 +2149,15 @@ def interpolate_addition(rxn: ARCReaction,
         else:
             all_reactive_uni = [canonical_bond(a, b) for a, b in all_reactive_r]
 
-        if not path_matches_requested_center(all_reactive_r, all_reactive_uni, requested_reactive):
-            logger.debug(f'Linear addition (rxn={rxn.label}, path={i}): the path changes bonds that the '
-                         f'requested atom map does not; skipping path.')
-            continue
+        if requested_reactive is not None:
+            path_bonds_uni = get_path_bonds_in_uni_ordering(
+                all_reactive_r, atom_map if uni_is_product else None, uni_is_product,
+                bool(product_dict.get('discovered_in_reverse')))
+            if not path_matches_requested_center(path_bonds_uni, requested_reactive):
+                logger.debug(f'Linear addition (rxn={rxn.label}, path={i}): the path changes bonds '
+                             f'{sorted(path_bonds_uni)} rather than the requested atom map\'s '
+                             f'{sorted(requested_reactive)}; skipping path.')
+                continue
 
         # Direction-agnostic classification.
         split_bonds = [b for b in all_reactive_uni if b in uni_bond_set]
@@ -2390,11 +2418,13 @@ def interpolate_addition(rxn: ARCReaction,
             else:
                 sb_conc = [canonical_bond(a, b) for a, b in bb_conc]
                 cb_conc = [canonical_bond(a, b) for a, b in fb_conc]
-            if not path_matches_requested_center(list(bb_conc) + list(fb_conc),
-                                                 list(sb_conc) + list(cb_conc),
-                                                 requested_reactive):
-                logger.debug(f'Linear addition (rxn={rxn.label}): the concerted path changes bonds that the '
-                             f'requested atom map does not; skipping path.')
+            if requested_reactive is not None and not path_matches_requested_center(
+                    get_path_bonds_in_uni_ordering(
+                        list(bb_conc) + list(fb_conc), am if uni_is_product else None, uni_is_product,
+                        bool(product_dict.get('discovered_in_reverse'))),
+                    requested_reactive):
+                logger.debug(f'Linear addition (rxn={rxn.label}): the concerted path does not change the bonds '
+                             f'of the requested atom map; skipping path.')
                 continue
             split_in_uni = [b for b in sb_conc if b in uni_bond_set]
             cross_in_uni = [b for b in cb_conc if b not in uni_bond_set]
@@ -2533,15 +2563,14 @@ def interpolate_addition(rxn: ARCReaction,
     #    so it fails on multi-bond cuts for insertion/elimination.
     # 2. Composition dedup — coarser fallback: one representative per
     #    unique set of fragment element compositions.
-    cut_lists = find_split_bonds_by_fragmentation(uni_mol, multi_species)
-    if forced_atom_map is not None and cut_lists:
-        # This strategy has no template paths to select between: the cuts come from combinatorial bond
-        # breaking and the fragment correspondence from subgraph isomorphism, neither of which the
-        # requested map constrains. Guesses from here may describe a correspondence other than the one
-        # asked for, so say so rather than letting them pass silently as the caller's map.
-        logger.warning(f'The linear TS search adapter is building addition/dissociation TS guesses for '
-                       f'{rxn.label} by combinatorial bond cutting, which does not consult the requested '
-                       f'atom map; the resulting guesses may describe a different correspondence.')
+    if forced_atom_map is not None:
+        # Neither the combinatorial cuts nor the subgraph-isomorphism fragment matching identifies
+        # which of several equivalent atoms moves, so no guess here can be attributed to the request.
+        logger.debug(f'Linear addition (rxn={rxn.label}): skipping the fragmentation supplement, which '
+                     f'cannot honor a requested atom map.')
+        cut_lists = list()
+    else:
+        cut_lists = find_split_bonds_by_fragmentation(uni_mol, multi_species)
     isomorphism_verified: list[list[tuple[int, int]]] = []
     isomorphism_unverified: list[list[tuple[int, int]]] = []
     for cut in cut_lists:
@@ -3817,6 +3846,10 @@ def interpolate_isomerization(rxn: ARCReaction,
     _fallback_bb: list[tuple[int, int]] | None = None
     _fallback_changed: list[tuple[int, int]] | None = None
 
+    # An isomerization has one reactant and one product, so no index conversion is needed.
+    requested_reactive = get_requested_reactive_bonds(rxn, forced_atom_map, uni_is_product=False) \
+        if forced_atom_map is not None else None
+
     seen_bond_signatures: set[tuple] = set()
     for i, product_dict in enumerate(rxn.product_dicts):
         r_label_dict = product_dict['r_label_map']
@@ -3833,6 +3866,12 @@ def interpolate_isomerization(rxn: ARCReaction,
         if bb is None or fb is None:
             logger.debug(f'Linear (rxn={rxn.label}, path={i}): get_expected_changing_bonds returned None; skipping path.')
             continue
+        if requested_reactive is not None:
+            path_bonds = [canonical_bond(a, b) for a, b in list(bb) + list(fb)]
+            if not path_matches_requested_center(path_bonds, requested_reactive):
+                logger.debug(f'Linear (rxn={rxn.label}, path={i}): the path changes bonds {sorted(path_bonds)} '
+                             f'rather than the requested atom map\'s {sorted(requested_reactive)}; skipping path.')
+                continue
         # Dedup paths with identical bb/fb — they differ only in
         # non-reactive label assignments and each map_rxn call is expensive.
         bond_sig = (tuple(sorted(tuple(sorted(b)) for b in bb)),
@@ -3965,7 +4004,7 @@ def interpolate_isomerization(rxn: ARCReaction,
 
     # Fast-exit bespoke fallback when the strategy pipeline produced
     # nothing (typically atom mapping failed on every path).
-    if not ts_xyzs:
+    if not ts_xyzs and requested_reactive is None:
         ts_xyzs.extend(_try_bespoke_family_fallbacks(r_xyz, r_mol, rxn))
 
     # Direct-contraction supplement for fb-only recipes with short
@@ -3983,6 +4022,9 @@ def interpolate_isomerization(rxn: ARCReaction,
                              f'missing from r_label_map; skipping path.')
                 continue
             if bb_dc or not fb_dc:
+                continue
+            if requested_reactive is not None and not path_matches_requested_center(
+                    [canonical_bond(a, b) for a, b in list(bb_dc) + list(fb_dc)], requested_reactive):
                 continue
             for bond_pair_dc in fb_dc:
                 dc = direct_contraction(r_xyz, r_mol, bond_pair_dc, weight)
@@ -4438,7 +4480,7 @@ def interpolate_isomerization(rxn: ARCReaction,
     # Last-resort bespoke fallback when post-processing rejected every
     # generic guess. Bespoke builders carry no path_spec so the wrapper
     # cannot reject them on the same criterion.
-    if not unique:
+    if not unique and requested_reactive is None:
         bespoke = _try_bespoke_family_fallbacks(r_xyz, r_mol, rxn)
         if bespoke:
             unique = postprocess_isomerization_records(unique=bespoke,
