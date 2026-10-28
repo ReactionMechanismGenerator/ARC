@@ -6482,6 +6482,10 @@ class TestLinearAdapterAtomMapInAddition(unittest.TestCase):
     # the reactant. These two maps eliminate a different hydrogen: H4 and H5.
     MAP_H4 = [0, 1, 7, 6, 8, 3, 2, 5, 4]
     MAP_H5 = [0, 1, 7, 6, 3, 8, 2, 5, 4]
+    # The same two reaction centers requested in the addition direction, C2H4 + HO2 -> CCOO., where
+    # the unimolecular species is the product. Every path of this direction is discovered in reverse.
+    REVERSE_MAP_H4 = [0, 1, 6, 5, 8, 7, 3, 2, 4]
+    REVERSE_MAP_H5 = [0, 1, 6, 4, 8, 7, 3, 2, 5]
 
     @staticmethod
     def _make_rxn() -> ARCReaction:
@@ -6527,6 +6531,48 @@ class TestLinearAdapterAtomMapInAddition(unittest.TestCase):
                       ).execute()
         return [tsg.initial_xyz for tsg in rxn.ts_species.ts_guesses if tsg.success and tsg.initial_xyz]
 
+    def _reverse_guesses(self, atom_map) -> list[dict]:
+        """
+        Execute the Linear adapter for one requested atom map in the addition direction.
+
+        Args:
+            atom_map (list[int]): The atom map to request.
+
+        Returns:
+            list[dict]: The successful guess geometries, in the unimolecular species' ordering.
+        """
+        rxn = self._make_reverse_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        LinearAdapter(job_type='tsg',
+                      reactions=[rxn],
+                      testing=True,
+                      project='test',
+                      project_directory=project_directory,
+                      atom_map=list(atom_map),
+                      ).execute()
+        return [tsg.initial_xyz for tsg in rxn.ts_species.ts_guesses if tsg.success and tsg.initial_xyz]
+
+    def test_requested_map_selects_the_hydrogen_in_the_addition_direction(self):
+        """Test that a reverse-discovered path honors the requested map instead of returning nothing."""
+        # The recipe bonds of a reverse-discovered path are already in the unimolecular ordering;
+        # mapping them a second time left the builders with no bond of the species to stretch.
+        for atom_map, requested, spectator in ((self.REVERSE_MAP_H4, 4, 5), (self.REVERSE_MAP_H5, 5, 4)):
+            xyzs = self._reverse_guesses(atom_map)
+            self.assertGreater(len(xyzs), 0)
+            for xyz in xyzs:
+                coords = np.array(xyz['coords'], dtype=float)
+                d_requested = float(np.linalg.norm(coords[requested] - coords[0]))
+                d_spectator = float(np.linalg.norm(coords[spectator] - coords[0]))
+                self.assertGreater(d_requested, d_spectator,
+                                   msg=f'map detaching H{requested}: d(C0,H{requested})={d_requested:.2f} '
+                                       f'is not above d(C0,H{spectator})={d_spectator:.2f}')
+
+    def test_different_maps_give_different_guesses_in_the_addition_direction(self):
+        """Test that the two addition-direction maps do not return the same geometries."""
+        self.assertNotEqual([xyz_to_str(xyz) for xyz in self._reverse_guesses(self.REVERSE_MAP_H4)],
+                            [xyz_to_str(xyz) for xyz in self._reverse_guesses(self.REVERSE_MAP_H5)])
+
     def test_requested_map_selects_the_eliminated_hydrogen(self):
         """Test that every guess eliminates the hydrogen the requested map eliminates."""
         for atom_map, eliminated, retained in ((self.MAP_H4, 4, 5), (self.MAP_H5, 5, 4)):
@@ -6555,9 +6601,10 @@ class TestLinearAdapterAtomMapInAddition(unittest.TestCase):
                          {(0, 5), (1, 2), (3, 5)})
         # In the addition direction the center is mapped into the product's (unimolecular) ordering.
         reverse_rxn = self._make_reverse_rxn()
-        reverse_map = [0, 1, 6, 5, 8, 7, 3, 2, 4]
-        self.assertEqual(get_requested_reactive_bonds(reverse_rxn, reverse_map, uni_is_product=True),
+        self.assertEqual(get_requested_reactive_bonds(reverse_rxn, self.REVERSE_MAP_H4, uni_is_product=True),
                          {(0, 4), (1, 2), (3, 4)})
+        self.assertEqual(get_requested_reactive_bonds(reverse_rxn, self.REVERSE_MAP_H5, uni_is_product=True),
+                         {(0, 5), (1, 2), (3, 5)})
 
     def test_get_path_bonds_in_uni_ordering(self):
         """Test converting a path's recipe bonds to the unimolecular ordering."""
@@ -6589,6 +6636,67 @@ class TestLinearAdapterAtomMapInAddition(unittest.TestCase):
                                                  family=selected.get('family') or rxn.family)
         self.assertEqual({tuple(sorted(b)) for b in list(bb) + list(fb)}, {(0, 5), (1, 2), (3, 5)})
         self.assertIsNone(get_requested_product_dict(rxn, {(0, 1)}, False))
+
+
+class TestLinearAdapterAtomMapInSupplements(unittest.TestCase):
+    """Test that the supplementary builders of the addition route honor a requested atom map (#1044)."""
+
+    # [CH2]CCSC -> cC3H6 + CH3S, an intra_substitutionCS_cyclization whose guess comes from the
+    # SN2-like supplement. The second map also permutes hydrogens, so its reaction center is not
+    # the one this path describes.
+    MAP_OF_THE_PATH = [0, 1, 2, 10, 9, 3, 4, 5, 6, 7, 8, 11, 12, 13]
+    MAP_OF_ANOTHER_CENTER = [0, 1, 2, 10, 9, 5, 4, 3, 6, 7, 8, 11, 12, 13]
+
+    @staticmethod
+    def _make_rxn() -> ARCReaction:
+        """
+        Construct a fresh [CH2]CCSC <=> cC3H6 + CH3S cyclization.
+
+        Returns:
+            ARCReaction: The reaction.
+        """
+        return ARCReaction(r_species=[ARCSpecies(label='r0', smiles='[CH2]CCSC')],
+                           p_species=[ARCSpecies(label='p0', smiles='C1CC1'),
+                                      ARCSpecies(label='p1', smiles='C[S]')])
+
+    def _run(self, atom_map) -> tuple[ARCReaction, list[str]]:
+        """
+        Execute the Linear adapter for one requested atom map, capturing the debug log.
+
+        Args:
+            atom_map (list[int]): The atom map to request.
+
+        Returns:
+            tuple[ARCReaction, list[str]]: The processed reaction and the captured log lines.
+        """
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        with self.assertLogs(logger='arc', level='DEBUG') as cm:
+            LinearAdapter(job_type='tsg',
+                          reactions=[rxn],
+                          testing=True,
+                          project='test',
+                          project_directory=project_directory,
+                          atom_map=list(atom_map),
+                          ).execute()
+        return rxn, cm.output
+
+    def test_sn2_supplement_builds_for_the_requested_center(self):
+        """Test that the supplement still fires for a map describing the path it builds from."""
+        rxn, log = self._run(self.MAP_OF_THE_PATH)
+        self.assertTrue(any('used SN2-like builder' in line for line in log))
+        self.assertGreater(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 0)
+
+    def test_sn2_supplement_honors_a_rejected_path(self):
+        """Test that the supplement does not rebuild a path the requested center rejected."""
+        # The supplement builds from the recipe bonds of a path, so without the same check it
+        # returned a successful guess for the very correspondence the main loop had rejected.
+        rxn, log = self._run(self.MAP_OF_ANOTHER_CENTER)
+        self.assertTrue(any('the SN2-like path does not change the bonds of the requested atom map' in line
+                            for line in log))
+        self.assertFalse(any('used SN2-like builder' in line for line in log))
+        self.assertEqual([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success], list())
 
 
 if __name__ == '__main__':
