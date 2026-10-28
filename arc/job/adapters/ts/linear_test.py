@@ -81,7 +81,7 @@ from arc.mapping.engine import check_atom_map
 from arc.molecule import Molecule
 from arc.reaction import ARCReaction
 from arc.species.converter import compare_zmats, order_mol_by_atom_map, order_xyz_by_atom_map, str_to_xyz, xyz_to_str, zmat_from_xyz
-from arc.species.species import ARCSpecies, colliding_atoms
+from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
 
 def _angle_deg(p1: np.ndarray, vertex: np.ndarray, p2: np.ndarray) -> float:
@@ -6856,6 +6856,26 @@ class TestLinearAdapterAtomMapWithoutGuesses(unittest.TestCase):
         # The duplicates are still deduplicated, they are just not mistaken for a failure.
         xyzs = [xyz_to_str(tsg.initial_xyz) for tsg in rxn.ts_species.ts_guesses if tsg.initial_xyz]
         self.assertEqual(len(xyzs), len(set(xyzs)))
+
+    def test_requested_map_survives_a_ts_guess_round_trip(self):
+        """Test that the requested permutation, not just its index, is persisted with the guesses."""
+        rxn, adapter = self._run(atom_map=[list(self.MAP_WITH_GUESSES), list(self.MAP_WITHOUT_GUESSES)])
+        failed = [tsg for tsg in rxn.ts_species.ts_guesses if not tsg.success]
+        successful = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]
+        self.assertEqual([tsg.atom_map for tsg in failed], [self.MAP_WITHOUT_GUESSES])
+        self.assertTrue(successful)
+        self.assertTrue(all(tsg.atom_map == self.MAP_WITH_GUESSES for tsg in successful))
+        # The adapter attribute is transient; the restart file must still say which map came back empty.
+        restored = [TSGuess(ts_dict=tsg.as_dict()) for tsg in rxn.ts_species.ts_guesses]
+        self.assertEqual([tsg.atom_map for tsg in restored if not tsg.success], [self.MAP_WITHOUT_GUESSES])
+        self.assertTrue(all(tsg.atom_map == self.MAP_WITH_GUESSES for tsg in restored if tsg.success))
+
+    def test_single_requested_map_is_identifiable_without_an_index(self):
+        """Test that a one-map call, whose guesses are all labeled map=0, still names the permutation."""
+        rxn, _ = self._run(atom_map=list(self.MAP_WITHOUT_GUESSES))
+        failed = [tsg for tsg in rxn.ts_species.ts_guesses if not tsg.success]
+        self.assertEqual([tsg.method for tsg in failed], ['linear (map=0)'])
+        self.assertEqual([tsg.atom_map for tsg in failed], [self.MAP_WITHOUT_GUESSES])
 
     def test_summary_counts_only_the_current_reaction(self):
         """Test that one reaction's empty maps do not count against the next reaction's summary."""
