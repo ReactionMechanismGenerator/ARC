@@ -759,7 +759,9 @@ class LinearAdapter(JobAdapter):
     correspondence, pass it via the ``atom_map`` argument, which overrides the derived map.
     A requested map for which no guess survives validation is reported: it is appended to
     ``self.atom_maps_without_guesses``, recorded on the reaction as an unsuccessful ``TSGuess``,
-    and logged as a warning.
+    and logged as a warning. Every guess generated for a requested map, successful or not, carries
+    that map in its ``TSGuess.atom_map`` attribute, which is persisted: the adapter's own attribute
+    is transient, and the method index alone does not identify the requested correspondence.
 
     Args:
         project (str): The project's name. Used for setting the remote path.
@@ -1073,6 +1075,7 @@ class LinearAdapter(JobAdapter):
                                 method = f'Linear (w={w:.2f}, {xyz_i}{map_suffix})'
                                 ts_guess = TSGuess(method=method,
                                                    method_index=w_i,
+                                                   atom_map=forced_atom_map,
                                                    t0=t0,
                                                    execution_time=t_ex,
                                                    success=True,
@@ -1100,6 +1103,7 @@ class LinearAdapter(JobAdapter):
                         self.atom_maps_without_guesses.append(list(forced_atom_map))
                         rxn.ts_species.append_ts_guess(TSGuess(method=f'Linear (map={map_i})',
                                                               method_index=map_i,
+                                                              atom_map=forced_atom_map,
                                                               t0=map_t0,
                                                               execution_time=datetime.datetime.now() - map_t0,
                                                               success=False,
