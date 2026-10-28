@@ -3312,6 +3312,15 @@
 
 
 
+<span class="c1">#: Below this barrier the second symmetry criterion (the 10%-of-the-highest-peak test) does not</span>
+<span class="c1">#: apply -- a shallow scan's peak spread is noise, not asymmetry. In **kJ/mol**, which is what</span>
+<span class="c1">#: ``parse_1d_scan_energies`` returns and what ``determine_rotor_symmetry`` is documented to take.</span>
+<span class="c1">#: This was previously written inline as the bare literal ``2000``, i.e. 2 kJ/mol expressed in</span>
+<span class="c1">#: J/mol, so ``max_e &gt; 2000`` was false for every realistic torsional barrier and the criterion</span>
+<span class="c1">#: never ran.</span>
+<span class="n">SYMMETRY_SECOND_CRITERION_MIN_BARRIER</span> <span class="o">=</span> <span class="mf">2.0</span>  <span class="c1"># kJ/mol</span>
+
+
 <div class="viewcode-block" id="determine_rotor_symmetry">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.determine_rotor_symmetry">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">determine_rotor_symmetry</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -3360,9 +3369,11 @@
 
     <span class="n">symmetry</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">max_e</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">max_e</span> <span class="o">&gt;</span> <span class="mi">2000</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">max_e</span> <span class="o">&gt;</span> <span class="n">SYMMETRY_SECOND_CRITERION_MIN_BARRIER</span><span class="p">:</span>
         <span class="n">tol</span> <span class="o">=</span> <span class="mf">0.10</span> <span class="o">*</span> <span class="n">max_e</span>  <span class="c1"># tolerance for the second criterion</span>
     <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># The second criterion does not apply to a barrier this shallow, so make the tolerance</span>
+        <span class="c1"># unreachable rather than let a tiny ripple decide the symmetry.</span>
         <span class="n">tol</span> <span class="o">=</span> <span class="n">max_e</span>
     <span class="n">min_e</span> <span class="o">=</span> <span class="n">energies</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">e</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">energies</span><span class="p">):</span>
@@ -3448,8 +3459,15 @@
 <div class="viewcode-block" id="cyclic_index_i_minus_1">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.cyclic_index_i_minus_1">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">cyclic_index_i_minus_1</span><span class="p">(</span><span class="n">i</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""A helper function for cyclic indexing rotor scans"""</span>
-    <span class="k">return</span> <span class="n">i</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">i</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="o">-</span><span class="mi">1</span></div>
+<span class="w">    </span><span class="sd">"""A helper function for cyclic indexing rotor scans</span>
+
+<span class="sd">    ``i - 1`` is already the correct cyclic predecessor for every ``i &gt;= 0``: at ``i = 0`` Python's</span>
+<span class="sd">    negative indexing makes ``-1`` the last element, which is what a cyclic scan wants. The former</span>
+<span class="sd">    ``i - 1 if i - 1 &gt; 0 else -1`` used a strict ``&gt;``, so ``i = 1`` also returned ``-1`` and</span>
+<span class="sd">    element 1 was compared against the *last* scan point instead of element 0 -- which can invent a</span>
+<span class="sd">    spurious peak or valley at the start of a scan and trip the "peaks != valleys" guard.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">i</span> <span class="o">-</span> <span class="mi">1</span></div>
 
 
 
