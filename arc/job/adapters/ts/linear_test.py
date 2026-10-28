@@ -6699,5 +6699,61 @@ class TestLinearAdapterAtomMapInSupplements(unittest.TestCase):
         self.assertEqual([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success], list())
 
 
+class TestLinearAdapterAtomMapWithoutProductDicts(unittest.TestCase):
+    """Test that the trivial-map fallback of an isomerization honors a requested atom map (#1044)."""
+
+    # CCOO. -> .CH2CH2OOH, where R and P order their atoms differently, so the fallback has to
+    # reorder the product. Each map migrates a different hydrogen of C0 onto the terminal O3.
+    MAPS = {4: [3, 2, 1, 0, 4, 8, 7, 6, 5],
+            5: [3, 2, 1, 0, 8, 4, 7, 6, 5],
+            6: [3, 2, 1, 0, 8, 7, 4, 6, 5]}
+
+    def _guesses(self, atom_map) -> list[dict]:
+        """
+        Execute the Linear adapter for one requested atom map, with no product dictionaries.
+
+        Args:
+            atom_map (list[int]): The atom map to request.
+
+        Returns:
+            list[dict]: The successful guess geometries.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='r0', smiles='CCO[O]')],
+                          p_species=[ARCSpecies(label='p0', smiles='OOC[CH2]')])
+        # Without a reaction family path the strategy pipeline has nothing to run, which is what
+        # sends the reaction through the trivial-map fallback.
+        rxn.product_dicts = list()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        LinearAdapter(job_type='tsg',
+                      reactions=[rxn],
+                      testing=True,
+                      project='test',
+                      project_directory=project_directory,
+                      atom_map=list(atom_map),
+                      ).execute()
+        return [tsg.initial_xyz for tsg in rxn.ts_species.ts_guesses if tsg.success and tsg.initial_xyz]
+
+    def test_requested_map_selects_the_migrating_hydrogen(self):
+        """Test that the hydrogen the requested map migrates is the one that moves."""
+        # The fallback reordered the product by a backbone atom map while deriving the changing
+        # bonds from the requested one; in the mixed ordering the requested breaking bond looked
+        # like a bond of the product and was dropped, leaving nothing to interpolate.
+        for migrating, atom_map in self.MAPS.items():
+            xyzs = self._guesses(atom_map)
+            self.assertGreater(len(xyzs), 0, msg=f'no guess for the map migrating H{migrating}')
+            spectators = [h for h in self.MAPS if h != migrating]
+            for xyz in xyzs:
+                coords = np.array(xyz['coords'], dtype=float)
+                d_migrating = float(np.linalg.norm(coords[migrating] - coords[3]))
+                for spectator in spectators:
+                    d_spectator = float(np.linalg.norm(coords[spectator] - coords[3]))
+                    self.assertLess(d_migrating, d_spectator,
+                                    msg=f'map migrating H{migrating}: d(O3,H{migrating})={d_migrating:.2f} '
+                                        f'is not below d(O3,H{spectator})={d_spectator:.2f}')
+                self.assertGreater(float(np.linalg.norm(coords[migrating] - coords[0])),
+                                   float(np.linalg.norm(coords[spectators[0]] - coords[0])))
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
