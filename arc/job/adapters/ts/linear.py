@@ -1132,7 +1132,14 @@ class LinearAdapter(JobAdapter):
                 # Only this reaction's empty maps: the attribute accumulates over every reaction of the
                 # job, and counting another reaction's entries here produced summaries such as "-1 of 1".
                 empty = len(self.atom_maps_without_guesses) - empty_maps_before_rxn
-                suffix = f' ({requested - empty} of {requested} requested atom maps)' if requested else ''
+                # A map get_forced_atom_maps() rejected never reached the weight grid, so it is absent
+                # from atom_maps_without_guesses too; counting it as a map that produced geometries
+                # reported "(1 of 1 requested atom maps)" for a reaction with no guesses at all.
+                rejected = requested - len([atom_map for atom_map in forced_atom_maps if atom_map is not None])
+                counts = f'{requested - rejected - empty} of {requested} requested atom maps'
+                if rejected:
+                    counts += f', {rejected} rejected as unusable'
+                suffix = f' ({counts})' if requested else ''
                 if successes:
                     logger.info(f'Linear successfully found {successes} TS guesses for {rxn.label}{suffix}.')
                 else:
