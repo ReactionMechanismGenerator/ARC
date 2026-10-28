@@ -2136,6 +2136,7 @@ def interpolate_addition(rxn: ARCReaction,
             continue
 
         # Convert to uni-species ordering.
+        atom_map = None
         if uni_is_product:
             try:
                 atom_map = cached_map_rxn(rxn=rxn, product_dict_index=i, map_cache=map_cache,
@@ -2144,20 +2145,21 @@ def interpolate_addition(rxn: ARCReaction,
                 atom_map = None
             if atom_map is None:
                 continue
-            all_reactive_uni = [(min(atom_map[a], atom_map[b]),
-                                 max(atom_map[a], atom_map[b])) for a, b in all_reactive_r]
-        else:
-            all_reactive_uni = [canonical_bond(a, b) for a, b in all_reactive_r]
+        # The same conversion feeds the filter below and the builders. A reverse-discovered path
+        # already reports its recipe bonds in the unimolecular ordering, so mapping them again put
+        # the builders' bonds on atoms the recipe never meant: none of them matched a bond of the
+        # unimolecular species, and the path was dropped for having nothing to stretch.
+        all_reactive_uni = get_path_bonds_in_uni_ordering(
+            all_reactive_r, atom_map, uni_is_product, bool(product_dict.get('discovered_in_reverse')))
+        if not all_reactive_uni:
+            continue
 
-        if requested_reactive is not None:
-            path_bonds_uni = get_path_bonds_in_uni_ordering(
-                all_reactive_r, atom_map if uni_is_product else None, uni_is_product,
-                bool(product_dict.get('discovered_in_reverse')))
-            if not path_matches_requested_center(path_bonds_uni, requested_reactive):
-                logger.debug(f'Linear addition (rxn={rxn.label}, path={i}): the path changes bonds '
-                             f'{sorted(path_bonds_uni)} rather than the requested atom map\'s '
-                             f'{sorted(requested_reactive)}; skipping path.')
-                continue
+        if requested_reactive is not None \
+                and not path_matches_requested_center(all_reactive_uni, requested_reactive):
+            logger.debug(f'Linear addition (rxn={rxn.label}, path={i}): the path changes bonds '
+                         f'{sorted(all_reactive_uni)} rather than the requested atom map\'s '
+                         f'{sorted(requested_reactive)}; skipping path.')
+            continue
 
         # Direction-agnostic classification.
         split_bonds = [b for b in all_reactive_uni if b in uni_bond_set]
@@ -2461,7 +2463,7 @@ def interpolate_addition(rxn: ARCReaction,
     # (e.g. intra_substitutionCS_cyclization): ring-close the forming
     # bond, stretch the breaking bond, then stretch the forming bond to
     # TS distance.
-    for product_dict in rxn.product_dicts:
+    for i_sn2, product_dict in enumerate(rxn.product_dicts):
         r_label_map = product_dict.get('r_label_map')
         if r_label_map is None:
             continue
@@ -2474,6 +2476,22 @@ def interpolate_addition(rxn: ARCReaction,
             continue
         if not bb_sn2 or not fb_sn2 or len(bb_sn2) != 1 or len(fb_sn2) != 1:
             continue
+        if requested_reactive is not None:
+            # This supplement builds from the recipe bonds of a path the loop above may have
+            # rejected, so without the same check it returns a successful guess for exactly the
+            # correspondence that was found not to be the requested one.
+            try:
+                am_sn2 = cached_map_rxn(rxn=rxn, product_dict_index=i_sn2, map_cache=map_cache,
+                                        forced_atom_map=forced_atom_map) if uni_is_product else None
+            except Exception:
+                continue
+            if not path_matches_requested_center(
+                    get_path_bonds_in_uni_ordering(list(bb_sn2) + list(fb_sn2), am_sn2, uni_is_product,
+                                                   bool(product_dict.get('discovered_in_reverse'))),
+                    requested_reactive):
+                logger.debug(f'Linear addition (rxn={rxn.label}): the SN2-like path does not change the '
+                             f'bonds of the requested atom map; skipping path.')
+                continue
         bb_atoms_sn2 = {a for bond in bb_sn2 for a in bond}
         fb_atoms_sn2 = {a for bond in fb_sn2 for a in bond}
         shared = bb_atoms_sn2 & fb_atoms_sn2
