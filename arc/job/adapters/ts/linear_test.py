@@ -6758,23 +6758,22 @@ class TestLinearAdapterAtomMapWithoutProductDicts(unittest.TestCase):
 class TestLinearAdapterAtomMapWithoutGuesses(unittest.TestCase):
     """Test reporting a requested atom map for which no TS guess survives (issue #1045)."""
 
-    # Two atom maps of [CH2]C(C)CC <=> CC(C)[CH]C describing the *same* reaction center
-    # (H12 moves from C3 to C0) and differing only in how the spectator hydrogens are
-    # permuted. The second one is the map whose guesses are all rejected by the geometry
+    # Two atom maps of sBu <=> nBu with a different reaction center. The 1,3-shift of H4 onto C2
+    # yields guesses; the 1,2-shift of H10 onto C2 has every guess rejected by the geometry
     # validators, so it comes back empty.
-    MAP_WITH_GUESSES = [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 5, 13, 14, 15]
-    MAP_WITHOUT_GUESSES = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 7, 13, 14, 15]
+    MAP_WITH_GUESSES = [3, 2, 1, 0, 7, 11, 12, 10, 9, 8, 5, 6, 4]
+    MAP_WITHOUT_GUESSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
     @staticmethod
     def _make_rxn() -> ARCReaction:
         """
-        Construct a fresh 2-methylbutyl intra_H_migration reaction.
+        Construct a fresh sBu <=> nBu intra_H_migration reaction.
 
         Returns:
             ARCReaction: The reaction.
         """
-        return ARCReaction(r_species=[ARCSpecies(label='r', smiles='[CH2]C(C)CC')],
-                           p_species=[ARCSpecies(label='p', smiles='CC(C)[CH]C')])
+        return ARCReaction(r_species=[ARCSpecies(label='sBu', smiles='CC[CH]C')],
+                           p_species=[ARCSpecies(label='nBu', smiles='CCC[CH2]')])
 
     def _run(self, atom_map) -> tuple[ARCReaction, LinearAdapter]:
         """
