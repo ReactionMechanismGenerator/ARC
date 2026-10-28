@@ -4078,8 +4078,12 @@ def interpolate_isomerization(rxn: ARCReaction,
         bb_map_from_reorder = None
         if r_xyz['symbols'] != p_xyz['symbols']:
             # Symbols differ — try backbone_atom_map (handles ring-forming
-            # where P has one extra edge).
-            bb_map_from_reorder = backbone_atom_map(r_mol, p_mol)
+            # where P has one extra edge). An explicitly requested map is
+            # preferred: the changing bonds below are derived from it, and
+            # filtering those against a product reordered by a different map
+            # mixes two atom orderings and dropped a bond the request breaks.
+            bb_map_from_reorder = forced_atom_map if forced_atom_map is not None \
+                else backbone_atom_map(r_mol, p_mol)
             if bb_map_from_reorder is not None:
                 p_xyz = order_xyz_by_atom_map(xyz=p_xyz, atom_map=bb_map_from_reorder)
                 try:
@@ -4091,8 +4095,8 @@ def interpolate_isomerization(rxn: ARCReaction,
                     p_mol_frame_ok = False
                 if rxn.atom_map is None:
                     rxn.atom_map = bb_map_from_reorder
-                logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
-                             f'reordered P atoms via backbone atom map.')
+                logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — reordered P atoms via the '
+                             f'{"requested" if forced_atom_map is not None else "backbone"} atom map.')
             else:
                 logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback skipped — '
                              f'R and P symbols differ and backbone matching failed.')
