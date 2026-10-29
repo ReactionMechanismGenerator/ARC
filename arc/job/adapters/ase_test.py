@@ -40,7 +40,25 @@ from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  spool_dirs,
                                                  submit_ticket,
                                                  to_kJmol,
+                                                 uma_inference_settings,
                                                  withdraw_ticket)
+
+# Converts sqrt(eV / (A^2 * amu)) to cm^-1, as numpy_vibrational_analysis() does.
+FREQ_FACTOR = 1.0 / (2.0 * np.pi * 299792458.0 * 100.0) * np.sqrt(1.602176565e-19 * 1.0e20 / 1.660538921e-27)
+
+
+def spring_hessian(positions: np.ndarray, springs: list) -> np.ndarray:
+    """
+    The Hessian (eV/A^2) of harmonic springs at their rest lengths, which is exactly free of translations
+    and rotations. ``springs`` holds (atom i, atom j, force constant in eV/A^2).
+    """
+    hessian = np.zeros((3 * len(positions), 3 * len(positions)))
+    for i, j, k in springs:
+        bond = positions[j] - positions[i]
+        block = k * np.outer(bond, bond) / np.dot(bond, bond)
+        for a, b, sign in ((i, i, 1), (j, j, 1), (i, j, -1), (j, i, -1)):
+            hessian[3 * a:3 * a + 3, 3 * b:3 * b + 3] += sign * block
+    return hessian
 
 ETHANE_XYZ = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
               'isotopes': (12, 12, 1, 1, 1, 1, 1, 1),
@@ -427,6 +445,96 @@ class TestASEAdapter(unittest.TestCase):
         self.assertEqual(len(results['freqs']), 4)
         for i, val in enumerate(freqs[5:]):
             self.assertAlmostEqual(results['freqs'][i], val, delta=1e-3)
+
+    def test_numpy_vibrational_analysis_projects_out_a_spurious_rotation(self):
+        """Test that, given the geometry, a spurious rotation is projected out instead of reported as a vibration"""
+        water = Atoms('OH2', positions=[(0.0, 0.0, 0.0), (0.757, 0.586, 0.0), (-0.757, 0.586, 0.0)])
+        masses, positions = water.get_masses(), water.get_positions()
+        hessian = spring_hessian(positions, [(0, 1, 50.0), (0, 2, 50.0), (1, 2, 5.0)])
+        clean = numpy_vibrational_analysis(masses, hessian)['freqs']
+        self.assertEqual(len(clean), 3)
+
+        # Curvature along the in-plane rotation, as a 2-point finite-difference Hessian gives: about 60i cm^-1.
+        sqrt_mass = np.sqrt(masses)[:, np.newaxis]
+        rotation = (np.cross([0.0, 0.0, 1.0], positions - water.get_center_of_mass()) * sqrt_mass).ravel()
+        rotation /= np.linalg.norm(rotation)
+        weighted = rotation * np.repeat(np.sqrt(masses), 3)
+        contaminated = hessian - (60.0 / FREQ_FACTOR) ** 2 * np.outer(weighted, weighted)
+
+        unprojected = numpy_vibrational_analysis(masses, contaminated)['freqs']
+        self.assertEqual(len(unprojected), 4)
+        self.assertAlmostEqual(unprojected[0], -60.0, places=6)
+
+        projected = numpy_vibrational_analysis(masses, contaminated, positions=positions)
+        np.testing.assert_allclose(projected['freqs'], clean, atol=1e-6)
+        self.assertEqual(np.array(projected['modes']).shape, (3, 3, 3))
+
+    def test_numpy_vibrational_analysis_returns_3n_minus_5_or_6_modes_given_positions(self):
+        """Test the number of modes for an atom, a diatomic, a linear and a nonlinear molecule"""
+        cases = [(Atoms('He', positions=[(0, 0, 0)]), [], 0),
+                 (Atoms('OH', positions=[(0, 0, 0), (0, 0, 0.97)]), [(0, 1, 50.0)], 1),
+                 (Atoms('OCO', positions=[(0, 0, -1.16), (0, 0, 0), (0, 0, 1.16)]), [(0, 1, 100.0), (1, 2, 100.0)], 4),
+                 (Atoms(ETHANE_XYZ['symbols'], positions=ETHANE_XYZ['coords']),
+                  [(i, j, 30.0) for i in range(8) for j in range(i + 1, 8)], 18)]
+        for atoms, springs, n_modes in cases:
+            positions = atoms.get_positions()
+            results = numpy_vibrational_analysis(atoms.get_masses(), spring_hessian(positions, springs),
+                                                 is_linear=is_linear(atoms), positions=positions)
+            self.assertEqual(len(results['freqs']), n_modes, atoms.get_chemical_formula())
+            self.assertEqual(len(results['modes']), n_modes)
+
+    def test_uma_inference_settings(self):
+        """Test that a Hessian predictor runs at full precision whatever the job's preset, and is cached apart"""
+        self.assertEqual(uma_inference_settings({}), (None, None))
+        self.assertEqual(uma_inference_settings({'inference_settings': 'traineval'}), ('traineval', 'traineval'))
+        custom = {'tf32': False, 'activation_checkpointing': False}
+        settings, key = uma_inference_settings({'inference_settings': custom})
+        self.assertEqual(settings, custom)
+        self.assertEqual(key, uma_inference_settings({'inference_settings': dict(reversed(custom.items()))})[1])
+        hash(key)
+
+        settings, key = uma_inference_settings({'inference_settings': 'default'}, hessian=True)
+        self.assertEqual(settings, {'tf32': False, 'activation_checkpointing': False, 'merge_mole': False,
+                                    'compile': False, 'base_precision_dtype': 'float32', 'hessian_vmap': False,
+                                    'predict_untrained_hessian': ['omol']})
+        self.assertNotEqual(key, uma_inference_settings({'inference_settings': 'default'})[1])
+        hash(key)
+
+        settings, _ = uma_inference_settings({'inference_settings': {'base_precision_dtype': 'float64', 'tf32': True},
+                                              'hessian_vmap': True, 'task': 'omat'}, hessian=True)
+        self.assertEqual(settings['base_precision_dtype'], 'float64')
+        self.assertFalse(settings['tf32'])
+        self.assertTrue(settings['hessian_vmap'])
+        self.assertEqual(settings['predict_untrained_hessian'], ['omat'])
+
+    def test_run_vibrational_analysis_chooses_the_hessian(self):
+        """Test that UMA uses its autograd Hessian unless told otherwise or unable, and other calculators use finite differences"""
+        water = Atoms('OH2', positions=[(0.0, 0.0, 0.0), (0.757, 0.586, 0.0), (-0.757, 0.586, 0.0)])
+        water.calc = EMT()
+        springs = spring_hessian(water.get_positions(), [(0, 1, 50.0), (0, 2, 50.0), (1, 2, 5.0)])
+        with tempfile.TemporaryDirectory() as work_dir:
+            with patch('arc.job.adapters.scripts.ase_script.uma_hessian', return_value=springs) as uma_hessian:
+                results = run_vibrational_analysis(water, {'calculator': 'uma'}, work_dir=work_dir)
+                self.assertEqual(results['hessian_method'], 'analytic')
+                np.testing.assert_allclose(results['hessian'], springs)
+                self.assertEqual(uma_hessian.call_count, 1)
+
+                results = run_vibrational_analysis(water, {'calculator': 'uma', 'hessian': 'finite_difference'},
+                                                   work_dir=work_dir)
+                self.assertEqual(results['hessian_method'], 'finite_difference_gradient')
+                self.assertEqual(uma_hessian.call_count, 1)
+
+                results = run_vibrational_analysis(water, {'calculator': 'emt'}, work_dir=work_dir)
+                self.assertEqual(results['hessian_method'], 'finite_difference_gradient')
+                self.assertEqual(len(results['freqs']), 3)
+                self.assertEqual(uma_hessian.call_count, 1)
+
+            with patch('arc.job.adapters.scripts.ase_script.uma_hessian', return_value=None):
+                results = run_vibrational_analysis(water, {'calculator': 'uma'}, work_dir=work_dir)
+                self.assertEqual(results['hessian_method'], 'finite_difference_gradient')
+
+            with self.assertRaises(ValueError):
+                run_vibrational_analysis(water, {'calculator': 'uma', 'hessian': 'numerical'}, work_dir=work_dir)
 
     def test_write_input_file_scan(self):
         """Test that a scan job writes torsions and scan resolution into the input file"""
