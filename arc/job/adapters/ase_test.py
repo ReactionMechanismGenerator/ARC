@@ -21,7 +21,7 @@ from ase.calculators.emt import EMT
 from ase.vibrations import Vibrations
 
 from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
-from arc.job.adapters.ase_adapter import ASEAdapter, servers, submit_filenames
+from arc.job.adapters.ase_adapter import ASEAdapter, active_worker_tickets, servers, submit_filenames
 from arc.parser.parser import parse_1d_scan_coords, parse_1d_scan_energies
 from arc.species.species import ARCSpecies
 from arc.job.adapters.scripts.ase_script import (apply_constraints,
@@ -33,6 +33,7 @@ from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  numpy_vibrational_analysis,
                                                  relaxed_torsion_scan,
                                                  rotor_top,
+                                                 run_job,
                                                  run_torsion_scan,
                                                  run_vibrational_analysis,
                                                  scan_convergence_warning,
@@ -515,41 +516,6 @@ class TestASEAdapter(unittest.TestCase):
         with self.assertRaises(ValueError):
             well_defined_torsion(acyl, [1, 0, 2, 3])
 
-    def test_an_irc_job_ends_at_the_end_of_its_path(self):
-        """An IRC job's final geometry is the last point of its path, from which ARC builds the IRC species"""
-        from ase.io.trajectory import Trajectory
-        from arc.job.adapters.scripts import ase_script
-        calls = dict()
-
-        class FakeIRC:
-            def __init__(self, atoms, logfile=None, trajectory=None, **kwargs):
-                self.atoms, self.trajectory = atoms, trajectory
-                calls['kwargs'] = kwargs
-
-            def run(self, fmax, steps, direction):
-                calls['fmax'] = fmax
-                with Trajectory(self.trajectory, 'w') as traj:
-                    for shift in (0.0, 0.1, 0.2):
-                        image = Atoms(self.atoms.get_chemical_symbols(), positions=self.atoms.get_positions())
-                        image.positions[0, 0] += shift
-                        traj.write(image)
-
-        fake_sella = type(sys)('sella')
-        fake_sella.IRC = FakeIRC
-        with tempfile.TemporaryDirectory() as tmp:
-            input_path = os.path.join(tmp, 'input.yml')
-            save_yaml_file(input_path, {'job_type': 'irc', 'xyz': ETHANE_XYZ, 'charge': 0, 'multiplicity': 1,
-                                        'settings': {'calculator': 'emt'}})
-            with patch.dict(sys.modules, {'sella': fake_sella}), \
-                    patch.object(sys, 'argv', ['ase_script.py', '--yml_path', input_path]):
-                ase_script.main()
-            output = read_yaml_file(os.path.join(tmp, 'output.yml'))
-        self.assertEqual(len(output['irc_traj']), 3)
-        self.assertAlmostEqual(output['opt_xyz']['coords'][0][0], ETHANE_XYZ['coords'][0][0] + 0.2)
-        self.assertEqual(output['opt_xyz'], output['irc_traj'][-1])
-        self.assertEqual(calls['fmax'], 0.01)  # an MLIP's force noise defeats the opt default of 0.001
-        self.assertTrue(calls['kwargs']['keep_going'])
-
     def test_relaxed_torsion_scan(self):
         """Test a full 1D relaxed torsional scan on the machinery (EMT keeps it hermetic)"""
         atoms = Atoms(symbols=ETHANE_XYZ['symbols'], positions=ETHANE_XYZ['coords'])
@@ -709,13 +675,13 @@ class TestASEWorker(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def write_job(self, name: str, job_type: str = 'sp') -> str:
-        """Write an EMT job's input.yml and return its path."""
+    def write_job(self, name: str, job_type: str = 'sp', settings: dict | None = None, **fields) -> str:
+        """Write an ethane job's input.yml (EMT unless ``settings`` say otherwise) and return its path."""
         job_dir = os.path.join(self.tmp.name, name)
         os.makedirs(job_dir)
         input_path = os.path.join(job_dir, 'input.yml')
         save_yaml_file(input_path, {'job_type': job_type, 'xyz': ETHANE_XYZ, 'charge': 0, 'multiplicity': 1,
-                                    'settings': {'calculator': 'emt'}})
+                                    'settings': settings or {'calculator': 'emt'}, **fields})
         return input_path
 
     def beat(self, worker_id: str, age: float = 0.0) -> None:
@@ -773,6 +739,34 @@ class TestASEWorker(unittest.TestCase):
         self.assertTrue(withdraw_ticket(self.spool, other))
         self.assertEqual(get_ticket_status(self.spool, other), ('missing', None))
 
+    def test_an_irc_job_ends_at_the_end_of_its_path(self):
+        """An IRC job's final geometry is the last point of its path, from which ARC builds the IRC species"""
+        from ase.io.trajectory import Trajectory
+        calls = dict()
+
+        class FakeIRC:
+            def __init__(self, atoms, logfile=None, trajectory=None, **kwargs):
+                self.atoms, self.trajectory = atoms, trajectory
+                calls['kwargs'] = kwargs
+
+            def run(self, fmax, steps, direction):
+                calls['fmax'] = fmax
+                with Trajectory(self.trajectory, 'w') as traj:
+                    for shift in (0.0, 0.1, 0.2):
+                        image = Atoms(self.atoms.get_chemical_symbols(), positions=self.atoms.get_positions())
+                        image.positions[0, 0] += shift
+                        traj.write(image)
+
+        fake_sella = type(sys)('sella')
+        fake_sella.IRC = FakeIRC
+        with patch.dict(sys.modules, {'sella': fake_sella}):
+            output = run_job(self.write_job('irc', job_type='irc'))
+        self.assertEqual(len(output['irc_traj']), 3)
+        self.assertAlmostEqual(output['opt_xyz']['coords'][0][0], ETHANE_XYZ['coords'][0][0] + 0.2)
+        self.assertEqual(output['opt_xyz'], output['irc_traj'][-1])
+        self.assertEqual(calls['fmax'], 0.01)  # an MLIP's force noise defeats the opt default of 0.001
+        self.assertTrue(calls['kwargs']['keep_going'])
+
     def test_live_workers_ignores_a_stale_heartbeat(self):
         """A worker whose heartbeat stopped is presumed dead"""
         self.beat('w1')
@@ -800,8 +794,24 @@ class TestASEWorker(unittest.TestCase):
         self.assertIsNone(job.worker_spool)
         self.assertEqual(job.execution_type, 'queue')
 
-    def test_execute_incore_through_a_live_worker(self):
-        """With a live worker, even a queue job runs incore, through the worker"""
+    def test_a_live_worker_takes_jobs_without_blocking(self):
+        """With a live worker, a job is submitted as a local queue job and stays in flight until its ticket ends"""
+        self.beat('w1')
+        jobs = [self.make_job(execution_type='incore') for _ in range(3)]
+        for job in jobs:
+            self.assertEqual(job.worker_spool, self.spool)
+            self.assertEqual(job.execution_type, 'queue')
+            self.assertEqual(job.server, 'local')
+            job.execute_queue()  # returns at once: nothing takes the tickets in this test
+            self.assertTrue(job.is_worker_ticket())
+            self.assertEqual(job.job_status[0], 'running')
+        with patch.dict('arc.job.adapters.ase_adapter.settings', {'ASE_WORKERS': {'emt': self.spool}}):
+            self.assertEqual(sorted(active_worker_tickets()), sorted(job.job_id for job in jobs))
+        self.assertEqual([job._check_job_server_status() for job in jobs], ['running'] * 3)
+        self.assertFalse(os.path.isfile(os.path.join(jobs[0].local_path, 'submit.sh')))
+
+    def test_a_worker_job_ends_when_its_ticket_does(self):
+        """A real worker runs the ticket; the job then reports done, with the worker's start and end times"""
         script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'ase_script.py')
         worker = subprocess.Popen([sys.executable, script_path, '--serve', self.spool,
                                    '--max_jobs', '1', '--idle_timeout', '120'],
@@ -811,46 +821,49 @@ class TestASEWorker(unittest.TestCase):
             while not live_workers(self.spool) and time.time() < deadline:
                 time.sleep(0.1)
             job = self.make_job(execution_type='queue')
-            self.assertEqual(job.worker_spool, self.spool)
-            self.assertEqual(job.execution_type, 'incore')
-            job.execute_incore()
-            self.assertIsNotNone(job.electronic_energy)
-            self.assertEqual(len(os.listdir(os.path.join(self.spool, 'done'))), 1)
+            job.execute_queue()
             worker.wait(timeout=60)
             self.assertEqual(worker.returncode, 0, worker.stdout.read())
+            with patch.dict('arc.job.adapters.ase_adapter.settings', {'ASE_WORKERS': {'emt': self.spool}}):
+                self.assertEqual(active_worker_tickets(), list())
+            self.assertEqual(job._check_job_server_status(), 'done')
+            self.assertLessEqual(job.initial_time, job.final_time)
+            self.assertIn('sp', read_yaml_file(os.path.join(job.local_path, 'output.yml')))
         finally:
             if worker.poll() is None:
                 worker.kill()
             worker.stdout.close()
 
-    def test_execute_through_worker_withdraws_when_no_worker_is_left(self):
-        """A ticket that no live worker can take is withdrawn, so the job runs directly"""
+    def test_a_ticket_no_worker_is_left_to_take_runs_directly(self):
+        """A queued ticket whose workers all died is withdrawn, and the job runs directly"""
         self.beat('w1')
         job = self.make_job()
-        self.assertEqual(job.worker_spool, self.spool)
+        job.execute_queue()
         self.beat('w1', age=600)
-        with self.assertLogs('arc', level='WARNING'):
-            self.assertFalse(job.execute_through_worker())
+        with patch.object(ASEAdapter, 'run_directly') as run_directly, self.assertLogs('arc', level='WARNING'):
+            self.assertEqual(job._check_job_server_status(), 'done')
+        run_directly.assert_called_once()
         self.assertEqual(os.listdir(os.path.join(self.spool, 'queue')), list())
 
-    def test_execute_through_worker_falls_back_when_its_worker_dies(self):
-        """A job whose worker died is marked errored in the spool, so the job runs directly"""
+    def test_a_job_whose_worker_died_runs_directly(self):
+        """A running ticket whose worker died is marked errored in the spool, and the job runs directly"""
         self.beat('w1')
         job = self.make_job()
+        job.execute_queue()
+        claim_ticket(self.spool, 'w2')  # w2 has no heartbeat
+        with patch.object(ASEAdapter, 'run_directly') as run_directly, self.assertLogs('arc', level='WARNING'):
+            self.assertEqual(job._check_job_server_status(), 'done')
+        run_directly.assert_called_once()
+        self.assertEqual(get_ticket_status(self.spool, job.job_id)[0], 'errored')
 
-        def submit_and_claim_by_a_dead_worker(*args, **kwargs):
-            ticket = submit_ticket(*args, **kwargs)
-            claim_ticket(self.spool, 'w2')  # w2 has no heartbeat
-            return ticket
-
-        with patch('arc.job.adapters.scripts.ase_script.submit_ticket',
-                   side_effect=submit_and_claim_by_a_dead_worker):
-            with self.assertLogs('arc', level='WARNING'):
-                self.assertFalse(job.execute_through_worker())
-        markers = os.listdir(os.path.join(self.spool, 'done'))
-        self.assertEqual(len(markers), 1)
-        self.assertEqual(get_ticket_status(self.spool, markers[0][:-len('.json')])[0], 'errored')
-
+    def test_a_queue_job_id_is_not_a_ticket(self):
+        """A job ID from a cluster queue is checked with the queue, not the spool"""
+        self.beat('w1')
+        job = self.make_job()
+        job.job_id = '123456'
+        self.assertFalse(job.is_worker_ticket())
+        job.job_id = f'{job.job_name}_0123456789ab'
+        self.assertTrue(job.is_worker_ticket())
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
