@@ -8,26 +8,39 @@ These tests verify IO and logic without executing the external ASE script in CI.
 
 import os
 import shutil
+import subprocess
+import sys
+import tempfile
+import time
 import unittest
 from unittest.mock import patch
 import numpy as np
 
 from ase import Atoms
 from ase.calculators.emt import EMT
+from ase.vibrations import Vibrations
 
 from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
 from arc.job.adapters.ase_adapter import ASEAdapter, servers, submit_filenames
 from arc.parser.parser import parse_1d_scan_coords, parse_1d_scan_energies
 from arc.species.species import ARCSpecies
 from arc.job.adapters.scripts.ase_script import (apply_constraints,
+                                                 claim_ticket,
+                                                 get_ticket_status,
                                                  is_linear,
+                                                 live_workers,
                                                  merge_scan_branches,
                                                  numpy_vibrational_analysis,
                                                  relaxed_torsion_scan,
                                                  rotor_top,
                                                  run_torsion_scan,
+                                                 run_vibrational_analysis,
                                                  scan_convergence_warning,
-                                                 to_kJmol)
+                                                 serve,
+                                                 spool_dirs,
+                                                 submit_ticket,
+                                                 to_kJmol,
+                                                 withdraw_ticket)
 
 ETHANE_XYZ = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
               'isotopes': (12, 12, 1, 1, 1, 1, 1, 1),
@@ -600,6 +613,165 @@ class TestASEAdapter(unittest.TestCase):
         Delete all project directories created during these unit tests
         """
         shutil.rmtree(cls.project_directory, ignore_errors=True)
+
+
+WATER_POSITIONS = ((0.0, 0.0, 0.0), (0.0, 0.76, 0.59), (0.0, -0.76, 0.59))
+
+
+class TestASEWorker(unittest.TestCase):
+    """
+    Contains unit tests for the persistent ASE worker: its spool, and running jobs through it.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.spool = os.path.join(self.tmp.name, 'spool')
+        spool_dirs(self.spool)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write_job(self, name: str, job_type: str = 'sp') -> str:
+        """Write an EMT job's input.yml and return its path."""
+        job_dir = os.path.join(self.tmp.name, name)
+        os.makedirs(job_dir)
+        input_path = os.path.join(job_dir, 'input.yml')
+        save_yaml_file(input_path, {'job_type': job_type, 'xyz': ETHANE_XYZ, 'charge': 0, 'multiplicity': 1,
+                                    'settings': {'calculator': 'emt'}})
+        return input_path
+
+    def beat(self, worker_id: str, age: float = 0.0) -> None:
+        """Write a worker heartbeat that is ``age`` seconds old."""
+        path = os.path.join(self.spool, 'workers', f'{worker_id}.json')
+        with open(path, 'w') as f:
+            f.write('{}')
+        then = time.time() - age
+        os.utime(path, (then, then))
+
+    def make_job(self, execution_type: str = 'incore') -> ASEAdapter:
+        """Make an EMT single-point job with a worker spool configured for EMT."""
+        with patch.dict('arc.job.adapters.ase_adapter.settings', {'ASE_WORKERS': {'emt': self.spool}}):
+            job = ASEAdapter(execution_type=execution_type,
+                             job_type='sp',
+                             project='test_worker',
+                             project_directory=os.path.join(self.tmp.name, 'project'),
+                             species=[ARCSpecies(label='ethane', xyz=ETHANE_XYZ)],
+                             args={'keyword': {'calculator': 'emt'}},
+                             testing=True)
+        job.local_path = os.path.join(self.tmp.name, 'job')
+        os.makedirs(job.local_path, exist_ok=True)
+        return job
+
+    def test_run_vibrational_analysis_ignores_a_stale_cache(self):
+        """Displacement forces left in the job directory, e.g., by an interrupted job, are not reused"""
+        clean_dir, stale_dir = os.path.join(self.tmp.name, 'clean'), os.path.join(self.tmp.name, 'stale')
+        os.makedirs(clean_dir)
+        os.makedirs(stale_dir)
+        other = Atoms('OH2', positions=((0.0, 0.0, 0.0), (0.0, 0.9, 0.4), (0.0, -0.9, 0.4)))
+        other.calc = EMT()
+        Vibrations(other, name=os.path.join(stale_dir, 'vib_tmp'), nfree=4).run()
+        results = list()
+        for work_dir in (clean_dir, stale_dir):
+            water = Atoms('OH2', positions=WATER_POSITIONS)
+            water.calc = EMT()
+            results.append(run_vibrational_analysis(water, {'calculator': 'emt'}, work_dir=work_dir))
+        np.testing.assert_allclose(results[1]['freqs'], results[0]['freqs'])
+        self.assertEqual(os.listdir(os.path.join(stale_dir, 'vib_tmp')), list())  # cleared after the run
+        self.assertFalse(os.path.exists(os.path.join(os.getcwd(), 'vib_tmp')))
+
+    def test_a_claimed_ticket_cannot_be_claimed_or_withdrawn(self):
+        """Only one worker gets a ticket, and a running ticket stays with it"""
+        ticket = submit_ticket(self.spool, '/path/to/input.yml', label='sp_a1')
+        self.assertTrue(ticket.startswith('sp_a1_'))
+        self.assertEqual(get_ticket_status(self.spool, ticket)[0], 'queued')
+        claimed_ticket, content = claim_ticket(self.spool, 'w1')
+        self.assertEqual(claimed_ticket, ticket)
+        self.assertEqual(content['worker'], 'w1')
+        self.assertEqual(content['input_path'], '/path/to/input.yml')
+        self.assertIsNone(claim_ticket(self.spool, 'w2'))
+        self.assertFalse(withdraw_ticket(self.spool, ticket))
+        self.assertEqual(get_ticket_status(self.spool, ticket)[0], 'running')
+        other = submit_ticket(self.spool, '/path/to/other/input.yml')
+        self.assertTrue(withdraw_ticket(self.spool, other))
+        self.assertEqual(get_ticket_status(self.spool, other), ('missing', None))
+
+    def test_live_workers_ignores_a_stale_heartbeat(self):
+        """A worker whose heartbeat stopped is presumed dead"""
+        self.beat('w1')
+        self.beat('w2', age=600)
+        self.assertEqual(live_workers(self.spool), ['w1'])
+
+    def test_serve_runs_tickets_and_survives_a_failed_job(self):
+        """The worker writes each job's output.yml and records a failure without stopping"""
+        good = submit_ticket(self.spool, self.write_job('good'), label='sp_a1')
+        bad = submit_ticket(self.spool, os.path.join(self.tmp.name, 'missing', 'input.yml'), label='sp_a2')
+        self.assertEqual(serve(self.spool, max_jobs=2), 2)
+        state, content = get_ticket_status(self.spool, good)
+        self.assertEqual(state, 'done')
+        output = read_yaml_file(os.path.join(self.tmp.name, 'good', 'output.yml'))
+        self.assertIn('sp', output)
+        state, content = get_ticket_status(self.spool, bad)
+        self.assertEqual(state, 'errored')
+        self.assertIn('FileNotFoundError', content['error'])
+        self.assertEqual(os.listdir(os.path.join(self.spool, 'running')), list())
+        self.assertEqual(live_workers(self.spool), list())  # the heartbeat is removed on exit
+
+    def test_no_live_worker_leaves_the_execution_type_alone(self):
+        """Without a live worker, a job runs as the scheduler asked"""
+        job = self.make_job(execution_type='queue')
+        self.assertIsNone(job.worker_spool)
+        self.assertEqual(job.execution_type, 'queue')
+
+    def test_execute_incore_through_a_live_worker(self):
+        """With a live worker, even a queue job runs incore, through the worker"""
+        script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'ase_script.py')
+        worker = subprocess.Popen([sys.executable, script_path, '--serve', self.spool,
+                                   '--max_jobs', '1', '--idle_timeout', '120'],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            deadline = time.time() + 60
+            while not live_workers(self.spool) and time.time() < deadline:
+                time.sleep(0.1)
+            job = self.make_job(execution_type='queue')
+            self.assertEqual(job.worker_spool, self.spool)
+            self.assertEqual(job.execution_type, 'incore')
+            job.execute_incore()
+            self.assertIsNotNone(job.electronic_energy)
+            self.assertEqual(len(os.listdir(os.path.join(self.spool, 'done'))), 1)
+            worker.wait(timeout=60)
+            self.assertEqual(worker.returncode, 0, worker.stdout.read())
+        finally:
+            if worker.poll() is None:
+                worker.kill()
+            worker.stdout.close()
+
+    def test_execute_through_worker_withdraws_when_no_worker_is_left(self):
+        """A ticket that no live worker can take is withdrawn, so the job runs directly"""
+        self.beat('w1')
+        job = self.make_job()
+        self.assertEqual(job.worker_spool, self.spool)
+        self.beat('w1', age=600)
+        with self.assertLogs('arc', level='WARNING'):
+            self.assertFalse(job.execute_through_worker())
+        self.assertEqual(os.listdir(os.path.join(self.spool, 'queue')), list())
+
+    def test_execute_through_worker_falls_back_when_its_worker_dies(self):
+        """A job whose worker died is marked errored in the spool, so the job runs directly"""
+        self.beat('w1')
+        job = self.make_job()
+
+        def submit_and_claim_by_a_dead_worker(*args, **kwargs):
+            ticket = submit_ticket(*args, **kwargs)
+            claim_ticket(self.spool, 'w2')  # w2 has no heartbeat
+            return ticket
+
+        with patch('arc.job.adapters.scripts.ase_script.submit_ticket',
+                   side_effect=submit_and_claim_by_a_dead_worker):
+            with self.assertLogs('arc', level='WARNING'):
+                self.assertFalse(job.execute_through_worker())
+        markers = os.listdir(os.path.join(self.spool, 'done'))
+        self.assertEqual(len(markers), 1)
+        self.assertEqual(get_ticket_status(self.spool, markers[0][:-len('.json')])[0], 'errored')
 
 
 if __name__ == '__main__':

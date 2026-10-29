@@ -5,6 +5,7 @@ An adapter for executing ASE (Atomic Simulation Environment) jobs
 import datetime
 import os
 import subprocess
+import time
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from arc.common import get_logger, read_yaml_file, save_yaml_file, torsions_to_scans
@@ -41,6 +42,12 @@ UMA_METHODS = ('uma', 'uma-s-1', 'uma-s-1p1', 'uma-s-1p2', 'uma-m-1p1')
 # is only found if this adapter resolves the very same key - matching case-insensitively here would
 # name a file that the submission then fails to invoke.
 QUEUE_CLUSTER_SOFT = ('PBS', 'Slurm')
+
+# Seconds between checks on a job submitted to a persistent ASE worker.
+WORKER_POLL_INTERVAL = 0.2
+
+# Worker spools already reported to have no live worker, so the warning is logged once per spool.
+_spools_reported_dead = set()
 
 class ASEAdapter(JobAdapter):
     """
@@ -90,7 +97,6 @@ class ASEAdapter(JobAdapter):
                  ):
         
         self.job_adapter = 'ase'
-        self.execution_type = execution_type or 'incore'
         self.incore_capacity = 100
 
         self.sp = None
@@ -101,6 +107,10 @@ class ASEAdapter(JobAdapter):
         self.level = level  # also set by _initialize_adapter; needed early by get_python_executable
         self.python_executable = self.get_python_executable()
         self.script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'ase_script.py')
+        # A live persistent worker runs this calculator's jobs on this machine, so run them incore
+        # (through the worker) even if the scheduler asked for the queue.
+        self.worker_spool = self.determine_worker_spool()
+        self.execution_type = 'incore' if self.worker_spool else execution_type or 'incore'
 
         _initialize_adapter(obj=self,
                             is_ts=False,
@@ -178,6 +188,27 @@ class ASEAdapter(JobAdapter):
             settings_dict.setdefault('task', 'omol')
             settings_dict.setdefault('device', 'cpu')
         return settings_dict
+
+    def determine_worker_spool(self) -> Optional[str]:
+        """
+        Determine the spool directory of a live persistent ASE worker for this job's calculator.
+        Workers are set per calculator in the ``ASE_WORKERS`` setting, since each one runs in its
+        calculator's environment (see ``serve()`` in ase_script.py).
+
+        Returns:
+            Optional[str]: The spool directory, or ``None`` if no worker is configured or alive.
+        """
+        calc = self.determine_calculator_name()
+        spool = (settings.get('ASE_WORKERS') or dict()).get(calc)
+        if not spool:
+            return None
+        from arc.job.adapters.scripts.ase_script import live_workers
+        if live_workers(spool):
+            return spool
+        if spool not in _spools_reported_dead:
+            _spools_reported_dead.add(spool)
+            logger.warning(f'No live ASE worker on {spool}; running {calc} jobs without a worker.')
+        return None
 
     def get_python_executable(self) -> str:
         """
@@ -290,15 +321,55 @@ class ASEAdapter(JobAdapter):
 
     def execute_incore(self) -> None:
         """
-        Execute the job incore.
+        Execute the job incore: through the persistent worker if one is live, otherwise in a new process.
         """
         self.warn_if_unreliable_uma_sp()
         self.write_input_file()
-        cmd = [self.python_executable, self.script_path, '--yml_path', self.local_path]
-        process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if process.returncode != 0:
-            logger.error(f"ASE job failed incore:\n{process.stderr}")
+        if not (self.worker_spool and self.execute_through_worker()):
+            cmd = [self.python_executable, self.script_path, '--yml_path', self.local_path]
+            process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if process.returncode != 0:
+                logger.error(f"ASE job failed incore:\n{process.stderr}")
         self.parse_results()
+
+    def execute_through_worker(self) -> bool:
+        """
+        Submit the job to the persistent worker on ``self.worker_spool`` and wait for it to finish.
+
+        Returns:
+            bool: Whether the worker handled the job (successfully or not). ``False`` if no live worker
+                  took it, or its worker died while running it; the caller then runs the job directly.
+        """
+        from arc.job.adapters.scripts.ase_script import (finish_ticket, get_ticket_status, live_workers,
+                                                         submit_ticket, withdraw_ticket)
+        spool = self.worker_spool
+        ticket = submit_ticket(spool, os.path.abspath(os.path.join(self.local_path, 'input.yml')),
+                               label=self.job_name)
+        deadline = time.time() + self.max_job_time * 3600
+        while True:
+            state, content = get_ticket_status(spool, ticket)
+            if state in ('done', 'errored'):
+                if state == 'errored':
+                    logger.error(f"ASE job {self.job_name} failed in the worker:\n{content.get('error')}")
+                return True
+            if state == 'queued' and not live_workers(spool):
+                if withdraw_ticket(spool, ticket):
+                    logger.warning(f'No live ASE worker on {spool}; running {self.job_name} directly.')
+                    return False
+            elif state == 'running' and content.get('worker') and content['worker'] not in live_workers(spool):
+                finish_ticket(spool, ticket, {**content, 'status': 'errored', 'error': 'The worker died.'})
+                logger.warning(f"ASE worker {content['worker']} died while running {self.job_name}; "
+                               f"running it directly.")
+                return False
+            elif state == 'missing':
+                logger.warning(f'The ticket of {self.job_name} vanished from {spool}; running it directly.')
+                return False
+            if time.time() > deadline:
+                withdraw_ticket(spool, ticket)
+                logger.error(f'ASE job {self.job_name} did not finish in the worker '
+                             f'within {self.max_job_time} hours.')
+                return True
+            time.sleep(WORKER_POLL_INTERVAL)
 
     def execute_queue(self) -> None:
         """
