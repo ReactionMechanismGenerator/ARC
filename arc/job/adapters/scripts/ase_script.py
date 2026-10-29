@@ -1145,7 +1145,8 @@ def run_ticket(spool_dir: str, ticket: str, content: dict, worker_id: str, cache
         result.update({'status': 'errored', 'error': traceback.format_exc()})
     finally:
         os.chdir(cwd)
-    result['run_time'] = time.time() - t0
+    finished = time.time()
+    result.update({'started': t0, 'finished': finished, 'run_time': finished - t0})
     finish_ticket(spool_dir, ticket, result)
     return result
 

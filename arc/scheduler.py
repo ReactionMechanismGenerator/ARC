@@ -37,6 +37,7 @@ from arc.exceptions import (DependencyError,
                             TrshError,
                             )
 from arc.imports import settings
+from arc.job.adapters.ase_adapter import active_worker_tickets
 from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       all_families_ts_adapters,
                                       default_incore_adapters,
@@ -4604,6 +4605,9 @@ class Scheduler(object):
                         self.server_job_ids.extend(ssh.check_running_jobs_ids())
                 else:
                     self.server_job_ids.extend(check_running_jobs_ids())
+        if specific_server in (None, 'local'):
+            # Jobs handed to a persistent ASE worker run on this machine, tracked by their ticket IDs.
+            self.server_job_ids.extend(active_worker_tickets())
 
     def get_completed_incore_jobs(self):
         """
