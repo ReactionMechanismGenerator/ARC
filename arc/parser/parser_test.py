@@ -16,7 +16,7 @@ import unittest
 import arc.parser.parser as parser
 from ase.data import atomic_masses, atomic_numbers
 
-from arc.common import ARC_TESTING_PATH, almost_equal_coords, get_element_mass, read_yaml_file
+from arc.common import ARC_TESTING_PATH, almost_equal_coords, get_element_mass, read_yaml_file, save_yaml_file
 from arc.constants import E_h_kJmol
 from arc.parser.adapters.gaussian import GaussianParser, parse_ic_info, parse_ic_values
 from arc.parser.adapters.orca import OrcaParser, SPIN_SYMMETRY_BREAKING_S_SQUARED
@@ -55,6 +55,33 @@ class TestParser(unittest.TestCase):
         self.assertEqual(parser.determine_ess(terachem_path), 'terachem')
         self.assertEqual(parser.determine_ess(xtb_path), 'xtb')
         self.assertEqual(parser.determine_ess(orca_path), 'orca')
+
+    def test_determine_ess_recognizes_arc_yaml_output_by_content(self):
+        """An ASE output.yml that ARC copied to geometry/freq.out is still read as ARC's YAML output"""
+        with tempfile.TemporaryDirectory() as tmp:
+            freq_out = os.path.join(tmp, 'freq.out')
+            shutil.copyfile(os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml'), freq_out)
+            self.assertEqual(parser.determine_ess(freq_out), 'yaml')
+            other = os.path.join(tmp, 'other.out')
+            with open(other, 'w') as f:
+                f.write('some: [unrelated, mapping]\n')
+            self.assertIsNone(parser.determine_ess(other, raise_error=False))
+
+    def test_parse_zpe_correction_from_yaml_frequencies(self):
+        """The ZPE of an ASE output, which stores frequencies but no ZPE, is the harmonic sum over the real ones"""
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'output.yml')
+        content = read_yaml_file(path)
+        freqs = np.array(content['freqs'], dtype=float)
+        half_h_c_na = 0.5 * 6.62606896e-34 * 2.99792458e10 * 6.02214179e23 / 1000.0  # kJ/mol per cm^-1
+        self.assertAlmostEqual(parser.parse_zpe_correction(path), half_h_c_na * freqs.sum(), places=6)
+        with tempfile.TemporaryDirectory() as tmp:
+            freq_out = os.path.join(tmp, 'freq.out')  # as ARC stores it, and arc/utils/scale.py reads it
+            content['freqs'] = [-450.0] + [float(freq) for freq in freqs[1:]]  # an imaginary one does not count
+            save_yaml_file(freq_out, content)
+            self.assertAlmostEqual(parser.parse_zpe_correction(freq_out), half_h_c_na * freqs[1:].sum(), places=6)
+            content['zpe'] = 123.4  # a stored ZPE wins
+            save_yaml_file(freq_out, content)
+            self.assertEqual(parser.parse_zpe_correction(freq_out), 123.4)
 
     def test_parse_frequencies(self):
         """Test frequency parsing"""

@@ -108,8 +108,9 @@ def determine_scaling_factors(levels: list[Level | dict | str],
 
         zpe_dict = dict()
         for spc in species_list:
-            zpe_dict[spc.label] = parse_zpe_correction(os.path.join(project_directory, 'output', 'Species', spc.label,
-                                                                    'geometry', 'freq.out')) * 1000  # convert to J/mol
+            zpe = parse_zpe_correction(os.path.join(project_directory, 'output', 'Species', spc.label,
+                                                    'geometry', 'freq.out'))
+            zpe_dict[spc.label] = zpe * 1000 if zpe is not None else None  # convert to J/mol
         zpe_dicts.append(zpe_dict)
 
         lambda_zpes.append(calculate_truhlar_scaling_factors(zpe_dict=zpe_dict, level=str(level)))
@@ -183,7 +184,7 @@ def calculate_truhlar_scaling_factors(zpe_dict: dict,
         if zpe is not None:
             denominator += zpe ** 2.0
         else:
-            logger.error('ZPE of species {label} could not be determined!')
+            logger.error(f'ZPE of species {label} could not be determined!')
     lambda_zpe = numerator / denominator  # lambda_zpe on the left side of eq. 5 of [2]
 
     return lambda_zpe
