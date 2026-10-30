@@ -173,8 +173,10 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
     Returns:
         list: The sorted 0-indexed atoms of the rotating group.
     """
+    # skin=0: ASE adds the skin to every atom's cutoff, so its default 0.3 A would bond heavy atoms up to 2.42 A
+    # apart (mult 1.2), e.g. the two carbons of C-O-C (2.33 A) or C and the far O of C-O-O, closing fake rings.
     nl = build_neighbor_list(atoms, natural_cutoffs(atoms, mult=mult),
-                             self_interaction=False, bothways=True)
+                             self_interaction=False, bothways=True, skin=0.0)
     adj = {i: set(nl.get_neighbors(i)[0]) for i in range(len(atoms))}
     if pivot_2 not in adj[pivot_1]:
         numbers = atoms.get_atomic_numbers()

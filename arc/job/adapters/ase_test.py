@@ -474,6 +474,15 @@ class TestASEAdapter(unittest.TestCase):
         with self.assertRaises(ValueError):
             rotor_top(ts_like, 0, 1, pivot_mult=1.0)
 
+    def test_rotor_top_does_not_bond_geminal_heavy_atoms(self):
+        """In dimethyl ether the carbons are 2.33 A apart, which ASE's default neighbor-list skin would bond"""
+        dme = Atoms('COCHHHHHH', positions=[(1.1650, -0.0001, -0.2066), (0.0, 0.0, 0.5714), (-1.1650, 0.0001, -0.2066),
+                                            (2.0267, 0.0006, 0.4591), (1.2136, -0.8955, -0.8458),
+                                            (1.2129, 0.8944, -0.8471), (-2.0267, -0.0006, 0.4591),
+                                            (-1.2136, 0.8955, -0.8458), (-1.2129, -0.8944, -0.8471)])
+        self.assertAlmostEqual(dme.get_distance(0, 2), 2.33, places=2)
+        self.assertEqual(rotor_top(dme, 1, 0), [0, 3, 4, 5])
+
     def test_relaxed_torsion_scan(self):
         """Test a full 1D relaxed torsional scan on the machinery (EMT keeps it hermetic)"""
         atoms = Atoms(symbols=ETHANE_XYZ['symbols'], positions=ETHANE_XYZ['coords'])
