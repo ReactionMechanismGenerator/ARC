@@ -1084,6 +1084,20 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(scan_trsh, "D 5 4 1 2 F\nD 1 2 3 6 F\nB 2 3 F\n")
         self.assertEqual(scan_res, 4.0)
 
+    def test_trsh_scan_job_cannot_freeze_in_a_software_without_constraints(self):
+        """Freezing a scan of a software without constraint input (an ASE YAML scan) is a TrshError, not a crash"""
+        case = {
+            "label": "CH2OOH",
+            "scan_res": 8.0,
+            "scan": [4, 1, 2, 3],
+            "scan_list": [[4, 1, 2, 3], [1, 2, 3, 6]],
+            "methods": {"freeze": [[5, 1, 2, 3], [2, 1, 4, 5]]},
+            "log_file": os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'CH2OOH.out'),
+        }
+        with patch('arc.job.trsh.determine_ess', return_value='yaml'):
+            with self.assertRaises(TrshError):
+                trsh.trsh_scan_job(**case)
+
     @patch(
         "arc.job.trsh.servers",
         {
