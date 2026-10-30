@@ -4336,7 +4336,9 @@ class Scheduler(object):
                           f'{self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} could not ' \
                           f'be read. Invalidating rotor.'
                 logger.error(message)
-            elif len(energies) > 5:
+            elif len(energies) > 5 and not invalidate:
+                # Not after an 'Internal coordinate error': the scan stopped partway (e.g., at point 12 of 46), and a
+                # quality check of the points it did reach would overwrite that verdict, turning it into a success.
                 trajectory = parser.parse_1d_scan_coords(log_file_path=job.local_path_to_output_file) \
                     if self.species_dict[label].is_ts else None
                 invalidate, invalidation_reason, message, actions = scan_quality_check(

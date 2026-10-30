@@ -4359,6 +4359,46 @@ class TestScanSoftwareStamp(unittest.TestCase):
         self.assertEqual(rotor['scan_path'], '/fake/scan.out')
         self.assertFalse(rotor['success'])
 
+    def test_check_scan_job_keeps_an_internal_coordinate_error_invalid(self):
+        """A scan that stopped on an internal coordinate error stays invalid, however smooth the points it reached"""
+        from arc.scheduler import Scheduler
+
+        rotor = self._rotor()
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+        spc.get_xyz.return_value = {'coords': (), 'symbols': ()}
+        spc.final_xyz = None
+        spc.preserve_param_in_scan = None
+        spc.is_ts = False
+
+        sched = MagicMock()
+        sched.species_dict = {'spc': spc}
+        sched.project_directory = '/fake/project'
+        sched.trsh_ess_jobs = True
+        sched.trsh_rotors = True
+
+        job = MagicMock()
+        job.job_status = [None, {'status': 'errored', 'error': 'Internal coordinate error'}]
+        job.rotor_index = 0
+        job.local_path_to_output_file = '/fake/scan.out'
+        job.job_adapter = 'gaussian'
+        job.torsions = [[0, 1, 2, 3]]
+        job.xyz = {'coords': (), 'symbols': ()}
+        job.is_ts = False
+        job.species_label = 'spc'
+
+        energies = [0.0, 0.5, 2.0, 4.0, 5.5, 6.0, 5.5, 4.0, 2.0, 0.5, 0.0, 0.5]  # 12 of 46 points, all smooth
+        with patch('arc.scheduler.parser.parse_1d_scan_energies_from_specific_angle',
+                   return_value=(energies, [8.0 * i for i in range(12)])), \
+             patch('arc.scheduler.calculate_dihedral_angle', return_value=0.0), \
+             patch('arc.scheduler.scan_quality_check', return_value=(False, '', '', dict())) as quality_check, \
+             patch('arc.scheduler.plotter.plot_1d_rotor_scan'):
+            Scheduler.check_scan_job(sched, label='spc', job=job)
+
+        quality_check.assert_not_called()
+        self.assertFalse(rotor['success'])
+        self.assertIn('Internal coordinate error', rotor['invalidation_reason'])
+
 
 class TestSchedulerReactionChargeBalance(unittest.TestCase):
     """
