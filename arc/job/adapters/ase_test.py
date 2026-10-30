@@ -50,6 +50,7 @@ from arc.job.adapters.scripts.ase_script import (ImageCalculator,
                                                  submit_ticket,
                                                  to_kJmol,
                                                  uma_inference_settings,
+                                                 well_defined_torsion,
                                                  withdraw_ticket,
                                                  write_json_atomic)
 
@@ -641,6 +642,32 @@ class TestASEAdapter(unittest.TestCase):
                                             (-1.2136, 0.8955, -0.8458), (-1.2129, -0.8944, -0.8471)])
         self.assertAlmostEqual(dme.get_distance(0, 2), 2.33, places=2)
         self.assertEqual(rotor_top(dme, 1, 0), [0, 3, 4, 5])
+
+    def test_well_defined_torsion(self):
+        """A dihedral end atom collinear with the pivot bond is replaced by the next atom off the axis"""
+        hoccoh = Atoms('OCCOHH', positions=[(0.0, 0.0, 0.0), (1.3, 0.0, 0.0), (2.5, 0.0, 0.0), (3.8, 0.0, 0.0),
+                                            (-0.3, 0.92, 0.0), (4.1, 0.0, 0.92)])
+        self.assertEqual(well_defined_torsion(hoccoh, [4, 0, 1, 2]), [4, 0, 1, 5])
+        self.assertEqual(well_defined_torsion(hoccoh, [5, 3, 2, 1]), [5, 3, 2, 4])
+        ethane = Atoms('CCHHHHHH', positions=[(0.0, 0.0, 0.765), (0.0, 0.0, -0.765), (1.018, 0.0, 1.164),
+                                              (-0.509, 0.882, 1.164), (-0.509, -0.882, 1.164),
+                                              (-1.018, 0.0, -1.164), (0.509, -0.882, -1.164),
+                                              (0.509, 0.882, -1.164)])
+        self.assertEqual(well_defined_torsion(ethane, [2, 0, 1, 5]), [2, 0, 1, 5])
+        acyl = Atoms('COCOH', positions=[(0.0, 0.0, 0.0), (-0.7, 1.0, 0.0), (1.5, 0.0, 0.0), (2.65, 0.0, 0.0),
+                                         (-0.6, -0.9, 0.0)])
+        with self.assertRaises(ValueError):
+            well_defined_torsion(acyl, [1, 0, 2, 3])
+
+    def test_relaxed_torsion_scan_scans_a_well_defined_dihedral(self):
+        """A torsion through a near-linear chain is scanned about a well-defined dihedral of the same pivot bond"""
+        hoccoh = Atoms('OCCOHH', positions=[(0.0, 0.0, 0.0), (1.3, 0.0, 0.0), (2.5, 0.0, 0.0), (3.8, 0.0, 0.0),
+                                            (-0.3, 0.92, 0.0), (4.1, 0.0, 0.92)])
+        hoccoh.calc = EMT()
+        with patch('arc.job.adapters.scripts.ase_script._scan_walk', side_effect=StopIteration) as scan_walk:
+            with self.assertRaises(StopIteration):
+                relaxed_torsion_scan(hoccoh, [4, 0, 1, 2], step_deg=8.0, nsteps=45)
+        self.assertEqual(scan_walk.call_args.args[1], [4, 0, 1, 5])
 
     @staticmethod
     def _run_fake_irc_job(run) -> dict:
