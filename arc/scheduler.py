@@ -746,12 +746,7 @@ class Scheduler(object):
             if species.initial_xyz is None and species.final_xyz is None and species.conformers \
                     and any([e is not None for e in species.conformer_energies]):
                 # The species has no xyz, but has conformers and at least one of the conformers has energy.
-                self.determine_most_stable_conformer(species.label)
-                if species.initial_xyz is not None:
-                    if self.composite_method:
-                        self.run_composite_job(species.label)
-                    else:
-                        self.run_opt_job(species.label, fine=self.fine_only)
+                self.optimize_most_stable_conformer(species.label)
         self.run_conformer_jobs()
         self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
         while self.running_jobs != {} or self.active_pipes \
@@ -804,16 +799,7 @@ class Scheduler(object):
                                 # All conformer jobs terminated.
                                 # Check isomorphism and run opt on most stable conformer geometry.
                                 logger.info(f'\nConformer jobs for {label} successfully terminated.\n')
-                                if self.species_dict[label].is_ts:
-                                    self.determine_most_likely_ts_conformer(label)
-                                else:
-                                    self.determine_most_stable_conformer(label, sp_flag=True if self.job_types['conf_sp'] else False)  # also checks isomorphism
-                                if self.species_dict[label].initial_xyz is not None:
-                                    # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
-                                    if not self.composite_method:
-                                        self.run_opt_job(label, fine=self.fine_only)
-                                    else:
-                                        self.run_composite_job(label)
+                                self.optimize_most_stable_conformer(label, sp_flag=bool(self.job_types['conf_sp']))
                             self.timer = False
                             break
                     if 'tsg' in job_name:
@@ -1571,6 +1557,45 @@ class Scheduler(object):
                 paths_key, log_path = _ts_guess_path_provenance(chosen_tsg)
                 if paths_key and log_path:
                     self.output[label]['paths'][paths_key] = log_path
+
+    def optimize_most_stable_conformer(self, label: str, sp_flag: bool = False):
+        """
+        Determine the species' most stable conformer (the most likely one for a TS) and spawn its geometry
+        optimization, or its composite job.
+
+        Nothing is spawned while conformer jobs of the species are still running, which is the state of a restarted
+        run that restored them: they pick the conformer when they end, and until then the energies of those that
+        have not reported are still the force field's.
+
+        Nor is anything spawned if the species already has an optimization (or composite job) running or converged.
+        Conformer jobs that end after that are leftovers of a restart: a restarted run restores the conformer jobs
+        of its restart file, also ones it had processed before. Determining the conformer again from them started
+        another optimization, of whichever conformer now won, after the first one's rotor scans had run, so that
+        Arkane combined the scans of one conformer with the frequencies of another. Troubleshooting that re-runs
+        conformers deletes the species' jobs first, which resets both conditions.
+
+        Args:
+            label (str): The species label.
+            sp_flag (bool): Whether the conformer energies come from single points (``conf_sp`` jobs).
+        """
+        running = self.running_jobs.get(label, list())
+        if any(is_conformer_job(job_name) for job_name in running):
+            return
+        job_types = self.output[label]['job_types']
+        if job_types['opt'] or job_types['composite'] \
+                or any('opt' in job_name or 'composite' in job_name for job_name in running):
+            logger.info(f'Not optimizing a conformer of {label}: it already has a geometry optimization.')
+            return
+        if self.species_dict[label].is_ts:
+            self.determine_most_likely_ts_conformer(label)
+        else:
+            self.determine_most_stable_conformer(label, sp_flag=sp_flag)  # also checks isomorphism
+        if self.species_dict[label].initial_xyz is not None:
+            # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
+            if not self.composite_method:
+                self.run_opt_job(label, fine=self.fine_only)
+            else:
+                self.run_composite_job(label)
 
     def run_opt_job(self, label: str, fine: bool = False):
         """

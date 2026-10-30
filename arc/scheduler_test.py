@@ -4451,6 +4451,31 @@ class TestScanSoftwareStamp(unittest.TestCase):
                 Scheduler.run_conformer_jobs(sched, labels=['spc'])
                 self.assertEqual(spc.generate_conformers.called, expect_conformers)
 
+    def test_optimize_most_stable_conformer_once(self):
+        """A species is optimized from its conformers once, not while they run nor again after a restart"""
+        from arc.scheduler import Scheduler
+
+        for running, opt_done, expect_opt in (
+                ([], False, True),                             # all conformer jobs ended: optimize
+                (['conf_opt_7', 'conf_opt_8'], False, False),  # restored conformer jobs are still running
+                (['opt_a402'], False, False),                  # an optimization is running
+                (['scan_a3211', 'freq_a3658'], True, False),   # optimized and scanned already
+                (['composite_a12'], False, False),             # a composite job is running
+        ):
+            with self.subTest(running=running, opt_done=opt_done):
+                spc = MagicMock()
+                spc.is_ts, spc.initial_xyz = False, {'symbols': ('H', 'H')}
+                sched = MagicMock()
+                sched.species_dict = {'spc': spc}
+                sched.running_jobs = {'spc': running}
+                sched.output = {'spc': {'job_types': {'opt': opt_done, 'composite': False}}}
+                sched.composite_method = None
+                Scheduler.optimize_most_stable_conformer(sched, 'spc', sp_flag=True)
+                self.assertEqual(sched.determine_most_stable_conformer.called, expect_opt)
+                self.assertEqual(sched.run_opt_job.called, expect_opt)
+                if expect_opt:
+                    sched.determine_most_stable_conformer.assert_called_once_with('spc', sp_flag=True)
+
 
 class TestSchedulerReactionChargeBalance(unittest.TestCase):
     """
