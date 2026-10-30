@@ -4,6 +4,7 @@ An adapter for executing ASE (Atomic Simulation Environment) jobs
 
 import datetime
 import os
+import shutil
 import subprocess
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
@@ -326,6 +327,10 @@ class ASEAdapter(JobAdapter):
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='input.yml'))
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='ase_script.py',
                                                                          local=self.script_path))
+            if self.server == 'local':
+                # A job on this machine's queue is not uploaded (``upload_files()`` only copies check files), but
+                # its submit script runs "$JOB_DIR/ase_script.py", so put the script in the job directory.
+                shutil.copyfile(self.script_path, os.path.join(self.local_path, 'ase_script.py'))
         # 2. Download
         self.files_to_download.append(self.get_file_property_dictionary(file_name='output.yml'))
 

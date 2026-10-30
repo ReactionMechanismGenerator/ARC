@@ -8,6 +8,7 @@ These tests verify IO and logic without executing the external ASE script in CI.
 
 import os
 import shutil
+import tempfile
 import unittest
 from unittest.mock import patch
 import numpy as np
@@ -276,6 +277,20 @@ class TestASEAdapter(unittest.TestCase):
             job.get_queue_submit_script(command='python ase_script.py',
                                         config=job.determine_submit_config(),
                                         cluster_soft='htcondor')
+
+    def test_set_files_puts_the_script_in_a_local_queue_job_directory(self):
+        """A queue job on this machine is not uploaded, so its directory needs the ASE script its submit script runs"""
+        with tempfile.TemporaryDirectory() as tmp:
+            job = ASEAdapter(execution_type='queue',
+                             job_type='sp',
+                             project='test_local_queue',
+                             project_directory=os.path.join(tmp, 'project'),
+                             species=[ARCSpecies(label='ethane', xyz=ETHANE_XYZ)],
+                             args={'keyword': {'calculator': 'emt'}},
+                             server='local',
+                             testing=True)
+            self.assertTrue(os.path.isfile(os.path.join(job.local_path, 'ase_script.py')))
+            self.assertTrue(os.path.isfile(os.path.join(job.local_path, 'input.yml')))
 
     def test_set_files_does_not_write_for_an_incore_job(self):
         """Test that an incore job writes no submit script (it writes its input when it executes)"""
