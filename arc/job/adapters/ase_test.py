@@ -8,6 +8,7 @@ These tests verify IO and logic without executing the external ASE script in CI.
 
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -502,6 +503,41 @@ class TestASEAdapter(unittest.TestCase):
                                          (-0.6, -0.9, 0.0)])
         with self.assertRaises(ValueError):
             well_defined_torsion(acyl, [1, 0, 2, 3])
+
+    def test_an_irc_job_ends_at_the_end_of_its_path(self):
+        """An IRC job's final geometry is the last point of its path, from which ARC builds the IRC species"""
+        from ase.io.trajectory import Trajectory
+        from arc.job.adapters.scripts import ase_script
+        calls = dict()
+
+        class FakeIRC:
+            def __init__(self, atoms, logfile=None, trajectory=None, **kwargs):
+                self.atoms, self.trajectory = atoms, trajectory
+                calls['kwargs'] = kwargs
+
+            def run(self, fmax, steps, direction):
+                calls['fmax'] = fmax
+                with Trajectory(self.trajectory, 'w') as traj:
+                    for shift in (0.0, 0.1, 0.2):
+                        image = Atoms(self.atoms.get_chemical_symbols(), positions=self.atoms.get_positions())
+                        image.positions[0, 0] += shift
+                        traj.write(image)
+
+        fake_sella = type(sys)('sella')
+        fake_sella.IRC = FakeIRC
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, 'input.yml')
+            save_yaml_file(input_path, {'job_type': 'irc', 'xyz': ETHANE_XYZ, 'charge': 0, 'multiplicity': 1,
+                                        'settings': {'calculator': 'emt'}})
+            with patch.dict(sys.modules, {'sella': fake_sella}), \
+                    patch.object(sys, 'argv', ['ase_script.py', '--yml_path', input_path]):
+                ase_script.main()
+            output = read_yaml_file(os.path.join(tmp, 'output.yml'))
+        self.assertEqual(len(output['irc_traj']), 3)
+        self.assertAlmostEqual(output['opt_xyz']['coords'][0][0], ETHANE_XYZ['coords'][0][0] + 0.2)
+        self.assertEqual(output['opt_xyz'], output['irc_traj'][-1])
+        self.assertEqual(calls['fmax'], 0.01)  # an MLIP's force noise defeats the opt default of 0.001
+        self.assertTrue(calls['kwargs']['keep_going'])
 
     def test_relaxed_torsion_scan(self):
         """Test a full 1D relaxed torsional scan on the machinery (EMT keeps it hermetic)"""
