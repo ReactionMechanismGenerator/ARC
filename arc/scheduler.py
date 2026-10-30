@@ -5513,6 +5513,18 @@ class Scheduler(object):
         content[label] = self.species_dict[label].e_elect
         save_yaml_file(path=path, content=content)
 
+    def own_job_ids(self) -> set:
+        """
+        The job IDs of this run's jobs, as strings.
+        """
+        job_ids = set()
+        for jobs_by_type in self.job_dict.values():
+            for jobs in jobs_by_type.values():
+                for job in (jobs.values() if isinstance(jobs, dict) else list()):
+                    if getattr(job, 'job_id', None) is not None:
+                        job_ids.add(str(job.job_id))
+        return job_ids
+
     def check_max_simultaneous_jobs_limit(self, server: str | None):
         """
         Check if the number of running jobs on the server is not above the set server limit.
@@ -5524,7 +5536,11 @@ class Scheduler(object):
             continue_lopping = True
             while continue_lopping:
                 self.get_server_job_ids(specific_server=server)
-                if len(self.server_job_ids) >= servers_dict[server]['max_simultaneous_jobs']:
+                # Count only this run's jobs: the queue also lists the user's other jobs (e.g., another ARC run),
+                # which this loop cannot wait out, since it does not process this run's finished jobs meanwhile.
+                own_job_ids = self.own_job_ids()
+                n_running = len([job_id for job_id in self.server_job_ids if str(job_id) in own_job_ids])
+                if n_running >= servers_dict[server]['max_simultaneous_jobs']:
                     time.sleep(90)
                 else:
                     continue_lopping = False
