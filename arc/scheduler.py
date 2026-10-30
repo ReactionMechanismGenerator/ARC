@@ -1509,6 +1509,10 @@ class Scheduler(object):
         Args:
             label (str): The TS species label.
         """
+        if any(job_name.startswith('conf_opt') for job_name in self.running_jobs.get(label, list())):
+            # A restarted run restores the TS conformer jobs still in flight. Spawning them again would reset
+            # job_dict[label]['conf_opt'] and orphan the restored jobs' names in running_jobs.
+            return
         self.species_dict[label].cluster_tsgs()
         plotter.save_conformers_file(
             project_directory=self.project_directory,
