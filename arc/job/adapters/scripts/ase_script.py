@@ -200,6 +200,45 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
     return sorted(int(x) for x in seen)
 
 
+def well_defined_torsion(atoms: Atoms, torsion: list, max_angle: float = 165.0, mult: float = 1.2) -> list:
+    """
+    The scanned dihedral, with an end atom moved outward if it is collinear with the pivot bond.
+
+    A dihedral is undefined when three of its atoms are collinear, and ASE's FixInternals then fails to converge.
+    ARC can still define a torsion that way, e.g. H-O-C#C for an OH rotor of HOC#COH, where O-C#C is 175 degrees.
+    The rotation is about the same pivot bond, so the next atom along the chain that leaves the axis (here the far
+    H) measures the same torsion, and it lies on the same side of the pivot bond as the atom it replaces.
+
+    Args:
+        atoms (Atoms): The molecule.
+        torsion (list): The 0-indexed four atoms (i, j, k, l); j-k is the pivot bond.
+        max_angle (float, optional): The largest i-j-k or j-k-l angle (degrees) taken as well defined.
+        mult (float, optional): The natural-cutoff multiplier defining the bond graph, as in rotor_top().
+
+    Raises:
+        ValueError: If one side of the pivot bond is linear to its end, so that no torsion exists about it.
+
+    Returns:
+        list: The 0-indexed four atoms of a well-defined dihedral about the same pivot bond.
+    """
+    i, j, k, l = torsion
+    nl = build_neighbor_list(atoms, natural_cutoffs(atoms, mult=mult), self_interaction=False, bothways=True, skin=0.0)
+
+    def outward(end: int, pivot: int, other_pivot: int) -> int:
+        """The nearest atom beyond ``end`` (away from the pivot bond) off the pivot axis."""
+        seen, frontier = {end, pivot, other_pivot}, [end]
+        while frontier:
+            for atom in frontier:
+                if atoms.get_angle(other_pivot, pivot, atom) <= max_angle:
+                    return atom
+            frontier = [nb for atom in frontier for nb in nl.get_neighbors(atom)[0] if nb not in seen]
+            seen.update(frontier)
+        raise ValueError(f'The atoms beyond pivot {pivot} are collinear with the pivot bond {j}-{k}, '
+                         f'so no torsion about it is defined.')
+
+    return [int(outward(i, j, k)), j, k, int(outward(l, k, j))]
+
+
 def _scan_walk(atoms: Atoms, torsion: list, step_deg: float, nsteps: int, top: list,
                fmax: float, steps: int, direction: int, optimizer) -> tuple:
     """
@@ -333,6 +372,7 @@ def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: i
     if abs(nsteps * step_deg - 360.0) > 1e-6:
         raise ValueError(f'A relaxed torsion scan must span a full revolution, but nsteps={nsteps} '
                          f'increments of step_deg={step_deg} span {nsteps * step_deg} degrees.')
+    torsion = well_defined_torsion(atoms, torsion)
     i, j, k, l = torsion
     if top is None:
         top = rotor_top(atoms, j, k)
