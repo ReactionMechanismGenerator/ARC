@@ -4399,6 +4399,39 @@ class TestScanSoftwareStamp(unittest.TestCase):
         self.assertFalse(rotor['success'])
         self.assertIn('Internal coordinate error', rotor['invalidation_reason'])
 
+    def test_check_scan_job_invalidates_a_flat_scan(self):
+        """A scan along which nothing turned (one energy at every point) is not a rotor, and has no symmetry to find"""
+        from arc.scheduler import Scheduler
+
+        rotor = self._rotor()
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+        spc.get_xyz.return_value = {'coords': (), 'symbols': ()}
+        spc.is_ts = True
+        sched = MagicMock()
+        sched.species_dict = {'TS0': spc}
+        sched.project_directory = '/fake/project'
+        job = MagicMock()
+        job.job_status = [None, {'status': 'done', 'error': None}]
+        job.rotor_index = 0
+        job.local_path_to_output_file = '/fake/output.yml'
+        job.job_adapter = 'ase'
+        job.torsions = [[0, 1, 2, 3]]
+        job.xyz = {'coords': (), 'symbols': ()}
+        job.is_ts = True
+        job.species_label = 'TS0'
+
+        with patch('arc.scheduler.parser.parse_1d_scan_energies_from_specific_angle',
+                   return_value=([0.0] * 46, [8.0 * i for i in range(46)])), \
+             patch('arc.scheduler.calculate_dihedral_angle', return_value=0.0), \
+             patch('arc.scheduler.determine_rotor_symmetry') as symmetry, \
+             patch('arc.scheduler.plotter.plot_1d_rotor_scan'):
+            Scheduler.check_scan_job(sched, label='TS0', job=job)
+
+        symmetry.assert_not_called()
+        self.assertFalse(rotor['success'])
+        self.assertIn('flat', rotor['invalidation_reason'])
+
     def test_run_conformer_jobs_skips_irc_species(self):
         """An IRC endpoint species gets no conformers (its geometry is the IRC's), unlike a species in the same state"""
         from arc.scheduler import Scheduler
