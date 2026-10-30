@@ -36,6 +36,7 @@ from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  run_torsion_scan,
                                                  run_vibrational_analysis,
                                                  scan_convergence_warning,
+                                                 sella_hessian_function,
                                                  serve,
                                                  spool_dirs,
                                                  submit_ticket,
@@ -506,6 +507,18 @@ class TestASEAdapter(unittest.TestCase):
         self.assertFalse(settings['tf32'])
         self.assertTrue(settings['hessian_vmap'])
         self.assertEqual(settings['predict_untrained_hessian'], ['omat'])
+
+    def test_sella_hessian_function(self):
+        """A UMA TS search gets the exact autograd Hessian; other calculators, and a fairchem without one, do not"""
+        self.assertIsNone(sella_hessian_function({'calculator': 'emt'}))
+        self.assertIsNone(sella_hessian_function({'calculator': 'uma', 'hessian': 'finite_difference'}))
+        with patch('arc.job.adapters.scripts.ase_script.load_uma_predictor', side_effect=NotImplementedError):
+            self.assertIsNone(sella_hessian_function({'calculator': 'uma'}))
+        with patch('arc.job.adapters.scripts.ase_script.load_uma_predictor'), \
+                patch('arc.job.adapters.scripts.ase_script.uma_hessian', return_value=np.eye(3)) as uma_hessian:
+            hessian_function = sella_hessian_function({'calculator': 'uma'}, cache=dict())
+            np.testing.assert_array_equal(hessian_function(Atoms('H')), np.eye(3))
+            uma_hessian.assert_called_once()
 
     def test_run_vibrational_analysis_chooses_the_hessian(self):
         """Test that UMA uses its autograd Hessian unless told otherwise or unable, and other calculators use finite differences"""

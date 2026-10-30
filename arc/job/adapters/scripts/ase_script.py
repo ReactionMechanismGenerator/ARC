@@ -189,6 +189,38 @@ def uma_hessian(atoms: Atoms, settings: dict, cache: dict | None = None) -> np.n
     return np.asarray(hessian_atoms.calc.get_property('hessian', hessian_atoms), dtype=float).reshape(n_coords, n_coords)
 
 
+def sella_hessian_function(settings: dict, cache: dict | None = None):
+    """
+    The exact Hessian for a Sella saddle-point search, if the calculator gives one cheaply (UMA's autograd Hessian).
+
+    Without it, Sella estimates the lowest-curvature mode iteratively from a random start. At a TS guess with a
+    second negative mode (e.g., a torsion), the estimate can lock onto the wrong one, and Sella then climbs to the
+    wrong saddle. From ARC's heuristic guess for OH + C3H8, plain Sella reached a saddle of the OH...propane complex
+    (one 33i cm^-1 torsion) in both of ARC's attempts and in 1 of 10 seeded runs; with the exact Hessian, all 10
+    runs reached the H-abstraction TS.
+
+    Args:
+        settings (dict): The run settings.
+        cache (dict, optional): Loaded models, kept across jobs by a persistent worker.
+
+    Returns:
+        Callable | None: A function of the atoms returning the (3N, 3N) Hessian in eV/A^2, or ``None`` if the
+                         calculator has no autograd Hessian (Sella then estimates the Hessian as before).
+    """
+    if settings.get('calculator', '').lower() not in ('uma', 'fairchem') \
+            or settings.get('hessian', 'autograd') != 'autograd':
+        return None
+    try:
+        load_uma_predictor(settings, cache=cache, hessian=True)
+    except NotImplementedError:
+        return None
+
+    def hessian_function(atoms: Atoms) -> np.ndarray:
+        return uma_hessian(atoms, settings, cache)
+
+    return hessian_function
+
+
 def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1, cache: dict | None = None,
                    hessian: bool = False):
     """
@@ -902,7 +934,9 @@ def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None 
             # A TS search needs a saddle-point optimizer; UMA ships none, so use Sella.
             from sella import Sella
             opt_class = Sella
-            opt = opt_class(atoms, order=1 if is_ts else 0, logfile=logfile)
+            hessian_function = sella_hessian_function(settings, cache) if is_ts else None
+            opt = opt_class(atoms, order=1 if is_ts else 0, logfile=logfile,
+                            **({'hessian_function': hessian_function} if hessian_function else dict()))
         else:
             opt_class = engine_dict.get(engine_name, BFGS)
             opt = opt_class(atoms, logfile=logfile)
