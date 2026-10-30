@@ -4399,6 +4399,25 @@ class TestScanSoftwareStamp(unittest.TestCase):
         self.assertFalse(rotor['success'])
         self.assertIn('Internal coordinate error', rotor['invalidation_reason'])
 
+    def test_run_conformer_jobs_skips_irc_species(self):
+        """An IRC endpoint species gets no conformers (its geometry is the IRC's), unlike a species in the same state"""
+        from arc.scheduler import Scheduler
+
+        for irc_label, expect_conformers in (('TS0', False), (None, True)):
+            with self.subTest(irc_label=irc_label):
+                spc = MagicMock()
+                spc.is_ts, spc.irc_label, spc.conformer_energies, spc.number_of_atoms = False, irc_label, [], 6
+                spc.yml_path, spc.multi_species = None, None
+                sched = MagicMock()
+                sched.species_dict = {'spc': spc}
+                sched.output = {'spc': {'job_types': {'opt': False}, 'paths': {'geo': ''}, 'convergence': None}}
+                sched.job_dict = {'spc': dict()}
+                sched.job_types = {'conf_opt': True}
+                sched.dont_gen_confs = list()
+                sched.project_directory = '/fake/project'
+                Scheduler.run_conformer_jobs(sched, labels=['spc'])
+                self.assertEqual(spc.generate_conformers.called, expect_conformers)
+
 
 class TestSchedulerReactionChargeBalance(unittest.TestCase):
     """

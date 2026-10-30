@@ -1450,7 +1450,11 @@ class Scheduler(object):
         labels_to_consider = labels if labels is not None else [spc.label for spc in self.species_list]
         log_info_printed = False
         for label in labels_to_consider:
-            if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
+            # IRC endpoint species (non-TS species with an irc_label) take their geometry from the IRC path, and ARC
+            # often cannot perceive a 2D graph for these complexes. A restarted run whose IRC species had not finished
+            # their opt crashed here, generating conformers for a species without a molecule.
+            if not self.species_dict[label].is_ts and self.species_dict[label].irc_label is None \
+                    and not self.output[label]['job_types']['opt'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
                     and self.species_dict[label].number_of_atoms > 1 and not self.output[label]['paths']['geo'] \
