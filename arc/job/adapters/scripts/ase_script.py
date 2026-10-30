@@ -654,6 +654,17 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict):
     return numpy_vibrational_analysis(masses, hessian, is_linear=is_lin)
 
 
+def read_trajectory(path: str) -> list:
+    """
+    The images of an ASE trajectory, or an empty list if it does not exist or cannot be read.
+    """
+    from ase.io import read
+    try:
+        return read(path, index=':') if os.path.isfile(path) else list()
+    except Exception:
+        return list()
+
+
 def main():
     """
     Main execution logic.
@@ -745,22 +756,35 @@ def main():
     if job_type == 'irc':
         from sella import IRC
         from ase.io import read
-        fmax = float(settings.get('fmax', 0.001))
+        # Sella converges each IRC step to min(fmax, 0.01) eV/A. At the opt default of 0.001, an MLIP's force noise
+        # kept the inner loop from converging, on the first step off UMA's CH4 + OH saddle and in the CH4 + H wells.
+        # The endpoints only seed ARC's IRC species, which ARC optimizes anyway, so the path need not end tighter.
+        fmax = float(settings.get('irc_fmax', 0.01))
         steps = int(settings.get('steps', 1000))
         direction = input_dict.get('irc_direction', 'forward')
         traj_path = os.path.join(os.path.dirname(input_path), 'irc.traj')
         try:
+            # keep_going: an inner loop that still fails only warns, rather than ending the path there.
             irc = IRC(atoms, logfile=os.path.join(os.path.dirname(input_path), 'irc.log'),
-                      trajectory=traj_path)
+                      trajectory=traj_path, keep_going=True)
             irc.run(fmax=fmax, steps=steps, direction=direction)
-            images = read(traj_path, index=':')
+        except Exception as exc:
+            # The path walked so far still leads from the TS toward its well, so keep it and only warn.
+            n_points = len(read_trajectory(traj_path))
+            if n_points > 1:
+                output.setdefault('warnings', list()).append(
+                    f'IRC stopped after {n_points} points: {type(exc).__name__}: {exc}')
+            else:
+                output['error'] = f'IRC failed: {type(exc).__name__}: {exc}'
+        images = read_trajectory(traj_path)
+        if len(images) > 1:
+            # ARC builds the IRC species from the job's final geometry, so that is the end of the path, not the TS.
+            save_current_geometry(output, images[-1], xyz)
             output['irc_traj'] = [
                 {'coords': tuple(map(tuple, image.get_positions().tolist())),
                  'symbols': xyz['symbols'],
                  'isotopes': xyz.get('isotopes') or tuple([None] * len(xyz['symbols']))}
                 for image in images]
-        except Exception as exc:
-            output['error'] = f"IRC failed: {exc}"
 
     if job_type in ['freq', 'optfreq']:
         try:
