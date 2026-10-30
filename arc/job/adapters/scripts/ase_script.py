@@ -480,7 +480,7 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
         list: The sorted 0-indexed atoms of the rotating group.
     """
     nl = build_neighbor_list(atoms, natural_cutoffs(atoms, mult=mult),
-                             self_interaction=False, bothways=True)
+                             self_interaction=False, bothways=True, skin=0.0)
     adj = {i: set(nl.get_neighbors(i)[0]) for i in range(len(atoms))}
     if pivot_2 not in adj[pivot_1]:
         numbers = atoms.get_atomic_numbers()
