@@ -793,8 +793,37 @@ O       0.00000000    0.00000000    1.00000000
         self.assertEqual(self.job_3.files_to_download, job_3_files_to_download)
 
     def test_gaussian_def2tzvp(self):
-        """Test a Gaussian job using def2-tzvp"""
-        self.assertEqual(self.job_9.level.basis.lower(), 'def2tzvp')
+        """Test that a Gaussian job using def2-tzvp keeps its level and writes the Gaussian spelling"""
+        self.assertEqual(self.job_9.level.basis.lower(), 'def2-tzvp')
+        self.job_9.write_input_file()
+        with open(os.path.join(self.job_9.local_path, input_filenames[self.job_9.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('/def2tzvp', content)
+        self.assertNotIn('def2-tzvp', content.lower())
+        self.assertEqual(self.job_9.level.basis.lower(), 'def2-tzvp')
+
+    def test_the_paraskevas_method_is_written_as_cbs_qb3_and_the_level_is_kept(self):
+        """Test that the input deck names cbs-qb3 while the job's level still states the requested method"""
+        self.job_1.write_input_file()
+        with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('cbs-qb3', content)
+        self.assertNotIn('paraskevas', content)
+        self.assertEqual(self.job_1.level.method, 'cbs-qb3-paraskevas')
+
+    def test_a_respawned_job_and_a_restored_job_record_the_same_basis_spelling(self):
+        """Test that a level passed back to a new job, or restored from a job's dictionary, is unchanged"""
+        first = GaussianAdapter(execution_type='incore', job_type='opt',
+                                level=Level(method='wb97xd', basis='def2-tzvp'), project='test',
+                                project_directory=self.project_directory,
+                                species=[ARCSpecies(label='spc_respawn', xyz=['O 0 0 1'], multiplicity=3)],
+                                testing=True)
+        second = GaussianAdapter(execution_type='incore', job_type='opt', level=Level(repr=first.level),
+                                 project='test', project_directory=self.project_directory,
+                                 species=[ARCSpecies(label='spc_respawn', xyz=['O 0 0 1'], multiplicity=3)],
+                                 testing=True)
+        restored = Level(repr=first.as_dict()['level'])
+        self.assertEqual({first.level.basis, second.level.basis, restored.basis}, {'def2-tzvp'})
     
     def test_trsh_write_input_file(self):
         """Test writing a trsh input file

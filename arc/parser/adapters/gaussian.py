@@ -43,6 +43,34 @@ def _find_force_constants_header(lines: list[str]) -> int | None:
     return None
 
 
+def _read_input_orientation_table(lines: list[str], start: int) -> dict | None:
+    """
+    Read one Gaussian ``Input orientation:`` table.
+
+    Args:
+        lines (list[str]): The log file lines.
+        start (int): The index of the ``Input orientation:`` line.
+
+    Returns: dict | None
+        The geometry as an ARC xyz dict, or ``None`` when the table is empty or has a malformed row.
+    """
+    numbers, coords = list(), list()
+    j = start + 5
+    while j < len(lines) and lines[j].strip() and not lines[j].startswith(' ---'):
+        splits = lines[j].split()
+        if len(splits) < 6 or not splits[0].isdigit():
+            return None
+        try:
+            numbers.append(int(splits[1]))
+            coords.append([float(splits[3]), float(splits[4]), float(splits[5])])
+        except (IndexError, ValueError):
+            return None
+        j += 1
+    if not numbers or not coords:
+        return None
+    return xyz_from_data(coords=np.array(coords, float), numbers=np.array(numbers, int))
+
+
 def _read_irc_geometry_table(lines: list[str], start: int) -> tuple[dict | None, int]:
     """
     Read one Gaussian IRC Cartesian geometry table.
@@ -367,26 +395,25 @@ class GaussianParser(ESSAdapter, ABC):
         lines = _get_lines_from_file(self.log_file_path)
         header = _find_force_constants_header(lines)
         search_from = len(lines) - 1 if header is None else header - 1
-        numbers, coords = list(), list()
         for idx in range(search_from, -1, -1):
-            if 'Input orientation:' not in lines[idx]:
-                continue
-            j = idx + 5
-            while j < len(lines) and lines[j].strip() and not lines[j].startswith(' ---'):
-                splits = lines[j].split()
-                if len(splits) < 6 or not splits[0].isdigit():
-                    return None, None
-                try:
-                    numbers.append(int(splits[1]))
-                    coords.append([float(splits[3]), float(splits[4]), float(splits[5])])
-                except (IndexError, ValueError):
-                    return None, None
-                j += 1
-            break
-        if not numbers or not coords:
-            return None, None
-        xyz = xyz_from_data(coords=np.array(coords, float), numbers=np.array(numbers, int))
-        return xyz, 'gaussian_input_orientation'
+            if 'Input orientation:' in lines[idx]:
+                xyz = _read_input_orientation_table(lines, idx)
+                return (xyz, 'gaussian_input_orientation') if xyz is not None else (None, None)
+        return None, None
+
+    def parse_irc_start_geometry(self) -> dict[str, tuple] | None:
+        """
+        Parse the geometry an IRC job started from: the first ``Input orientation:`` table of the log, which is the
+        TS geometry in the order of the job's input, before the first point of the path is computed.
+
+        Returns: dict[str, tuple] | None
+            The Cartesian coordinates, or ``None`` when the log has no such table or the table is malformed.
+        """
+        lines = _get_lines_from_file(self.log_file_path)
+        for idx, line in enumerate(lines):
+            if 'Input orientation:' in line:
+                return _read_input_orientation_table(lines, idx)
+        return None
 
     def parse_t1(self) -> float | None:
         """

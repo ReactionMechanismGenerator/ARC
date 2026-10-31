@@ -5967,6 +5967,51 @@ H       0.97222065   -1.40727159   -1.00427440"""
         self.assertEqual(rxn._family, 'intra_NO2_ONO_conversion')
         self.assertIsNone(rxn._product_dicts)
 
+    def test_execute_incore_keeps_the_origin_of_an_inferred_atom_map(self):
+        """Test that the adapter restores an inferred atom map, with its origin, after a strategy replaced it."""
+        rxn = self._new_ccono_rxn()
+        original_map = [0, 1, 3, 2, 4, 5, 7, 6, 9, 8]
+        rxn._set_atom_map(original_map, 'inferred', 'arc.mapping.driver.map_reaction')
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                )
+        calls = []
+
+        def replace_the_map(rxn, weight, existing_xyzs, map_cache):
+            calls.append(weight)
+            rxn._set_atom_map([1, 0, 2, 3, 4, 5, 6, 7, 8, 9], None)
+            return []
+
+        with patch('arc.job.adapters.ts.linear.interpolate', side_effect=replace_the_map):
+            adapter.execute()
+        self.assertGreater(len(calls), 0)
+        self.assertEqual(rxn._get_atom_map_state(),
+                         (original_map, 'inferred', 'arc.mapping.driver.map_reaction'))
+
+    def test_trivial_map_fallback_keeps_the_origin_of_an_inferred_atom_map(self):
+        """Test that the trivial-map fallback restores an inferred atom map with its origin."""
+        rxn = self._new_ccono_rxn()
+        rxn._set_atom_map([0, 1, 3, 2, 4, 5, 7, 6, 9, 8], 'inferred', 'arc.mapping.driver.map_reaction')
+        rxn.family = None
+        rxn._product_dicts = []
+        seen = []
+        real_get_bonds = rxn.get_formed_and_broken_bonds
+
+        def spy():
+            seen.append(rxn._get_atom_map_state())
+            return real_get_bonds()
+
+        with patch.object(rxn, 'get_formed_and_broken_bonds', side_effect=spy):
+            interpolate(rxn=rxn, weight=0.5, existing_xyzs=[], map_cache={})
+        self.assertGreater(len(seen), 0)
+        self.assertEqual(rxn._get_atom_map_state(),
+                         ([0, 1, 3, 2, 4, 5, 7, 6, 9, 8], 'inferred', 'arc.mapping.driver.map_reaction'))
+
     def test_interpolate_addition_symmetric_dissociation(self):
         """Test that a symmetric dissociation (C2H6 <=> CH3 + CH3) is classified as a dissociation."""
         c2h6 = ARCSpecies(label='C2H6', smiles='CC',

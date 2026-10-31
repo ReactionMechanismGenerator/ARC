@@ -76,7 +76,7 @@ def process_arc_project(thermo_adapter: str,
                         lib_long_desc: str = '',
                         compare_to_rmg: bool = True,
                         skip_nmd: bool = False,
-                        ) -> None:
+                        ) -> list[str]:
     """
     Process an ARC project, generate thermo and rate coefficients using statistical mechanics (statmech).
 
@@ -104,7 +104,12 @@ def process_arc_project(thermo_adapter: str,
         compare_to_rmg (bool, optional): If ``True``, ARC's calculations will be compared against estimations
                                          from RMG's database.
         skip_nmd (bool, optional): Whether to skip the normal mode displacement check analysis. Defaults to ``False``.
+
+    Returns: list[str]
+        The distinct SHA-256 digests of ARC's ``data/AEC.yml`` that the statmech adapters recorded when they rendered
+        atom energies from it, sorted; empty when none did.
     """
+    aec_yml_sha256s = set()
     T_min = T_min or (300, 'K')
     T_max = T_max or (3000, 'K')
     if isinstance(T_min, (int, float)):
@@ -162,6 +167,7 @@ def process_arc_project(thermo_adapter: str,
                                                 skip_nmd=skip_nmd,
                                                 )
             statmech_adapter.compute_high_p_rate_coefficient()
+            aec_yml_sha256s.update(getattr(statmech_adapter, 'aec_yml_sha256s', None) or set())
         for reaction in converged_rxns:
             if reaction.kinetics is not None:
                 rxns_for_kinetics_lib.append(reaction)
@@ -206,6 +212,7 @@ def process_arc_project(thermo_adapter: str,
                                             species_dict=species_dict,
                                             )
         statmech_adapter.compute_thermo()
+        aec_yml_sha256s.update(getattr(statmech_adapter, 'aec_yml_sha256s', None) or set())
     if converged_e0_only_species:
         statmech_adapter = statmech_factory(statmech_adapter_label=thermo_adapter,
                                             output_directory=output_directory,
@@ -219,6 +226,7 @@ def process_arc_project(thermo_adapter: str,
                                             species_dict=species_dict,
                                             )
         statmech_adapter.compute_thermo(e0_only=True)
+        aec_yml_sha256s.update(getattr(statmech_adapter, 'aec_yml_sha256s', None) or set())
     for spc in converged_species:
         if spc.thermo is not None and not _thermo_lib_has_isomorph(spc, species_for_thermo_lib):
             species_for_thermo_lib.append(spc)
@@ -266,6 +274,7 @@ def process_arc_project(thermo_adapter: str,
                           unconverged_rxns=unconverged_rxns,
                           log_file_path=os.path.join(output_directory, 'unconverged_species.log'))
     clean_output_directory(project_directory)
+    return sorted(aec_yml_sha256s)
 
 
 def compare_thermo(species_for_thermo_lib: list,

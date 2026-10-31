@@ -20,8 +20,9 @@ import time
 import warnings
 import yaml
 from collections import deque
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 
 import numpy as np
 import pandas as pd
@@ -281,6 +282,44 @@ def get_logger():
     Get the ARC logger (avoid having multiple entries of the logger).
     """
     return logger
+
+
+@contextmanager
+def route_logger_to_arc_log(name: str,
+                            level: int = logging.INFO,
+                            ) -> Iterator[None]:
+    """
+    Write another package's log records through ARC's handlers while the block runs.
+
+    Inside the block, records at ``level`` and above from the logger called ``name``, and from its
+    child loggers, are handled by the handlers attached to ARC's logger (the console and ``arc.log``
+    once ``initialize_log`` has run), in ARC's format. Each handler's own level still applies. The
+    named logger does not propagate for the duration, so its records are not also handled by the root
+    logger's handlers or by Python's last-resort stderr handler. On exit, including when the block
+    raises, the named logger's handlers, level and propagation are restored. When ARC's logger holds no
+    handler that the named logger lacks, the named logger is left untouched.
+
+    Args:
+        name (str): The name of the logger whose records are routed.
+        level (int, optional): The lowest level routed.
+    """
+    target = logging.getLogger(name)
+    added = [handler for handler in logger.handlers if handler not in target.handlers]
+    if not added:
+        yield
+        return
+    saved_level, saved_propagate = target.level, target.propagate
+    for handler in added:
+        target.addHandler(handler)
+    target.setLevel(level)
+    target.propagate = False
+    try:
+        yield
+    finally:
+        for handler in added:
+            target.removeHandler(handler)
+        target.setLevel(saved_level)
+        target.propagate = saved_propagate
 
 
 def get_memory_headroom_fraction(ess_trsh_methods: list[str] | None) -> float:

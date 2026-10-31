@@ -7,9 +7,13 @@ This module contains unit tests for the arc.lot module
 
 import os
 import unittest
+import unittest.mock
 
 from arc.common import ARC_PATH, read_yaml_file
-from arc.level import Level, assign_frequency_scale_factor
+import yaml
+
+from arc.level import (Level, adaptive_levels_as_list, assign_frequency_scale_factor, level_as_plain_dict,
+                       set_recorded_irc_level, set_recorded_level)
 
 
 class TestLevel(unittest.TestCase):
@@ -269,6 +273,81 @@ class TestLevel(unittest.TestCase):
                       'no/such, software: nonesuch, solvent: water']:
             with self.assertRaises(ValueError):
                 Level(repr=repr_)
+
+
+class TestLevelRecordingHelpers(unittest.TestCase):
+    """Tests for the plain-dict level helpers shared by the scheduler, the pipe ingest, main and output."""
+
+    def test_the_plain_dict_of_an_object_that_is_not_a_level_is_none(self):
+        """An object whose as_dict() does not return a dictionary, such as a mock job's level, gives None."""
+        self.assertIsNone(level_as_plain_dict(unittest.mock.MagicMock()))
+        self.assertIsNone(level_as_plain_dict(unittest.mock.MagicMock(), strip=('solvation_scheme_level',)))
+        self.assertIsNone(level_as_plain_dict('b3lyp/def2tzvp'))
+
+    def test_the_plain_dict_is_an_independent_copy_without_yaml_aliases(self):
+        """Test that mutating the result leaves the level intact, and that a dump has no anchors or aliases"""
+        level = Level(method='wb97xd', basis='def2-svp', args={'keyword': {'opt': 'tight'}})
+        plain = level_as_plain_dict(level)
+        plain['args']['keyword']['opt'] = 'loose'
+        self.assertEqual(level.args['keyword']['opt'], 'tight')
+        two = [level_as_plain_dict(level), level_as_plain_dict(level)]
+        self.assertNotIn('&id', yaml.safe_dump({'a': two[0], 'b': two[1]}))
+        stored = {'method': 'a', 'args': {'keyword': {}}}
+        copied = level_as_plain_dict(stored)
+        copied['args']['keyword']['x'] = 1
+        self.assertEqual(stored['args']['keyword'], {})
+
+    def test_the_plain_dict_strips_keys_at_every_depth_and_handles_empty_input(self):
+        """Test the strip argument, the recursion into solvation_scheme_level, and the None cases"""
+        level = Level(method='wb97xd', basis='def2-svp', solvation_method='smd', solvent='water',
+                      solvation_scheme_level=Level(method='b3lyp', basis='6-31g'))
+        plain = level_as_plain_dict(level, strip=('repr', 'compatible_ess'))
+        self.assertNotIn('repr', plain)
+        self.assertNotIn('repr', plain['solvation_scheme_level'])
+        self.assertEqual(plain['solvation_scheme_level']['method'], 'b3lyp')
+        self.assertNotIn('solvation_scheme_level', level_as_plain_dict(level, strip=('solvation_scheme_level',)))
+        for empty in (None, dict(), 'wb97xd/def2-svp', 5):
+            self.assertIsNone(level_as_plain_dict(empty))
+
+    def test_a_recorded_level_drops_the_solvation_scheme_and_none_removes_it(self):
+        """Test set_recorded_level"""
+        levels = dict()
+        set_recorded_level(levels, 'sp', Level(method='wb97xd', basis='def2-svp', solvation_method='smd',
+                                              solvent='water', solvation_scheme_level=Level(method='b3lyp')))
+        self.assertEqual(levels['sp']['solvation_method'], 'smd')
+        self.assertNotIn('solvation_scheme_level', levels['sp'])
+        set_recorded_level(levels, 'sp', None)
+        self.assertEqual(levels, dict())
+
+    def test_the_irc_pair_rule(self):
+        """Test that the first IRC log records its level, and a second at another level unrecords it"""
+        levels, a, b = dict(), Level(method='wb97xd', basis='def2-svp'), Level(method='b3lyp', basis='6-31g')
+        set_recorded_irc_level(levels, a, 1)
+        set_recorded_irc_level(levels, a, 2)
+        self.assertEqual(levels['irc']['method'], 'wb97xd')
+        set_recorded_irc_level(levels, b, 2)
+        self.assertNotIn('irc', levels)
+
+    def test_the_irc_pair_rule_ignores_fields_the_output_does_not_state(self):
+        """Test that levels differing only in software or the solvation scheme are one level"""
+        levels = dict()
+        a = Level(method='wb97xd', basis='def2-svp', software='gaussian')
+        b = Level(method='wb97xd', basis='def2-svp', software='orca',
+                  solvation_scheme_level=Level(method='b3lyp', basis='6-31g'))
+        set_recorded_irc_level(levels, a, 1)
+        set_recorded_irc_level(levels, b, 2)
+        self.assertEqual(levels['irc']['method'], 'wb97xd')
+
+    def test_adaptive_levels_as_list(self):
+        """Test the shared restart and output serializer"""
+        levels = {(1, 5): {('opt', 'freq'): Level(method='wb97xd', basis='def2-svp')},
+                  (6, 'inf'): {('opt', 'freq'): Level(method='b3lyp', basis='6-31g')}}
+        result = adaptive_levels_as_list(levels)
+        self.assertEqual([entry['atom_range'] for entry in result], [[1, 5], [6, 'inf']])
+        self.assertIn('compatible_ess', result[0]['levels']['opt freq'])
+        stripped = adaptive_levels_as_list(levels, strip=('compatible_ess',))
+        self.assertNotIn('compatible_ess', stripped[0]['levels']['opt freq'])
+        self.assertIsNone(adaptive_levels_as_list(None))
 
 
 if __name__ == '__main__':
