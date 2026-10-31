@@ -173,6 +173,19 @@ delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel
                   'HTCondor': 'condor_rm',
                   }
 
+# Whether a queue-RUNNING job with no output traffic may be killed and resubmitted automatically.
+# Off by default: a submit template that runs the ESS in node scratch and copies results back only
+# at job end (as the shipped Gaussian, Molpro and ORCA templates do) leaves no login-visible output
+# while a perfectly healthy job runs, so on such a server every job past the grace period looks
+# like a zombie. Enable it only where output is visible as the job runs - globally here, or per
+# server by adding a 'zombie_detection' key to the respective entry in the ``servers`` dict above.
+zombie_detection = False
+
+# Default grace period (in seconds) before a queue-RUNNING job with no output traffic is
+# treated as a zombie and resubmitted. Override per server by adding an optional
+# 'zombie_grace_seconds' key to the respective entry in the ``servers`` dict above.
+zombie_grace_seconds = 21600  # 6 h
+
 list_available_nodes_command = {
     'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -f | grep "/8 " | grep "long" | grep -v "8/8"| grep -v "aAu"',
     'Slurm': 'sinfo -o "%n %t %O %E"',
@@ -322,8 +335,8 @@ valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 rotor_scan_resolution = 8.0  # degrees. Default: 8.0
 
 # rotor validation parameters
-maximum_barrier = 40    # a rotor threshold (kJ/mol) above which the mode will be considered as vibrational if
-                        # there's only one well. Default: 40 (~10 kcal/mol)
+maximum_barrier = 60    # a rotor threshold (kJ/mol) above which the mode will be considered as vibrational if
+                        # there's only one well. Default: 60 (~14 kcal/mol)
 minimum_barrier = 1.0   # a rotor threshold (kJ/mol) below which it is considered a FreeRotor. Default: 1.0 kJ/mol
 inconsistency_az = 5    # maximum allowed inconsistency (kJ/mol) between initial and final rotor scan points. Default: 5
 inconsistency_ab = 0.3  # maximum allowed inconsistency between consecutive points in the scan given as a fraction

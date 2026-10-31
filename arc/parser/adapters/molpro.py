@@ -220,6 +220,17 @@ class MolproParser(ESSAdapter, ABC):
                     except (ValueError, IndexError):
                         continue
 
+            # A method routed to the MRCC plugin reports its total as `Total <METHOD> energy [au]:`,
+            # which none of the patterns below match. This has to be checked BEFORE the HF fallback:
+            # the MRCC route emits an `{hf;...}` block first, so that fallback would match the
+            # reference energy and return it as though it were the correlated total.
+            if line.strip().startswith('Total ') and 'energy [au]:' in line:
+                try:
+                    energy = float(line.split()[-1])
+                    break
+                except (ValueError, IndexError):
+                    continue
+
             # Fallback to common energy patterns
             if '!RHF STATE  1.1 Energy' in line:
                 try:

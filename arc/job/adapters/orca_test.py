@@ -111,8 +111,12 @@ class TestOrcaAdapter(unittest.TestCase):
         self.job_1.write_input_file()
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
-        job_1_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
-!sp 
+        job_1_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp tightscf normalpno
+!sp
+
+%basis
+AuxC "def2-tzvp/c"
+end
 
 %maxcore 1792
 %pal nprocs 8 end
@@ -137,8 +141,12 @@ end
         self.job_2.write_input_file()
         with open(os.path.join(self.job_2.local_path, input_filenames[self.job_2.job_adapter]), 'r') as f:
             content_2 = f.read()
-        job_2_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
-!sp 
+        job_2_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp tightscf normalpno
+!sp
+
+%basis
+AuxC "def2-tzvp/c"
+end
 
 %maxcore 1792
 %pal nprocs 8 end
@@ -170,8 +178,12 @@ end
         self.job_3.write_input_file()
         with open(os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]), 'r') as f:
             content_3 = f.read()
-        job_3_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
-!sp 
+        job_3_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp tightscf normalpno
+!sp
+
+%basis
+AuxC "def2-tzvp/c"
+end
 
 %maxcore 1792
 %pal nprocs 8 end
@@ -196,7 +208,7 @@ end
         self.assertEqual(content_3, job_3_expected_input_file)
 
     def test_write_input_file_f12_with_cabs(self):
-        """F12 sp_level with a cabs basis emits the CABS token on the ! line."""
+        """F12 sp_level with a cabs basis emits the AuxC and CABS tokens in a %basis block."""
         job_f12 = OrcaAdapter(execution_type='queue',
                               job_type='sp',
                               level=Level(method='DLPNO-CCSD(T)-F12',
@@ -215,8 +227,13 @@ end
         bang_line = content.splitlines()[0]
         self.assertIn('dlpno-ccsd(t)-f12', bang_line)
         self.assertIn('cc-pvtz-f12', bang_line)
-        self.assertIn('aug-cc-pvtz/c', bang_line)
-        self.assertIn('cc-pvtz-f12-cabs', bang_line)
+        # Aux and CABS must NOT be on the ! line (ORCA rejects them there), only the orbital basis.
+        self.assertNotIn('aug-cc-pvtz/c', bang_line)
+        self.assertNotIn('cabs', bang_line.lower())
+        # They must appear inside a %basis block instead.
+        self.assertIn('%basis', content)
+        self.assertIn('AuxC "aug-cc-pvtz/c"', content)
+        self.assertIn('CABS "cc-pvtz-f12-cabs"', content)
 
     def test_write_input_file_f12_without_cabs_raises(self):
         """F12 sp_level without a cabs basis raises at input-file generation."""
@@ -262,8 +279,8 @@ end
         self.job_4.write_input_file()
         with open(os.path.join(self.job_4.local_path, input_filenames[self.job_4.job_adapter]), 'r') as f:
             content_4 = f.read()
-        job_4_expected_input_file = """!uHF  aug-cc-pvtz  tightscf
-!sp 
+        job_4_expected_input_file = """!uHF  aug-cc-pvtz tightscf
+!sp
 
 %maxcore 1792
 %pal nprocs 8 end
@@ -582,8 +599,8 @@ H      -1.30000    0.94000    0.00000"""
     def test_write_stability_input_file(self):
         """Test that a stability job is a single point carrying the two STAB keys"""
         job = self._job()
-        expected_input_file = f"""!rKS b3lyp def2-tzvp  tightscf defgrid3
-!sp 
+        expected_input_file = f"""!rKS b3lyp def2-tzvp tightscf defgrid3
+!sp
 
 %maxcore {job.input_file_memory}
 %pal nprocs {job.cpu_cores} end
@@ -612,8 +629,8 @@ end
     def test_stability_input_file_reads_the_orbitals_under_test(self):
         """Test that a stability job holding a checkfile reads it as its initial guess"""
         job = self._job(checkfile=self._checkfile())
-        expected_input_file = f"""!rKS b3lyp def2-tzvp  tightscf defgrid3
-!sp 
+        expected_input_file = f"""!rKS b3lyp def2-tzvp tightscf defgrid3
+!sp
 !MORead
 %moinp "guess.gbw"
 %maxcore {job.input_file_memory}
@@ -661,8 +678,8 @@ end
     def test_the_frequency_job_reads_the_optimization_orbitals(self):
         """Test that a freq job holding a checkfile starts its SCF from it"""
         job = self._job(job_type='freq', checkfile=self._checkfile())
-        expected_input_file = f"""!rKS b3lyp def2-tzvp  tightscf defgrid3
-!Freq 
+        expected_input_file = f"""!rKS b3lyp def2-tzvp tightscf defgrid3
+!Freq
 !MORead
 %moinp "guess.gbw"
 %maxcore {job.input_file_memory}

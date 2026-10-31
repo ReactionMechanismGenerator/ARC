@@ -8,6 +8,7 @@ Todo:
 
 import base64
 import datetime
+import errno
 import hashlib
 import logging
 import os
@@ -439,20 +440,34 @@ class SSHClient(object):
         Returns: list
             A list of job IDs.
         """
+        return list(self.check_running_jobs_ids_and_states().keys())
+
+    def check_running_jobs_ids_and_states(self) -> dict[str, str]:
+        """
+        Check all jobs submitted by the user on a server, including their queue states.
+
+        Returns: dict[str, str]
+            Job IDs as keys, normalized queue states ('running', 'pending', 'held',
+            'exiting', or 'unknown') as values.
+        """
         if servers[self.server]['cluster_soft'].lower() not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
             raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
-        running_job_ids = list()
+        job_states = dict()
         cmd = check_status_command[servers[self.server]['cluster_soft']]
         stdout = self._send_command_to_server(cmd)[0]
         i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
         split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
+        state_index_dict = {'slurm': 4, 'oge': 4, 'sge': 4, 'pbs': 9, 'htcondor': 1}
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         for i, status_line in enumerate(stdout):
             if i > i_dict[cluster_soft]:
                 job_id = status_line.lstrip().split(split_by_dict[cluster_soft])[0]
                 job_id = job_id.split('.')[0] if '.' in job_id else job_id
-                running_job_ids.append(job_id)
-        return running_job_ids
+                tokens = status_line.split()
+                state_index = state_index_dict[cluster_soft]
+                raw_state = tokens[state_index] if len(tokens) > state_index else ''
+                job_states[job_id] = normalize_queue_state(raw_state, cluster_soft)
+        return job_states
 
     def submit_job(self, remote_path: str,
                    recursion: bool = False,
@@ -736,6 +751,7 @@ class SSHClient(object):
     def get_last_modified_time(self,
                                remote_file_path_1: str,
                                remote_file_path_2: str | None = None,
+                               raise_on_stat_error: bool = False,
                                ) -> datetime.datetime | None:
         """
         Returns the last modified time of ``remote_file_path_1`` if the file exists,
@@ -744,20 +760,33 @@ class SSHClient(object):
         Args:
             remote_file_path_1 (str): The remote path to file 1.
             remote_file_path_2 (str, optional): The remote path to file .
+            raise_on_stat_error (bool, optional): Whether to re-raise a stat failure that does not
+                                                  mean the file is absent - a permission or I/O
+                                                  error, say. ``False`` by default, reporting every
+                                                  failure as a missing file, which is what a caller
+                                                  that just wants an mtime when one is available
+                                                  expects. Pass ``True`` where "no file" and "could
+                                                  not look" must lead to different decisions.
 
-        Returns: datetime.datetime
-            The last modified time of the file.
+        Returns: datetime.datetime | None
+            The last modified time of the file, or ``None`` if no candidate file exists.
+
+        Raises:
+            IOError: If ``raise_on_stat_error`` is ``True`` and a stat failed for any reason other
+                     than the file not existing.
         """
         timestamp = None
-        try:
-            timestamp = self._sftp.stat(remote_file_path_1).st_mtime
-        except IOError:
-            pass
-        if timestamp is None and remote_file_path_2 is not None:
+        for remote_file_path in [remote_file_path_1, remote_file_path_2]:
+            if remote_file_path is None:
+                continue
             try:
-                timestamp = self._sftp.stat(remote_file_path_2).st_mtime
-            except IOError:
-                return None
+                timestamp = self._sftp.stat(remote_file_path).st_mtime
+                break
+            except IOError as e:
+                # paramiko raises IOError both for "no such file" and for a permission or transport
+                # failure, so only errno tells the two apart.
+                if raise_on_stat_error and e.errno != errno.ENOENT:
+                    raise
         return datetime.datetime.fromtimestamp(timestamp) if timestamp is not None else None
 
     def list_dir(self, remote_path: str = '') -> list:
@@ -788,23 +817,22 @@ class SSHClient(object):
             list: lines of the node hostnames.
         """
         cluster_soft = servers[self.server]['cluster_soft'].lower()
-        if cluster_soft == 'htcondor':
+        if cluster_soft in ['htcondor', 'pbs']:
+            # Node listing is not implemented for these schedulers; return empty.
             return list()
-        cmd = list_available_nodes_command[servers[self.server]['cluster_soft']]
+        cmd = {key.lower(): val for key, val in list_available_nodes_command.items()}[cluster_soft]
         stdout = self._send_command_to_server(command=cmd)[0]
         nodes = list()
-        if cluster_soft.lower() in ['oge', 'sge']:
+        if cluster_soft in ['oge', 'sge']:
             # Stdout line example:
             # long1@node01.cluster           BIP   0/0/8          -NA-     lx24-amd64    aAdu
             nodes = [line.split()[0].split('@')[1]
                      for line in stdout if '0/0/8' in line]
-        elif cluster_soft.lower() == 'slurm':
+        elif cluster_soft == 'slurm':
             # Stdout line example:
             # node01 alloc 1.00 none
             nodes = [line.split()[0] for line in stdout
                      if line.split()[1] in ['mix', 'alloc', 'idle']]
-        elif cluster_soft.lower() in ['pbs', 'htcondor']:
-            logger.warning(f'Listing available nodes is not yet implemented for {cluster_soft}.')
         return nodes
 
     def change_mode(self,
@@ -1119,6 +1147,37 @@ def delete_check_files_on_servers(remote_project_paths: dict) -> None:
                 ssh.delete_remote_check_files(remote_path=remote_project_path)
         except Exception as e:
             logger.warning(f'Could not delete the check files under {remote_project_path} on {server}.\nGot: {e}')
+
+def normalize_queue_state(raw_state: str, cluster_soft: str) -> str:
+    """
+    Normalize a raw queue state token to a common vocabulary.
+
+    Recognized states per cluster software: Slurm 'PD'/'R'/'CG'; PBS/OGE/SGE
+    'Q' (or 'qw'), 'R' (or 'r'), 'H' (any token containing it, e.g. 'hqw'), 'E';
+    HTCondor 'P'/'R'/'H'. Anything else maps to 'unknown'.
+
+    Args:
+        raw_state (str): The raw state token from the queue listing.
+        cluster_soft (str): The cluster software name (case insensitive).
+
+    Returns:
+        str: One of 'running', 'pending', 'held', 'exiting', or 'unknown'.
+    """
+    state = raw_state.strip().upper()
+    soft = cluster_soft.lower()
+    if soft == 'slurm':
+        return {'PD': 'pending', 'R': 'running', 'CG': 'exiting'}.get(state, 'unknown')
+    if soft == 'htcondor':
+        return {'P': 'pending', 'R': 'running', 'H': 'held'}.get(state, 'unknown')
+    if 'H' in state:
+        return 'held'
+    if 'R' in state or state == 'T':
+        return 'running'
+    if 'Q' in state or 'W' in state:
+        return 'pending'
+    if 'E' in state:
+        return 'exiting'
+    return 'unknown'
 
 
 def check_job_status_in_stdout(job_id: int,
