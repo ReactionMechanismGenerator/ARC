@@ -148,6 +148,7 @@ class ARC(object):
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
         skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
+        only_process (bool, optional): Whether to only run statmech and process runs from a (restart) input file.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -216,7 +217,7 @@ class ARC(object):
         ts_adapters (list): Entries represent different TS adapters.
         report_e_elect (bool): Whether to report electronic energy.
         skip_nmd (bool): Whether to skip normal mode displacement check.
-
+        only_process (bool): Whether to only run statmech and process runs from a (restart) input file.
     """
 
     def __init__(self,
@@ -247,6 +248,7 @@ class ARC(object):
                  level_of_theory: str = '',
                  max_job_time: float | None = None,
                  n_confs: int = 10,
+                 only_process: bool = False,
                  opt_level: str | dict | Level | None = None,
                  orbitals_level: str | dict | Level | None = None,
                  output: dict | None = None,
@@ -332,6 +334,7 @@ class ARC(object):
         for ts_adapter in self.ts_adapters or list():
             if ts_adapter.lower() not in _registered_job_adapters.keys():
                 raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
+        self.only_process = only_process
 
         # attributes related to level of theory specifications
         self.level_of_theory = level_of_theory
@@ -471,6 +474,8 @@ class ARC(object):
             restart_dict['ts_adapters'] = self.ts_adapters
         if self.e_confs != 5.0:
             restart_dict['e_confs'] = self.e_confs
+        if self.only_process:
+            restart_dict['only_process'] = self.only_process
         restart_dict['ess_settings'] = self.ess_settings
         if self.freq_level is not None and str(self.freq_level).split()[0] != default_levels_of_theory['freq']:
             restart_dict['freq_level'] = self.freq_level.as_dict() \
@@ -630,6 +635,7 @@ class ARC(object):
                                    report_e_elect=self.report_e_elect,
                                    skip_nmd=self.skip_nmd,
                                    output=self.output,
+                                   only_process=self.only_process,
                                    )
 
         self.output = self.scheduler.output
@@ -951,7 +957,7 @@ class ARC(object):
                 self.freq_scale_factor = assign_frequency_scale_factor(level=freq_level)
                 if self.freq_scale_factor is None:
                     logger.info(f'Could not determine the harmonic frequencies scaling factor for {freq_level}.')
-                    if self.calc_freq_factor:
+                    if self.calc_freq_factor and not self.only_process:
                         factor_source = "Truhlar's method"
                         logger.info("Calculating it using Truhlar's method.")
                         logger.warning("This procedure normally spawns QM jobs for various small species "
@@ -961,7 +967,16 @@ class ARC(object):
                                                                            init_log=False)[0]
                     else:
                         factor_source = 'fallback default'
-                        logger.info('Not calculating it, assuming a frequencies scaling factor of 1.')
+                        if self.calc_freq_factor:
+                            # determine_scaling_factors() runs its own Scheduler, which never sees
+                            # only_process, so it would spawn calibration jobs here - during ARC's
+                            # construction, before the guarded project scheduler is ever reached.
+                            logger.warning('Not calculating the harmonic frequencies scaling factor in '
+                                           'processing-only mode: doing so spawns QM jobs, which is what '
+                                           'only_process exists to prevent. Assuming a scaling factor of 1; '
+                                           'specify freq_scale_factor explicitly to process with another value.')
+                        else:
+                            logger.info('Not calculating it, assuming a frequencies scaling factor of 1.')
                         self.freq_scale_factor = 1
             else:
                 factor_source = 'not set (no composite/frequency level provided)'
@@ -974,11 +989,19 @@ class ARC(object):
         Delete ESS checkfiles, both locally and on the servers this project ran jobs on.
         Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
 
+        Deleting is skipped in processing-only mode: that mode returns without waiting for jobs, so a
+        checkfile may belong to a calculation that is still running (a local job writes its
+        ``check.chk`` straight into ``calcs``) or that a later restart would resume from. Checkfiles
+        are only safe to remove once ARC owns the end of the run.
+
         Args:
             remote_project_paths (dict, optional): Keys are server names, values are the respective remote
                                                    paths of the project's directory on that server.
         """
         if self.keep_checks:
+            return
+        if self.only_process:
+            logger.info('Keeping check files: only_process was requested, so jobs may still be running.')
             return
         delete_check_files(self.project_directory)
         delete_check_files_on_servers(remote_project_paths or dict())
