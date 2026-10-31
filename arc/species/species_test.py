@@ -968,6 +968,94 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(restored.stability_pending_opt_job, 'opt_a7')
         self.assertTrue(restored.stability_reoptimized)
 
+    def test_from_dict_reads_multiplicity_from_the_given_structure(self):
+        """Test that from_dict() and the keyword constructor agree on multiplicity and charge.
+
+        Both constructors replace .mol with a molecule perceived from the coordinates so that atom
+        orders match, and neither may read the multiplicity off that perceived molecule: perception
+        picks an electronic state, and for an open-shell species it routinely picks a different one
+        from the structure that was given. 'C[C]C#N' is a triplet, and these same atoms perceive as
+        the closed-shell 'C[C][C][N]'. Reading the multiplicity after the override therefore ran a
+        triplet as a singlet with no warning anywhere - a wrong answer rather than a failure.
+        """
+        xyz = """C       1.83783800   -0.00006500   -0.00024000
+                 C       0.39175700    0.00019900    0.00069900
+                 C      -0.89358800    0.00004200    0.00009600
+                 N      -2.10264600   -0.00008000   -0.00026000
+                 H       2.23488200    0.14322800    1.01178500
+                 H       2.23365500   -0.94854900   -0.38246700
+                 H       2.23394500    0.80482700   -0.63082500"""
+        kwargs_spc = ARCSpecies(label='CCCN_triplet', smiles='C[C]C#N', xyz=xyz)
+        dict_spc = ARCSpecies(species_dict={'label': 'CCCN_triplet', 'smiles': 'C[C]C#N', 'xyz': xyz})
+        self.assertEqual(kwargs_spc.multiplicity, 3)
+        self.assertEqual(dict_spc.multiplicity, kwargs_spc.multiplicity)
+        self.assertEqual(dict_spc.charge, kwargs_spc.charge)
+
+        # An explicitly declared multiplicity still wins over the structure.
+        explicit = ARCSpecies(species_dict={'label': 'CCCN_triplet', 'smiles': 'C[C]C#N',
+                                            'xyz': xyz, 'multiplicity': 3})
+        self.assertEqual(explicit.multiplicity, 3)
+
+    def test_from_dict_reads_charge_from_the_given_structure(self):
+        """Test that from_dict() derives a missing charge from the structure, as the constructor does.
+
+        The charge case needs a CHARGED species to say anything: on a neutral one both constructors
+        return 0 whether or not the structure is consulted. A missing 'charge' key must stay None
+        through from_dict() so the structure-derived value can be applied, with __init__'s shared
+        final default supplying the 0 when there is no structure to read.
+
+        Only a 2D spec the user wrote counts as the structure. The round-trip case below is why: a
+        dict produced by as_dict() omits a zero charge and carries a 'mol', and ARC writes a
+        bi-radical singlet as a charge-separated structure, so deriving the charge from that mol
+        would invent a net charge the species does not have and break reaction charge balance.
+        """
+        xyz = """N      0.00000000    0.00000000    0.11476900
+                 H      0.00000000    0.93800000   -0.26800000
+                 H      0.81200000   -0.46900000   -0.26800000
+                 H     -0.81200000   -0.46900000   -0.26800000
+                 H      0.00000000    0.00000000    1.12000000"""
+        kwargs_spc = ARCSpecies(label='NH4+', smiles='[NH4+]', xyz=xyz)
+        dict_spc = ARCSpecies(species_dict={'label': 'NH4+', 'smiles': '[NH4+]', 'xyz': xyz})
+        self.assertEqual(kwargs_spc.charge, 1)
+        self.assertEqual(dict_spc.charge, kwargs_spc.charge)
+        self.assertEqual(dict_spc.multiplicity, kwargs_spc.multiplicity)
+
+        # An explicitly declared charge still wins, and a structureless species still defaults to 0.
+        explicit = ARCSpecies(species_dict={'label': 'NH4+', 'smiles': '[NH4+]', 'xyz': xyz, 'charge': 1})
+        self.assertEqual(explicit.charge, 1)
+
+        # A dict carrying only a 'mol' keeps its zero charge instead of taking one from that
+        # structure. This is the shape ARCReaction.as_dict(reset_atom_ids=True) produces while
+        # determining a family, and for the bi-rad singlet '[CH2]C=CCC[CH]C=C' the stored structure
+        # is the doubly cationic 'C=C[CH+]CCC=C[CH2+]' - deriving charge 2 from it there broke
+        # reaction charge balance in the linear TS interpolation tests.
+        doubly_cationic_repr = """1  C u0 p0 c0 {2,D} {9,S} {10,S}
+2  C u0 p0 c0 {1,D} {3,S} {11,S}
+3  C u0 p0 c+1 {2,S} {4,S} {12,S}
+4  C u0 p0 c0 {3,S} {5,S} {13,S} {14,S}
+5  C u0 p0 c0 {4,S} {6,S} {15,S} {16,S}
+6  C u0 p0 c0 {5,S} {7,D} {17,S}
+7  C u0 p0 c0 {6,D} {8,S} {18,S}
+8  C u0 p0 c+1 {7,S} {19,S} {20,S}
+9  H u0 p0 c0 {1,S}
+10 H u0 p0 c0 {1,S}
+11 H u0 p0 c0 {2,S}
+12 H u0 p0 c0 {3,S}
+13 H u0 p0 c0 {4,S}
+14 H u0 p0 c0 {4,S}
+15 H u0 p0 c0 {5,S}
+16 H u0 p0 c0 {5,S}
+17 H u0 p0 c0 {6,S}
+18 H u0 p0 c0 {7,S}
+19 H u0 p0 c0 {8,S}
+20 H u0 p0 c0 {8,S}
+"""
+        round_tripped = ARCSpecies(species_dict={'label': 'birad', 'multiplicity': 1,
+                                                 'mol': doubly_cationic_repr})
+        self.assertEqual(round_tripped.mol.get_net_charge(), 2)
+        self.assertEqual(round_tripped.charge, 0)
+        self.assertEqual(ARCSpecies(species_dict={'label': 'OH', 'smiles': '[OH]'}).charge, 0)
+
     def test_from_dict(self):
         """Test Species.from_dict()"""
         species_dict = self.spc2.as_dict()
