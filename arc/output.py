@@ -57,6 +57,7 @@ from arc.statmech.arkane import (
     AEC_SECTION_START, AEC_SECTION_END,
     MBAC_SECTION_START, MBAC_SECTION_END,
     PBAC_SECTION_START, PBAC_SECTION_END,
+    filter_real_stderr_lines,
     find_best_across_files, get_qm_corrections_files,
 )
 from arc.parser_evidence import (
@@ -1341,8 +1342,9 @@ def _get_energy_corrections(arkane_level_of_theory, bac_type: str | None) -> Ene
 
             command = rmg_env_command(py_args=[script_path, tmp_in, tmp_out])
             _, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
-            if stderr:
-                logger.warning(f'get_qm_corrections.py stderr: {stderr}')
+            real_stderr = filter_real_stderr_lines(stderr) if stderr else []
+            if real_stderr:
+                logger.warning(f'get_qm_corrections.py stderr: {real_stderr}')
 
             result = read_yaml_file(tmp_out) or {}
             return EnergyCorrections(result.get('aec'), result.get('bac'), aec_key, bac_key)
@@ -1654,8 +1656,9 @@ def _compute_point_groups(species_dict: dict, project_directory: str) -> dict[st
 
         command = rmg_env_command(py_args=[script_path, tmp_in, tmp_out])
         _, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
-        if stderr:
-            logger.warning(f'get_point_groups.py stderr: {stderr}')
+        real_stderr = filter_real_stderr_lines(stderr) if stderr else []
+        if real_stderr:
+            logger.warning(f'get_point_groups.py stderr: {real_stderr}')
 
         result = read_yaml_file(tmp_out) or {}
         return {str(k): (str(v) if v is not None else None) for k, v in result.items()}

@@ -706,5 +706,42 @@ class ParsingTest(unittest.TestCase):
         self.assertTrue('InChIKey is a write-only format' in str(cm.exception))
 
 
+class IdentifierFailureLoggingTest(unittest.TestCase):
+    """When neither backend can canonicalize a molecule into InChI / InChIKey
+    (e.g. malformed resonance structures from RMG perception), the translator
+    and the four Molecule wrappers must raise ValueError but emit nothing at
+    WARNING level or above. The caller (resonance dedup, etc.) routinely
+    swallows the ValueError; the previous WARNING + ERROR-with-traceback pair
+    was log spam."""
+
+    def _assert_wrapper_logs_below_warning(self, wrapper_name, translator_func_name):
+        """Patch the underlying translator function to raise, call the
+        Molecule wrapper, and verify the wrapper re-raises while emitting only
+        DEBUG-level (not WARNING/ERROR) log records."""
+        from arc.molecule import translator as t
+        mol = Molecule().from_smiles('C')
+        with patch.object(t, translator_func_name,
+                          side_effect=ValueError('mocked-out backend')):
+            with self.assertLogs('arc', level='DEBUG') as cm:
+                with self.assertRaises(ValueError):
+                    getattr(mol, wrapper_name)()
+        for record in cm.records:
+            self.assertLess(record.levelno, 30,  # WARNING == 30
+                            f"Unexpected {record.levelname} log line from "
+                            f"{wrapper_name}: {record.getMessage()}")
+
+    def test_to_inchi_wrapper_logs_only_at_debug_on_failure(self):
+        self._assert_wrapper_logs_below_warning('to_inchi', 'to_inchi')
+
+    def test_to_inchi_key_wrapper_logs_only_at_debug_on_failure(self):
+        self._assert_wrapper_logs_below_warning('to_inchi_key', 'to_inchi_key')
+
+    def test_to_augmented_inchi_wrapper_logs_only_at_debug_on_failure(self):
+        self._assert_wrapper_logs_below_warning('to_augmented_inchi', 'to_inchi')
+
+    def test_to_augmented_inchi_key_wrapper_logs_only_at_debug_on_failure(self):
+        self._assert_wrapper_logs_below_warning('to_augmented_inchi_key', 'to_inchi_key')
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
