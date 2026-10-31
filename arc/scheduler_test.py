@@ -4406,5 +4406,104 @@ class TestSchedulerReactionChargeBalance(unittest.TestCase):
         self.assertEqual(rxn.charge, -1)
 
 
+class TestParseCompositeGeoMonoatomic(unittest.TestCase):
+    """A monoatomic species has no frequencies to parse, and must not take the whole run down."""
+
+    @staticmethod
+    def _scheduler(species):
+        """
+        A Scheduler stand-in carrying everything parse_composite_geo() reads, not only the
+        frequency branch.
+
+        Completeness is the point: the attributes past that branch -- ``allow_nonisomorphic_2d``
+        and the per-species ``isomorphism`` output entry -- are the ones a thinner stand-in omits,
+        and omitting them makes the method raise on its way out. The assertions below would then
+        be measuring an AttributeError rather than the guard. A real Scheduler is not usable here:
+        its ``__init__`` spawns the composite job, which reaches ``get_server_job_ids()`` and
+        blocks in ``ssh.connect()`` retries against a server no unit test has.
+
+        Args:
+            species (ARCSpecies): The real species to schedule.
+
+        Returns:
+            SimpleNamespace: The Scheduler stand-in.
+        """
+        return SimpleNamespace(species_dict={species.label: species},
+                               output={species.label: {'job_types': {}, 'paths': {}, 'info': '',
+                                                       'isomorphism': ''}},
+                               job_dict={species.label: {}},
+                               project_directory='',
+                               composite_method=Level(repr='cbs-qb3'),
+                               allow_nonisomorphic_2d=False,
+                               trsh_ess_jobs=False,
+                               job_types={'fine': False, 'orbitals': False, 'onedmin': False, 'rotors': False},
+                               save_restart_dict=MagicMock(),
+                               post_sp_actions=MagicMock(),
+                               check_negative_freq=MagicMock(return_value=(True, None)),
+                               )
+
+    @staticmethod
+    def _job(label):
+        """
+        A converged composite job carrying the attributes parse_composite_geo() reads.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            SimpleNamespace: The job stand-in.
+        """
+        return SimpleNamespace(job_name=f'composite_{label}',
+                               job_status=[None, {'status': 'done'}],
+                               local_path_to_output_file='does_not_exist.log',
+                               level=Level(repr='cbs-qb3'),
+                               is_ts=False,
+                               job_adapter='gaussian')
+
+    def _run(self, species):
+        """
+        Drive parse_composite_geo() over a converged composite job for ``species``.
+
+        Only the ``parser`` and ``plotter`` modules are patched, so no output file or image backend
+        is needed while the species and its isomorphism check stay real. Nothing swallows
+        exceptions: an unexpected one must fail the test rather than be mistaken for the guard
+        working.
+
+        Args:
+            species (ARCSpecies): The species to schedule.
+
+        Returns:
+            tuple: The method's return value, and the patched parser module.
+        """
+        scheduler = self._scheduler(species)
+        with patch('arc.scheduler.parser') as parser_mock, patch('arc.scheduler.plotter'):
+            parser_mock.parse_geometry.return_value = species.get_xyz()
+            parser_mock.parse_frequencies.return_value = [1000.0, 2000.0]
+            result = Scheduler.parse_composite_geo(scheduler, label=species.label, job=self._job(species.label))
+        return result, parser_mock
+
+    def test_monoatomic_composite_job_completes_without_parsing_frequencies(self):
+        """A carbon atom has no vibrational modes, so parse_frequencies() must never be reached.
+
+        Before the guard it WAS reached, raised ParserError, and the exception escaped
+        Scheduler.__init__ -- killing the whole run rather than one species. The return value is
+        asserted too, because 'the job is accepted and the run continues' is the actual claim: a
+        method that raised on its way out would satisfy assert_not_called() just as well.
+        """
+        result, parser_mock = self._run(ARCSpecies(label='C_atom', smiles='[C]'))
+        parser_mock.parse_frequencies.assert_not_called()
+        self.assertTrue(result)
+
+    def test_polyatomic_composite_job_still_parses_frequencies(self):
+        """Control: the guard must not silence the frequency check for species that do have modes.
+
+        This is what proves the assertion above means something -- a stand-in that never reached
+        the branch at all would pass that test for the wrong reason.
+        """
+        result, parser_mock = self._run(ARCSpecies(label='H2O', smiles='O'))
+        parser_mock.parse_frequencies.assert_called_once()
+        self.assertTrue(result)
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
