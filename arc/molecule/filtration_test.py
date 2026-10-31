@@ -4,7 +4,8 @@
 import unittest
 
 from arc.molecule.filtration import (get_octet_deviation_list, get_octet_deviation, filter_structures,
-                                      charge_filtration, get_charge_span_list, aromaticity_filtration)
+                                      charge_filtration, get_atom_indices, get_charge_span_list,
+                                      aromaticity_filtration)
 from arc.molecule.molecule import Molecule
 from arc.molecule.resonance import generate_resonance_structures, analyze_molecule
 
@@ -126,7 +127,7 @@ class FiltrationTest(unittest.TestCase):
                     Molecule().from_adjacency_list(adj3)]
 
         for mol in mol_list:
-            mol.update()  # the charge_filtration uses the atom.sorting_label attribute
+            mol.update()
 
         filtered_list = charge_filtration(mol_list, get_charge_span_list(mol_list))
         self.assertEqual(len(filtered_list), 2)
@@ -213,7 +214,7 @@ class FiltrationTest(unittest.TestCase):
                     Molecule().from_adjacency_list(adj7)]
 
         for mol in mol_list:
-            mol.update()  # the charge_filtration uses the atom.sorting_label attribute
+            mol.update()
 
         filtered_list = charge_filtration(mol_list, get_charge_span_list(mol_list))
         self.assertEqual(len(filtered_list), 4)
@@ -300,6 +301,53 @@ class FiltrationTest(unittest.TestCase):
 
         filtered_list = aromaticity_filtration(mol_list, analyze_molecule(mol_list[0]))
         self.assertEqual(len(filtered_list), 3)
+
+    def test_get_atom_indices(self):
+        """Test that atoms are mapped to their position in mol.vertices"""
+        mol = Molecule().from_smiles('[O]N=O')
+        indices = get_atom_indices(mol)
+        self.assertEqual(len(indices), len(mol.vertices))
+        for index, atom in enumerate(mol.vertices):
+            self.assertEqual(indices[id(atom)], index)
+
+    def test_charge_filtration_independent_of_atom_order(self):
+        """Test that the charge filtration heuristics return the same structures for either atom order"""
+        for smiles, expected, aromatic in (('[O]c1ccc([N+](=O)[O-])cc1', 11, 2),
+                                           ('[CH2]c1ccc([N+](=O)[O-])cc1', 11, 2),
+                                           ('[O]c1ccccc1[N+](=O)[O-]', 11, 2),
+                                           ('[O]c1cccc([N+](=O)[O-])c1', 9, 2),
+                                           ('[O]N=O', 4, 0),
+                                           ('C=N[O]', 3, 0),
+                                           ('NC=O', 2, 0),
+                                           ):
+            sorted_list = generate_resonance_structures(Molecule().from_smiles(smiles),
+                                                        keep_isomorphic=True, save_order=False)
+            saved_list = generate_resonance_structures(Molecule().from_smiles(smiles),
+                                                       keep_isomorphic=True, save_order=True)
+            self.assertEqual(len(sorted_list), expected, msg=smiles)
+            self.assertEqual(len(saved_list), expected, msg=smiles)
+            for mol_list in (sorted_list, saved_list):
+                self.assertEqual(sum(1 for mol in mol_list
+                                     if any(bond.is_benzene() for bond in mol.get_all_edges())),
+                                 aromatic, msg=smiles)
+
+    def test_charge_filtration_of_disconnected_ions(self):
+        """Test that a species whose charges sit in disconnected components is filtered
+
+        Charged atoms in different molecular fragments have no path between them, so the charge
+        proximity heuristic does not count them, and a species whose only opposite-charge pairs
+        are of that kind is not filtered out entirely.
+        """
+        for save_order in (False, True):
+            for smiles, expected in (('[Li+].[OH-]', 1),
+                                     ('[NH4+].[O-]N=O', 1),
+                                     ('O=C([O-])[O-].[NH4+].[NH4+]', 1),
+                                     ('[Li+].[Li+].[O-][O-]', 1),
+                                     ):
+                mol_list = generate_resonance_structures(Molecule().from_smiles(smiles),
+                                                         save_order=save_order)
+                self.assertEqual(len(mol_list), expected, msg=smiles)
+                self.assertTrue(mol_list[0].get_charge_span())
 
 
 if __name__ == '__main__':
