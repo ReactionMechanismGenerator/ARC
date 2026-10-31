@@ -584,8 +584,8 @@ log is on disk.
 | `orca` | `AnFreq` or bare `Freq`, no numerical header in the final frequency step, banner `ORCA 4` or earlier or unreadable (or no log), HF or a functional in the whitelist below | `analytic` |
 | `orca` | same, any other functional (meta-GGA, wB97M-*, r2SCAN-3c, unlisted name) | `null` |
 | `orca` | same, a VV10 functional or `NL`/`SCNL` keyword, a double hybrid, wr2SCAN, `RI-JK`/`RIJK`, any version | `null` |
-| `orca` | same, ZORA/DKH/DKH1/DKH2 with banner `ORCA 6` or later, without `RelFull` or a `OneCenter` setting other than true | `analytic` |
-| `orca` | same, ZORA/DKH/DKH1/DKH2 on `ORCA 5` or earlier or unknown, or `RelFull`, `IORA`, `X2C`, `DLU-X2C`, `RelDLU`, a lone `Rel1C`, any version | `null` |
+| `orca` | same, ZORA/DKH/DKH1/DKH2 with banner `ORCA 5` or later, without `RelFull` or a `OneCenter` setting other than true | `analytic` |
+| `orca` | same, ZORA/DKH/DKH1/DKH2 on `ORCA 4` or earlier or unknown, or `RelFull`, `IORA`, `X2C`, `DLU-X2C`, `RelDLU`, a lone `Rel1C`, any version | `null` |
 | `orca` | same, any other method (MP2, DLPNO, coupled cluster) | `null` |
 | `orca` | `AnFreq` or bare `Freq` with `IRC` on the keyword line, and the log prints any numerical header | `null` |
 | `orca` | `AnFreq` or bare `Freq`, log longer than the scan limit (2,000,000 lines) | `null` |
@@ -656,13 +656,18 @@ the version-gated rows.
 - **RI-JK.** ORCA 5.0.4 §9.25 lists the RI-JK approximation among the cases for which
   "Analytical Hessians cannot be performed". A keyword line carrying `RI-JK` or `RIJK` is
   `null` under `Freq`/`AnFreq`.
-- **Relativistic keywords.** ORCA 5.0.4 §9.25 lists relativistic corrections among the
-  cases without analytic Hessians. ORCA 6.1.1 §2.12.2.1 states that the one-center
-  approximation "is enabled by default for DKH and ZORA calculations that require analytic
-  gradients or Hessians, and indeed such calculations are not implemented without it", and
-  the ORCA 6.0/6.1 frequency pages no longer list relativistic corrections. So ZORA, DKH,
-  DKH1 and DKH2 are `analytic` from ORCA 6 on, unless `RelFull` is given or the input has
-  a `OneCenter` setting other than true; on ORCA 5 or earlier or an unknown version they
+- **Relativistic keywords.** ORCA 5.0.4 §9.25 still lists relativistic corrections among
+  the cases without analytic Hessians, but ORCA 5.0.3 (a published `me2cd_se_tzvp.out`
+  log, github.com/Xyunyao/CdSe_nmr_DFT) and two ORCA 5.0.4 runs (water, PBE0/def2-SVP,
+  `! Freq ZORA` and `! Freq DKH2`; `arc/testing/freq/orca_5.0.4_zora_freq_h2o.out` and
+  `orca_5.0.4_dkh2_freq_h2o.out`) print "In scalar relativistic gradient/hessian runs we need
+  the one-center approximation ===> : %rel OneCenter is turned on", then `ORCA SCF HESSIAN`
+  and no numerical header. ORCA 6.1.1 §2.12.2.1 states that the one-center approximation
+  "is enabled by default for DKH and ZORA calculations that require analytic gradients or
+  Hessians, and indeed such calculations are not implemented without it", and the ORCA
+  6.0/6.1 frequency pages no longer list relativistic corrections. So ZORA, DKH, DKH1 and
+  DKH2 are `analytic` from ORCA 5 on, unless `RelFull` is given or the input has a
+  `OneCenter` setting other than true; on ORCA 4 or earlier or an unknown version they
   are `null`. `IORA` is unresolved (`null`). X2C and DLU-X2C (`RelDLU`) are `null` on every
   version: ORCA 6.1 ("X2C Derivatives and Properties") states that "for the Hessian, the X2C correction is implemented
   in a semi-numeric fashion". Keywords follow ORCA 6.1 Table 2.54 and are matched as whole

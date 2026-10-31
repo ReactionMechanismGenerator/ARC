@@ -1529,13 +1529,26 @@ class TestGetFreqHessianMethod(unittest.TestCase):
             self.assertIsNone(self.orca_freq(f'wr2scan_{version}.log', 'wr2scan def2-tzvp Freq', 'wr2scan',
                                              version), msg=str(version))
 
+    def test_orca_5_0_4_zora_and_dkh2_logs_are_analytic(self):
+        """Real ORCA 5.0.4 water PBE0/def2-SVP runs, ``! Freq ZORA`` and ``! Freq DKH2``."""
+        level = Level(method='pbe0', basis='def2svp', software='orca')
+        for name in ('orca_5.0.4_zora_freq_h2o.out', 'orca_5.0.4_dkh2_freq_h2o.out'):
+            path = os.path.join(ARC_TESTING_PATH, 'freq', name)
+            evidence = _orca_log_evidence(path)
+            self.assertTrue(evidence['analytic_header'], msg=name)
+            self.assertFalse(evidence['numerical_header'], msg=name)
+            self.assertTrue(any(line.startswith('! Freq') for line in _orca_input_lines(path)), msg=name)
+            self.assertEqual(_get_freq_hessian_method(None, path, 'orca', level, None, self.scratch), 'analytic',
+                             msg=name)
+
     def test_orca_relativistic_keywords_depend_on_the_version(self):
         """ORCA 6.1 section 2.12.2.1: ZORA and DKH Hessians exist from ORCA 6 with the one-center approximation."""
         def resolve(name, keywords, version, input_text=''):
             return self.orca_freq(name, f'b3lyp {keywords} def2-tzvp Freq', 'b3lyp', version, input_text=input_text)
         for index, keyword in enumerate(('zora', 'dkh', 'dkh1', 'dkh2', 'zora rel1c')):
             self.assertEqual(resolve(f'rel6_{index}.log', keyword, '6.0.1'), 'analytic', msg=keyword)
-            for version in ('5.0.4', '4.2.1', None):
+            self.assertEqual(resolve(f'rel5_{index}.log', keyword, '5.0.4'), 'analytic', msg=keyword)
+            for version in ('4.2.1', None):
                 self.assertIsNone(resolve(f'rel_old_{index}_{version}.log', keyword, version), msg=keyword)
         self.assertIsNone(resolve('rel_full.log', 'zora relfull', '6.0.1'))
         self.assertIsNone(resolve('rel_oc_false.log', 'zora', '6.0.1', input_text='| 2> %rel OneCenter false end\n'))
@@ -1582,11 +1595,11 @@ class TestGetFreqHessianMethod(unittest.TestCase):
         method_block = '| 2> %method Relativistic ZORA end\n'
         method_block_multi = '| 2> %method\n| 3>   Relativistic dkh2\n| 4> end\n'
         for index, text in enumerate((one_line, multi_line, method_block, method_block_multi)):
-            self.assertIsNone(resolve(f'blk_old_{index}.log', text, '5.0.4'), msg=text)
-            self.assertEqual(resolve(f'blk_new_{index}.log', text, '6.0.1'), 'analytic', msg=text)
+            self.assertIsNone(resolve(f'blk_old_{index}.log', text, '4.2.1'), msg=text)
+            self.assertEqual(resolve(f'blk_new_{index}.log', text, '5.0.4'), 'analytic', msg=text)
         self.assertIsNone(resolve('blk_x2c.log', '| 2> %rel method X2C end\n', '6.0.1'))
         self.assertIsNone(resolve('blk_x2c_method.log', '| 2> %method Relativistic X2C end\n', '6.0.1'))
-        self.assertEqual(resolve('blk_other.log', '| 2> %scf maxiter 100 end\n', '5.0.4'), 'analytic')
+        self.assertEqual(resolve('blk_other.log', '| 2> %scf maxiter 100 end\n', '4.2.1'), 'analytic')
 
     def test_orca_incomplete_scan_gives_null_before_the_final_header_is_used(self):
         """A log longer than the scan limit cannot show whether a header is the final one."""
@@ -1622,9 +1635,12 @@ class TestGetFreqHessianMethod(unittest.TestCase):
                                                    '| 2>                          ****END OF INPUT****\n')
         self.assertIsNone(_get_freq_hessian_method(None, log, 'orca', run_level, None, self.scratch))
 
-    def test_orca_relativistic_keywords_are_null(self):
-        for keyword in ('zora', 'iora', 'dkh', 'dkh2', 'x2c'):
+    def test_orca_unresolved_relativistic_keywords_are_null(self):
+        for keyword in ('iora', 'x2c'):
             self.assertIsNone(self.orca_freq(f'rel_{keyword}.log', f'b3lyp {keyword} def2-tzvp Freq', 'b3lyp', '5.0.4'),
+                              msg=keyword)
+        for keyword in ('zora', 'dkh', 'dkh2'):
+            self.assertIsNone(self.orca_freq(f'rel_{keyword}.log', f'b3lyp {keyword} def2-tzvp Freq', 'b3lyp', '4.2.1'),
                               msg=keyword)
         self.assertEqual(self.orca_freq('rel_none.log', 'b3lyp def2-tzvp Freq', 'b3lyp', '5.0.4'), 'analytic')
 

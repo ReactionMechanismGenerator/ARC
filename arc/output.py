@@ -126,7 +126,7 @@ ORCA_NO_ANALYTIC_HESSIAN_MARKERS = ('ri-jk', 'rijk')
 ORCA_RELATIVISTIC_ONE_CENTER_KEYWORDS = frozenset({'zora', 'dkh', 'dkh1', 'dkh2'})
 ORCA_RELATIVISTIC_UNRESOLVED_KEYWORDS = frozenset({'iora', 'x2c', 'dlux2c', 'reldlu', 'relfull'})
 ORCA_RELATIVISTIC_MODIFIER_KEYWORDS = frozenset({'rel1c'})
-ORCA_RELATIVISTIC_ONE_CENTER_MIN_MAJOR_VERSION = 6
+ORCA_RELATIVISTIC_ONE_CENTER_MIN_MAJOR_VERSION = 5
 ORCA_ONE_CENTER_ON_REGEX = re.compile(r'onecenter\s+(true|1|yes|on)(?![a-z0-9])')
 ORCA_VV10_FUNCTIONALS = frozenset({'wb97xv', 'wb97mv', 'b97mv'})
 ORCA_VV10_ROUTE_KEYWORDS = frozenset({'nl', 'scnl'})
@@ -1895,7 +1895,7 @@ def _orca_relativistic_allows_analytic(route: str, input_lines: list[str] | None
     """Return whether the relativistic keywords of an input leave an analytic Hessian documented.
 
     The keywords are those of ``_orca_relativistic_tokens``. None: True. ZORA, DKH, DKH1 and DKH2 (with or
-    without ``Rel1C``): True for ORCA 6 or later (ORCA 6.1 section 2.12.2.1), unless ``RelFull`` is given or
+    without ``Rel1C``): True for ORCA 5 or later (ORCA 5.0.3 and 5.0.4 logs; ORCA 6.1 section 2.12.2.1), unless ``RelFull`` is given or
     the input carries a ``OneCenter`` setting other than true. IORA, X2C, DLU-X2C, ``RelDLU``, ``RelFull``, a
     lone ``Rel1C`` and any earlier or unknown version: False (ORCA 5.0.4 section 9.25; ORCA 6.1 "X2C
     Derivatives and Properties").
