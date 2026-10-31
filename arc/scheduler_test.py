@@ -4359,6 +4359,123 @@ class TestScanSoftwareStamp(unittest.TestCase):
         self.assertEqual(rotor['scan_path'], '/fake/scan.out')
         self.assertFalse(rotor['success'])
 
+    def test_check_scan_job_keeps_an_internal_coordinate_error_invalid(self):
+        """A scan that stopped on an internal coordinate error stays invalid, however smooth the points it reached"""
+        from arc.scheduler import Scheduler
+
+        rotor = self._rotor()
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+        spc.get_xyz.return_value = {'coords': (), 'symbols': ()}
+        spc.final_xyz = None
+        spc.preserve_param_in_scan = None
+        spc.is_ts = False
+
+        sched = MagicMock()
+        sched.species_dict = {'spc': spc}
+        sched.project_directory = '/fake/project'
+        sched.trsh_ess_jobs = True
+        sched.trsh_rotors = True
+
+        job = MagicMock()
+        job.job_status = [None, {'status': 'errored', 'error': 'Internal coordinate error'}]
+        job.rotor_index = 0
+        job.local_path_to_output_file = '/fake/scan.out'
+        job.job_adapter = 'gaussian'
+        job.torsions = [[0, 1, 2, 3]]
+        job.xyz = {'coords': (), 'symbols': ()}
+        job.is_ts = False
+        job.species_label = 'spc'
+
+        energies = [0.0, 0.5, 2.0, 4.0, 5.5, 6.0, 5.5, 4.0, 2.0, 0.5, 0.0, 0.5]  # 12 of 46 points, all smooth
+        with patch('arc.scheduler.parser.parse_1d_scan_energies_from_specific_angle',
+                   return_value=(energies, [8.0 * i for i in range(12)])), \
+             patch('arc.scheduler.calculate_dihedral_angle', return_value=0.0), \
+             patch('arc.scheduler.scan_quality_check', return_value=(False, '', '', dict())) as quality_check, \
+             patch('arc.scheduler.plotter.plot_1d_rotor_scan'):
+            Scheduler.check_scan_job(sched, label='spc', job=job)
+
+        quality_check.assert_not_called()
+        self.assertFalse(rotor['success'])
+        self.assertIn('Internal coordinate error', rotor['invalidation_reason'])
+
+    def test_check_scan_job_invalidates_a_flat_scan(self):
+        """A scan along which nothing turned (one energy at every point) is not a rotor, and has no symmetry to find"""
+        from arc.scheduler import Scheduler
+
+        rotor = self._rotor()
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+        spc.get_xyz.return_value = {'coords': (), 'symbols': ()}
+        spc.is_ts = True
+        sched = MagicMock()
+        sched.species_dict = {'TS0': spc}
+        sched.project_directory = '/fake/project'
+        job = MagicMock()
+        job.job_status = [None, {'status': 'done', 'error': None}]
+        job.rotor_index = 0
+        job.local_path_to_output_file = '/fake/output.yml'
+        job.job_adapter = 'ase'
+        job.torsions = [[0, 1, 2, 3]]
+        job.xyz = {'coords': (), 'symbols': ()}
+        job.is_ts = True
+        job.species_label = 'TS0'
+
+        with patch('arc.scheduler.parser.parse_1d_scan_energies_from_specific_angle',
+                   return_value=([0.0] * 46, [8.0 * i for i in range(46)])), \
+             patch('arc.scheduler.calculate_dihedral_angle', return_value=0.0), \
+             patch('arc.scheduler.determine_rotor_symmetry') as symmetry, \
+             patch('arc.scheduler.plotter.plot_1d_rotor_scan'):
+            Scheduler.check_scan_job(sched, label='TS0', job=job)
+
+        symmetry.assert_not_called()
+        self.assertFalse(rotor['success'])
+        self.assertIn('flat', rotor['invalidation_reason'])
+
+    def test_run_conformer_jobs_skips_irc_species(self):
+        """An IRC endpoint species gets no conformers (its geometry is the IRC's), unlike a species in the same state"""
+        from arc.scheduler import Scheduler
+
+        for irc_label, expect_conformers in (('TS0', False), (None, True)):
+            with self.subTest(irc_label=irc_label):
+                spc = MagicMock()
+                spc.is_ts, spc.irc_label, spc.conformer_energies, spc.number_of_atoms = False, irc_label, [], 6
+                spc.yml_path, spc.multi_species = None, None
+                sched = MagicMock()
+                sched.species_dict = {'spc': spc}
+                sched.output = {'spc': {'job_types': {'opt': False}, 'paths': {'geo': ''}, 'convergence': None}}
+                sched.job_dict = {'spc': dict()}
+                sched.job_types = {'conf_opt': True}
+                sched.dont_gen_confs = list()
+                sched.project_directory = '/fake/project'
+                Scheduler.run_conformer_jobs(sched, labels=['spc'])
+                self.assertEqual(spc.generate_conformers.called, expect_conformers)
+
+    def test_optimize_most_stable_conformer_once(self):
+        """A species is optimized from its conformers once, not while they run nor again after a restart"""
+        from arc.scheduler import Scheduler
+
+        for running, opt_done, expect_opt in (
+                ([], False, True),                             # all conformer jobs ended: optimize
+                (['conf_opt_7', 'conf_opt_8'], False, False),  # restored conformer jobs are still running
+                (['opt_a402'], False, False),                  # an optimization is running
+                (['scan_a3211', 'freq_a3658'], True, False),   # optimized and scanned already
+                (['composite_a12'], False, False),             # a composite job is running
+        ):
+            with self.subTest(running=running, opt_done=opt_done):
+                spc = MagicMock()
+                spc.is_ts, spc.initial_xyz = False, {'symbols': ('H', 'H')}
+                sched = MagicMock()
+                sched.species_dict = {'spc': spc}
+                sched.running_jobs = {'spc': running}
+                sched.output = {'spc': {'job_types': {'opt': opt_done, 'composite': False}}}
+                sched.composite_method = None
+                Scheduler.optimize_most_stable_conformer(sched, 'spc', sp_flag=True)
+                self.assertEqual(sched.determine_most_stable_conformer.called, expect_opt)
+                self.assertEqual(sched.run_opt_job.called, expect_opt)
+                if expect_opt:
+                    sched.determine_most_stable_conformer.assert_called_once_with('spc', sp_flag=True)
+
 
 class TestSchedulerReactionChargeBalance(unittest.TestCase):
     """

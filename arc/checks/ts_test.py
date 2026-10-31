@@ -963,8 +963,7 @@ class TestTSChecks(unittest.TestCase):
         The bond-list tier is the only tier allowed to reject a TS, so it must perceive bonds
         without assuming a single connected molecule. Otherwise a bare H in an endpoint is bonded
         to whatever atom happens to be closest, no matter how far away, and correct IRC endpoints
-        are rejected. Both reactions below reach the bond-list tier because the triplet atom is
-        not perceived as a triplet, so the isomorphism tier cannot match it.
+        are rejected. The isomorphism tier is disabled here so that the bond-list tier decides.
         """
         for r_smiles, r_multiplicity, p_smiles, symbols, coords_r, coords_p in [
                 ('[O]', 3, '[OH]', ('O', 'H', 'H'),
@@ -981,8 +980,29 @@ class TestTSChecks(unittest.TestCase):
                 rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
                 xyz_1 = xyz_from_data(coords=coords_r, symbols=symbols)
                 xyz_2 = xyz_from_data(coords=coords_p, symbols=symbols)
-                ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+                with patch('arc.checks.ts._match_fragments_to_species', return_value=False):
+                    ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
                 self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+
+    def test_check_irc_matches_an_isolated_atom_by_element(self):
+        """
+        Test that an isolated atom in an IRC endpoint matches its species by element.
+
+        Its electronic state cannot be perceived from a geometry: the O atom of these UMA endpoints of
+        O + H2 <=> OH + H comes out as a singlet, not O(3P). The bond-list tier rejects these endpoints too,
+        since it compares bonds under one atom map, while the two H atoms of H2 are interchangeable.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='H2', smiles='[H][H]'),
+                                     ARCSpecies(label='O', smiles='[O]', multiplicity=3)],
+                          p_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='H', smiles='[H]')])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, multiplicity=3)
+        symbols = ('H', 'H', 'O')
+        xyz_1 = xyz_from_data(coords=((-0.5369, 0.2148, -2.0134), (0.1384, -0.0562, -2.1069), (0.0769, -0.0304, 0.2523)),
+                              symbols=symbols)
+        xyz_2 = xyz_from_data(coords=((-0.8666, 0.3389, 0.2958), (1.1006, -0.4284, -4.5282), (0.0405, -0.0160, 0.2543)),
+                              symbols=symbols)
+        ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
 
     def test_check_irc_identical_endpoints(self):
         """

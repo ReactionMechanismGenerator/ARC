@@ -785,7 +785,12 @@ def trsh_scan_job(label: str,
         # Convert to_freeze into an input block str
         to_freeze += already_frozen
         software = determine_ess(log_file_path=log_file)
-        scan_trsh = ics_to_scan_constraints(ics=to_freeze, software=software)
+        try:
+            scan_trsh = ics_to_scan_constraints(ics=to_freeze, software=software)
+        except NotImplementedError:
+            # E.g., an ASE scan (YAML output): there is no constraint block to add, so freezing cannot help this
+            # rotor. Raised as a TrshError, which the Scheduler handles, rather than ending the whole run.
+            raise TrshError(f'Cannot freeze internal coordinates in a {software} scan of {label}.')
 
     else:
         # If 'freeze' is not included in the method

@@ -691,9 +691,17 @@ def _match_fragments_to_species(fragments: list[Molecule],
     expected_formulas = sorted(mol.get_formula() for mol in expected_mols)
     if frag_formulas != expected_formulas:
         return False
+
+    def same_species(fragment: Molecule, expected: Molecule) -> bool:
+        # An isolated atom's electronic state cannot be perceived from a geometry (an O atom comes out as a singlet,
+        # while O(3P) is the reactant of O + H2), so atoms match by element; molecules match by isomorphism.
+        if len(fragment.atoms) == 1 and len(expected.atoms) == 1:
+            return fragment.atoms[0].element.symbol == expected.atoms[0].element.symbol
+        return check_isomorphism(fragment, expected)
+
     if n == 1:
-        return check_isomorphism(fragments[0], expected_mols[0])
-    iso_matrix = [[check_isomorphism(fragments[i], expected_mols[j]) for j in range(n)] for i in range(n)]
+        return same_species(fragments[0], expected_mols[0])
+    iso_matrix = [[same_species(fragments[i], expected_mols[j]) for j in range(n)] for i in range(n)]
     used = [False] * n
 
     def _backtrack(i: int) -> bool:
