@@ -64,6 +64,8 @@ from arc.output import (
     _recorded_level_to_dict,
     _make_rel_path,
     _freq_job_level,
+    _orca_input_lines,
+    _orca_log_evidence,
     _orca_is_double_hybrid,
     _orca_route_text,
     _parse_arkane_log_provenance,
@@ -1343,18 +1345,6 @@ class TestGetFreqHessianMethod(unittest.TestCase):
                                                   level, None, self.scratch),
                          'analytic')
 
-    def test_orca_marker_fallback_is_null_when_no_keyword_line_survives(self):
-        """An ``ORCA SCF HESSIAN`` header without a keyword line gives no value."""
-        with open(self.orca_anfreq_log, 'r', errors='ignore') as handle:
-            lines = handle.readlines()
-        tail = [line for line in lines if not line.strip().startswith('!')]
-        marker_index = next(i for i, line in enumerate(tail) if 'ORCA SCF HESSIAN' in line)
-        tail = tail[marker_index - 5:]
-        log = self.deck('orca_marker_tail.log', ''.join(tail))
-        self.assertIsNone(_orca_route_text(os.path.join(self.scratch, log)))
-        level = Level(method='b3lyp', basis='svp', software='orca')
-        self.assertIsNone(_get_freq_hessian_method(None, log, 'orca', level, None, self.scratch))
-
     def test_orca_marker_fallback_is_null_without_the_marker(self):
         """No keyword line and no analytic-Hessian header leaves nothing to state."""
         log = self.deck('orca_no_marker.log',
@@ -1393,12 +1383,12 @@ class TestGetFreqHessianMethod(unittest.TestCase):
         self.assertIsNone(_get_freq_hessian_method(deck, None, 'orca', level, None, self.scratch))
 
     def orca_freq(self, name: str, keywords: str, method: str, version: str | None,
-                  extra_log_text: str = '', force_dft: bool = False) -> str | None:
+                  extra_log_text: str = '', force_dft: bool = False, input_text: str = '') -> str | None:
         """Resolve the Hessian method of an Orca freq log with ``keywords`` echoed and a ``version`` banner."""
         banner = '                                 * O   R   C   A *\n'
         if version and version != 'unknown':
             banner += f'                         Program Version {version} -  RELEASE  -\n'
-        log = self.deck(name, banner + f'| 1> ! {keywords}\n| 2> *xyz 0 1\n| 3> *\n'
+        log = self.deck(name, banner + f'| 1> ! {keywords}\n{input_text}| 2> *xyz 0 1\n| 3> *\n'
                                        '| 4>                          ****END OF INPUT****\n' + extra_log_text)
         level = Level(method=method, basis='def2tzvp', software='orca')
         if force_dft:
@@ -1464,7 +1454,10 @@ class TestGetFreqHessianMethod(unittest.TestCase):
             for method in ('b3lyp', 'pbe0', 'bp86', 'pbe', 'blyp', 'b97-d3bj', 'x3lyp', 'bhandhlyp', 'b3pw91', 'hf'):
                 self.assertEqual(self.orca_freq(f'wl_{method}_{version}.log', f'{method} def2-tzvp Freq', method,
                                                 version), 'analytic', msg=f'{method} {version}')
-            for method in ('m08-hx', 'r2scan-3c', 'wb97m-d4rev', 'wb97x-d3', 'wb97x-v', 'cam-b3lyp'):
+            for method in ('wb97', 'wb97x', 'wb97x-d3', 'wb97x-d3bj', 'cam-b3lyp', 'lc-blyp', 'b97-3c', 'pbeh-3c'):
+                self.assertEqual(self.orca_freq(f'rs_{method}_{version}.log', f'{method} def2-tzvp Freq', method,
+                                                version), 'analytic', msg=f'{method} {version}')
+            for method in ('m08-hx', 'r2scan-3c', 'wb97m-d4rev', 'wb97m-d3bj', 'wb97x-v', 'wb97m-v', 'hf-3c'):
                 self.assertIsNone(self.orca_freq(f'nwl_{method}_{version}.log', f'{method} def2-tzvp Freq', method,
                                                  version, force_dft=True), msg=f'{method} {version}')
 
@@ -1490,12 +1483,124 @@ class TestGetFreqHessianMethod(unittest.TestCase):
         for method in ('b3lyp', 'm06-2x', 'wb97x-d3', 'wb97m-v', 'r2scan0', 'r2scan50', 'tpss', 'def2-tzvp'):
             self.assertFalse(_orca_is_double_hybrid(method), msg=method)
 
-    def test_orca_numerical_frequencies_header_vetoes_analytic(self):
+    def test_orca_numerical_header_of_the_final_step_gives_a_finite_difference(self):
         header = '                           ORCA NUMERICAL FREQUENCIES\n'
-        self.assertIsNone(self.orca_freq('veto.log', 'b3lyp def2-tzvp Freq', 'b3lyp', '5.0.4', extra_log_text=header))
-        self.assertEqual(self.orca_freq('noveto.log', 'b3lyp def2-tzvp Freq', 'b3lyp', '5.0.4'), 'analytic')
-        self.assertEqual(self.orca_freq('veto_numfreq.log', 'b3lyp def2-tzvp NumFreq', 'b3lyp', '5.0.4',
-                                        extra_log_text=header), 'finite_difference_gradient')
+        warning = 'WARNING: Numerical Frequencies Analysis needs Gradient calculation\n' \
+                  '  ===> : Will do Numerical Gradient calculation !!!\n'
+        self.assertEqual(self.orca_freq('hdr.log', 'b3lyp def2-tzvp Freq', 'b3lyp', '5.0.4', extra_log_text=header),
+                         'finite_difference_gradient')
+        self.assertEqual(self.orca_freq('hdr_warn.log', 'rhf ccsd(t) cc-pvtz Freq', 'ccsd(t)', '5.0.4',
+                                        extra_log_text=warning + header), 'finite_difference_energy')
+        self.assertEqual(self.orca_freq('hdr_numgrad.log', 'b3lyp def2-tzvp NumFreq NumGrad', 'b3lyp', '5.0.4',
+                                        extra_log_text=header), 'finite_difference_energy')
+        self.assertEqual(self.orca_freq('nohdr.log', 'b3lyp def2-tzvp Freq', 'b3lyp', '5.0.4'), 'analytic')
+
+    def test_orca_numfreq_with_the_numerical_gradient_warning_is_an_energy_difference(self):
+        """ORCA 5 CCSD(T) NumFreq: Orca differences energies, not gradients, and says so."""
+        warning = 'WARNING: Numerical Frequencies Analysis needs Gradient calculation\n' \
+                  '  ===> : Will do Numerical Gradient calculation !!!\n'
+        self.assertEqual(self.orca_freq('cc_numfreq.log', 'rhf ccsd(t) cc-pvtz NumFreq', 'ccsd(t)', '5.0.4',
+                                        extra_log_text=warning), 'finite_difference_energy')
+        self.assertEqual(self.orca_freq('cc_numfreq_nowarn.log', 'rhf ccsd(t) cc-pvtz NumFreq', 'ccsd(t)', '5.0.4'),
+                         'finite_difference_gradient')
+
+    def test_orca_numerical_header_of_an_initial_hessian_is_not_the_final_step(self):
+        """A header followed by optimisation cycles belongs to the optimisation's initial Hessian."""
+        header = '                           ORCA NUMERICAL FREQUENCIES\n'
+        cycle = '                       * GEOMETRY OPTIMIZATION CYCLE   2 *\n'
+        self.assertEqual(self.orca_freq('init.log', 'b3lyp def2-tzvp Opt Freq', 'b3lyp', '5.0.4',
+                                        extra_log_text=header + cycle), 'analytic')
+        self.assertEqual(self.orca_freq('init_final.log', 'b3lyp def2-tzvp Opt NumFreq', 'b3lyp', '5.0.4',
+                                        extra_log_text=header + cycle + header), 'finite_difference_gradient')
+        self.assertIsNone(self.orca_freq('init_irc.log', 'b3lyp def2-tzvp IRC Freq', 'b3lyp', '5.0.4',
+                                         extra_log_text=header + cycle))
+
+    def test_orca_log_evidence_of_a_real_optimisation_log(self):
+        """cc.txt: an Opt with numerical initial Hessians; every header is followed by optimisation cycles."""
+        evidence = _orca_log_evidence(os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'orca', 'cc.txt'))
+        self.assertTrue(evidence['numerical_header'])
+        self.assertFalse(evidence['final_numerical_header'])
+        self.assertFalse(evidence['gradient_warning'])
+        self.assertTrue(evidence['complete'])
+
+    def test_orca_wr2scan_is_null_on_every_version(self):
+        """ORCA 6.0 changelog: second derivatives of X_WR2SCAN switch to numerical ones."""
+        for version in ('4.2.1', '5.0.4', '6.0.1', None):
+            self.assertIsNone(self.orca_freq(f'wr2scan_{version}.log', 'wr2scan def2-tzvp Freq', 'wr2scan',
+                                             version), msg=str(version))
+
+    def test_orca_relativistic_keywords_depend_on_the_version(self):
+        """ORCA 6.1 section 2.12.2.1: ZORA and DKH Hessians exist from ORCA 6 with the one-center approximation."""
+        def resolve(name, keywords, version, input_text=''):
+            return self.orca_freq(name, f'b3lyp {keywords} def2-tzvp Freq', 'b3lyp', version, input_text=input_text)
+        for index, keyword in enumerate(('zora', 'dkh', 'dkh1', 'dkh2', 'zora rel1c')):
+            self.assertEqual(resolve(f'rel6_{index}.log', keyword, '6.0.1'), 'analytic', msg=keyword)
+            for version in ('5.0.4', '4.2.1', None):
+                self.assertIsNone(resolve(f'rel_old_{index}_{version}.log', keyword, version), msg=keyword)
+        self.assertIsNone(resolve('rel_full.log', 'zora relfull', '6.0.1'))
+        self.assertIsNone(resolve('rel_oc_false.log', 'zora', '6.0.1', input_text='| 2> %rel OneCenter false end\n'))
+        self.assertEqual(resolve('rel_oc_true.log', 'zora', '6.0.1', input_text='| 2> %rel OneCenter true end\n'),
+                         'analytic')
+        for index, keyword in enumerate(('x2c', 'dlu-x2c', 'x2c reldlu', 'iora', 'rel1c')):
+            self.assertIsNone(resolve(f'rel_unres_{index}.log', keyword, '6.1.0'), msg=keyword)
+
+    def test_orca_header_only_log_is_analytic_without_numerical_evidence(self):
+        """A log with no keyword line: ORCA SCF HESSIAN, no numerical header and no X2C gives analytic."""
+        with open(self.orca_anfreq_log, 'r', errors='ignore') as handle:
+            lines = handle.readlines()
+        tail = [line for line in lines if not line.strip().startswith('!')]
+        marker_index = next(i for i, line in enumerate(tail) if 'ORCA SCF HESSIAN' in line)
+        text = ''.join(tail[marker_index - 5:])
+        level = Level(method='b3lyp', basis='svp', software='orca')
+        log = self.deck('tail_only.log', text)
+        self.assertEqual(_get_freq_hessian_method(None, log, 'orca', level, None, self.scratch), 'analytic')
+        log = self.deck('tail_numerical.log', text + '                           ORCA NUMERICAL FREQUENCIES\n')
+        self.assertEqual(_get_freq_hessian_method(None, log, 'orca', level, None, self.scratch),
+                         'finite_difference_gradient')
+        log = self.deck('tail_x2c_echo.log',
+                        '| 1> %rel method x2c end\n| 2>                          ****END OF INPUT****\n' + text)
+        self.assertIsNone(_get_freq_hessian_method(None, log, 'orca', level, None, self.scratch))
+
+    def test_orca_6_banner_credit_to_x2c_is_not_an_x2c_input(self):
+        """Every ORCA 6 banner credits "X2C"; only the echoed input decides whether X2C was requested."""
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'orca6_example.out')
+        with open(path, 'r', errors='ignore') as handle:
+            banner = ''.join(handle.readlines()[:188])
+        self.assertIn('X2C', banner)
+        level = Level(method='b3lyp', basis='svp', software='orca')
+        hessian = '                               ORCA SCF HESSIAN\n  Hessian of the Kohn-Sham DFT energy:\n'
+        log = self.deck('orca6_banner_only.log', banner + hessian)
+        self.assertEqual(_get_freq_hessian_method(None, log, 'orca', level, None, self.scratch), 'analytic')
+        for line in _orca_input_lines(path):
+            self.assertNotIn('Stoychev', line)
+
+    def test_orca_relativistic_hamiltonian_set_in_a_block_is_read(self):
+        def resolve(name, input_text, version):
+            return self.orca_freq(name, 'b3lyp def2-tzvp Freq', 'b3lyp', version, input_text=input_text)
+        one_line = '| 2> %rel method zora end\n'
+        multi_line = '| 2> %rel\n| 3>   method zora\n| 4> end\n'
+        method_block = '| 2> %method Relativistic ZORA end\n'
+        method_block_multi = '| 2> %method\n| 3>   Relativistic dkh2\n| 4> end\n'
+        for index, text in enumerate((one_line, multi_line, method_block, method_block_multi)):
+            self.assertIsNone(resolve(f'blk_old_{index}.log', text, '5.0.4'), msg=text)
+            self.assertEqual(resolve(f'blk_new_{index}.log', text, '6.0.1'), 'analytic', msg=text)
+        self.assertIsNone(resolve('blk_x2c.log', '| 2> %rel method X2C end\n', '6.0.1'))
+        self.assertIsNone(resolve('blk_x2c_method.log', '| 2> %method Relativistic X2C end\n', '6.0.1'))
+        self.assertEqual(resolve('blk_other.log', '| 2> %scf maxiter 100 end\n', '5.0.4'), 'analytic')
+
+    def test_orca_incomplete_scan_gives_null_before_the_final_header_is_used(self):
+        """A log longer than the scan limit cannot show whether a header is the final one."""
+        header = '                           ORCA NUMERICAL FREQUENCIES\n'
+        padding = '  padding\n' * 3
+        cycle = '                       * GEOMETRY OPTIMIZATION CYCLE   2 *\n'
+        level = Level(method='b3lyp', basis='svp', software='orca')
+        with patch('arc.output.ORCA_LOG_EVIDENCE_SCAN_LINE_LIMIT', 8):
+            self.assertIsNone(self.orca_freq('cap_route.log', 'b3lyp def2-tzvp Freq', 'b3lyp', '5.0.4',
+                                             extra_log_text=header + padding + cycle))
+            log = self.deck('cap_noroute.log', header + padding * 3 + cycle)
+            self.assertIsNone(_get_freq_hessian_method(None, log, 'orca', level, None, self.scratch))
+        self.assertEqual(self.orca_freq('nocap_route.log', 'b3lyp def2-tzvp Freq', 'b3lyp', '5.0.4',
+                                        extra_log_text=header + padding + cycle), 'analytic')
 
     def test_orca_job_level_wins_over_the_run_level(self):
         """An adaptive freq level of B2PLYP on the job overrides the run-level B3LYP."""
