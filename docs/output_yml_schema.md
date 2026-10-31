@@ -579,13 +579,67 @@ log is on disk.
 | `gaussian` | bare `freq`, `ro`-prefixed DFT, a double hybrid Gaussian does not document (see below), an option-bearing correlated spelling such as `mp4(full)`, any unlisted method, or a composite / semiempirical / force-field level | `null` |
 | `orca` | keyword line carries `NumFreq` | `finite_difference_gradient` |
 | `orca` | keyword line carries `NumFreq` **and** `NumGrad` | `finite_difference_energy` |
-| `orca` | `AnFreq` or bare `Freq`, method HF or a non-double-hybrid DFT functional, no `RI-JK` | `analytic` |
-| `orca` | `AnFreq` or bare `Freq`, any other method (MP2, DLPNO, coupled cluster, a double hybrid) or an `RI-JK` keyword line | `null` |
-| `orca` | no keyword line readable, log carries an `ORCA SCF HESSIAN` header | `analytic` |
-| `orca` | no keyword line readable, no such header | `null` |
+| `orca` | `AnFreq` or bare `Freq`, HF or a DFT functional, freq log banner `ORCA 5` or later, none of the exclusions below | `analytic` |
+| `orca` | `AnFreq` or bare `Freq`, banner `ORCA 4` or earlier or unreadable (or no log on disk), HF or a functional in the whitelist below | `analytic` |
+| `orca` | `AnFreq` or bare `Freq`, banner `ORCA 4` or earlier or unreadable, any other functional (meta-GGA, range-separated hybrid, composite, unlisted name) | `null` |
+| `orca` | `AnFreq` or bare `Freq`, a VV10 non-local functional or an `NL`/`SCNL` keyword, any version | `null` |
+| `orca` | `AnFreq` or bare `Freq`, a double hybrid, any version | `null` |
+| `orca` | `AnFreq` or bare `Freq`, `RI-JK`/`RIJK`, or a `ZORA`/`IORA`/`DKH`/`DKH2`/`X2C` keyword, any version | `null` |
+| `orca` | `AnFreq` or bare `Freq`, any other method (MP2, DLPNO, coupled cluster) | `null` |
+| `orca` | `AnFreq` or bare `Freq`, and the log holds an `ORCA NUMERICAL FREQUENCIES` header | `null` |
+| `orca` | `NumFreq` with a VV10 level, banner `ORCA 4` or earlier or unreadable | `null` |
+| `orca` | no keyword line readable | `null` |
 | `pyscf` | multiplicity 1 | `analytic` |
 | `pyscf` | multiplicity > 1 | `finite_difference_gradient` |
 | any other ESS | — | `null` |
+
+The Orca rows rest on the Orca manuals. Only the `!` keyword lines are read, together
+with the freq level's method name; a `%freq`, `%method` or `%cpcm` block (SMD included)
+is not read. The level is the one the scheduler recorded for the species' freq job
+(`levels.freq`), falling back to the run-level freq level. The method name and every
+token of the keyword line are classified, and the most conservative class wins:
+RI-JK or relativistic, then VV10, then double hybrid, then the version-gated rows.
+
+- **Version gate.** The ORCA 5.0 foreword states "Meta-GGA analytic Hessians are now
+  available". From ORCA 5 on, §9.25 of the 5.0.4 manual is an exclusion list, so every
+  DFT functional that no exclusion removes is `analytic`. Before ORCA 5, or when the
+  banner cannot be read (the version is the banner of the freq log, as `ess_versions`
+  exports it; a deck with no log has none), only HF and an explicit whitelist are
+  `analytic`. The whitelist is `ORCA_WHITELISTED_FUNCTIONALS` in `arc/output.py`: the LDA,
+  GGA (including B97-D/B97-D3) and global-hybrid-GGA functionals of ORCA 6.1 Tables 3.1,
+  3.2 and 3.4 and the ORCA 5.0.4 functional list (BP86, BLYP, PBE, B3LYP, PBE0, X3LYP,
+  BHandHLYP, B3PW91 and the like). Names are matched whole after lowercasing, dropping
+  `-`, `_`, `/` and parentheses, and removing one D2/D3/D3BJ/D3ZERO/D4 suffix. Range-
+  separated GGA hybrids such as wB97X-D3 have no documented pre-5 Hessian and are `null`
+  there, as are meta-GGAs (`ORCA_META_GGA_FUNCTIONALS`), composites and unlisted names.
+- **VV10 / non-local.** ORCA 5.0.4 §9.4.2.10 (DFT-NL) states that "any calculation that
+  requires second derivatives of the NL functional" is not yet possible, naming analytic
+  Hessians; ORCA 6.1 §3.4 repeats it. The functionals are `wB97X-V`, `wB97M-V`, `B97M-V`,
+  any `-NL`/`-SCNL` method and the `NL`/`SCNL` keywords, which also attach to meta-GGA
+  hybrids (6.1 Table 3.18). A bare `Freq` is `null`. `NumFreq` differences gradients,
+  which exist from ORCA 5.0 ("The VV10 analytic gradient is now available"), so it is
+  `finite_difference_gradient` from ORCA 5 on and `null` before it or when the version is
+  unknown.
+- **Double hybrids.** ORCA 5.0.4 §9.25 lists double-hybrid functionals among the cases
+  for which "Analytical Hessians cannot be performed", and §8.1.4.5 documents "numerical
+  polarizabilities and frequencies" for them. A bare `Freq` stays `null`; only an
+  explicit `NumFreq` is resolved. The markers (`ORCA_DOUBLE_HYBRID_MARKERS`, stored
+  without dashes and matched against the dash-free name) follow ORCA 6.1 Tables 3.8 and
+  3.9, including B2NC-PLYP, revDSD/revDOD-PBEP86, the r2SCAN-based and range-separated
+  double hybrids, wB97M(2) and wB97X-2.
+- **RI-JK and relativistic keywords.** ORCA 5.0.4 §9.25 lists the RI-JK approximation
+  and relativistic corrections among the cases for which "Analytical Hessians cannot be
+  performed"; ORCA 6.1 §2.12 describes the DKH, ZORA, IORA and X2C Hamiltonians. A
+  keyword line carrying `RI-JK`, `RIJK`, or one of `ZORA`, `IORA`, `DKH`, `DKH2`, `X2C`
+  as a whole token is `null` under `Freq`/`AnFreq`.
+- **Numerical header.** A log holding `ORCA NUMERICAL FREQUENCIES` is never `analytic`;
+  the header can only turn `analytic` into `null`.
+- **`NumFreq` and `NumGrad`.** `NumFreq` differences gradients; with `NumGrad` on the
+  keyword line the gradients are themselves numerical, so the Hessian is an energy
+  difference.
+- **No keyword line.** The value is `null`. The `ORCA SCF HESSIAN` header is the output
+  of the `orca_scfhess` module (ORCA 5.0.4 §9.25), and the manual does not say the
+  header is absent from a numerical run, so it is not read.
 
 The Gaussian route is read free-format, as Gaussian reads it: `Freq=Numer`,
 `Freq = Numer`, `Freq=(NoRaman, Numer)` and `Freq (Numer)` are one keyword with one
@@ -635,16 +689,19 @@ of the type deduction rather than a statement about the functional.
 On the Orca side the keyword line is read from the head of the file: a log's echoed
 input block ends at `****END OF INPUT****` and the scan stops there, and in any case
 after a few thousand lines, so a multi-hundred-megabyte log is not read through. When
-no keyword line can be read at all — an archived log truncated to its tail — an
-`ORCA SCF HESSIAN` header found within the first 50,000 lines is taken as analytic.
-No numerical header is relied on for the reverse direction.
+no keyword line can be read at all — an archived log truncated to its tail — the value
+is `null`.
 
 Orca documents `Freq` as an alias of `AnFreq`, which is why a bare `Freq` — what ARC
 writes unless `use_num_freq` is set — is analytic, but only for the levels Orca
-documents an analytic Hessian for. `NumFreq` differentiates gradients, or energies
-when the gradients are themselves numerical (`NumGrad`). When no keyword line can be
-read at all, an `ORCA SCF HESSIAN` header in the log is accepted as analytic; no
-numerical header is relied on, none having been observed in an ARC fixture.
+documents an analytic Hessian for, as listed above. `NumFreq` differentiates gradients,
+or energies when the gradients are themselves numerical (`NumGrad`).
+
+For Gaussian, the bare-`freq` rows were checked against the Gaussian manual indexed in
+the group knowledge base (the G09 `Freq` page: `Analytic` is available for RHF, UHF, CIS,
+CASSCF, MP2 and all DFT methods and is their default; the G09 MP2 page: "MP2, B2PLYP[D],
+mPW2PLYP[D]: Energies, analytic gradients, and analytic frequencies"). Nothing there
+contradicts a row, so none changed.
 
 The PySCF rule is not re-derived here: `run_freq` in
 `arc/job/adapters/scripts/pyscf_script.py` branches on the spin multiplicity alone —

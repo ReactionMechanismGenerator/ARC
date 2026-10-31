@@ -38,7 +38,7 @@ from arc.imports import settings
 from arc.job.adapters.common import open_shell_character_source
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
-from arc.level import RECORDED_LEVEL_STRIPPED_KEYS, adaptive_levels_as_list, level_as_plain_dict
+from arc.level import Level, RECORDED_LEVEL_STRIPPED_KEYS, adaptive_levels_as_list, level_as_plain_dict
 from arc.parser.adapters.gaussian import parse_gaussian_constraints
 from arc.parser.adapters.orca import parse_orca_constraints
 from arc.parser.parser import (
@@ -109,13 +109,34 @@ GAUSSIAN_ATOM_MASS_REGEX = re.compile(r'^\s*Atom\s+\d+\s+has atomic number\s+(\d
 GAUSSIAN_DIPOLE_TOTAL_REGEX = re.compile(r'Tot=\s*-?\d+\.\d+')
 GAUSSIAN_POPULATION_DENSITY_REGEX = re.compile(r'Population analysis using the\s+(\S+)\s+density', re.IGNORECASE)
 
-ORCA_ANALYTIC_HESSIAN_HF_METHODS = frozenset({'hf', 'rhf', 'uhf', 'rohf'})
-ORCA_DOUBLE_HYBRID_MARKERS = ('2plyp', 'dsd', 'pwpb95', 'qidh', 'pbe0dh', 'pbe0-dh', 'wb97x-2')
+ORCA_HF_METHODS = frozenset({'hf', 'rhf', 'uhf', 'rohf'})
+ORCA_WHITELISTED_FUNCTIONALS = frozenset({
+    'lda', 'lsd', 'hfs', 'vwn', 'vwn5', 'vwn3', 'pwlda',
+    'bp86', 'blyp', 'olyp', 'glyp', 'xlyp', 'pw91', 'mpwpw', 'mpwlyp', 'pbe', 'rpbe', 'revpbe', 'rpw86pbe',
+    'pw86pbe', 'pwp', 'opbe', 'b97', 'b97d',
+    'b1lyp', 'b3lyp', 'b3lypg', 'o3lyp', 'x3lyp', 'b1p86', 'b3p86', 'b1p', 'b3p', 'b3pw91', 'b3pw',
+    'g1lyp', 'g3lyp', 'g1p', 'g3p', 'pw1pw', 'mpw1pw', 'mpw1lyp', 'pbe0', 'revpbe0', 'revpbe38', 'bhandhlyp',
+    'pwp1'})
+ORCA_DOUBLE_HYBRID_MARKERS = (
+    '2plyp', 'b2gpplyp', 'b2kplyp', 'b2tplyp', 'b2ncplyp', 'dsd', 'revdod', 'pwpb95', 'qidh', 'cidh', 'pbe0dh',
+    'r2scan02', 'r2scan0dh', 'pr2scan50', 'pr2scan69', 'kpr2scan50', 'wb97m2', 'wb97x2', 'rsx0dh', 'wb88pp86',
+    'wpbepp86')
 ORCA_NO_ANALYTIC_HESSIAN_MARKERS = ('ri-jk', 'rijk')
-ORCA_ANALYTIC_HESSIAN_MARKER = 'ORCA SCF HESSIAN'
+ORCA_RELATIVISTIC_KEYWORDS = frozenset({'zora', 'iora', 'dkh', 'dkh2', 'x2c'})
+ORCA_VV10_FUNCTIONALS = frozenset({'wb97xv', 'wb97mv', 'b97mv'})
+ORCA_VV10_ROUTE_KEYWORDS = frozenset({'nl', 'scnl'})
+ORCA_META_GGA_FUNCTIONALS = frozenset({
+    'm05', 'm052x', 'm06', 'm06l', 'm062x', 'm06hf', 'revm06', 'revm06l',
+    'tpss', 'tpssh', 'tpss0', 'revtpss', 'revtpssh',
+    'scan', 'scanfunc', 'rscan', 'r2scan', 'scanh', 'scan0', 'r2scanh', 'r2scan0', 'r2scan50', 'wr2scan',
+    'b97m', 'wb97m', 'bmk', 'pw6b95', 'pwb6k', 'mpwb1k', 'mpw1b95', 'b1b95', 'b86b95', 'bb1k',
+    'mn12l', 'mn12sx', 'mn15', 'mn15l', 'm11', 'm11l'})
+ORCA_DISPERSION_SUFFIXES = ('d3bj', 'd3zero', 'd3', 'd4', 'd2')
+ORCA_ANALYTIC_HESSIAN_FULL_COVERAGE_MAJOR_VERSION = 5
+ORCA_NUMERICAL_FREQUENCIES_HEADER = 'ORCA NUMERICAL FREQUENCIES'
+ORCA_NUMERICAL_HEADER_SCAN_LINE_LIMIT = 200000
 ORCA_INPUT_ECHO_END_MARKER = '****END OF INPUT****'
 ORCA_ROUTE_SCAN_LINE_LIMIT = 5000
-ORCA_HESSIAN_MARKER_SCAN_LINE_LIMIT = 50000
 ORCA_FREQ_KEYWORD_REGEX = re.compile(r'(?<![a-z])freq(?![a-z])')
 
 ARKANE_STATMECH_SUBDIRS = ('thermo', 'kinetics')
@@ -949,6 +970,19 @@ def _species_levels_to_dict(entry: dict, is_ts: bool) -> dict:
             for key in LEVEL_JOB_KEYS}
 
 
+def _freq_job_level(entry: dict, run_level):
+    """
+    Return the level the species' freq job ran at: the level the scheduler recorded in
+    ``entry['levels']['freq']`` when it names a method, and ``run_level`` otherwise.
+    """
+    recorded = entry.get('levels') if isinstance(entry, dict) else None
+    freq = recorded.get('freq') if isinstance(recorded, dict) else None
+    method = freq.get('method') if isinstance(freq, dict) else getattr(freq, 'method', None)
+    if not method:
+        return run_level
+    return freq if hasattr(freq, 'method_type') else Level(method=method)
+
+
 def _resolve_freq_scale_factor_entry(freq_level) -> tuple[str | None, str | None]:
     """
     Return the ``data/freq_scale_factors.yml`` entry key matched for ``freq_level``
@@ -1753,23 +1787,102 @@ def _orca_route_text(path: str) -> str | None:
     return ' '.join(keyword_lines) or None
 
 
-def _orca_analytic_hessian_is_documented(route: str, level) -> bool:
-    """Return whether Orca documents an analytic Hessian for this level and keyword line.
+def _orca_functional_key(method: str) -> str:
+    """Return ``method`` lowercased, stripped of ``-``, ``_``, ``/``, parentheses and spaces, and of one trailing
+    dispersion suffix.
 
-    True for HF and for a DFT functional that is not a double hybrid, and only when the
-    keyword line carries no RI-JK approximation. Every other case — MP2, DLPNO, the
-    coupled-cluster methods, a double hybrid, or an RI-JK run — is False.
+    ``'M06-2X'`` becomes ``'m062x'`` and ``'wB97M-D3BJ'`` becomes ``'wb97m'``. The suffixes removed are the
+    entries of ``ORCA_DISPERSION_SUFFIXES``. The result is meant for whole-name membership tests against
+    ``ORCA_WHITELISTED_FUNCTIONALS``, ``ORCA_META_GGA_FUNCTIONALS`` and ``ORCA_VV10_FUNCTIONALS``.
+    """
+    key = re.sub(r'[-_/()\s]', '', method.lower())
+    for suffix in ORCA_DISPERSION_SUFFIXES:
+        if key.endswith(suffix) and len(key) > len(suffix):
+            return key[:-len(suffix)]
+    return key
+
+
+def _orca_is_double_hybrid(name: str) -> bool:
+    """Return whether ``name`` carries a marker of ``ORCA_DOUBLE_HYBRID_MARKERS`` once ``-``, ``_``, ``/``,
+    parentheses and spaces are removed from it."""
+    compact = re.sub(r'[-_/()\s]', '', name.lower())
+    return any(marker in compact for marker in ORCA_DOUBLE_HYBRID_MARKERS)
+
+
+def _orca_is_vv10(name: str) -> bool:
+    """Return whether ``name`` is a VV10 functional or a method name with a ``-NL`` or ``-SCNL`` segment."""
+    lowered = name.lower().strip()
+    return _orca_functional_key(lowered) in ORCA_VV10_FUNCTIONALS \
+        or any(segment in ORCA_VV10_ROUTE_KEYWORDS for segment in lowered.split('-')[1:])
+
+
+def _orca_major_version(log_path: str | None) -> int | None:
+    """Return the major version of the Orca that wrote ``log_path``, or ``None`` when it is not stated.
+
+    The banner is read by ``parse_ess_version``, the reader that supplies ``ess_versions``; ``'ORCA 5.0.4'``
+    gives ``5``. A missing log, a log without a banner and a banner that does not parse all give ``None``.
+    """
+    if log_path is None:
+        return None
+    try:
+        banner = parse_ess_version(log_path)
+    except Exception:
+        logger.debug("Could not parse an Orca version from '%s'", log_path, exc_info=True)
+        return None
+    match = re.match(r'ORCA\s+(\d+)', banner or '')
+    return int(match.group(1)) if match else None
+
+
+def _orca_names_to_classify(route: str, level) -> list[str]:
+    """Return the method name of ``level`` followed by the whitespace-separated tokens of the keyword line."""
+    method = (getattr(level, 'method', None) or '').lower().strip()
+    return ([method] if method else list()) + route.split()
+
+
+def _orca_is_vv10_level(route: str, level) -> bool:
+    """Return whether the level's method or any keyword-line token is a VV10 functional or the ``NL``/``SCNL``
+    keyword."""
+    return any(_orca_is_vv10(name) or name in ORCA_VV10_ROUTE_KEYWORDS for name in _orca_names_to_classify(route, level))
+
+
+def _orca_analytic_hessian_is_documented(route: str, level, major_version: int | None = None) -> bool:
+    """Return whether Orca documents an analytic Hessian for this level, keyword line and version.
+
+    The level's method name and every token of the keyword line are classified; the most conservative class
+    wins. The result is False for:
+
+    - an ``RI-JK`` keyword, or a ``ZORA``, ``IORA``, ``DKH``, ``DKH2`` or ``X2C`` keyword token (ORCA 5.0.4
+      section 9.25; ORCA 6.1 section 2.12);
+    - a VV10 non-local functional or an ``NL``/``SCNL`` keyword (ORCA 5.0.4 section 9.4.2.10; ORCA 6.1 section 3.4);
+    - a double hybrid (``ORCA_DOUBLE_HYBRID_MARKERS``, from ORCA 6.1 Tables 3.8 and 3.9; ORCA 5.0.4 section 9.25);
+    - a method that is not HF and not a DFT functional.
+
+    Otherwise, with ORCA 5 or later (ORCA 5.0 foreword: meta-GGA analytic Hessians are available) the result is
+    True for HF and for any DFT functional. With an earlier or unknown version it is True only for HF and for a
+    functional in ``ORCA_WHITELISTED_FUNCTIONALS`` (the LDA, GGA and global-hybrid-GGA entries of ORCA 6.1
+    Tables 3.1, 3.2 and 3.4); a meta-GGA, a range-separated hybrid, a composite and any unlisted name are False.
+    Only the ``!`` keyword lines are read, never a ``%method`` block.
     """
     if any(marker in route for marker in ORCA_NO_ANALYTIC_HESSIAN_MARKERS):
+        return False
+    if any(token in ORCA_RELATIVISTIC_KEYWORDS for token in route.split()):
         return False
     method = (getattr(level, 'method', None) or '').lower().strip()
     if not method:
         return False
-    if any(marker in method for marker in ORCA_DOUBLE_HYBRID_MARKERS):
+    names = _orca_names_to_classify(route, level)
+    if _orca_is_vv10_level(route, level):
         return False
-    if method in ORCA_ANALYTIC_HESSIAN_HF_METHODS:
+    if any(_orca_is_double_hybrid(name) for name in names):
+        return False
+    is_hf = method in ORCA_HF_METHODS
+    if not is_hf and getattr(level, 'method_type', None) != 'dft':
+        return False
+    if major_version is not None and major_version >= ORCA_ANALYTIC_HESSIAN_FULL_COVERAGE_MAJOR_VERSION:
         return True
-    return getattr(level, 'method_type', None) == 'dft'
+    if any(_orca_functional_key(name) in ORCA_META_GGA_FUNCTIONALS for name in names):
+        return False
+    return is_hf or _orca_functional_key(method) in ORCA_WHITELISTED_FUNCTIONALS
 
 
 def _file_contains_marker(path: str, marker: str, line_limit: int) -> bool:
@@ -1793,12 +1906,12 @@ def _file_contains_marker(path: str, marker: str, line_limit: int) -> bool:
 def _orca_freq_hessian_method(deck_path: str | None, log_path: str | None, level) -> str | None:
     """Resolve the Hessian method of an Orca freq job from its keyword line.
 
-    ``NumFreq`` differentiates gradients, or energies when ``NumGrad`` is on the same
-    keyword line. Orca documents ``Freq`` as an alias of ``AnFreq``, so both are analytic
-    for the levels ``_orca_analytic_hessian_is_documented`` accepts and ``None``
-    otherwise. When no keyword line can be read, an ``ORCA SCF HESSIAN`` header within the
-    first ``ORCA_HESSIAN_MARKER_SCAN_LINE_LIMIT`` lines of the log is taken as analytic;
-    no numerical header is relied on.
+    ``NumFreq`` differentiates gradients, or energies when ``NumGrad`` is on the same keyword line; with a
+    VV10 level it is ``None`` unless the log banner names ORCA 5 or later (ORCA 5.0 foreword: the VV10 analytic
+    gradient is available from ORCA 5). ``Freq`` is an alias of ``AnFreq``; both are analytic for the levels
+    ``_orca_analytic_hessian_is_documented`` accepts and ``None`` otherwise. A log that holds the
+    ``ORCA NUMERICAL FREQUENCIES`` header is never analytic. ``None`` when no keyword line can be read
+    (ORCA 5.0.4 section 9.25).
     """
     route = None
     for path in (deck_path, log_path):
@@ -1808,14 +1921,18 @@ def _orca_freq_hessian_method(deck_path: str | None, log_path: str | None, level
         if route:
             break
     if route is None:
-        if log_path is not None and _file_contains_marker(log_path, ORCA_ANALYTIC_HESSIAN_MARKER,
-                                                          ORCA_HESSIAN_MARKER_SCAN_LINE_LIMIT):
-            return HESSIAN_METHOD_ANALYTIC
         return None
+    major_version = _orca_major_version(log_path)
     if 'numfreq' in route:
+        if _orca_is_vv10_level(route, level) and (major_version is None or major_version < 5):
+            return None
         return HESSIAN_METHOD_FD_ENERGY if 'numgrad' in route else HESSIAN_METHOD_FD_GRADIENT
     if 'anfreq' in route or ORCA_FREQ_KEYWORD_REGEX.search(route) is not None:
-        return HESSIAN_METHOD_ANALYTIC if _orca_analytic_hessian_is_documented(route, level) else None
+        if log_path is not None and _file_contains_marker(log_path, ORCA_NUMERICAL_FREQUENCIES_HEADER,
+                                                          ORCA_NUMERICAL_HEADER_SCAN_LINE_LIMIT):
+            return None
+        return HESSIAN_METHOD_ANALYTIC \
+            if _orca_analytic_hessian_is_documented(route, level, major_version) else None
     return None
 
 
@@ -1851,7 +1968,7 @@ def _get_freq_hessian_method(freq_input_path: str | None,
 
     The input deck is read in preference to the log, the log being the fallback when the
     deck is not on disk. ``software`` is the freq job's ESS name as ``_get_ess_software``
-    yields it, ``level`` is the freq level of theory and ``spc`` the species the job ran
+    yields it, ``level`` is the level the freq job ran at and ``spc`` the species the job ran
     on. ``gaussian``, ``orca`` and ``pyscf`` are resolved by the helpers above; every
     other ESS returns ``None``, as does a freq job whose deck and log are both missing.
     """
@@ -2763,7 +2880,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     )
     d['freq_hessian_method'] = _get_freq_hessian_method(
         d.get('freq_input'), paths.get('freq') or None,
-        software_by_job.get('freq'), freq_level, spc, project_directory,
+        software_by_job.get('freq'), _freq_job_level(entry, freq_level), spc, project_directory,
     ) if converged else None
 
     # ── per-calc final effective settings ──────────────────────────────────
