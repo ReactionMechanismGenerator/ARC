@@ -53,7 +53,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import numpy as np
 from rdkit import Chem
 
-from arc.common import ARC_PATH, get_logger, save_yaml_file, read_yaml_file
+from arc.common import ARC_PATH, get_cluster_soft_key, get_logger, read_yaml_file, save_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
@@ -261,7 +261,7 @@ class GoFlowAdapter(JobAdapter):
             self.write_submit_script()
             from arc.imports import settings as _s
             self.files_to_upload.append(self.get_file_property_dictionary(
-                file_name=_s['submit_filenames'][_s['servers'][self.server]['cluster_soft']]))
+                file_name=_s['submit_filenames'][get_cluster_soft_key(_s['servers'][self.server]['cluster_soft'], _s['submit_filenames'], 'submit_filenames')]))
         if os.path.isfile(self.yml_in_path):
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='input.yml'))
         if os.path.isfile(self.reactant_xyz_path):

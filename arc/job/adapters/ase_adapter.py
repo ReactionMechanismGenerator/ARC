@@ -7,7 +7,7 @@ import os
 import subprocess
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-from arc.common import get_logger, read_yaml_file, save_yaml_file, torsions_to_scans
+from arc.common import canonicalize_cluster_soft_value, get_cluster_soft_key, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
@@ -35,11 +35,6 @@ DEFAULT_ASE_ENV = {
 # Level methods that select the UMA calculator. 'uma' resolves to UMA_LATEST_MODEL; specific checkpoints named explicitly.
 UMA_METHODS = ('uma', 'uma-s-1', 'uma-s-1p1', 'uma-s-1p2', 'uma-m-1p1')
 
-# Cluster schedulers this adapter carries an ``ase_submit`` template for, spelled exactly as the
-# keys of ``submit_filenames``/``submit_command`` in arc/settings/settings.py. ``submit_job()``
-# looks those dicts up verbatim with the server's ``cluster_soft`` value, so a job's submit script
-# is only found if this adapter resolves the very same key - matching case-insensitively here would
-# name a file that the submission then fails to invoke.
 QUEUE_CLUSTER_SOFT = ('PBS', 'Slurm')
 
 class ASEAdapter(JobAdapter):
@@ -379,9 +374,10 @@ class ASEAdapter(JobAdapter):
         Returns:
             str: The submit-script filename.
         """
-        cluster_soft = servers.get(self.server, dict()).get('cluster_soft', '') if self.server is not None else ''
+        raw_cluster_soft = servers.get(self.server, dict()).get('cluster_soft', '') if self.server is not None else ''
+        cluster_soft = canonicalize_cluster_soft_value(raw_cluster_soft) if raw_cluster_soft else ''
         if self.execution_type != 'incore' and cluster_soft in QUEUE_CLUSTER_SOFT:
-            return submit_filenames[cluster_soft]
+            return submit_filenames[get_cluster_soft_key(raw_cluster_soft, submit_filenames, 'submit_filenames')]
         return 'submit.sh'
 
     def get_queue_submit_script(self, command: str, config: dict, cluster_soft: str) -> str:
@@ -401,12 +397,15 @@ class ASEAdapter(JobAdapter):
         Returns:
             str: The submit script content.
         """
-        if cluster_soft not in ase_submit:
+        cluster_soft = canonicalize_cluster_soft_value(cluster_soft).lower()
+        try:
+            template_key = get_cluster_soft_key(cluster_soft, ase_submit, 'ase_submit')
+        except ValueError as e:
             raise NotImplementedError(f"No ASE submit template for cluster software '{cluster_soft}'. "
-                                      f"Available templates: {list(ase_submit.keys())}")
+                                      f"Available templates: {list(ase_submit.keys())}") from e
         memory = int(self.submit_script_memory) if isinstance(self.submit_script_memory, (int, float)) \
             else self.submit_script_memory
-        time_format = next((v for k, v in t_max_format.items() if k.lower() == cluster_soft), 'hours')
+        time_format = t_max_format[get_cluster_soft_key(cluster_soft, t_max_format, 't_max_format')]
         pwd = self.local_path if self.server is None or str(self.server).lower() == 'local' else self.remote_path
         queue, gpu_resource = config['queue'], config['gpu_resource']
         format_kwargs = {'name': self.job_server_name, 'cpus': self.cpu_cores, 'memory': memory,
@@ -418,7 +417,7 @@ class ASEAdapter(JobAdapter):
         else:
             format_kwargs['queue_directive'] = f'#SBATCH -p {queue}\n' if queue else ''
             format_kwargs['gpu_directive'] = f'#SBATCH --gres={gpu_resource}\n' if gpu_resource else ''
-        return ase_submit[cluster_soft].format(**format_kwargs)
+        return ase_submit[template_key].format(**format_kwargs)
 
     def write_submit_script(self) -> None:
         """
@@ -431,7 +430,8 @@ class ASEAdapter(JobAdapter):
         path that only exists on the ARC host. See ``determine_submit_config()`` for the knobs.
         """
         config = self.determine_submit_config()
-        cluster_soft = servers.get(self.server, dict()).get('cluster_soft', '') if self.server is not None else ''
+        raw_cluster_soft = servers.get(self.server, dict()).get('cluster_soft', '') if self.server is not None else ''
+        cluster_soft = canonicalize_cluster_soft_value(raw_cluster_soft) if raw_cluster_soft else ''
         queue_job = self.execution_type != 'incore' and cluster_soft in QUEUE_CLUSTER_SOFT
         if self.execution_type != 'incore' and cluster_soft and not queue_job:
             logger.warning(f"Job {self.job_name} is queued on {self.server}, whose cluster software is "
