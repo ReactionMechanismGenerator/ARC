@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout ARC
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: ARC
 
@@ -65,7 +65,7 @@ jobs:
 
       - name: Restore GoFlow cache (clone + goflow_env + checkpoint)
         id: goflow-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ${{ github.workspace }}/goflow_lean
@@ -84,7 +84,7 @@ jobs:
 
       - name: Restore RitS cache (clone + rits_env + checkpoint)
         id: rits-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ${{ github.workspace }}/RitS
