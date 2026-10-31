@@ -3702,6 +3702,17 @@ class TestTSGuess(unittest.TestCase):
         self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_sources', 'method_index', 'success', 'index',
                                                            'conformer_index', 'initial_xyz', 'opt_xyz'])
 
+    def test_atom_map_round_trip(self):
+        """Test that the atom map a guess was generated for survives a dictionary round trip"""
+        tsg = TSGuess(method='Linear (map=1)', family='intra_H_migration', atom_map=[3, 2, 1, 0])
+        self.assertEqual(tsg.atom_map, [3, 2, 1, 0])
+        self.assertEqual(tsg.as_dict()['atom_map'], [3, 2, 1, 0])
+        self.assertEqual(TSGuess(ts_dict=tsg.as_dict()).atom_map, [3, 2, 1, 0])
+        # A guess that was not generated for a specific map keeps the key out of the dictionary.
+        self.assertIsNone(self.tsg1.atom_map)
+        self.assertNotIn('atom_map', self.tsg1.as_dict())
+        self.assertIsNone(TSGuess(ts_dict=self.tsg1.as_dict()).atom_map)
+
     def test_process_xyz(self):
         """Test the process_xyz() method"""
         # path
