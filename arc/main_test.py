@@ -20,6 +20,7 @@ from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
 from arc.main import ARC, process_adaptive_levels
+from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 from arc.species.species import ARCSpecies
 
 servers = settings['servers']
@@ -272,6 +273,72 @@ class TestARC(unittest.TestCase):
                    sp_level='ccsd(t)-f12/cc-pvtz-f12', opt_level='wb97xd/def2tzvp')
         self.assertEqual(str(arc3.arkane_level_of_theory), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro')
         self.assertEqual(arc3.freq_scale_factor, 0.988)
+
+    def test_g4_composite_takes_its_prescribed_freq_level_and_scale_factor(self):
+        """Test that ARC pairs the G4 composite with the level the shipped settings prescribe.
+
+        Patched with the repository's own mapping rather than read live: ``arc/imports.py`` overlays
+        ``~/.arc/settings.py``, which may still carry the pre-mapping ``'B3LYP/CBSB7'`` string, and
+        G4 would then silently take CBS-QB3's frequency level. Asserting against the repository
+        default is what makes this a check on the shipped data instead of on local configuration.
+        """
+        with patch.dict('arc.level.default_levels_of_theory',
+                        {'freq_for_composite': repo_default_levels_of_theory['freq_for_composite']}):
+            arc_g4 = ARC(project='test', composite_method='g4')
+        self.assertEqual(arc_g4.composite_method.simple(), 'g4')
+        self.assertEqual(arc_g4.freq_level.simple(), 'b3lyp/6-31g(2df,p)')
+        self.assertEqual(arc_g4.freq_scale_factor, 0.9992)
+        self.assertIsNone(arc_g4.sp_level)
+
+    _SP_ONLY_JOB_TYPES = {'conf_opt': False, 'conf_sp': False, 'opt': False, 'freq': False, 'sp': True,
+                          'rotors': False, 'irc': False, 'orbitals': False, 'lennard_jones': False, 'bde': False}
+
+    def _composite_arc(self, **kwargs):
+        """Initialize a composite ARC against the repository's own freq_for_composite mapping.
+
+        ``calc_freq_factor=False`` for the same reason the composite cases in
+        ``test_determine_model_chemistry_for_job_types`` use it: G3 has no entry in
+        ``data/freq_scale_factors.yml``, and ``check_freq_scaling_factor()`` would then spawn Truhlar
+        scale-factor QM jobs for small species nobody asked for - an hour of them, and unrelated to
+        what is under test here.
+
+        Args:
+            **kwargs: Passed to ``ARC``.
+
+        Returns:
+            ARC: The initialized object.
+        """
+        with patch.dict('arc.level.default_levels_of_theory',
+                        {'freq_for_composite': repo_default_levels_of_theory['freq_for_composite']}):
+            return ARC(project='test', calc_freq_factor=False, compute_thermo=False, compute_rates=False,
+                       **kwargs)
+
+    def test_a_composite_run_without_frequencies_needs_no_prescribed_freq_level(self):
+        """A composite with no prescribed frequency level must not abort a run that asks for no frequencies.
+
+        ARC refuses to guess a composite's frequency level, because the scale factor stored for a composite
+        is that protocol's own ZPE factor. That refusal belongs where the level is actually used: the
+        non-composite path leaves freq_level unset when 'freq' is off, while a single-point-only composite
+        run used to raise at initialization, before any job existed to be mispaired.
+        """
+        arc_sp = self._composite_arc(composite_method='g3', job_types=self._SP_ONLY_JOB_TYPES)
+        self.assertEqual(arc_sp.composite_method.simple(), 'g3')
+        self.assertIsNone(arc_sp.freq_level)
+
+    def test_a_composite_run_with_frequencies_still_refuses_an_unprescribed_freq_level(self):
+        """Requesting frequencies for a composite ARC has no level for must still raise, not guess one"""
+        with self.assertRaises(ValueError):
+            self._composite_arc(composite_method='g3', job_types=dict(self._SP_ONLY_JOB_TYPES, freq=True))
+
+    def test_a_composite_irc_run_still_needs_a_prescribed_freq_level(self):
+        """An IRC run needs the composite's frequency level even with no frequency job requested.
+
+        ``opt_level`` is None for a composite run, so ``spawn_post_irc_jobs()`` optimizes its endpoint
+        species at ``freq_level``. Gating this resolution on job_types['freq'] alone would hand that call
+        a None level instead of raising here, where the message says what to do about it.
+        """
+        with self.assertRaises(ValueError):
+            self._composite_arc(composite_method='g3', job_types=dict(self._SP_ONLY_JOB_TYPES, irc=True))
 
     def test_determine_model_chemistry_for_job_types(self):
         """Test determining the model chemistry specification dictionary for job types"""
