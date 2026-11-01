@@ -13,6 +13,7 @@ import unittest
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file, safe_copy_file
+from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 
@@ -113,6 +114,72 @@ class TestSaveThermoLibDuplicates(unittest.TestCase):
         self.assertEqual(result.returncode, 0,
                          f'RMG could not load the generated thermo library:\n{result.stdout}\n{result.stderr}')
         self.assertIn('LOADED 1', result.stdout)
+
+
+class TestSaveKineticsLibRotorNote(unittest.TestCase):
+    """The kinetics library states "No rotors considered" exactly when no TS rotor was treated."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='test_kinetics_lib_rotors_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+
+    def save_and_read(self, rotors_dict, long_thermo_description='', saves=1):
+        """Save a one-reaction library whose TS carries ``rotors_dict`` and return its reactions.py text.
+
+        ``saves`` repeats the export on the SAME reaction object, which is what an ARC run does across
+        repeated exports and restarts: ``long_thermo_description`` is a persisted species attribute, not
+        a local, so anything appended to it survives into the next save.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='nitroethane', smiles='CC[N+](=O)[O-]')],
+                          p_species=[ARCSpecies(label='ethyl_nitrite', smiles='CCON=O')])
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True, xyz=str_to_xyz("""C 0.0 0.0 0.0
+                                                                                H 0.0 0.0 1.09"""))
+        rxn.ts_species.final_xyz = rxn.ts_species.get_xyz()
+        rxn.ts_species.rotors_dict = rotors_dict
+        rxn.ts_species.long_thermo_description = long_thermo_description
+        rxn.kinetics = {'A': (5.0, 's^-1'), 'n': 1.0, 'Ea': (20.0, 'kJ/mol')}
+        for _ in range(saves):
+            plotter.save_kinetics_lib(rxn_list=[rxn], path=self.tmpdir, name='test', lib_long_desc='')
+        with open(os.path.join(self.tmpdir, 'kinetics', 'reactions.py'), 'r') as f:
+            return f.read()
+
+    def test_treated_rotor_is_not_reported_as_absent(self):
+        """A TS with a successfully treated rotor must not be described as having none."""
+        content = self.save_and_read(rotors_dict={0: {'pivots': [1, 2], 'success': True}})
+        self.assertNotIn('No rotors considered for this TS.', content)
+
+    def test_untreated_rotors_are_reported_even_if_the_description_mentions_rotors(self):
+        """Rotors that were rejected or never completed count as untreated, whatever the free text says."""
+        content = self.save_and_read(rotors_dict={0: {'pivots': [1, 2], 'success': False},
+                                                  1: {'pivots': [2, 3], 'success': None}},
+                                     long_thermo_description='Hindered rotors were scanned at B3LYP.')
+        self.assertIn('No rotors considered for this TS.', content)
+
+    def test_ts_without_rotors_dict_is_reported(self):
+        """A TS that never had a rotors_dict is described as having no rotors."""
+        content = self.save_and_read(rotors_dict=None)
+        self.assertIn('No rotors considered for this TS.', content)
+
+    def test_the_note_is_written_once_however_often_the_library_is_saved(self):
+        """Exporting the same reaction repeatedly must not stack the sentence up.
+
+        The note is appended to ``long_thermo_description``, which persists on the species and through
+        restart.yml, so an unconditional append writes it once per save. The substring guard this
+        replaced happened to prevent that; deciding from the rotor data has to prevent it explicitly.
+        """
+        content = self.save_and_read(rotors_dict={0: {'pivots': [1, 2], 'success': None}}, saves=3)
+        self.assertEqual(content.count('No rotors considered for this TS.'), 1)
+
+    def test_a_stale_note_is_dropped_once_a_rotor_is_treated(self):
+        """A note left by an earlier export must not outlive the condition that produced it.
+
+        A TS whose rotor failed in one session and succeeded in the next carries the old sentence in
+        its description, which would then contradict the model actually shipped -- the same class of
+        error as the substring guard this change replaced, just in the other direction.
+        """
+        content = self.save_and_read(rotors_dict={0: {'pivots': [1, 2], 'success': True}},
+                                     long_thermo_description='\nNo rotors considered for this TS.')
+        self.assertNotIn('No rotors considered for this TS.', content)
 
 
 class TestPlotter(unittest.TestCase):

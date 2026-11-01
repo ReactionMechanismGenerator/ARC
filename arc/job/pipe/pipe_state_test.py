@@ -20,6 +20,7 @@ from arc.job.pipe.pipe_state import (
     SUPPORTED_TASK_FAMILIES,
     TASK_FAMILY_TO_JOB_TYPE,
     check_valid_transition,
+    is_terminal_task_state,
     TaskSpec,
     TaskStateRecord,
     generate_claim_token,
@@ -64,6 +65,19 @@ class TestTaskTransitions(unittest.TestCase):
     def test_cross_type_raises(self):
         with self.assertRaises(TypeError):
             check_valid_transition(TaskState.PENDING, PipeRunState.CREATED)
+
+    def test_is_terminal_task_state(self):
+        """Only the states the pipe system takes no further action on are terminal"""
+        terminal = {TaskState.COMPLETED, TaskState.FAILED_ESS, TaskState.FAILED_TERMINAL, TaskState.CANCELLED}
+        for state in list(TaskState):
+            self.assertEqual(is_terminal_task_state(state), state in terminal, msg=state.value)
+
+    def test_is_terminal_task_state_accepts_a_persisted_string(self):
+        """A status read back from a state.json is a plain string, not a TaskState"""
+        self.assertTrue(is_terminal_task_state('COMPLETED'))
+        self.assertFalse(is_terminal_task_state('RUNNING'))
+        with self.assertRaises(ValueError):
+            is_terminal_task_state('NOT_A_STATE')
 
 
 class TestTaskSpec(unittest.TestCase):

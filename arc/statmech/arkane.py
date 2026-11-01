@@ -575,6 +575,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         for rxn in self.reactions:
             parse_reaction_kinetics(rxn, output_content)
+            self._reject_kinetics_on_unphysical_frequencies(rxn, output_content)
 
         # Parse conformer statmech (external_symmetry, optical_isomers) for all
         # species involved in the kinetics — the thermo path handles this via
@@ -583,6 +584,41 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             _parse_conformer_statmech(species, output_content)
         for rxn in self.reactions:
             _parse_conformer_statmech(rxn.ts_species, output_content)
+
+    @staticmethod
+    def _reject_kinetics_on_unphysical_frequencies(rxn: 'ARCReaction', output_content: str) -> None:
+        """
+        Discard a rate coefficient computed from a conformer carrying a near-zero frequency.
+
+        Reporting nothing is strictly better than reporting a number that can be wrong by six
+        orders of magnitude while looking converged: a missing rate is visible to whoever reads
+        the library, and this error is not. See ``find_unphysical_frequencies`` for the mechanism.
+        """
+        if rxn.kinetics is None:
+            return
+        labels = [spc.label for spc in rxn.r_species + rxn.p_species]
+        if rxn.ts_species is not None:
+            labels.append(rxn.ts_species.label)
+        offenders = {label: find_unphysical_frequencies(label, output_content) for label in labels}
+        offenders = {label: freqs for label, freqs in offenders.items() if freqs}
+        if not offenders:
+            return
+        detail = '; '.join(f'{label}: {freqs} cm^-1' for label, freqs in offenders.items())
+        logger.error(
+            f'Discarding the computed rate coefficient for {rxn.label}: the statistical-mechanics '
+            f'stage used one or more non-physical near-zero vibrational frequencies ({detail}). A '
+            f'harmonic oscillator at 0 cm^-1 has a divergent partition function, so any rate '
+            f'computed from it is meaningless -- it can exceed the collision limit -- even though '
+            f'the geometry, the imaginary-frequency check and the Arrhenius fit all appear sound. '
+            f'This usually means the transition state has a second, small imaginary frequency that '
+            f'Arkane retained as a vibration; treat that mode explicitly (e.g. as a hindered or '
+            f'free rotor) rather than trusting this fit.')
+        rxn.kinetics = None
+        for spc in ([rxn.ts_species] if rxn.ts_species is not None else []):
+            if spc.label in offenders:
+                spc.long_thermo_description += (
+                    f'\nWARNING: non-physical near-zero frequencies {offenders[spc.label]} cm^-1 '
+                    f'were present in the statmech treatment; the rate coefficient was discarded.')
 
 
 def run_arkane(statmech_dir: str) -> bool:
@@ -1432,13 +1468,30 @@ def _parse_conformer_statmech(species, content: str) -> None:
         NonlinearRotor(symmetry=2, ...)
         optical_isomers = 1,
     """
-    label = species.label
-    # Find the start of the conformer block, then use balanced-paren matching
-    # to find the full block (regex `.*?)` fails because of nested parens).
+    block = _extract_conformer_block(species.label, content)
+    if block is None:
+        return
+    # optical_isomers
+    oi_match = re.search(r'optical_isomers\s*=\s*(\d+)', block)
+    if oi_match and species.optical_isomers is None:
+        species.optical_isomers = int(oi_match.group(1))
+    # external_symmetry from NonlinearRotor or LinearRotor
+    sym_match = re.search(r'(?:NonlinearRotor|LinearRotor)\s*\(.*?symmetry\s*=\s*(\d+)', block, re.DOTALL)
+    if sym_match and species.external_symmetry is None:
+        species.external_symmetry = int(sym_match.group(1))
+
+
+def _extract_conformer_block(label: str, content: str) -> str | None:
+    """
+    Return the full ``conformer(...)`` block for a label from Arkane's output.
+
+    Uses balanced-paren matching from the block's start rather than a regex: the block contains
+    nested parentheses, so a lazy `.*?)` stops at the first inner one.
+    """
     start_pattern = rf"conformer\(\s*label\s*=\s*['\"]{re.escape(label)}['\"]"
     m_start = re.search(start_pattern, content, re.DOTALL)
     if not m_start:
-        return
+        return None
     idx = m_start.start() + len('conformer(')
     depth = 1
     while idx < len(content) and depth > 0:
@@ -1448,16 +1501,61 @@ def _parse_conformer_statmech(species, content: str) -> None:
             depth -= 1
         idx += 1
     if depth != 0:
-        return
-    block = content[m_start.start():idx]
-    # optical_isomers
-    oi_match = re.search(r'optical_isomers\s*=\s*(\d+)', block)
-    if oi_match and species.optical_isomers is None:
-        species.optical_isomers = int(oi_match.group(1))
-    # external_symmetry from NonlinearRotor or LinearRotor
-    sym_match = re.search(r'(?:NonlinearRotor|LinearRotor)\s*\(.*?symmetry\s*=\s*(\d+)', block, re.DOTALL)
-    if sym_match and species.external_symmetry is None:
-        species.external_symmetry = int(sym_match.group(1))
+        return None
+    return content[m_start.start():idx]
+
+
+# A harmonic oscillator's partition function, 1/(1 - exp(-h*nu/kT)), diverges as nu -> 0, so a
+# mode at or near zero inflates a partition function without bound. Real vibrations of a bound
+# species never come near this floor -- the softest torsions seen in practice are tens of cm^-1 --
+# so anything below it is an artifact rather than chemistry.
+MIN_PHYSICAL_FREQ = 5.0  # cm^-1
+
+
+def find_unphysical_frequencies(label: str, content: str) -> list[float]:
+    """
+    Return any near-zero vibrational frequencies in a species' Arkane conformer block.
+
+    This failure is catastrophic rather than merely inaccurate, and it is silent. A single mode at
+    0 cm^-1 can multiply a transition state's partition function by roughly seven orders of
+    magnitude at combustion temperatures, and the rate coefficient follows it, to the point of
+    exceeding the hard-sphere collision limit. Nothing else in the output marks it: the geometry
+    converges, the TS passes its imaginary-frequency check, and the Arrhenius fit looks clean
+    because it is a faithful fit to corrupted points.
+
+    The mechanism is upstream, in Arkane's rotor projection. ``arkane/statmech.py`` returns
+    ``np.sqrt(eig[-n_vib:])``, keeping the ``n_vib`` largest eigenvalues of the projected Hessian
+    without requiring them to be real vibrations. A transition state with a second, small
+    imaginary frequency -- legitimately accepted by ``arc.checks.ts.check_imaginary_frequencies``,
+    whose ``LOWEST_MAJOR_TS_FREQ`` threshold exists precisely to tolerate small extra imaginary
+    modes -- leaves that count one short, so a residual ~0 eigenvalue is retained as a vibration.
+    ARC cannot head this off by filtering the frequencies it passes in, because Arkane re-derives
+    them from the Hessian whenever rotors are present. Hence the check runs on Arkane's output.
+
+    Args:
+        label (str): The species label whose conformer block to inspect.
+        content (str): The contents of Arkane's ``output.py``.
+
+    Returns:
+        list[float]: The offending frequencies in cm^-1; empty when the conformer is sound.
+    """
+    block = _extract_conformer_block(label, content)
+    if block is None:
+        return list()
+    unphysical = list()
+    for freq_list in re.findall(r'HarmonicOscillator\s*\(\s*frequencies\s*=\s*\(\s*\[([^\]]*)\]',
+                                block, re.DOTALL):
+        for token in freq_list.split(','):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                freq = float(token)
+            except ValueError:
+                continue
+            if abs(freq) < MIN_PHYSICAL_FREQ:
+                unphysical.append(freq)
+    return unphysical
 
 
 def parse_e0(label: str, content: str) -> float | None:

@@ -248,12 +248,18 @@ class AutoTSTAdapter(JobAdapter):
                     # run_in_conda_env keeps arc_env's activation vars
                     # (BABEL_LIBDIR, LD_LIBRARY_PATH, ...) from leaking into the
                     # child and corrupting openbabel plugin loading
-                    # (see arc/job/env_run.py).
+                    # (see arc/job/env_run.py). PYTHONPATH is stripped so an
+                    # RMG-Py source checkout on the caller's PYTHONPATH, built for
+                    # arc_env's Python, cannot shadow tst_env's own rmgpy. AutoTST
+                    # itself must then come from tst_env (a .pth file or the
+                    # activation hook written by install_autotst.sh --conda).
                     script_path = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'autotst_script.py')
 
                     tic = datetime.datetime.now()
 
-                    output = run_in_conda_env(AUTOTST_PYTHON, script_path, reaction_label, self.output_path)
+                    output = run_in_conda_env(AUTOTST_PYTHON, script_path, reaction_label, self.output_path,
+                                              strip_pythonpath=True,
+                                              )
 
                     tok = datetime.datetime.now() - tic
 

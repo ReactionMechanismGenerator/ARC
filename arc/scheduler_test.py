@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import os
 import shutil
 import tempfile
+import time
 from types import SimpleNamespace
 
 
@@ -24,6 +25,9 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
+from arc.job.pipe.pipe_coordinator import PipeCoordinator
+from arc.job.pipe.pipe_run import build_rotor_scan_1d_tasks
+from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_state
 from arc.level import Level
 from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
@@ -319,6 +323,276 @@ H       1.27889520   -0.81548721   -0.22940984"""
 
         # And the restored names are the live '{job_type}_{i}' format, not the fossil 'conformer{i}'.
         self.assertEqual(sched.running_jobs[label], ['conf_opt_0', 'conf_sp_0'])
+
+    _METHYLAMINE_XYZ = """C      -0.57422867   -0.01669771    0.01229213
+N       0.82084044    0.08279104   -0.37769346
+H      -1.05737005   -0.84067772   -0.52007494
+H      -1.10211468    0.90879867   -0.23383011
+H      -0.66133128   -0.19490562    1.08785111
+H       0.88047852    0.26966160   -1.37780789
+H       1.27889520   -0.81548721   -0.22940984"""
+
+    def _species_with_rotor(self, label, success=None, scan_path=None, invalidation_reason=''):
+        """Build a species with a single (CN) torsion in its rotors_dict."""
+        spc = ARCSpecies(label=label, smiles='CN', xyz=self._METHYLAMINE_XYZ)
+        spc.final_xyz = spc.get_xyz()  # a restarted species whose optimization has finished
+        spc.number_of_rotors = 1
+        spc.rotors_dict = {0: {'pivots': [1, 2], 'top': [3, 4, 5], 'scan': [3, 1, 2, 6], 'torsion': [2, 0, 1, 5],
+                               'success': success, 'scan_path': scan_path,
+                               'invalidation_reason': invalidation_reason, 'directed_scan_type': 'ess'}}
+        return spc
+
+    def _stage_rotor_scan_pipe_task(self, sched, label, rotor_index, status=TaskState.PENDING):
+        """
+        Stage a 1D rotor scan pipe task on disk as a previous session's pipe run would have left it.
+
+        This goes through the real ``PipeCoordinator`` and ``pipe_state`` writers, so the directory layout
+        the restart loop looks for is the one the pipe system actually writes rather than a replica of it:
+        a change to either side of that convention turns these tests red instead of silently detaching the
+        restart guard from the pipe runs it exists to find.
+
+        Args:
+            sched (Scheduler): A scheduler supplying the project directory and the species to stage under.
+            label (str): The species label.
+            rotor_index (int): The rotor's index in the species' ``rotors_dict``.
+            status (TaskState, optional): The state to walk the staged task to.
+
+        Returns:
+            str: The ``pipe_root`` the task was staged under.
+        """
+        tasks = build_rotor_scan_1d_tasks(sched.species_dict[label], label, [rotor_index],
+                                          {'method': 'wb97xd', 'basis': 'def2tzvp'}, 'gaussian', 14000)
+        pipe_root = PipeCoordinator(sched)._compute_pipe_root(f'{label}_scan_1d', tasks)
+        initialize_task(pipe_root, tasks[0])
+        now = time.time()
+        lifecycle = [(TaskState.CLAIMED, {'claimed_by': 'worker-0', 'claim_token': 'token',
+                                          'claimed_at': now, 'lease_expires_at': now + 3600}),
+                     (TaskState.RUNNING, {'started_at': now}),
+                     (TaskState.COMPLETED, {'ended_at': now})]
+        if status != TaskState.PENDING:
+            statuses = [task_state for task_state, _ in lifecycle]
+            if status not in statuses:
+                raise ValueError(f'Cannot stage a task in {status}, only PENDING or one of {statuses}')
+            for next_status, fields in lifecycle[:statuses.index(status) + 1]:
+                update_task_state(pipe_root, tasks[0].task_id, next_status, **fields)
+        return pipe_root
+
+    def _restart_scheduler(self, species_list, converged=(), stage=None, **patched):
+        """
+        Construct a non-testing Scheduler from a restart dict in which every species already has a geometry
+        (so the restart loop in ``__init__`` runs), with ``schedule_jobs`` and the given methods patched out.
+
+        Args:
+            species_list (list): The species to restart.
+            converged (tuple, optional): Labels whose saved ``output[label]['convergence']`` is ``True``,
+                                         i.e. species the previous session had already finished.
+            stage (callable, optional): Called with a ``testing=True`` Scheduler before the restarted one is
+                                        constructed, to lay down on-disk state that a previous session would
+                                        have left in the project directory (e.g. a staged pipe run).
+            **patched: Scheduler method names to patch out.
+
+        Returns:
+            dict: The mocks, keyed by method name (``schedule_jobs`` included).
+        """
+        job_types = dict(self.job_types1, rotors=True)
+        kwargs = dict(project='project_test_restart_loop', ess_settings=self.ess_settings,
+                      species_list=species_list, composite_method=None,
+                      conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                      opt_level=Level(repr=default_levels_of_theory['opt']),
+                      freq_level=Level(repr=default_levels_of_theory['freq']),
+                      sp_level=Level(repr=default_levels_of_theory['sp']),
+                      scan_level=Level(repr=default_levels_of_theory['scan']),
+                      ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                      project_directory=tempfile.mkdtemp(prefix='arc_test_restart_loop_'),
+                      job_types=job_types, orbitals_level=default_levels_of_theory['orbitals'],
+                      adaptive_levels=None)
+        self.addCleanup(shutil.rmtree, kwargs['project_directory'], ignore_errors=True)
+        testing_sched = Scheduler(testing=True, **kwargs)
+        output = testing_sched.output
+        for spc_output in output.values():
+            spc_output['paths'].update({'geo': 'geo.out', 'freq': 'freq.out', 'sp': 'sp.out'})
+        for label in converged:
+            output[label]['convergence'] = True
+        if stage is not None:
+            stage(testing_sched)
+        mocks = dict()
+        with patch.object(Scheduler, 'schedule_jobs') as schedule_jobs:
+            mocks['schedule_jobs'] = schedule_jobs
+            patchers = {name: patch.object(Scheduler, name) for name in patched}
+            for name, patcher in patchers.items():
+                mocks[name] = patcher.start()
+                self.addCleanup(patcher.stop)
+            mocks['sched'] = Scheduler(testing=False, restart_dict={'output': output}, **kwargs)
+        return mocks
+
+    def test_restart_does_not_scan_irc_endpoint_rotors(self):
+        """
+        IRC endpoint species are diagnostic and the normal flow never scans their rotors, but they carry a
+        populated rotors_dict with no scan_path. The restart loop used to treat that as pending scan work,
+        both when the IRC species itself was restarted and when it was found by the scan over all species.
+        """
+        regular = self._species_with_rotor('regular', success=True, scan_path=__file__)
+        irc = self._species_with_rotor('IRC_regular_1', success=False)
+        mocks = self._restart_scheduler([regular, irc], run_scan_jobs=None)
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_still_scans_a_failed_regular_rotor(self):
+        """The IRC guard must not suppress the restart scan of an ordinary species whose rotor failed"""
+        regular = self._species_with_rotor('regular', success=False)
+        irc = self._species_with_rotor('IRC_regular_1', success=False)
+        mocks = self._restart_scheduler([regular, irc], run_scan_jobs=None)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_scans_a_never_scanned_rotor(self):
+        """A rotor with no result and no scan_path (e.g. added by hand to restart.yml) must be spawned on restart"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], run_scan_jobs=None)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_scans_a_never_scanned_rotor_of_a_converged_species(self):
+        """A pending rotor must be spawned even when the species was saved as converged.
+
+        This is the case the fix above misses: ``output[label]['convergence']`` is restored verbatim from
+        restart.yml, and the `continue` it triggers sits BEFORE the rotor-spawn condition, so a rotor added
+        by hand to a finished species is skipped exactly as it was before the fix -- and the species is then
+        reported as converged while missing a mode, which is the failure the fix exists to prevent.
+        """
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], converged=('regular',), run_scan_jobs=None)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_does_not_rescan_a_scanned_or_invalidated_rotor(self):
+        """Rotors that already have a result, or are invalidated, are not spawned again on restart"""
+        done = self._species_with_rotor('done', success=True, scan_path=__file__)
+        invalidated = self._species_with_rotor('invalidated', success=False, invalidation_reason='not a torsion')
+        mocks = self._restart_scheduler([done, invalidated], run_scan_jobs=None)
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_does_not_duplicate_a_rotor_scan_running_in_a_pipe(self):
+        """
+        A rotor whose scan is in flight in a pipe run must not be spawned again as a standalone ESS job.
+
+        A pipe-queued rotor carries exactly the state the restart loop reads as 'never scanned' - no result
+        and no scan_path - and pipe runs are not restored on restart: the planner does not exist yet when the
+        restart loop runs, and active_pipes starts empty, so has_pending_pipe_work() cannot see it. Without
+        the staged-pipe guard, run_scan_jobs() submits a standalone duplicate of a job that is still queued.
+        """
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 0, TaskState.RUNNING))
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_scans_a_rotor_whose_pipe_task_already_terminated(self):
+        """
+        A terminated pipe task is no reason to skip the rotor: it still owes a scan.
+
+        Nothing ingests a COMPLETED task's results once its pipe run is gone, so the rotor would otherwise
+        be left unscanned while the species is reported as converged - the very failure this restart spawn
+        exists to prevent - and a standalone scan duplicates no running job.
+        """
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 0, TaskState.COMPLETED))
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_treats_an_unreadable_pipe_task_state_as_still_owed(self):
+        """A pipe task whose state cannot be read must not be assumed finished.
+
+        Reading it as terminal would submit a standalone scan of a rotor that may still be queued, which is
+        the expensive direction to be wrong in: the cheap one leaves the rotor unscanned, as it was before.
+        """
+        def stage(sched):
+            pipe_root = self._stage_rotor_scan_pipe_task(sched, 'regular', 0)
+            with open(os.path.join(pipe_root, 'tasks', 'regular_scan_r0', 'state.json'), 'w') as f:
+                f.write('{"status": ')  # truncated, as a session killed mid-write would leave it
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], run_scan_jobs=None, stage=stage)
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_pipe_guard_is_per_rotor_not_per_species(self):
+        """A pipe task staged for one rotor must not suppress the restart scan of the species' other rotor"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        regular.rotors_dict[1] = dict(regular.rotors_dict[0], pivots=[1, 3], torsion=[2, 0, 1, 6])
+        regular.number_of_rotors = 2
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 1, TaskState.RUNNING))
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+    def test_restart_spawns_a_rotor_scan_before_the_pipe_planner_exists(self):
+        """
+        The restart loop in __init__ calls run_scan_jobs() before the pipe planner is constructed, so a restart
+        with a rotor to spawn used to die with AttributeError. Without a planner each rotor is scanned alone.
+        """
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], run_job=None)
+        self.assertEqual(mocks['run_job'].call_count, 1)
+        self.assertEqual(mocks['run_job'].call_args.kwargs['job_type'], 'scan')
+        self.assertEqual(mocks['run_job'].call_args.kwargs['rotor_index'], 0)
+
+    def test_restore_running_jobs_skips_a_job_of_an_unknown_species(self):
+        """A restored job referencing a species label that is not in this project is skipped, not a KeyError"""
+        label = 'methylamine'
+        spc = ARCSpecies(label=label, smiles='CN', xyz=self._METHYLAMINE_XYZ)
+        project_directory = tempfile.mkdtemp(prefix='arc_test_restore_unknown_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_restore_unknown', ess_settings=self.ess_settings,
+                          species_list=[spc], composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory, testing=True,
+                          job_types=self.job_types1,
+                          orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+        opt_job = job_factory(job_adapter='gaussian', project='project_test_restore_unknown',
+                              ess_settings=self.ess_settings, species=[spc], xyz=self._METHYLAMINE_XYZ,
+                              job_type='opt', level=Level(repr={'method': 'wb97xd', 'basis': 'def2svp'}),
+                              project_directory=project_directory, job_num=903)
+        stale = dict(opt_job.as_dict(), job_name='tsg9', species_labels=['rxn_label_TS'])
+        sched.restart_dict = {'running_jobs': {label: [stale, opt_job.as_dict()],
+                                               'removed_species': [opt_job.as_dict()]}}
+        sched.running_jobs = dict()
+        sched.job_dict = dict()
+        sched.restore_running_jobs()
+        self.assertEqual(sched.running_jobs[label], [opt_job.job_name])
+        self.assertEqual(list(sched.job_dict[label]['opt'].keys()), [opt_job.job_name])
+        # No running_jobs key for a species that is not in the project; schedule_jobs() would never clear it.
+        self.assertNotIn('removed_species', sched.running_jobs)
+
+    def test_save_restart_dict_skips_untracked_conformer_jobs(self):
+        """A conf_opt/conf_sp/tsg name in running_jobs with no job_dict entry is skipped with a warning"""
+        label = 'methylamine'
+        spc = ARCSpecies(label=label, smiles='CN', xyz=self._METHYLAMINE_XYZ)
+        project_directory = tempfile.mkdtemp(prefix='arc_test_save_restart_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_save_restart', ess_settings=self.ess_settings,
+                          species_list=[spc], composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory, testing=True,
+                          job_types=self.job_types1,
+                          orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+        tracked = MagicMock()
+        tracked.as_dict.return_value = {'job_name': 'conf_opt_0'}
+        sched.job_dict[label] = {'conf_opt': {0: tracked}}
+        sched.running_jobs[label] = ['conf_opt_0', 'conf_opt_5', 'conf_sp_2', 'tsg3']
+        sched.restart_dict = dict()
+        sched.save_restart = True
+        with self.assertLogs('arc', level='WARNING') as logs:
+            sched.save_restart_dict()
+        self.assertEqual(sched.restart_dict['running_jobs'][label], [{'job_name': 'conf_opt_0'}])
+        self.assertEqual(len(logs.output), 3)
+        # The untracked names leave running_jobs too, so the next poll does not KeyError on them.
+        self.assertEqual(sched.running_jobs[label], ['conf_opt_0'])
+        sched.get_completed_incore_jobs()
 
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
@@ -2738,6 +3012,41 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertIsNone(failed.energy)
         self.assertEqual(sched.output['TS_single']['paths']['gsm'], good.log_path)
         self.assertEqual(sched.output['TS_single']['paths']['neb'], '')
+
+    @patch('arc.scheduler.Scheduler.run_job')
+    def test_run_ts_conformer_jobs_drops_orphaned_conf_opt_running_jobs(self, mock_run_job):
+        """Respawning the TS conformers wipes job_dict['conf_opt'], so restored conf_opt names must go as well."""
+        xyz_a = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        xyz_b = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       2.51402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        label = 'TS_respawn'
+        ts_spc = ARCSpecies(label=label, is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, xyz=xyz_a),
+                             TSGuess(index=1, method='heuristics', success=True, xyz=xyz_b)]
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_ts_respawn')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_ts_respawn', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.pipe_planner = MagicMock()
+        sched.pipe_planner.try_pipe_ts_opt.return_value = set()
+        sched.job_dict[label] = {'conf_opt': {0: MagicMock(), 1: MagicMock()}}
+        sched.running_jobs[label] = ['conf_opt_0', 'conf_opt_1', 'freq_a7']
+        sched.run_ts_conformer_jobs(label=label)
+        self.assertEqual(sched.running_jobs[label], ['freq_a7'])
+        self.assertEqual(mock_run_job.call_count, 2)
 
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):

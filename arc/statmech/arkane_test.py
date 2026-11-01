@@ -25,6 +25,7 @@ from arc.statmech.arkane import (
     _available_years_for_level,
     _extract_section,
     find_best_across_files,
+    find_unphysical_frequencies,
     _find_best_level_key_for_sp_level,
     get_qm_corrections_files,
     _level_to_str,
@@ -662,6 +663,86 @@ kinetics(
             self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
             self.assertNotIn('ts_validation', rxn.kinetics)
             self.assertNotIn(TS_IRC_FAILED_MARKER, rxn.kinetics['comment'])
+
+    near_zero_freq_kinetics_output_content = """
+conformer(
+    label = 'TS0',
+    E0 = (50.0, 'kJ/mol'),
+    modes = [
+        NonlinearRotor(inertia=([10.0, 20.0, 30.0], 'amu*angstrom^2'), symmetry=1),
+        HarmonicOscillator(frequencies=([0.0, 3.2, 125.4, 1450.1, 3050.7], 'cm^-1')),
+    ],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+
+conformer(
+    label = 'nitroethane',
+    E0 = (-100.0, 'kJ/mol'),
+    modes = [
+        NonlinearRotor(inertia=([10.0, 20.0, 30.0], 'amu*angstrom^2'), symmetry=1),
+        HarmonicOscillator(frequencies=([45.3, 610.2, 1500.0], 'cm^-1')),
+    ],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+
+kinetics(
+    label = 'nitroethane <=> ethyl_nitrite',
+    kinetics = Arrhenius(
+        A = (5.0e20, 's^-1'),
+        n = 1.0,
+        Ea = (20.0, 'kJ/mol'),
+        T0 = (1, 'K'),
+        Tmin = (300, 'K'),
+        Tmax = (2000, 'K'),
+    ),
+)
+"""
+
+    def test_find_unphysical_frequencies(self):
+        """Near-zero harmonic frequencies are reported per conformer; physical ones are not."""
+        content = self.near_zero_freq_kinetics_output_content
+        self.assertEqual(find_unphysical_frequencies('TS0', content), [0.0, 3.2])
+        self.assertEqual(find_unphysical_frequencies('nitroethane', content), [])
+        self.assertEqual(find_unphysical_frequencies('missing_species', content), [])
+
+    def test_kinetics_parsed_from_a_near_zero_frequency_conformer_are_discarded(self):
+        """A rate coefficient whose TS carried a ~0 cm^-1 oscillator is discarded and flagged."""
+        statmech_dir = tempfile.mkdtemp(prefix='test_Arkane_near_zero_')
+        self.addCleanup(shutil.rmtree, statmech_dir, ignore_errors=True)
+        with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+            f.write(self.near_zero_freq_kinetics_output_content)
+        rxn = self.isomerization_reaction()
+        adapter = ArkaneAdapter(output_directory=os.path.join(statmech_dir, 'output'),
+                                calcs_directory=os.path.join(statmech_dir, 'calcs'),
+                                output_dict=dict(),
+                                bac_type=None,
+                                species=rxn.r_species + rxn.p_species + [rxn.ts_species],
+                                reactions=[rxn],
+                                )
+        adapter.parse_arkane_kinetics_output(statmech_dir)
+        self.assertIsNone(rxn.kinetics)
+        self.assertIn('non-physical near-zero frequencies [0.0, 3.2]', rxn.ts_species.long_thermo_description)
+
+    def test_kinetics_parsed_from_physical_conformers_are_kept(self):
+        """Kinetics whose conformers carry only physical frequencies are kept as parsed."""
+        statmech_dir = tempfile.mkdtemp(prefix='test_Arkane_physical_')
+        self.addCleanup(shutil.rmtree, statmech_dir, ignore_errors=True)
+        content = self.near_zero_freq_kinetics_output_content.replace('[0.0, 3.2, 125.4', '[85.0, 125.4')
+        with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+            f.write(content)
+        rxn = self.isomerization_reaction()
+        adapter = ArkaneAdapter(output_directory=os.path.join(statmech_dir, 'output'),
+                                calcs_directory=os.path.join(statmech_dir, 'calcs'),
+                                output_dict=dict(),
+                                bac_type=None,
+                                species=rxn.r_species + rxn.p_species + [rxn.ts_species],
+                                reactions=[rxn],
+                                )
+        adapter.parse_arkane_kinetics_output(statmech_dir)
+        self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0e20)
+        self.assertNotIn('non-physical', rxn.ts_species.long_thermo_description)
 
     def test_parse_thermo_data_block_scalars_are_float(self):
         """Verify Tmin, Tmax, H298, S298 are parsed as floats, not strings."""

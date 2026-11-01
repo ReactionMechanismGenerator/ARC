@@ -7,6 +7,7 @@ This module contains unit tests for the arc.processor module
 
 import os
 import shutil
+import tempfile
 import unittest
 
 import arc.processor as processor
@@ -78,6 +79,24 @@ class TestProcessor(unittest.TestCase):
         self.assertIn(TS_IRC_FAILED_MARKER, content[0]['ts_validation'])
         self.assertNotIn('ts_validation', content[1])
 
+    def test_process_arc_project_removes_a_stale_kinetics_library(self):
+        """A kinetics library left by a previous session is removed when no rate coefficient survives"""
+        project_directory = tempfile.mkdtemp(prefix='arc_test_stale_kinetics_lib_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        lib_path = os.path.join(project_directory, 'output', 'RMG libraries', 'kinetics')
+        os.makedirs(lib_path)
+        with open(os.path.join(lib_path, 'reactions.py'), 'w') as f:
+            f.write('# a rate computed by a previous session\n')
+        ch3, h2 = ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2', smiles='[H][H]')
+        rxn = ARCReaction(r_species=[self.ch4, self.h], p_species=[ch3, h2])
+        rxn.ts_label = 'TS0'
+        output_dict = {label: {'convergence': label != 'TS0'} for label in ['CH4', 'H', 'CH3', 'H2', 'TS0']}
+        processor.process_arc_project(thermo_adapter='arkane', kinetics_adapter='arkane', project='stale',
+                                      project_directory=project_directory,
+                                      species_dict={spc.label: spc for spc in [self.ch4, self.h, ch3, h2]},
+                                      reactions=[rxn], output_dict=output_dict, compute_thermo=False,
+                                      compare_to_rmg=False)
+        self.assertFalse(os.path.isdir(lib_path))
 
     @classmethod
     def tearDownClass(cls):

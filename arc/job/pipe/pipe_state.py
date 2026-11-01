@@ -80,13 +80,16 @@ class PipeRunState(str, Enum):
     COMPLETED_PARTIAL = 'COMPLETED_PARTIAL'
     FAILED = 'FAILED'
 
+# Named because the Scheduler's restart loop locates staged 1D rotor scan runs by this family.
+ROTOR_SCAN_1D_TASK_FAMILY = 'rotor_scan_1d'
+
 # Task families currently supported by the pipe system.
 # Only families listed here pass TaskSpec validation.
 SUPPORTED_TASK_FAMILIES = (
     'conf_opt', 'conf_sp',
     'ts_guess_batch_method', 'ts_opt',
     'species_sp', 'species_freq', 'irc',
-    'rotor_scan_1d',
+    ROTOR_SCAN_1D_TASK_FAMILY,
 )
 
 # Owner types mapping to ARC object categories.
@@ -129,6 +132,22 @@ PIPE_RUN_TRANSITIONS: dict[PipeRunState, tuple[PipeRunState, ...]] = {
     PipeRunState.COMPLETED_PARTIAL: (),
     PipeRunState.FAILED: (),
 }
+
+
+def is_terminal_task_state(status: TaskState | str) -> bool:
+    """
+    Whether a task state is terminal, i.e. the pipe system will take no further action on the task.
+
+    Derived from ``TASK_TRANSITIONS`` rather than from a second list of states, so a state that gains
+    or loses an outgoing transition does not need to be remembered in two places.
+
+    Args:
+        status (TaskState or str): The task state.
+
+    Returns:
+        bool: ``True`` if no transition out of ``status`` exists.
+    """
+    return not TASK_TRANSITIONS[TaskState(status)]
 
 
 def check_valid_transition(current_state: TaskState | PipeRunState,
