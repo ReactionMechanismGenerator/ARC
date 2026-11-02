@@ -271,6 +271,47 @@ def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1, ca
             predictor = load_uma_predictor(calc_config, cache=cache)
         return FAIRChemCalculator(predictor, task_name=calc_config.get('task', 'omol'))
 
+    elif name == 'mace':
+        # MACE (mace-torch). The OMol25 model ('omol') conditions on charge and spin through atoms.info, as UMA does;
+        # the MACE-OFF models ('off-small', 'off-medium', 'off-large') are for neutral closed-shell organics.
+        model = calc_config.get('model', 'omol')
+        key = ('mace', model, calc_config.get('default_dtype', 'float64'))
+        if cache is None or key not in cache:
+            from mace.calculators import mace_off, mace_omol
+            kwargs = dict(device=calc_config.get('device', 'cpu'), default_dtype=key[2])
+            calc = mace_omol(**kwargs) if model == 'omol' else mace_off(model=model.split('-', 1)[1], **kwargs)
+            if cache is None:
+                return calc
+            cache[key] = calc
+        return cache[key]
+
+    elif name == 'orb':
+        # Orb-v3 (orb-models). The OMol25 models read the charge and spin from atoms.info.
+        from orb_models.forcefield import pretrained
+        from orb_models.forcefield.inference.calculator import ORBCalculator
+        model = calc_config.get('model', 'orb-v3-conservative-omol')
+        key = ('orb', model, calc_config.get('precision', 'float64'))
+        if cache is None or key not in cache:
+            orbff, adapter = getattr(pretrained, model.replace('-', '_'))(device=calc_config.get('device', 'cpu'),
+                                                                           precision=key[2])
+            calc = ORBCalculator(orbff, atoms_adapter=adapter, device=calc_config.get('device', 'cpu'))
+            if cache is None:
+                return calc
+            cache[key] = calc
+        return cache[key]
+
+    elif name == 'aimnet2':
+        # AIMNet2 (aimnet). The NSE models ('aimnet2-nse') are trained for open shells and take the multiplicity.
+        from aimnet.calculators import AIMNet2Calculator
+        from aimnet.calculators.aimnet2ase import AIMNet2ASE
+        model = calc_config.get('model', 'aimnet2-nse')
+        key = ('aimnet2', model)
+        if cache is None or key not in cache:
+            base = AIMNet2Calculator(model)
+            if cache is None:
+                return AIMNet2ASE(base, charge=charge, mult=multiplicity)
+            cache[key] = base
+        return AIMNet2ASE(cache[key], charge=charge, mult=multiplicity)
 
     from ase.calculators.calculator import get_calculator_class
     try:
