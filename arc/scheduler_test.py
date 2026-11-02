@@ -2706,6 +2706,39 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         # The GCN guess, not a position, carries the error.
         self.assertIn('gcn', ts_spc.ts_guesses[0].method.lower())
 
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_troubleshoot_ess_failed_ts_scan_keeps_the_ts(self, mock_switch_ts):
+        """A TS rotor scan that cannot be troubleshot invalidates that rotor; it must not switch the TS guess."""
+        ts_spc = ARCSpecies(label='TS_trsh_scan', is_ts=True, multiplicity=2, charge=0, compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'top': [1, 3], 'scan': [3, 1, 2, 4], 'torsion': [2, 0, 1, 3],
+                                  'success': None, 'invalidation_reason': '', 'dimensions': 1, 'trsh_methods': list(),
+                                  'trsh_counter': 0, 'times_dihedral_set': 0, 'scan_path': ''}}
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_trsh_scan')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_trsh_scan', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.running_jobs['TS_trsh_scan'] = list()
+        job = MagicMock()
+        job.job_name, job.job_adapter, job.job_type, job.rotor_index = 'scan_a10', 'ase', 'scan', 0
+        job.job_status = ['done', {'status': 'errored', 'keywords': ['Unknown'], 'error': 'unknown', 'line': ''}]
+        job.ess_trsh_methods, job.fine, job.job_memory_gb, job.cpu_cores = ['change_node'], False, 8, 4
+        job.level = Level(repr={'method': 'uma', 'software': 'ase'})
+        job.args = {'keyword': dict(), 'block': dict(), 'trsh': dict()}
+        job.times_rerun, job.job_id, job.server, job.conformer = 0, 1, 'local', None
+        job.torsions, job.dihedrals, job.directed_scan_type = [[2, 0, 1, 3]], None, None
+        sched.troubleshoot_ess(label='TS_trsh_scan', job=job, level_of_theory=job.level)
+        mock_switch_ts.assert_not_called()
+        self.assertFalse(ts_spc.rotors_dict[0]['success'])
+        self.assertIn('could not be troubleshot', ts_spc.rotors_dict[0]['invalidation_reason'])
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_run_ts_conformer_jobs_single_success_provenance(self, mock_run_opt):
         """The provenance of a lone successful guess must describe that guess, not ts_guesses[0]."""
@@ -3538,6 +3571,57 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         mock_iso.assert_not_called()
         self.assertEqual(sched.species_dict['TS_trsh'].final_xyz, new_xyz)
         mock_run_opt.assert_called_once()
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_troubleshoot_scan_job_repeated_ts_conformer_keeps_the_ts(self, mock_run_opt):
+        """A TS scan that leads again to a point the TS was re-optimized from invalidates only that rotor."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        new_xyz = str_to_xyz("""N       0.91000000    0.52000000    0.00000000
+        H       1.81000000    1.04000000    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91000000    1.23000000    0.72000000""")
+        ts_spc = ARCSpecies(label='TS_trsh_rep', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'scan': [3, 1, 2, 4], 'scan_path': '',
+                                  'invalidation_reason': '', 'success': None, 'symmetry': None,
+                                  'times_dihedral_set': 1, 'trsh_methods': [{'change conformer': new_xyz}],
+                                  'trsh_counter': 1}}
+
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_ts_rep_trsh')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_ts_rep_trsh', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.trsh_ess_jobs = True
+        sched.trsh_rotors = True
+        sched.output['TS_trsh_rep']['convergence'] = None
+
+        job_mock = MagicMock()
+        job_mock.species_label = 'TS_trsh_rep'
+        job_mock.rotor_index = 0
+        job_mock.torsions = [[2, 0, 1, 3]]
+        job_mock.job_name = 'scan_a202'
+
+        with patch('arc.scheduler.Scheduler.delete_all_species_jobs') as mock_delete:
+            trsh_success, actions = sched.troubleshoot_scan_job(job=job_mock, methods={'change conformer': new_xyz})
+
+        self.assertFalse(trsh_success)
+        self.assertEqual(actions, dict())
+        mock_delete.assert_not_called()
+        mock_run_opt.assert_not_called()
+        self.assertIsNone(sched.output['TS_trsh_rep']['convergence'])
+        self.assertNotIn('Not calculating this species', sched.output['TS_trsh_rep']['errors'])
+        self.assertIsNone(sched.species_dict['TS_trsh_rep'].final_xyz)  # not moved to the scan point
 
     @patch('arc.scheduler.Scheduler.run_job')
     def test_troubleshoot_scan_job_skips_isomorphism_for_ts_non_conformer(self, mock_run_job):
