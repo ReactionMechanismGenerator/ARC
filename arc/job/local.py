@@ -167,9 +167,10 @@ def delete_job(job_id: int | str):
                        f'still running...')
         running_jobs = check_running_jobs_ids()
         if job_id in running_jobs:
+            # E.g., PBS refuses to delete a job that is already exiting, and qstat still lists it. The job ends on its
+            # own and the caller has dropped it from its running jobs, so this must not end the ARC run.
             logger.error(f'Job {job_id} was scheduled for deletion, but the deletion command has appeared to errored. '
-                         f'The job is still running.')
-            raise RuntimeError(f'Could not delete job {job_id}')
+                         f'The job is still running; leaving it to finish on its own.')
         else:
             logger.info(f'Job {job_id} is no longer running.')
 
