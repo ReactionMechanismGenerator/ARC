@@ -1793,6 +1793,10 @@ class Scheduler(object):
             label (str): The species label.
         """
         if self.job_types['rotors'] and isinstance(self.species_dict[label].rotors_dict, dict):
+            if self.species_dict[label].is_ts:
+                # A TS's ASE scans build each rotating group with the TS's partial bonds, which distances miss.
+                self.species_dict[label].scan_partial_bonds = self.species_dict[label].preserve_param_in_scan \
+                    or self.get_ts_reactive_bonds(label)
             ess_rotor_indices = []  # Collected for potential pipe batching below.
             for i, rotor in self.species_dict[label].rotors_dict.items():
                 if rotor['scan_path'] and os.path.isfile(rotor['scan_path']):

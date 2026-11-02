@@ -322,6 +322,15 @@ class ASEAdapter(JobAdapter):
             self.set_scan_torsions()
             input_dict['torsions'] = self.torsions
             input_dict['scan_res'] = self.scan_res
+            if self.rotor_index is not None and self.species and self.species[0].rotors_dict \
+                    and self.species[0].rotors_dict[self.rotor_index].get('top'):
+                # The rotating group from the species graph (0-indexed, on either side of the pivots). ase_script.py
+                # would otherwise rebuild it from distances, which miss a TS's partial bonds and cut the group short.
+                input_dict['top'] = [index - 1 for index in self.species[0].rotors_dict[self.rotor_index]['top']]
+            partial_bonds = getattr(self.species[0], 'scan_partial_bonds', None) if self.species else None
+            if partial_bonds:
+                # A TS's forming and breaking bonds (0-indexed), set by the Scheduler, for the rotating group.
+                input_dict['partial_bonds'] = [[bond[0] - 1, bond[1] - 1] for bond in partial_bonds]
         save_yaml_file(os.path.join(self.local_path, 'input.yml'), input_dict)
 
     def warn_if_unreliable_uma_sp(self) -> bool:
