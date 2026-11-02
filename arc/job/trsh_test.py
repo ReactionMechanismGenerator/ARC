@@ -888,7 +888,7 @@ class TestTrsh(unittest.TestCase):
         self.assertFalse(couldnt_trsh)
         self.assertEqual(memory, 32)
         memory_markers = [m for m in ess_trsh_methods if m.startswith('memory')]
-        self.assertEqual(memory_markers, ['memory_headroom_0.75'])
+        self.assertEqual(memory_markers, ['memory_headroom_0.7'])
 
         # Repeated galloc: feed the previous ess_trsh_methods back in; the ladder steps once more.
         output_errors, ess_trsh_methods, *_, memory, shift, cpu_cores_out, couldnt_trsh = trsh.trsh_ess_job(
@@ -897,7 +897,7 @@ class TestTrsh(unittest.TestCase):
         self.assertFalse(couldnt_trsh)
         self.assertEqual(memory, 32)
         memory_markers = [m for m in ess_trsh_methods if m.startswith('memory')]
-        self.assertEqual(memory_markers, ['memory_headroom_0.75', 'memory_headroom_0.6'])
+        self.assertEqual(memory_markers, ['memory_headroom_0.7', 'memory_headroom_0.6'])
 
         # Ladder exhausted: couldnt_trsh with an actionable message, terminated by the '; ' separator
         # used throughout output_errors (entries are concatenated into output[label]['errors']).

@@ -361,7 +361,7 @@ default_job_settings = {
 # The remainder is headroom for Gaussian's allocations outside %mem. The first entry is the
 # default; on a Gaussian memory allocation failure ARC steps down this ladder while holding the
 # queue reservation constant, so each step leaves strictly more headroom.
-gaussian_memory_headroom_fractions = [0.90, 0.75, 0.60]
+gaussian_memory_headroom_fractions = [0.80, 0.70, 0.60]
 
 # Pipe mode settings: distributed HPC execution via job arrays.
 # These can be overridden in ~/.arc/settings.py.
