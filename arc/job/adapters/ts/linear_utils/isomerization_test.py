@@ -196,6 +196,38 @@ class TestGetNearAttackXyz(unittest.TestCase):
             np.array(result['coords'][c4]))
         self.assertLessEqual(d_after, d_before + 0.01)
 
+    def test_get_near_attack_xyz_keeps_substituents_on_the_donor(self):
+        """
+        Turning the donor toward the acceptor of an H shift carries the donor's heavy substituents with all their
+        atoms: n-C4H9O2's 1,5-H shift turns C1, whose methyl group used to stay behind (C-H 0.83-1.54 A).
+        """
+        spc = ARCSpecies(label='nC4H9O2', smiles='CCCCO[O]', xyz="""C      -2.93927000   -0.37633600    0.02451300
+C      -1.47658300   -0.37344700   -0.22160400
+C      -0.64732900    0.79032200    0.18791100
+C       0.79068900    0.72977200   -0.29187300
+O       1.40459600   -0.35577200    0.37753900
+O       2.71353600   -0.50340300   -0.15697500
+H      -3.40223300    0.56329300   -0.29621500
+H      -3.17092200   -0.48208300    1.09493400
+H      -3.43725300   -1.19569400   -0.49437900
+H      -0.97638400   -1.29309300   -0.49693300
+H      -0.64675700    0.90141400    1.28377300
+H      -1.08770100    1.72013300   -0.19386300
+H       1.32032900    1.65998000   -0.05619900
+H       0.83477500    0.56337200   -1.37237700
+H       3.25604700   -0.18579200    0.57307000""")
+        h_atom = next(i for i, a in enumerate(spc.mol.atoms) if a.is_hydrogen()
+                      and spc.mol.atoms.index(next(iter(a.edges))) == 1)
+        xyz = spc.get_xyz()
+        folded = get_near_attack_xyz(xyz, spc.mol, [(5, h_atom)])
+        before, after = np.array(xyz['coords']), np.array(folded['coords'])
+        for i, atom in enumerate(spc.mol.atoms):
+            for neighbor in atom.edges:
+                j = spc.mol.atoms.index(neighbor)
+                self.assertAlmostEqual(np.linalg.norm(after[i] - after[j]), np.linalg.norm(before[i] - before[j]),
+                                       delta=0.01, msg=f'bond {i}-{j}')
+        self.assertLess(np.linalg.norm(after[5] - after[h_atom]), np.linalg.norm(before[5] - before[h_atom]))
+
     def test_get_near_attack_xyz_preserves_atom_count(self):
         """Near-attack conformer preserves atom count and symbols."""
         forming_bond = (self.pentane_c_indices[0], self.pentane_c_indices[4])
