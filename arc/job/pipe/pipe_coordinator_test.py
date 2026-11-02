@@ -5,6 +5,8 @@
 This module contains unit tests for the arc.job.pipe.pipe_coordinator module
 """
 
+import functools
+import json
 import os
 import shutil
 import tempfile
@@ -13,13 +15,15 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
-from arc.job.pipe.pipe_run import PipeRun
+from arc.job.pipe.pipe_run import PipeRun, get_task_attempt_dir
 from arc.job.pipe.pipe_state import (
     PipeRunState,
     TaskState,
     TaskSpec,
     update_task_state,
 )
+from arc.level import Level
+from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
 
 
@@ -63,11 +67,12 @@ def _make_spec(task_id, task_family='conf_opt', engine='mockter', level=None,
     )
 
 
-def _make_mock_sched(project_directory):
+def _make_mock_sched(project_directory, ess_settings=None):
     """Create a mock Scheduler with the attributes PipeCoordinator needs."""
     sched = MagicMock()
     sched.project_directory = project_directory
     sched.server_job_ids = list()
+    sched.ess_settings = ess_settings if ess_settings is not None else {'mockter': ['local']}
     spc = ARCSpecies(label='H2O', smiles='O')
     spc.conformers = [None] * 5
     spc.conformer_energies = [None] * 5
@@ -127,6 +132,62 @@ class TestShouldUsePipe(unittest.TestCase):
         tasks = [_make_spec(f't_{i}') for i in range(15)]
         self.assertFalse(self.coord.should_use_pipe(tasks))
 
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'}}})
+    def test_false_when_engine_resolves_to_remote_server(self):
+        coord = PipeCoordinator(_make_mock_sched(self.tmpdir, ess_settings={'mockter': ['zeus']}))
+        tasks = [_make_spec(f't_{i}') for i in range(15)]
+        self.assertFalse(coord.should_use_pipe(tasks))
+
+    def _should_use_pipe(self, ess_settings, tasks=None):
+        """Return should_use_pipe() for a scheduler whose ESS settings are ``ess_settings``."""
+        coord = PipeCoordinator(_make_mock_sched(self.tmpdir, ess_settings=ess_settings))
+        return coord.should_use_pipe(tasks if tasks is not None
+                                     else [_make_spec(f't_{i}') for i in range(15)])
+
+    def test_true_when_the_engine_is_not_an_ess(self):
+        """TS-guess methods run in this process and are given no server, which is this machine."""
+        self.assertTrue(self._should_use_pipe({'gaussian': ['local']}))
+
+    def test_false_when_the_engine_names_an_empty_server_list(self):
+        """An ESS available nowhere resolves to nothing, and used to raise IndexError."""
+        self.assertFalse(self._should_use_pipe({'mockter': []}))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'}}})
+    def test_false_when_the_resolved_server_is_not_configured(self):
+        """An unconfigured server is not known to be this machine, so the pipe is refused."""
+        self.assertFalse(self._should_use_pipe({'mockter': ['not_a_configured_server']}))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'},
+                        'local': {'cluster_soft': 'PBS', 'un': 'u'}}})
+    def test_the_first_server_decides_even_when_a_later_one_is_local(self):
+        """ARC submits to the first server named, so that is the one the pipe must be judged on."""
+        self.assertFalse(self._should_use_pipe({'mockter': ['zeus', 'local']}))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'local': {'cluster_soft': 'PBS', 'un': 'u'}}})
+    def test_true_when_the_server_is_local_in_another_case(self):
+        """A server name is a settings key whose casing the user chose."""
+        self.assertTrue(self._should_use_pipe({'mockter': ['LOCAL']}))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'local': {'cluster_soft': 'PBS', 'un': 'u'}}})
+    def test_true_when_the_server_is_named_as_a_bare_string(self):
+        """The ESS settings allow one server as a string rather than a one-item list."""
+        self.assertTrue(self._should_use_pipe({'mockter': 'local'}))
+
+    @patch('arc.job.pipe.pipe_coordinator.settings',
+           {'servers': {'zeus': {'cluster_soft': 'PBS', 'address': 'z.example.edu', 'un': 'u'},
+                        'local': {'cluster_soft': 'PBS', 'un': 'u'}}})
+    def test_a_troubleshooting_server_override_is_honoured(self):
+        """A job moved to another server by troubleshooting does not go through the pipe."""
+        tasks = [_make_spec(f't_{i}') for i in range(15)]
+        for task in tasks:
+            task.args = {'trsh': {'server': 'zeus'}}
+        self.assertFalse(self._should_use_pipe({'mockter': ['local']}, tasks=tasks))
+
 
 class TestSubmitPipeRun(unittest.TestCase):
     """Tests for PipeCoordinator.submit_pipe_run()."""
@@ -142,8 +203,8 @@ class TestSubmitPipeRun(unittest.TestCase):
         tasks = [_make_spec(f't_{i}') for i in range(3)]
         pipe = self.coord.submit_pipe_run('run_001', tasks)
         self.assertIsInstance(pipe, PipeRun)
-        self.assertIn('run_001', self.coord.active_pipes)
-        self.assertIs(self.coord.active_pipes['run_001'], pipe)
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+        self.assertIs(self.coord.active_pipes[pipe.pipe_root], pipe)
 
     def test_submit_stages_on_disk(self):
         tasks = [_make_spec(f't_{i}') for i in range(2)]
@@ -167,6 +228,39 @@ class TestSubmitPipeRun(unittest.TestCase):
         self.assertEqual(pipe.scheduler_job_id, '12345[]')
 
 
+class TestLocalWorkerScratch(unittest.TestCase):
+    """Tests that local pipe workers get scratch directories that never coincide between pipe runs."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_scratch_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        sched = _make_mock_sched(self.tmpdir)
+        sched.species_dict['CH4'] = ARCSpecies(label='CH4', smiles='C')
+        self.coord = PipeCoordinator(sched)
+
+    def _tmpdir_line(self, pipe):
+        with patch.dict('arc.job.pipe.pipe_run.pipe_settings', {'scratch_base': '/scratch'}):
+            preamble = pipe._build_env_preamble()
+        return [line for line in preamble.splitlines() if line.startswith('export TMPDIR=')][0]
+
+    def test_scratch_differs_between_per_species_and_cross_species_pipes(self):
+        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '1')):
+            pipes = [self.coord.submit_pipe_run('H2O_conf_opt', [_make_spec('t_a', species_label='H2O')],
+                                                cluster_software='local'),
+                     self.coord.submit_pipe_run('CH4_conf_opt', [_make_spec('t_b', species_label='CH4')],
+                                                cluster_software='local'),
+                     self.coord.submit_pipe_run('species_freq_batch',
+                                                [_make_spec('t_c', species_label='H2O'),
+                                                 _make_spec('t_d', species_label='CH4')],
+                                                cluster_software='local'),
+                     self.coord.submit_pipe_run('species_freq_batch',
+                                                [_make_spec('t_e', species_label='H2O'),
+                                                 _make_spec('t_f', species_label='CH4')],
+                                                cluster_software='local')]
+        lines = [self._tmpdir_line(pipe) for pipe in pipes]
+        self.assertEqual(len(set(lines)), 4)
+
+
 class TestRegisterFromDir(unittest.TestCase):
     """Tests for PipeCoordinator.register_pipe_run_from_dir()."""
 
@@ -181,9 +275,9 @@ class TestRegisterFromDir(unittest.TestCase):
         tasks = [_make_spec(f't_{i}') for i in range(2)]
         original = self.coord.submit_pipe_run('run_restore', tasks, cluster_software='pbs')
         pipe_root = original.pipe_root
-        del self.coord.active_pipes['run_restore']
+        del self.coord.active_pipes[pipe_root]
         restored = self.coord.register_pipe_run_from_dir(pipe_root)
-        self.assertIn('run_restore', self.coord.active_pipes)
+        self.assertIn(pipe_root, self.coord.active_pipes)
         self.assertEqual(restored.run_id, 'run_restore')
         self.assertEqual(restored.cluster_software, 'pbs')
 
@@ -202,34 +296,78 @@ class TestPollPipes(unittest.TestCase):
         pipe = self.coord.submit_pipe_run('run_done', [_make_spec('t_done')])
         _complete_task(pipe.pipe_root, 't_done')
         self.coord.poll_pipes()
-        self.assertNotIn('run_done', self.coord.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_keeps_pending_pipe(self):
-        self.coord.submit_pipe_run('run_pending', [_make_spec('t_pending')])
+        pipe = self.coord.submit_pipe_run('run_pending', [_make_spec('t_pending')])
         self.coord.poll_pipes()
-        self.assertIn('run_pending', self.coord.active_pipes)
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_removes_failed_pipe(self):
         pipe = self.coord.submit_pipe_run('run_fail', [_make_spec('t_fail')])
         pipe.status = PipeRunState.FAILED
         pipe._save_run_metadata()
         self.coord.poll_pipes()
-        self.assertNotIn('run_fail', self.coord.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_removes_after_repeated_reconcile_failures(self):
         pipe = self.coord.submit_pipe_run('run_stuck', [_make_spec('t_stuck')])
         with patch.object(pipe, 'reconcile', side_effect=RuntimeError('corrupt')):
             for _ in range(3):
                 self.coord.poll_pipes()
-        self.assertNotIn('run_stuck', self.coord.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_poll_resets_failure_count_on_success(self):
         pipe = self.coord.submit_pipe_run('run_flaky', [_make_spec('t_flaky')])
         with patch.object(pipe, 'reconcile', side_effect=RuntimeError('transient')):
             self.coord.poll_pipes()
-        self.assertEqual(self.coord._pipe_poll_failures.get('run_flaky'), 1)
-        self.coord.poll_pipes()  # succeeds this time
-        self.assertNotIn('run_flaky', self.coord._pipe_poll_failures)
+        self.assertEqual(self.coord._pipe_poll_failures.get(pipe.pipe_root), 1)
+        self.coord.poll_pipes()
+        self.assertNotIn(pipe.pipe_root, self.coord._pipe_poll_failures)
+
+    def test_removed_pipe_leaves_no_summary_or_failure_count(self):
+        def complete(pipe):
+            _complete_task(pipe.pipe_root, 't_0')
+            self.coord.poll_pipes()
+
+        def fail(pipe):
+            pipe.status = PipeRunState.FAILED
+            pipe._save_run_metadata()
+            self.coord.poll_pipes()
+
+        def stop_reconciling(pipe):
+            with patch.object(pipe, 'reconcile', side_effect=RuntimeError('corrupt')):
+                for _ in range(3):
+                    self.coord.poll_pipes()
+
+        for path, finish in (('completed', complete), ('failed', fail),
+                             ('failure limit', stop_reconciling)):
+            with self.subTest(path=path):
+                pipe = self.coord.submit_pipe_run(f'run_{path}', [_make_spec('t_0')])
+                self.coord.poll_pipes()
+                self.assertIn(pipe.pipe_root, self.coord._last_pipe_summary)
+                finish(pipe)
+                self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
+                self.assertNotIn(pipe.pipe_root, self.coord._last_pipe_summary)
+                self.assertNotIn(pipe.pipe_root, self.coord._pipe_poll_failures)
+
+    def test_same_named_concurrent_batches_are_tracked_separately(self):
+        first = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_first')])
+        second = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_second')])
+        self.assertNotEqual(first.pipe_root, second.pipe_root)
+        self.assertEqual(len(self.coord.active_pipes), 2)
+        self.assertIs(self.coord.active_pipes[first.pipe_root], first)
+        self.assertIs(self.coord.active_pipes[second.pipe_root], second)
+
+    def test_poll_ingests_first_batch_when_a_same_named_batch_is_submitted_later(self):
+        first = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_first')])
+        second = self.coord.submit_pipe_run('species_freq_batch', [_make_spec('t_second')])
+        _complete_task(first.pipe_root, 't_first')
+        with patch.object(self.coord, 'ingest_pipe_results') as mock_ingest:
+            self.coord.poll_pipes()
+        mock_ingest.assert_called_once_with(first)
+        self.assertNotIn(first.pipe_root, self.coord.active_pipes)
+        self.assertIn(second.pipe_root, self.coord.active_pipes)
 
     def test_resubmission_adds_job_id_to_server_job_ids(self):
         """Resubmitted pipe job ID is added to server_job_ids."""
@@ -273,6 +411,178 @@ class TestIngestPipeResults(unittest.TestCase):
         # Remove state.json to simulate corruption
         os.remove(os.path.join(pipe.pipe_root, 'tasks', 't_missing', 'state.json'))
         self.coord.ingest_pipe_results(pipe)  # should not raise
+
+
+class TestFinalizeSpeciesLeafTask(unittest.TestCase):
+    """
+    Tests that piped species_sp / species_freq tasks are routed through the Scheduler's own
+    post-job checks, which own the ``output[label]['job_types']`` success flags. Without this,
+    a piped job computes correctly and is ingested, yet the species is reported as failed.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_finalize_')
+        self.sched = _make_mock_sched(self.tmpdir)
+        self.coord = PipeCoordinator(self.sched)
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        convergence_patch = patch('arc.job.pipe.pipe_coordinator.check_ess_convergence',
+                                  return_value=True)
+        self.mock_convergence = convergence_patch.start()
+        self.addCleanup(convergence_patch.stop)
+
+    def _stage_completed(self, task_id, task_family):
+        """Stage a single-task pipe run, complete it, and give it a canonical output file."""
+        task = _make_spec(task_id, task_family=task_family)
+        pipe = self.coord.submit_pipe_run(f'run_{task_id}', [task])
+        _complete_task(pipe.pipe_root, task_id)
+        attempt_dir = get_task_attempt_dir(pipe.pipe_root, task_id, 0)
+        os.makedirs(attempt_dir, exist_ok=True)
+        output_file = os.path.join(attempt_dir, 'output.out')
+        with open(output_file, 'w') as f:
+            f.write('mock output\n')
+        with open(os.path.join(attempt_dir, 'result.json'), 'w') as f:
+            json.dump({'canonical_output_path': output_file}, f)
+        return pipe, output_file
+
+    def test_species_sp_is_finalized(self):
+        """A completed species_sp task runs post_sp_actions, which sets job_types['sp']."""
+        pipe, output_file = self._stage_completed('t_sp', 'species_sp')
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_called_once()
+        kwargs = self.sched.post_sp_actions.call_args.kwargs
+        self.assertEqual(kwargs['label'], 'H2O')
+        self.assertEqual(kwargs['sp_path'], output_file)
+
+    def test_species_freq_is_finalized(self):
+        """A completed species_freq task runs post_freq_actions, which sets job_types['freq']."""
+        pipe, output_file = self._stage_completed('t_freq', 'species_freq')
+        with patch('arc.job.pipe.pipe_coordinator.parser.parse_frequencies',
+                   return_value=[1500.0, 3000.0]):
+            self.coord.ingest_pipe_results(pipe)
+        self.sched.post_freq_actions.assert_called_once()
+        kwargs = self.sched.post_freq_actions.call_args.kwargs
+        self.assertEqual(kwargs['label'], 'H2O')
+        self.assertEqual(kwargs['vibfreqs'], [1500.0, 3000.0])
+        self.assertEqual(kwargs['job'].local_path_to_output_file, output_file)
+
+    def test_other_families_are_not_finalized(self):
+        """conf_opt has its own post-ingestion handler and must not be finalized here."""
+        pipe, _ = self._stage_completed('t_conf', 'conf_opt')
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_not_called()
+        self.sched.post_freq_actions.assert_not_called()
+
+    def test_unknown_species_is_skipped(self):
+        """An owner_key absent from species_dict is skipped rather than raising."""
+        pipe, _ = self._stage_completed('t_unknown', 'species_sp')
+        self.sched.species_dict.pop('H2O')
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_not_called()
+
+    def test_non_converged_ess_is_not_finalized(self):
+        """A task can be COMPLETED yet hold a non-converged output; it must not be flagged."""
+        pipe, _ = self._stage_completed('t_unconverged', 'species_sp')
+        self.mock_convergence.return_value = False
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_not_called()
+
+    def test_missing_output_file_is_skipped(self):
+        """A completed task with no locatable output does not reach the Scheduler checks."""
+        task = _make_spec('t_no_out', task_family='species_sp')
+        pipe = self.coord.submit_pipe_run('run_no_out', [task])
+        _complete_task(pipe.pipe_root, 't_no_out')
+        self.coord.ingest_pipe_results(pipe)
+        self.sched.post_sp_actions.assert_not_called()
+
+
+class _RealMethodSchedulerStub:
+    """
+    A Scheduler stand-in that runs the Scheduler's real post-job methods over stub state.
+
+    Every attribute that is not stub state falls through to the Scheduler class, so whichever
+    post-job method the coordinator reaches for is the production implementation, bound to this
+    object. Tests can therefore observe what a piped task actually leaves behind, rather than
+    only that some method was called on a mock.
+    """
+
+    def __init__(self, project_directory, species):
+        self.project_directory = project_directory
+        self.server_job_ids = list()
+        self.species_dict = {species.label: species}
+        self.output = {species.label: {'paths': {'sp': '', 'composite': '', 'freq': ''},
+                                       'job_types': dict(),
+                                       'warnings': '',
+                                       'info': ''}}
+        self.testing = True
+        self.trsh_ess_jobs = False
+        self.skip_nmd = False
+        self.rxn_dict = dict()
+        self.rxn_list = list()
+        self.freq_level = Level(repr='wb97xd/def2tzvp')
+
+    def __getattr__(self, name):
+        return functools.partial(getattr(Scheduler, name), self)
+
+
+class TestPipedFreqArtifacts(unittest.TestCase):
+    """
+    Tests that a piped species_freq task leaves behind everything a converged freq job is
+    expected to leave behind, not merely the ``job_types['freq']`` success flag.
+
+    Marking a species converged while ``species.freqs`` is unset and no ``freq.out`` sits in its
+    output folder would trade a loud failure for a quiet one: ``compute_rxn_e0()`` abandons the
+    reaction E0 check when that file is missing for any participant, and the frequencies would
+    never reach the restart or output files.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_freq_artifacts_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        self.species = ARCSpecies(label='H2O', smiles='O')
+        self.sched = _RealMethodSchedulerStub(self.tmpdir, self.species)
+        self.coord = PipeCoordinator(self.sched)
+        self.freq_out = os.path.join(self.tmpdir, 'output', 'Species', 'H2O', 'geometry', 'freq.out')
+        convergence_patch = patch('arc.job.pipe.pipe_coordinator.check_ess_convergence', return_value=True)
+        convergence_patch.start()
+        self.addCleanup(convergence_patch.stop)
+        ingest_patch = patch('arc.job.pipe.pipe_coordinator.ingest_completed_task')
+        ingest_patch.start()
+        self.addCleanup(ingest_patch.stop)
+
+    def _ingest_freq_task(self, task_id, vibfreqs):
+        """Stage, complete and ingest a single species_freq task yielding ``vibfreqs``."""
+        task = _make_spec(task_id, task_family='species_freq')
+        pipe = self.coord.submit_pipe_run(f'run_{task_id}', [task])
+        _complete_task(pipe.pipe_root, task_id)
+        attempt_dir = get_task_attempt_dir(pipe.pipe_root, task_id, 0)
+        os.makedirs(attempt_dir, exist_ok=True)
+        output_file = os.path.join(attempt_dir, 'output.out')
+        with open(output_file, 'w') as f:
+            f.write('mock freq output\n')
+        with open(os.path.join(attempt_dir, 'result.json'), 'w') as f:
+            json.dump({'canonical_output_path': output_file}, f)
+        with patch('arc.job.pipe.pipe_coordinator.parser.parse_frequencies', return_value=vibfreqs):
+            self.coord.ingest_pipe_results(pipe)
+
+    def test_converged_freq_sets_freqs_and_writes_freq_out(self):
+        """A piped freq task that passes the check must populate species.freqs and freq.out."""
+        self._ingest_freq_task('t_freq_ok', [1500.0, 3000.0, 3700.0])
+        self.assertTrue(self.sched.output['H2O']['job_types']['freq'])
+        self.assertEqual(self.species.freqs, [1500.0, 3000.0, 3700.0])
+        self.assertTrue(os.path.isfile(self.freq_out),
+                        f'Expected the freq output to be copied to {self.freq_out}')
+        with open(self.freq_out, 'r') as f:
+            self.assertIn('mock freq output', f.read())
+
+    def test_imaginary_freq_leaves_no_artifacts(self):
+        """
+        A stable species carrying an imaginary frequency must fail the check, and must not be
+        credited with any of the artifacts a converged freq job produces.
+        """
+        self._ingest_freq_task('t_freq_imag', [-800.0, 1500.0, 3000.0])
+        self.assertFalse(self.sched.output['H2O']['job_types'].get('freq', False))
+        self.assertIsNone(self.species.freqs)
+        self.assertFalse(os.path.isfile(self.freq_out))
 
 
 class TestComputePipeRoot(unittest.TestCase):

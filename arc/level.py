@@ -2,6 +2,7 @@
 A module for working with levels of theory.
 """
 
+import copy
 import os
 from collections.abc import Iterable
 
@@ -12,6 +13,11 @@ from arc.imports import settings
 logger = get_logger()
 
 levels_ess, supported_ess = settings['levels_ess'], settings['supported_ess']
+
+# ``block`` args whose values are case-sensitive (filesystem paths, shell commands, queue names) and
+# must not be lowercased along with the rest of a level's args. Consumed by the ASE job adapter when
+# running queue jobs (see ASEAdapter.determine_submit_config).
+CASE_SENSITIVE_BLOCK_ARGS = ('python', 'env_setup', 'queue', 'gpu_resource')
 
 
 class Level(object):
@@ -165,6 +171,15 @@ class Level(object):
         """
         return Level(repr=self.as_dict())
 
+    def get_args(self) -> dict:
+        """
+        A method to get the args of the object, detached from it.
+
+        Returns:
+            dict: A deep copy of the args, which can be mutated without affecting this object.
+        """
+        return copy.deepcopy(self.args)
+
     def simple(self) -> str:
         """
         Return a simple humane-readable string representation of the object.
@@ -187,7 +202,7 @@ class Level(object):
         original_dict = self.__dict__
         clean_dict = {}
         for key, val in original_dict.items():
-            if val is not None and key != 'args' or key == 'args' and all([v for v in self.args.values()]):
+            if (val is not None and key != 'args') or (key == 'args' and any(v for v in self.args.values())):
                 clean_dict[key] = val
         return clean_dict
 
@@ -302,7 +317,8 @@ class Level(object):
                     if not isinstance(new_val2, str):
                         raise ValueError(f'All entries in the args argument must be str, int, or float types.\n'
                                          f'Got {new_val2} which is a {type(new_val2)} in {self.args}.')
-                    args[key1.lower()][key2.lower()] = new_val2.lower()
+                    keep_case = key1.lower() == 'block' and key2.lower() in CASE_SENSITIVE_BLOCK_ARGS
+                    args[key1.lower()][key2.lower()] = new_val2 if keep_case else new_val2.lower()
             elif isinstance(val1, str):
                 args[key1.lower()]['general'] = val1.lower()
             elif isinstance(val1, (list, tuple)):
@@ -336,9 +352,13 @@ class Level(object):
         Determine the model chemistry type:
         DFT, wavefunction, force field, semi-empirical, or composite
         """
+        # Markers are matched as substrings, so a short one fires inside an unrelated name.
+        # The wave function markers are the shortest and are matched last for that reason;
+        # the semi-empirical ones are spelled out in full ('am1' rather than 'am', which also
+        # matches 'cam-b3lyp' and 'amber').
         wave_function_methods = ['hf', 'cc', 'ci', 'mp2', 'mp3', 'cp', 'cep', 'nevpt', 'dmrg', 'ri', 'cas', 'ic', 'mr',
                                  'bd', 'mbpt']
-        semiempirical_methods = ['am', 'pm', 'zindo', 'mndo', 'xtb', 'nddo']
+        semiempirical_methods = ['am1', 'pm3', 'pm6', 'pm7', 'zindo', 'mndo', 'xtb', 'nddo']
         force_field_methods = ['amber', 'mmff', 'dreiding', 'uff', 'qmdff', 'gfn', 'gaff', 'ghemical', 'charmm', 'ani']
         # all composite methods supported by Gaussian
         composite_methods = ['cbs-4m', 'cbs-qb3', 'cbs-qb3-paraskevas', 'rocbs-qb3', 'cbs-apno', 'w1u', 'w1ro', 'w1bd',
@@ -350,12 +370,12 @@ class Level(object):
         elif self.method in ['m06hf', 'm06-hf']:
             self.method_type = 'dft'
         # General cases
-        elif any(wf_method in self.method for wf_method in wave_function_methods):
-            self.method_type = 'wavefunction'
-        elif any(sm_method in self.method for sm_method in semiempirical_methods):
-            self.method_type = 'semiempirical'
         elif any(ff_method in self.method for ff_method in force_field_methods):
             self.method_type = 'force_field'
+        elif any(sm_method in self.method for sm_method in semiempirical_methods):
+            self.method_type = 'semiempirical'
+        elif any(wf_method in self.method for wf_method in wave_function_methods):
+            self.method_type = 'wavefunction'
         else:
             # assume DFT
             self.method_type = 'dft'
@@ -372,8 +392,8 @@ class Level(object):
         if self.software is not None and job_type is None:
             return
 
-        # UMA (run via the ASE adapter; 'uma' resolves to the latest model)
-        if self.method in ('uma', 'uma-s-1', 'uma-s-1p1'):
+        # UMA (run via the ASE adapter; 'uma' resolves to UMA_LATEST_MODEL; specific checkpoints named explicitly)
+        if self.method in ('uma', 'uma-s-1', 'uma-s-1p1', 'uma-s-1p2', 'uma-m-1p1'):
             self.software = 'ase'
             return
 
@@ -454,7 +474,7 @@ class Level(object):
                     self.compatible_ess.append(ess)
 
 
-def assign_frequency_scale_factor(level: str | Level) -> int | None:
+def assign_frequency_scale_factor(level: str | Level) -> float | None:
     """
     Assign a frequency scaling factor to a level of theory.
 
@@ -462,14 +482,18 @@ def assign_frequency_scale_factor(level: str | Level) -> int | None:
         level (str | Level): The level of theory.
 
     Returns:
-        int | None: The frequency scaling factor.
+        float | None: The frequency scaling factor.
     """
     freq_scale_factors = read_yaml_file(os.path.join(ARC_PATH, 'data', 'freq_scale_factors.yml'))['freq_scale_factors']
     if isinstance(level, str):
         entry = freq_scale_factors.get(level)
         if entry is not None:
             return entry['factor'] if isinstance(entry, dict) else entry
-        level = Level(repr=level)
+        try:
+            level = Level(repr=level)
+        except ValueError:
+            # A string ARC cannot parse as a level has no scale factor on file.
+            return None
     level_str = str(level)
     entry = freq_scale_factors.get(level_str)
     if entry is not None:

@@ -161,13 +161,44 @@ class TestMockAdapter(unittest.TestCase):
         self.assertEqual(output['freqs'], [-500, 520, 540])
         self.assertEqual(output['adapter'], 'mockter')
 
+    def test_mockter_freq_count_matches_geometry(self):
+        """
+        Test that the mock freq job writes a physically-correct number of vibrational frequencies:
+        0 for a monatomic species, 3N-5 for a linear species, and 3N-6 for a nonlinear species.
+        A diatomic (e.g. OH) must yield 3N-5 = 1 frequency, not an empty list.
+        """
+        cases = [('mono', 'O       0.00000000    0.00000000    0.00000000', 3, 0),
+                 ('diatomic', 'O       0.00000000    0.00000000    0.00000000\n'
+                              'H       0.00000000    0.00000000    0.97000000', 2, 1),
+                 ('nonlinear', 'O       0.00000000    0.00000000    0.00000000\n'
+                               'H       0.00000000    0.00000000    0.97000000\n'
+                               'H       0.97000000    0.00000000    0.00000000', 1, 3),
+                 ('linear', 'C       0.00000000    0.00000000    0.00000000\n'
+                            'O       0.00000000    0.00000000    1.16000000\n'
+                            'O       0.00000000    0.00000000   -1.16000000', 1, 4)]
+        for name, xyz, multiplicity, expected_num_freqs in cases:
+            job = MockAdapter(job_type='freq',
+                              level=Level(method='mock', basis='cc-pVmockZ'),
+                              project='test',
+                              project_directory=os.path.join(ARC_TESTING_PATH, f'test_MockAdapter_freq_{name}'),
+                              species=[ARCSpecies(label=name, xyz=[xyz], multiplicity=multiplicity)],
+                              testing=True,
+                              )
+            job.execute()
+            output = read_yaml_file(os.path.join(job.local_path, output_filenames[job.job_adapter]))
+            self.assertEqual(len(output['freqs']), expected_num_freqs,
+                             msg=f'Expected {expected_num_freqs} freqs for the {name} case, '
+                                 f'got {output["freqs"]}.')
+
     @classmethod
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        for folder in ['test_MockAdapter_1', 'test_MockAdapter_2', 'test_MockAdapter_3', 'test_MockAdapter_4']:
+        for folder in ['test_MockAdapter_1', 'test_MockAdapter_2', 'test_MockAdapter_3', 'test_MockAdapter_4',
+                       'test_MockAdapter_freq_mono', 'test_MockAdapter_freq_diatomic',
+                       'test_MockAdapter_freq_nonlinear', 'test_MockAdapter_freq_linear']:
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, folder), ignore_errors=True)
 
 

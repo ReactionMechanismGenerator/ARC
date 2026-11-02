@@ -6,7 +6,9 @@ This module contains unit tests of the arc.job.env_run module.
 """
 
 import os
+import shlex
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,6 +18,7 @@ from arc.job.env_run import (
     _detect_launcher,
     _run_flags_for,
     env_prefix_from_python,
+    rmg_env_command,
     run_in_conda_env,
 )
 
@@ -202,6 +205,40 @@ class TestRunInCondaEnv(unittest.TestCase):
             )
         self.assertTrue(mock_run.call_args.kwargs.get('check'))
 
+    def test_default_inherits_parent_environment(self):
+        """Without strip_pythonpath the child inherits the parent env untouched (env=None)."""
+        with patch('arc.job.env_run._detect_launcher',
+                   return_value=('/opt/conda/bin/conda', ['--no-capture-output'])), \
+                patch('arc.job.env_run.subprocess.run',
+                      return_value=_completed()) as mock_run:
+            run_in_conda_env(
+                '/opt/conda/envs/ts_gcn/bin/python',
+                '/path/to/gcn.py',
+            )
+        self.assertIsNone(mock_run.call_args.kwargs.get('env'))
+
+    def test_strip_pythonpath_removes_only_pythonpath(self):
+        """strip_pythonpath drops PYTHONPATH from the child env and keeps everything else,
+        so a stale source checkout on the caller's PYTHONPATH cannot shadow the target
+        env's installed package."""
+        parent_env = {'PATH': '/usr/bin', 'HOME': '/home/u',
+                      'PYTHONPATH': '/home/u/Code/KinBot-2.0.6'}
+        with patch('arc.job.env_run._detect_launcher',
+                   return_value=('/opt/conda/bin/conda', ['--no-capture-output'])), \
+                patch('arc.job.env_run.subprocess.run',
+                      return_value=_completed()) as mock_run, \
+                patch.dict('arc.job.env_run.os.environ', parent_env, clear=True):
+            run_in_conda_env(
+                '/opt/conda/envs/kinbot_env/bin/python',
+                '/path/to/kinbot_script.py',
+                strip_pythonpath=True,
+            )
+        child_env = mock_run.call_args.kwargs.get('env')
+        self.assertIsNotNone(child_env)
+        self.assertNotIn('PYTHONPATH', child_env)
+        self.assertEqual(child_env['PATH'], '/usr/bin')
+        self.assertEqual(child_env['HOME'], '/home/u')
+
     def test_failure_logs_warning_with_captured_streams(self):
         completed = _completed(returncode=2, stdout='partial output\n',
                                stderr='Traceback...\nValueError: boom\n')
@@ -234,6 +271,189 @@ class TestRunInCondaEnv(unittest.TestCase):
             )
         mock_logger.warning.assert_not_called()
         mock_logger.debug.assert_called()
+
+
+class TestRmgEnvCommand(unittest.TestCase):
+    """rmg_env_command must shell-quote caller-supplied cwd/env_vars values;
+    wrapping them in bare double quotes does not stop command substitution."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        # A stand-in launcher: strips ``run -n <env> python`` and execs the
+        # rest with the real interpreter, so the generated script can be
+        # executed end-to-end without a real conda/mamba env present.
+        fake_mamba = Path(self.tmpdir.name) / 'fake_mamba'
+        fake_mamba.write_text(f'#!/bin/bash\nshift 4\nexec "{sys.executable}" "$@"\n')
+        fake_mamba.chmod(0o755)
+        self.fake_mamba = str(fake_mamba)
+        self.env_patch = patch.dict(os.environ, {'MAMBA_EXE': self.fake_mamba})
+        self.env_patch.start()
+        self.addCleanup(self.env_patch.stop)
+
+    @staticmethod
+    def _run_script(script: str) -> subprocess.CompletedProcess:
+        return subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+
+    def test_cwd_command_substitution_is_neutralized(self):
+        marker = Path(self.tmpdir.name) / 'pwned_dollar'
+        cwd = f'{self.tmpdir.name}/$(touch {marker})'
+        script = rmg_env_command("-c 'pass'", cwd=cwd)
+        self._run_script(script)
+        self.assertFalse(marker.exists())
+
+    def test_cwd_with_backticks_is_neutralized(self):
+        marker = Path(self.tmpdir.name) / 'pwned_backtick'
+        cwd = f'{self.tmpdir.name}/`touch {marker}`'
+        script = rmg_env_command("-c 'pass'", cwd=cwd)
+        self._run_script(script)
+        self.assertFalse(marker.exists())
+
+    def test_env_vars_command_substitution_is_neutralized(self):
+        marker = Path(self.tmpdir.name) / 'pwned_env'
+        script = rmg_env_command("-c 'pass'", env_vars={'FOO': f'$(touch {marker})'})
+        self._run_script(script)
+        self.assertFalse(marker.exists())
+
+    def test_cwd_with_space_is_quoted_in_script(self):
+        cwd = f'{self.tmpdir.name}/a dir with spaces'
+        script = rmg_env_command("-c 'pass'", cwd=cwd)
+        self.assertIn(shlex.quote(cwd), script)
+
+    def test_cwd_with_single_quote_is_quoted_in_script(self):
+        cwd = f"{self.tmpdir.name}/o'brien"
+        script = rmg_env_command("-c 'pass'", cwd=cwd)
+        self.assertIn(shlex.quote(cwd), script)
+
+    def test_env_vars_with_space_is_quoted_in_script(self):
+        script = rmg_env_command("-c 'pass'", env_vars={'FOO': 'a value with spaces'})
+        self.assertIn(shlex.quote('a value with spaces'), script)
+
+    def test_cwd_happy_path_still_cds(self):
+        target = Path(self.tmpdir.name) / 'target dir'
+        target.mkdir()
+        marker = target / 'marker'
+        script = rmg_env_command("-c \"open('marker', 'w').close()\"", cwd=str(target))
+        result = self._run_script(script)
+        self.assertTrue(marker.exists(), f'stdout={result.stdout!r} stderr={result.stderr!r}')
+
+    def test_py_args_list_with_space_survives_as_single_token(self):
+        marker = Path(self.tmpdir.name) / 'received_arg.txt'
+        path_with_space = '/tmp/My Runs/proj/RMG_thermo.yml'
+        script = rmg_env_command(['-c',
+                                  f"import sys; open({str(marker)!r}, 'w').write(sys.argv[1])",
+                                  path_with_space])
+        result = self._run_script(script)
+        self.assertTrue(marker.exists(), f'stdout={result.stdout!r} stderr={result.stderr!r}')
+        self.assertEqual(marker.read_text(), path_with_space)
+
+    def test_py_args_list_with_parens_runs_successfully(self):
+        marker = Path(self.tmpdir.name) / 'received_arg_parens.txt'
+        path_with_parens = '/tmp/2026-08 (rerun)/x.yml'
+        script = rmg_env_command(['-c',
+                                  f"import sys; open({str(marker)!r}, 'w').write(sys.argv[1])",
+                                  path_with_parens])
+        result = self._run_script(script)
+        self.assertTrue(marker.exists(), f'stdout={result.stdout!r} stderr={result.stderr!r}')
+        self.assertEqual(marker.read_text(), path_with_parens)
+
+    def test_py_args_list_dollar_paren_substitution_is_neutralized(self):
+        marker = Path(self.tmpdir.name) / 'pwned_py_args_dollar'
+        malicious = f'$(touch {marker})'
+        script = rmg_env_command(['-c', 'pass', malicious])
+        self._run_script(script)
+        self.assertFalse(marker.exists())
+
+    def test_py_args_list_backtick_substitution_is_neutralized(self):
+        marker = Path(self.tmpdir.name) / 'pwned_py_args_backtick'
+        malicious = f'`touch {marker}`'
+        script = rmg_env_command(['-c', 'pass', malicious])
+        self._run_script(script)
+        self.assertFalse(marker.exists())
+
+    def test_py_args_str_backward_compatible_unquoted(self):
+        script = rmg_env_command("-c 'pass'")
+        self.assertIn("python -c 'pass'", script)
+
+    def test_py_args_list_ordinary_path_unmangled(self):
+        script = rmg_env_command(['script.py', '/tmp/plain/path.yml'])
+        self.assertIn('python script.py /tmp/plain/path.yml', script)
+
+    def test_py_args_list_arkane_module_invocation_three_tokens(self):
+        script = rmg_env_command(['-m', 'arkane', 'input.py'])
+        self.assertIn('python -m arkane input.py', script)
+
+
+class TestRmgEnvCommandPythonPath(unittest.TestCase):
+    """PYTHONPATH is normalized identically on all three branches: a launcher's
+    ``run`` never manages it, and the direct-interpreter branch has no launcher,
+    so ARC's own PYTHONPATH would otherwise leak into the child. When RMG_PATH is
+    set the child gets exactly that (so a source-tree RMG-Py/Arkane checkout
+    reachable only via PYTHONPATH is importable); otherwise PYTHONPATH is
+    scrubbed so rmg_env's own site-packages win."""
+
+    def setUp(self):
+        # Force the RMG_PYTHON branch: no MAMBA_EXE, and RMG_PYTHON resolves
+        # to a real file (RMG_PATH/RMG_PYTHON come from the patched settings
+        # dict below; os.path.isfile still needs a real path on disk, so
+        # point it at this test file itself).
+        self.env_patch = patch.dict(os.environ, {}, clear=False)
+        self.env_patch.start()
+        self.addCleanup(self.env_patch.stop)
+        os.environ.pop('MAMBA_EXE', None)
+        self.fake_rmg_python = __file__
+
+    def test_pythonpath_reexported_from_rmg_path(self):
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PYTHON': self.fake_rmg_python,
+                               'RMG_PATH': '/opt/RMG-Py'}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn(f'export PYTHONPATH={shlex.quote("/opt/RMG-Py")}', script)
+        # The re-export must come after the unset, so it is not clobbered.
+        unset_idx = script.index('unset ')
+        export_idx = script.index('export PYTHONPATH=')
+        self.assertLess(unset_idx, export_idx)
+
+    def test_no_pythonpath_export_when_rmg_path_falsy(self):
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PYTHON': self.fake_rmg_python,
+                               'RMG_PATH': None}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertNotIn('export PYTHONPATH=', script)
+
+    def test_mamba_branch_exports_pythonpath_from_rmg_path(self):
+        os.environ['MAMBA_EXE'] = __file__  # a real file forces the MAMBA_EXE branch
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PATH': '/opt/RMG-Py'}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn(f'export PYTHONPATH={shlex.quote("/opt/RMG-Py")}', script)
+        # Set before the launcher's ``run`` so the child inherits it.
+        self.assertLess(script.index('export PYTHONPATH='), script.index('run -n rmg_env'))
+
+    def test_mamba_branch_scrubs_pythonpath_when_rmg_path_falsy(self):
+        os.environ['MAMBA_EXE'] = __file__
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PATH': None}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn('unset PYTHONPATH', script)
+        self.assertNotIn('export PYTHONPATH=', script)
+
+    def test_hunt_branch_exports_pythonpath_from_rmg_path(self):
+        os.environ.pop('MAMBA_EXE', None)  # no MAMBA_EXE + no RMG_PYTHON forces the hunt branch
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PYTHON': None, 'RMG_PATH': '/opt/RMG-Py'}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn(f'export PYTHONPATH={shlex.quote("/opt/RMG-Py")}', script)
+        # Set inside the login-shell heredoc, before the launcher-hunt loop.
+        self.assertLess(script.index('export PYTHONPATH='), script.index('for _launcher in'))
+
+    def test_hunt_branch_scrubs_pythonpath_when_rmg_path_falsy(self):
+        os.environ.pop('MAMBA_EXE', None)
+        settings_overrides = {'RMG_ENV_NAME': 'rmg_env', 'RMG_PYTHON': None, 'RMG_PATH': None}
+        with patch.dict('arc.job.env_run.settings', settings_overrides):
+            script = rmg_env_command("-c 'pass'")
+        self.assertIn('unset PYTHONPATH', script)
+        self.assertNotIn('export PYTHONPATH=', script)
 
 
 if __name__ == '__main__':

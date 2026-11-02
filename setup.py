@@ -3,7 +3,6 @@
 
 import sys
 import os
-from collections import OrderedDict
 
 try:
     from setuptools import setup, find_packages
@@ -59,9 +58,6 @@ ext_modules = [
 if 'main' in sys.argv:
     # This is for `python setup.py build_ext main`
     sys.argv.remove('main')
-    ext_modules.extend(ext_modules)
-
-ext_modules = list(OrderedDict.fromkeys(ext_modules))
 
 
 setup(

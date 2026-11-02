@@ -13,38 +13,40 @@ from arc.common import (check_torsion_change,
                         convert_to_hours,
                         estimate_orca_mem_cpu_requirement,
                         get_logger,
+                        get_memory_headroom_fraction,
                         get_number_with_ordinal_indicator,
                         is_same_pivot,
                         is_same_sequence_sublist,
-                        is_str_float
+                        is_str_float,
+                        read_yaml_file
                         )
 from arc.exceptions import InputError, SpeciesError, TrshError
 from arc.imports import settings
 from arc.level import Level
 from arc.job.local import execute_command
-from arc.job.ssh import SSHClient
+from arc.job.ssh_pool import borrow_ssh_client
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_smallest_atom_index_in_scan
 from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
-from arc.parser.parser import (parse_1d_scan_coords,
+from arc.parser.parser import (determine_ess,
+                               get_normal_mode_displacement,
+                               parse_1d_scan_coords,
                                parse_geometry,
-                               parse_normal_mode_displacement,
                                parse_scan_args,
                                parse_scan_conformers,
-                               determine_ess
                                )
 
 
 logger = get_logger()
 
-delete_command, inconsistency_ab, inconsistency_az, maximum_barrier, preserve_params_in_scan, rotor_scan_resolution, \
-    servers, submit_filenames, default_job_settings = settings['delete_command'], settings['inconsistency_ab'], \
-                                                      settings['inconsistency_az'], settings['maximum_barrier'], \
-                                                      settings['preserve_params_in_scan'], \
-                                                      settings['rotor_scan_resolution'], settings['servers'], \
-                                                      settings['submit_filenames'], settings['default_job_settings']
+delete_command, gaussian_memory_headroom_fractions, inconsistency_ab, inconsistency_az, maximum_barrier, \
+    preserve_params_in_scan, rotor_scan_resolution, servers, submit_filenames, default_job_settings = \
+    settings['delete_command'], settings['gaussian_memory_headroom_fractions'], settings['inconsistency_ab'], \
+    settings['inconsistency_az'], settings['maximum_barrier'], settings['preserve_params_in_scan'], \
+    settings['rotor_scan_resolution'], settings['servers'], settings['submit_filenames'], \
+    settings['default_job_settings']
 
 
 def determine_ess_status(output_path: str,
@@ -75,6 +77,9 @@ def determine_ess_status(output_path: str,
 
     if software is None:
         software = determine_ess(log_file_path=output_path)
+
+    if output_path.endswith('.yml'):
+        return determine_ess_status_from_yaml(output_path=output_path)
 
     keywords, error, = list(), ''
     with open(output_path, 'r') as f:
@@ -201,8 +206,8 @@ def determine_ess_status(output_path: str,
                     error = 'An operation on the check file was specified, but a .chk was not found or is incomplete.'
                     line = ''
                 elif 'malloc failed' in line or 'galloc' in line:
-                    keywords = ['Memory']
-                    error = 'Memory allocation failed (did you ask for too much?)'
+                    keywords = ['GaussianMemoryAllocation']
+                    error = 'Gaussian could not allocate memory within its allocation.'
                     line = ''
                 elif 'PGFIO/stdio: No such file or directory' in line:
                     keywords = ['Scratch']
@@ -484,6 +489,42 @@ def determine_ess_status(output_path: str,
     return '', list(), '', ''
 
 
+def determine_ess_status_from_yaml(output_path: str) -> tuple[str, list[str], str, str]:
+    """
+    Determine the status of a job run by an in-core ESS adapter that reports results via YAML.
+
+    In-core adapters (e.g., 'ase', 'pyscf', 'torchani') hand off results in ARC's internal schema
+    rather than writing a text log, so the textual error signatures used for the queue-based ESS
+    software do not apply.
+
+    Two conventions are supported. An adapter that reports an explicit ``success`` key (e.g., 'pyscf')
+    is taken at its word. The older adapters ('ase', 'torchani', 'openbabel') omit ``success`` and
+    write an ``error`` key only when something goes wrong, so for those the absence of an error means
+    the job is done -- treating a missing ``success`` as failure would mark every one of their
+    successful jobs as errored.
+
+    Args:
+        output_path (str): The path to the adapter's output.yml file.
+
+    Returns: tuple[str, list[str], str, str]
+        - The status, either 'done' or 'errored'.
+        - The standardized error keywords.
+        - A description of the error.
+        - The parsed line indicating the error (always empty for a YAML output).
+    """
+    content = read_yaml_file(path=output_path)
+    if not isinstance(content, dict):
+        return 'errored', ['NoOutput'], f'Could not read {output_path}', ''
+    error = content.get('error')
+    if 'success' in content:
+        if content['success']:
+            return 'done', list(), '', ''
+        return 'errored', ['Unknown'], error or 'The in-core ESS job did not report success.', ''
+    if error:
+        return 'errored', ['Unknown'], error, ''
+    return 'done', list(), '', ''
+
+
 def determine_job_log_memory_issues(job_log: str | None = None) -> tuple[list[str], str, str]:
     """
     Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.
@@ -557,10 +598,11 @@ def trsh_negative_freq(label: str,
     factors = [0.25, 0.50, 0.75, 1.0, 1.5, 2.5]
     factor = factors[0]
     max_times_to_trsh_neg_freq = len(factors) + 1
-    freqs, normal_modes_disp = parse_normal_mode_displacement(log_file_path=log_file, raise_error=False)
-    if not len(normal_modes_disp):
+    parsed_modes = get_normal_mode_displacement(log_file_path=log_file, label=label)
+    if parsed_modes is None:
         logger.error(f'Could not troubleshoot negative frequency for species {label}.')
         return [], [], output_errors, []
+    freqs, normal_modes_disp = parsed_modes
     if len(neg_freqs_trshed) > max_times_to_trsh_neg_freq:
         logger.error(f'Species {label} was troubleshooted for negative frequencies too many times.')
         if 'rotors' not in job_types:
@@ -974,6 +1016,32 @@ def trsh_ess_job(label: str,
         if 'no_qc' in ess_trsh_methods:
             logger_info.append('removed QC')
         
+
+        # Gaussian ran out of memory within an already-granted queue allocation (galloc/malloc failure).
+        # Hold the queue reservation (memory_gb) constant and instead give Gaussian more headroom by
+        # stepping down the %mem fraction along a fixed ladder.
+        if 'GaussianMemoryAllocation' in job_status['keywords'] and server is not None:
+            current_fraction = get_memory_headroom_fraction(ess_trsh_methods)
+            fraction_index = gaussian_memory_headroom_fractions.index(current_fraction) \
+                if current_fraction in gaussian_memory_headroom_fractions else 0
+            if fraction_index + 1 < len(gaussian_memory_headroom_fractions):
+                next_fraction = gaussian_memory_headroom_fractions[fraction_index + 1]
+                couldnt_trsh = False
+                ess_trsh_methods.append(f'memory_headroom_{next_fraction}')
+                logger.info(f'Troubleshooting {job_type} job in {software} for {label} by holding the memory '
+                            f'request constant at {memory_gb} GB and giving Gaussian more headroom: reducing '
+                            f'the %mem fraction from {current_fraction} to {next_fraction}.')
+            else:
+                couldnt_trsh = True
+                output_errors.append(
+                    f'Error: Could not troubleshoot {job_type} for {label}! Gaussian could not allocate memory '
+                    f'within its allocation even at the lowest %mem headroom fraction '
+                    f'({gaussian_memory_headroom_fractions[-1]}). Consider raising job_total_memory_gb, using a '
+                    f'node with more memory per core, or reducing the job cost (e.g., a smaller basis set or '
+                    f'fewer cores); ')
+                logger.error(f'Could not troubleshoot {job_type} job in {software} for {label}. Gaussian could not '
+                             f'allocate memory within its allocation even at the lowest %mem headroom fraction '
+                             f'({gaussian_memory_headroom_fractions[-1]}).')
 
         # Check if memory is in the keyword
         if 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
@@ -1413,13 +1481,13 @@ def trsh_job_on_server(server: str,
         execute_command(cmd)
         return None, True
     else:
-        with SSHClient(server) as ssh:
+        with borrow_ssh_client(server) as ssh:
             ssh.delete_job(job_id)
 
     # find available node
     logger.error('Troubleshooting by changing node.')
-    ssh = SSHClient(server)
-    nodes = ssh.list_available_nodes()
+    with borrow_ssh_client(server) as ssh:
+        nodes = ssh.list_available_nodes()
     for node in nodes:
         if node not in server_nodes:
             server_nodes.append(node)
@@ -1432,7 +1500,7 @@ def trsh_job_on_server(server: str,
 
     # modify the submit file
     remote_submit_file = os.path.join(remote_path, submit_filenames[cluster_soft])
-    with SSHClient(server) as ssh:
+    with borrow_ssh_client(server) as ssh:
         content = ssh.read_remote_file(remote_file_path=remote_submit_file)
     if cluster_soft.lower() == 'oge':
         node_assign = '#$ -l h='
@@ -1442,19 +1510,19 @@ def trsh_job_on_server(server: str,
         insert_line_num = 5
     else:
         # Other software?
-        logger.denug(f'Unknown cluster software {cluster_soft} is encountered when '
+        logger.debug(f'Unknown cluster software {cluster_soft} is encountered when '
                      f'troubleshooting by changing node.')
         return None, False
     for i, line in enumerate(content):
         if node_assign in line:
             content[i] = node_assign + node
-        break
+            break
     else:
         content.insert(insert_line_num, node_assign + node)
     content = ''.join(content)  # convert list into a single string, not to upset paramiko
 
     # resubmit
-    with SSHClient(server) as ssh:
+    with borrow_ssh_client(server) as ssh:
         ssh.upload_file(remote_file_path=os.path.join(remote_path,
                         submit_filenames[cluster_soft]), file_string=content)
     return node, True

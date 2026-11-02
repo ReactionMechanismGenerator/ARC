@@ -102,6 +102,88 @@ error = {pipe_root}/err_$(Process).txt
 log = {pipe_root}/condor.log
 queue {max_task_num}
 """,
+    # No queueing system: run the array locally as a pool of background worker processes.
+    # Pipe workers claim tasks from the shared pipe root themselves, so plain concurrent
+    # workers reproduce array semantics without a scheduler. Each worker is pinned to
+    # {cpus} threads so the pool cannot oversubscribe the machine.
+    'local': """#!/bin/bash
+
+export OMP_NUM_THREADS={cpus}
+export MKL_NUM_THREADS={cpus}
+export OPENBLAS_NUM_THREADS={cpus}
+
+for WORKER_ID in $(seq 1 {max_task_num}); do
+    (
+{env_setup}
+        export ARC_PIPE_LOCAL_CPUS={cpus}
+        {python_exe} -m arc.scripts.pipe_worker --pipe_root {pipe_root} --worker_id $WORKER_ID
+    ) > {pipe_root}/out_$WORKER_ID.txt 2> {pipe_root}/err_$WORKER_ID.txt &
+done
+
+wait
+""",
+}
+
+
+# Submission scripts for queue-executed ASE (e.g. UMA/fairchem MLIP) jobs, keyed by cluster
+# scheduler type. These are server-independent templates. ASEAdapter.get_queue_submit_script()
+# formats them with: name, cpus, memory, t_max, pwd, env_setup, command, and the optional
+# directive fields queue_directive/gpu_directive (Slurm) or queue_directive/gpu_select (PBS),
+# each rendered as an empty string when the job does not request it. ``pwd`` is the job's
+# submission directory (the remote path, or the local path for a 'local' server).
+ase_submit = {
+    'slurm': """#!/bin/bash -l
+
+#SBATCH -J {name}
+{queue_directive}#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -t {t_max}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
+{gpu_directive}
+. ~/.bashrc
+
+cd "{pwd}"
+JOB_DIR="$(pwd)"  # resolve the submission directory to an absolute path for the ASE script below
+
+export OMP_NUM_THREADS={cpus}
+export MKL_NUM_THREADS={cpus}
+export OPENBLAS_NUM_THREADS={cpus}
+
+{env_setup}
+
+touch initial_time
+
+{command}
+
+touch final_time
+""",
+    'pbs': """#!/bin/bash -l
+
+#PBS -N {name}
+{queue_directive}#PBS -l select=1:ncpus={cpus}:mem={memory}mb{gpu_select}
+#PBS -l walltime={t_max}
+#PBS -o out.txt
+#PBS -e err.txt
+
+. ~/.bashrc
+
+cd "{pwd}"
+JOB_DIR="$(pwd)"  # resolve the submission directory to an absolute path for the ASE script below
+
+export OMP_NUM_THREADS={cpus}
+export MKL_NUM_THREADS={cpus}
+export OPENBLAS_NUM_THREADS={cpus}
+
+{env_setup}
+
+touch initial_time
+
+{command}
+
+touch final_time
+""",
 }
 
 
@@ -184,9 +266,11 @@ which orca
 mkdir -p $WorkDir
 cd $WorkDir
 cp $SubmitDir/input.in .
+cp $SubmitDir/guess.gbw . 2>/dev/null
 
 $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
+cp input.gbw  $SubmitDir/ 2>/dev/null
 rm -rf  $WorkDir
 
 touch final_time
@@ -252,9 +336,9 @@ echo "============================================================"
 
 touch initial_time
 
-conda activate arc_env
+conda activate ts_gcn
 
-python $arc_path/arc/job/adapters/ts/scripts/gcn_runner.py --yml_in_path input.yml
+python $arc_path/arc/job/adapters/scripts/gcn_script.py --yml_in_path input.yml
 
 touch final_time
 
@@ -438,12 +522,14 @@ mkdir -p $WorkDir
 cd $WorkDir
 
 cp "$SubmitDir/input.in" .
+cp "$SubmitDir/guess.gbw" . 2>/dev/null
 
 ${{OrcaDir}}/orca input.in > input.log
 
 cd $SubmitDir
 cp "$WorkDir/input.log" .
 cp "$WorkDir/input_property.txt" .
+cp "$WorkDir/input.gbw" . 2>/dev/null
 
 rm -rf $WorkDir
 
@@ -613,6 +699,7 @@ mkdir -p $WorkDir
 cd $WorkDir
 
 cp "$SubmitDir/input.in" .
+cp "$SubmitDir/guess.gbw" . 2>/dev/null
 
 ${ORCA_DIR}/orca input.in > input.log
 cp * "$SubmitDir/"
@@ -831,6 +918,7 @@ mkdir -p $WorkDir
 cd $WorkDir
 
 cp "$SubmitDir/input.in" .
+cp "$SubmitDir/guess.gbw" . 2>/dev/null
 
 /opt/orca/orca input.in > input.log
 cp * "$SubmitDir/"
@@ -880,9 +968,11 @@ which orca
 mkdir -p $WorkDir
 cd $WorkDir
 cp $SubmitDir/input.in .
+cp $SubmitDir/guess.gbw . 2>/dev/null
 
 $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
+cp input.gbw  $SubmitDir/ 2>/dev/null
 rm -rf  $WorkDir
 
 touch final_time
@@ -993,9 +1083,11 @@ which orca
 mkdir -p $WorkDir
 cd $WorkDir
 cp $SubmitDir/input.in .
+cp $SubmitDir/guess.gbw . 2>/dev/null
 
 $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
+cp input.gbw  $SubmitDir/ 2>/dev/null
 rm -rf  $WorkDir
 
 touch final_time
@@ -1061,9 +1153,9 @@ echo "============================================================"
 
 touch initial_time
 
-conda activate arc_env
+conda activate ts_gcn
 
-python $arc_path/arc/job/adapters/ts/scripts/gcn_runner.py --yml_in_path input.yml
+python $arc_path/arc/job/adapters/scripts/gcn_script.py --yml_in_path input.yml
 
 touch final_time
 

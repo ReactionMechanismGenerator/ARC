@@ -21,6 +21,7 @@ import time
 
 from arc.imports import settings
 from arc.job.factory import job_factory
+from arc.job.pipe.pipe_run import worker_cpu_cores
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE,
     TaskState,
@@ -273,10 +274,15 @@ def _get_family_extra_kwargs(spec: TaskSpec) -> dict:
     elif spec.task_family == 'rotor_scan_1d':
         torsions = payload.get('torsions')
         rotor_index = payload.get('rotor_index')
+        scan_res = payload.get('scan_res')
         if torsions is not None:
             kwargs['torsions'] = torsions
         if rotor_index is not None:
             kwargs['rotor_index'] = rotor_index
+        if scan_res is not None:
+            # Carry the staging-time resolution into the reconstructed job the way trsh does, so the
+            # ASE scan runs ARC's intended resolution and not the worker node's settings default.
+            kwargs['args'] = {'trsh': {'scan_res': scan_res}}
 
     return kwargs
 
@@ -338,6 +344,7 @@ def _run_adapter(spec: TaskSpec, scratch_dir: str, job_type: str, **extra_kwargs
         xyz=xyz,
         conformer=conformer,
         tsg=tsg,
+        cpu_cores=worker_cpu_cores(),
         testing=False,
         **extra_kwargs,
     )

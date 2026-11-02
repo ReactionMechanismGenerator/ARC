@@ -15,8 +15,14 @@ All QA, troubleshooting, and downstream branching remain in mother ARC.
 import json
 import os
 import stat
+import subprocess
 import sys
 import time
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 import arc.parser.parser as parser
 from arc.common import get_logger
@@ -196,6 +202,12 @@ class PipeRun:
         cpus = self.tasks[0].required_cores if self.tasks else 1
         memory_mb = self.tasks[0].required_memory_mb if self.tasks else 4096
         array_size = min(self.max_workers, len(self.tasks)) if self.tasks else self.max_workers
+        if self.cluster_software == 'local':
+            # Cap each worker's cores at the local CPU budget so a single worker cannot exceed it
+            # (the submit script exports these as OMP/MKL/OPENBLAS_NUM_THREADS and ARC_PIPE_LOCAL_CPUS),
+            # then size the pool from the capped value so workers x cores stays within the budget.
+            cpus = max(1, min(cpus, local_cpu_budget()))
+            array_size = min(array_size, local_worker_limit(cpus, memory_mb))
         return cpus, memory_mb, array_size
 
     def _build_env_preamble(self) -> str:
@@ -226,9 +238,14 @@ class PipeRun:
             lines.append(engine_setup)
         scratch_base = pipe_settings.get('scratch_base', '')
         if scratch_base:
-            lines.append(
-                f'export TMPDIR="{scratch_base}/${{PBS_JOBID%%[*}}/$PBS_ARRAY_INDEX"\nmkdir -p "$TMPDIR"'
-            )
+            if self.cluster_software == 'local':
+                rel_root = os.path.relpath(self.pipe_root, os.path.join(self.project_directory, 'calcs'))
+                if rel_root == os.pardir or rel_root.startswith(os.pardir + os.sep) or os.path.isabs(rel_root):
+                    rel_root = self.run_id
+                subdir = f'{rel_root}/$WORKER_ID'
+            else:
+                subdir = '${PBS_JOBID%%[*}/$PBS_ARRAY_INDEX'
+            lines.append(f'export TMPDIR="{scratch_base}/{subdir}"\nmkdir -p "$TMPDIR"')
         return '\n'.join(lines)
 
     def write_submit_script(self) -> str:
@@ -284,6 +301,8 @@ class PipeRun:
             Tuple[str, str]: ``(job_status, job_id)`` — ``'submitted'`` on
                 success, ``'errored'`` on failure.
         """
+        if self.cluster_software == 'local':
+            return self.submit_locally()
         import shutil as _shutil
         from arc.imports import settings as _settings
         submit_command = _settings['submit_command']
@@ -305,6 +324,35 @@ class PipeRun:
             submit_filename=filename,
         )
         return job_status, job_id
+
+    def submit_locally(self):
+        """
+        Launch the worker pool locally, without a queueing system.
+
+        Runs the generated ``submit.sh`` in a detached session so the pool keeps running
+        independently of ARC's own process. Completion is detected the same way as for a
+        queued pipe run, by reconciling the per-task state files under ``pipe_root``, so
+        the returned identifier is only used for bookkeeping.
+
+        Returns:
+            Tuple[str, str]: ``(job_status, job_id)`` — ``('running', <pid>)`` on success,
+                ``('errored', None)`` on failure.
+        """
+        submit_path = os.path.join(self.pipe_root, 'submit.sh')
+        if not os.path.isfile(submit_path):
+            logger.error(f'Cannot launch a local pipe run, {submit_path} does not exist.')
+            return 'errored', None
+        try:
+            process = subprocess.Popen(['bash', submit_path],
+                                       stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL,
+                                       cwd=self.pipe_root,
+                                       start_new_session=True)
+        except Exception as e:
+            logger.error(f'Could not launch the local pipe worker pool: {e}')
+            return 'errored', None
+        logger.info(f'Launched a local pipe worker pool for {self.run_id} (pid {process.pid}).')
+        return 'running', str(process.pid)
 
     def reconcile(self) -> dict[str, int]:
         """
@@ -500,7 +548,7 @@ def find_output_file(attempt_dir: str, engine: str, task_id: str = '') -> str | 
     return None
 
 
-def _check_ess_convergence(pipe_run_id: str, spec: TaskSpec, output_file: str, label: str) -> bool:
+def check_ess_convergence(pipe_run_id: str, spec: TaskSpec, output_file: str, label: str) -> bool:
     """
     Check whether an ESS job converged by inspecting the output file.
 
@@ -575,7 +623,7 @@ def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, confor
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
-        if not _check_ess_convergence(run_id, spec, output_file, label):
+        if not check_ess_convergence(run_id, spec, output_file, label):
             return
         xyz = parser.parse_geometry(log_file_path=output_file)
         e_elect = parser.parse_e_elect(log_file_path=output_file)
@@ -597,7 +645,7 @@ def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conform
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
-        if not _check_ess_convergence(run_id, spec, output_file, label):
+        if not check_ess_convergence(run_id, spec, output_file, label):
             return
         e_elect = parser.parse_e_elect(log_file_path=output_file)
     except Exception as e:
@@ -647,7 +695,7 @@ def _ingest_ts_opt(run_id, pipe_root, spec, state, species_dict, label):
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
-        if not _check_ess_convergence(run_id, spec, output_file, label):
+        if not check_ess_convergence(run_id, spec, output_file, label):
             return
         xyz = parser.parse_geometry(log_file_path=output_file)
         e_elect = parser.parse_e_elect(log_file_path=output_file)
@@ -661,7 +709,6 @@ def _ingest_ts_opt(run_id, pipe_root, spec, state, species_dict, label):
                 tsg.opt_xyz = xyz
             if e_elect is not None:
                 tsg.energy = e_elect
-            tsg.index = conformer_index
             break
     else:
         logger.warning(f'Pipe run {run_id}, task {spec.task_id}: '
@@ -679,7 +726,7 @@ def _ingest_species_sp(run_id, pipe_root, spec, state, species_dict, label):
         output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
         if output_file is None:
             return
-        if not _check_ess_convergence(run_id, spec, output_file, label):
+        if not check_ess_convergence(run_id, spec, output_file, label):
             return
         e_elect = parser.parse_e_elect(log_file_path=output_file)
     except Exception as e:
@@ -702,7 +749,7 @@ def _ingest_species_freq(run_id, pipe_root, spec, state, species_dict, label, ou
         logger.error(f'Pipe run {run_id}, task {spec.task_id}: '
                      f'output lookup failed: {type(e).__name__}: {e}')
         return
-    if output_file is not None and _check_ess_convergence(run_id, spec, output_file, label):
+    if output_file is not None and check_ess_convergence(run_id, spec, output_file, label):
         if label not in output:
             output[label] = {'paths': {}}
         elif 'paths' not in output[label]:
@@ -722,7 +769,7 @@ def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
         logger.error(f'Pipe run {run_id}, task {spec.task_id}: '
                      f'output lookup failed: {type(e).__name__}: {e}')
         return
-    if output_file is not None and _check_ess_convergence(run_id, spec, output_file, label):
+    if output_file is not None and check_ess_convergence(run_id, spec, output_file, label):
         if label not in output:
             output[label] = {'paths': {'irc': []}}
         elif 'paths' not in output[label]:
@@ -746,7 +793,7 @@ def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):
         return
     if output_file is None:
         return
-    if not _check_ess_convergence(run_id, spec, output_file, label):
+    if not check_ess_convergence(run_id, spec, output_file, label):
         return
     meta = spec.ingestion_metadata or {}
     rotor_index = meta.get('rotor_index')
@@ -770,15 +817,110 @@ def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):
 # ===========================================================================
 
 
+def local_cpu_budget() -> int:
+    """
+    Determine the total number of CPU cores ARC may use for local (queueless) execution.
+
+    This is the single global CPU limit for a machine with no queueing system: the ``cpus`` field
+    of the local server. It is the same ceiling the in-core ESS path already applies per job (see
+    ``JobAdapter.set_cpu_and_mem``), so one number bounds both the in-core jobs and the local worker
+    pool. The server named ``'local'`` is preferred (matching how the submit script resolves it);
+    otherwise the first server whose ``cluster_soft`` is ``'local'`` is used. When no such server is
+    configured, or its ``cpus`` is missing or not a positive integer, fall back to the machine's
+    physical core count.
+
+    Returns:
+        int: The core budget for local execution (at least 1).
+    """
+    def _is_local(server: dict) -> bool:
+        return isinstance(server, dict) and str(server.get('cluster_soft', '')).strip().lower() == 'local'
+
+    server = servers_dict.get('local')
+    if not _is_local(server):
+        server = next((s for s in servers_dict.values() if _is_local(s)), None)
+    if isinstance(server, dict):
+        try:
+            cpus = int(server.get('cpus'))
+        except (TypeError, ValueError):
+            cpus = 0
+        if cpus > 0:
+            return cpus
+    return max(1, os.cpu_count() or 1)
+
+
+def worker_cpu_cores(env: dict | None = None) -> int | None:
+    """
+    Resolve the CPU-core count a local pipe worker should pin its reconstructed job to.
+
+    The local submit script exports the budget-capped per-worker cores (see ``_submission_resources``)
+    as ``ARC_PIPE_LOCAL_CPUS``. A worker reconstructs its in-core job in a fresh process with no server
+    context, so ``set_cpu_and_mem`` would otherwise fall back to the default ``job_cpu_cores`` and an
+    engine that pins its own threads (e.g. PySCF's ``lib.num_threads``) could exceed the local CPU
+    budget. Reading the capped value back from the environment carries it into the reconstructed job,
+    so the same one number bounds the worker's actual thread count.
+
+    A dedicated variable is used rather than ``OMP_NUM_THREADS`` so that only local pipe workers are
+    affected: queue submit templates do not set it, so a queued worker keeps ARC's default allocation
+    and never picks up an ambient ``OMP_NUM_THREADS`` from the login shell.
+
+    Args:
+        env (dict, optional): Environment mapping to read (defaults to ``os.environ``).
+
+    Returns:
+        int | None: The capped core count, or ``None`` if unset/unparseable (the caller then falls
+        back to ARC's default core allocation).
+    """
+    env = os.environ if env is None else env
+    raw = env.get('ARC_PIPE_LOCAL_CPUS')
+    if not raw:
+        return None
+    try:
+        cores = int(str(raw).split(',')[0])
+    except (ValueError, IndexError):
+        return None
+    return cores if cores > 0 else None
+
+
+def local_worker_limit(cpus_per_worker: int, memory_mb_per_worker: int) -> int:
+    """
+    Determine how many pipe workers may run concurrently on this machine.
+
+    Without a queueing system nothing else throttles the pool, so the worker count is bounded by
+    both the CPU budget (see ``local_cpu_budget``) and the available memory.
+    ``pipe_settings['local_max_workers']`` overrides the derived value when set.
+
+    Args:
+        cpus_per_worker (int): Cores each worker is allowed to use.
+        memory_mb_per_worker (int): Memory each worker is expected to need, in MB.
+
+    Returns:
+        int: The maximum number of concurrent local workers (at least 1).
+    """
+    configured = (settings.get('pipe_settings') or dict()).get('local_max_workers')
+    if configured:
+        return max(1, int(configured))
+    by_cores = local_cpu_budget() // max(1, int(cpus_per_worker))
+    limit = by_cores
+    if memory_mb_per_worker and psutil is not None:
+        by_memory = int(psutil.virtual_memory().available / (1024 ** 2) // memory_mb_per_worker)
+        limit = min(limit, by_memory)
+    return max(1, limit)
+
+
 def derive_cluster_software(ess_settings: dict, job_adapter: str) -> str:
     """
     Heuristic: derive cluster software from the first server configured
     for this engine in ess_settings. Mirrors how run_job() picks its server.
 
     Returns a lowercase identifier matching the ``pipe_submit`` template keys
-    (e.g., ``'slurm'``, ``'pbs'``, ``'sge'``, ``'htcondor'``).
+    (e.g., ``'slurm'``, ``'pbs'``, ``'sge'``, ``'htcondor'``, ``'local'``).
     Maps ``'oge'`` to ``'sge'`` for template compatibility.
+
+    ``pipe_settings['run_locally']`` forces the ``'local'`` backend, which runs the array as a
+    pool of background worker processes on this machine instead of submitting it to a queue.
     """
+    if (settings.get('pipe_settings') or dict()).get('run_locally'):
+        return 'local'
     cs_alias = {'oge': 'sge'}
     for server_name in ess_settings.get(job_adapter, []):
         if server_name in servers_dict and 'cluster_soft' in servers_dict[server_name]:
@@ -908,8 +1050,15 @@ def build_ts_opt_tasks(species, label: str, xyzs: list[dict],
 
 def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
                               level_dict: dict, job_adapter: str,
-                              memory_mb: int) -> list[TaskSpec]:
-    """Build TaskSpec objects for 1D rotor scan tasks."""
+                              memory_mb: int, scan_res: float | None = None) -> list[TaskSpec]:
+    """
+    Build TaskSpec objects for 1D rotor scan tasks.
+
+    The scan resolution is captured here, at staging time on the ARC host, and carried in each
+    task's payload so the worker runs the resolution ARC intended rather than re-reading whatever
+    ``rotor_scan_resolution`` the worker node's settings happen to hold. When ``scan_res`` is
+    ``None`` the payload omits it and the worker falls back to its own settings default.
+    """
     cores = default_job_settings.get('job_cpu_cores', 8)
     species_dict_payload = species.as_dict()
     tasks = []
@@ -918,6 +1067,13 @@ def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
         torsions = rotor['torsion']
         if isinstance(torsions[0], int):
             torsions = [torsions]
+        input_payload = {
+            'species_dicts': [species_dict_payload],
+            'torsions': torsions,
+            'rotor_index': ri,
+        }
+        if scan_res is not None:
+            input_payload['scan_res'] = scan_res
         tasks.append(TaskSpec(
             task_id=f'{label}_scan_r{ri}',
             task_family='rotor_scan_1d',
@@ -928,11 +1084,7 @@ def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
             level=level_dict,
             required_cores=cores,
             required_memory_mb=memory_mb,
-            input_payload={
-                'species_dicts': [species_dict_payload],
-                'torsions': torsions,
-                'rotor_index': ri,
-            },
+            input_payload=input_payload,
             ingestion_metadata={'rotor_index': ri},
         ))
     return tasks

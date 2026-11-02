@@ -7,6 +7,7 @@ import arc.job.adapters.molpro
 import arc.job.adapters.obabel
 import arc.job.adapters.orca
 import arc.job.adapters.psi_4
+import arc.job.adapters.pyscf_adapter
 import arc.job.adapters.qchem
 import arc.job.adapters.terachem
 import arc.job.adapters.torch_ani

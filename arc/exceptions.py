@@ -33,7 +33,7 @@ class ConverterError(Exception):
 
 class DependencyError(Exception):
     """
-    An exception raised when converting molecular representations.
+    An exception raised when a required external dependency is not installed or configured.
     """
     pass
 

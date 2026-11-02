@@ -9,6 +9,7 @@ import os
 from typing import TYPE_CHECKING
 
 from arc.common import almost_equal_coords, ARC_PATH, get_logger, read_yaml_file
+from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
@@ -211,9 +212,11 @@ class AutoTSTAdapter(JobAdapter):
     def execute_incore(self):
         """
         Execute a job incore.
+        The reverse-direction reaction label repeats each species by the number of times it
+        participates in its well, so a well with a repeated species stays atom-balanced.
         """
         if not AUTOTST_PYTHON or not os.path.isfile(AUTOTST_PYTHON):
-            raise FileNotFoundError('AutoTST python executable was not found. '
+            raise DependencyError('AutoTST python executable was not found. '
                                     'Make sure the tst_env exists and AUTOTST_PYTHON is configured. '
                                     f'See {self.url} for more information, or use the Makefile provided with ARC.')
         self._log_job_execution()
@@ -230,10 +233,14 @@ class AutoTSTAdapter(JobAdapter):
                                                 multiplicity=rxn.multiplicity,
                                                 )
                 reaction_label_fwd = get_autotst_reaction_string(rxn)
+                rev_reactant_labels = [lbl for lbl in rxn.products
+                                       for _ in range(rxn.get_species_count(label=lbl, well=1))]
+                rev_product_labels = [lbl for lbl in rxn.reactants
+                                      for _ in range(rxn.get_species_count(label=lbl, well=0))]
                 reaction_label_rev = get_autotst_reaction_string(ARCReaction(r_species=rxn.p_species,
                                                                              p_species=rxn.r_species,
-                                                                             reactants=rxn.products,
-                                                                             products=rxn.reactants))
+                                                                             reactants=rev_reactant_labels,
+                                                                             products=rev_product_labels))
 
                 i = 0
                 for reaction_label, direction in zip([reaction_label_fwd, reaction_label_rev], ['F', 'R']):
@@ -277,9 +284,8 @@ class AutoTSTAdapter(JobAdapter):
                                                        execution_time=tok,
                                                        xyz=xyz,
                                                        success=True,
-                                                       index=len(rxn.ts_species.ts_guesses),
                                                        )
-                                    rxn.ts_species.ts_guesses.append(ts_guess)
+                                    rxn.ts_species.append_ts_guess(ts_guess)
                                     save_geo(xyz=xyz,
                                              path=self.local_path,
                                              filename=f'AutoTST {direction}',
@@ -294,9 +300,8 @@ class AutoTSTAdapter(JobAdapter):
                                                t0=tic,
                                                execution_time=tok,
                                                success=False,
-                                               index=len(rxn.ts_species.ts_guesses),
                                                )
-                            rxn.ts_species.ts_guesses.append(ts_guess)
+                            rxn.ts_species.append_ts_guess(ts_guess)
                             i += 1
 
             if len(self.reactions) < 5:

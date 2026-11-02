@@ -8,7 +8,7 @@ This module contains unit tests of the arc.mapping.driver module
 import os
 import unittest
 
-from arc.common import ARC_PATH
+from arc.common import ARC_PATH, logger
 from arc.family import get_reaction_family_products
 from arc.mapping.driver import *
 from arc.reaction import ARCReaction
@@ -482,6 +482,73 @@ class TestMappingDriver(unittest.TestCase):
         self.assertTrue(any(atom_map[r_index] in [0, 1] for r_index in [2, 3, 4, 5]))
         self.assertTrue(check_atom_map(rxn))
 
+    def test_map_retro_diels_alder_in_discovered_direction(self):
+        """Map a retro-Diels-Alder reaction without first trying its invalid template orientation."""
+        rxn = ARCReaction(
+            label='R1 <=> P1 + P2',
+            r_species=[ARCSpecies(label='R1', smiles='C1=CCCCC1', multiplicity=1)],
+            p_species=[ARCSpecies(label='P1', smiles='C=C', multiplicity=1),
+                       ARCSpecies(label='P2', smiles='C=CC=C', multiplicity=1)],
+            multiplicity=1,
+        )
+
+        self.assertEqual(rxn.family, 'Diels_alder_addition')
+        self.assertTrue(all(product_dict['discovered_in_reverse'] for product_dict in rxn.product_dicts))
+        with self.assertNoLogs(logger, level='ERROR'):
+            atom_map = rxn.atom_map
+
+        self.assertIsNotNone(atom_map)
+        self.assertTrue(check_atom_map(rxn))
+
+        mapped_reactant_bonds = dict()
+        reactant_atoms = rxn.r_species[0].mol.atoms
+        for i, atom in enumerate(reactant_atoms):
+            for bonded_atom, bond in atom.bonds.items():
+                j = reactant_atoms.index(bonded_atom)
+                if i < j and not atom.is_hydrogen() and not bonded_atom.is_hydrogen():
+                    mapped_reactant_bonds[tuple(sorted((atom_map[i], atom_map[j])))] = bond.order
+        product_bonds, offset = dict(), 0
+        for product in rxn.p_species:
+            for i, atom in enumerate(product.mol.atoms):
+                for bonded_atom, bond in atom.bonds.items():
+                    j = product.mol.atoms.index(bonded_atom)
+                    if i < j and not atom.is_hydrogen() and not bonded_atom.is_hydrogen():
+                        product_bonds[(i + offset, j + offset)] = bond.order
+            offset += product.number_of_atoms
+
+        removed_bond_orders = sorted(mapped_reactant_bonds[bond]
+                                     for bond in mapped_reactant_bonds.keys() - product_bonds.keys())
+        changed_bond_orders = sorted((mapped_reactant_bonds[bond], product_bonds[bond])
+                                     for bond in mapped_reactant_bonds.keys() & product_bonds.keys()
+                                     if mapped_reactant_bonds[bond] != product_bonds[bond])
+        self.assertEqual(removed_bond_orders, [1, 1])
+        self.assertEqual(changed_bond_orders, [(1, 2), (1, 2), (1, 2), (2, 1)])
+
+    def test_map_rxn_first_orientation_failure_is_quiet(self):
+        """A recoverable first-orientation template-order failure must not log at ERROR level.
+
+        For a reaction whose family was discovered in the reverse direction, the forward-orientation
+        ``map_rxn`` attempt fails on ``get_template_product_order`` and returns None. ``map_reaction``
+        then recovers via its flip fallback, so this intermediate failure is benign and should be logged
+        at DEBUG, not ERROR (which previously read as a false hard failure). The genuine total-failure
+        error is surfaced separately by ``ARCReaction.atom_map``.
+        """
+        rxn = ARCReaction(
+            label='R1 <=> P1 + P2',
+            r_species=[ARCSpecies(label='R1', smiles='C1=CCCCC1', multiplicity=1)],
+            p_species=[ARCSpecies(label='P1', smiles='C=C', multiplicity=1),
+                       ARCSpecies(label='P2', smiles='C=CC=C', multiplicity=1)],
+            multiplicity=1,
+        )
+        with self.assertNoLogs(logger, level='ERROR'):
+            raw_map = map_rxn(rxn)
+        self.assertIsNone(raw_map)
+
+        atom_map = map_reaction(rxn=rxn, backend='ARC')
+        self.assertIsNotNone(atom_map)
+        rxn.atom_map = atom_map
+        self.assertTrue(check_atom_map(rxn))
+
     def test_map_abstractions_h_plus_ch4_to_ch3_plus_h2(self):
         """H + CH4 <=> CH3 + H2 (reversed product order)"""
         r_1 = self._h_atom()
@@ -793,6 +860,49 @@ class TestMappingDriver(unittest.TestCase):
         self.assertIn(tuple(rxn_4.atom_map[5: 8]), list(permutations([3, 4, 5])))
         self.assertEqual(rxn_4.atom_map[8:], [6, 9])
 
+    def test_prepare_flipped_reaction_seeds_a_forward_template(self):
+        """Test that the flipped reaction is given a family that matches it in the forward direction.
+
+        ``flip_reaction`` resets the family, so the flipped copy would otherwise re-derive its product
+        dictionaries with the default family set, come back empty, and leave the flip retry with nothing.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5Cl', smiles='CCCl')],
+                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                     ARCSpecies(label='HCl', smiles='Cl')])
+        rxn.product_dicts = rxn.get_product_dicts(rmg_family_set='all')
+        flipped = prepare_flipped_reaction(rxn)
+        self.assertEqual(flipped.family, 'XY_Addition_MultipleBond')
+        self.assertTrue(flipped.product_dicts)
+        self.assertFalse(flipped.product_dicts[0]['discovered_in_reverse'])
+        # Only the chosen family's dictionaries survive, so a recipe can never be paired with another
+        # family's label map.
+        self.assertEqual({pd['family'] for pd in flipped.product_dicts}, {'XY_Addition_MultipleBond'})
+        # The template products of a forward discovery are isomorphic to that reaction's own products.
+        template_products = flipped.product_dicts[0]['products']
+        self.assertEqual(len(template_products), len(flipped.p_species))
+        self.assertTrue(any(flipped.p_species[0].is_isomorphic(mol) for mol in template_products))
+
+    def test_map_reaction_with_a_reverse_discovered_template(self):
+        """Test mapping an elimination whose family only matches it in the addition direction.
+
+        ``XY_Addition_MultipleBond`` matches HX elimination only in reverse, so the template's 'products'
+        are isomorphic to the reaction's reactants. Both ``get_template_product_order`` and
+        ``reorder_p_label_map`` compare against the reaction's products, so the forward attempt fails until
+        the reaction is flipped first.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5Cl', smiles='CCCl')],
+                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                     ARCSpecies(label='HCl', smiles='Cl')])
+        rxn.product_dicts = rxn.get_product_dicts(rmg_family_set='all')
+        rxn.family = rxn.product_dicts[0]['family']
+        rxn.family_own_reverse = rxn.product_dicts[0]['own_reverse']
+        self.assertEqual(rxn.family, 'XY_Addition_MultipleBond')
+        self.assertTrue(rxn.product_dicts[0]['discovered_in_reverse'])
+        atom_map = map_reaction(rxn=rxn, backend='ARC')
+        self.assertIsNotNone(atom_map)
+        self.assertEqual(sorted(atom_map), list(range(len(atom_map))))
+        self.assertTrue(check_atom_map(rxn))
+
     def test_map_flipped_reaction(self):
         """Test the map_flipped_reaction() function."""
         c2h5o3_xyz = {'coords': ((-1.3476727508427788, -0.49923624257482285, -0.3366372557370102),
@@ -845,6 +955,47 @@ class TestMappingDriver(unittest.TestCase):
         self.assertIn(atom_map[6], [6, 7])
         self.assertIn(atom_map[7], [3, 4, 5, 8])
         self.assertIn(atom_map[8], [3, 4, 5, 8])
+
+    def test_flatten_bond_orders(self):
+        """Test the flatten_bond_orders() function."""
+        spc_1 = ARCSpecies(label='2-butene', smiles='CC=CC')
+        spc_2 = ARCSpecies(label='1,3-butadiene', smiles='C=CC=C')
+        spc_1.determine_rotors()
+        self.assertIn(2, [bond.order for atom in spc_1.mol.atoms for bond in atom.bonds.values()])
+        self.assertIsNotNone(spc_1.mol_list)
+        self.assertEqual(spc_1.number_of_rotors, 2)
+
+        flatten_bond_orders(spc_1, spc_2)
+
+        for spc in [spc_1, spc_2]:
+            self.assertTrue(all(bond.order == 1 for atom in spc.mol.atoms for bond in atom.bonds.values()))
+            self.assertIsNone(spc.mol_list)
+            self.assertEqual(spc.rotors_dict, dict())
+            self.assertEqual(spc.number_of_rotors, 0)
+
+        spc_1.determine_rotors()
+        self.assertIn([2, 3], [rotor['pivots'] for rotor in spc_1.rotors_dict.values()])
+
+    def test_flatten_bond_orders_discards_the_directed_rotors(self):
+        """Test that flatten_bond_orders() discards the directed rotor scans along with the rotors."""
+        spc = ARCSpecies(label='nbutane', smiles='CCCC', directed_rotors={'brute_force_sp': [[[1, 2], [2, 3]]]})
+        spc.determine_rotors()
+        self.assertEqual(spc.directed_rotors, {'brute_force_sp': [[[5, 1, 2, 3], [1, 2, 3, 4]]]})
+
+        flatten_bond_orders(spc)
+
+        self.assertEqual(spc.directed_rotors, dict())
+        spc.determine_rotors()
+        self.assertEqual([rotor['pivots'] for rotor in spc.rotors_dict.values()], [[1, 2], [2, 3], [3, 4]])
+
+    def test_flatten_bond_orders_keeps_the_skip_rotor_scans_mark(self):
+        """Test that flatten_bond_orders() keeps a None rotors_dict, which marks a species to skip rotor scans."""
+        spc = ARCSpecies(label='2-butene', smiles='CC=CC')
+        spc.rotors_dict = None
+
+        flatten_bond_orders(spc)
+
+        self.assertIsNone(spc.rotors_dict)
 
     def test_map_isomerization_reaction(self):
         """Test the map_isomerization_reaction() function."""
@@ -1705,6 +1856,91 @@ class TestMappingDriver(unittest.TestCase):
             else:
                 self.assertIn(atom_map[int(atom.label)], c_symmetry_h_2 if atom.symbol == "C" else h_symmetry2)
         self.assertTrue(check_atom_map(rxn=rxn))
+
+
+
+    def test_hydrogens_stay_on_their_heavy_atom_in_cycloadditions(self):
+        """Test that a cycloaddition map does not move hydrogens between heavy atoms"""
+        # No X-H bond changes in a cycloaddition, so a correct map obeys
+        # parent_P(map[h]) == map[parent_R(h)] for every hydrogen h. Both reactions below add across a
+        # symmetric ethene, where several backbone candidates tie and the family template has to settle
+        # the choice; the template's labeled atoms must carry their hydrogens with them.
+        ch2_adj = """1 *3 C u0 p1 c0 {2,S} {3,S}
+2    H u0 p0 c0 {1,S}
+3    H u0 p0 c0 {1,S}"""
+        c2h4_adj = """1 *1 C u0 p0 c0 {2,D} {3,S} {6,S}
+2 *2 C u0 p0 c0 {1,D} {4,S} {5,S}
+3    H u0 p0 c0 {1,S}
+4    H u0 p0 c0 {2,S}
+5    H u0 p0 c0 {2,S}
+6    H u0 p0 c0 {1,S}"""
+        c3h6_adj = """1 *3 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}
+2 *1 C u0 p0 c0 {1,S} {3,S} {6,S} {9,S}
+3 *2 C u0 p0 c0 {1,S} {2,S} {7,S} {8,S}
+4    H u0 p0 c0 {1,S}
+5    H u0 p0 c0 {1,S}
+6    H u0 p0 c0 {2,S}
+7    H u0 p0 c0 {3,S}
+8    H u0 p0 c0 {3,S}
+9    H u0 p0 c0 {2,S}"""
+        c4h6_adj = """1  *5 C u0 p0 c0 {2,S} {3,D} {5,S}
+2  *4 C u0 p0 c0 {1,S} {4,D} {6,S}
+3  *6 C u0 p0 c0 {1,D} {7,S} {8,S}
+4  *3 C u0 p0 c0 {2,D} {9,S} {10,S}
+5     H u0 p0 c0 {1,S}
+6     H u0 p0 c0 {2,S}
+7     H u0 p0 c0 {3,S}
+8     H u0 p0 c0 {3,S}
+9     H u0 p0 c0 {4,S}
+10    H u0 p0 c0 {4,S}"""
+        c6h10_adj = """1  *2 C u0 p0 c0 {2,S} {3,S} {7,S} {8,S}
+2  *1 C u0 p0 c0 {1,S} {4,S} {9,S} {10,S}
+3  *6 C u0 p0 c0 {1,S} {5,S} {11,S} {12,S}
+4  *3 C u0 p0 c0 {2,S} {6,S} {13,S} {14,S}
+5  *5 C u0 p0 c0 {3,S} {6,D} {15,S}
+6  *4 C u0 p0 c0 {4,S} {5,D} {16,S}
+7     H u0 p0 c0 {1,S}
+8     H u0 p0 c0 {1,S}
+9     H u0 p0 c0 {2,S}
+10    H u0 p0 c0 {2,S}
+11    H u0 p0 c0 {3,S}
+12    H u0 p0 c0 {3,S}
+13    H u0 p0 c0 {4,S}
+14    H u0 p0 c0 {4,S}
+15    H u0 p0 c0 {5,S}
+16    H u0 p0 c0 {6,S}"""
+
+        def hydrogen_parents(species_list):
+            """Return a hydrogen index to parent heavy atom index dict, in running atom indices"""
+            parents, offset = dict(), 0
+            for spc in species_list:
+                atoms = spc.mol.atoms
+                index = {atom: i for i, atom in enumerate(atoms)}
+                for i, atom in enumerate(atoms):
+                    if atom.element.symbol == 'H':
+                        heavy = [index[n] + offset for n in atom.edges if n.element.symbol != 'H']
+                        if len(heavy) == 1:
+                            parents[i + offset] = heavy[0]
+                offset += len(atoms)
+            return parents
+
+        for r_adjlists, p_adjlists, expected_family in [([ch2_adj, c2h4_adj], [c3h6_adj], '1+2_Cycloaddition'),
+                                                        ([c4h6_adj, c2h4_adj], [c6h10_adj], 'Diels_alder_addition')]:
+            rxn = ARCReaction(r_species=[ARCSpecies(label=f'r{i}', adjlist=adj)
+                                         for i, adj in enumerate(r_adjlists)],
+                              p_species=[ARCSpecies(label=f'p{i}', adjlist=adj)
+                                         for i, adj in enumerate(p_adjlists)])
+            self.assertEqual(rxn.family, expected_family)
+            atom_map = map_reaction(rxn)
+            self.assertIsNotNone(atom_map)
+            self.assertTrue(check_atom_map(rxn))
+            reactants, products = rxn.get_reactants_and_products(return_copies=True)
+            r_parents, p_parents = hydrogen_parents(reactants), hydrogen_parents(products)
+            for h, parent in r_parents.items():
+                self.assertEqual(p_parents[atom_map[h]], atom_map[parent],
+                                 msg=f'In {rxn.label}, H {h} sits on heavy atom {parent} but maps to '
+                                     f'H {atom_map[h]}, which sits on {p_parents[atom_map[h]]}, '
+                                     f'while {parent} maps to {atom_map[parent]}.')
 
 
     @classmethod

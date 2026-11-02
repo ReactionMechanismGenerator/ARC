@@ -23,6 +23,8 @@ import torch
 import torchani
 from torchani.ase import Calculator
 
+SCHEMA_VERSION = 2
+
 elements = {'H': 1, 'He': 2, 'Li': 3, 'Be': 4, 'B': 5, 'C': 6, 'N': 7, 'O': 8,
  'F': 9, 'Ne': 10, 'Na': 11, 'Mg': 12, 'Al': 13, 'Si': 14, 'P': 15, 'S': 16, 'Cl': 17,
  'Ar': 18, 'K': 19, 'Ca': 20, 'Sc': 21, 'Ti': 22,'V': 23,'Cr': 24, 'Mn': 25, 'Fe': 26,
@@ -130,8 +132,8 @@ def run_opt(xyz,
         try:
             print(f'steps: {steps}, fmax: {fmax}, engine: {opt_engine_name}')
             opt.run(fmax=fmax, steps=steps)
-        except (Converged, NotImplementedError, OptimizerConvergenceError):
-            pass
+        except (Converged, NotImplementedError, OptimizerConvergenceError) as exc:
+            print(f'engine {opt_engine_name} did not converge: {exc}')
         else:
             print(f"optimization converged with engine {opt_engine_name}!")
             break
@@ -148,6 +150,14 @@ def run_vibrational_analysis(xyz: dict = None,
     """
     Compute the Hessian matrix along with vibrational frequencies (cm^-1),
     normal mode displacements, force constants (mDyne/A), and reduced masses (AMU).
+
+    The normal modes are mass deweighted normalized, so each is a Cartesian displacement of unit
+    Euclidean norm, ``sum(|d|^2) = 1``, and satisfies ``sum(m_a * |d_a|^2) = mu``, the reduced mass
+    reported beside it. That is Gaussian's convention and the one ARC's YAML parser expects of a
+    file stamped with schema version ``SCHEMA_VERSION``. The modes are shaped (modes, atoms, 3).
+
+    The geometry the modes were computed at is written beside them, so that a reader of the file
+    alone can tell a Cartesian mode from a mass weighted one.
     """
     if xyz is None and opt_xyz is None:
         raise ValueError("Must receive at least one geometry to run vibrational analysis.")
@@ -158,9 +168,11 @@ def run_vibrational_analysis(xyz: dict = None,
     masses = torchani.utils.get_atomic_masses(species)
     energies = model.double()((species, coordinates)).energies
     hessian = torchani.utils.hessian(coordinates, energies=energies)
-    freqs, modes, force_constants, reduced_masses = torchani.utils.vibrational_analysis(masses, hessian, mode_type='MDU')
+    freqs, modes, force_constants, reduced_masses = torchani.utils.vibrational_analysis(masses, hessian, mode_type='MDN')
     freqs = freqs.cpu().numpy() if hasattr(freqs, 'cpu') else freqs.numpy()
     results = {
+        'schema_version': SCHEMA_VERSION,
+        'xyz': xyz,
         'hessian': hessian.cpu().numpy().tolist() if hasattr(hessian, 'cpu') else hessian.tolist(),
         'freqs': freqs.tolist(),
         'modes': modes.cpu().numpy().tolist() if hasattr(modes, 'cpu') else modes.tolist(),

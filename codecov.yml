@@ -1,0 +1,23 @@
+# Codecov configuration for ARC.
+#
+# Without this file Codecov applies its built-in defaults, under which the `project` status uses
+# target `auto` with a 0% threshold -- total coverage may then never dip by any amount relative to
+# the base commit. Any PR that adds code covered below the repository average therefore reports a
+# failing check, even when every test job, CodeQL and the functional suite pass. In practice that
+# fired on nearly every open PR, which trains reviewers to ignore the check and obscures the one
+# coverage signal that does matter: whether the PR's *own* new code is tested.
+#
+# So: allow a small tolerance on total coverage, and keep an explicit target on the patch.
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto      # compare against the base commit
+        threshold: 1%     # tolerate ordinary drift instead of failing on a fraction of a percent
+    patch:
+      default:
+        target: 80%       # the lines a PR adds or changes must be covered
+
+comment:
+  layout: "reach, diff, flags, files"

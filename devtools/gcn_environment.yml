@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python
+  - python=3.8
   - h5py
   - hyperopt
   - ipython
@@ -24,3 +24,16 @@ dependencies:
   - tqdm
   - xlrd
   - xlwt
+  # CPU-only PyTorch + PyTorch Geometric stack required by TS-GCN's inference module
+  # (same known-good pins as devtools/install_gcn.sh in CPU mode).
+  - pip:
+      - --find-links https://download.pytorch.org/whl/torch_stable.html
+      - --find-links https://pytorch-geometric.com/whl/torch-1.7.1+cpu.html
+      - torch==1.7.1+cpu
+      - torchvision==0.8.2+cpu
+      - torchaudio==0.7.2
+      - torch-scatter
+      - torch-sparse
+      - torch-cluster
+      - torch-spline-conv
+      - torch-geometric

@@ -60,6 +60,8 @@ class TestLevel(unittest.TestCase):
                          'gaussian')
         self.assertEqual(Level(method='uma').software, 'ase')
         self.assertEqual(Level(method='uma-s-1p1').software, 'ase')
+        self.assertEqual(Level(method='uma-s-1p2').software, 'ase')
+        self.assertEqual(Level(method='uma-m-1p1').software, 'ase')
         level_uma = Level(method='uma')
         level_uma.deduce_software(job_type='irc')  # UMA must stay on 'ase', not fall through to Gaussian
         self.assertEqual(level_uma.software, 'ase')
@@ -80,6 +82,20 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level.solvation_method, 'smd')
         self.assertEqual(level.solvent, 'water')
         self.assertEqual(level.args, {'keyword': {'general': 'iop(99/33=1)'}, 'block': {}})
+
+    def test_lower_preserves_case_sensitive_block_args(self):
+        """Test that Level.lower() keeps the case of the ASE execution block args (paths, commands, queues)"""
+        level = Level(method='UMA',
+                      args={'block': {'python': '/home/User/.conda/envs/UMA_env/bin/python',
+                                      'env_setup': 'module load CUDA/12.1; conda activate UMA_env',
+                                      'queue': 'GPU_Long',
+                                      'general': 'Extra Block'}})
+        self.assertEqual(level.method, 'uma')
+        self.assertEqual(level.args['block']['python'], '/home/User/.conda/envs/UMA_env/bin/python')
+        self.assertEqual(level.args['block']['env_setup'], 'module load CUDA/12.1; conda activate UMA_env')
+        self.assertEqual(level.args['block']['queue'], 'GPU_Long')
+        # a non-execution block arg is still lowercased as before
+        self.assertEqual(level.args['block']['general'], 'extra block')
 
     def test_equal(self):
         """Test identifying equal levels."""
@@ -124,6 +140,43 @@ class TestLevel(unittest.TestCase):
                          "dlpno-ccsd(t)/def2-tzvp, auxiliary_basis: def2-tzvp/c, solvation_method: smd, "
                          "solvent: water, solvation_scheme_level: 'apfd/def2-tzvp, software: gaussian', software: orca")
 
+    def test_as_dict_preserves_args_when_one_slot_empty(self):
+        """
+        Test that args round-trip through as_dict() when only one of 'keyword'/'block' is populated.
+
+        as_dict() retains the args entry when at least one slot holds content, so that
+        ``Level(repr=level)`` reconstructs the same args. It omits args when both slots are empty.
+        """
+        keyword_only = Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp',
+                                   'args': {'keyword': {'opt': 'opt=(verytight)'}}})
+        self.assertIn('args', keyword_only.as_dict())
+        self.assertEqual(Level(repr=keyword_only).args, keyword_only.args)
+
+        block_only = Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp',
+                                 'args': {'block': {'1': 'extra block'}}})
+        self.assertIn('args', block_only.as_dict())
+        self.assertEqual(Level(repr=block_only).args, block_only.args)
+
+        empty_args = Level(method='wb97xd', basis='def2tzvp')
+        self.assertNotIn('args', empty_args.as_dict())
+
+    def test_copy_preserves_args(self):
+        """Test that copy() preserves args populated in only one of the 'keyword'/'block' slots."""
+        level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
+        copied = level.copy()
+        self.assertEqual(copied.args, level.args)
+        self.assertEqual(copied.args['keyword']['opt'], 'opt=(verytight)')
+        self.assertIsNot(copied.args['keyword'], level.args['keyword'])
+
+    def test_get_args(self):
+        """Test that get_args() returns args which can be mutated without affecting the Level"""
+        level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
+        args = level.get_args()
+        self.assertEqual(args, {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()})
+        args['keyword']['dft_grid'] = 'defgrid2'
+        args['block']['1'] = 'extra block'
+        self.assertEqual(level.args, {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()})
+
     def test_year_validation(self):
         """Test year validation for Level"""
         with self.assertRaises(ValueError):
@@ -154,6 +207,78 @@ class TestLevel(unittest.TestCase):
             for method in methods:
                 self.assertIsInstance(method, str)
         self.assertIn('gaussian', list(ess_methods.keys()))
+
+    def test_deduce_method_type(self):
+        """Test deducing the method type of a level of theory"""
+        def method_type(method: str) -> str:
+            """Deduce a method type without also deducing a software for the method."""
+            level = object.__new__(Level)
+            level.method, level.method_type = method.lower(), None
+            level.deduce_method_type()
+            return level.method_type
+
+        # Trivial cases, one per type.
+        self.assertEqual(method_type('b3lyp'), 'dft')
+        self.assertEqual(method_type('ccsd(t)'), 'wavefunction')
+        self.assertEqual(method_type('am1'), 'semiempirical')
+        self.assertEqual(method_type('uff'), 'force_field')
+        self.assertEqual(method_type('cbs-qb3'), 'composite')
+
+        # Common cases.
+        for method in ['wb97xd', 'm06-2x', 'b2plyp', 'wb97m-v', 'pbe0']:
+            self.assertEqual(method_type(method), 'dft', msg=f'{method} should be dft')
+        for method in ['hf', 'mp2', 'dlpno-ccsd(t)', 'caspt2', 'nevpt2']:
+            self.assertEqual(method_type(method), 'wavefunction', msg=f'{method} should be a wavefunction method')
+        for method in ['pm3', 'pm6', 'pm7', 'xtb', 'zindo', 'mndo']:
+            self.assertEqual(method_type(method), 'semiempirical', msg=f'{method} should be semiempirical')
+        for method in ['mmff94', 'gaff', 'amber', 'ghemical', 'torchani']:
+            self.assertEqual(method_type(method), 'force_field', msg=f'{method} should be a force field')
+
+        # A marker must not match inside an unrelated name: 'am' sits inside every Coulomb-attenuated
+        # functional, and 'ic' inside 'ghemical'. Typing a functional as semiempirical makes ARC run a
+        # radical restricted and drop the TS keywords from a Gaussian optimization.
+        for method in ['cam-b3lyp', 'camb3lyp', 'camh-b3lyp', 'cam-qtp00', 'lc-camb3lyp', 'am05']:
+            self.assertEqual(method_type(method), 'dft', msg=f'{method} should be dft')
+
+        # A marker that legitimately sits inside a longer name must still match.
+        for method in ['bccd(t)', 'qcisd(t)', 'fci', 'lccsd', 'lt-df-lcc2', 'uccsd(t)-f12', 'rohf']:
+            self.assertEqual(method_type(method), 'wavefunction', msg=f'{method} should be a wavefunction method')
+
+        # Every method ARC registers types as something, and the composite list wins over the markers
+        # ('g3mp2' contains 'mp2', 'rocbs-qb3' contains 'cbs'). Freeze the type each one actually gets
+        # rather than asserting it got one of the five: deduce_method_type() falls through to 'dft', so a
+        # membership check over the five possible values cannot fail, and would pass a method silently
+        # reclassified by a later marker edit - the regression this commit exists to prevent. Only the
+        # marker-driven types are listed, so a new DFT functional in the registry needs no edit here,
+        # while a method drifting into or out of a marker-driven type fails naming itself.
+        ess_methods = read_yaml_file(path=os.path.join(ARC_PATH, 'data', 'ess_methods.yml'))
+        registered = sorted({method for methods in ess_methods.values() for method in methods})
+        expected = {
+            'semiempirical': ['am1', 'pm3', 'pm3mm', 'pm6', 'xtb', 'xtb2'],
+            'force_field': ['MMFF94', 'MMFF94s', 'amber', 'dreiding', 'gaff', 'gfn1', 'gfn2', 'ghemical', 'torchani',
+                            'uff'],
+            'composite': ['cbs-4m', 'cbs-apno', 'cbs-qb3', 'cbs-qb3-paraskevas', 'g1', 'g2', 'g2mp2', 'g3', 'g3b3',
+                          'g3mp2', 'g3mp2b3', 'g4', 'g4mp2', 'rocbs-qb3', 'w1bd', 'w1ro', 'w1u'],
+            'wavefunction': ['B-CCD', 'BCCD', 'BCCD(T)', 'CASSCF', 'CC2', 'CC3', 'CC4', 'CCD', 'CCS', 'CCSD',
+                             'CCSD(T)', 'CCSD(T)-F12', 'CCSD+T(CCSD)', 'CCSD-F12', 'CCSDT', 'CCSDT(Q)', 'CCSDT(Q)_A',
+                             'CCSDT(Q)_B', 'CCSDT-1', 'CCSDT-1b', 'CCSDT-2', 'CCSDT-3', 'CCSDT-4', 'CCSDTQ',
+                             'CCSDTQP', 'CCSDTQPH', 'CID', 'CISD', 'DF-MP2-F12', 'FCI', 'LCCD', 'LCCSD', 'LT-DF-LCC2',
+                             'MP2', 'MP2-F12', 'MP3', 'MRCI', 'MRCI-F12', 'QCISD', 'QCISD(T)', 'UCC(4)', 'bd',
+                             'bd(t)', 'ccsd', 'ccsd(t)', 'cis', 'dlpno-ccsd', 'dlpno-ccsd(t)', 'dlpno-mp2',
+                             'dlpno-mp2-f12', 'dlpno-mp2-f12/d', 'hf', 'mp2', 'mp3', 'rhf'],
+        }
+        deduced = dict()
+        for method in registered:
+            deduced.setdefault(method_type(method), list()).append(method)
+        for method_class, methods in expected.items():
+            self.assertEqual(deduced.get(method_class, list()), methods,
+                             msg=f'the {method_class} methods ARC registers are not the expected ones')
+        self.assertEqual(deduced.get('dft', list()),
+                         [method for method in registered
+                          if all(method not in methods for methods in expected.values())],
+                         msg='every registered method that no marker claims must type as dft')
+        self.assertEqual(method_type('g3mp2'), 'composite')
+        self.assertEqual(method_type('rocbs-qb3'), 'composite')
 
     def test_copy(self):
         """Test copying the object"""
@@ -203,6 +328,19 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(assign_frequency_scale_factor(Level(method='wb97xd', basis='Def2TZVP')), 0.988)
         self.assertEqual(assign_frequency_scale_factor(Level(method='CBS-QB3')), 1.004)
         self.assertEqual(assign_frequency_scale_factor(Level(method='PM6')), 1.093)
+
+    def test_assign_frequency_scale_factor_from_str(self):
+        """Test the assign_frequency_scale_factor() method with a string level argument."""
+        self.assertEqual(assign_frequency_scale_factor('hf/sto3g, software: gaussian'), 0.817)
+        self.assertEqual(assign_frequency_scale_factor('cbs-qb3'), 1.004)
+        self.assertIsNone(assign_frequency_scale_factor('g4mp2, software: gaussian'))
+        self.assertIsNone(assign_frequency_scale_factor('no/such, software: nonesuch, solvent: water'))
+        # Only assign_frequency_scale_factor() tolerates these strings, Level() itself still raises.
+        for repr_ in ['hf/sto3g, software: gaussian',
+                      'g4mp2, software: gaussian',
+                      'no/such, software: nonesuch, solvent: water']:
+            with self.assertRaises(ValueError):
+                Level(repr=repr_)
 
 
 if __name__ == '__main__':

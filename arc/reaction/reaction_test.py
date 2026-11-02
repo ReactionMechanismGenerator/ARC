@@ -10,9 +10,12 @@ import os
 import shutil
 import time
 import unittest
+import unittest.mock as mock
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, read_yaml_file
 from arc.exceptions import ReactionError
+from arc.family.family import get_all_families, get_rmg_recommended_family_sets
+from arc.imports import settings
 from arc.main import ARC
 from arc.reaction.reaction import ARCReaction, remove_dup_species
 from arc.scheduler import Scheduler
@@ -324,6 +327,33 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn.products, ['CH3', 'H2O'])
         self.assertIsNone(rxn.index)
 
+    def test_from_dict_charge(self):
+        """Test that ARCReaction.from_dict() derives, preserves and round-trips the charge."""
+        rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-',
+                          r_species=[ARCSpecies(label='HO-', smiles='[OH-]', charge=-1),
+                                     ARCSpecies(label='CH3OH', smiles='CO')],
+                          p_species=[ARCSpecies(label='H2O', smiles='O'),
+                                     ARCSpecies(label='CH3O-', smiles='C[O-]', charge=-1)])
+        self.assertEqual(rxn.charge, -1)
+        rxn_dict = rxn.as_dict()
+        self.assertEqual(rxn_dict['charge'], -1)
+
+        round_trip = ARCReaction(reaction_dict=rxn_dict)
+        self.assertEqual(round_trip.charge, -1)
+        self.assertEqual(ARCReaction(reaction_dict=round_trip.as_dict()).charge, -1)
+
+        rxn_dict.pop('charge')
+        restored = ARCReaction(reaction_dict=rxn_dict)
+        self.assertEqual(restored.charge, -1)
+
+        rxn_dict['charge'] = 0
+        with self.assertRaises(ReactionError):
+            ARCReaction(reaction_dict=rxn_dict)
+
+        neutral_dict = self.rxn1.as_dict()
+        self.assertNotIn('charge', neutral_dict)
+        self.assertEqual(ARCReaction(reaction_dict=neutral_dict).charge, 0)
+
     def test_copy(self):
         """Test the copy() method."""
         rxn_copy = self.rxn1.copy()
@@ -469,6 +499,153 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn2.family, 'H_Abstraction')
         self.assertEqual(self.rxn12.family, 'H_Abstraction')
 
+    def test_bare_calls_honour_the_rmg_family_set_setting(self):
+        """determine_family() and get_product_dicts() consider the configured family set when no
+        set is named at the call site, rather than a hard-coded 'default'."""
+        def build_rxn():
+            return ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                          ARCSpecies(label='CH3Br', smiles='CBr')],
+                               p_species=[ARCSpecies(label='HBr', smiles='Br'),
+                                          ARCSpecies(label='CH3', smiles='[CH3]')])
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(build_rxn().determine_family(), (None, None))
+            self.assertEqual(build_rxn().get_product_dicts(), list())
+            self.assertEqual(self.rxn1.determine_family()[0], 'H_Abstraction')
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            self.assertEqual(build_rxn().determine_family(), ('Br_Abstraction', True))
+            product_dicts = build_rxn().get_product_dicts()
+            self.assertTrue(len(product_dicts))
+            self.assertTrue(all(product_dict['family'] == 'Br_Abstraction' for product_dict in product_dicts))
+            self.assertEqual(build_rxn().determine_family(rmg_family_set='default'), (None, None))
+            self.assertEqual(build_rxn().get_product_dicts(rmg_family_set='default'), list())
+
+    def test_determine_family_reaches_a_directory_only_family(self):
+        """2-methyl-1-butene <=> 1,1-dimethylcyclopropane belongs to Intra_RH_Add_Exocyclic, which
+        exists only as an RMG database directory. It is discoverable under rmg_family_set 'all'
+        and remains undiscoverable under 'default'."""
+        def build_rxn():
+            return ARCReaction(r_species=[ARCSpecies(label='2-methyl-1-butene', smiles='C=C(C)CC')],
+                               p_species=[ARCSpecies(label='1,1-dimethylcyclopropane', smiles='CC1(C)CC1')])
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(build_rxn().determine_family(), (None, None))
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            self.assertEqual(build_rxn().determine_family()[0], 'Intra_RH_Add_Exocyclic')
+            self.assertEqual(build_rxn().determine_family(rmg_family_set='default'), (None, None))
+
+    def test_widening_keeps_the_recommended_family_when_both_match(self):
+        """OH + HO2 <=> H2O2 + O matches the recommended H_Abstraction and the directory-only
+        Substitution_O, each on its own. Under 'all' both are discovered, the recommended one comes
+        first, and the family resolves to H_Abstraction, as it does under 'default'."""
+        def build_rxn():
+            return ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                          ARCSpecies(label='HO2', smiles='[O]O')],
+                               p_species=[ARCSpecies(label='H2O2', smiles='OO'),
+                                          ARCSpecies(label='O', smiles='[O]')])
+        for family in ['H_Abstraction', 'Substitution_O']:
+            self.assertEqual(len(build_rxn().get_product_dicts(rmg_family_set=[family],
+                                                               consider_arc_families=False)), 1)
+        all_families = get_all_families(rmg_family_set='all', consider_arc_families=False)
+        recommended = set()
+        for family_set_label, families in get_rmg_recommended_family_sets().items():
+            if 'surface' not in family_set_label:
+                recommended.update(families)
+        self.assertIn('H_Abstraction', recommended)
+        self.assertNotIn('Substitution_O', recommended)
+        self.assertLess(max(i for i, fam in enumerate(all_families) if fam in recommended),
+                        all_families.index('Substitution_O'))
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual([pd['family'] for pd in build_rxn().get_product_dicts()], ['H_Abstraction'])
+            self.assertEqual(build_rxn().determine_family(), ('H_Abstraction', True))
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            self.assertEqual([pd['family'] for pd in build_rxn().get_product_dicts()],
+                             ['H_Abstraction', 'Substitution_O'])
+            self.assertEqual(build_rxn().determine_family(), ('H_Abstraction', True))
+
+    def test_wider_family_set_scan_used_by_the_linear_ts_adapter(self):
+        """The Linear TS adapter retries with rmg_family_set='all' whenever the configured set
+        yields no product dicts, so what 'all' means reaches an installation that never changes the
+        setting. 1,4-cyclohexadiene <=> benzene + H2 has no family under the shipped default and
+        resolves to H2_Loss, an RMG database directory family, under that retry."""
+        def build_rxn():
+            return ARCReaction(r_species=[ARCSpecies(label='1,4-cyclohexadiene', smiles='C1=CCC=CC1')],
+                               p_species=[ARCSpecies(label='benzene', smiles='c1ccccc1'),
+                                          ARCSpecies(label='H2', smiles='[H][H]')])
+        with mock.patch.dict(settings, {'rmg_family_set': 'default'}):
+            self.assertEqual(build_rxn().product_dicts, list())
+            self.assertIsNone(build_rxn().family)
+            wider_product_dicts = build_rxn().get_product_dicts(rmg_family_set='all',
+                                                                consider_rmg_families=True,
+                                                                consider_arc_families=True,
+                                                                discover_own_reverse_rxns_in_reverse=True)
+            self.assertTrue(len(wider_product_dicts))
+            self.assertEqual({pd['family'] for pd in wider_product_dicts}, {'H2_Loss'})
+
+    def test_product_dicts_all_belong_to_the_reaction_family(self):
+        """Test that the product dicts of a reaction that matches several families are restricted to one family"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH]1C=Cc2ccccc21')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH]1C=CC2C3=C1C=CC32')])
+        self.assertEqual(rxn.family, 'Intra_R_Add_Endocyclic')
+        self.assertTrue(len(rxn.product_dicts))
+        self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts}, {rxn.family})
+
+    def test_pinned_family_restricts_the_product_dicts(self):
+        """Test that pinning a family restricts the product dicts to that family's atom label maps.
+        The reactant atoms are C0 C1 C2 C3 O4 S5, and the breaking bond is one of its bonds."""
+        r_species = [ARCSpecies(label='R', smiles='[CH2]C(C=C)OS')]
+        p_species = [ARCSpecies(label='P', smiles='[O]C(C=C)CS')]
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts}, {'intra_OH_migration'})
+        pinned = ARCReaction(r_species=r_species, p_species=p_species, family='intra_substitutionS_isomerization')
+        self.assertEqual(pinned.family, 'intra_substitutionS_isomerization')
+        self.assertEqual({product_dict['family'] for product_dict in pinned.product_dicts},
+                         {'intra_substitutionS_isomerization'})
+        breaking_bonds, forming_bonds = rxn.get_expected_changing_bonds(
+            r_label_dict=rxn.product_dicts[0]['r_label_map'])
+        self.assertEqual(breaking_bonds, [(4, 5)])
+        self.assertEqual(forming_bonds, [(0, 5)])
+
+    def test_setting_a_family_restricts_already_generated_product_dicts(self):
+        """Test that assigning a family restricts product dicts that were already set to that family,
+        and discards them only if none of them belong to it"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                     ARCSpecies(label='HO2', smiles='[O]O')],
+                          p_species=[ARCSpecies(label='H2O2', smiles='OO'),
+                                     ARCSpecies(label='O', smiles='[O]')])
+        rxn.product_dicts = rxn.get_product_dicts(rmg_family_set='all')
+        self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts},
+                         {'H_Abstraction', 'Substitution_O'})
+        rxn.family = 'Substitution_O'
+        self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts}, {'Substitution_O'})
+        rxn.family = 'intra_H_migration'
+        with self.assertRaises(ReactionError):
+            _ = rxn.product_dicts
+
+    def test_pinning_a_family_that_does_not_match_raises(self):
+        """Test that pinning a family which the reaction does not match raises an error"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C(C=C)OS')],
+                          p_species=[ARCSpecies(label='P', smiles='[O]C(C=C)CS')],
+                          family='intra_H_migration')
+        with self.assertRaises(ReactionError):
+            _ = rxn.product_dicts
+
+    def test_family_own_reverse_is_derived_from_a_pinned_family(self):
+        """Test that pinning a family also determines whether that family is its own reverse"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='C2H5', smiles='C[CH2]'),
+                                     ARCSpecies(label='H2O', smiles='O')],
+                          family='H_Abstraction')
+        self.assertTrue(rxn.family_own_reverse)
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C(C=C)OS')],
+                            p_species=[ARCSpecies(label='P', smiles='[O]C(C=C)CS')],
+                            family='intra_OH_migration')
+        self.assertFalse(rxn_2.family_own_reverse)
+        rxn_3 = ARCReaction(reaction_dict={'label': 'C2H6 + OH <=> C2H5 + H2O',
+                                           'r_species': [spc.as_dict() for spc in rxn.r_species],
+                                           'p_species': [spc.as_dict() for spc in rxn.p_species],
+                                           'family': 'H_Abstraction'})
+        self.assertTrue(rxn_3.family_own_reverse)
+
     def test_charge_property(self):
         """Test determining charge"""
         self.assertEqual(self.rxn1.charge, 0)
@@ -512,6 +689,33 @@ class TestARCReaction(unittest.TestCase):
         rxn_5 = ARCReaction(r_species=[ARCSpecies(label='N', smiles='[N]'), ARCSpecies(label='HNO', smiles='N=O')],
                             p_species=[ARCSpecies(label='NO', smiles='[N]=O'), ARCSpecies(label='NH', smiles='[NH]')])
         self.assertEqual(rxn_5.multiplicity, 4)
+
+    def test_check_charge_balance(self):
+        """Test the Reaction check_charge_balance method and the stoichiometric reaction charge"""
+        ho = ARCSpecies(label='HO-', smiles='[OH-]', charge=-1)
+        ch3oh = ARCSpecies(label='CH3OH', smiles='CO')
+        h2o = ARCSpecies(label='H2O', smiles='O')
+        ch3o_anion = ARCSpecies(label='CH3O-', smiles='C[O-]', charge=-1)
+        ch3o_radical = ARCSpecies(label='CH3O.', smiles='C[O]')
+
+        rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-', r_species=[ho, ch3oh], p_species=[h2o, ch3o_anion])
+        self.assertEqual(rxn.charge, -1)
+        self.assertIsNone(rxn.check_charge_balance())
+
+        with self.assertRaises(ReactionError):
+            ARCReaction(label='HO- + CH3OH <=> H2O + CH3O.', r_species=[ho, ch3oh], p_species=[h2o, ch3o_radical])
+
+        with self.assertRaises(ReactionError):
+            ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-', r_species=[ho, ch3oh], p_species=[h2o, ch3o_anion],
+                        charge=0)
+
+        dimerization = ARCReaction(label='NH4+ + NH4+ <=> H2 + N2H62+',
+                                   r_species=[ARCSpecies(label='NH4+', smiles='[NH4+]', charge=1)],
+                                   p_species=[ARCSpecies(label='H2', smiles='[H][H]'),
+                                              ARCSpecies(label='N2H62+', smiles='[NH3+][NH3+]', charge=2)])
+        self.assertEqual(len(dimerization.r_species), 1)
+        self.assertEqual(dimerization.get_rxn_charge(), 2)
+        self.assertEqual(dimerization.charge, 2)
 
     def test_check_atom_balance(self):
         """Test the Reaction check_atom_balance method"""
@@ -601,6 +805,36 @@ class TestARCReaction(unittest.TestCase):
         n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
         rxn2 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
         self.assertEqual(rxn2.get_species_count(label=n2h3.label, well=1), 2)
+
+    def test_get_reactants_xyz_repeated_species(self):
+        """Test that a reactant appearing twice (e.g. OH + OH) contributes all of its atoms,
+        even though r_species holds a single deduplicated entry for it."""
+        oh = ARCSpecies(label='R1', smiles='[OH]',
+                        xyz={'coords': ((0.0, 0.0, 0.109), (0.0, 0.0, -0.868)),
+                             'isotopes': (16, 1), 'symbols': ('O', 'H')})
+        h2o = ARCSpecies(label='P1', smiles='O')
+        o = ARCSpecies(label='P2', smiles='[O]')
+        rxn = ARCReaction(r_species=[oh, oh], p_species=[h2o, o])
+        self.assertEqual(len(rxn.r_species), 1)
+        self.assertEqual(rxn.get_species_count(species=oh, well=0), 2)
+        reactants_xyz = rxn.get_reactants_xyz(return_format='dict')
+        self.assertEqual(len(reactants_xyz['symbols']), 4)
+        self.assertEqual(sorted(reactants_xyz['symbols']), ['H', 'H', 'O', 'O'])
+
+    def test_reverse_reaction_of_repeated_species(self):
+        """Test that the reverse of a reaction with a repeated species (OH + OH <=> H2O + O) stays
+        atom-balanced when its label lists are expanded by get_species_count, as consumers building
+        the reverse reaction from the deduplicated reactants/products lists do."""
+        oh = ARCSpecies(label='R1', smiles='[OH]', multiplicity=2)
+        h2o = ARCSpecies(label='P1', smiles='O', multiplicity=1)
+        o = ARCSpecies(label='P2', smiles='[O]', multiplicity=3)
+        fwd = ARCReaction(label='R1 + R1 <=> P1 + P2', r_species=[oh, oh], p_species=[h2o, o])
+        rev_reactants = [lbl for lbl in fwd.products for _ in range(fwd.get_species_count(label=lbl, well=1))]
+        rev_products = [lbl for lbl in fwd.reactants for _ in range(fwd.get_species_count(label=lbl, well=0))]
+        self.assertEqual(rev_products, ['R1', 'R1'])
+        rev = ARCReaction(r_species=fwd.p_species, p_species=fwd.r_species,
+                          reactants=rev_reactants, products=rev_products)
+        self.assertEqual(rev.label, 'P1 + P2 <=> R1 + R1')
 
     def test_get_reactants_and_products(self):
         """Test getting reactants and products"""
@@ -877,6 +1111,38 @@ H       1.12853146   -0.86793870    0.06973060"""
         rxn_2.check_done_opt_r_n_p()
         self.assertEqual(rxn_2.done_opt_r_n_p, False)
 
+    def test_check_done_opt_r_n_p_with_atomic_species_given_xyz(self):
+        """
+        Test that an atomic reactant given an explicit geometry does not block TS search.
+
+        Replays the Scheduler.__init__ sequence: rebind r_species/p_species to the run's own
+        ARCSpecies objects, then check_atom_balance() and check_done_opt_r_n_p().
+        """
+        xyz = {'symbols': ('H',), 'isotopes': (1,), 'coords': ((0.0, 0.0, 0.0),)}
+        rxn = ARCReaction(reactants=['CH4', 'H'], products=['CH3', 'H2'],
+                          r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='H', smiles='[H]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2', smiles='[H][H]')])
+        species_list = [ARCSpecies(label='CH4', smiles='C'),
+                        ARCSpecies(label='H', smiles='[H]', xyz=xyz),
+                        ARCSpecies(label='CH3', smiles='[CH3]'),
+                        ARCSpecies(label='H2', smiles='[H][H]')]
+        rxn.r_species, rxn.p_species = list(), list()
+        for spc in species_list:
+            if spc.label in rxn.reactants:
+                rxn.r_species.append(spc)
+            if spc.label in rxn.products:
+                rxn.p_species.append(spc)
+        rxn.check_atom_balance()
+        rxn.check_done_opt_r_n_p()
+        self.assertFalse(rxn.done_opt_r_n_p)
+        for spc in species_list:
+            if not spc.is_monoatomic():
+                spc.final_xyz = spc.get_xyz(generate=True)
+        rxn.check_done_opt_r_n_p()
+        self.assertTrue(rxn.done_opt_r_n_p)
+
     def tests_white_space_in_reaction_label(self):
         """Test that an extra white space in the reaction label does not confuse ARC."""
         hno = ARCSpecies(label='HNO', smiles='N=O')
@@ -947,6 +1213,67 @@ H       1.12853146   -0.86793870    0.06973060"""
         formed_bonds, broken_bonds = self.rxn_13_w_xyz.get_formed_and_broken_bonds()
         self.assertEqual(formed_bonds, [(0, 5)])
         self.assertEqual(broken_bonds, [(3, 5)])
+
+    def test_get_bonds_and_reactive_bonds_without_atom_map(self):
+        """
+        When atom_map cannot be built (e.g. fingerprint-based pair superposition
+        fails on positional-isomer radicals), get_bonds(r_bonds_only=True) must
+        still work, and get_formed_and_broken_bonds / get_changed_bonds must fall
+        back to the RMG family recipe + r_label_map instead of raising.
+        """
+        # Intermolecular H-abstraction between α- and β-radical of pentyl ether.
+        # map_two_species cannot superimpose the two radical cuts, so atom_map is None.
+        r1 = ARCSpecies(label='r1', smiles='CC[CH]OCC')
+        r2 = ARCSpecies(label='r2', smiles='CCCOCC')
+        p1 = ARCSpecies(label='p1', smiles='C[CH]OCCC')
+        p2 = ARCSpecies(label='p2', smiles='CCCOCC')
+        rxn = ARCReaction(r_species=[r1, r2], p_species=[p1, p2])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        self.assertTrue(rxn.product_dicts)
+        rxn.atom_map = None
+
+        r_bonds, p_bonds = rxn.get_bonds(r_bonds_only=True)
+        self.assertGreater(len(r_bonds), 0)
+        self.assertEqual(p_bonds, [])
+
+        r_label_map = rxn.product_dicts[0]['r_label_map']
+        star1, star2, star3 = r_label_map['*1'], r_label_map['*2'], r_label_map['*3']
+
+        formed, broken = rxn.get_formed_and_broken_bonds()
+        self.assertEqual(formed, [tuple(sorted((star2, star3)))])
+        self.assertEqual(broken, [tuple(sorted((star1, star2)))])
+        self.assertEqual(rxn.get_changed_bonds(), [])
+
+    def test_get_reactive_bonds_from_family_reverse_discovery(self):
+        """
+        A product dict discovered in reverse holds its r_label_map in product index space,
+        so get_reactive_bonds_from_family() must not derive reactant-space bonds from it.
+        """
+        # Ene reaction of ethene + propene, matched by Retroene only in the reverse direction.
+        rxn = ARCReaction(r_species=[ARCSpecies(label='ethene', smiles='C=C'),
+                                     ARCSpecies(label='propene', smiles='C=CC')],
+                          p_species=[ARCSpecies(label='pentene', smiles='C=CCCC')])
+        self.assertEqual(rxn.family, 'Retroene')
+        self.assertTrue(all(product_dict['discovered_in_reverse'] for product_dict in rxn.product_dicts))
+        self.assertIsNone(rxn.get_reactive_bonds_from_family())
+
+        r1 = ARCSpecies(label='r1', smiles='CC[CH]OCC')
+        r2 = ARCSpecies(label='r2', smiles='CCCOCC')
+        p1 = ARCSpecies(label='p1', smiles='C[CH]OCCC')
+        p2 = ARCSpecies(label='p2', smiles='CCCOCC')
+        fwd_rxn = ARCReaction(r_species=[r1, r2], p_species=[p1, p2])
+        self.assertEqual(fwd_rxn.family, 'H_Abstraction')
+        self.assertFalse(fwd_rxn.product_dicts[0]['discovered_in_reverse'])
+        forward_bonds = fwd_rxn.get_reactive_bonds_from_family()
+        self.assertIsNotNone(forward_bonds)
+
+        reverse_dict = dict(fwd_rxn.product_dicts[0])
+        reverse_dict['discovered_in_reverse'] = True
+        reverse_dict['r_label_map'] = {label: index + 1 for label, index in reverse_dict['r_label_map'].items()}
+        foreign_dict = dict(fwd_rxn.product_dicts[0])
+        foreign_dict['family'] = 'Disproportionation'
+        fwd_rxn.product_dicts = [reverse_dict, foreign_dict] + fwd_rxn.product_dicts
+        self.assertEqual(fwd_rxn.get_reactive_bonds_from_family(), forward_bonds)
 
     def test_get_changed_bonds(self):
         """Test the get_changed_bonds() function."""

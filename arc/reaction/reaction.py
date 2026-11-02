@@ -12,6 +12,7 @@ from arc.species.converter import (check_xyz_dict,
                                    translate_xyz,
                                    xyz_to_str,
                                    )
+from arc.mapping.cluster import map_reaction_clusters
 from arc.mapping.driver import map_reaction
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
@@ -111,18 +112,19 @@ class ARCReaction(object):
         self.long_kinetic_description = ''
         self._family = None
         self._family_determined = False
+        self._family_own_reverse = None
+        self._product_dicts = None
         if family is not None:
             if check_family_name(family):
                 self.family = family
             else:
                 raise ValueError(f"Invalid family name: {family}")
-        self._family_own_reverse = False
         self.ts_label = ts_label
         self.dh_rxn298 = None
         self.ts_xyz_guess = ts_xyz_guess or xyz or list()
         self.preserve_param_in_scan = preserve_param_in_scan
-        self._product_dicts = None
         self._atom_map = None
+        self._atom_map_clusters = None
         self._charge = charge
         self._multiplicity = multiplicity
         if reaction_dict is not None:
@@ -151,6 +153,7 @@ class ARCReaction(object):
             self.ts_xyz_guess = [self.ts_xyz_guess]
         self.remove_dup_species()
         self.check_atom_balance()
+        self.check_charge_balance()
 
     @property
     def atom_map(self):
@@ -170,10 +173,47 @@ class ARCReaction(object):
         self._atom_map = value
 
     @property
+    def atom_map_clusters(self):
+        """The distinct reaction channels of this reaction, as clustered atom maps.
+
+        Each entry is an ``arc.mapping.cluster.MapCluster``: one chemically distinct channel, hence one
+        transition state to search for, whose ``degeneracy`` is that channel's reaction path degeneracy.
+        More than one cluster is uncommon - it was seen for 1 of 293 mapped reactions of the benchmark
+        corpus - and marks a reaction for which ``atom_map`` picked one channel by an arbitrary tie-break.
+
+        This is much more expensive than ``atom_map``: it sweeps every RMG template product dictionary, in
+        both reaction directions, and every superimposable backbone candidate per scissored fragment. It is
+        therefore computed lazily, on first access only, and is never triggered by ``atom_map``. The result
+        is cached even when empty, so a failed attempt is not silently repaid on every access; assign
+        ``None`` to force a recomputation.
+
+        Not persisted by ``as_dict``, unlike ``atom_map`` - it is a derived quantity that can always be
+        recomputed from the species.
+        """
+        if self._atom_map_clusters is None:
+            if not all(species.get_xyz(generate=False) is not None
+                       for species in self.r_species + self.p_species):
+                # Not yet computable rather than failed: without geometries no mapping was attempted, so
+                # this must stay distinguishable from a genuine failure and must not be reported as one.
+                logger.debug(f'Not clustering atom maps for {self}: not all species have geometries yet.')
+                return None
+            self._atom_map_clusters = map_reaction_clusters(rxn=self, backend='ARC')
+            if not self._atom_map_clusters:
+                # Logged once, here, immediately after the attempt that failed. The empty result is cached,
+                # so later accesses return it without repeating this.
+                logger.error(f"The requested ARC reaction {self} could not be atom mapped into channels.")
+        return self._atom_map_clusters
+
+    @atom_map_clusters.setter
+    def atom_map_clusters(self, value):
+        """Allow setting or resetting the atom map clusters"""
+        self._atom_map_clusters = value
+
+    @property
     def product_dicts(self):
-        """The RMG reaction family product dictionaries"""
+        """The RMG reaction family product dictionaries, all belonging to this reaction's family"""
         if self._product_dicts is None:
-            self._product_dicts = self.get_product_dicts()
+            self._product_dicts = self.restrict_product_dicts_to_family(self.get_product_dicts())
         return self._product_dicts
 
     @product_dicts.setter
@@ -218,23 +258,31 @@ class ARCReaction(object):
     def family(self):
         """The RMG reaction family"""
         if not self._family_determined:
-            self._family, self._family_own_reverse = self.determine_family()
+            self._family = self.determine_family()[0]
             self._family_determined = True
         return self._family
 
     @family.setter
     def family(self, value):
-        """Allow setting family"""
-        self._family = value
-        self._family_determined = True
+        """
+        Allow setting family. Product dictionaries that were already generated are restricted to the
+        new family, and are discarded so that they are regenerated on demand if none of them belong
+        to it.
+        """
         if value is not None and not isinstance(value, str):
             raise InputError(f'Reaction family must be a string, got {value} which is a {type(value)}.')
+        self._family = value
+        self._family_determined = True
+        self._family_own_reverse = None
+        if self._product_dicts is not None and value is not None:
+            self._product_dicts = [product_dict for product_dict in self._product_dicts
+                                   if product_dict['family'] == value] or None
 
     @property
     def family_own_reverse(self):
         """The RMG reaction family's own reverse property"""
         if self._family_own_reverse is None:
-            self._family, self._family_own_reverse = self.determine_family()
+            self._family_own_reverse = self.get_family_own_reverse()
         return self._family_own_reverse
 
     @family_own_reverse.setter
@@ -311,12 +359,13 @@ class ARCReaction(object):
         self.index = reaction_dict['index'] if 'index' in reaction_dict else None
         self.label = reaction_dict['label'] if 'label' in reaction_dict else ''
         self.multiplicity = reaction_dict['multiplicity'] if 'multiplicity' in reaction_dict else None
-        self.charge = reaction_dict['charge'] if 'charge' in reaction_dict else 0
+        self.charge = reaction_dict.get('charge')
         self.reactants = reaction_dict.get('reactants') or list()
         self.products = reaction_dict.get('products') or list()
         if 'family' in reaction_dict and reaction_dict['family'] is not None:
             self.family = reaction_dict['family']
-        self.family_own_reverse = reaction_dict['family_own_reverse'] if 'family_own_reverse' in reaction_dict else False
+        if 'family_own_reverse' in reaction_dict:
+            self.family_own_reverse = reaction_dict['family_own_reverse']
         self.set_label_reactants_products(species_list)
         if not (len(self.reactants) * len(self.products)):
             raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')
@@ -462,10 +511,16 @@ class ARCReaction(object):
             raise ReactionError(f'Both the reactants and products must be specified for a reaction, '
                                 f'got: reactants = {self.reactants}, products = {self.products}.')
 
-    def get_rxn_charge(self):
-        """A helper function for determining the surface charge"""
+    def get_rxn_charge(self) -> int | None:
+        """
+        Get the net charge of the reaction PES as the stoichiometric sum of the reactant charges.
+
+        Returns:
+            int | None: The reaction charge, ``None`` if the reactant species are not set.
+        """
         if len(self.r_species):
-            return sum([r.charge for r in self.r_species])
+            return sum(r.charge * self.get_species_count(species=r, well=0) for r in self.r_species)
+        return None
 
     def get_rxn_multiplicity(self):
         """A helper function for determining the surface multiplicity"""
@@ -526,7 +581,7 @@ class ARCReaction(object):
         return multiplicity
 
     def get_product_dicts(self,
-                          rmg_family_set: str = 'default',
+                          rmg_family_set: list[str] | str | None = None,
                           consider_rmg_families: bool = True,
                           consider_arc_families: bool = True,
                           discover_own_reverse_rxns_in_reverse: bool = False,
@@ -547,6 +602,14 @@ class ARCReaction(object):
               'discovered_in_reverse': bool: Whether the reaction was discovered in reverse},
              ]
 
+        Args:
+            rmg_family_set (list[str] | str, optional): The RMG family set to use.
+                                                        ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                        read on every call.
+            consider_rmg_families (bool, optional): Whether to consider RMG's families in addition to ARC's.
+            consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
+            discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
+
         Returns:
             list[dict]: A list of dictionaries with the RMG reaction family products.
         """
@@ -558,17 +621,78 @@ class ARCReaction(object):
                                                      )
         return product_dicts
 
+    def restrict_product_dicts_to_family(self,
+                                         product_dicts: list[dict],
+                                         ) -> list[dict]:
+        """
+        Restrict family product dictionaries to the entries of a single reaction family.
+
+        The retained family is this reaction's family if one was set, otherwise the family of the
+        first entry. Entries of any other family are dropped, so that a family recipe is only ever
+        combined with an atom label map generated by that same family.
+
+        Args:
+            product_dicts (list[dict]): The family product dictionaries to restrict.
+
+        Raises:
+            ReactionError: If this reaction's family was set and none of the entries belong to it.
+
+        Returns:
+            list[dict]: The product dictionaries belonging to a single family.
+        """
+        if not len(product_dicts):
+            return product_dicts
+        families = list()
+        for product_dict in product_dicts:
+            if product_dict['family'] not in families:
+                families.append(product_dict['family'])
+        family = self._family if self._family is not None else families[0]
+        restricted = [product_dict for product_dict in product_dicts if product_dict['family'] == family]
+        if not len(restricted):
+            raise ReactionError(f'Reaction {self.label} was assigned the {family} family, but it does not match '
+                                f'this family. The families it does match are: {families}.')
+        if len(families) > 1:
+            if self._family is None:
+                logger.warning(f'Reaction {self.label} matches several reaction families: {families}. '
+                               f'Using {family}. Set the "family" attribute of this reaction '
+                               f'to choose a different one.')
+            else:
+                logger.info(f'Reaction {self.label} was assigned the {family} family, '
+                            f'it also matches {[f for f in families if f != family]}.')
+        return restricted
+
+    def get_family_own_reverse(self) -> bool:
+        """
+        Get whether this reaction's family template also represents its own reverse.
+
+        Returns:
+            bool: Whether the family's template also represents its own reverse.
+        """
+        family = self.family
+        if family is None:
+            return False
+        try:
+            return ReactionFamily(label=family).own_reverse
+        except FileNotFoundError:
+            logger.error(f'Could not find the groups file of the {family} family of reaction {self.label}, '
+                         f'assuming that this family is not its own reverse.')
+            return False
+
     def determine_family(self,
-                         rmg_family_set: str = 'default',
+                         rmg_family_set: list[str] | str | None = None,
                          consider_rmg_families: bool = True,
                          consider_arc_families: bool = True,
                          discover_own_reverse_rxns_in_reverse: bool = False,
                          ):
         """
         Determine the RMG reaction family.
+        When all arguments are left at their defaults, the cached ``product_dicts`` property is used
+        instead of generating a new product dicts list.
 
         Args:
-            rmg_family_set (str, optional): The RMG family set to use.
+            rmg_family_set (list[str] | str, optional): The RMG family set to use.
+                                                        ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                        read on every call.
             consider_rmg_families (bool, optional): Whether to consider RMG's families in addition to ARC's.
             consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
@@ -577,8 +701,7 @@ class ARCReaction(object):
             tuple[str | None, bool | None]: The reaction family label,
                 and whether the family's template also represents its own reverse.
         """
-        if rmg_family_set == 'default' and consider_rmg_families and consider_arc_families and not discover_own_reverse_rxns_in_reverse:
-            # these are the default values, don't bother generating a new product_dicts list, use the property
+        if rmg_family_set is None and consider_rmg_families and consider_arc_families and not discover_own_reverse_rxns_in_reverse:
             product_dicts = self.product_dicts
         else:
             product_dicts = get_reaction_family_products(rxn=self,
@@ -753,6 +876,24 @@ class ARCReaction(object):
 
         return True
 
+    def check_charge_balance(self) -> None:
+        """
+        Check that the reactants and products carry the same net charge, and that it matches the reaction charge.
+
+        Raises:
+            ReactionError: If the reactant and product charges differ, or the reaction charge does not match them.
+        """
+        if not len(self.r_species) or not len(self.p_species):
+            return
+        r_charge = self.get_rxn_charge()
+        p_charge = sum(p.charge * self.get_species_count(species=p, well=1) for p in self.p_species)
+        if r_charge != p_charge:
+            raise ReactionError(f'Reaction {self.label} is not charge balanced: the reactants carry a net charge of '
+                                f'{r_charge}, the products {p_charge}.')
+        if self.charge != r_charge:
+            raise ReactionError(f'Reaction {self.label} was given charge {self.charge}, '
+                                f'but its reactants and products carry a net charge of {r_charge}.')
+
     def get_species_count(self,
                           species: ARCSpecies | None = None,
                           label: str | None = None,
@@ -873,6 +1014,8 @@ class ARCReaction(object):
     def get_reactants_xyz(self, return_format='str') -> dict | str:
         """
         Get a combined string/dict representation of the cartesian coordinates of all reactant species.
+        A species participating more than once in the reactant well contributes its atoms once per
+        occurrence.
 
         Args:
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
@@ -885,15 +1028,17 @@ class ARCReaction(object):
             Orient the fragments according to the reactive site.
         """
         xyz_dict = dict()
-        if len(self.r_species) == 1:
-            xyz_dict = self.r_species[0].get_xyz()
-        elif len(self.r_species) >= 2:
+        reactants = [spc for spc in self.r_species
+                     for _ in range(self.get_species_count(species=spc, well=0))]
+        if len(reactants) == 1:
+            xyz_dict = reactants[0].get_xyz()
+        elif len(reactants) >= 2:
             xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-            for i, reactant in enumerate(self.r_species):
+            for i, reactant in enumerate(reactants):
                 xyz = translate_to_center_of_mass(reactant.get_xyz())
                 if i:
                     xyz = translate_xyz(xyz_dict=xyz,
-                                        translation=(sum(spc.radius for spc in self.r_species[:i]) * 1.1 * i, 0, 0))
+                                        translation=(sum(spc.radius for spc in reactants[:i]) * 1.1 * i, 0, 0))
                 xyz_dict['symbols'] += xyz['symbols']
                 xyz_dict['isotopes'] += xyz['isotopes']
                 xyz_dict['coords'] += xyz['coords']
@@ -906,6 +1051,8 @@ class ARCReaction(object):
         """
         Get a combined string/dict representation of the cartesian coordinates of all product species.
         The resulting coordinates are ordered as the reactants using an atom map.
+        A species participating more than once in the product well contributes its atoms once per
+        occurrence.
 
         Args:
             return_format (str): Either ``'dict'`` to return a dict format or ``'str'`` to return a string format.
@@ -917,15 +1064,17 @@ class ARCReaction(object):
         Todo:
             Orient the fragments according to the reactive site.
         """
-        if len(self.p_species) == 1:
-            xyz_dict = self.p_species[0].get_xyz()
+        products = [spc for spc in self.p_species
+                    for _ in range(self.get_species_count(species=spc, well=1))]
+        if len(products) == 1:
+            xyz_dict = products[0].get_xyz()
         else:
             xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
-            for i, product in enumerate(self.p_species):
+            for i, product in enumerate(products):
                 xyz = translate_to_center_of_mass(product.get_xyz())
                 if i:
                     xyz = translate_xyz(xyz_dict=xyz,
-                                        translation=(sum(spc.radius for spc in self.p_species[:i]) * 1.1 * i, 0, 0))
+                                        translation=(sum(spc.radius for spc in products[:i]) * 1.1 * i, 0, 0))
                 xyz_dict['symbols'] += xyz['symbols']
                 xyz_dict['isotopes'] += xyz['isotopes']
                 xyz_dict['coords'] += xyz['coords']
@@ -962,8 +1111,6 @@ class ARCReaction(object):
                 A length-2 tuple is which entries represent reactants and product information, respectively.
                 Each entry is a list of tuples, each represents a bond and contains sorted atom indices.
         """
-        if self.atom_map is None:
-            raise ReactionError('Cannot get bonds without an atom map.')
         reactants, products = self.get_reactants_and_products()
         r_bonds, p_bonds = list(), list()
         len_atoms = 0
@@ -977,6 +1124,8 @@ class ARCReaction(object):
         len_atoms = 0
         if r_bonds_only:
             return r_bonds, p_bonds
+        if self.atom_map is None:
+            raise ReactionError('Cannot get product bonds without an atom map.')
         for spc in products:
             for i, atom_1 in enumerate(spc.mol.atoms):
                 for atom2, bond12 in atom_1.edges.items():
@@ -985,10 +1134,89 @@ class ARCReaction(object):
                     if bond not in p_bonds:
                         p_bonds.append(bond)
             len_atoms += spc.number_of_atoms
-        mapped_p_bonds = list()
-        for p_bond in p_bonds:
-            mapped_p_bonds.append(tuple([self.atom_map.index(p_bond[0]), self.atom_map.index(p_bond[1])]))
         return r_bonds, p_bonds
+
+    def get_reactive_bonds_from_family(
+        self,
+    ) -> tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]] | None:
+        """
+        Derive formed, broken, and order-changed bonds directly from the RMG family's
+        recipe actions and ``r_label_map``, bypassing ``atom_map``.
+
+        All returned tuples are in reactant global index space. This is the canonical source
+        used elsewhere in ARC (see ``arc.mapping.engine.find_all_breaking_bonds``),
+        and is sufficient for NMD validation which only needs reactive-atom roles.
+
+        Only a product dict of the reaction's family that was discovered in the forward
+        direction is used. A product dict discovered in reverse carries an ``r_label_map``
+        in *product* global index space and recipe actions that describe the reverse
+        direction, so it cannot express reactant-space bonds and is skipped.
+
+        Returns:
+            tuple[formed, broken, changed] | None: ``None`` when the family is unavailable,
+            when no forward-discovered product dict of the reaction's family exists, or when
+            a recipe label cannot be resolved, in which case the label-based path cannot be
+            taken and the caller falls back to atom-map-derived bonds.
+        """
+        if self.family is None or not self.product_dicts:
+            return None
+        product_dict = next((product_dict for product_dict in self.product_dicts
+                             if product_dict.get('family') == self.family
+                             and not product_dict.get('discovered_in_reverse', False)), None)
+        if product_dict is None:
+            return None
+        r_label_map = product_dict.get('r_label_map')
+        if not r_label_map:
+            return None
+        actions = ReactionFamily(label=self.family).actions
+        formed, broken, changed = list(), list(), list()
+        for action in actions:
+            kind = action[0].upper()
+            if kind not in ('BREAK_BOND', 'FORM_BOND', 'CHANGE_BOND'):
+                continue
+            label_1, label_2 = action[1], action[3]
+            idx_1 = self._resolve_label_index(r_label_map, label_1, preferred_occurrence=0)
+            idx_2 = self._resolve_label_index(
+                r_label_map, label_2,
+                preferred_occurrence=1 if label_1 == label_2 else 0,
+            )
+            if idx_1 is None or idx_2 is None or idx_1 == idx_2:
+                return None
+            bond = tuple(sorted((idx_1, idx_2)))
+            if kind == 'FORM_BOND':
+                formed.append(bond)
+            elif kind == 'BREAK_BOND':
+                broken.append(bond)
+            else:
+                changed.append(bond)
+        return formed, broken, changed
+
+    @staticmethod
+    def _resolve_label_index(
+        label_map: dict[str, int],
+        label: str,
+        preferred_occurrence: int = 0,
+    ) -> int | None:
+        """
+        Resolve an RMG label (e.g. ``'*1'``) to a global atom index in ``label_map``.
+
+        When the same label appears twice in a recipe (e.g. ``R_Recombination``),
+        the label map disambiguates duplicates via suffixed keys (``'*'``, ``'*_2'``).
+        The matching keys are ordered, and ``preferred_occurrence`` selects among them,
+        clamped to the last one when it exceeds the number of matches.
+
+        Args:
+            label_map (dict[str, int]): A mapping of RMG labels to global atom indices.
+            label (str): The RMG label to resolve.
+            preferred_occurrence (int, optional): Which of the matching keys to resolve to.
+
+        Returns:
+            int | None: The global atom index, ``None`` if ``label`` matches no key of ``label_map``.
+        """
+        keys = sorted(k for k in label_map if k == label or k.startswith(f'{label}_'))
+        if not keys:
+            return None
+        return label_map[keys[min(preferred_occurrence, len(keys) - 1)]]
 
     def get_formed_and_broken_bonds(self) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
         """
@@ -996,6 +1224,15 @@ class ARCReaction(object):
         Returns:
             tuple[list[tuple[int, int]], list[tuple[int, int]]]: The formed and broken bonds.
         """
+        if self.atom_map is None and self.family and self.product_dicts:
+            family_bonds = self.get_reactive_bonds_from_family()
+            if family_bonds is not None:
+                formed, broken, _changed = family_bonds
+                logger.warning(
+                    f'Using RMG-family-derived formed/broken bonds for reaction {self} '
+                    f'because no atom map is available.'
+                )
+                return formed, broken
         r_bonds, p_bonds = self.get_bonds()
         r_bonds, p_bonds = set(r_bonds), set(p_bonds)
         formed_bonds, broken_bonds = p_bonds - r_bonds, r_bonds - p_bonds
@@ -1007,6 +1244,11 @@ class ARCReaction(object):
         Returns:
             list[tuple[int, int]]: The bonds that change their bond order.
         """
+        if self.atom_map is None and self.family and self.product_dicts:
+            family_bonds = self.get_reactive_bonds_from_family()
+            if family_bonds is not None:
+                _formed, _broken, changed = family_bonds
+                return changed
         r_bonds, p_bonds = self.get_bonds()
         r_bonds, p_bonds = set(r_bonds), set(p_bonds)
         shared_bonds = p_bonds.intersection(r_bonds)

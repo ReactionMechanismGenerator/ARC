@@ -926,7 +926,6 @@ class LinearAdapter(JobAdapter):
                         if unique:
                             method = f'Linear (w={w:.2f}, {xyz_i})'
                             ts_guess = TSGuess(method=method,
-                                               index=len(rxn.ts_species.ts_guesses),
                                                method_index=w_i,
                                                t0=t0,
                                                execution_time=t_ex,
@@ -934,7 +933,7 @@ class LinearAdapter(JobAdapter):
                                                family=rxn.family,
                                                xyz=xyz,
                                                )
-                            rxn.ts_species.ts_guesses.append(ts_guess)
+                            rxn.ts_species.append_ts_guess(ts_guess)
 
                             save_geo(xyz=xyz,
                                      path=self.local_path,
@@ -1673,7 +1672,10 @@ def interpolate_addition(rxn: ARCReaction,
         cross) is direction-agnostic: bonds that exist in the unimolecular
         species' molecular graph are "split bonds" (stretched), and bonds
         that don't are "cross bonds" (used for insertion-ring detection).
-        This handles ``discovered_in_reverse`` correctly without swapping.
+        Classification therefore needs no direction swap, but the recipe
+        bonds themselves must already be in the reaction's reactant index
+        space: a ``discovered_in_reverse`` entry carries an ``r_label_map``
+        of the flipped reaction, which this function does not translate.
 
     2.  **Fragmentation fallback** — when no ``product_dicts`` are available
         or the template gives unreliable bonds, the function enumerates
@@ -1735,7 +1737,6 @@ def interpolate_addition(rxn: ARCReaction,
                 rmg_family_set='all',
                 consider_rmg_families=True,
                 consider_arc_families=True,
-                discover_own_reverse_rxns_in_reverse=True,
             )
         except Exception as e:
             logger.debug(f'Linear addition (rxn={rxn.label}): wider family-set '

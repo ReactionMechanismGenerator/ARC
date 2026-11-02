@@ -17,11 +17,13 @@ import os
 import shutil
 import time
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ContextManager
 
 import numpy as np
 
+from arc.checks.common import get_conformer_job_name
 from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans, convert_to_hours
 from arc.exceptions import JobError
 from arc.imports import local_arc_path, settings, submit_scripts
@@ -34,6 +36,7 @@ from arc.job.local import (change_mode,
                            )
 from arc.job.trsh import trsh_job_on_server, trsh_job_queue
 from arc.job.ssh import SSHClient
+from arc.job.ssh_pool import borrow_ssh_client, get_default_pool
 from arc.job.trsh import determine_ess_status
 from arc.species.vectors import calculate_dihedral_angle
 
@@ -41,6 +44,8 @@ if TYPE_CHECKING:
     from arc.species import ARCSpecies
 
 logger = get_logger()
+
+_SERVERS_WARNED_ABOUT_A_RELATIVE_REMOTE_PATH = set()
 
 default_job_settings, servers, submit_filenames, t_max_format, input_filenames, output_filenames = \
     settings['default_job_settings'], settings['servers'], settings['submit_filenames'], settings['t_max_format'], \
@@ -69,7 +74,6 @@ class JobEnum(str, Enum):
     Consider adding the following adapters:
         - ESS:
             - cosmo
-            - PySCF (https://pyscf.org/user/geomopt.html)
             - TS opt via pysisyphus (https://pysisyphus.readthedocs.io/en/dev/tsoptimization.html)
             - onedmin
             - openbabel
@@ -99,6 +103,7 @@ class JobEnum(str, Enum):
     molpro = 'molpro'
     orca = 'orca'
     psi4 = 'psi4'
+    pyscf = 'pyscf'
     qchem = 'qchem'
     terachem = 'terachem'
     torchani = 'torchani'
@@ -111,6 +116,8 @@ class JobEnum(str, Enum):
     heuristics = 'heuristics'  # ARC's heuristics
     kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
     linear = 'linear'  # ARC's linear TS search
+    goflow = 'goflow'  # GoFlow, flow-matching E(3)-equivariant TS generator (Galustian et al., Digital Discovery 2025, 10.1039/D5DD00283D); https://github.com/heid-lab/goflow_lean
+    rits = 'rits'  # Right into the Saddle, flow-matching TS generator, https://github.com/isayevlab/RitS, 10.26434/chemrxiv.15001681/v1
     user = 'user'  # user guesses
     xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
     orca_neb = 'orca_neb'
@@ -134,6 +141,7 @@ class JobTypeEnum(str, Enum):
     scan = 'scan'
     directed_scan = 'directed_scan'
     sp = 'sp'
+    stability = 'stability'
     tsg = 'tsg'  # TS search (TS guess)
 
 
@@ -150,7 +158,17 @@ class JobExecutionTypeEnum(str, Enum):
 class JobAdapter(ABC):
     """
     An abstract class for job adapters.
+
+    ``check_file_name`` is the name of the file the ESS writes its converged orbitals to, the
+    name that file is downloaded under and the name ``local_path_to_check_file`` points at.
+    ``guess_file_name`` is the name a previous job's orbitals are uploaded under to serve as
+    this job's initial guess; the two are equal for an ESS that reads and writes one file, as
+    Gaussian does with its checkfile. A subclass whose ESS names these files differently
+    overrides them, as ``OrcaAdapter`` does.
     """
+
+    check_file_name = 'check.chk'
+    guess_file_name = 'check.chk'
 
     @abstractmethod
     def write_input_file(self) -> None:
@@ -205,7 +223,7 @@ class JobAdapter(ABC):
         """
         pass
 
-    def execute(self):
+    def execute(self) -> None:
         """
         Execute a job.
         The execution type could be 'incore', 'queue', or 'pipe'.
@@ -220,9 +238,68 @@ class JobAdapter(ABC):
         with an HDF5 file that contains specific directions.
         The output is returned within the HDF5 file.
         The new ARC instance, representing a single worker, will run all of its jobs incore.
+
+        Connection sharing: for remote-queue jobs we lease one
+        :class:`SSHClient` from the process-global pool
+        (:mod:`arc.job.ssh_pool`) and reuse it for both file upload and
+        qsub/sbatch submission within this call. Across an entire ARC
+        run, every remote job for a given server reuses the *same*
+        pooled client — 100 TS guess opts share one paramiko Transport
+        instead of opening 200. Pipe mode currently can't bundle these
+        (``should_use_pipe`` refuses non-``local`` servers, see
+        ``arc/job/pipe/pipe_coordinator.py:77``); the pool is the
+        leverage available short of full remote-pipe support.
         """
-        self.upload_files()
         execution_type = JobExecutionTypeEnum(self.execution_type)
+        use_shared_ssh = (
+            execution_type == JobExecutionTypeEnum.queue
+            and self.server is not None
+            and self.server != 'local'
+            and not self.testing
+        )
+        if use_shared_ssh:
+            with get_default_pool().borrow(self.server) as ssh:
+                self._shared_ssh = ssh
+                try:
+                    self._dispatch_execution(execution_type)
+                finally:
+                    # Pool retains the SSHClient; clearing the attr
+                    # just prevents a later code path on this adapter
+                    # from grabbing a stale reference if the pool
+                    # subsequently reaps and reopens the connection.
+                    self._shared_ssh = None
+        else:
+            self._dispatch_execution(execution_type)
+        if not self.restarted:
+            self._write_initiated_job_to_csv_file()
+
+    def _open_or_borrow_ssh(self) -> ContextManager[SSHClient]:
+        """Return a context manager yielding an :class:`SSHClient` for ``self.server``,
+        in priority order:
+
+        1. ``self._shared_ssh`` if set — the per-call client :meth:`execute` leased.
+           Available within the upload+submit window.
+        2. The process-global pool, through
+           :func:`arc.job.ssh_pool.borrow_ssh_client` — the single borrow path every
+           SSH caller in ARC shares, which keeps one client alive across jobs for the
+           run's lifetime so the hot status-poll loop reuses connections, and which
+           falls back to a one-shot client when the lease itself fails.
+
+        Exiting the context does not close a client obtained either way; the pool
+        retains ownership, and the fallback closes only the client it opened itself.
+
+        Returns: ContextManager[SSHClient]
+            A context manager yielding a connected client for ``self.server``.
+        """
+        shared = getattr(self, '_shared_ssh', None)
+        if shared is not None:
+            return nullcontext(shared)
+        return borrow_ssh_client(self.server)
+
+    def _dispatch_execution(self, execution_type: JobExecutionTypeEnum) -> None:
+        """Inner body of :meth:`execute`, factored out so the SSH-share
+        wrapper around it stays small and readable."""
+        self.upload_files()
         if execution_type == JobExecutionTypeEnum.incore:
             self.initial_time = datetime.datetime.now()
             self.job_status[0] = 'running'
@@ -237,19 +314,25 @@ class JobAdapter(ABC):
             raise ValueError('Pipe execution is handled at the Scheduler level. '
                              'JobAdapters inside a pipe must be executed by the worker '
                              "with execution_type='incore'.")
-        if not self.restarted:
-            self._write_initiated_job_to_csv_file()
 
-    def legacy_queue_execution(self):
+    def legacy_queue_execution(self, ssh: SSHClient | None = None) -> None:
         """
         Execute a job to the server's queue.
         The server could be either "local" or remote.
+
+        ``ssh`` is an explicitly-passed shared connection. When ``None``
+        we route through :meth:`_open_or_borrow_ssh` which prefers
+        ``self._shared_ssh`` (set by :meth:`execute`), then the
+        process-global pool, then opens fresh.
         """
         self._log_job_execution()
         # Submit to queue, differentiate between local (same machine using its queue) and remote servers.
         if self.server != 'local':
-            with SSHClient(self.server) as ssh:
+            if ssh is not None:
                 self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+            else:
+                with self._open_or_borrow_ssh() as borrowed:
+                    self.job_status[0], self.job_id = borrowed.submit_job(remote_path=self.remote_path)
         else:
             # submit to the local queue
             self.job_status[0], self.job_id = submit_job(path=self.local_path)
@@ -335,9 +418,60 @@ class JobAdapter(ABC):
         with open(os.path.join(self.local_path, submit_filenames[servers[self.server]['cluster_soft']]), 'w') as f:
             f.write(submit_script)
 
-    def set_file_paths(self):
+    def readable_checkfile(self, checkfile: str | None) -> str | None:
+        """
+        Report the checkfile this adapter may read as an initial guess, or ``None`` for one it may not.
+
+        ``Scheduler`` hands every job the checkfile its species holds, whichever ESS wrote it, so a
+        species optimized in one ESS reaches an adapter of another carrying orbitals that adapter
+        cannot read: an ORCA ``input.gbw`` uploaded to Gaussian as ``check.chk`` and read with
+        ``guess=read`` is not a Gaussian checkpoint file. Each ESS names its orbitals file, so the
+        base name identifies the ESS that wrote it: a checkfile whose base name is neither this
+        adapter's ``check_file_name`` nor the ``<prefix>_<check_file_name>`` form ARC itself writes
+        when it keeps a directed rotor's orbitals aside is refused here and logged, and the job runs
+        from its own initial guess.
+
+        A path that names no file, and one naming an empty file, are refused for the same reason:
+        ``SSHClient.download_file`` leaves a zero-byte file behind where the download failed, and
+        an SCF handed one either errors or starts from the guess it would have started from
+        anyway, while the job's input claims to read orbitals it does not have.
+
+        This is a test of what the file is, not of where it is: the base name says which ESS wrote
+        it and the size says whether it holds anything, and neither the directory the path points
+        into nor the path's relation to the project directory is examined here.
+
+        Args:
+            checkfile (str, optional): The path of the checkfile offered to this job.
+
+        Returns: str | None
+            The checkfile path when this adapter's ESS wrote it and it holds orbitals, else ``None``.
+        """
+        if checkfile is None:
+            return None
+        base_name = os.path.basename(checkfile)
+        if base_name != self.check_file_name and not base_name.endswith(f'_{self.check_file_name}'):
+            logger.info(f'Not reading {checkfile} as an initial guess for a {self.job_adapter} job: '
+                        f'{self.job_adapter} reads a {self.check_file_name} file.')
+            return None
+        if not os.path.isfile(checkfile):
+            logger.info(f'Not reading {checkfile} as an initial guess for a {self.job_adapter} job: '
+                        f'the path names no file.')
+            return None
+        if not os.path.getsize(checkfile):
+            logger.info(f'Not reading {checkfile} as an initial guess for a {self.job_adapter} job: '
+                        f'the file is empty, which is what a failed download leaves behind.')
+            return None
+        return checkfile
+
+    def set_file_paths(self) -> None:
         """
         Set local and remote job file paths.
+
+        The remote path is rooted at the server's ``path`` setting, joined with the user name,
+        and is used verbatim: a path is a path on the server, and the case it is written in is
+        the case it has there. A server with no ``path`` gets a path relative to the SSH login
+        directory, which is where both the remote shell and SFTP resolve it, and which
+        :meth:`_warn_about_a_relative_remote_path` reports once per server.
         """
         folder_name = 'TS_guesses' if self.reactions is not None else 'TSs' if self.species[0].is_ts else 'Species'
         if self.run_multi_species == False:
@@ -347,55 +481,94 @@ class JobAdapter(ABC):
         self.local_path_to_output_file = os.path.join(self.local_path, settings['output_filenames'][self.job_adapter]) \
             if self.job_adapter in settings['output_filenames'] else 'output.out'
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
-        self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
+        self.local_path_to_check_file = os.path.join(self.local_path, self.check_file_name)
         self.local_path_to_hess_file = os.path.join(self.local_path, 'input.hess')
         self.local_path_to_xyz = None
 
-        if not os.path.isdir(self.local_path):
-            os.makedirs(self.local_path)
+        # exist_ok rather than a prior isdir() check: another job being set up concurrently can create
+        # this directory between the check and the call, which raised FileExistsError.
+        os.makedirs(self.local_path, exist_ok=True)
 
         if self.server is not None:
             # Parentheses don't play well in folder names:
             species_name_remote = self.species_label if isinstance(self.species_label, str) else self.species[0].multi_species
             species_name_remote = species_name_remote.replace('(', '_').replace(')', '_')
-            path = servers[self.server].get('path', '').lower()
-            path = os.path.join(path, servers[self.server]['un']) if path else ''
-            self.remote_path = os.path.join(path, 'runs', 'ARC_Projects', self.project,
-                                            species_name_remote, self.job_name)
+            path = servers[self.server].get('path') or ''
+            if path:
+                path = os.path.join(path, servers[self.server]['un'])
+            elif self.server != 'local':
+                self._warn_about_a_relative_remote_path(self.server)
+            self.remote_project_path = os.path.join(path, 'runs', 'ARC_Projects', self.project)
+            self.remote_path = os.path.join(self.remote_project_path, species_name_remote, self.job_name)
 
         self.set_additional_file_paths()
 
-    def upload_files(self):
+    @staticmethod
+    def _warn_about_a_relative_remote_path(server: str) -> None:
+        """
+        Report, once per server per run, that the server's remote job paths are not absolute.
+
+        Args:
+            server (str): The server name.
+        """
+        if server in _SERVERS_WARNED_ABOUT_A_RELATIVE_REMOTE_PATH:
+            return
+        _SERVERS_WARNED_ABOUT_A_RELATIVE_REMOTE_PATH.add(server)
+        logger.warning(f'Server "{server}" has no "path" entry in the settings, so its remote job '
+                       f'directories are relative to the SSH login directory. Jobs whose input '
+                       f'file must name a path on the server, such as Orca NEB, cannot run that '
+                       f'way and will refuse. Set "path" for this server to the directory holding '
+                       f'the user directories, e.g. "/home".')
+
+    def upload_files(self, ssh: SSHClient | None = None) -> None:
         """
         Upload the relevant files for the job.
+
+        ``ssh`` is an explicitly-passed shared connection. When ``None``
+        we route through :meth:`_open_or_borrow_ssh` which prefers
+        ``self._shared_ssh`` (set by :meth:`execute`), then the
+        process-global pool, then opens fresh.
         """
         if not self.testing:
             if self.execution_type != 'incore' and self.server != 'local':
                 # If the job execution type is incore, then no need to upload any files.
                 # Also, even if the job is submitted to the que, no need to upload files if the server is local.
-                with SSHClient(self.server) as ssh:
-                    for up_file in self.files_to_upload:
-                        logger.debug(f"Uploading {up_file['file_name']} source {up_file['source']} to {self.server}")
-                        if up_file['source'] == 'path':
-                            ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=up_file['local'])
-                        elif up_file['source'] == 'input_files':
-                            ssh.upload_file(remote_file_path=up_file['remote'], file_string=up_file['local'])
-                        else:
-                            raise ValueError(f"Unclear file source for {up_file['file_name']}. Should either be 'path' or "
-                                             f"'input_files', got: {up_file['source']}")
-                        if up_file['make_x']:
-                            ssh.change_mode(mode='+x', file_name=up_file['file_name'], remote_path=self.remote_path)
+                if ssh is not None:
+                    self._upload_with_ssh(ssh)
+                else:
+                    with self._open_or_borrow_ssh() as borrowed:
+                        self._upload_with_ssh(borrowed)
             else:
                 # running locally, just copy the check file, if exists, to the job folder
                 for up_file in self.files_to_upload:
-                    if up_file['file_name'] == 'check.chk':
+                    if up_file['file_name'] in [self.check_file_name, self.guess_file_name]:
                         try:
-                            shutil.copyfile(src=up_file['local'], dst=os.path.join(self.local_path, 'check.chk'))
+                            shutil.copyfile(src=up_file['local'],
+                                            dst=os.path.join(self.local_path, up_file['file_name']))
                         except shutil.SameFileError:
                             pass
             self.initial_time = datetime.datetime.now()
 
-    def download_files(self):
+    def _upload_with_ssh(self, ssh: SSHClient) -> None:
+        """SFTP-put every entry in ``self.files_to_upload`` over an open client.
+
+        Factored out of :meth:`upload_files` so the with-shared vs.
+        with-new code paths share one body — adding a future per-file
+        knob (compression, retry, throttle) lands in one place.
+        """
+        for up_file in self.files_to_upload:
+            logger.debug(f"Uploading {up_file['file_name']} source {up_file['source']} to {self.server}")
+            if up_file['source'] == 'path':
+                ssh.upload_file(remote_file_path=up_file['remote'], local_file_path=up_file['local'])
+            elif up_file['source'] == 'input_files':
+                ssh.upload_file(remote_file_path=up_file['remote'], file_string=up_file['local'])
+            else:
+                raise ValueError(f"Unclear file source for {up_file['file_name']}. Should either be 'path' or "
+                                 f"'input_files', got: {up_file['source']}")
+            if up_file['make_x']:
+                ssh.change_mode(mode='+x', file_name=up_file['file_name'], remote_path=self.remote_path)
+
+    def download_files(self) -> None:
         """
         Download the relevant files.
         """
@@ -403,13 +576,28 @@ class JobAdapter(ABC):
             if self.execution_type != 'incore' and self.server != 'local':
                 # If the job execution type is incore, then no need to download any files.
                 # Also, even if the job is submitted to the que, no need to download files if the server is local.
-                with SSHClient(self.server) as ssh:
+                with self._open_or_borrow_ssh() as ssh:
                     for dl_file in self.files_to_download:
                         ssh.download_file(remote_file_path=dl_file['remote'], local_file_path=dl_file['local'])
                     self.set_initial_and_final_times(ssh=ssh)
             elif self.server == 'local':
                 self.set_initial_and_final_times()
         self.final_time = self.final_time or datetime.datetime.now()
+
+    def remove_remote_files(self) -> None:
+        """
+        Remove the job's remote work directory, to keep cluster quota in check.
+
+        This is the remote-cleanup entry point for a job. ARC's own job flow does not call it:
+        no job removes its remote work directory today, and the caller that will is added
+        separately, which is why a run still leaves its remote directories behind.
+
+        Does nothing for a local server or when no remote path has been set.
+        """
+        if self.server is None or self.server == 'local' or not self.remote_path:
+            return
+        with self._open_or_borrow_ssh() as ssh:
+            ssh.remove_dir(remote_path=self.remote_path)
 
     def set_initial_and_final_times(self, ssh: SSHClient | None = None):
         """
@@ -514,7 +702,7 @@ class JobAdapter(ABC):
         # 2. Set other related attributes job_name and job_server_name.
         self.job_server_name = self.job_server_name or 'a' + str(self.job_num)
         if self.conformer is not None and self.job_name is None:
-            self.job_name = f'{self.job_type}_{self.conformer}'
+            self.job_name = get_conformer_job_name(self.job_type, self.conformer)
         elif self.tsg is not None and (self.job_name is None or 'tsg_a' in self.job_name):
             if self.job_name is not None:
                 logger.warning(f'Replacing job name {self.job_name} with tsg{self.conformer}')
@@ -618,6 +806,11 @@ class JobAdapter(ABC):
     def as_dict(self) -> dict:
         """
         A helper function for dumping this object as a dictionary, used for saving in the restart file.
+
+        ``restricted_used``, the SCF reference this job's input declared, is included when the job
+        composed an input file. It is the one entry that cannot be recomputed on restore: rebuilding
+        the adapter re-composes the input from the species' current state, so a job queued before a
+        reference decision changed would otherwise come back describing a reference it never ran.
         """
         job_dict = dict()
         job_dict['job_adapter'] = self.job_adapter
@@ -662,6 +855,9 @@ class JobAdapter(ABC):
             job_dict['server'] = self.server
         if isinstance(self.server_nodes, dict) and self.server_nodes:
             job_dict['server_nodes'] = self.server_nodes
+        restricted_used = getattr(self, 'restricted_used', None)
+        if isinstance(restricted_used, (bool, list)):
+            job_dict['restricted_used'] = restricted_used
         if self.species is not None:
             job_dict['species_labels'] = [species.label for species in self.species]
         if self.torsions is not None:
@@ -703,7 +899,7 @@ class JobAdapter(ABC):
         logger.debug(f'Deleting job {self.job_name} for {self.species_label}')
         if self.server != 'local':
             logger.debug(f'deleting job on {self.server}...')
-            with SSHClient(self.server) as ssh:
+            with self._open_or_borrow_ssh() as ssh:
                 ssh.delete_job(self.job_id)
         else:
             logger.debug('deleting job locally...')
@@ -765,21 +961,24 @@ class JobAdapter(ABC):
         """
         content = ''
         cluster_soft = servers[self.server]['cluster_soft'].lower()
+        if cluster_soft == 'local':
+            # No queueing system, so there are no scheduler stdout/stderr files to collect.
+            return
         if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
+            # job.log is HTCondor's native event log; other clusters don't produce one.
+            include_job_log = cluster_soft == 'htcondor'
             local_file_path_1 = os.path.join(self.local_path, 'out.txt')
             local_file_path_2 = os.path.join(self.local_path, 'err.txt')
-            local_file_path_3 = os.path.join(self.local_path, 'job.log')
+            local_file_path_3 = os.path.join(self.local_path, 'job.log') if include_job_log else None
             if self.server != 'local' and self.remote_path is not None and not self.testing:
-                remote_file_path_1 = os.path.join(self.remote_path, 'out.txt')
-                remote_file_path_2 = os.path.join(self.remote_path, 'err.txt')
-                remote_file_path_3 = os.path.join(self.remote_path, 'job.log')
-                with SSHClient(self.server) as ssh:
-                    for local_file_path, remote_file_path in zip([local_file_path_1,
-                                                                  local_file_path_2,
-                                                                  local_file_path_3],
-                                                                 [remote_file_path_1,
-                                                                  remote_file_path_2,
-                                                                  remote_file_path_3]):
+                remote_paths = [os.path.join(self.remote_path, 'out.txt'),
+                                os.path.join(self.remote_path, 'err.txt')]
+                local_paths = [local_file_path_1, local_file_path_2]
+                if include_job_log:
+                    remote_paths.append(os.path.join(self.remote_path, 'job.log'))
+                    local_paths.append(local_file_path_3)
+                with self._open_or_borrow_ssh() as ssh:
+                    for local_file_path, remote_file_path in zip(local_paths, remote_paths):
                         try:
                             ssh.download_file(remote_file_path=remote_file_path,
                                               local_file_path=local_file_path)
@@ -789,7 +988,7 @@ class JobAdapter(ABC):
                                            f'flags with stdout and stderr of out.txt and err.txt, respectively '
                                            f'(e.g., "#SBATCH -o out.txt"). Error message:')
                             logger.warning(e)
-            for local_file_path in [local_file_path_1, local_file_path_2, local_file_path_3]:
+            for local_file_path in filter(None, [local_file_path_1, local_file_path_2, local_file_path_3]):
                 if os.path.isfile(local_file_path):
                     with open(local_file_path, 'r') as f:
                         lines = f.readlines()
@@ -805,7 +1004,7 @@ class JobAdapter(ABC):
         Possible statuses: ``initializing``, ``running``, ``errored on node xx``, ``done``.
         """
         if self.server != 'local' and not self.testing:
-            with SSHClient(self.server) as ssh:
+            with self._open_or_borrow_ssh() as ssh:
                 return ssh.check_job_status(self.job_id)
         else:
             return check_job_status(self.job_id)

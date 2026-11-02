@@ -10,9 +10,23 @@ import os
 import string
 import sys
 
+from arc.settings.external_paths import (
+    find_goflow_ckpt,
+    find_goflow_feat_dict,
+    find_goflow_repo,
+    find_rits_ckpt,
+    find_rits_repo,
+)
+
 # Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
 # https://www.digitalocean.com/community/tutorials/how-to-set-up-ssh-keys--2
+# 'key' is the path to the SSH *private* key to authenticate with, and is optional:
+# omit it to authenticate via a running ssh-agent (including a forwarded one) or via the
+# default key paths '~/.ssh/id_rsa', '~/.ssh/id_ecdsa' and '~/.ssh/id_ed25519'.
+# ARC does not read '~/.ssh/config', so IdentityFile/ProxyJump/ProxyCommand have no effect.
+# Set 'strict_host_key_checking': True on a server to refuse hosts absent from known_hosts
+# instead of only warning about them.
 # If ARC is being executed on a server, and ESS are available on that server, define a server named 'local',
 # for which only the cluster software and username are required.
 # servers = {
@@ -20,7 +34,6 @@ import sys
 #         'cluster_soft': 'OGE',  # Oracle Grid Engine (Sun Grin Engine)
 #         'address': 'pharos.mit.edu',
 #         'un': '<username>',
-#         'key': '/home/<username>/.ssh/known_hosts',
 #     },
 #     'rmg': {
 #         'cluster_soft': 'Slurm',  # Simple Linux Utility for Resource Management
@@ -38,6 +51,7 @@ servers = {
     'server1': {
         'cluster_soft': 'OGE',
         'address': 'server1.host.edu',
+        'path': '/home',  # an absolute path on the server holding the user directories; ARC runs under <path>/<un>/runs/ARC_Projects/
         'un': '<username>',
         'key': 'path_to_rsa_key',
         'max_simultaneous_jobs': 10,  # optional, "check_status_command" must be set to only return jobs for your user
@@ -45,6 +59,7 @@ servers = {
     'server2': {
         'cluster_soft': 'Slurm',
         'address': 'server2.host.edu',
+        'path': '/home',  # an absolute path on the server holding the user directories; ARC runs under <path>/<un>/runs/ARC_Projects/
         'un': '<username>',
         'key': 'path_to_rsa_key',
         'cpus': 24,  # number of cpu's per node, optional (default: 8)
@@ -53,11 +68,20 @@ servers = {
     'server3': {
         'cluster_soft': 'PBS',
         'address': 'server3.host.edu',
+        'path': '/home',  # an absolute path on the server holding the user directories; ARC runs under <path>/<un>/runs/ARC_Projects/
         'un': '<username>',
         'key': 'path_to_rsa_key',
     },
+    # The machine ARC itself runs on. A 'local' server entry is required for any ESS that runs
+    # in-core (e.g., 'pyscf'), since ARC validates every ESS's server against this dictionary.
+    # Set 'cluster_soft' to 'local' on a workstation with no queueing system: jobs then run
+    # in-core or as a local pipe worker pool rather than being submitted to a queue.
+    # When 'cluster_soft' is 'local', 'cpus' is the single machine-wide CPU budget: it both caps
+    # the cores any one in-core job may use and bounds the local worker pool (workers x cores/worker
+    # <= cpus). Set it below the physical core count to leave headroom (e.g., 'cpus': 12 on a
+    # 16-core box). 'pipe_settings['local_max_workers']' can override the derived worker count.
     'local': {
-        'cluster_soft': 'HTCondor',
+        'cluster_soft': 'HTCondor',  # or 'Slurm'/'PBS'/'OGE'/'SGE', or 'local' if there is no queue
         'un': '<username>',
         'cpus': 48,
         'queues': {'':''},  # {'queue_name':'HH:MM:SS'}
@@ -77,6 +101,7 @@ global_ess_settings = {
     'onedmin': 'server1',
     'orca': 'local',
     'qchem': 'server1',
+    'rits': 'local',
     'terachem': 'server1',
     'xtb': 'local',
     'xtb_gsm': 'local',
@@ -84,12 +109,16 @@ global_ess_settings = {
     'openbabel': 'local',
     'orca_neb': 'local',
     'ase': 'local',
+    'pyscf': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase']
+supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase', 'pyscf']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
+# Note: 'goflow' and 'rits' are intentionally NOT in the default — their envs
+# (goflow_env / rits_env + pretrained checkpoints) are heavyweight, so users
+# opt in explicitly via ``ts_adapters: ['goflow', ...]`` in their input.yml.
 ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
 
 # List here job types to execute by default
@@ -102,6 +131,7 @@ default_job_types = {'conf_opt': True,        # defaults to True if not specifie
                      'rotors': True,          # defaults to True if not specified
                      'irc': True,             # defaults to True if not specified
                      'orbitals': False,       # defaults to False if not specified
+                     'stability': False,
                      'lennard_jones': False,  # defaults to False if not specified
                      'bde': False,            # defaults to False if not specified
                      }
@@ -120,6 +150,9 @@ levels_ess = {
     'xtb': ['xtb', 'gfn'],
     'torchani': ['torchani'],
     'openbabel': ['mmff94s', 'mmff94', 'gaff', 'uff', 'ghemical'],
+    # Note: 'pyscf' is deliberately not listed here. Adding a phrase such as 'wb97m-v' would
+    # silently re-route levels that currently run on QChem/Gaussian to the local PySCF adapter.
+    # PySCF is opt-in: request it explicitly (e.g. Level(..., software='pyscf')).
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -169,22 +202,26 @@ input_filenames = {'ase': 'input.yml',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
                    'xtb': 'input.sh',
+                   'pyscf': 'input.yml',
                    }
 
 output_filenames = {'ase': 'output.yml',
                     'cfour': 'output.out',
                     'gaussian': 'input.log',
                     'gcn': 'output.yml',
+                    'goflow': 'output.yml',
                     'mockter': 'output.yml',
                     'molpro': 'input.out',
                     'onedmin': 'output.out',
                     'orca': 'input.log',
                     'orca_neb': 'input.log',
                     'qchem': 'output.out',
+                    'rits': 'output.yml',
                     'terachem': 'output.out',
                     'torchani': 'output.yml',
                     'xtb': 'output.out',
                     'openbabel':'output.yml',
+                    'pyscf': 'output.yml',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
@@ -271,9 +308,12 @@ ASE_CALCULATORS_ENV = {'torchani': 'TANI_PYTHON',
                        'uma': 'UMA_PYTHON',
                        }
 
-# UMA (Universal Models for Atoms, Meta FAIR fairchem-core). The 'uma' calculator/level resolves
-# to the latest model implemented in ARC; older checkpoints (e.g. 'uma-s-1') are named explicitly.
-UMA_LATEST_MODEL = 'uma-s-1p1'
+# UMA (Universal Models for Atoms, Meta FAIR fairchem-core). The bare 'uma' calculator/level resolves
+# to ARC's default model below, 'uma-s-1p2' (latest small -- fastest, still SOTA on most benchmarks);
+# specific checkpoints are named explicitly, e.g. 'uma-m-1p1' (best-in-class/optimal medium, but
+# heavier), or the legacy 'uma-s-1p1'/'uma-s-1'. UMA_LATEST_MODEL is ARC's default (not necessarily
+# the newest checkpoint -- though here it also happens to be the latest small).
+UMA_LATEST_MODEL = 'uma-s-1p2'
 
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
@@ -317,12 +357,25 @@ default_job_settings = {
     'job_max_server_node_memory_allocation': 0.95,  # e.g., at most 95% node memory will be used per job **if needed**
 }
 
+# The fraction of a Gaussian job's total memory allocation given to Gaussian's %mem.
+# The remainder is headroom for Gaussian's allocations outside %mem. The first entry is the
+# default; on a Gaussian memory allocation failure ARC steps down this ladder while holding the
+# queue reservation constant, so each step leaves strictly more headroom.
+gaussian_memory_headroom_fractions = [0.90, 0.75, 0.60]
+
 # Pipe mode settings: distributed HPC execution via job arrays.
 # These can be overridden in ~/.arc/settings.py.
 pipe_settings = {
     'enabled': False,          # Set to True to enable pipe mode (it is off by default, use it for large compute campaigns).
     'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
     'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
+    'run_locally': False,      # Run the pipe array as a local pool of worker processes instead of
+                               # submitting it to a queue. Use on a workstation with no queueing
+                               # system (e.g., to parallelize local PySCF jobs).
+    'local_max_workers': None, # Concurrent local workers. None derives a limit from the local CPU
+                               # budget (the 'local' server's 'cpus') and available memory. Set an
+                               # int to override; note an explicit value wins outright and can exceed
+                               # the CPU budget, so total cores may pass servers['local']['cpus'].
     'max_attempts': 3,         # Retry budget per task before terminal failure.
     'lease_duration_hrs': 1,   # Worker lease duration in hours (default 1h).
     'env_setup': {},           # Engine-specific shell setup commands, e.g.,
@@ -338,12 +391,39 @@ pipe_settings = {
 # An imaginary frequency is valid if it is between the following range (in cm-1):
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
+# Optional UMA (FAIRChem) refinement of KinBot TS guesses, executed inside kinbot_env.
+# 'refine': If True, each KinBot template TS guess is refined with a Sella saddle-point
+#           search on Meta's UMA machine-learned potential before being returned to ARC.
+#           Requires installing kinbot_env with ``devtools/install_kinbot.sh --uma`` and
+#           either a local UMA checkpoint ('model_path') or a HuggingFace login with
+#           access to the (license-gated) UMA models for downloading 'model_name'.
+#           On any refinement failure ARC falls back to the unrefined template guess.
+kinbot_uma_settings = {
+    'refine': False,
+    'model_path': '',           # e.g., '/home/user/checkpoints/uma-s-1p2.pt'
+    'model_name': 'uma-s-1p2',  # used only if 'model_path' is empty
+    'task_name': 'omol',
+    'device': 'cpu',
+    'fmax': 0.005,              # Sella force convergence criterion
+    'steps': 250,               # maximal number of Sella steps
+}
+
 # ARC families folder path
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
+# The RMG reaction family set ARC uses to determine and validate reaction families whenever a
+# family set is not given explicitly. 'default' considers only RMG's recommended families, as is
+# appropriate for mechanism generation. Any other family set defined in
+# RMG-database/input/kinetics/families/recommended.py may be used (e.g. 'halogens'), as may 'all',
+# which unions the sets whose label does not contain 'surface' with the families that exist as RMG
+# database directories.
+rmg_family_set = 'default'
+
 # Default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, UMA_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, XTB_PYTHON, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
-    None, None, None, None, None, None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, UMA_PYTHON, AUTOTST_PYTHON, KINBOT_PYTHON, GOFLOW_PYTHON, GOFLOW_REPO_PATH, \
+    GOFLOW_CKPT_PATH, GOFLOW_FEAT_DICT_PATH, RITS_PYTHON, RITS_REPO_PATH, RITS_CKPT_PATH, \
+    ARC_PYTHON, XTB, XTB_PYTHON, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
+    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 home = os.getenv("HOME") or os.path.expanduser("~")
 
@@ -385,11 +465,30 @@ SELLA_PYTHON = find_executable('sella_env')
 OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
 AUTOTST_PYTHON = find_executable('tst_env')
+KINBOT_PYTHON = find_executable('kinbot_env')
+GOFLOW_PYTHON = find_executable('goflow_env')
+RITS_PYTHON = find_executable('rits_env')
 ARC_PYTHON = find_executable('arc_env')
 XTB_PYTHON = find_executable('xtb_env')
+PYSCF_PYTHON = find_executable('pyscf_env')
+# Device PySCF runs on: 'cpu', or 'gpu' to use an NVIDIA GPU via gpu4pyscf (which must be
+# installed in pyscf_env). Closed-shell analytic Hessians always fall back to the CPU.
+PYSCF_DEVICE = 'cpu'
 RMG_ENV_NAME = 'rmg_env'
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
+
+
+# Filesystem-discovery helpers for ML-based TS adapters (find_goflow_*,
+# find_rits_*) are defined in arc/settings/external_paths.py — kept out of
+# this module so settings.py stays a pure data/config layer.  We invoke
+# them here so the resulting paths sit alongside the other adapter paths
+# (RMG_PATH, etc.) for downstream ``settings.get(...)`` consumers.
+GOFLOW_REPO_PATH = find_goflow_repo()
+GOFLOW_CKPT_PATH = find_goflow_ckpt(GOFLOW_REPO_PATH)
+GOFLOW_FEAT_DICT_PATH = find_goflow_feat_dict(GOFLOW_REPO_PATH)
+RITS_REPO_PATH = find_rits_repo()
+RITS_CKPT_PATH = find_rits_ckpt(RITS_REPO_PATH)
 
 # Ensure BABEL_LIBDIR and BABEL_DATADIR are set before any openbabel import.
 # The danagroup conda build doesn't ship activate scripts that configure these.

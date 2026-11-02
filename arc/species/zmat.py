@@ -52,6 +52,37 @@ DEFAULT_COMPARISON_A_TOL = 2.0  # degrees
 DEFAULT_COMPARISON_D_TOL = 2.0  # degrees
 TOL_180 = 0.9  # degrees
 KEY_FROM_LEN = {2: 'R', 3: 'A', 4: 'D'}
+# Minimum acceptable |cross(B-A, normalize(C-B))|² for NeRF atom placement.
+# Equivalent to ~3.8° from linear for a 1.5 Å bond — conservative enough
+# to guard against float32 rounding in C-kernel intermediate coordinates.
+_NERF_CROSS_SQ_MIN = 0.01  # (0.1 Å)²
+
+
+def _nerf_cross_sq(coords: list | tuple,
+                   c_xyz: int,
+                   b_xyz: int,
+                   a_xyz: int,
+                   ) -> float:
+    """
+    Double-precision |cross(B-A, normalize(C-B))|².
+
+    Returns 0.0 when B→C is degenerate.
+    Mirrors the cross product in _add_nth_atom_to_coords where
+    a_index=a_xyz, b_index=b_xyz, c_index=c_xyz, so
+    ab = b-a and ubc = normalize(c-b).
+    """
+    c_c, b_c, a_c = coords[c_xyz], coords[b_xyz], coords[a_xyz]
+    abx = b_c[0] - a_c[0]; aby = b_c[1] - a_c[1]; abz = b_c[2] - a_c[2]
+    bcx = c_c[0] - b_c[0]; bcy = c_c[1] - b_c[1]; bcz = c_c[2] - b_c[2]
+    bc2 = bcx * bcx + bcy * bcy + bcz * bcz
+    if bc2 < 1e-16:
+        return 0.0
+    r = 1.0 / math.sqrt(bc2)
+    ubcx, ubcy, ubcz = bcx * r, bcy * r, bcz * r
+    cx_ = aby * ubcz - abz * ubcy
+    cy_ = abz * ubcx - abx * ubcz
+    cz_ = abx * ubcy - aby * ubcx
+    return cx_ * cx_ + cy_ * cy_ + cz_ * cz_
 
 
 def xyz_to_zmat(xyz: dict[str, tuple],
@@ -551,12 +582,38 @@ def determine_d_atoms(zmat: dict[str, dict | tuple],
                     angle = vectors.calculate_param(coords=coords, atoms=[zmat['map'][z_index]
                                                                   for z_index in d_atoms[1:] + [i]])
                     if not is_angle_linear(angle, tolerance=TOL_180):
-                        d_atoms.append(i)
-                        break
+                        try:
+                            if _nerf_cross_sq(coords, zmat['map'][d_atoms[1]],
+                                              zmat['map'][d_atoms[2]],
+                                              zmat['map'][i]) >= _NERF_CROSS_SQ_MIN:
+                                d_atoms.append(i)
+                                break
+                        except (IndexError, KeyError, TypeError):
+                            d_atoms.append(i)
+                            break
         if len(set(d_atoms)) != 4:
             logger.error(f'Could not come up with four unique d_atoms (d_atoms = {d_atoms}). '
                          f'Setting d_atoms to [{n}, 2, 1, 0]')
             d_atoms = [n, 2, 1, 0]
+            # Verify the fallback triplet is non-collinear; if not, scan for a valid one.
+            if all(x in zmat['map'] for x in d_atoms[1:]):
+                try:
+                    if _nerf_cross_sq(coords, zmat['map'][d_atoms[1]],
+                                      zmat['map'][d_atoms[2]],
+                                      zmat['map'][d_atoms[3]]) < _NERF_CROSS_SQ_MIN:
+                        # Fallback triplet is collinear — scan for a valid 4th reference atom.
+                        for candidate in reversed(range(n)):
+                            if candidate in zmat['map'] and candidate not in (d_atoms[1], d_atoms[2]):
+                                try:
+                                    if _nerf_cross_sq(coords, zmat['map'][d_atoms[1]],
+                                                      zmat['map'][d_atoms[2]],
+                                                      zmat['map'][candidate]) >= _NERF_CROSS_SQ_MIN:
+                                        d_atoms[3] = candidate
+                                        break
+                                except (IndexError, KeyError):
+                                    continue
+                except (IndexError, KeyError):
+                    pass  # d_atoms[1]/[2] not yet in map; ZMatError raised below if still unresolved
         if any([d_atom not in list(zmat['map'].keys()) for d_atom in d_atoms[1:]]):
             raise ZMatError(f'A reference D atom in {d_atoms} for the index atom {atom_index} has not been '
                             f'added to the zmat yet. Added atoms are (zmat index: xyz index): {zmat["map"]}.')
@@ -588,6 +645,13 @@ def determine_d_atoms_without_connectivity(zmat: dict,
             except VectorsError:
                 continue
             if not is_angle_linear(angle, tolerance=TOL_180):
+                try:
+                    if _nerf_cross_sq(coords, zmat['map'][d_atoms[1]],
+                                      zmat['map'][d_atoms[2]],
+                                      zmat['map'][i]) < _NERF_CROSS_SQ_MIN:
+                        continue
+                except (IndexError, KeyError):
+                    pass  # d_atoms[1]/[2] not yet mapped; accept candidate without cross-product check
                 d_atoms.append(i)
                 break
     if len(d_atoms) < 4:
@@ -599,6 +663,13 @@ def determine_d_atoms_without_connectivity(zmat: dict,
                 except VectorsError:
                     continue
                 if not is_angle_linear(angle, tolerance=TOL_180):
+                    try:
+                        if _nerf_cross_sq(coords, zmat['map'][d_atoms[1]],
+                                          zmat['map'][d_atoms[2]],
+                                          zmat['map'][i]) < _NERF_CROSS_SQ_MIN:
+                            continue
+                    except (IndexError, KeyError, TypeError):
+                        pass  # dummy atom may lack full map entry; accept without cross-product check
                     d_atoms.append(i)
                     break
     return d_atoms
@@ -990,7 +1061,9 @@ def add_dummy_atom(zmat: dict,
     if d_str is not None:
         zmat['vars'][d_str] = 180
     # Update xyz with the dummy atom (useful when this atom is used to define dihedrals of other atoms).
-    coords = _add_nth_atom_to_coords(zmat=zmat, coords=list(coords), i=n)
+    zmat_ordered_coords = [tuple(coords[map_index_to_int(zmat['map'][zmat_index])]) for zmat_index in range(n)]
+    zmat_ordered_coords = _add_nth_atom_to_coords(zmat=zmat, coords=zmat_ordered_coords, i=n)
+    coords = list(coords) + [zmat_ordered_coords[n]]
     if connectivity is not None:
         # Update the connectivity dict to reflect that X is connected to the respective atom (r_atoms[1]),
         # this will help later in avoiding linear angles in the last three indices of a dihedral.
@@ -1086,11 +1159,26 @@ def _add_nth_atom_to_coords(zmat: dict,
     """
     Add the n-th atom to the coords (n >= 0).
 
+    The reference atoms are read from the zmat's R/A/D parameter strings, so ``coords`` is indexed
+    in the zmat's index space: entry ``k`` holds the coordinates of the atom at zmat index ``k``,
+    which is not the same as its index in the mol/xyz whenever the two orders differ.
+
+    Atoms 0 and 1 define the frame: they are placed at the origin and on the +z axis, respectively.
+    Given zmat-ordered ``coords``, every atom from index 2 onwards is placed relative to the
+    coordinates already present, so the frame they are in is honoured rather than replaced. Atom 2
+    has no reference plane to fix its azimuth about the 0-1 axis, which is therefore taken from
+    ``vectors.get_perpendicular_unit_vector()`` of that axis; for the canonical frame this
+    reproduces the +y half plane.
+
     Args:
         zmat (dict): The zmat.
-        coords (list): The coordinates to be updated (not the entire xyz dict).
+        coords (list): The coordinates to be updated (not the entire xyz dict), ordered by zmat index.
         i (int): The atom number in the zmat to be added to the coords (0-indexed)
         coords_to_skip (list, optional): Entries are indices to skip.
+
+    Raises:
+        VectorsError: If atom 2 is being added and atoms 0 and 1 are coincident, or if the B and C
+                      reference atoms of the atom being added are coincident.
 
     Returns:
         list: The updated coords.
@@ -1109,36 +1197,54 @@ def _add_nth_atom_to_coords(zmat: dict,
         bc_length = zmat['vars'][r_key]
         alpha = zmat['vars'][a_key]
         alpha = math.radians(alpha if alpha < 180 else 360 - alpha)
-        b_index = [indices for indices in get_atom_indices_from_zmat_parameter(r_key) if indices[0] == i][0][1]
-        b_z = coords[b_index][2]
-        c_y = bc_length * math.sin(alpha)
+        a_indices = [indices for indices in get_atom_indices_from_zmat_parameter(a_key) if indices[0] == i][0]
+        b_index, a_index = a_indices[1], a_indices[2]
         r"""
-        We differentiate between two cases for c_z:
-        Either atom A is at the origin (case 1), or atom B is at the origin (case 2).
-        One of them has to be at the origin (0, 0, 0), since we're adding the 3rd atom (so either A or B were 1st).
-        
-         y
-         ^                    C                         C
-         |           (1)       \        or     (2)     /
-         L__ > z           A -- B                    B -- A
-        
-        In case 1, we need to deduct len(B-C) from the z coordinate of atom B,
-        but in case 2 we need to take the positive value of len(B-C).
-        The above is also true if alpha(A-B-C) is > 90 degrees.
+        Atom C is placed relative to atom B, at a distance of bc_length from it, and rotated by alpha
+        away from the direction B -> A, where alpha is the A-B-C angle folded into [0, 180] just above:
+
+            C = B + bc_length * (cos(alpha) * u_BA + sin(alpha) * u_perp)
+
+        u_BA is the unit vector pointing from B towards A, and u_perp is a unit vector perpendicular to
+        the A-B axis. The two are orthonormal, so they span the plane C is placed in, and the component
+        along each is what makes the A-B-C angle come out at exactly alpha. Atoms A and B fix an axis
+        but not a plane, so the azimuth of u_perp about that axis is a convention.
+
+                              u_perp                                      u_perp
+                                ^                                           ^
+                             C  |                                           |  C
+                              \ |                                           | /
+                         alpha \|                                     alpha |/
+                    A <---------B                               A <---------B
+                         u_BA                                        u_BA
+
+                       alpha < 90                                  alpha > 90
+
+        Both terms are taken relative to atom B and to the direction B -> A, so the placement holds for
+        atoms A and B wherever they lie. For alpha > 90 degrees cos(alpha) is negative, the u_BA term
+        points away from A, and C falls on the far side of B, as drawn on the right.
         """
-        c_z = b_z - bc_length * math.cos(alpha) if b_z else bc_length * math.cos(alpha)
-        coords.append((0.0, c_y, c_z))
+        u_perp = vectors.get_perpendicular_unit_vector([coords[1][k] - coords[0][k] for k in range(3)])
+        u_ba = vectors.unit_vector([coords[a_index][k] - coords[b_index][k] for k in range(3)])
+        coords.append(tuple(coords[b_index][k] + bc_length * (math.cos(alpha) * u_ba[k]
+                                                              + math.sin(alpha) * u_perp[k]) for k in range(3)))
     elif i not in coords_to_skip:
         d_indices = [indices for indices in get_atom_indices_from_zmat_parameter(zmat['coords'][i][2])
                      if indices[0] == i][0]
         a_index, b_index, c_index = d_indices[3], d_indices[2], d_indices[1]
+        cd_length = zmat['vars'][zmat['coords'][i][0]]
+        bcd_deg = zmat['vars'][zmat['coords'][i][1]]
+        abcd_deg = zmat['vars'][zmat['coords'][i][2]]
+        bcd_angle = math.radians(bcd_deg)
+        abcd_dihedral = math.radians(abcd_deg)
         # Atoms B and C aren't necessarily connected in the zmat, calculate from coords.
         bc_length = vectors.get_vector_length([coords[c_index][0] - coords[b_index][0],
                                        coords[c_index][1] - coords[b_index][1],
                                        coords[c_index][2] - coords[b_index][2]])
-        cd_length = zmat['vars'][zmat['coords'][i][0]]
-        bcd_angle = math.radians(zmat['vars'][zmat['coords'][i][1]])
-        abcd_dihedral = math.radians(zmat['vars'][zmat['coords'][i][2]])
+        if not bc_length:
+            raise VectorsError(f'Cannot place atom {i} of the zmat: its reference atoms {b_index} and {c_index} '
+                               f'are coincident, so the direction from atom {b_index} to atom {c_index} is '
+                               f'undefined, and with it the angle and the dihedral that place atom {i}.')
         # A vector pointing from atom A to atom B:
         ab = [(coords[b_index][0] - coords[a_index][0]),
               (coords[b_index][1] - coords[a_index][1]),
@@ -1148,20 +1254,26 @@ def _add_nth_atom_to_coords(zmat: dict,
                (coords[c_index][1] - coords[b_index][1]) / bc_length,
                (coords[c_index][2] - coords[b_index][2]) / bc_length]
         n = np.cross(ab, ubc)
-        un = n / vectors.get_vector_length(n)
+        n_length = vectors.get_vector_length(n)
+        un = n / n_length if n_length else np.full(3, np.nan)
+        if not np.all(np.isfinite(un)):
+            logger.warning(f'Atoms {a_index}, {b_index} and {c_index} of the zmat do not define a reference plane '
+                           f'(they are collinear or coincident), so the dihedral about them is undefined. Placing '
+                           f'atom {i} against an arbitrary plane; the requested distance and angle are still '
+                           f'honoured, and the dihedral is measured from an arbitrary zero. zmat construction '
+                           f'inserts dummy atoms to keep linear segments out of a dihedral reference, so a '
+                           f'linear segment reaching this branch means either that the reference atoms were '
+                           f'resolved incorrectly, or that the segment was never recognized as linear, which '
+                           f'can happen when the connectivity is unavailable.')
+            un = vectors.get_perpendicular_unit_vector(ubc)
         un_cross_ubc = np.cross(un, ubc)
-
-        # The transformation matrix:
         m = np.array([[ubc[0], un_cross_ubc[0], un[0]],
                       [ubc[1], un_cross_ubc[1], un[1]],
                       [ubc[2], un_cross_ubc[2], un[2]]], np.float64)
-
-        # Place atom D in a default coordinate system.
         d = np.array([- cd_length * math.cos(bcd_angle),
                       cd_length * math.sin(bcd_angle) * math.cos(abcd_dihedral),
                       cd_length * math.sin(bcd_angle) * math.sin(abcd_dihedral)])
-        d = m.dot(d)  # Rotate the coordinate system into the reference frame of orientation defined by A, B, C.
-        # Add the coordinates of atom C to the resulting atom D:
+        d = m.dot(d)
         coords.append((float(d[0] + coords[c_index][0]), float(d[1] + coords[c_index][1]), float(d[2] + coords[c_index][2])))
     return coords
 
@@ -1925,7 +2037,11 @@ def consolidate_zmat(zmat: dict,
         for keys in keys_to_consolidate1[key_type]:
             atoms_dict, indices_to_pop = dict(), list()
             for key in keys:
-                indices = [int(index) for index in key.split('_')[1:]]
+                # A key may already be consolidated, in which case each of its index fields is a
+                # '|'-joined group (e.g. 'R_39|62|63_6|33|31'). Atoms land in one group precisely
+                # because they share an atom type, so the first member characterizes the group.
+                # For an unconsolidated key this is a no-op.
+                indices = [int(index.split('|')[0]) for index in key.split('_')[1:]]
                 if any([zmat['symbols'][index] == 'X' for index in indices]):
                     # This is a dummy atom, don't check atoms, always consolidate.
                     atoms_dict[key] = key[:2]
@@ -1962,7 +2078,10 @@ def consolidate_zmat(zmat: dict,
                 indices.append([key.split('_')[1:][i] for key in keys])
             for i in range(len(keys[0].split('_')[1:])):
                 new_indices.append('|'.join(str(index) for index in indices[i]))
-            if any(['X' in list([zmat['symbols'][int(index)] for index in entry]) for entry in indices]):
+            # As above, an index field may itself be a '|'-joined group of already-consolidated
+            # atoms; take the first member of each (a no-op for unconsolidated keys).
+            if any(['X' in list([zmat['symbols'][int(index.split('|')[0])] for index in entry])
+                    for entry in indices]):
                 new_key = '_'.join([key_type + 'X'] + new_indices)
             else:
                 new_key = '_'.join([key_type] + new_indices)

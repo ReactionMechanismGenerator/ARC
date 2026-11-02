@@ -6,11 +6,14 @@ This module contains unit tests for ARC's statmech.arkane module
 """
 
 import os
+import re
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from arc.common import ARC_PATH, ARC_TESTING_PATH
+from arc.checks.common import TS_IRC_FAILED_MARKER
+from arc.common import ARC_TESTING_PATH, save_yaml_file
 from arc.exceptions import InputError
 from arc.level import Level
 from arc.reaction import ARCReaction
@@ -32,8 +35,14 @@ from arc.statmech.arkane import (
     check_arkane_aec,
     check_arkane_bacs,
     get_arkane_model_chemistry,
+    parse_e0,
+    parse_reaction_kinetics,
+    parse_thermo_data_block,
+    run_arkane,
+    _classify_arkane_stderr,
+    _parse_conformer_statmech,
+    _summarize_arkane_stderr,
 )
-from unittest.mock import patch
 
 
 class TestEnumerationClasses(unittest.TestCase):
@@ -143,6 +152,51 @@ class TestArkaneAdapter(unittest.TestCase):
             self.fail(f'Arkane did not generate {plot_path}.\nstdout.log:\n{stdout_text}\nstderr.log:\n{stderr_text}')
         self.assertTrue(os.path.isfile(plot_path))
         self.assertAlmostEqual(self.ic3h7.e0, 6.75565e+07)
+
+    def test_parse_arkane_thermo_output_recovers_missing_thermo_container(self):
+        """
+        Test that ``parse_arkane_thermo_output`` does not crash when a species reaches the
+        result-assignment loop with ``spc.thermo`` set to ``None`` (rather than the
+        ``ARCSpecies.__init__`` default of a ``ThermoData`` instance), and that a well-formed
+        sibling species (with the default ``ThermoData``) is populated correctly regardless.
+
+        This is a regression test for a real campaign crash: ``arc/statmech/arkane.py`` assumed
+        ``spc.thermo`` is never ``None`` at this point, even though other call sites in the
+        codebase (``ArkaneAdapter.set_reaction_dh_rxn``, ``processor.process_arc_project``,
+        ``output.get_species_output_dict``) already guard against exactly that.
+        """
+        tmpdir = tempfile.mkdtemp(prefix='test_Arkane_thermo_none_')
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        output_dir = os.path.join(tmpdir, 'output')
+        calcs_dir = os.path.join(tmpdir, 'calcs')
+        statmech_dir = os.path.join(calcs_dir, 'statmech', 'thermo')
+        os.makedirs(statmech_dir)
+        with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+            f.write('')
+        content = {
+            'none_thermo': {'H298': 1.0, 'S298': 2.0, 'data': 'NASA()'},
+            'ok_thermo': {'H298': 3.0, 'S298': 4.0, 'data': 'NASA()'},
+        }
+        save_yaml_file(path=os.path.join(statmech_dir, 'thermo.yaml'), content=content)
+
+        spc_none = ARCSpecies(label='none_thermo', smiles='O')
+        spc_none.thermo = None
+        spc_ok = ARCSpecies(label='ok_thermo', smiles='C')
+        arkane = ArkaneAdapter(output_directory=output_dir,
+                               calcs_directory=calcs_dir,
+                               output_dict=dict(),
+                               bac_type=None,
+                               species=[spc_none, spc_ok])
+
+        with patch('arc.statmech.arkane.execute_command', return_value=('', '')):
+            arkane.parse_arkane_thermo_output(statmech_dir)
+
+        self.assertIsNotNone(spc_none.thermo)
+        self.assertEqual(spc_none.thermo.H298, 1.0)
+        self.assertEqual(spc_none.thermo.S298, 2.0)
+        self.assertIsNotNone(spc_ok.thermo)
+        self.assertEqual(spc_ok.thermo.H298, 3.0)
+        self.assertEqual(spc_ok.thermo.S298, 4.0)
 
     def test_level_to_str(self):
         """Test the _level_to_str function"""
@@ -402,6 +456,40 @@ class TestArkaneAdapter(unittest.TestCase):
         for expected_line in expected_lines:
             self.assertIn(expected_line + '\n', lines, f"Expected line '{expected_line}' not found in {input_path}")
 
+    def test_lone_pair_species_uses_adjacency_list(self):
+        """A lone-pair singlet (singlet carbene [CH2], mult 1) whose SMILES round-trips to a different
+        multiplicity must be written to Arkane as an adjacency list, not SMILES + spinMultiplicity —
+        the latter re-perceives [CH2] as a u2 biradical, violating Hund's rule when Arkane saves the
+        thermo library. Normal species must still use SMILES."""
+        ch2 = ARCSpecies(label='R2', smiles='[CH2]', multiplicity=1)
+        h2o = ARCSpecies(label='P1', smiles='O', multiplicity=1)
+        adapter = ArkaneAdapter(output_directory=self.tmpdir, calcs_directory=self.tmpdir,
+                                output_dict={}, species=[ch2, h2o], sp_level=Level('gfn2'))
+        content = adapter.render_arkane_input_template(statmech_dir=self.tmpdir)
+        self.assertIn('adjacencyList(', content)
+        self.assertIn('1 C u0 p1', content)              # correct singlet-carbene adjlist
+        self.assertNotIn("SMILES('[CH2]')", content)     # must NOT use the lossy SMILES
+        self.assertIn("structure=SMILES('O')", content)  # normal species unchanged
+
+    def test_kinetics_input_declares_reaction_species_without_compute_thermo(self):
+        """A reactant/product carrying ``compute_thermo=False`` must still be declared as a
+        ``species(...)`` line in a rendered kinetics input. Otherwise the ``reaction(...)`` block
+        references a species Arkane never declared, and Arkane raises ``KeyError`` on the label
+        (``arkane/input.py`` builds ``reactants`` from the declared-species dict). A species that no
+        reaction names must still be excluded by ``compute_thermo=False``."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C[NH]', compute_thermo=False)],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]N', compute_thermo=False)])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        spc_x = ARCSpecies(label='X', smiles='O', compute_thermo=False)
+        adapter = ArkaneAdapter(output_directory=self.tmpdir, calcs_directory=self.tmpdir,
+                                output_dict=dict(), sp_level=Level('gfn2'),
+                                species=rxn.r_species + rxn.p_species + [rxn.ts_species, spc_x],
+                                reactions=[rxn])
+        content = adapter.render_arkane_input_template(statmech_dir=self.tmpdir)
+        self.assertIn("species('R',", content)
+        self.assertIn("species('P',", content)
+        self.assertNotIn("species('X',", content)
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -414,9 +502,33 @@ class TestArkaneAdapter(unittest.TestCase):
 class TestArkaneOutputParsing(unittest.TestCase):
     """Tests for parsing functions that read Arkane output.py content."""
 
+    kinetics_output_content = """
+conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
+
+kinetics(
+    label = 'nitroethane <=> ethyl_nitrite',
+    kinetics = Arrhenius(
+        A = (5.0, 's^-1'),
+        n = 1.0,
+        Ea = (20.0, 'kJ/mol'),
+        T0 = (1, 'K'),
+        Tmin = (300, 'K'),
+        Tmax = (2000, 'K'),
+        comment = 'Fitted to 10 data points; dA = *|/ 1.1, dn = +|- 0.01, dEa = +|- 0.1 kJ/mol',
+    ),
+)
+"""
+
+    @staticmethod
+    def isomerization_reaction() -> ARCReaction:
+        """Build the real nitroethane <=> ethyl nitrite reaction with a TS species named 'TS0'."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='nitroethane', smiles='CC[N+](=O)[O-]')],
+                          p_species=[ARCSpecies(label='ethyl_nitrite', smiles='CCON=O')])
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True)
+        return rxn
+
     def test_parse_e0(self):
         """Test parse_e0 extracts E0 from conformer blocks."""
-        from arc.statmech.arkane import parse_e0
         content = """
 conformer(
     label = 'CH4',
@@ -430,14 +542,11 @@ conformer(
         self.assertIsNone(parse_e0('missing_species', content))
 
     def test_parse_e0_positive(self):
-        from arc.statmech.arkane import parse_e0
         content = "conformer(label='CHO', E0=(44.0971, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)"
         self.assertAlmostEqual(parse_e0('CHO', content), 44.0971)
 
     def test_parse_conformer_statmech(self):
         """Test extraction of external_symmetry and optical_isomers."""
-        from arc.statmech.arkane import _parse_conformer_statmech
-        from unittest.mock import MagicMock
         content = """
 conformer(
     label = 'H2O',
@@ -452,18 +561,13 @@ conformer(
     optical_isomers = 1,
 )
 """
-        spc = MagicMock()
-        spc.label = 'H2O'
-        spc.optical_isomers = None
-        spc.external_symmetry = None
+        spc = ARCSpecies(label='H2O', smiles='O')
         _parse_conformer_statmech(spc, content)
         self.assertEqual(spc.optical_isomers, 1)
         self.assertEqual(spc.external_symmetry, 2)
 
     def test_parse_conformer_statmech_linear(self):
         """Test with LinearRotor."""
-        from arc.statmech.arkane import _parse_conformer_statmech
-        from unittest.mock import MagicMock
         content = """
 conformer(
     label = 'CO2',
@@ -473,23 +577,18 @@ conformer(
     optical_isomers = 1,
 )
 """
-        spc = MagicMock()
-        spc.label = 'CO2'
-        spc.optical_isomers = None
-        spc.external_symmetry = None
+        spc = ARCSpecies(label='CO2', smiles='O=C=O')
         _parse_conformer_statmech(spc, content)
         self.assertEqual(spc.external_symmetry, 2)
         self.assertEqual(spc.optical_isomers, 1)
 
     def test_parse_reaction_kinetics_with_uncertainties(self):
         """Test that dA, dn, dEa, n_data_points are parsed from the comment."""
-        from arc.statmech.arkane import parse_reaction_kinetics
-        from unittest.mock import MagicMock
         content = """
 conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
 
 kinetics(
-    label = 'A + B <=> C + D',
+    label = 'CH4 + OH <=> CH3 + H2O',
     kinetics = Arrhenius(
         A = (1.2e10, 'cm^3/(mol*s)'),
         n = 2.5,
@@ -501,11 +600,11 @@ kinetics(
     ),
 )
 """
-        rxn = MagicMock()
-        rxn.label = 'A + B <=> C + D'
-        rxn.ts_species = MagicMock()
-        rxn.ts_species.label = 'TS0'
-        rxn.ts_species.e0 = None
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True)
         parse_reaction_kinetics(rxn, content)
         self.assertIsNotNone(rxn.kinetics)
         self.assertAlmostEqual(rxn.kinetics['A'][0], 1.2e10)
@@ -519,13 +618,11 @@ kinetics(
 
     def test_parse_reaction_kinetics_no_comment(self):
         """Kinetics without a comment should still parse A, n, Ea."""
-        from arc.statmech.arkane import parse_reaction_kinetics
-        from unittest.mock import MagicMock
         content = """
 conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
 
 kinetics(
-    label = 'X <=> Y',
+    label = 'nitroethane <=> ethyl_nitrite',
     kinetics = Arrhenius(
         A = (5.0, 's^-1'),
         n = 1.0,
@@ -536,19 +633,38 @@ kinetics(
     ),
 )
 """
-        rxn = MagicMock()
-        rxn.label = 'X <=> Y'
-        rxn.ts_species = MagicMock()
-        rxn.ts_species.label = 'TS0'
-        rxn.ts_species.e0 = None
+        rxn = self.isomerization_reaction()
         parse_reaction_kinetics(rxn, content)
         self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
         self.assertAlmostEqual(rxn.kinetics['n'], 1.0)
         self.assertNotIn('dA', rxn.kinetics)
 
+    def test_parse_reaction_kinetics_marks_an_irc_invalid_ts(self):
+        """Kinetics of a TS that failed the IRC check are reported, and are labeled as invalid."""
+        content = self.kinetics_output_content
+        rxn = self.isomerization_reaction()
+        rxn.ts_species.ts_checks['IRC'] = False
+        rxn.ts_species.ts_checks['NMD'] = True
+        parse_reaction_kinetics(rxn, content)
+        self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
+        self.assertAlmostEqual(rxn.kinetics['Ea'][0], 20.0)
+        self.assertIn(TS_IRC_FAILED_MARKER, rxn.kinetics['ts_validation'])
+        self.assertIn(TS_IRC_FAILED_MARKER, rxn.kinetics['comment'])
+        self.assertIn('Fitted to 10 data points', rxn.kinetics['comment'])
+
+    def test_parse_reaction_kinetics_does_not_mark_an_unchecked_or_valid_ts(self):
+        """Kinetics of a TS for which the IRC check was not performed or was passed are not labeled."""
+        content = self.kinetics_output_content
+        for irc_value in [None, True]:
+            rxn = self.isomerization_reaction()
+            rxn.ts_species.ts_checks['IRC'] = irc_value
+            parse_reaction_kinetics(rxn, content)
+            self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
+            self.assertNotIn('ts_validation', rxn.kinetics)
+            self.assertNotIn(TS_IRC_FAILED_MARKER, rxn.kinetics['comment'])
+
     def test_parse_thermo_data_block_scalars_are_float(self):
         """Verify Tmin, Tmax, H298, S298 are parsed as floats, not strings."""
-        from arc.statmech.arkane import parse_thermo_data_block
         block = """
             H298 = (-108.9, 'kJ/mol'),
             S298 = (218.4, 'J/(mol*K)'),
@@ -563,7 +679,6 @@ kinetics(
 
     def test_find_scalar_word_boundary(self):
         """The ``n`` parameter must not match ``Tmin`` or substrings in the comment."""
-        import re
         # Simulate find_scalar with word boundary
         arr_block = "A = (1.0, 's^-1'), n = 2.5, Ea = (30.0, 'kJ/mol'), Tmin = (300, 'K')"
         pat = rf"\bn\s*=\s*([-+]?[\d.eE+-]+)"
@@ -679,6 +794,154 @@ class TestCheckArkaneCorrections(unittest.TestCase):
             with self.assertLogs('arc', level='INFO') as cm:
                 result = check_arkane_bacs(sp_level=level, bac_type='p')
         self.assertTrue(result)
+
+
+class TestRunArkaneOutputPySignal(unittest.TestCase):
+    """``run_arkane``'s pass/fail signal is whether ``output.py`` was
+    produced — NOT whether stderr is empty. The stderr classification
+    is now advisory (logged) but doesn't gate the return value.
+
+    Pre-fix bug: complete Arkane runs were discarded because cosmetic
+    stderr noise (git rev-parse failure, OpenBabel warnings) tripped
+    a false-failure gate. Both the thermo and kinetics callers now
+    use the same authoritative output.py-existence signal.
+    """
+
+    def setUp(self):
+        self._run_arkane = run_arkane
+        self.tmp = tempfile.mkdtemp(prefix='arkane-stderr-test-')
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        # Pre-flight check in run_arkane requires input.py before the
+        # subprocess fires.
+        with open(os.path.join(self.tmp, 'input.py'), 'w') as f:
+            f.write('# fake arkane input\n')
+
+    def _create_output_py(self):
+        with open(os.path.join(self.tmp, 'output.py'), 'w') as f:
+            f.write('# fake arkane output\n')
+
+    def _run_with_stderr(self, stderr_lines):
+        with patch('arc.statmech.arkane.execute_command',
+                   return_value=(['ok'], stderr_lines)):
+            return self._run_arkane(self.tmp)
+
+    # ---- output.py present: success regardless of stderr ----
+
+    def test_empty_stderr_with_output_returns_true(self):
+        self._create_output_py()
+        self.assertTrue(self._run_with_stderr([]))
+
+    def test_cosmetic_stderr_with_output_returns_true(self):
+        """OpenBabel + git warnings are classified as cosmetic and don't gate."""
+        self._create_output_py()
+        self.assertTrue(self._run_with_stderr([
+            'fatal: not a git repository (or any of the parent directories): .git',
+            '*** Open Babel Warning  in InChI code',
+            '  #1 :Accepted unusual valence(s): C(3)',
+        ]))
+
+    def test_real_error_with_output_returns_true_and_warns(self):
+        """If output.py was produced, even a Python traceback in stderr
+        doesn't fail the run — but it IS logged at WARNING so the
+        operator sees it. This is the load-bearing change vs. the old
+        behavior that would have returned False here.
+        """
+        self._create_output_py()
+        with self.assertLogs('arc', level='WARNING') as logs:
+            result = self._run_with_stderr([
+                'Traceback (most recent call last):',
+                'KeyError: "level_of_theory"',
+            ])
+        self.assertTrue(result, "output.py exists → success regardless of stderr")
+        self.assertTrue(
+            any('still produced output.py' in m for m in logs.output),
+            f"expected the advisory warning to fire; got {logs.output}",
+        )
+
+    # ---- output.py missing: failure ----
+
+    def test_missing_output_py_returns_false(self):
+        """No output.py = Arkane never wrote its result. That's the
+        only condition that should mean 'failure'."""
+        self.assertFalse(self._run_with_stderr([]))
+
+    def test_missing_output_py_with_real_error_logs_both_diagnostics(self):
+        """When output is missing AND stderr has real errors, log both
+        — the operator gets cause (stderr) and effect (no output)."""
+        with self.assertLogs('arc', level='ERROR') as logs:
+            result = self._run_with_stderr([
+                'Traceback (most recent call last):',
+                'ImportError: rmgpy not installed',
+            ])
+        self.assertFalse(result)
+        joined = '\n'.join(logs.output)
+        self.assertIn('Arkane run failed', joined)
+        self.assertIn('ImportError', joined)
+        self.assertIn('was not created', joined)
+
+    # ---- pre-flight checks still gate ----
+
+    def test_missing_input_py_returns_false_pre_flight(self):
+        """If the pre-flight finds no input.py, we never even run the
+        subprocess — and return False without checking stderr."""
+        os.unlink(os.path.join(self.tmp, 'input.py'))
+        self.assertFalse(self._run_with_stderr([]))
+
+    def test_missing_statmech_dir_returns_false_pre_flight(self):
+        self.assertFalse(run_arkane('/nonexistent/dir'))
+
+
+class TestClassifyArkaneStderr(unittest.TestCase):
+    """Direct tests of the stderr-noise filter, independent of run_arkane."""
+
+    def setUp(self):
+        self._classify = _classify_arkane_stderr
+
+    def test_empty_input_returns_empty(self):
+        self.assertEqual(self._classify(None), [])
+        self.assertEqual(self._classify([]), [])
+
+    def test_only_cosmetic_lines_return_empty(self):
+        self.assertEqual(self._classify([
+            '==============================',
+            '*** Open Babel Warning  in InChI code',
+            '  #1 :Accepted unusual valence(s): C(3)',
+            'fatal: not a git repository (or any of the parent directories): .git',
+            '',  # blank lines also dropped
+        ]), [])
+
+    def test_real_lines_returned_stripped(self):
+        result = self._classify([
+            'fatal: not a git repository',
+            '  KeyError: "level_of_theory"  ',
+            '*** Open Babel Warning in InChI code',
+        ])
+        self.assertEqual(result, ['KeyError: "level_of_theory"'])
+
+
+class TestSummarizeArkaneStderr(unittest.TestCase):
+    """The stderr summarizer condenses a traceback to the salient exception line for arc.log."""
+
+    def setUp(self):
+        self._summarize = _summarize_arkane_stderr
+
+    def test_empty(self):
+        self.assertEqual(self._summarize([]), '')
+
+    def test_picks_exception_line_over_conda_wrapper(self):
+        lines = [
+            'Traceback (most recent call last):',
+            '  File ".../kinetics.py", line 183, in generate_kinetics',
+            'ValueError: One or both of the barrier heights of -20.7 and 28.2 kJ/mol are invalid.',
+            'ERROR conda.cli.main_run:execute(148): `conda run python -m arkane input.py` failed.',
+        ]
+        summary = self._summarize(lines)
+        self.assertTrue(summary.startswith('ValueError: One or both of the barrier heights'))
+        self.assertIn('[+3 more stderr line(s)]', summary)
+        self.assertNotIn('Traceback', summary)
+
+    def test_single_line_no_extra_suffix(self):
+        self.assertEqual(self._summarize(['RuntimeError: boom']), 'RuntimeError: boom')
 
 
 if __name__ == '__main__':

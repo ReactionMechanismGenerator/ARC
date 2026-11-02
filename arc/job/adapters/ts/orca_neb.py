@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from mako.template import Template
 
 from arc.common import get_logger
+from arc.exceptions import SettingsError
 from arc.imports import incore_commands, settings
 from arc.job.adapters.common import is_restricted, which
 from arc.job.adapters.orca import OrcaAdapter, _format_orca_method, _format_orca_basis
@@ -212,6 +213,15 @@ class OrcaNEBAdapter(OrcaAdapter):
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
+
+        The NEB endpoint files are named in the deck by an absolute path, since Orca reads them
+        after the submit script has changed into a scratch directory. The path is
+        ``self.remote_path`` for a remote server, where the files are uploaded to, and
+        ``self.local_path`` for the local server.
+
+        Raises:
+            ValueError: If the reaction has no atom map.
+            SettingsError: If the remote path of a remote server is not absolute.
         """
         input_dict = dict()
 
@@ -222,7 +232,7 @@ class OrcaNEBAdapter(OrcaAdapter):
         input_dict['cpus'] = self.cpu_cores
         input_dict['charge'] = self.charge
         input_dict['multiplicity'] = self.multiplicity
-        input_dict['abs_path'] = self.local_path
+        input_dict['abs_path'] = self._get_abs_path()
 
         # NEB specific parameters
         neb_settings = orca_neb_settings.get('keyword', {})
@@ -246,6 +256,32 @@ class OrcaNEBAdapter(OrcaAdapter):
         # Render and write the NEB input file
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))
+
+    def _get_abs_path(self) -> str:
+        """
+        Determine the directory Orca will read the NEB endpoint files from.
+
+        A server that a run reaches here without an absolute path was not caught by
+        :func:`arc.common.check_remote_paths_of_path_naming_adapters`, which reports the same
+        condition at startup for every server this adapter is configured to run on. This is the
+        backstop for the paths that validation does not see, such as a job moved to another
+        server by troubleshooting, so it refuses rather than writing a deck Orca cannot follow.
+
+        Returns: str
+            ``self.remote_path`` for a remote server, ``self.local_path`` otherwise.
+
+        Raises:
+            SettingsError: If the server is remote and its remote path is not absolute.
+        """
+        if self.server is None or self.server.lower() == 'local':
+            return self.local_path
+        if not self.remote_path or not os.path.isabs(self.remote_path):
+            raise SettingsError(f'Cannot write an Orca NEB input file for server "{self.server}": '
+                                f'the remote path is {self.remote_path!r}, which is not absolute, '
+                                f'and Orca reads the NEB endpoint files after the submit script '
+                                f'changed into a scratch directory. Set an absolute "path" for this '
+                                f'server in the settings.')
+        return self.remote_path
 
     def set_files(self) -> None:
         """
@@ -318,7 +354,6 @@ class OrcaNEBAdapter(OrcaAdapter):
         Process a completed orca-NEB run.
         """
         tsg = TSGuess(method='orca_neb',
-                      index=len(self.reactions[0].ts_species.ts_guesses),
                       success=False,
                       t0=self.initial_time,
                       )
@@ -327,7 +362,7 @@ class OrcaNEBAdapter(OrcaAdapter):
             tsg.execution_time = self.final_time - self.initial_time
             tsg.log_path = self.local_path_to_output_file
             tsg.success = True
-        self.reactions[0].ts_species.ts_guesses.append(tsg)
+        self.reactions[0].ts_species.append_ts_guess(tsg)
 
     def write_submit_script(self) -> None:
         """

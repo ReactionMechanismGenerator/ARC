@@ -27,8 +27,9 @@ import numpy as np
 import pandas as pd
 
 # don't import any ARC module other than exceptions and imports, to avoid circular imports
-from arc.exceptions import InputError, SettingsError
+from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
+from arc.settings import external_paths
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom, Molecule
@@ -54,7 +55,6 @@ FULL_CIRCLE = 360.0
 HALF_CIRCLE = 180.0
 
 default_job_types, servers, supported_ess = settings['default_job_types'], settings['servers'], settings['supported_ess']
-
 
 def initialize_job_types(job_types: dict | None = None,
                          specific_job_type: str = '',
@@ -88,7 +88,7 @@ def initialize_job_types(job_types: dict | None = None,
             del job_types['fine_grid']
 
     defaults_to_true = ['conf_opt', 'fine', 'freq', 'irc', 'opt', 'rotors', 'sp']
-    defaults_to_false = ['conf_sp', 'bde', 'onedmin', 'orbitals']
+    defaults_to_false = ['conf_sp', 'bde', 'onedmin', 'orbitals', 'stability']
     if job_types is None:
         job_types = default_job_types
         logger.info("Job types were not specified, using ARC's defaults")
@@ -120,7 +120,9 @@ def initialize_job_types(job_types: dict | None = None,
     return job_types
 
 
-def check_ess_settings(ess_settings: dict | None = None) -> dict:
+def check_ess_settings(ess_settings: dict | None = None,
+                       ts_adapters: list[str] | None = None,
+                       ) -> dict:
     """
     A helper function to convert servers in the ess_settings dict to lists
     Assists in troubleshooting job and trying a different server
@@ -128,9 +130,15 @@ def check_ess_settings(ess_settings: dict | None = None) -> dict:
 
     Args:
         ess_settings (dict, optional): ARC's ESS settings dictionary.
+        ts_adapters (list, optional): The TS search adapters this run will use, used to check the
+                                      remote paths of the servers they will run on. ``None``
+                                      selects the default set from the settings.
 
     Returns: dict
         An updated ARC ESS dictionary.
+
+    Raises:
+        SettingsError: If an ESS, a server, or the remote path of a server is unusable.
     """
     if ess_settings is None or not ess_settings:
         return dict()
@@ -148,14 +156,59 @@ def check_ess_settings(ess_settings: dict | None = None) -> dict:
                                 f'strings. Got: {server_list} which is a {type(server_list)}')
     # run checks:
     for ess, server_list in settings_dict.items():
-        if ess.lower() not in supported_ess + ['gcn', 'heuristics', 'autotst', 'kinbot', 'xtb_gsm', 'orca_neb']:
+        if ess.lower() not in supported_ess + ['gcn', 'goflow', 'heuristics', 'autotst', 'kinbot', 'rits', 'xtb_gsm', 'orca_neb']:
             raise SettingsError(f'Recognized ESS software are {supported_ess}. Got: {ess}')
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in [s.lower() for s in servers.keys()]:
                 server_names = [name for name in servers.keys()]
                 raise SettingsError(f'Recognized servers are {server_names}. Got: {server}')
+    check_remote_paths_of_path_naming_adapters(ess_settings=settings_dict, ts_adapters=ts_adapters)
     logger.info(f'\nUsing the following ESS settings:\n{pprint.pformat(settings_dict)}\n')
     return settings_dict
+
+
+def check_remote_paths_of_path_naming_adapters(ess_settings: dict,
+                                               ts_adapters: list[str] | None = None,
+                                               ) -> None:
+    """
+    Check that every server an adapter which names a path on the server will run on has an
+    absolute ``path``.
+
+    Reported here, before any calculation is spawned, because the alternative is reaching it when
+    the first reaction gets to its TS search: the adapter cannot build a usable input file for
+    such a server, so the failure arrives once per run either way, and arriving at startup is the
+    difference between a settings error the reader can act on and a run that has already spent
+    time on jobs it will not be able to use.
+
+    A server that is not in the ``servers`` settings is not reported here, since
+    :func:`check_ess_settings` has already rejected it by name.
+
+    Args:
+        ess_settings (dict): ARC's ESS settings dictionary, each ESS mapped to a list of servers.
+        ts_adapters (list, optional): The TS search adapters this run will use. ``None`` selects
+                                      the default set from the settings.
+
+    Raises:
+        SettingsError: If such an adapter would run on a server whose ``path`` is missing or not
+                       absolute.
+    """
+    adapters = settings.get('ts_adapters', list()) if ts_adapters is None else ts_adapters
+    adapters = [adapter.lower() for adapter in adapters if isinstance(adapter, str)]
+    if 'orca_neb' not in adapters:
+        return
+    for server in ess_settings.get('orca', list()):
+        if not isinstance(server, str) or server.lower() == 'local':
+            continue
+        server_key = next((key for key in servers.keys() if key.lower() == server.lower()), None)
+        if server_key is None:
+            continue
+        path = servers[server_key].get('path')
+        if not path or not os.path.isabs(path):
+            raise SettingsError(f'Server "{server}" has no absolute "path" entry in the settings, '
+                                f'got {path!r}, but the "orca_neb" adapter will run on it and its '
+                                f'input file must name a path on the server. Set "path" for this '
+                                f'server to the absolute directory holding the user directories, '
+                                f'e.g. "/home", or remove "orca_neb" from "ts_adapters".')
 
 
 def initialize_log(log_file: str,
@@ -218,12 +271,37 @@ def initialize_log(log_file: str,
     warnings.filterwarnings(action='ignore', module='.*matplotlib.*')
     logging.captureWarnings(capture=False)
 
+    # Flush any import-time warnings that were queued before this file handler existed.
+    for msg in external_paths.drain_deferred_warnings():
+        logger.warning(msg)
+
 
 def get_logger():
     """
     Get the ARC logger (avoid having multiple entries of the logger).
     """
     return logger
+
+
+def get_memory_headroom_fraction(ess_trsh_methods: list[str] | None) -> float:
+    """
+    Determine the Gaussian %mem headroom fraction to use from accumulated ess_trsh_methods markers.
+
+    Args:
+        ess_trsh_methods (list[str] | None): The list of troubleshooting methods already attempted.
+
+    Returns:
+        float: The headroom fraction to use (the lowest of any `memory_headroom_<fraction>` markers
+               present, or the default first entry of `gaussian_memory_headroom_fractions` if none).
+    """
+    fractions = []
+    for method in ess_trsh_methods or list():
+        if method.startswith('memory_headroom_'):
+            try:
+                fractions.append(float(method.split('memory_headroom_')[1]))
+            except ValueError:
+                continue
+    return min(fractions) if fractions else settings['gaussian_memory_headroom_fractions'][0]
 
 
 def log_header(project: str,
@@ -327,6 +405,26 @@ def get_git_branch(path: str | None = None) -> str:
         return ''
 
 
+class ARCYAMLLoader(yaml.FullLoader):
+    """A YAML loader that does not coerce YAML 1.1 boolean aliases into booleans.
+
+    PyYAML implements YAML 1.1, in which ``yes``, ``no``, ``on``, and ``off`` (in any case) are
+    booleans just like ``true`` and ``false``. That silently turns a bare SMILES such as ``NO``
+    (hydroxylamine) or an element symbol such as ``No`` (nobelium) into ``False`` before ARC ever
+    sees it. Here only the YAML 1.2 spellings ``true`` and ``false`` resolve as booleans, and
+    every other alias loads as the string the user wrote.
+    """
+
+
+ARCYAMLLoader.yaml_implicit_resolvers = {
+    first_char: [(tag, regexp) for tag, regexp in resolvers if tag != 'tag:yaml.org,2002:bool']
+    for first_char, resolvers in yaml.FullLoader.yaml_implicit_resolvers.items()
+}
+ARCYAMLLoader.add_implicit_resolver('tag:yaml.org,2002:bool',
+                                    re.compile(r'^(?:true|True|TRUE|false|False|FALSE)$'),
+                                    list('tTfF'))
+
+
 def read_yaml_file(path: str,
                    project_directory: str | None = None,
                    ) -> dict | list:
@@ -348,7 +446,7 @@ def read_yaml_file(path: str,
     if not os.path.isfile(path):
         raise InputError(f'Could not find the YAML file {path}')
     with open(path, 'r') as f:
-        content = yaml.load(stream=f, Loader=yaml.FullLoader)
+        content = yaml.load(stream=f, Loader=ARCYAMLLoader)
     return content
 
 
@@ -379,7 +477,7 @@ def from_yaml(yaml_str: str) -> dict | list:
     Returns: dict | list
         The respective Python object.
     """
-    return yaml.load(stream=yaml_str, Loader=yaml.FullLoader)
+    return yaml.load(stream=yaml_str, Loader=ARCYAMLLoader)
 
 
 def to_yaml(py_content: list | dict) -> str:
@@ -464,8 +562,9 @@ def globalize_path(string: str,
 
 def delete_check_files(project_directory: str):
     """
-    Delete ESS checkfiles. They usually take up lots of space and are not needed after ARC terminates.
+    Delete local ESS checkfiles. They usually take up lots of space and are not needed after ARC terminates.
     Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
+    The remote counterpart of this function is ``arc.job.ssh.delete_check_files_on_servers()``.
 
     Args:
         project_directory (str): The path to the ARC project folder.
@@ -541,6 +640,58 @@ def read_element_dicts() -> tuple[dict, dict, dict, dict]:
     return symbol_by_number, number_by_symbol, mass_by_symbol, covalent_radii
 
 SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, COVALENT_RADII = read_element_dicts()
+
+
+def count_electrons(symbols: Sequence[str],
+                    charge: int = 0,
+                    label: str | None = None,
+                    ) -> int:
+    """
+    Count the number of electrons of a chemical composition.
+
+    Returns the sum of the atomic numbers of all atoms minus the net charge, so a cation has fewer
+    electrons than its neutral composition and an anion has more. With the default ``charge=0`` the
+    returned value is the neutral-composition electron count.
+
+    Args:
+        symbols (Sequence[str]): The atomic symbols of the composition.
+        charge (int, optional): The net charge of the species.
+        label (str, optional): A species label to mention in an error message, if available.
+
+    Returns:
+        int: The number of electrons.
+
+    Raises:
+        SpeciesError: If an atomic symbol is not a recognized element symbol.
+    """
+    of_species = f' of species {label}' if label is not None else ''
+    electrons = 0
+    for symbol in symbols:
+        if symbol not in NUMBER_BY_SYMBOL:
+            raise SpeciesError(f'Could not identify atom symbol {symbol}{of_species}.')
+        electrons += NUMBER_BY_SYMBOL[symbol]
+    return electrons - charge
+
+
+def is_multiplicity_parity_valid(n_electrons: int,
+                                 multiplicity: int,
+                                 ) -> bool:
+    """
+    Check whether a spin multiplicity is consistent with a number of electrons.
+
+    ``n_electrons`` and ``multiplicity - 1`` must have the same parity, since each unpaired electron
+    contributes 1 to ``multiplicity - 1`` and the remaining electrons are paired. An even number of
+    electrons therefore requires an odd multiplicity, and an odd number requires an even one.
+
+    Args:
+        n_electrons (int): The number of electrons of the species, net charge included
+                           (as returned by :func:`count_electrons`).
+        multiplicity (int): The spin multiplicity (2S+1).
+
+    Returns:
+        bool: Whether the multiplicity is consistent with the electron count.
+    """
+    return n_electrons % 2 == (multiplicity - 1) % 2
 
 
 def get_atom_radius(symbol: str) -> float | None:
@@ -1420,8 +1571,8 @@ def distance_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     if a.shape[1] != b.shape[1]:
         raise ValueError(f"Inner dimensions must match. Got {a.shape[1]}D and {b.shape[1]}D")
     diff = a[:, np.newaxis, :] - b[np.newaxis, :, :]
-    sq_diff = diff ** 2
-    return np.sqrt(np.sum(sq_diff, axis=-1))
+    np.square(diff, out=diff)
+    return np.sqrt(np.sum(diff, axis=-1))
 
 
 def get_ordered_intersection_of_two_lists(l1: list,
@@ -1516,20 +1667,22 @@ def is_xyz_linear(xyz: dict | None) -> bool | None:
     return True
 
 
-def get_angle_in_180_range(angle: float,
+def get_angle_in_180_range(angle: int | float | str,
                            round_to: int | None = 2,
                            ) -> float:
     """
     Get the corresponding angle in the -180 to +180 degree range, [-180, 180)
 
     Args:
-        angle (float): An angle in degrees.
+        angle (int | float | str): An angle in degrees. Accepts a string too, since the Scheduler
+                                   stores rotor dihedrals as ':.2f' strings for YAML restart serialization.
         round_to (int, optional): The number of decimal figures to round the result to.
                                   ``None`` to not round. Default: 2.
 
     Returns:
         float: The corresponding angle in the -180 to +180 degree range.
     """
+    angle = float(angle)
     wrapped = (angle + HALF_CIRCLE) % FULL_CIRCLE - HALF_CIRCLE
     return round(wrapped, round_to) if round_to is not None else wrapped
 

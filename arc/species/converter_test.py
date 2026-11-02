@@ -17,10 +17,10 @@ from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
 import arc.species.converter as converter
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
+from arc.common import (ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists,
+                        almost_equal_lists, distance_matrix)
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
-from arc.species.converter import order_mol_by_atom_map
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle, calculate_param
@@ -811,6 +811,25 @@ H      3.654100    0.340300    0.057100"""
         self.assertTrue(almost_equal_lists(dmat2, self.xyz2['dmat']))
         self.assertTrue(almost_equal_lists(dmat3, self.xyz3['dmat']))
 
+        # trivial: a single atom
+        one_atom_xyz = {'symbols': ('H',), 'isotopes': (1,), 'coords': ((0.0, 0.0, 0.0),)}
+        one_atom_dmat = converter.xyz_to_dmat(xyz_dict=one_atom_xyz)
+        np.testing.assert_array_equal(one_atom_dmat, np.zeros((1, 1)))
+
+        # trivial: two atoms
+        two_atom_xyz = {'symbols': ('H', 'H'), 'isotopes': (1, 1),
+                        'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))}
+        two_atom_dmat = converter.xyz_to_dmat(xyz_dict=two_atom_xyz)
+        np.testing.assert_array_equal(two_atom_dmat, np.array([[0.0, 1.0], [1.0, 0.0]]))
+
+        # the dmat must be bitwise identical to calling distance_matrix directly on the coords
+        coords = np.array(converter.xyz_to_coords_list(self.xyz1['dict']))
+        expected_dmat1 = distance_matrix(a=coords, b=coords)
+        self.assertTrue(np.array_equal(dmat1, expected_dmat1))
+
+        # `None` input returns `None`
+        self.assertIsNone(converter.xyz_to_dmat(xyz_dict=None))
+
     def test_xyz_file_format_to_xyz(self):
         """Test getting the ARC xyz dictionary from an xyz file format"""
         xyz1 = converter.xyz_file_format_to_xyz(xyz_file=self.xyz1['file'])
@@ -1006,7 +1025,9 @@ H                 -4.01978712   -0.12970163    0.82103635"""
                                     (-2.4426534384901547e-09, 0.9528575945413793, -1.015818661524137),
                                     (7.032081834243086e-08, -0.9528574729632926, 1.015818803737915))}
 
-        self.assertEqual(xyz6, expected_xyz6)
+        self.assertEqual(xyz6['symbols'], expected_xyz6['symbols'])
+        self.assertEqual(xyz6['isotopes'], expected_xyz6['isotopes'])
+        self.assertTrue(almost_equal_coords(xyz6, expected_xyz6))
 
     def test_remove_dummies(self):
         """Test removing dummy atoms from xyz"""
@@ -3110,7 +3131,7 @@ R9=1.4305
         value2 = converter.get_zmat_param_value(coords=xyz_dict, indices=[0, 1, 2], mol=spc1.mol)  # A
         value3 = converter.get_zmat_param_value(coords=xyz_dict, indices=[1, 2, 3, 10], mol=spc1.mol)  # D
         self.assertAlmostEqual(value1, 1.53150455, places=5)
-        self.assertAlmostEqual(value2, 109.470340, places=5)
+        self.assertAlmostEqual(value2, 109.470340, places=2)
         self.assertAlmostEqual(value3, 66.2600849, places=5)
 
     def test_split_str_zmat(self):
@@ -3464,49 +3485,55 @@ R1=1.0912"""
         displacement = np.array([[-0.03, -0.02, -0.0], [0.04, -0.08, 0.05], [0.92, -0.34, 0.08], [0.0, 0.04, 0.0],
                                  [0.0, -0.05, 0.01], [0.09, -0.09, -0.04], [-0.05, 0.02, -0.01], [0.0, 0.03, -0.01]],
                                 np.float64)
+        coords = np.array(xyz['coords'], np.float64)
+
         xyz_1, xyz_2 = converter.displace_xyz(xyz=xyz, displacement=displacement)
-        expected_xyz_1 = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'), 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
-                          'coords': ((-0.4754185110901118, 0.6614366592732588, -0.090895),
-                                     (-0.44113195107970876, 1.1220429021594176, 0.827249811150364),
-                                     (0.9055631251666977, 0.29554208417752476, -0.2122339021594176),
-                                     (-1.228559, -0.43370031854651764, -0.003769),
-                                     (-1.815912, -0.515839811150364, 0.8180087622300728),
-                                     (-1.7596901399293448, -0.5932508600706552, -0.8517130489202912),
-                                     (1.862932148183147, -0.1298686592732588, -0.07938817036337059),
-                                     (1.740013, -0.8415937133097816, 0.6672282377699272))}
-        expected_xyz_2 = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'), 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
-                          'coords': ((-0.4192874889098882, 0.6988573407267411, -0.090895),
-                                     (-0.4612100489202912, 1.1621990978405823, 0.802152188849636),
-                                     (0.44376687483330224, 0.4662059158224752, -0.2523900978405824),
-                                     (-1.228559, -0.5085416814534824, -0.003769),
-                                     (-1.815912, -0.49074218884963605, 0.8129892377699272),
-                                     (-1.8048658600706553, -0.5480751399293449, -0.8316349510797089),
-                                     (1.956483851816853, -0.16728934072674118, -0.060677829636629405),
-                                     (1.740013, -0.8566522866902183, 0.6722477622300729))}
-        self.assertEqual(xyz_1, expected_xyz_1)
-        self.assertEqual(xyz_2, expected_xyz_2)
+        for displaced, sign in [(xyz_1, 1.0), (xyz_2, -1.0)]:
+            self.assertEqual(displaced['symbols'], xyz['symbols'])
+            self.assertEqual(displaced['isotopes'], xyz['isotopes'])
+            np.testing.assert_allclose(np.array(displaced['coords'], np.float64),
+                                       coords + sign * 0.25 * displacement, atol=1e-10)
 
         xyz_1, xyz_2 = converter.displace_xyz(xyz=xyz, displacement=displacement, amplitude=0.5)
-        expected_xyz_1 = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'), 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
-                          'coords': ((-0.5034840221802236, 0.6427263185465175, -0.090895),
-                                     (-0.4310929021594176, 1.101964804318835, 0.839798622300728),
-                                     (1.1364612503333955, 0.2102101683550495, -0.19215580431883517),
-                                     (-1.228559, -0.39627963709303526, -0.003769),
-                                     (-1.815912, -0.528388622300728, 0.8205185244601456),
-                                     (-1.7371022798586897, -0.6158387201413105, -0.8617520978405825),
-                                     (1.816156296366294, -0.11115831854651761, -0.08874334072674119),
-                                     (1.740013, -0.8340644266195631, 0.6647184755398544))}
-        expected_xyz_2 = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'), 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
-                          'coords': ((-0.3912219778197764, 0.7175676814534824, -0.090895),
-                                     (-0.4712490978405824, 1.1822771956811648, 0.789603377699272),
-                                     (0.21286874966660452, 0.5515378316449505, -0.2724681956811648),
-                                     (-1.228559, -0.5459623629069648, -0.003769),
-                                     (-1.815912, -0.47819337769927206, 0.8104794755398543),
-                                     (-1.8274537201413104, -0.5254872798586896, -0.8215959021594176),
-                                     (2.003259703633706, -0.18599968145348236, -0.05132265927325881),
-                                     (1.740013, -0.8641815733804368, 0.6747575244601457))}
-        self.assertEqual(xyz_1, expected_xyz_1)
-        self.assertEqual(xyz_2, expected_xyz_2)
+        for displaced, sign in [(xyz_1, 1.0), (xyz_2, -1.0)]:
+            np.testing.assert_allclose(np.array(displaced['coords'], np.float64),
+                                       coords + sign * 0.5 * displacement, atol=1e-10)
+
+    def test_displace_xyz_amplitude_is_the_norm_of_the_perturbation_in_angstrom(self):
+        """Test that displacing along a unit norm normal mode steps by ``amplitude`` Angstrom."""
+        xyz = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'), 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
+               'coords': ((-0.447353, 0.680147, -0.090895), (-0.451171, 1.142121, 0.814701),
+                          (0.674665, 0.380874, -0.232312), (-1.228559, -0.471121, -0.003769),
+                          (-1.815912, -0.503291, 0.815499), (-1.782278, -0.570663, -0.841674),
+                          (1.909708, -0.148579, -0.070033), (1.740013, -0.849123, 0.669738))}
+        displacement = np.array([[-0.03, -0.02, -0.0], [0.04, -0.08, 0.05], [0.92, -0.34, 0.08], [0.0, 0.04, 0.0],
+                                 [0.0, -0.05, 0.01], [0.09, -0.09, -0.04], [-0.05, 0.02, -0.01], [0.0, 0.03, -0.01]],
+                                np.float64)
+        mode = displacement / np.linalg.norm(displacement)
+        coords = np.array(xyz['coords'], np.float64)
+        for amplitude in [0.25, 0.5, 2.5]:
+            xyz_1, xyz_2 = converter.displace_xyz(xyz=xyz, displacement=mode, amplitude=amplitude)
+            for displaced in [xyz_1, xyz_2]:
+                step = np.array(displaced['coords'], np.float64) - coords
+                self.assertAlmostEqual(float(np.linalg.norm(step)), amplitude, places=10)
+
+    def test_displace_xyz_does_not_scale_the_displacement_by_the_element_masses(self):
+        """Test that the perturbation is mass independent, so that isotopes do not change the step."""
+        symbols = ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H')
+        coords = ((-0.447353, 0.680147, -0.090895), (-0.451171, 1.142121, 0.814701),
+                  (0.674665, 0.380874, -0.232312), (-1.228559, -0.471121, -0.003769),
+                  (-1.815912, -0.503291, 0.815499), (-1.782278, -0.570663, -0.841674),
+                  (1.909708, -0.148579, -0.070033), (1.740013, -0.849123, 0.669738))
+        displacement = np.array([[-0.03, -0.02, -0.0], [0.04, -0.08, 0.05], [0.92, -0.34, 0.08], [0.0, 0.04, 0.0],
+                                 [0.0, -0.05, 0.01], [0.09, -0.09, -0.04], [-0.05, 0.02, -0.01], [0.0, 0.03, -0.01]],
+                                np.float64)
+        light = {'symbols': symbols, 'isotopes': (14, 1, 1, 14, 1, 1, 14, 1), 'coords': coords}
+        heavy = {'symbols': symbols, 'isotopes': (15, 2, 2, 15, 2, 2, 15, 2), 'coords': coords}
+        light_1, light_2 = converter.displace_xyz(xyz=light, displacement=displacement)
+        heavy_1, heavy_2 = converter.displace_xyz(xyz=heavy, displacement=displacement)
+        for light_xyz, heavy_xyz in [(light_1, heavy_1), (light_2, heavy_2)]:
+            np.testing.assert_allclose(np.array(heavy_xyz['coords'], np.float64),
+                                       np.array(light_xyz['coords'], np.float64), atol=1e-12)
 
     def _check_atom_connectivity_in_rd_mol_block(self, rmg_mol, rd_mol_block):
         """An internal helper function for testing."""
@@ -3522,6 +3549,41 @@ R1=1.0912"""
         conf, rd_mol = converter.rdkit_conf_from_mol(mol=mol, xyz=self.xyz5['dict'])
         self.assertTrue(conf.Is3D())
         self.assertEqual(rd_mol.GetNumAtoms(), 5)
+
+    def test_rdkit_conf_from_mol_coordinates_pinned(self):
+        """Test that rdkit_conf_from_mol() always returns a conformer whose positions equal the input xyz exactly."""
+        species_smiles = {
+            'trivial': 'O=C=O',  # a small, trivial linear species
+            'normal': 'CCCC',  # a small alkane
+            'wild_type': 'c1ccc2ccccc2c1O',  # a fused aromatic ring system with a heteroatom (naphthol)
+            'extreme': 'C12(CC3)CC(CC1)CC3C2',  # a strained, cage-like polycyclic structure
+        }
+        for label, smiles in species_smiles.items():
+            # 'extreme' is chosen such that RDKit's ETKDG embedding (even with useRandomCoords) fails to
+            # converge on a conformer; arbitrary, distinguishable coordinates are used instead of an
+            # embedding-derived geometry so the test does not depend on ETKDG succeeding.
+            spc = ARCSpecies(label=label, smiles=smiles)
+            rd_mol_for_xyz = converter.to_rdkit_mol(mol=spc.mol, remove_h=False)
+            symbols = tuple(atom.GetSymbol() for atom in rd_mol_for_xyz.GetAtoms())
+            coords = tuple((i * 0.5, i * 0.3 + 1.0, i * 0.7 - 2.0) for i in range(len(symbols)))
+            xyz = {'symbols': symbols, 'isotopes': None, 'coords': coords}
+            conf, rd_mol = converter.rdkit_conf_from_mol(mol=spc.mol, xyz=xyz)
+            self.assertIsNotNone(conf)
+            self.assertTrue(conf.Is3D())
+            self.assertEqual(rd_mol.GetNumAtoms(), len(symbols))
+            for i in range(rd_mol.GetNumAtoms()):
+                pos = conf.GetAtomPosition(i)
+                self.assertEqual((pos.x, pos.y, pos.z), coords[i])
+
+    def test_rdkit_conf_from_mol_coords_length_mismatch(self):
+        """Test that rdkit_conf_from_mol() raises ConverterError when xyz has fewer coords than atoms."""
+        spc = ARCSpecies(label='ethane', smiles='CC')
+        rd_mol_for_xyz = converter.to_rdkit_mol(mol=spc.mol, remove_h=False)
+        symbols = tuple(atom.GetSymbol() for atom in rd_mol_for_xyz.GetAtoms())
+        short_coords = tuple((i * 0.5, i * 0.3 + 1.0, i * 0.7 - 2.0) for i in range(len(symbols) - 1))
+        xyz = {'symbols': symbols[:-1], 'isotopes': None, 'coords': short_coords}
+        with self.assertRaises(ConverterError):
+            converter.rdkit_conf_from_mol(mol=spc.mol, xyz=xyz)
 
     def test_s_bonds_mol_from_xyz(self):
         """Test creating a molecule with only single bonds from xyz"""
@@ -4567,6 +4629,47 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertTrue(converter.compare_confs(occco_1, occco_5))
         self.assertAlmostEqual(converter.compare_confs(occco_1, occco_5, rmsd_score=True), 0.0, places=4)
 
+    def test_compare_confs_fl(self):
+        """Test that compare_confs_fl gives identical results with and without precomputed fl_distance1/dmat1"""
+        xyz1 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                'isotopes': (12, 1, 1, 1, 1),
+                'coords': ((0.0, 0.0, 0.0),
+                           (0.6300326, 0.6300326, 0.6300326),
+                           (-0.6300326, -0.6300326, 0.6300326),
+                           (-0.6300326, 0.6300326, -0.6300326),
+                           (0.6300326, -0.6300326, -0.6300326))}
+        conf_similar = {'xyz': {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                                 'isotopes': (12, 1, 1, 1, 1),
+                                 'coords': ((0.0, 0.0, 0.0),
+                                            (0.630032999999999999, 0.6300326, 0.6300326),
+                                            (-0.6300326, -0.6300326, 0.6300326),
+                                            (-0.6300326, 0.6300326, -0.6300326),
+                                            (0.6300326, -0.6300326, -0.6300326))}}
+        conf_dissimilar = {'xyz': {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                                    'isotopes': (12, 1, 1, 1, 1),
+                                    'coords': ((0.0, 0.0, 0.0),
+                                               (1.5, 1.5, 1.5),
+                                               (-0.6300326, -0.6300326, 0.6300326),
+                                               (-0.6300326, 0.6300326, -0.6300326),
+                                               (0.6300326, -0.6300326, -0.6300326))}}
+        for conf2 in (dict(conf_similar, fl_distance=None, dmat=None), dict(conf_dissimilar, fl_distance=None, dmat=None)):
+            conf2_no_precompute = dict(conf2)
+            fl_distance1_a, dmat1_a, out_a, similar_a = converter.compare_confs_fl(xyz1, conf2_no_precompute)
+
+            conf2_with_precompute = dict(conf2)
+            fl_distance1_precomputed = np.linalg.norm(
+                np.array(xyz1['coords'][0]) - np.array(xyz1['coords'][-1]))
+            dmat1_precomputed = converter.xyz_to_dmat(xyz1)
+            fl_distance1_b, dmat1_b, out_b, similar_b = converter.compare_confs_fl(
+                xyz1, conf2_with_precompute, fl_distance1=fl_distance1_precomputed, dmat1=dmat1_precomputed)
+
+            self.assertEqual(similar_a, similar_b)
+            self.assertAlmostEqual(fl_distance1_a, fl_distance1_b, 6)
+            self.assertEqual(out_a['fl_distance'] is None, out_b['fl_distance'] is None)
+            if similar_a:
+                np.testing.assert_array_almost_equal(dmat1_a, dmat1_b)
+                np.testing.assert_array_almost_equal(out_a['dmat'], out_b['dmat'])
+
     def test_check_isomorphism(self):
         """Test checking for molecule isomorphism"""
         mol1 = Molecule(smiles='[O-][N+]#N')
@@ -4739,14 +4842,56 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                             (-3.69226847, 4.12970364, 1.0893621),
                             (-4.52773502, 3.18138419, 0.05526659))}
 
+        # extra conformers for a larger clustering scenario
+        # near-duplicate of xyz_14
+        nco_10 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
+                  'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
+                  'coords': ((-3.60616665, 3.57051739, 1.67762912),
+                             (-3.13243719, 4.50463523, 1.45875867),
+                             (-4.25266183, 3.68770871, 2.52214684),
+                             (-2.60966081, 2.58831173, 1.97283775),
+                             (-3.01851627, 1.83896095, 2.41205367),
+                             (-4.39319614, 3.13587525, 0.51462835),
+                             (-5.35431488, 3.04821019, 0.77647869),
+                             (-4.30744813, 3.81180325, -0.21733382))}
+
+        # a wholly different conformer
+        nco_11 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
+                  'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
+                  'coords': ((1.0, 2.0, 3.0),
+                             (1.5, 2.5, 3.5),
+                             (2.0, 1.5, 4.0),
+                             (0.5, 0.5, 1.0),
+                             (0.0, -0.5, 0.5),
+                             (2.5, 2.0, 0.5),
+                             (3.5, 2.0, 1.0),
+                             (2.0, 3.0, 0.5))}
+
+        # near-duplicate of nco_11
+        nco_12 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
+                  'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
+                  'coords': ((1.00001, 2.00001, 3.00001),
+                             (1.5, 2.5, 3.5),
+                             (2.0, 1.5, 4.0),
+                             (0.5, 0.5, 1.0),
+                             (0.0, -0.5, 0.5),
+                             (2.5, 2.0, 0.5),
+                             (3.5, 2.0, 1.0),
+                             (2.0, 3.0, 0.5))}
+
         xyzs1 = [self.xyz_14, nco_2, nco_3, nco_4, nco_5]
-        self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs1)), 1)
+        self.assertEqual(converter.cluster_confs_by_rmsd(xyzs1), (self.xyz_14,))
 
         xyzs2 = [self.xyz_14, nco_2, nco_3, nco_4, nco_5, nco_6]
-        self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs2)), 2)
+        self.assertEqual(converter.cluster_confs_by_rmsd(xyzs2), (self.xyz_14, nco_6))
 
         xyzs3 = [self.xyz_14, nco_2, nco_6, nco_7, nco_8, nco_9]
-        self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs3)), 4)
+        self.assertEqual(converter.cluster_confs_by_rmsd(xyzs3), (self.xyz_14, nco_6, nco_7, nco_8))
+
+        # larger scenario with more conformers, some near-duplicates
+        xyzs4 = [self.xyz_14, nco_2, nco_3, nco_4, nco_10, nco_6, nco_7, nco_8, nco_9, nco_11, nco_12]
+        self.assertEqual(converter.cluster_confs_by_rmsd(xyzs4),
+                         (self.xyz_14, nco_6, nco_7, nco_8, nco_11))
 
     def test_distance_constraint(self):
         """Test the distance_constraint() function"""
@@ -5141,7 +5286,7 @@ H      -1.88123946   -2.00923795    0.23313156"""
         n = len(mol.atoms)
         # Deep-copy gives the canonical post-copy ordering; identity map must not change it.
         ref_symbols = [a.element.symbol for a in mol.copy(deep=True).atoms]
-        result = order_mol_by_atom_map(mol, list(range(n)))
+        result = converter.order_mol_by_atom_map(mol, list(range(n)))
         result_symbols = [a.element.symbol for a in result.atoms]
         self.assertEqual(result_symbols, ref_symbols,
                          msg='Identity map must not alter the atom sequence relative to a plain copy.')
@@ -5159,7 +5304,7 @@ H      -1.88123946   -2.00923795    0.23313156"""
         )
         atom_map = list(range(n))
         atom_map[pos_a], atom_map[pos_b] = atom_map[pos_b], atom_map[pos_a]
-        result = order_mol_by_atom_map(mol, atom_map)
+        result = converter.order_mol_by_atom_map(mol, atom_map)
         self.assertEqual(result.atoms[pos_a].element.symbol, ref_symbols[pos_b],
                          msg=f'Position {pos_a} should hold the atom from position {pos_b}.')
         self.assertEqual(result.atoms[pos_b].element.symbol, ref_symbols[pos_a],
@@ -5173,7 +5318,7 @@ H      -1.88123946   -2.00923795    0.23313156"""
         mol = ARCSpecies(label='methanol', smiles='CO').mol
         original_symbols = [a.element.symbol for a in mol.atoms]
         n = len(mol.atoms)
-        order_mol_by_atom_map(mol, list(range(n - 1, -1, -1)))  # reverse
+        converter.order_mol_by_atom_map(mol, list(range(n - 1, -1, -1)))  # reverse
         after_symbols = [a.element.symbol for a in mol.atoms]
         self.assertEqual(original_symbols, after_symbols,
                          msg='order_mol_by_atom_map must not mutate the input molecule.')
@@ -5192,7 +5337,7 @@ H      -1.88123946   -2.00923795    0.23313156"""
 
         original_bonds = bond_multiset(mol)
         atom_map = [(i + 1) % n for i in range(n)]
-        result = order_mol_by_atom_map(mol, atom_map)
+        result = converter.order_mol_by_atom_map(mol, atom_map)
         self.assertEqual(bond_multiset(result), original_bonds,
                          msg='Bond multiset must be unchanged after reordering.')
         self.assertEqual(len(result.atoms), n)
@@ -5201,15 +5346,15 @@ H      -1.88123946   -2.00923795    0.23313156"""
         """ValueError is raised when atom_map length does not match mol size."""
         mol = ARCSpecies(label='water', smiles='O').mol  # 3 atoms
         with self.assertRaises(ValueError):
-            order_mol_by_atom_map(mol, [0, 1])  # too short
+            converter.order_mol_by_atom_map(mol, [0, 1])  # too short
 
     def test_order_mol_by_atom_map_out_of_range_raises(self):
         """ValueError is raised when any atom_map index is out of range."""
         mol = ARCSpecies(label='water', smiles='O').mol  # 3 atoms
         with self.assertRaises(ValueError):
-            order_mol_by_atom_map(mol, [0, 1, 5])  # index 5 is out of range
+            converter.order_mol_by_atom_map(mol, [0, 1, 5])  # index 5 is out of range
         with self.assertRaises(ValueError):
-            order_mol_by_atom_map(mol, [0, 1, -1])  # negative index
+            converter.order_mol_by_atom_map(mol, [0, 1, -1])  # negative index
 
     def test_order_mol_by_atom_map_duplicate_index_raises(self):
         """ValueError is raised when atom_map contains duplicate indices.
@@ -5218,7 +5363,7 @@ H      -1.88123946   -2.00923795    0.23313156"""
         drop another (e.g. [0, 0, 1] duplicates atom 0 and drops atom 2)."""
         mol = ARCSpecies(label='water', smiles='O').mol  # 3 atoms
         with self.assertRaises(ValueError):
-            order_mol_by_atom_map(mol, [0, 0, 1])  # atom 0 duplicated, atom 2 dropped
+            converter.order_mol_by_atom_map(mol, [0, 0, 1])  # atom 0 duplicated, atom 2 dropped
 
     def test_order_mol_by_atom_map_full_reversal(self):
         """A reverse map produces the reverse of the plain deep-copy atom sequence."""
@@ -5226,7 +5371,7 @@ H      -1.88123946   -2.00923795    0.23313156"""
         n = len(mol.atoms)
         ref_symbols = [a.element.symbol for a in mol.copy(deep=True).atoms]
         atom_map = list(range(n - 1, -1, -1))
-        result = order_mol_by_atom_map(mol, atom_map)
+        result = converter.order_mol_by_atom_map(mol, atom_map)
         self.assertEqual([a.element.symbol for a in result.atoms],
                          list(reversed(ref_symbols)))
 

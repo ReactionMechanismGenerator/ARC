@@ -7,12 +7,112 @@ This module contains unit tests for the plotter functions
 
 import os
 import shutil
+import subprocess
+import tempfile
 import unittest
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file, safe_copy_file
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
+
+
+OH_ADJLIST = """1 O u1 p2 c0 {2,S}
+2 H u0 p0 c0 {1,S}"""
+
+OH_NASA = ("NASA(polynomials=[NASAPolynomial(coeffs=[3.49683, 0.000188285, -1.03135e-06, 1.63951e-09, "
+           "-6.45157e-13, 2675.74, 1.48391], Tmin=(10,'K'), Tmax=(974.045,'K')), "
+           "NASAPolynomial(coeffs=[3.44056, -0.000267412, 7.28022e-07, -2.88523e-10, 3.54839e-14, 2719.28, "
+           "1.92114], Tmin=(974.045,'K'), Tmax=(3000,'K'))], Tmin=(10,'K'), Tmax=(3000,'K'))")
+
+
+def _rmg_env_available() -> bool:
+    """Check whether the rmg_env conda environment is available."""
+    try:
+        result = subprocess.run(['conda', 'run', '-n', 'rmg_env', 'python', '-c', 'import rmgpy'],
+                                capture_output=True, timeout=60)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+RMG_ENV = _rmg_env_available()
+
+
+def _make_oh_species(label: str) -> ARCSpecies:
+    """Return an OH ARCSpecies carrying enough computed thermo to be written to a library."""
+    spc = ARCSpecies(label=label, smiles='[OH]', multiplicity=2)
+    spc.final_xyz = str_to_xyz("""O 0.0 0.0 0.0\nH 0.0 0.0 0.97""")
+    spc.external_symmetry, spc.optical_isomers = 1, 1
+    spc.thermo.data = OH_NASA
+    spc.thermo.H298, spc.thermo.S298 = 30.93, 178.17
+    return spc
+
+
+class TestSaveThermoLibDuplicates(unittest.TestCase):
+    """
+    A reaction whose two reactants are the same species reaches save_thermo_lib as two separately
+    labeled entries with identical adjacency lists. RMG refuses to load a library containing both.
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp(prefix='test_thermo_lib_')
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+
+    def _lib_path(self, name='aa_project'):
+        return os.path.join(self.tmp_dir, 'thermo', f'{name}.py')
+
+    def test_identical_species_written_once(self):
+        """The A+A duplicate is omitted from the library; the distinct species are both kept."""
+        r1, r2 = _make_oh_species('R1'), _make_oh_species('R2')
+        p1 = ARCSpecies(label='P1', smiles='O', multiplicity=1)
+        p1.final_xyz = str_to_xyz("""O 0.0 0.0 0.0\nH 0.0 0.0 0.96\nH 0.93 0.0 -0.24""")
+        p1.external_symmetry, p1.optical_isomers = 2, 1
+        p1.thermo.data = OH_NASA
+        p1.thermo.H298, p1.thermo.S298 = -240.63, 188.62
+        plotter.save_thermo_lib([r1, r2, p1], path=self.tmp_dir, name='aa_project', lib_long_desc='test')
+        with open(self._lib_path(), 'r') as f:
+            content = f.read()
+        self.assertIn('label = "R1"', content)
+        self.assertNotIn('label = "R2"', content)
+        self.assertIn('label = "P1"', content)
+        self.assertEqual(content.count('entry('), 2)
+
+    def test_distinct_species_all_written(self):
+        """Regression: species that are not duplicates are all written."""
+        a = _make_oh_species('A')
+        b = ARCSpecies(label='B', smiles='O', multiplicity=1)
+        b.final_xyz = str_to_xyz("""O 0.0 0.0 0.0\nH 0.0 0.0 0.96\nH 0.93 0.0 -0.24""")
+        b.external_symmetry, b.optical_isomers = 2, 1
+        b.thermo.data = OH_NASA
+        b.thermo.H298, b.thermo.S298 = -240.63, 188.62
+        plotter.save_thermo_lib([a, b], path=self.tmp_dir, name='distinct', lib_long_desc='test')
+        with open(self._lib_path('distinct'), 'r') as f:
+            content = f.read()
+        self.assertEqual(content.count('entry('), 2)
+        self.assertIn('label = "A"', content)
+        self.assertIn('label = "B"', content)
+
+    @unittest.skipUnless(RMG_ENV, 'rmg_env not available')
+    def test_generated_library_loads_in_rmg(self):
+        """The generated library must actually load with RMG, not merely look right."""
+        r1, r2 = _make_oh_species('R1'), _make_oh_species('R2')
+        plotter.save_thermo_lib([r1, r2], path=self.tmp_dir, name='aa_project', lib_long_desc='test')
+        loader = os.path.join(self.tmp_dir, 'load_lib.py')
+        with open(loader, 'w') as f:
+            f.write('import sys\n'
+                    'from rmgpy.data.thermo import ThermoLibrary\n'
+                    'from rmgpy.thermo import NASA, NASAPolynomial, ThermoData, Wilhoit\n'
+                    'local_context = {"ThermoData": ThermoData, "Wilhoit": Wilhoit,\n'
+                    '                 "NASAPolynomial": NASAPolynomial, "NASA": NASA}\n'
+                    'lib = ThermoLibrary()\n'
+                    f'lib.load({self._lib_path()!r}, local_context, {{}})\n'
+                    'sys.stdout.write("LOADED %d\\n" % len(lib.entries))\n')
+        result = subprocess.run(['conda', 'run', '-n', 'rmg_env', 'python', loader],
+                                capture_output=True, text=True, timeout=300)
+        self.assertEqual(result.returncode, 0,
+                         f'RMG could not load the generated thermo library:\n{result.stdout}\n{result.stderr}')
+        self.assertIn('LOADED 1', result.stdout)
 
 
 class TestPlotter(unittest.TestCase):

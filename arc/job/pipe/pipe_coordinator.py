@@ -12,10 +12,16 @@ import os
 import time
 from typing import TYPE_CHECKING
 
+import arc.parser.parser as parser
 from arc.common import get_logger
 from arc.imports import settings
+from arc.job.adapters.common import resolve_job_server
+from arc.level import Level
 
-from arc.job.pipe.pipe_run import PipeRun, ingest_completed_task
+from arc.job.pipe.pipe_run import (
+    PipeRun, check_ess_convergence, find_output_file, get_task_attempt_dir,
+    ingest_completed_task,
+)
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
     TaskStateRecord, read_task_state,
@@ -28,10 +34,38 @@ logger = get_logger()
 
 pipe_settings = settings['pipe_settings']
 
+SPECIES_LEAF_FAMILIES = ('species_sp', 'species_freq')
+
+
+class PipedJobView:
+    """
+    A minimal job-like view of a completed pipe task.
+
+    ``Scheduler.post_freq_actions()`` and the checks it calls read only
+    ``local_path_to_output_file`` from the job they are handed, so a piped task can be validated
+    by the very same code path as an individually submitted job without materializing a full
+    ``JobAdapter``. ``level`` and ``job_status`` are provided so the view stays usable if those
+    checks grow to consult them. Job-resubmitting troubleshooting is not reachable through this
+    view, which is why ``post_freq_actions()`` and not ``check_freq_job()`` is the shared entry
+    point: the former is the whole success path, the latter also owns the failure path.
+
+    Args:
+        output_file (str): Path to the task's canonical output file.
+        level (Level, optional): The level of theory the task ran at.
+    """
+
+    def __init__(self, output_file: str, level: Level | None = None):
+        self.local_path_to_output_file = output_file
+        self.level = level
+        self.job_status = ['done', {'status': 'done'}]
+
 
 class PipeCoordinator:
     """
     Manages the lifecycle of active pipe runs for a Scheduler instance.
+
+    ``active_pipes`` is keyed by each run's ``pipe_root``, which is unique per batch, so several
+    concurrently active runs may share one logical ``run_id``.
 
     Owns:
       - pipe eligibility checks
@@ -57,7 +91,9 @@ class PipeCoordinator:
         Returns ``True`` only if:
           1. Pipe mode is enabled.
           2. There are at least ``min_tasks`` tasks.
-          3. All tasks are homogeneous in engine, task_family, owner_type,
+          3. The tasks' server resolves to this machine
+             (:meth:`_pipe_server_is_this_machine`).
+          4. All tasks are homogeneous in engine, task_family, owner_type,
              level, required_cores, and required_memory_mb.
         """
         if not pipe_settings.get('enabled', True):
@@ -67,6 +103,8 @@ class PipeCoordinator:
         min_tasks = pipe_settings.get('min_tasks', 10)
         if len(tasks) < min_tasks:
             return False
+        if not self._pipe_server_is_this_machine(tasks[0]):
+            return False
         ref = tasks[0]
         return all(t.engine == ref.engine
                    and t.task_family == ref.task_family
@@ -75,6 +113,65 @@ class PipeCoordinator:
                    and t.required_cores == ref.required_cores
                    and t.required_memory_mb == ref.required_memory_mb
                    for t in tasks[1:])
+
+    def _pipe_server_is_this_machine(self, task: TaskSpec) -> bool:
+        """
+        Determine whether a task's server is the machine ARC is running on.
+
+        ``PipeRun.submit_to_scheduler`` invokes qsub/sbatch on the orchestrator machine, and the
+        worker (``python -m arc.scripts.pipe_worker``) reads ``pipe_root`` from the local
+        filesystem. A pipe therefore only works when the tasks would have gone to the local
+        server; sent anywhere else the submission errors and the run deadlocks waiting for
+        results that are never produced.
+
+        An engine the ESS settings do not name at all is not sent to a server. It is a TS-guess
+        method or another adapter that runs in this process, which is why
+        :func:`arc.job.adapters.common._initialize_adapter` resolves a server only for an engine
+        the ESS settings do name and leaves every other one with none. In process is this
+        machine, so those tasks may be piped.
+
+        An engine the ESS settings do name is resolved the same way the job adapter resolves its
+        own (:func:`arc.job.adapters.common.resolve_job_server`), so the answer is about the
+        server the tasks would actually be sent to. It is compared case-insensitively, because a
+        server name is a settings key the user chose the casing of, while ``'local'`` is spelled
+        in lower case throughout ARC.
+
+        Such an engine that resolves to nothing, or to a server that is not configured, is not
+        known to run on this machine and so refuses the pipe. Refusing costs the run only the
+        bundling: the planner falls back to submitting the tasks as individual queue jobs, which
+        works for a local and for a remote server alike.
+
+        Args:
+            task (TaskSpec): The task whose server decides the whole bundle's, the bundle being
+                             homogeneous in engine.
+
+        Returns: bool
+            Whether the pipe may be used for this task's server.
+        """
+        ess_settings = getattr(self.sched, 'ess_settings', None) or dict()
+        if task.engine not in ess_settings:
+            return True
+        server = resolve_job_server(ess_settings=ess_settings,
+                                    job_adapter=task.engine,
+                                    args=getattr(task, 'args', None))
+        fallback = 'Falling back to per-job queue submission.'
+        if not server:
+            logger.info(f'Not using the pipe for {task.engine} jobs: the ESS settings name '
+                        f'{task.engine} but no server for it, so the tasks cannot be shown to '
+                        f'run on this machine, which is the only place a pipe worker can read '
+                        f'its payload from. {fallback}')
+            return False
+        if server.casefold() not in {name.casefold() for name in settings['servers']}:
+            logger.info(f'Not using the pipe for {task.engine} jobs: the resolved server '
+                        f'{server!r} is not among the configured servers, so it cannot be shown '
+                        f'to be this machine. {fallback}')
+            return False
+        if server.casefold() != 'local':
+            logger.info(f'Not using the pipe for {task.engine} jobs: server {server!r} is '
+                        f'remote, and the pipe worker reads its job payload from the '
+                        f'orchestrator\'s local filesystem. {fallback}')
+            return False
+        return True
 
     def _compute_pipe_root(self, run_id: str, tasks: list[TaskSpec]) -> str:
         """
@@ -163,7 +260,7 @@ class PipeCoordinator:
         except NotImplementedError:
             logger.warning(f'Pipe run {run_id}: submit script generation not yet implemented '
                            f'for {cluster_software}. Tasks are staged but must be submitted manually.')
-            self.active_pipes[run_id] = pipe
+            self.active_pipes[pipe.pipe_root] = pipe
             return pipe
         try:
             job_status, job_id = pipe.submit_to_scheduler()
@@ -180,13 +277,13 @@ class PipeCoordinator:
         except Exception as e:
             logger.warning(f'Pipe run {run_id}: submission failed ({e}). '
                            f'Tasks are staged at {pipe.pipe_root} but not running.')
-        self.active_pipes[run_id] = pipe
+        self.active_pipes[pipe.pipe_root] = pipe
         return pipe
 
     def register_pipe_run_from_dir(self, pipe_root: str) -> PipeRun:
         """Reconstruct and register an existing pipe run from disk."""
         pipe = PipeRun.from_dir(pipe_root)
-        self.active_pipes[pipe.run_id] = pipe
+        self.active_pipes[pipe.pipe_root] = pipe
         return pipe
 
     def poll_pipes(self) -> None:
@@ -200,13 +297,14 @@ class PipeCoordinator:
         marking it as FAILED and removing it.
         """
         max_consecutive_failures = 3
-        for run_id in list(self.active_pipes.keys()):
-            pipe = self.active_pipes[run_id]
+        for pipe_key in list(self.active_pipes.keys()):
+            pipe = self.active_pipes[pipe_key]
+            run_id = pipe.run_id
             try:
                 counts = pipe.reconcile()
             except Exception:
-                n_failures = self._pipe_poll_failures.get(run_id, 0) + 1
-                self._pipe_poll_failures[run_id] = n_failures
+                n_failures = self._pipe_poll_failures.get(pipe_key, 0) + 1
+                self._pipe_poll_failures[pipe_key] = n_failures
                 logger.error(f'Pipe run {run_id}: reconciliation failed '
                              f'({n_failures}/{max_consecutive_failures})', exc_info=True)
                 if n_failures >= max_consecutive_failures:
@@ -217,14 +315,13 @@ class PipeCoordinator:
                         pipe._save_run_metadata()
                     except Exception as e:
                         logger.debug(f'Pipe run {run_id}: best-effort FAILED persist failed: {e}')
-                    del self.active_pipes[run_id]
-                    self._pipe_poll_failures.pop(run_id, None)
+                    self._forget_pipe(pipe_key)
                 continue
-            self._pipe_poll_failures.pop(run_id, None)
+            self._pipe_poll_failures.pop(pipe_key, None)
             summary = ', '.join(f'{state}: {n}' for state, n in sorted(counts.items()) if n > 0)
-            if summary != self._last_pipe_summary.get(run_id):
+            if summary != self._last_pipe_summary.get(pipe_key):
                 logger.info(f'Pipe run {run_id}: {summary}')
-                self._last_pipe_summary[run_id] = summary
+                self._last_pipe_summary[pipe_key] = summary
             if pipe.needs_resubmission:
                 logger.info(f'Pipe run {run_id}: resubmitting to pick up retried tasks.')
                 try:
@@ -243,12 +340,24 @@ class PipeCoordinator:
                     logger.warning(f'Pipe run {run_id}: resubmission failed.', exc_info=True)
             if pipe.status in (PipeRunState.COMPLETED, PipeRunState.COMPLETED_PARTIAL):
                 self.ingest_pipe_results(pipe)
-                del self.active_pipes[run_id]
+                self._forget_pipe(pipe_key)
             elif pipe.status == PipeRunState.FAILED:
                 logger.error(f'Pipe run {run_id} has FAILED status. '
                              f'Ingesting any available results and removing from active pipes.')
                 self.ingest_pipe_results(pipe)
-                del self.active_pipes[run_id]
+                self._forget_pipe(pipe_key)
+
+    def _forget_pipe(self, pipe_key: str) -> None:
+        """
+        Remove a pipe run from the registry together with its poll-failure count and its last
+        logged summary.
+
+        Args:
+            pipe_key: The run's key in ``active_pipes`` (its ``pipe_root``).
+        """
+        del self.active_pipes[pipe_key]
+        self._pipe_poll_failures.pop(pipe_key, None)
+        self._last_pipe_summary.pop(pipe_key, None)
 
     def ingest_pipe_results(self, pipe: PipeRun) -> None:
         """
@@ -276,6 +385,8 @@ class PipeCoordinator:
             if state.status == TaskState.COMPLETED.value:
                 ingest_completed_task(pipe.run_id, pipe.pipe_root, spec, state,
                                       self.sched.species_dict, self.sched.output)
+                if spec.task_family in SPECIES_LEAF_FAMILIES:
+                    self._finalize_species_leaf_task(pipe, spec, state)
             elif state.status == TaskState.FAILED_ESS.value:
                 self._eject_to_scheduler(pipe, spec, state)
                 ejected_count += 1
@@ -292,6 +403,64 @@ class PipeCoordinator:
         else:
             self._post_ingest_pipe_run(pipe)
 
+    def _finalize_species_leaf_task(self, pipe: PipeRun, spec: TaskSpec, state: TaskStateRecord) -> None:
+        """
+        Run the Scheduler's post-job checks for a completed ``species_sp`` / ``species_freq`` task.
+
+        Per-task ingestion records the parsed results, but the ``output[label]['job_types']``
+        success flags are owned by the Scheduler's post-job logic, which also performs the QA that
+        those flags stand for and produces the artifacts that other parts of ARC then read: for a
+        freq job the imaginary-frequency check (exactly zero for a stable species, exactly one for
+        a TS), ``species.freqs``, the ``freq.out`` copy in the species output folder, the
+        polarizability and the TS normal mode displacement check; for an sp job the T1 diagnostic,
+        the solvation-scheme follow-ups and the reaction-E0 check. Routing piped tasks through the
+        same methods keeps piped and individually submitted jobs judged identically and equally
+        well equipped, instead of duplicating any of it here where the two could drift apart.
+
+        This runs per task rather than in ``_post_ingest_pipe_run`` because a cross-species batch
+        carries one species per task, and because ``_post_ingest_pipe_run`` is skipped entirely
+        when any sibling task is ejected for troubleshooting.
+
+        A task can reach ``COMPLETED`` and still hold a non-converged ESS output, so the same
+        convergence gate the ingestion helpers apply is repeated here before any success flag
+        can be set.
+
+        Args:
+            pipe (PipeRun): The owning pipe run.
+            spec (TaskSpec): The completed task's specification.
+            state (TaskStateRecord): The completed task's state record.
+        """
+        label = spec.owner_key
+        if not label or label not in self.sched.species_dict:
+            logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                           f'species "{label}" not in species_dict, not finalizing.')
+            return
+        attempt_dir = get_task_attempt_dir(pipe.pipe_root, spec.task_id, state.attempt_index)
+        try:
+            output_file = find_output_file(attempt_dir, spec.engine, spec.task_id)
+        except Exception as e:
+            logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                         f'output lookup failed while finalizing: {type(e).__name__}: {e}')
+            return
+        if output_file is None:
+            logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                           f'no output file found, not finalizing {spec.task_family} for {label}.')
+            return
+        if not check_ess_convergence(pipe.run_id, spec, output_file, label):
+            return
+        level = Level(repr=spec.level) if spec.level else None
+        try:
+            if spec.task_family == 'species_sp':
+                self.sched.post_sp_actions(label=label, sp_path=output_file, level=level)
+            elif spec.task_family == 'species_freq':
+                vibfreqs = parser.parse_frequencies(log_file_path=str(output_file))
+                self.sched.post_freq_actions(label=label,
+                                             job=PipedJobView(output_file, level),
+                                             vibfreqs=vibfreqs)
+        except Exception as e:
+            logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                         f'could not finalize {spec.task_family} for {label}: {type(e).__name__}: {e}')
+
     def _post_ingest_pipe_run(self, pipe: PipeRun) -> None:
         """
         Trigger family-specific post-processing after all tasks in a pipe run
@@ -303,7 +472,9 @@ class PipeCoordinator:
           - conf_sp: determine most stable conformer (sp_flag), then run opt job
 
         Other families (species_sp, species_freq, irc, rotor_scan_1d) are
-        leaf jobs with no batch-level post-processing.
+        leaf jobs with no batch-level post-processing. The species_sp and
+        species_freq families are finalized per task instead, in
+        ``_finalize_species_leaf_task``.
         """
         if not pipe.tasks:
             return

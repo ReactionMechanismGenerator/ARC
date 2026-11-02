@@ -7,11 +7,12 @@ This module contains unit tests of the arc.job.adapters.gaussian module
 
 import math
 import os
+import re
 import shutil
+import tempfile
 import unittest
 
-from arc.common import ARC_TESTING_PATH
-from arc.job.adapters.gaussian import GaussianAdapter
+from arc.job.adapters.gaussian import STABILITY_KEYWORD, GaussianAdapter, get_memory_headroom_fraction
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames, servers, submit_filenames
 from arc.species import ARCSpecies
@@ -28,11 +29,13 @@ class TestGaussianAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.project_directory = tempfile.mkdtemp(prefix='test_GaussianAdapter_')
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
         cls.job_1 = GaussianAdapter(execution_type='incore',
                                     job_type='composite',
                                     level=Level(method='cbs-qb3-paraskevas'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -44,7 +47,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                                 solvation_method='SMD',
                                                 solvent='Water'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3),
                                              ARCSpecies(label='spc2', xyz=['O 0 0 2'], multiplicity=3)],
                                     testing=True,
@@ -56,7 +59,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                                 solvation_method='SMD',
                                                 solvent='Water'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     )
@@ -76,7 +79,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     level=Level(method='wb97xd',
                                                 basis='def2-TZVP'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                    project_directory=cls.project_directory,
                                     species=[spc_4],
                                     rotor_index=0,
                                     testing=True,
@@ -87,7 +90,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     level=Level(method='wb97xd',
                                                 basis='def2-TZVP'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='birad singlet',
                                                         xyz=['O 0 0 1'],
                                                         multiplicity=1,
@@ -99,7 +102,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     level=Level(method='wb97xd',
                                                 basis='def2-TZVP'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
                                     testing=True,
                                     )
@@ -108,7 +111,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     level=Level(method='wb97xd',
                                                 basis='def2-TZVP'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='IRC', xyz=['O 0 0 1'], is_ts=True, multiplicity=3)],
                                     irc_direction='reverse',
                                     testing=True,
@@ -117,7 +120,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     job_type='composite',
                                     level=Level(method='cbs-qb3-paraskevas'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                    project_directory=cls.project_directory,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -127,7 +130,7 @@ class TestGaussianAdapter(unittest.TestCase):
                             level=Level(method='wb97xd',
                                         basis='def2-TZVP'),
                             project='test',
-                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                            project_directory=cls.project_directory,
                             species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
                             testing=True,
                             )
@@ -136,7 +139,7 @@ class TestGaussianAdapter(unittest.TestCase):
                             level=Level(method='wb97xd'),
                             fine=True,
                             project='test',
-                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                            project_directory=cls.project_directory,
                             species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
                             testing=True,
                             args={'trsh': {'trsh': ['int=(Acc2E=14)']}},
@@ -145,7 +148,7 @@ class TestGaussianAdapter(unittest.TestCase):
                             job_type='opt',
                             level=Level(method='uff'),
                             project='test',
-                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                            project_directory=cls.project_directory,
                             species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                             testing=True,
                             )
@@ -156,7 +159,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                         solvation_method='SMD',
                                         solvent='Water'),
                             project='test',
-                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                            project_directory=cls.project_directory,
                             species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multi_species='mltspc1', multiplicity=3),
                                     ARCSpecies(label='spc2', xyz=['O 0 0 2'], multi_species='mltspc1', multiplicity=3),
                                     ARCSpecies(label='ethanol', xyz=["""C	1.1658210	-0.4043550	0.0000000
@@ -212,7 +215,7 @@ class TestGaussianAdapter(unittest.TestCase):
                             fine=True,
                             ess_trsh_methods=ess_trsh_methods,
                             project='test',
-                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                            project_directory=cls.project_directory,
                             species=[spc_11],
                             testing=True,
                             args=args
@@ -234,7 +237,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -256,7 +259,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -278,7 +281,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -301,7 +304,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -323,7 +326,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -346,7 +349,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -368,7 +371,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -390,7 +393,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -412,7 +415,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -434,7 +437,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -457,7 +460,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -480,7 +483,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -504,7 +507,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             fine=True,
                                             ess_trsh_methods=ess_trsh_methods,
                                             project='test',
-                                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
+                                            project_directory=cls.project_directory,
                                             species=[spc_11],
                                             testing=True,
                                             args=args
@@ -527,7 +530,43 @@ class TestGaussianAdapter(unittest.TestCase):
         expected_memory = math.floor(math.ceil(14 * 1024 * 1.1) * 0.9)
         self.assertEqual(self.job_1.input_file_memory, expected_memory)
         self.assertEqual(self.job_2.input_file_memory, expected_memory)
-    
+
+    def test_set_input_file_memory_with_headroom_marker(self):
+        """
+        Test that a 'memory_headroom_<fraction>' marker in ess_trsh_methods lowers %mem
+        while leaving the queue reservation (submit_script_memory_mib) unchanged.
+        """
+        jobs = [GaussianAdapter(execution_type='incore',
+                                job_type='opt',
+                                level=Level(method='wb97xd', basis='def2tzvp'),
+                                project='test',
+                                project_directory=self.project_directory,
+                                species=[ARCSpecies(label='spc_headroom', xyz=['O 0 0 1'], multiplicity=3)],
+                                testing=True,
+                                ess_trsh_methods=ess_trsh_methods,
+                                ) for ess_trsh_methods in (None, ['memory_headroom_0.6'])]
+        self.assertEqual(jobs[0].submit_script_memory_mib, jobs[1].submit_script_memory_mib)
+        self.assertEqual(jobs[1].input_file_memory, math.floor(jobs[1].submit_script_memory_mib * 0.6))
+        self.assertLess(jobs[1].input_file_memory, jobs[0].input_file_memory)
+
+    def test_memory_headroom_marker_not_in_trsh_keyword(self):
+        """Test that a 'memory_headroom_<fraction>' marker never leaks into trsh_keyword / the
+        rendered Gaussian input file, since it is only used to compute %mem."""
+        job = GaussianAdapter(execution_type='incore',
+                              job_type='opt',
+                              level=Level(method='wb97xd', basis='def2tzvp'),
+                              project='test',
+                              project_directory=self.project_directory,
+                              species=[ARCSpecies(label='spc_headroom_marker', xyz=['O 0 0 1'], multiplicity=3)],
+                              testing=True,
+                              ess_trsh_methods=['memory_headroom_0.6'],
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertNotIn('memory_headroom', content)
+        shutil.rmtree(job.local_path, ignore_errors=True)
+
     def test_write_input_file_multi(self):
         """Test writing Gaussian input files"""
         self.job_multi.write_input_file()
@@ -1164,14 +1203,237 @@ H       0.04768200    1.19305700   -0.88359100
 
         self.assertEqual(content_24, job_24_expected_input_file)
 
+    def test_user_keyword_args_survive_a_level_round_trip(self):
+        """
+        Test that user-specified keyword args reach the route section after a Level round-trip.
+
+        The scheduler rebuilds the level via ``Level(repr=level)`` when re-running a job during
+        troubleshooting, so a level which lost its args would drop the user's keywords.
+        """
+        level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
+        rebuilt_level = Level(repr=level)
+        self.assertEqual(rebuilt_level.args['keyword']['opt'], 'opt=(verytight)')
+        job = GaussianAdapter(execution_type='queue',
+                              job_type='opt',
+                              level=rebuilt_level,
+                              project='test',
+                              project_directory=self.project_directory,
+                              species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
+                              testing=True,
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        route_section = [line for line in content.splitlines() if line.startswith('#')]
+        self.assertEqual(len(route_section), 1)
+        self.assertIn('verytight', route_section[0])
+
+    def _route_for_job_type(self, job_type: str) -> str:
+        """Write a Gaussian input file for a TS job of the given type and return its route line."""
+        job = GaussianAdapter(execution_type='queue',
+                              job_type=job_type,
+                              level=Level(method='wb97xd', basis='def2-TZVP'),
+                              project='test',
+                              project_directory=self.project_directory,
+                              species=[ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2'])],
+                              testing=True,
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        return [line for line in content.splitlines() if line.startswith('#P')][0]
+
+    def test_stability_keyword_in_route(self):
+        """Test that the wavefunction stability keyword is written for a stability job only"""
+        stability_route = self._route_for_job_type('stability')
+        self.assertIn('stable=(rext,noopt)', stability_route)
+        for job_type in ['opt', 'freq', 'sp', 'composite']:
+            self.assertNotIn('stable', self._route_for_job_type(job_type))
+
+    def test_stability_keyword_never_reoptimizes(self):
+        """Test that the stability route asks for no reoptimization and no complex orbitals"""
+        route = self._route_for_job_type('stability').lower()
+        options = re.search(r'stable=\(([^)]*)\)', route)
+        self.assertIsNotNone(options, msg=f'no stable=(...) group in route {route!r}')
+        options = [option.strip() for option in options.group(1).split(',')]
+        self.assertIn('noopt', options)
+        self.assertIn('rext', options)
+        for option in options:
+            self.assertNotIn(option, ['opt', 'repopt', '1opt', 'crhf', 'cuhf', 'int'],
+                             msg=f'route {route!r} carries the {option!r} stability option')
+        self.assertNotIn('stable=opt', route)
+        self.assertEqual(STABILITY_KEYWORD.lower(), f"stable=({','.join(options)})")
+
+    def test_a_checkfile_written_by_another_ess_is_refused(self):
+        """Test that an ORCA input.gbw offered to Gaussian is not read as a checkpoint file"""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_gaussian_foreign_checkfile_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        foreign = os.path.join(scratch_dir, 'input.gbw')
+        with open(foreign, 'w') as f:
+            f.write('orbitals')
+        spc = ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2'])
+        spc.checkfile = foreign
+        job = GaussianAdapter(execution_type='queue',
+                              job_type='sp',
+                              level=Level(method='wb97xd', basis='def2-TZVP'),
+                              project='test',
+                              project_directory=os.path.join(scratch_dir, 'test_GaussianAdapter'),
+                              checkfile=foreign,
+                              species=[spc],
+                              testing=True,
+                              )
+        self.assertIsNone(job.checkfile)
+        self.assertNotIn(foreign, [up_file['local'] for up_file in job.files_to_upload])
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertNotIn('guess=read', content)
+
+    def _checkfile_job(self,
+                       scratch_dir: str,
+                       checkfile: str | None = None,
+                       species: ARCSpecies | None = None,
+                       **kwargs,
+                       ) -> GaussianAdapter:
+        """Build a testing Gaussian job under a scratch directory of its own."""
+        return GaussianAdapter(execution_type='queue',
+                               job_type='sp',
+                               level=Level(method='wb97xd', basis='def2-TZVP'),
+                               project='test',
+                               project_directory=os.path.join(scratch_dir, 'test_GaussianCheckfile'),
+                               checkfile=checkfile,
+                               species=[species if species is not None
+                                        else ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2'])],
+                               testing=True,
+                               **kwargs,
+                               )
+
+    def test_an_empty_checkfile_is_refused(self):
+        """Test that the zero-byte file a failed download leaves behind is not read as a guess"""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_gaussian_empty_checkfile_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        empty = os.path.join(scratch_dir, 'check.chk')
+        with open(empty, 'w'):
+            pass
+        job = self._checkfile_job(scratch_dir, checkfile=empty)
+        self.assertIsNone(job.checkfile)
+        self.assertNotIn(empty, [up_file['local'] for up_file in job.files_to_upload])
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            self.assertNotIn('guess=read', f.read())
+
+    def test_orbitals_dropped_for_an_adopted_verdict_are_not_re_adopted(self):
+        """Test that a species holding no checkpoint of its adopted reference reads none from its directory"""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_gaussian_reused_directory_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        spc = ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2\nH 0 0 3'], multiplicity=1)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True,
+                                         'relaxations': ['RHF -> UHF']}
+        first = self._checkfile_job(scratch_dir, species=spc)
+        with open(os.path.join(first.local_path, 'check.chk'), 'w') as f:
+            f.write('orbitals')
+        second = self._checkfile_job(scratch_dir, species=spc,
+                                     job_name=first.job_name, job_num=first.job_num)
+        self.assertEqual(second.local_path, first.local_path)
+        self.assertIsNone(second.checkfile)
+        second.write_input_file()
+        with open(os.path.join(second.local_path, input_filenames[second.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertNotIn('guess=read', content)
+        self.assertIn('guess=mix', content)
+
+    def test_a_species_holding_orbitals_reads_them_from_its_job_directory(self):
+        """Test that the job directory remains a source of orbitals for a species holding none"""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_gaussian_own_directory_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        first = self._checkfile_job(scratch_dir)
+        planted = os.path.join(first.local_path, 'check.chk')
+        with open(planted, 'w') as f:
+            f.write('orbitals')
+        second = self._checkfile_job(scratch_dir, job_name=first.job_name, job_num=first.job_num)
+        self.assertEqual(second.checkfile, planted)
+
+    def test_stability_keyword_absent_from_other_job_types(self):
+        """Test that no other job type emits any form of the stability keyword"""
+        for job_type in ['opt', 'freq', 'sp', 'composite']:
+            self.assertNotIn('stable', self._route_for_job_type(job_type).lower())
+
+
+class TestGaussianConstraintBlock(unittest.TestCase):
+    """
+    Contains unit tests for the ModRedundant constraint block the Gaussian adapter writes.
+    """
 
     @classmethod
-    def tearDownClass(cls):
+    def setUpClass(cls):
         """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests.
+        A method that is run before all unit tests in this class.
         """
-        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'), ignore_errors=True)
+        cls.project_directory = tempfile.mkdtemp(prefix='test_GaussianConstraintBlock_')
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
+
+    def _written_deck(self, constraints: list) -> str:
+        """Return the text of a deck the Gaussian adapter wrote for ``constraints``."""
+        job = GaussianAdapter(execution_type='incore',
+                              job_type='opt',
+                              level=Level(method='wb97xd', basis='def2-TZVP'),
+                              project='test',
+                              project_directory=os.path.join(self.project_directory, str(len(constraints))),
+                              species=[ARCSpecies(label='spc', smiles='CCO')],
+                              constraints=constraints,
+                              testing=True,
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, 'input.gjf'), 'r') as f:
+            return f.read()
+
+    def test_two_constraints_each_get_their_own_line(self):
+        """Test that a deck holding two constraints writes all four directives on separate lines"""
+        deck = self._written_deck([([1, 2], 1.45), ([1, 2, 3], 104.5)])
+        self.assertIn('\nB 1 2 =1.45 B\n', deck)
+        self.assertIn('\nB 1 2 F\n', deck)
+        self.assertIn('\nA 1 2 3 =104.50 B\n', deck)
+        self.assertIn('\nA 1 2 3 F\n', deck)
+        self.assertNotIn('FA', deck)
+        directives = [line for line in deck.splitlines() if re.fullmatch(r'[BAD] [\d ]+(=[\d.]+ B|F)', line)]
+        self.assertEqual(directives, ['B 1 2 =1.45 B', 'B 1 2 F', 'A 1 2 3 =104.50 B', 'A 1 2 3 F'])
+
+    def test_the_constraint_block_is_terminated_by_a_blank_line(self):
+        """Test that the last constraint is newline-terminated, closing the ModRedundant block"""
+        for constraints in ([([1, 2], 1.45)], [([1, 2], 1.45), ([1, 2, 3], 104.5)]):
+            with self.subTest(constraints=constraints):
+                deck = self._written_deck(constraints)
+                last_directive = f'{"A" if len(constraints[-1][0]) == 3 else "B"} ' \
+                                 f'{" ".join(str(i) for i in constraints[-1][0])} F\n'
+                tail = deck.split(last_directive)[-1]
+                self.assertTrue(tail.startswith('\n'))
+                self.assertEqual(tail.strip(), '')
+
+
+class TestGetMemoryHeadroomFraction(unittest.TestCase):
+    """
+    Contains unit tests for the get_memory_headroom_fraction() function.
+    """
+
+    def test_no_markers(self):
+        """Test that with no markers present, the default fraction is returned."""
+        self.assertEqual(get_memory_headroom_fraction(None), 0.9)
+        self.assertEqual(get_memory_headroom_fraction([]), 0.9)
+        self.assertEqual(get_memory_headroom_fraction(['int=(Acc2E=14)']), 0.9)
+
+    def test_single_marker(self):
+        """Test that a single marker is used."""
+        self.assertEqual(get_memory_headroom_fraction(['memory_headroom_0.75']), 0.75)
+
+    def test_multiple_markers_lowest_wins(self):
+        """Test that with several markers present, the lowest one wins."""
+        self.assertEqual(get_memory_headroom_fraction(['memory_headroom_0.75', 'memory_headroom_0.6']), 0.6)
+        self.assertEqual(get_memory_headroom_fraction(['memory_headroom_0.6', 'memory_headroom_0.75']), 0.6)
+
+    def test_malformed_marker_is_ignored(self):
+        """Test that a malformed marker is ignored rather than raising."""
+        self.assertEqual(get_memory_headroom_fraction(['memory_headroom_notanumber']), 0.9)
+        self.assertEqual(get_memory_headroom_fraction(['memory_headroom_notanumber', 'memory_headroom_0.75']), 0.75)
 
 
 if __name__ == '__main__':

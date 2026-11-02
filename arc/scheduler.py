@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import arc.parser.parser as parser
 from arc import plotter
-from arc.checks.common import get_i_from_job_name, is_conformer_job, sum_time_delta
+from arc.checks.common import get_conformer_job_name, get_i_from_job_name, is_conformer_job, sum_time_delta
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
@@ -30,21 +30,27 @@ from arc.common import (extremum_list,
                         sort_two_lists_by_the_first,
                         torsions_to_scans,
                         )
-from arc.exceptions import (InputError,
+from arc.exceptions import (DependencyError,
+                            InputError,
                             SchedulerError,
                             SpeciesError,
                             TrshError,
                             )
 from arc.imports import settings
-from arc.job.adapters.common import (all_families_ts_adapters,
+from arc.job.adapters.common import (adopted_reference_is_unrestricted,
+                                      all_families_ts_adapters,
                                       default_incore_adapters,
+                                      derived_reference_is_unrestricted,
+                                      job_scf_reference_is_restricted,
+                                      level_admits_a_broken_symmetry_reference,
+                                      REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family,
                                       ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
-from arc.job.ssh import SSHClient
+from arc.job.ssh_pool import borrow_ssh_client
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
                           trsh_ess_job,
@@ -72,11 +78,104 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
+_TS_GUESS_METHOD_TO_PATHS_KEY = {
+    'orca_neb': 'neb',
+    'xtb_gsm': 'gsm',
+    'xtb-gsm': 'gsm',
+}
+
+
+def _ts_guess_paths_key(method: object) -> str | None:
+    """Return the result-path slot associated with a TS-guess method."""
+    if not isinstance(method, str):
+        return None
+    return _TS_GUESS_METHOD_TO_PATHS_KEY.get(method.strip().lower())
+
+
+def _ts_guess_path_provenance(tsg: object) -> tuple[str | None, str | None]:
+    """Return the method-specific result slot and artifact path for a TS guess."""
+    key = _ts_guess_paths_key(getattr(tsg, 'method', None))
+    log_path = getattr(tsg, 'log_path', None)
+    if key and log_path:
+        return key, log_path
+    source_paths = getattr(tsg, 'method_source_paths', None) or {}
+    for source in (getattr(tsg, 'method_sources', None) or []):
+        source_key = _ts_guess_paths_key(source)
+        if source_key and source_paths.get(source):
+            return source_key, source_paths[source]
+    return None, None
+
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
     default_job_types, default_ts_adapters, max_ess_trsh, max_rotor_trsh, rotor_scan_resolution, servers_dict = \
     settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
     settings['default_job_types'], settings['ts_adapters'], settings['max_ess_trsh'], settings['max_rotor_trsh'], \
     settings['rotor_scan_resolution'], settings['servers']
+
+WRONG_FREQ_MESSAGE = 'wrong number of negative frequencies; '
+
+MIXED_SCF_REFERENCE_MESSAGE = 'the electronic energy and the ZPE were computed with different SCF references; '
+SCF_REFERENCE_JOB_TYPES = {'sp': 'sp', 'freq': 'freq', 'optfreq': 'freq'}
+
+INVALID_ANALYTIC_FREQ_MESSAGE = 'the wavefunction instability puts the analytic frequencies outside the range in ' \
+                                'which they are defined; '
+SPIN_CONTAMINATION_MESSAGE = 'the wavefunction the electronic energy came from is spin-contaminated; '
+COLLAPSED_REFERENCE_MESSAGE = 'the adopted unrestricted reference could not be reached in the ESS the job ran in, ' \
+                              'so the energy reported for it is the restricted one; '
+UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground state and a lower symmetry-broken ' \
+                                'solution exists, which is the signature of an open-shell singlet, a state no single ' \
+                                'determinant describes; it was not adopted because an adapter this species runs in ' \
+                                'writes no symmetry-broken reference, and a broken-symmetry reference approximates ' \
+                                'such a state rather than describing it, so a multireference treatment (a CASSCF ' \
+                                'reference followed by MRCI or CASPT2) is what this species calls for; '
+
+MAX_S_SQUARED_DEVIATION = 0.1
+
+STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
+SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
+"""
+The two sets above are statements about ARC'S ADAPTERS and not about what the ESSs can do.
+
+``STABILITY_ANALYSIS_ADAPTERS`` holds the adapters that compose a wavefunction stability
+analysis input and whose parser reads the verdict back. Whether an ESS absent from it offers
+the analysis at all is a separate question and is not what the set answers.
+
+``SYMMETRY_BREAKING_ADAPTERS`` holds the adapters that compose a reference an unrestricted SCF
+cannot collapse out of, which is an orbital guess taken from a broken-symmetry solution or a
+symmetry-breaking directive. An adapter absent from it composes one spin-symmetric determinant
+however its ESS is asked, so an unrestricted SCF it writes converges back to the restricted
+solution. Molpro is the case worth naming: Molpro itself has a ``{uhf}`` program and takes a
+``ROTATE`` directive that mixes two starting orbitals, which is how a broken-symmetry singlet
+is requested of it, but ARC's Molpro adapter writes ``{hf}`` in every input it composes and
+spends the unrestricted decision on the ``u`` prefix of the correlation method instead. Naming
+the orbitals a ``ROTATE`` would mix needs their index and irreducible representation, which
+that adapter has neither at the point it writes its input nor a ``nosym`` geometry to make
+unambiguous.
+"""
+
+
+def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> bool:
+    """
+    Determine whether a ``TSGuess.method`` was produced by a given TS-search adapter.
+
+    The two spellings differ (e.g. the ``xtb_gsm`` adapter labels its guesses ``'xTB-GSM'``,
+    ``kinbot`` labels them ``'KinBot'`` or ``'KinBot-UMA'``), so both strings are lower-cased
+    and stripped of ``'-'`` and ``'_'`` before testing for containment.
+
+    Args:
+        method (str, optional): The ``TSGuess.method`` string.
+        job_adapter (str, optional): The TS-search job adapter name.
+
+    Returns:
+        bool: Whether the guess was produced by this adapter.
+    """
+    if not method or not job_adapter:
+        return False
+
+    def normalize(text: str) -> str:
+        """Lower-case ``text`` and drop the separators that differ between the two spellings."""
+        return text.lower().replace('-', '').replace('_', '')
+
+    return normalize(job_adapter) in normalize(method)
 
 
 class Scheduler(object):
@@ -117,6 +216,7 @@ class Scheduler(object):
                                       'sp': <path to sp output file>,
                                       'composite': <path to composite output file>,
                                       'irc': [list of two IRC paths],
+                                      'stability': <path to wavefunction stability analysis output file>,
                                      },
                             'conformers': <comments>,
                             'isomorphism': <comments>,
@@ -179,10 +279,17 @@ class Scheduler(object):
     Attributes:
         project (str): The project's name. Used for naming the working directory.
         servers (list): A list of servers used for the present project.
+        remote_project_paths (dict): Keys are servers used for the present project, values are the respective
+                                     remote paths of the project's directory on that server.
         species_list (list): Contains input :ref:`ARCSpecies <species>` objects (both species and TSs).
         species_dict (dict): Keys are labels, values are :ref:`ARCSpecies <species>` objects.
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
         unique_species_labels (list): A list of species labels (checked for duplicates).
+        stability_unimplemented_ess (set): ESS names already reported as having no wavefunction stability
+                                           analysis implemented in ARC, reported once per ESS per run.
+        unbreakable_reference_ess (set): Names of adapters already reported as writing no symmetry-broken
+                                         reference, so that an adopted unrestricted reference collapses in
+                                         the jobs they compose. Reported once per adapter per run.
         job_dict (dict): A dictionary of all scheduled jobs. Keys are species / TS labels,
                          values are dictionaries where keys are job names (corresponding to
                          'running_jobs' if job is running) and values are the Job objects.
@@ -264,6 +371,7 @@ class Scheduler(object):
                  fine_only: bool | None = False,
                  trsh_ess_jobs: bool | None = True,
                  trsh_rotors: bool | None = True,
+                 rotor_scan_resolution: float | None = None,
                  kinetics_adapter: str = 'arkane',
                  freq_scale_factor: float = 1.0,
                  ts_adapters: list[str] = None,
@@ -296,6 +404,7 @@ class Scheduler(object):
         self.fine_only = fine_only
         self.trsh_ess_jobs = trsh_ess_jobs
         self.trsh_rotors = trsh_rotors
+        self.rotor_scan_resolution = rotor_scan_resolution
         self.kinetics_adapter = kinetics_adapter
         self.freq_scale_factor = freq_scale_factor
         self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
@@ -322,6 +431,7 @@ class Scheduler(object):
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self._last_status_payload: dict | None = None
         self.servers = list()
+        self.remote_project_paths = dict()
         self.composite_method = composite_method
         self.conformer_opt_level = conformer_opt_level
         self.conformer_sp_level = conformer_sp_level
@@ -333,6 +443,8 @@ class Scheduler(object):
         self.irc_level = irc_level
         self.orbitals_level = orbitals_level
         self.unique_species_labels = list()
+        self.stability_unimplemented_ess = set()
+        self.unbreakable_reference_ess = set()
         self.save_restart = False
 
         if len(self.rxn_list):
@@ -349,6 +461,7 @@ class Scheduler(object):
                     if spc.label in rxn.products:
                         rxn.p_species.append(spc)
                 rxn.check_attributes()
+                rxn.check_charge_balance()
                 family_text = ''
                 if rxn.family is not None:
                     family_text = f'identified as belonging to RMG family {rxn.family}'
@@ -395,10 +508,9 @@ class Scheduler(object):
                 rxn.ts_species = ts_species
                 # 3. Generate TSGuess objects for all methods, start with the user guesses
                 for i, user_guess in enumerate(rxn.ts_xyz_guess):  # This is a list of user guesses, could be empty.
-                    ts_species.ts_guesses.append(
+                    ts_species.append_ts_guess(
                         TSGuess(method=f'user guess {i}',
                                 xyz=user_guess,
-                                index=len(rxn.ts_species.ts_guesses),
                                 success=True,
                                 project_directory=self.project_directory,
                                 )
@@ -535,6 +647,29 @@ class Scheduler(object):
         if not self.testing:
             self.schedule_jobs()
 
+    def has_pending_pipe_work(self, label: str) -> bool:
+        """
+        Whether a species still has work queued for, or running in, a pipe run.
+
+        A species whose jobs were routed to pipe mode holds no entries in ``running_jobs``, so an
+        empty entry does not mean that species is finished. It must be kept until its pipe work
+        terminates: dropping it leaves ``check_all_done()`` unreachable for that species, because
+        the main loop only reaches it through ``running_jobs``. The species would then never be
+        marked as converged even once every one of its piped jobs had succeeded.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: ``True`` if any pending batch or active pipe run still holds this species.
+        """
+        return (label in self._pending_pipe_sp
+                or label in self._pending_pipe_freq
+                or any(lbl == label for lbl, _ in self._pending_pipe_irc)
+                or label in self._pending_pipe_conf_sp
+                or any(label in {t.owner_key for t in p.tasks}
+                       for p in self.active_pipes.values()))
+
     def flush_pending_pipe_batches(self) -> None:
         """
         Attempt to submit accumulated deferred pipe batches for SP, freq, IRC, and conf_sp.
@@ -558,7 +693,8 @@ class Scheduler(object):
             return
         pending = set(self._pending_pipe_sp)
         self._pending_pipe_sp.clear()
-        piped = self.pipe_planner.try_pipe_species_sp(sorted(pending))
+        reusing_opt = {label for label in pending if self.sp_reuses_opt_output(label)}
+        piped = self.pipe_planner.try_pipe_species_sp(sorted(pending - reusing_opt))
         for label in sorted(pending - piped):
             self.run_sp_job(label)
 
@@ -597,7 +733,15 @@ class Scheduler(object):
     def schedule_jobs(self):
         """
         The main job scheduling block
+
+        A species whose post-optimization work was held for a wavefunction stability verdict is
+        released here when no analysis of its is still running, which is the state a run resumed
+        after its analysis ended leaves behind: the job it was waiting on is gone, so nothing else
+        would reach ``spawn_post_stability_jobs`` for it and the species would hold that work for
+        the rest of the run. A verdict recorded before the interruption still decides what the
+        release does, and one that never arrived releases the held jobs unchanged.
         """
+        self.release_held_stability_work()
         for species in self.species_dict.values():
             if species.initial_xyz is None and species.final_xyz is None and species.conformers \
                     and any([e is not None for e in species.conformer_energies]):
@@ -799,6 +943,15 @@ class Scheduler(object):
                                         pass
                             self.timer = False
                             break
+                    elif 'stability' in job_name:
+                        job = self.job_dict[label]['stability'][job_name]
+                        if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
+                            self.end_job(job=job, label=label, job_name=job_name)
+                            self.check_stability_job(label=label, job=job)
+                            if job_name not in self.running_jobs[label]:
+                                self.spawn_post_stability_jobs(label=label)
+                            self.timer = False
+                            break
                     elif 'onedmin' in job_name:
                         job = self.job_dict[label]['onedmin'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
@@ -821,18 +974,9 @@ class Scheduler(object):
                             self.timer = False
                             break
 
-                if not len(job_list):
-                    has_pending_pipe_work = (
-                        label in self._pending_pipe_sp
-                        or label in self._pending_pipe_freq
-                        or any(lbl == label for lbl, _ in self._pending_pipe_irc)
-                        or label in self._pending_pipe_conf_sp
-                        or any(label in {t.owner_key for t in p.tasks}
-                               for p in self.active_pipes.values())
-                    )
-                    if not has_pending_pipe_work:
-                        self.check_all_done(label)
-                    if not self.running_jobs[label]:
+                if not len(job_list) and not self.has_pending_pipe_work(label):
+                    self.check_all_done(label)
+                    if label in self.running_jobs and not self.running_jobs[label]:
                         # Delete the label only if it represents an empty entry.
                         del self.running_jobs[label]
 
@@ -855,6 +999,37 @@ class Scheduler(object):
         # Generate a TS report:
         self.generate_final_ts_guess_report()
 
+    def _running_job_snapshot_entry(self, label: str, job_name: str) -> dict:
+        """
+        Resolve a running ``job_name`` (as stored in ``self.running_jobs``, e.g. ``'tsg3'``)
+        back to its Job object and build a snapshot entry that carries the identifiers needed
+        to find the job on the server: ``server_name`` (the queue job name shown by ``qstat``,
+        e.g. ``a3129``), ``job_id`` (the queue's numeric id), the ``adapter`` (software), and the
+        ``server``. Falls back to just ``{'name': job_name}`` if the Job object can't be located
+        (e.g. the job was already popped, or a restart-loaded entry whose stored name doesn't
+        match any live ``job.job_name``). Resolved incore jobs still get an entry, carrying the
+        job number as their ``job_id``, while ``server`` may be ``None``.
+
+        Args:
+            label (str): The species/TS label the job belongs to.
+            job_name (str): The job name as stored in ``self.running_jobs``.
+
+        Returns:
+            dict: A self-describing snapshot entry for the running job.
+        """
+        entry = {'name': job_name}
+        for jobs in self.job_dict.get(label, dict()).values():
+            if not isinstance(jobs, dict):
+                continue
+            for job in jobs.values():
+                if getattr(job, 'job_name', None) == job_name:
+                    entry['server_name'] = job.job_server_name
+                    entry['job_id'] = job.job_id
+                    entry['adapter'] = job.job_adapter
+                    entry['server'] = job.server
+                    return entry
+        return entry
+
     def report_running_jobs_snapshot(self) -> None:
         """
         Overwrite ``<project>/running_jobs.yml`` with a timestamped snapshot of
@@ -862,7 +1037,9 @@ class Scheduler(object):
         to the previous snapshot, the file is left untouched and only a one-line
         heartbeat is logged to ARC.log.
         """
-        payload = {'running_jobs': {label: list(job_names) for label, job_names in self.running_jobs.items()},
+        payload = {'running_jobs': {label: [self._running_job_snapshot_entry(label, job_name)
+                                            for job_name in job_names]
+                                    for label, job_names in self.running_jobs.items()},
                    'active_pipes': list(self.active_pipes.keys())}
         n_species = len(self.running_jobs)
         n_jobs = sum(len(v) for v in self.running_jobs.values())
@@ -964,12 +1141,13 @@ class Scheduler(object):
                         args['trsh'][key] = value
             else:
                 args['trsh'] = trsh
+        args = self.set_scan_resolution(args=args, job_type=job_type)
         if shift:
             args['shift'] = shift
         if scan_trsh:
             args['keyword']['scan_trsh'] = scan_trsh
         if isinstance(level_of_theory, Level) and level_of_theory.args is not None:
-            args.update(level_of_theory.args)
+            args.update(level_of_theory.get_args())
 
         job = job_factory(job_adapter=job_adapter,
                           project=self.project,
@@ -1019,7 +1197,7 @@ class Scheduler(object):
         elif conformer is not None:
             # Running a conformer DFT job. Append differently to job_dict.
             self.running_jobs[label] = list() if label not in self.running_jobs else self.running_jobs[label]
-            self.running_jobs[label].append(f'{job_type}_{conformer}')  # mark as a running job
+            self.running_jobs[label].append(get_conformer_job_name(job_type, conformer))  # mark as a running job
             if 'conf_opt' not in self.job_dict[label]:
                 self.job_dict[label]['conf_opt'] = dict()
             if 'conf_sp' not in self.job_dict[label] and job_type == 'conf_sp':
@@ -1032,11 +1210,38 @@ class Scheduler(object):
             if 'tsg' not in self.job_dict[label]:
                 self.job_dict[label]['tsg'] = dict()
             self.job_dict[label]['tsg'][tsg] = job  # save job object
-        if job.server is not None and job.server not in self.servers:
-            self.servers.append(job.server)
+        if job.server is not None:
+            if job.server not in self.servers:
+                self.servers.append(job.server)
+            if job.remote_project_path and not self.remote_project_paths.get(job.server):
+                self.remote_project_paths[job.server] = job.remote_project_path
         self.check_max_simultaneous_jobs_limit(job.server)
         job.execute()
+        self.warn_on_collapsible_unrestricted_reference(label=label, job=job)
         self.save_restart_dict()
+
+    def set_scan_resolution(self, args: dict, job_type: str) -> dict:
+        """
+        Inject the run-level rotor scan resolution into a scan job's troubleshooting args.
+
+        The value set via the ``rotor_scan_resolution`` input key is threaded through
+        ``args['trsh']['scan_res']`` (the same channel a per-job troubleshooting override uses),
+        so a run may state its 1D rotor scan resolution once instead of relying on the launching
+        host's settings value. Only ``'scan'`` jobs are affected, and a ``scan_res`` already present
+        in ``args`` (e.g. from troubleshooting) is never overridden. When ``self.rotor_scan_resolution``
+        is ``None`` the args are returned unchanged, so behaviour is identical to today's settings default.
+
+        Args:
+            args (dict): The job arguments dictionary.
+            job_type (str): The job type.
+
+        Returns: dict
+            The (possibly updated) job arguments dictionary.
+        """
+        if job_type == 'scan' and self.rotor_scan_resolution is not None \
+                and 'scan_res' not in args.get('trsh', dict()):
+            args.setdefault('trsh', dict())['scan_res'] = self.rotor_scan_resolution
+        return args
 
     def deduce_job_adapter(self, level: Level, job_type: str) -> str:
         """
@@ -1081,6 +1286,13 @@ class Scheduler(object):
         """
         A helper function for checking job status, saving in csv file, and downloading output files if needed.
 
+        A completed geometry job hands the species its converged orbitals, which the jobs that
+        follow read as an initial guess. The file is ESS-specific, a ``check.chk`` for Gaussian
+        and an ``input.gbw`` for ORCA, and is adopted under the name the job adapter declares.
+        A zero-byte file is refused: paramiko creates the local file before it opens the remote
+        one, so a download that failed leaves an empty file behind that ``os.path.isfile`` cannot
+        tell from a real one, and adopting it would hand every subsequent job an unreadable guess.
+
         Args:
             job (JobAdapter): The job object.
             label (str): The species label.
@@ -1093,12 +1305,18 @@ class Scheduler(object):
             try:
                 job.determine_job_status()  # Also downloads the output file.
             except IOError:
-                if job.job_type not in ['orbitals']:
+                if job.job_type not in ['orbitals', 'stability']:
                     logger.warning(f'Tried to determine status of job {job.job_name}, '
                                    f'but it seems like the job never ran. Re-running job.')
                     self._run_a_job(job=job, label=label)
                 if job_name in self.running_jobs[label]:
                     self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+
+        if job.job_status[1]['status'] == 'errored' and job.job_type == 'stability':
+            logger.info(f'The wavefunction stability analysis {job.job_name} errored, not re-running it.')
+            if job_name in self.running_jobs[label]:
+                self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+            return False
 
         if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['memory']:
             original_mem = job.job_memory_gb
@@ -1140,7 +1358,7 @@ class Scheduler(object):
                 job.job_status[1]['status'] = 'errored'
                 logger.warning(f'Job {job.job_name} errored because for the second time ARC did not find the output '
                                f'file path {job.local_path_to_output_file}.')
-            elif job.job_type not in ['orbitals']:
+            elif job.job_type not in ['orbitals', 'stability']:
                 job.ess_trsh_methods.append('restart_due_to_file_not_found')
                 logger.warning(f'Did not find the output file of job {job.job_name} with path '
                                f'{job.local_path_to_output_file}. Maybe the job never ran. Re-running job.')
@@ -1157,23 +1375,28 @@ class Scheduler(object):
             logger.info(f'  Ending job {job_name} for {label} (run time: {job.run_time})')
             if job.job_status[0] != 'done':
                 return False
-            if job.job_adapter in ['gaussian', 'terachem'] and os.path.isfile(os.path.join(job.local_path, 'check.chk')) \
+            check_file_name = job.check_file_name
+            check_path = os.path.join(job.local_path, check_file_name)
+            if job.job_adapter in ['gaussian', 'orca', 'terachem'] and os.path.isfile(check_path) \
                     and job.job_type in ['opt', 'optfreq', 'composite']:
-                check_path = os.path.join(job.local_path, 'check.chk')
-                if os.path.isfile(check_path):
-                    if 'directed_scan' in job.job_name and 'cont' in job.directed_scan_type:
-                        folder_name = 'rxns' if job.is_ts else 'Species'
-                        r_path = os.path.join(self.project_directory, 'output', folder_name, job.species_label, 'rotors')
-                        if not os.path.isdir(r_path):
-                            os.makedirs(r_path)
-                        shutil.copyfile(src=check_path, dst=os.path.join(r_path, 'directed_rotor_check.chk'))
-                        self.species_dict[label].checkfile = os.path.join(r_path, 'directed_rotor_check.chk')
-                    elif label in self.output:
-                        self.species_dict[label].checkfile = check_path
+                if not os.path.getsize(check_path):
+                    logger.info(f'The {check_file_name} of job {job.job_name} is empty, which is what a failed '
+                                f'download leaves behind. Not adopting it as the checkfile of {label}.')
+                elif 'directed_scan' in job.job_name and 'cont' in job.directed_scan_type:
+                    folder_name = 'rxns' if job.is_ts else 'Species'
+                    r_path = os.path.join(self.project_directory, 'output', folder_name, job.species_label, 'rotors')
+                    if not os.path.isdir(r_path):
+                        os.makedirs(r_path)
+                    directed_rotor_path = os.path.join(r_path, f'directed_rotor_{check_file_name}')
+                    shutil.copyfile(src=check_path, dst=directed_rotor_path)
+                    self.species_dict[label].checkfile = directed_rotor_path
+                elif label in self.output:
+                    self.species_dict[label].checkfile = check_path
             if job.job_type == 'scan' or job.directed_scan_type == 'ess':
                 for rotors_dict in self.species_dict[label].rotors_dict.values():
                     if rotors_dict['pivots'] in [job.pivots, job.pivots[0]]:
                         rotors_dict['scan_path'] = job.local_path_to_output_file
+                        rotors_dict['scan_software'] = job.job_adapter
             self.save_restart_dict()
             return True
 
@@ -1277,6 +1500,12 @@ class Scheduler(object):
         """
         Spawn opt jobs at the ts_guesses level of theory for the TS guesses.
 
+        When only a single guess succeeded, its geometry is optimized directly. The reported
+        provenance (relative energy, ``chosen_ts_method``, ``successful_methods`` and the guess
+        log path) is taken from that same guess rather than from ``ts_guesses[0]``: several TS
+        adapters append ``success=False`` guesses, so the first entry of ``ts_guesses`` is not
+        necessarily the guess whose coordinates are being optimized.
+
         Args:
             label (str): The TS species label.
         """
@@ -1321,17 +1550,19 @@ class Scheduler(object):
                     rxn = ' of reaction ' + self.species_dict[label].rxn_label
                 logger.info(f'Only one TS guess is available for species {label}{rxn}, '
                             f'using it for geometry optimization')
-                self.species_dict[label].ts_guesses[0].energy = 0.0  # Set relative energy to 0, no other guesses.
-                self.species_dict[label].initial_xyz = successful_tsgs[0].initial_xyz
+                chosen_tsg = successful_tsgs[0]
+                chosen_tsg.energy = 0.0
+                self.species_dict[label].initial_xyz = chosen_tsg.initial_xyz
                 self.species_dict[label].mol_from_xyz(get_cheap=False)
                 if not self.composite_method:
                     self.run_opt_job(label, fine=self.fine_only)
                 else:
                     self.run_composite_job(label)
-                self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
-                self.species_dict[label].successful_methods = [self.species_dict[label].ts_guesses[0].method]
-                if getattr(self.species_dict[label].ts_guesses[0], 'log_path', None):
-                    self.output[label]['paths']['neb'] = self.species_dict[label].ts_guesses[0].log_path
+                self.species_dict[label].chosen_ts_method = chosen_tsg.method
+                self.species_dict[label].successful_methods = [chosen_tsg.method]
+                paths_key, log_path = _ts_guess_path_provenance(chosen_tsg)
+                if paths_key and log_path:
+                    self.output[label]['paths'][paths_key] = log_path
 
     def run_opt_job(self, label: str, fine: bool = False):
         """
@@ -1409,6 +1640,26 @@ class Scheduler(object):
             self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
                          level_of_theory=self.freq_level, job_type='freq')
 
+    def sp_reuses_opt_output(self, label: str, level: Level | None = None) -> bool:
+        """
+        Whether the sp energy of a species is parsed from its optimization output, so that no sp job is needed.
+
+        This holds when the sp level equals the optimization level, the method is not composite, the species
+        is not an xtb TS, and the optimization geometry path is known.
+
+        Args:
+            label (str): The species label.
+            level (Level, optional): The sp level. Defaults to ``self.sp_level``.
+
+        Returns:
+            bool: ``True`` if the optimization output serves as the sp output.
+        """
+        level = level or self.sp_level
+        return bool(level == self.opt_level and not self.composite_method
+                    and not (level.software == 'xtb' and self.species_dict[label].is_ts)
+                    and 'paths' in self.output[label] and 'geo' in self.output[label]['paths']
+                    and self.output[label]['paths']['geo'])
+
     def run_sp_job(self,
                    label: str,
                    level: Level | None = None,
@@ -1431,10 +1682,7 @@ class Scheduler(object):
                          job_type='conf_sp',
                          conformer=conformer)
             return
-        if level == self.opt_level and not self.composite_method \
-                and not (level.software == 'xtb' and self.species_dict[label].is_ts) \
-                and 'paths' in self.output[label] and 'geo' in self.output[label]['paths'] \
-                and self.output[label]['paths']['geo']:
+        if self.sp_reuses_opt_output(label, level):
             logger.info(f'Not running an sp job for {label} at {level} since the optimization was done at the '
                         f'same level of theory. Using the optimization output to parse the sp energy.')
             recent_opt_job_name, recent_opt_job = 'opt_a0', None
@@ -1447,6 +1695,7 @@ class Scheduler(object):
                 self.post_sp_actions(label=label,
                                      sp_path=os.path.join(recent_opt_job.local_path_to_output_file),
                                      level=level,
+                                     job=recent_opt_job,
                                      )
             # If opt is not in the job dictionary, the likely explanation is this job has been restarted
             elif 'geo' in self.output[label]['paths']:  # Then just use this path directly
@@ -1623,6 +1872,715 @@ class Scheduler(object):
                      job_type='orbitals',
                      )
 
+    def run_stability_job(self,
+                          label: str,
+                          opt_job: JobAdapter,
+                          ) -> bool:
+        """
+        Spawn a wavefunction stability analysis job for a TS or for a species that optimized restricted.
+
+        The analysis is spawned from the optimization, before the frequency job, the single point
+        and the IRC of that species, so the reference every one of them would be computed on is
+        measured while it can still be changed. Its level comes from the optimization job, its
+        geometry is the one that optimization converged to, and its orbitals are the ones that
+        optimization wrote, so its SCF reproduces the wavefunction under test rather than whichever
+        solution a fresh SCF reaches: without them Gaussian falls back to ``guess=mix``, whose
+        deliberately symmetry-broken SCF is a different wavefunction, and ORCA converges from its
+        own initial guess.
+
+        It is spawned at most once per species, recorded on the species as
+        ``stability_analysis_ran`` so a restart does not spawn a second one, and only where every
+        one of the following holds: the species is a TS or its optimization declared a restricted
+        reference, which is the only reference the analysis can inform, since a restricted solution
+        gives the same energy as an unrestricted one if and only if it is stable; the optimization
+        is a submitted ESS job, which a pipe task is not; that job's ESS is in
+        ``STABILITY_ANALYSIS_ADAPTERS``; its level is DFT or Hartree-Fock, the only ones either of those
+        ESSs offers the analysis for; and the species still holds the checkfile that optimization
+        wrote, which is ESS-specific, a ``.chk`` for Gaussian and a ``.gbw`` for ORCA. Each refusal
+        is logged and the caller runs the jobs that follow unchanged.
+
+        A job that ran in an ESS for which ARC has not implemented the analysis is reported as a
+        warning once per ESS per run, rather than once per species: the condition holds for every
+        species that ESS runs, so it is a statement about the run and not about the species that
+        happened to reach it first.
+
+        WHAT THE ANALYSIS IS FOR ON A SPECIES THAT IS NOT A TS, given that it is expected to return
+        'stable' nearly every time: well under a few per cent of closed-shell equilibrium
+        geometries are RHF -> UHF unstable, and a well is not where instabilities are looked for.
+        Its value is what a 'stable' verdict licenses rather than what an unstable one reports. A
+        well verified stable has identical restricted and unrestricted energies, so comparing it
+        against a TS that ARC has made unrestricted is a comparison on one surface rather than
+        across two; without the verdict that cannot be asserted. It also catches an undeclared
+        singlet biradical, whose restricted energy is wrong and which nothing else in ARC detects.
+
+        Args:
+            label (str): The species label.
+            opt_job (JobAdapter): The optimization job whose wavefunction is tested.
+
+        Returns: bool
+            Whether a stability analysis job was spawned.
+        """
+        species = self.species_dict[label]
+        if not self.job_types.get('stability', False) or species.stability_analysis_ran:
+            return False
+        job_adapter = getattr(opt_job, 'job_adapter', None)
+        level = getattr(opt_job, 'level', None)
+        checkfile = getattr(opt_job, 'local_path_to_check_file', None)
+        xyz = species.get_xyz(generate=False)
+        if job_adapter is None or xyz is None:
+            logger.info(f'Not running a wavefunction stability analysis for {label}: its optimization job is '
+                        f'not a submitted ESS job, so the wavefunction under test is not reachable.')
+            return False
+        if not species.is_ts and job_scf_reference_is_restricted(opt_job) is not True:
+            logger.info(f'Not running a wavefunction stability analysis for {label}: it is not a transition '
+                        f'state and its optimization did not declare a restricted reference, which is the '
+                        f'only reference the analysis can inform.')
+            return False
+        if job_adapter not in STABILITY_ANALYSIS_ADAPTERS:
+            if job_adapter not in self.stability_unimplemented_ess:
+                self.stability_unimplemented_ess.add(job_adapter)
+                logger.warning(f'Not running a wavefunction stability analysis for {label}: ARC implements the '
+                               f'analysis for {", ".join(sorted(STABILITY_ANALYSIS_ADAPTERS))} only, and the '
+                               f'optimization job ran in {job_adapter}. No stability analysis will run for any '
+                               f'species whose jobs run in {job_adapter}. This message is reported once per ESS.')
+            return False
+        if not level_admits_a_broken_symmetry_reference(level):
+            logger.info(f'Not running a wavefunction stability analysis for {label}: {job_adapter} offers it for '
+                        f'DFT and Hartree-Fock levels only, and the optimization job ran at {level}.')
+            return False
+        if checkfile is None or not os.path.isfile(checkfile):
+            logger.info(f'Not running a wavefunction stability analysis for {label}: its optimization job left '
+                        f'no checkfile to read the tested wavefunction from.')
+            return False
+        species_checkfile = species.checkfile
+        if species_checkfile is None or not os.path.isfile(species_checkfile) \
+                or os.path.realpath(species_checkfile) != os.path.realpath(checkfile):
+            logger.info(f'Not running a wavefunction stability analysis for {label}: the species does not hold '
+                        f'the checkfile its optimization job wrote.')
+            return False
+        self.run_job(label=label,
+                     xyz=xyz,
+                     level_of_theory=level,
+                     job_type='stability',
+                     job_adapter=job_adapter,
+                     )
+        species.stability_analysis_ran = True
+        return True
+
+    def spawn_post_stability_jobs(self, label: str):
+        """
+        Resume the work a wavefunction stability analysis was holding, once its verdict is in.
+
+        ``spawn_post_opt_jobs`` records the optimization job it was called for on the species as
+        ``stability_pending_opt_job`` and returns without enqueueing anything whenever it spawns a
+        stability analysis, so that no Hessian, energy or reaction path is computed on a reference
+        that is still under test. This method is what releases that work, and it is reached for
+        every stability job that leaves ``running_jobs``, whether it converged, errored or was
+        never parsed, so a species is not held by an analysis that produced no verdict.
+
+        A verdict ARC acts on, which ``adopted_reference_is_unrestricted`` defines, re-optimizes the
+        species instead of releasing the held work. The re-optimization runs at the optimization
+        level, starts from the geometry the first optimization converged to, and is unrestricted,
+        because ``is_species_restricted`` reads the adopted verdict off the species. Re-optimizing
+        is what makes an adoption correct: the restricted geometry is a stationary point of the
+        restricted surface only, so a Hessian computed there on the broken-symmetry reference sits
+        at a non-stationary point and can report imaginary modes that belong to the mismatch rather
+        than to the molecule. Its own completion re-enters ``spawn_post_opt_jobs``, which spawns no
+        second analysis and releases the frequency, single point and IRC onto the geometry and the
+        reference they belong with.
+
+        AT MOST ONE RE-OPTIMIZATION per species, recorded on the species as
+        ``stability_reoptimized`` and written to the restart file, so a run resumed between the
+        analysis and the re-optimization cannot spawn a second one.
+
+        THE ORBITALS THE RE-OPTIMIZATION STARTS FROM are the analysis' own where the ESS relaxed
+        into the lower solution, which its verdict reports as ``followed_to_stable``, and none
+        otherwise. ORCA follows an instability it finds and writes the relaxed orbitals to the
+        analysis job's ``input.gbw``, which is the broken-symmetry solution the re-optimization is
+        meant to sit on. Gaussian's ``stable=(rext,noopt)`` reports an instability without
+        following it, so its checkfile still holds the restricted orbitals; handing those to an
+        unrestricted SCF returns it to the very solution the analysis rejected, since a restricted
+        solution is a stationary point of the unrestricted equations too. Dropping the checkfile
+        sends the job to ``guess=mix``, whose deliberately symmetry-broken guess is what finds the
+        lower solution.
+
+        Args:
+            label (str): The species label.
+        """
+        species = self.species_dict[label]
+        job_name = species.stability_pending_opt_job
+        if job_name is None:
+            return
+        species.stability_pending_opt_job = None
+        if adopted_reference_is_unrestricted(species) and not species.stability_reoptimized:
+            species.stability_reoptimized = True
+            self.adopt_stability_orbitals(label=label)
+            opt_job = self.job_dict.get(label, dict()).get('opt', dict()).get(job_name)
+            xyz = species.final_xyz or species.initial_xyz
+            species.initial_xyz = xyz
+            logger.info(f'Re-optimizing {label} with an unrestricted reference, which its wavefunction stability '
+                        f'analysis found lower than the restricted one its geometry was optimized on.')
+            self.run_job(label=label,
+                         xyz=xyz,
+                         level_of_theory=self.opt_level,
+                         job_type='opt',
+                         fine=getattr(opt_job, 'fine', self.job_types['fine']),
+                         )
+            return
+        self.spawn_post_opt_jobs(label=label, job_name=job_name)
+
+    def release_held_stability_work(self, label: str | None = None):
+        """
+        Release the post-optimization work of every species held for an analysis that is not running.
+
+        A species holds a ``stability_pending_opt_job`` from the moment its wavefunction stability
+        analysis is spawned until ``spawn_post_stability_jobs`` releases it, and both of those are
+        written to the restart file. A run resumed in between finds the record but not the job,
+        since a finished job is not restored into ``running_jobs``, so this is what reaches
+        ``spawn_post_stability_jobs`` for it. A species whose analysis is still queued is left
+        alone; the main loop reaches it when that job ends.
+
+        Args:
+            label (str, optional): A single species label to release, or ``None`` for all of them.
+        """
+        labels = [label] if label is not None else list(self.species_dict.keys())
+        for spc_label in labels:
+            species = self.species_dict.get(spc_label)
+            if species is None or getattr(species, 'stability_pending_opt_job', None) is None \
+                    or spc_label not in self.output:
+                continue
+            if any('stability' in job_name for job_name in self.running_jobs.get(spc_label, list())):
+                continue
+            logger.info(f'Releasing the jobs {spc_label} was holding for a wavefunction stability verdict, '
+                        f'which no running analysis of its will deliver.')
+            self.spawn_post_stability_jobs(label=spc_label)
+
+    def adopt_stability_orbitals(self, label: str):
+        """
+        Hand a species the orbitals its wavefunction stability analysis relaxed into, or none.
+
+        A verdict reporting ``followed_to_stable`` was measured by an ESS that rotated the unstable
+        orbitals, re-converged the SCF and reached a stable solution, and wrote that solution to
+        the analysis job's own orbitals file. That file is the broken-symmetry reference, so it
+        becomes the species' checkfile and seeds the SCF of the job that follows. Any other verdict
+        was measured without relaxing anything, so the file the species holds describes the
+        reference the analysis rejected and is dropped rather than passed on.
+
+        Args:
+            label (str): The species label.
+        """
+        species = self.species_dict[label]
+        verdict = species.derived_stability_verdict
+        checkfile = None
+        if isinstance(verdict, dict) and verdict.get('followed_to_stable'):
+            stability_jobs = self.job_dict.get(label, dict()).get('stability', dict())
+            for job in stability_jobs.values():
+                path = getattr(job, 'local_path_to_check_file', None)
+                if path is not None and os.path.isfile(path):
+                    checkfile = path
+        species.checkfile = checkfile
+
+    def stability_verdict_can_be_honoured(self, label: str) -> bool:
+        """
+        Check whether every ESS this species' E0 is built from can be given a broken-symmetry reference.
+
+        Acting on a wavefunction-stability verdict re-optimizes the species and computes its
+        Hessian and its electronic energy on the lower, symmetry-broken solution. An unrestricted
+        SCF reaches that solution only from a reference composed to break the spin symmetry, which
+        the adapters in ``SYMMETRY_BREAKING_ADAPTERS`` compose and the rest do not: an adapter
+        absent from that set writes one spin-symmetric determinant, whose SCF converges back to
+        the restricted solution the verdict rejected. A geometry composed by one adapter and an
+        energy by another is the standard arrangement, so a verdict adopted with only the first of
+        them composing a symmetry-broken reference moves the geometry and the Hessian onto the
+        lower solution and leaves the energy on the restricted one, and the E0 the run publishes
+        sums terms from two surfaces rather than being the lower solution's E0 or the restricted
+        one's. The job that could not compose the reference also records an unrestricted memo for
+        an SCF that reached the restricted solution, which ``check_scf_reference_consistency``
+        then reads as agreement.
+
+        The three levels tested are the ones those terms come from: the optimization, which
+        supplies the geometry, the frequency job, which supplies the ZPE, and the single point,
+        which supplies the electronic energy. A job type the run does not compute is not tested,
+        and a species whose single point runs at its optimization level tests that one level twice
+        rather than none.
+
+        A LEVEL AN ADOPTED VERDICT DOES NOT REACH IS NOT TESTED, since its adapter is asked for no
+        symmetry-broken reference and so can neither honour a verdict nor fail to. Two kinds of
+        level are outside the verdict's reach. A reference-agnostic one, for which ARC writes no
+        reference prefix at all, is one; a correlated wavefunction level, whose energy is an
+        expansion about a spin-adapted reference rather than the energy of that reference, is the
+        other, and ``level_admits_a_broken_symmetry_reference`` tells both from the levels a
+        verdict does decide. A single point at a correlated level therefore keeps its restricted
+        reference in every adapter alike, and what it costs is a mismatch against the ZPE rather
+        than a collapse, which ``check_scf_reference_consistency`` reports.
+
+        What this reports is that every level the verdict does reach is composed by an adapter
+        writing a symmetry-broken reference; anything less is reported as not honourable and the
+        verdict is measured and logged without being acted on.
+
+        Args:
+            label (str): The species label.
+
+        Returns: bool
+            Whether adopting the verdict would give this species one reference throughout.
+        """
+        job_types_and_levels = [('opt', self.opt_level)]
+        if self.job_types.get('freq', False):
+            job_types_and_levels.append(('freq', self.freq_level))
+        if self.job_types.get('sp', False):
+            job_types_and_levels.append(('sp', self.sp_level))
+        for job_type, level in job_types_and_levels:
+            if level is None:
+                continue
+            level = Level(repr=level)
+            if not level_admits_a_broken_symmetry_reference(level):
+                continue
+            job_adapter = self.deduce_job_adapter(level=level, job_type=job_type)
+            if job_adapter not in SYMMETRY_BREAKING_ADAPTERS:
+                logger.info(f'The wavefunction stability verdict of {label} cannot be acted on: its {job_type} job '
+                            f'is composed by the {job_adapter} adapter, which writes no symmetry-broken reference, '
+                            f'so the {job_type} of an adopted verdict would converge to the restricted solution '
+                            f'while the rest of the species ran on the broken-symmetry one.')
+                return False
+        return True
+
+    def warn_on_collapsible_unrestricted_reference(self,
+                                                   label: str,
+                                                   job: JobAdapter,
+                                                   ):
+        """
+        Report a job running an adopted unrestricted reference its adapter cannot keep from collapsing.
+
+        A species carrying an adopted wavefunction-stability verdict runs every job that follows
+        it unrestricted, and an unrestricted SCF started from a spin-symmetric guess converges, in
+        all but pathological cases, back to the restricted solution the verdict rejected: a
+        restricted solution is a stationary point of the unrestricted equations too, so a
+        gradient-following SCF sits on it. The job then reports the restricted energy under an
+        unrestricted label, which is the energy the analysis found a lower solution than.
+
+        TWO MECHANISMS PREVENT THAT, and the adapters in ``SYMMETRY_BREAKING_ADAPTERS`` write them:
+        an orbital guess taken from the broken-symmetry solution, which is Gaussian's
+        ``guess=read`` and ORCA's ``!MORead``, and a symmetry-breaking directive that needs no
+        guess, which is Gaussian's ``guess=mix`` and ORCA's ``BrokenSym``. Those two adapters
+        write whichever of the pair the job admits.
+
+        EVERY OTHER ADAPTER WRITES NEITHER. An adopted verdict was measured by an optimization
+        composed by one of the adapters in ``STABILITY_ANALYSIS_ADAPTERS``, so whatever
+        broken-symmetry orbitals a later job could start from were written in that ESS's own
+        format; a third adapter writes no keyword that reads them, and no symmetry-breaking
+        directive either. Whether its ESS could be asked for one is a separate question: this
+        reports what ARC composes. The standard arrangement of a geometry from one adapter and an
+        energy from another is exactly where this lands, and what it costs is the electronic
+        energy the run publishes.
+
+        WHAT REACHES THIS AT ALL. A verdict is adopted only where the adapters composing every
+        level of the species the verdict decides write a symmetry-breaking reference, which
+        ``stability_verdict_can_be_honoured`` decides, so the geometry, the Hessian and an
+        electronic energy at such a level do not reach this. An electronic energy at a correlated
+        level does not either: the verdict decides no reference there, so the job composes a
+        restricted one and is not a collapse. What does reach this is a job type that decision
+        does not cover, the IRC and the rotor scans of an adopted species, composed at a level
+        whose adapter writes neither mechanism.
+
+        WHAT IS REPORTED WHERE. The species' output warnings carry
+        ``COLLAPSED_REFERENCE_MESSAGE``, once per species, so ``output.yml`` names every species
+        the condition was reached for rather than only the first. The log carries the full
+        message once per adapter per run, as ``run_stability_job`` reports an adapter with no
+        analysis implemented, since the statement is the same for every species that adapter
+        composes a job for.
+
+        WHAT THIS DOES NOT REACH. The ESS name is what decides whether a mechanism exists, so a
+        Gaussian job whose SCF troubleshooting replaced its guess keyword with ``guess=INDO``
+        carries neither ``guess=read`` nor ``guess=mix`` and is not reported. A single point
+        batched through the pipe is spawned by the pipe planner rather than by ``run_job``, and is
+        not reported either.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The job that was spawned.
+        """
+        species = self.species_dict.get(label) if isinstance(label, str) else None
+        job_adapter = getattr(job, 'job_adapter', None)
+        if species is None or job_adapter is None \
+                or job_adapter in SYMMETRY_BREAKING_ADAPTERS \
+                or not adopted_reference_is_unrestricted(species) \
+                or job_scf_reference_is_restricted(job) is not False:
+            return
+        if label in self.output and COLLAPSED_REFERENCE_MESSAGE not in self.output[label]['warnings']:
+            self.output[label]['warnings'] += COLLAPSED_REFERENCE_MESSAGE
+        if job_adapter in self.unbreakable_reference_ess:
+            return
+        self.unbreakable_reference_ess.add(job_adapter)
+        job_name = getattr(job, 'job_name', None)
+        logger.warning(f'Job {job_name or "of an unnamed adapter"} of {label} runs in {job_adapter} with the '
+                       f'unrestricted reference its wavefunction stability analysis found lower than the '
+                       f'restricted one, and ARC offers {job_adapter} neither of the two ways of reaching that '
+                       f'reference: it writes a symmetry-breaking directive for '
+                       f'{" and ".join(sorted(SYMMETRY_BREAKING_ADAPTERS))} only, and whatever '
+                       f'broken-symmetry orbitals {label} holds were written in the format of the ESS that ran '
+                       f'its optimization, which {job_adapter} does not read. This SCF starts spin-symmetric and '
+                       f'converges to the restricted solution the analysis rejected, so the energy it reports is '
+                       f'the restricted one. Running the affected job types of {label} in '
+                       f'{" or ".join(sorted(SYMMETRY_BREAKING_ADAPTERS))} is what reaches the lower solution. '
+                       f'This message is reported once per ESS.')
+
+    def check_stability_job(self,
+                            label: str,
+                            job: JobAdapter,
+                            ):
+        """
+        Parse and record the verdict of a wavefunction stability analysis job.
+
+        Stores a summary of the verdict under the species' output entry, where the run summary
+        reads it, stores the structured verdict together with the path of the log it was read
+        from on the species object, where the reference decision reads it, and logs it. A job
+        that left no log, and a log holding no stability analysis, record nothing. Nothing here
+        is troubleshooted or re-run: a job that died with its analysis already printed is read
+        for the verdict it printed, since the analysis precedes whatever killed it and its
+        blocks are complete or absent rather than truncated into a different verdict.
+
+        A verdict calling for an unrestricted reference is stamped with whether the ESSs this
+        species runs in can be given one, which ``stability_verdict_can_be_honoured`` decides
+        and ``adopted_reference_is_unrestricted`` reads. A verdict that cannot be honoured is
+        recorded, logged and reported in the species' output warnings as
+        ``UNREACHABLE_REFERENCE_MESSAGE``, and decides nothing.
+
+        A verdict that invalidates the analytic frequencies also writes
+        ``INVALID_ANALYTIC_FREQ_MESSAGE`` into the species' output warnings, which is what
+        carries it into ``output.yml`` and into the run summary. Nothing is re-run on it: the
+        frequencies, the ZPE they give and the E0 built from them are reported as they were
+        computed, with the warning attached.
+
+        A verdict already on the species, which can only be one carried over from an abandoned
+        TS guess, is replaced by the one parsed here: a measurement on the live geometry
+        supersedes one carried from a geometry that is gone.
+
+        An instability is logged as a warning and a stable wavefunction as an info message,
+        and a verdict carrying a negative stability-matrix root also reports that root's
+        label and eigenvalue, which name the perturbation the wavefunction broke along and
+        how far.
+
+        Whether an instability bears on the validity of the analytic frequencies depends on
+        the reference. Gaussian's rule, which both ESS readers apply so that the same physical
+        situation gets the same answer whichever ESS measured it, is that for a restricted
+        wavefunction it suffices that no singlet (internal) instability exists, while for an
+        unrestricted one any instability, internal or external, invalidates them. Neither ESS
+        computes a spin-flip root for an unrestricted reference, so both readers report an
+        undetermined ``external_instability`` there and the external half of that rule is
+        never reached: a stable verdict on an unrestricted reference covers the spin-conserving
+        sector alone, which is the sector the analytic Hessian is taken in. So the
+        frequency-validity warning is raised for an internal instability of either reference,
+        and additionally for an external instability of an unrestricted one. An instability
+        whose sector the ESS did not report leaves the question undetermined rather than
+        answered either way, and is warned about as such. An external instability of a
+        restricted reference is reported without that warning: a lower symmetry-broken
+        solution exists, which for a TS with stretched partial bonds is expected, and the
+        analytic Hessian remains a correct second derivative of the surface that was
+        computed. That surface is not the ground state, though. Near an RHF -> UHF
+        instability onset the restricted surface is spuriously stiff along the
+        bond-stretching coordinate, which for a TS is the reaction coordinate, so the
+        imaginary frequency and the barrier curvature are wrong in a known direction,
+        too large and too high.
+
+        Adopting the verdict replaces one biased number with another rather than with the right
+        one. A broken-symmetry solution is not a spin eigenfunction: it is contaminated by the
+        higher multiplicity it mixes in, so its energy lies ABOVE the spin-pure low-spin energy,
+        and the restricted energy it replaces lies above the broken-symmetry one in turn. The
+        ordering is E_projected < E_BS < E_restricted, so adoption is a step toward the spin-pure
+        energy that stops short of it, and the residual error keeps the sign and direction it had
+        before. ARC does not project the contamination out. ``arc/checks/spin.py`` holds the
+        Yamaguchi approximate spin-projection arithmetic that estimates the projected energy from
+        the broken-symmetry and high-spin energies and their ``S**2`` values.
+
+        A spin contamination larger than ``MAX_S_SQUARED_DEVIATION`` is warned about where the
+        electronic energy is read, in ``check_spin_contamination``, and not here: the analysis
+        log this verdict comes from describes the wavefunction that was tested, or for an ESS
+        that follows an instability the solution it relaxed into, and neither is the wavefunction
+        the published energy belongs to.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The stability analysis job object instance.
+
+        Returns:
+            None
+        """
+        if not os.path.isfile(job.local_path_to_output_file):
+            logger.info(f'The wavefunction stability analysis for {label} left no log, '
+                        f'no verdict was recorded.')
+            return
+        try:
+            result = parser.parse_wavefunction_stability(log_file_path=str(job.local_path_to_output_file))
+        except Exception as e:
+            logger.info(f'Could not read the wavefunction stability analysis for {label} from '
+                        f'{job.local_path_to_output_file}: {e.__class__.__name__}: {e}')
+            return
+        if result is None:
+            logger.info(f'Could not parse a wavefunction stability verdict for {label} from '
+                        f'{job.local_path_to_output_file}.')
+            return
+        verdict, restricted = result['verdict'], result['restricted']
+        self.species_dict[label].derived_stability_verdict = dict(result, log=job.local_path_to_output_file)
+        if derived_reference_is_unrestricted(self.species_dict[label]) \
+                and not self.stability_verdict_can_be_honoured(label=label):
+            self.species_dict[label].derived_stability_verdict[REFERENCE_CHANGE_AVAILABLE_KEY] = False
+            if UNREACHABLE_REFERENCE_MESSAGE not in self.output[label]['warnings']:
+                self.output[label]['warnings'] += UNREACHABLE_REFERENCE_MESSAGE
+        self.output[label]['paths']['stability'] = job.local_path_to_output_file
+        self.output[label]['job_types']['stability'] = True
+        relaxations = ', '.join(result['relaxations']) or 'an external relaxation'
+        negative_eigenvectors = result['negative_eigenvectors']
+        detail, summary = '', verdict
+        if negative_eigenvectors:
+            root = min(negative_eigenvectors, key=lambda eigenvector: eigenvector['eigenvalue'])
+            root_label = root['label'] or 'an unlabelled root'
+            detail = f" Its lowest negative stability-matrix root is {root_label} at " \
+                     f"{root['eigenvalue']:.4f} Hartree."
+            summary = f"{verdict} ({root_label}, {root['eigenvalue']:.4f})"
+        if verdict == 'internal_instability':
+            logger.warning(f'The wavefunction of {label} has an internal instability, so its analytic '
+                           f'frequencies are outside the range in which they are defined.{detail}')
+        elif verdict == 'external_instability' and restricted is False:
+            logger.warning(f'The unrestricted wavefunction of {label} has an instability ({relaxations}), '
+                           f'so its analytic frequencies are outside the range in which they are '
+                           f'defined.{detail}')
+        elif verdict == 'external_instability':
+            logger.warning(f'The restricted wavefunction of {label} has an external instability '
+                           f'({relaxations}): a lower symmetry-broken solution exists, so the restricted '
+                           f'reference is not the ground state.{detail}')
+        elif verdict == 'unattributed_instability':
+            logger.warning(f'The wavefunction of {label} is unstable, but the ESS did not report which '
+                           f'sector the instability lies in, so whether its analytic frequencies remain '
+                           f'valid and whether a lower symmetry-broken solution exists are both '
+                           f'undetermined.{detail}')
+        elif verdict == 'unknown':
+            logger.info(f'A wavefunction stability analysis ran for {label} but reported no verdict '
+                        f'that ARC could read.')
+        else:
+            logger.info(f'The wavefunction of {label} is stable under the perturbations considered.')
+        if result['invalidates_analytic_freq'] \
+                and INVALID_ANALYTIC_FREQ_MESSAGE not in self.output[label]['warnings']:
+            self.output[label]['warnings'] += INVALID_ANALYTIC_FREQ_MESSAGE
+        self.output[label]['wavefunction_stability'] = summary
+        self.output[label]['info'] += f'Wavefunction stability: {summary}; '
+        self.log_open_shell_character_sources(label=label, verdict=verdict, restricted=restricted)
+        if not self.testing:
+            self.save_restart_dict()
+
+    def log_open_shell_character_sources(self,
+                                         label: str,
+                                         verdict: str,
+                                         restricted: bool | None,
+                                         ):
+        """
+        Log how a species' declared open-shell character and its measured stability verdict stand to each other.
+
+        A user-declared ``number_of_radicals`` always decides the reference and is never
+        overwritten here, so a conflict with the measured verdict is reported and nothing
+        else. When the user declared nothing and the verdict calls for an unrestricted
+        reference, that verdict is what subsequent jobs for a transition state will run on,
+        and that adoption is logged as such; for any other species, and for a transition state
+        whose verdict no ESS of the run can be given a symmetry-broken reference for, the
+        verdict is reported as measured but not acted on, together with what would let it be
+        acted on. Every branch logs; none raises.
+
+        Args:
+            label (str): The species label.
+            verdict (str): The stability verdict that was parsed.
+            restricted (bool | None): Whether the tested wavefunction used a restricted reference.
+
+        Returns:
+            None
+        """
+        species = self.species_dict[label]
+        number_of_radicals, multiplicity = species.number_of_radicals, species.multiplicity
+        reference = 'restricted' if restricted else 'unrestricted' if restricted is False else 'unreadable'
+        if number_of_radicals is not None:
+            if multiplicity == 1 and number_of_radicals > 1 and verdict == 'stable':
+                logger.warning(f'{label} was declared with number_of_radicals = {number_of_radicals} at '
+                               f'multiplicity {multiplicity}, i.e. as a broken-symmetry biradical singlet, but its '
+                               f'wavefunction stability analysis reports its {reference} wavefunction stable under '
+                               f'the perturbations considered. The declared broken-symmetry character is not '
+                               f'supported by the calculation. The declared value is the one ARC uses.')
+            elif number_of_radicals <= 1 and derived_reference_is_unrestricted(species):
+                logger.warning(f'{label} was declared with number_of_radicals = {number_of_radicals}, which asks '
+                               f'for a restricted reference, but its wavefunction stability analysis reports an '
+                               f'external instability of that reference, i.e. a lower symmetry-broken solution '
+                               f'exists. The declared value is the one ARC uses.')
+            return
+        if derived_reference_is_unrestricted(species) and not species.is_ts:
+            logger.warning(f'The wavefunction stability analysis of {label} reports an external instability of its '
+                           f'restricted reference, so its restricted energy is above the lower symmetry-broken '
+                           f'solution. ARC reports this and does not act on it: {label} is not a transition state, '
+                           f'its geometry and Hessian were already computed on the restricted reference, and '
+                           f'changing reference for the jobs that follow would give it an E0 summing an energy and '
+                           f'a zero-point correction from two different surfaces. Declare '
+                           f'number_of_radicals = 2 for {label}, which is the smallest declaration ARC reads as '
+                           f'open-shell character, to run it unrestricted throughout.')
+            return
+        if derived_reference_is_unrestricted(species) and not adopted_reference_is_unrestricted(species):
+            logger.warning(f'The wavefunction stability analysis of {label} reports an external instability of its '
+                           f'restricted reference, so its restricted energy is above the lower symmetry-broken '
+                           f'solution. ARC reports this and does not act on it: an adapter composing the geometry, '
+                           f'the Hessian or the electronic energy of {label} writes no symmetry-broken reference, '
+                           f'so an adopted verdict would move part of {label} onto that solution and leave the '
+                           f'rest on the restricted one. Running the optimization, the frequency job and the '
+                           f'single point of {label} all in '
+                           f'{" or ".join(sorted(SYMMETRY_BREAKING_ADAPTERS))} is what lets the verdict be acted '
+                           f'on.')
+            return
+        if adopted_reference_is_unrestricted(species):
+            logger.warning(f'No number_of_radicals was declared for {label} and its wavefunction stability '
+                           f'analysis reports an external instability of its restricted reference, so ARC is '
+                           f'adopting that verdict: subsequent jobs for {label} run unrestricted. Its already '
+                           f'completed jobs keep the reference they ran with.')
+
+    def record_scf_reference(self,
+                             label: str,
+                             job: JobAdapter,
+                             reference_key: str | None = None,
+                             ):
+        """
+        Record which SCF reference a completed job declared in the input it ran.
+
+        Only the two job types an E0 is built from are recorded, under the two keys
+        SCF_REFERENCE_JOB_TYPES maps them to: 'sp', which supplies the electronic energy, and
+        'freq' or the combined 'optfreq', which supply the ZPE. Every other job type decides
+        neither term, so recording it would compare references that are never summed.
+
+        ``reference_key`` names the term the job supplies where the job type does not say it.
+        A species whose sp level equals its opt level runs no sp job at all and reads its
+        electronic energy out of the optimization's log, so it is the opt job that supplied
+        the energy and its memo is recorded under 'sp'. Without that the most common
+        single-level configuration would record no energy reference at all, and the
+        mixed-reference check would have nothing to compare for the whole run.
+
+        The value is read off the job adapter's own memo of the decision it made while writing
+        that input, not recomputed, so a species whose reference decision changed after the job
+        ran still reports what the job did. Jobs whose level carries no reference prefix, the
+        force field, composite and semiempirical methods, are not recorded: their 'restricted'
+        flag is not a reference choice ARC made, and comparing it against a DFT job's would
+        report a mismatch that does not exist. Anything that is not a submitted ESS job, pipe
+        tasks among them, carries no memo and is skipped.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The completed job object.
+            reference_key (str, optional): The term the job supplied, 'sp' or 'freq'. Taken
+                                           from the job type when not given.
+
+        Returns:
+            None
+        """
+        restricted = job_scf_reference_is_restricted(job)
+        reference_key = reference_key or SCF_REFERENCE_JOB_TYPES.get(getattr(job, 'job_type', None))
+        if restricted is None or reference_key is None:
+            return
+        species = self.species_dict[label]
+        if not isinstance(species.scf_references, dict):
+            species.scf_references = dict()
+        species.scf_references[reference_key] = 'restricted' if restricted else 'unrestricted'
+        self.check_scf_reference_consistency(label=label)
+
+    def check_scf_reference_consistency(self, label: str):
+        """
+        Warn when a species' electronic energy and its ZPE were computed on different SCF references.
+
+        Its E0 is then the sum of an energy and a zero-point correction taken from two different
+        potential energy surfaces, so it is not a point on either of them. ARC does not re-run the
+        species, so the mismatch is reported in the log, in the species' output warnings and in
+        output.yml, and nothing is invalidated.
+
+        AN ADOPTED STABILITY VERDICT REACHES THIS CHECK THROUGH ITS SINGLE POINT. The verdict
+        decides the reference of the levels a broken-symmetry one describes, which
+        ``level_admits_a_broken_symmetry_reference`` defines, so a species whose freq is a DFT one
+        and whose sp is a correlated wavefunction one takes the broken-symmetry reference for its
+        ZPE and keeps the spin-adapted one for its electronic energy. That is the mismatch this
+        reports, and the alternative it is chosen over is a correlated energy expanded about a
+        symmetry-broken reference, which is a worse number reported by a quieter run. A species
+        whose freq and sp are both at levels the verdict decides, and one whose sp is at its own
+        DFT level, run on one reference throughout and are not reported.
+
+        What reaches this check besides is a pair of jobs composed on either side of some other
+        change to the species' state: an sp resubmitted by troubleshooting, an sp deferred past its
+        freq, or a species restored from a restart.
+
+        Args:
+            label (str): The species label.
+        """
+        references = self.species_dict[label].scf_references
+        references = references if isinstance(references, dict) else dict()
+        sp_reference, freq_reference = references.get('sp'), references.get('freq')
+        if sp_reference is None or freq_reference is None or sp_reference == freq_reference:
+            return
+        logger.warning(f'The single-point energy of {label} was computed with a {sp_reference} reference while its '
+                       f'ZPE came from a {freq_reference} frequency job. E0 = E_elect({sp_reference}) + '
+                       f'ZPE({freq_reference}) mixes two potential energy surfaces and is not a point on either. '
+                       f'Re-running {label} entirely under one reference is what would remove the mismatch; ARC '
+                       f'does not do so, and reports it here instead.')
+        if MIXED_SCF_REFERENCE_MESSAGE not in self.output[label]['warnings']:
+            self.output[label]['warnings'] += MIXED_SCF_REFERENCE_MESSAGE
+
+    def check_spin_contamination(self,
+                                 label: str,
+                                 sp_path: str | None,
+                                 ):
+        """
+        Warn when the wavefunction the electronic energy came from is spin-contaminated.
+
+        The ``<S**2>`` of an unrestricted determinant exceeds the spin-pure ``S(S+1)`` of the
+        state it is meant to describe by the weight of the higher multiplicities mixed into
+        it, so the deviation between the two IS the contamination. An energy carrying it is
+        not the energy of the state ARC reports it for, and it reaches the thermo and the
+        rates unchanged: nothing here re-runs the job, changes its reference or projects the
+        contamination out. The species' output warnings and the log are where it is reported.
+
+        ``MAX_S_SQUARED_DEVIATION`` is the largest deviation reported without a warning. It is
+        an absolute deviation rather than a fraction of the spin-pure value because a singlet's
+        spin-pure value is zero, and the broken-symmetry singlet is exactly the case that most
+        needs reporting, so a fraction is undefined where it matters most. Its size follows
+        from what a deviation means: the nearest contaminant of a state of spin S is the state
+        of spin S+1, whose ``S(S+1)`` lies ``2S+2``, at least 2, above it, so a deviation of
+        0.1 is at most a five percent admixture of that state. Below it an unrestricted energy
+        and the Hessian taken at it are customarily used as the state's own.
+
+        A restricted reference prints no ``<S**2>``, and an ESS with no reader for it reports
+        none either, so both are passed over rather than reported uncontaminated.
+
+        Args:
+            label (str): The species label.
+            sp_path (str | None): The path to the log the electronic energy was read from.
+
+        Returns:
+            None
+        """
+        if not sp_path or not os.path.isfile(sp_path):
+            return
+        try:
+            diagnostic = parser.parse_s_squared(sp_path)
+        except Exception as e:
+            logger.debug(f'Could not read an <S**2> spin diagnostic for {label} from {sp_path}: '
+                         f'{e.__class__.__name__}: {e}')
+            return
+        if diagnostic is None or diagnostic.get('s_squared') is None:
+            return
+        s_squared = diagnostic['s_squared']
+        expected = parser.s_squared_expected_from_multiplicity(self.species_dict[label].multiplicity)
+        if expected is None:
+            expected = diagnostic.get('s_squared_expected')
+        if expected is None:
+            return
+        deviation = s_squared - expected
+        if deviation <= MAX_S_SQUARED_DEVIATION:
+            return
+        logger.warning(f'The wavefunction the electronic energy of {label} was read from has an <S**2> of '
+                       f'{s_squared}, {deviation} above the {expected} of a spin-pure state of multiplicity '
+                       f'{self.species_dict[label].multiplicity}. That energy is the energy of a mixture of '
+                       f'spin states rather than of the state {label} is reported as, and ARC reports it '
+                       f'unprojected. See {sp_path}.')
+        if SPIN_CONTAMINATION_MESSAGE not in self.output[label]['warnings']:
+            self.output[label]['warnings'] += SPIN_CONTAMINATION_MESSAGE
+
     def run_onedmin_job(self, label):
         """
         Spawn a lennard-jones calculation using OneDMin.
@@ -1645,6 +2603,16 @@ class Scheduler(object):
         """
         Spawn additional jobs after opt has converged.
 
+        A wavefunction stability analysis, where ``run_stability_job`` finds the species eligible
+        for one, is the single job spawned from here and everything else waits for its verdict:
+        the frequency job, the single point, the IRC and the rotor scans all inherit the SCF
+        reference and the geometry of the optimization, so computing them before the reference is
+        measured spends them on a surface that may be about to change. The optimization job's name
+        is recorded on the species as ``stability_pending_opt_job`` before the analysis is spawned,
+        so that a run interrupted between the two finds the record in its restart file, and
+        ``spawn_post_stability_jobs`` re-enters this method with it once the verdict is in. The
+        analysis runs at most once per species, so the re-entry spawns none and proceeds.
+
         Args:
             label (str): The species label.
             job_name (str): The opt job name (used for differentiating between ``opt`` and ``optfreq`` jobs).
@@ -1660,6 +2628,13 @@ class Scheduler(object):
         if composite and not self.composite_method:
             self.run_opt_job(label, fine=self.fine_only)
             return None
+
+        if label in self.output.keys() and not composite:
+            opt_job = self.job_dict.get(label, dict()).get('opt', dict()).get(job_name)
+            self.species_dict[label].stability_pending_opt_job = job_name
+            if opt_job is not None and self.run_stability_job(label=label, opt_job=opt_job):
+                return None
+            self.species_dict[label].stability_pending_opt_job = None
 
         # Enqueue IRC if requested and if relevant (deferred for pipe batching).
         if label in self.output.keys() and self.job_types['irc'] and self.species_dict[label].is_ts:
@@ -1743,10 +2718,9 @@ class Scheduler(object):
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
                 else:
                     rxn.ts_species.tsg_spawned = True
-                    tsg_index = 0
+                    tsg_index, eligible_methods = 0, list()
+                    family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
                     for method in self.ts_adapters:
-                        family_known = (rxn.family is not None
-                                        and rxn.family in ts_adapters_by_rmg_family)
                         admit_unknown_family = (not family_known
                                                 and method in ts_adapters_for_unknown_unimolecular
                                                 and rxn.is_unimolecular())
@@ -1758,12 +2732,47 @@ class Scheduler(object):
                                 logger.info(f'Admitting TS adapter {method!r} for reaction {rxn.label} '
                                             f'via ts_adapters_for_unknown_unimolecular '
                                             f'(RMG family is {rxn.family!r}).')
-                            self.run_job(job_type='tsg',
-                                         job_adapter=method,
-                                         reactions=[rxn],
-                                         tsg=tsg_index,
-                                         )
+                            eligible_methods.append(method)
+                            try:
+                                self.run_job(job_type='tsg',
+                                             job_adapter=method,
+                                             reactions=[rxn],
+                                             tsg=tsg_index,
+                                             )
+                            except DependencyError as e:
+                                # An optional adapter's backend (e.g. KinBot, AutoTST) is not installed;
+                                # record it and carry on so one missing dependency can't abort the run.
+                                logger.error(f'The {method!r} TS search adapter is not available and '
+                                             f'was skipped for reaction {rxn.label}: {e}')
+                                if method not in rxn.ts_species.unsuccessful_methods:
+                                    rxn.ts_species.unsuccessful_methods.append(method)
+                                # Roll back the job run_job() registered before it raised, so a
+                                # never-run 'tsg<i>' entry isn't serialized and parsed as completed.
+                                if f'tsg{tsg_index}' in self.running_jobs.get(rxn.ts_label, list()):
+                                    self.running_jobs[rxn.ts_label].remove(f'tsg{tsg_index}')
+                                self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).pop(tsg_index, None)
+                                continue
                             tsg_index += 1
+                    if not tsg_index and not rxn.ts_species.ts_guesses:
+                        # No adapter ran and no user guess was given, and tsg_spawned is already
+                        # latched True, so warn explicitly rather than fail silently much later.
+                        eligible = ts_adapters_by_rmg_family.get(rxn.family) if family_known else None
+                        if eligible_methods:
+                            reason = (f'all of its eligible adapters {eligible_methods} are unavailable '
+                                      f'on this machine (see the errors above). Install one of them, or add '
+                                      f'an eligible adapter that is installed')
+                        else:
+                            reason = (f'none of the configured ts_adapters {self.ts_adapters} is eligible for it. '
+                                      + (f'Its RMG family {rxn.family!r} admits {eligible}; the two lists do '
+                                         f'not intersect.' if eligible is not None else
+                                         f'Its RMG family {rxn.family!r} is not in ts_adapters_by_rmg_family, '
+                                         f'and it did not qualify for {ts_adapters_for_unknown_unimolecular} '
+                                         f'(is_unimolecular={rxn.is_unimolecular()}).')
+                                      + ' Add an eligible adapter to ts_adapters')
+                        logger.warning(f'Not spawning any TS search job for reaction {rxn.label}: {reason} '
+                                       f'(in the input file or in ~/.arc/settings.py) to compute this TS. '
+                                       f'No TS guess will be generated and this reaction will be reported '
+                                       f'as not converged.')
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
@@ -2127,9 +3136,14 @@ class Scheduler(object):
             xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
             energy = parser.parse_e_elect(log_file_path=job.local_path_to_output_file)
             if self.species_dict[label].is_ts:
-                self.species_dict[label].ts_guesses[i].energy = energy
-                self.species_dict[label].ts_guesses[i].opt_xyz = xyz
-                self.species_dict[label].ts_guesses[i].index = i
+                tsg = next((guess for guess in self.species_dict[label].ts_guesses
+                            if guess.conformer_index == i), None)
+                if tsg is None:
+                    logger.warning(f'Could not find TSGuess for conformer {i} of {label} '
+                                   f'(expected a matching conformer_index); skipping.')
+                    return False
+                tsg.energy = energy
+                tsg.opt_xyz = xyz
                 if energy is not None:
                     logger.debug(f'Energy for TSGuess {i} of {label} is {energy:.2f}')
                 else:
@@ -2349,7 +3363,8 @@ class Scheduler(object):
             e_min, selected_i = None, None
             self.species_dict[label].ts_guesses_exhausted = True
             for tsg in self.species_dict[label].ts_guesses:
-                if tsg.success and tsg.energy is not None and (e_min is None or tsg.energy < e_min) \
+                if tsg.success and tsg.energy is not None and tsg.opt_xyz is not None \
+                        and (e_min is None or tsg.energy < e_min) \
                         and (tsg.imaginary_freqs is None or check_imaginary_frequencies(tsg.imaginary_freqs)) \
                         and tsg.index not in self.species_dict[label].chosen_ts_list:
                     e_min = tsg.energy
@@ -2376,8 +3391,9 @@ class Scheduler(object):
                     self.species_dict[label].initial_xyz = tsg.opt_xyz
                     self.species_dict[label].final_xyz = None
                     self.species_dict[label].ts_guesses_exhausted = False
-                    if getattr(tsg, 'log_path', None):
-                        self.output[label]['paths']['neb'] = tsg.log_path
+                    paths_key, log_path = _ts_guess_path_provenance(tsg)
+                    if paths_key and log_path:
+                        self.output[label]['paths'][paths_key] = log_path
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -2464,7 +3480,7 @@ class Scheduler(object):
                                        project_directory=self.project_directory,
                                        method='draw_3d')
             frequencies = parser.parse_frequencies(job.local_path_to_output_file, job.job_adapter)
-            freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
+            freq_ok, _ = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
             if freq_ok:
                 # Update restart dictionary and save a restart file:
                 self.save_restart_dict()
@@ -2618,6 +3634,31 @@ class Scheduler(object):
                     f'{xyz_to_str(self.species_dict[spc_label].final_xyz)}\n')
         self.output[spc_label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
 
+    def get_chosen_tsg(self, label: str) -> TSGuess | None:
+        """
+        Get the TSGuess object of a TS species that is currently being optimized.
+
+        The ``chosen_ts`` attribute of an ARCSpecies object stores a ``TSGuess.index``, which is an identity
+        assigned to a TS guess when it is appended to the species. It is not a position in a list, and in
+        particular it is not the ``TSGuess.conformer_index`` attribute, which is the index of the conformer
+        optimization job spawned for the guess (i.e., a position in the list of *successful* TS guesses).
+        If ``chosen_ts`` is ``None``, no selection was made among several guesses. That happens when only a
+        single TS guess was successful and was sent directly to a geometry optimization, in which case that
+        guess is returned, and after a restart file with ambiguous TS guess identities was repaired, in which
+        case there may be several successful guesses and ``None`` is returned.
+
+        Args:
+            label (str): The TS species label.
+
+        Returns:
+            TSGuess | None: The chosen TSGuess object, or ``None`` if it could not be determined.
+        """
+        if self.species_dict[label].chosen_ts is not None:
+            return next((tsg for tsg in self.species_dict[label].ts_guesses
+                         if tsg.index == self.species_dict[label].chosen_ts), None)
+        successful_tsgs = [tsg for tsg in self.species_dict[label].ts_guesses if tsg.success]
+        return successful_tsgs[0] if len(successful_tsgs) == 1 else None
+
     def check_freq_job(self,
                        label: str,
                        job: JobAdapter,
@@ -2626,74 +3667,127 @@ class Scheduler(object):
         Check that a freq job converged successfully. Also checks (QA) that no imaginary frequencies were assigned for
         stable species, and that exactly one imaginary frequency was assigned for a TS.
 
+        The SCF reference this job declared is recorded only if its geometry survives the check. A
+        TS whose normal mode displacement fails is switched to a different guess inside
+        ``post_freq_actions``, which clears the per-job reference records of the abandoned guess
+        along with everything else that described it; recording afterwards would write one of them
+        straight back, and the next guess' sp job would then be compared against the reference of a
+        geometry that is gone.
+
         Args:
             label (str): The species label.
             job (JobAdapter): The frequency job object instance.
         """
-        freq_ok, switch_ts = False, False
-        wrong_freq_message = 'wrong number of negative frequencies; '
+        freq_ok = False
         if job.job_status[1]['status'] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
             vibfreqs = parser.parse_frequencies(log_file_path=str(job.local_path_to_output_file))
-            freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
-            if freq_ok and vibfreqs is not None:
-                self.species_dict[label].freqs = [float(f) for f in vibfreqs]
-            if freq_ok:
-                # Copy the frequency file to the species / TS output folder.
-                folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
-                freq_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry', 'freq.out')
-                safe_copy_file(source=job.local_path_to_output_file, destination=freq_path)
-                # Set species.polarizability.
-                polarizability = parser.parse_polarizability(job.local_path_to_output_file)
-                if polarizability is not None:
-                    self.species_dict[label].transport_data.polarizability = (polarizability, str('angstroms^3'))
-                    if self.species_dict[label].transport_data.comment:
-                        self.species_dict[label].transport_data.comment += \
-                            str(f'\nPolarizability calculated at the {self.freq_level.simple()} level of theory')
-                    else:
-                        self.species_dict[label].transport_data.comment = \
-                            str(f'Polarizability calculated at the {self.freq_level.simple()} level of theory')
-                if self.species_dict[label].is_ts:
-                    if self.species_dict[label].rxn_index in self.rxn_dict.keys():
-                        check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
-                                 job=job,
-                                 checks=['NMD'],
-                                 skip_nmd=self.skip_nmd,
-                                 )
-                    if self.species_dict[label].ts_checks['NMD'] is False:
-                        logger.info(f'TS {label} did not pass the normal mode displacement check. '
-                                    f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                                    f'Searching for a better TS conformer...')
-                        self.switch_ts(label)
-                        switch_ts = True
-                if wrong_freq_message in self.output[label]['warnings']:
-                    self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(wrong_freq_message))
-            elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
-                # Only trsh neg freq here for non TS species, trsh TS species is done in check_negative_freq().
-                self.troubleshoot_negative_freq(label=label, job=job)
+            freq_ok, switched_ts = self.post_freq_actions(label=label, job=job, vibfreqs=vibfreqs)
+            if freq_ok and not switched_ts:
+                self.record_scf_reference(label=label, job=job)
             if not freq_ok:
-                self.output[label]['warnings'] += wrong_freq_message
+                if not self.species_dict[label].is_ts and self.trsh_ess_jobs:
+                    # Only trsh neg freq here for non TS species, trsh TS species is done in check_negative_freq().
+                    self.troubleshoot_negative_freq(label=label, job=job)
+                self.output[label]['warnings'] += WRONG_FREQ_MESSAGE
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
-        if (job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts
-                and species_has_sp(self.output[label], self.species_dict[label].yml_path)):
+
+    def post_freq_actions(self,
+                          label: str,
+                          job: JobAdapter,
+                          vibfreqs: list | np.ndarray | None,
+                          ) -> tuple[bool, bool]:
+        """
+        Run the imaginary frequency QA and, if it passes, perform every action a converged freq job
+        is expected to leave behind.
+
+        Pipe mode computes a batch of freq tasks outside the Scheduler's job machinery and hands the
+        results back to be checked, so it is a second caller of this method. Both routes share it so
+        that a species cannot be reported as converged while missing the artifacts its consumers
+        read: ``species.freqs``, which carries the frequencies into the restart and output files, and
+        the ``freq.out`` copy under the species output folder, whose absence makes
+        ``compute_rxn_e0()`` give up on the reaction E0 check. For a TS this is also where the normal
+        mode displacement check runs, so skipping it would leave the TS permanently un-validated.
+
+        Troubleshooting a failed check is deliberately not done here: it resubmits jobs and therefore
+        needs a real job object, which only a Scheduler-submitted job has.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The frequency job object instance.
+            vibfreqs (list | np.ndarray | None): The vibrational frequencies,
+                                                 or ``None`` if they could not be parsed.
+
+        Returns:
+            tuple[bool, bool]: Whether the frequencies passed the check,
+                               and whether a different TS guess was selected as a result.
+        """
+        freq_ok, switch_ts = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
+        if not freq_ok:
+            return False, switch_ts
+        if vibfreqs is not None:
+            self.species_dict[label].freqs = [float(f) for f in vibfreqs]
+        # Copy the frequency file to the species / TS output folder.
+        folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
+        freq_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry', 'freq.out')
+        os.makedirs(os.path.dirname(freq_path), exist_ok=True)
+        safe_copy_file(source=job.local_path_to_output_file, destination=freq_path)
+        # Set species.polarizability.
+        polarizability = parser.parse_polarizability(job.local_path_to_output_file)
+        if polarizability is not None:
+            self.species_dict[label].transport_data.polarizability = (polarizability, str('angstroms^3'))
+            if self.species_dict[label].transport_data.comment:
+                self.species_dict[label].transport_data.comment += \
+                    str(f'\nPolarizability calculated at the {self.freq_level.simple()} level of theory')
+            else:
+                self.species_dict[label].transport_data.comment = \
+                    str(f'Polarizability calculated at the {self.freq_level.simple()} level of theory')
+        if self.species_dict[label].is_ts:
+            if self.species_dict[label].rxn_index in self.rxn_dict.keys():
+                check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
+                         job=job,
+                         checks=['NMD'],
+                         skip_nmd=self.skip_nmd,
+                         )
+            if self.species_dict[label].ts_checks['NMD'] is False:
+                logger.info(f'TS {label} did not pass the normal mode displacement check. '
+                            f'Status is:\n{self.species_dict[label].ts_checks}\n'
+                            f'Searching for a better TS conformer...')
+                self.switch_ts(label)
+                switch_ts = True
+        if WRONG_FREQ_MESSAGE in self.output[label]['warnings']:
+            self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(WRONG_FREQ_MESSAGE))
+        if not switch_ts and species_has_sp(self.output[label], self.species_dict[label].yml_path):
             self.check_rxn_e0_by_spc(label)
+        return True, switch_ts
 
     def check_negative_freq(self,
                             label: str,
                             job: JobAdapter,
-                            vibfreqs: list | np.ndarray,
-                            ):
+                            vibfreqs: list | np.ndarray | None,
+                            ) -> tuple[bool, bool]:
         """
         A helper function for determining the number of negative frequencies. Also logs appropriate errors.
-        Returns ``True`` if the number of negative frequencies is as excepted, ``False`` otherwise.
 
         Args:
             label (str): The species label.
             job (JobAdapter): The optimization job object.
-            vibfreqs (list): The vibrational frequencies.
+            vibfreqs (list | np.ndarray | None): The vibrational frequencies, or ``None`` if they could not be parsed.
+
+        Returns:
+            tuple[bool, bool]: Whether the number of negative frequencies is as expected,
+                               and whether a different TS guess was selected as a result.
         """
+        if vibfreqs is None:
+            logger.error(f'Could not parse frequencies for {label} from the freq job output file '
+                         f'{job.local_path_to_output_file}. Treating the freq job as unsuccessful.')
+            return False, False
+        if len(vibfreqs) == 0 and not self.species_dict[label].is_ts and self.species_dict[label].number_of_atoms > 1:
+            logger.error(f'The freq job for {label} yielded no frequencies, but {label} is a polyatomic non-TS '
+                         f'species and should have vibrational modes. Treating the freq job as unsuccessful.')
+            return False, False
         neg_freqs = list()
         for freq in vibfreqs:
             if freq < 0:
@@ -2705,22 +3799,42 @@ class Scheduler(object):
                 if f'{len(neg_freqs)} imaginary freq for' not in self.output[label]['warnings']:
                     self.output[label]['warnings'] += f'Warning: {len(neg_freqs)} imaginary freq for stable species ' \
                                                       f'({neg_freqs}); '
-                return False
+                return False, False
             else:
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
                 if not self.testing:
                     # Update restart dictionary and save the yaml restart file:
                     self.save_restart_dict()
-                return True
+                return True, False
         else:
             # This is a TS. Assign the imaginary frequencies to the respective TSGuess.
-            tsg = None
-            for tsg in self.species_dict[label].ts_guesses:
-                if tsg.conformer_index == self.species_dict[label].chosen_ts:
-                    tsg.imaginary_freqs = neg_freqs
-                    break
-            if tsg is not None and not check_imaginary_frequencies(tsg.imaginary_freqs):
+            chosen_tsg = self.get_chosen_tsg(label=label)
+            if chosen_tsg is None and self.species_dict[label].chosen_ts is None:
+                # No selection was made among the TS guesses, so the frequencies cannot be attributed to one.
+                # They still describe the geometry that was optimized, so the check is decided on them directly.
+                n_successful = len([tsg for tsg in self.species_dict[label].ts_guesses if tsg.success])
+                logger.warning(f'No TS guess is currently selected for {label} ({n_successful} successful TS '
+                               f'guesses), so the imaginary frequencies {neg_freqs} cannot be attributed to a '
+                               f'TS guess. Checking them against the optimized geometry of {label} itself.')
+                if 'imaginary freqs could not be attributed' not in self.output[label]['warnings']:
+                    self.output[label]['warnings'] += f'Warning: the imaginary freqs could not be attributed to a ' \
+                                                      f'TS guess ({neg_freqs}); '
+            elif chosen_tsg is None:
+                logger.warning(f'Could not match the chosen TS guess index {self.species_dict[label].chosen_ts} of '
+                               f'{label} to any of its TS guesses (available TS guess indices: '
+                               f'{[tsg.index for tsg in self.species_dict[label].ts_guesses]}). '
+                               f'The imaginary frequencies {neg_freqs} could not be attributed to a TS guess, '
+                               f'the frequency check for {label} is therefore considered unverified. '
+                               f'Searching for a better TS conformer...')
+                if 'imaginary freqs could not be attributed' not in self.output[label]['warnings']:
+                    self.output[label]['warnings'] += f'Warning: the imaginary freqs could not be attributed to a ' \
+                                                      f'TS guess ({neg_freqs}); '
+                self.switch_ts(label=label)
+                return False, True
+            if chosen_tsg is not None:
+                chosen_tsg.imaginary_freqs = neg_freqs
+            if not check_imaginary_frequencies(neg_freqs):
                 # Imaginary frequencies are problematic, try choosing a different TSGuess, and optimize it.
                 add_text = f' major imaginary frequency between {LOWEST_MAJOR_TS_FREQ} and {HIGHEST_MAJOR_TS_FREQ}.' \
                     if len(neg_freqs) == 1 and (neg_freqs[0] < LOWEST_MAJOR_TS_FREQ
@@ -2730,36 +3844,43 @@ class Scheduler(object):
                 if f'{len(neg_freqs)} imaginary freqs for' not in self.output[label]['warnings']:
                     self.output[label]['warnings'] += f'Warning: {len(neg_freqs)} imaginary freqs for TS ({neg_freqs}); '
                     logger.info(f'TS {label} did not pass the negative frequency check. '
-                                f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                                f'Searching for a better TS conformer...')
+                                f'Status is:\n{self.species_dict[label].ts_checks}\n')
+                if chosen_tsg is None:
+                    # The frequencies belong to no identifiable guess, so switching guesses would discard a
+                    # geometry that may already have passed every other check without knowing what replaces it.
+                    logger.warning(f'Not switching the TS guess of {label}: the frequencies could not be '
+                                   f'attributed to a TS guess. The frequency check is left unverified.')
+                    return False, False
+                logger.info(f'Searching for a better TS conformer for {label}...')
                 self.switch_ts(label=label)
-                return False
+                return False, True
             else:
                 logger.info(f'TS {label} has exactly one imaginary frequency: {neg_freqs[0]}')
                 self.output[label]['info'] += f'Imaginary frequency: {neg_freqs[0] if len(neg_freqs) == 1 else neg_freqs}; '
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
-                plotter.save_conformers_file(
-                    project_directory=self.project_directory,
-                    label=label,
-                    xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
-                    level_of_theory=self.ts_guess_level,
-                    multiplicity=self.species_dict[label].multiplicity,
-                    charge=self.species_dict[label].charge,
-                    is_ts=True,
-                    energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
-                    ts_methods=[f'{tsg.method} '
-                                f'{tsg.method_direction if tsg.method_direction is not None else ""} '
-                                f'{tsg.method_index if tsg.method_index is not None else ""} '
-                                for tsg in self.species_dict[label].ts_guesses],
-                    im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
-                        if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
-                    before_optimization=False,
-                )
+                if len(self.species_dict[label].ts_guesses):
+                    plotter.save_conformers_file(
+                        project_directory=self.project_directory,
+                        label=label,
+                        xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
+                        level_of_theory=self.ts_guess_level,
+                        multiplicity=self.species_dict[label].multiplicity,
+                        charge=self.species_dict[label].charge,
+                        is_ts=True,
+                        energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
+                        ts_methods=[f'{tsg.method} '
+                                    f'{tsg.method_direction if tsg.method_direction is not None else ""} '
+                                    f'{tsg.method_index if tsg.method_index is not None else ""} '
+                                    for tsg in self.species_dict[label].ts_guesses],
+                        im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
+                            if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
+                        before_optimization=False,
+                    )
                 if not self.testing:
                     self.save_restart_dict()
                 self.species_dict[label].ts_checks['freq'] = True
-                return True
+                return True, False
 
     def check_rxn_e0_by_spc(self, label: str):
         """
@@ -2797,6 +3918,113 @@ class Scheduler(object):
                         # check_all_done reads this to avoid overwriting convergence back to True.
                         self.species_dict[rxn.ts_label].ts_checks['E0'] = False
 
+    def carry_stability_verdict_across_ts_switch(self, label: str):
+        """
+        Reduce a TS's stability verdict to what still holds once its geometry is abandoned.
+
+        An adopted external instability is kept, and it is kept because carrying it is cheap rather
+        than because it is known to transfer. Distinct saddles of one reaction do NOT always agree:
+        the campaign behind this feature found one reaction whose three lowest-energy saddles are
+        unstable while its only stable one is the highest, and another whose unstable saddles sit
+        61 kcal/mol above its stable ones. What makes carrying it safe is that forcing an
+        unrestricted reference on a guess that is in fact stable costs nothing but SCF effort: a
+        stable restricted solution IS the unrestricted minimum, so E(UKS) = E(RKS) exactly there.
+        What it buys is that the next guess is unrestricted from its very first optimization,
+        which is the reference the discovering guess reached only by being optimized a second
+        time: a carried verdict spares the next guess that second optimization and the analysis
+        that would have prompted it. Every other verdict is dropped rather than carried: a
+        'stable', 'unknown' or internal-instability verdict has no consumer, and leaving it would
+        attribute a bill of health to a geometry that was never tested. A verdict ARC would not
+        act on is dropped too, so a TS whose user declared a ``number_of_radicals`` carries
+        nothing: the declaration decides its reference, and carrying a verdict that will never be
+        adopted would promise the next guess a reference change that is not coming.
+
+        DROPPING A VERDICT CLEARS ``stability_analysis_ran`` with it, so the surviving guess is
+        measured in its turn. The dropped verdict describes a wavefunction that is gone, and the
+        next guess comes from a different search and is a different saddle: leaving the flag set
+        would have ARC publish that guess' restricted energy with no verdict of its own and
+        nothing to say whether it was measured stable or never measured at all.
+
+        The geometry-specific detail is dropped in either case. The negative-eigenvector labels
+        and eigenvalues, and whether the analytic frequencies are invalidated, all describe the
+        abandoned wavefunction and its Hessian, and no measurement of them exists for the new
+        guess: a CARRIED verdict keeps ``stability_analysis_ran`` set, so no second analysis runs
+        for the guess it is carried to and the carried verdict is never contradicted by a later
+        one. Its reference is already decided, and a fresh analysis of the unrestricted reference
+        the next guess runs on measures a different question than the one that was adopted. The
+        guess the carried verdict was measured on is recorded alongside it.
+
+        THE RELAXED CONSTRAINTS ARE CARRIED, unlike the rest of the detail, because they name the
+        CLASS of the instability rather than its size at one geometry, and that class is what the
+        reference decision reads: a relaxation of the spin constraint calls for a symmetry-broken
+        determinant, which ``derived_instability_breaks_spin_symmetry`` reports and the ORCA
+        adapter acts on, while a relaxation of the reality of the orbitals calls for a reference
+        ARC does not write. Dropping them would leave the surviving guess carrying a verdict whose
+        class is unknown, which is read as no evidence of broken-symmetry character at all.
+
+        The per-job SCF reference records are cleared outright, and so is any mixed-reference
+        warning they raised: opt, freq and sp all re-run for the new guess, so the references of
+        the abandoned guess' jobs describe nothing and a warning about them would outlive its
+        subject in the species' permanent output entry. The invalid-Hessian and spin-contamination
+        warnings go with them, for the same reason and about the same jobs. The optimization job
+        whose post-opt work an analysis was holding is released too, since ``switch_ts`` abandons
+        that job along with the geometry it converged to.
+
+        The unreachable-reference warning is cleared with them, and it is always cleared. It is
+        raised only on a verdict stamped ``REFERENCE_CHANGE_AVAILABLE_KEY`` ``False``, which
+        ``adopted_reference_is_unrestricted`` reads as well, so such a verdict is never one this
+        method carries over: it is dropped here along with the geometry it was measured on, and
+        the warning would otherwise name a reference change the surviving guess was never offered.
+        The next guess is measured in its turn and raises the warning again where its own verdict
+        cannot be honoured.
+
+        THE TWO RECORDS ARE REDUCED TOGETHER. The verdict summary the run summary prints, and the
+        sentence it added to the species' info, describe the abandoned geometry down to the
+        stability-matrix root, so they are cleared alongside the detail this drops from the species
+        object. ``delete_all_species_jobs`` resets the stability path the same switch, so leaving
+        them would have ``output.yml`` report no verdict for the surviving geometry while the run
+        summary printed the abandoned guess' root against it. The log the carried verdict was read
+        from stays with it, so a carried decision still names the analysis that made it.
+
+        Args:
+            label (str): The TS species label.
+
+        Returns:
+            None
+        """
+        species = self.species_dict[label]
+        species.scf_references = dict()
+        species.stability_pending_opt_job = None
+        for message in [MIXED_SCF_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, SPIN_CONTAMINATION_MESSAGE,
+                        COLLAPSED_REFERENCE_MESSAGE, UNREACHABLE_REFERENCE_MESSAGE]:
+            if message in self.output[label]['warnings']:
+                self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(message))
+        summary = self.output[label].get('wavefunction_stability')
+        if summary:
+            fragment = f'Wavefunction stability: {summary}; '
+            self.output[label]['info'] = ''.join(self.output[label]['info'].split(fragment))
+        self.output[label]['wavefunction_stability'] = None
+        verdict = species.derived_stability_verdict
+        if not isinstance(verdict, dict):
+            species.stability_analysis_ran = False
+            return
+        if not adopted_reference_is_unrestricted(species):
+            logger.info(f'Dropping the wavefunction stability verdict of {label}, which was measured on the TS '
+                        f'guess being abandoned and does not decide the reference of the next one. The next '
+                        f'guess is measured in its turn.')
+            species.derived_stability_verdict = None
+            species.stability_analysis_ran = False
+            return
+        species.derived_stability_verdict = {'verdict': verdict['verdict'],
+                                             'restricted': verdict['restricted'],
+                                             'relaxations': verdict.get('relaxations') or list(),
+                                             'measured_on_ts_guess': species.chosen_ts,
+                                             'log': verdict.get('log'),
+                                             }
+        logger.info(f'Carrying the external instability found for {label} over to its next TS guess, without the '
+                    f'stability-matrix detail of the abandoned geometry: the next guess runs unrestricted from '
+                    f'its first job.')
+
     def switch_ts(self, label: str):
         """
         Try the next optimized TS guess in line if a previous TS guess was found to be wrong.
@@ -2805,6 +4033,7 @@ class Scheduler(object):
             label (str): The TS species label.
         """
         logger.info(f'Switching a TS guess for {label}...')
+        self.carry_stability_verdict_across_ts_switch(label=label)
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
@@ -2843,6 +4072,7 @@ class Scheduler(object):
             self.post_sp_actions(label,
                                  sp_path=os.path.join(job.local_path_to_output_file),
                                  level=job.level,
+                                 job=job,
                                  )
             # Update restart dictionary and save the yaml restart file:
             self.save_restart_dict()
@@ -2859,20 +4089,39 @@ class Scheduler(object):
                         label: str,
                         sp_path: str,
                         level: Level | None = None,
+                        job: JobAdapter | None = None,
                         ):
         """
         Perform post-sp actions.
+
+        ``job`` is the job whose log the electronic energy is read from, which is the sp job
+        where one ran and the optimization job where the sp level equals the opt level and no
+        sp job was submitted. Its SCF reference is recorded here, under 'sp', because it is the
+        job that supplied the energy whichever of the two it is. A caller that has no job to
+        name, a species restored from a restart among them, records nothing.
+
+        THE ONE CALLER THAT NAMES NO JOB is ``run_sp_job``'s path for a project restarted with no
+        opt job left in its job dictionary, which reaches the optimization log through
+        ``output[label]['paths']['geo']`` and has no job object to hand over. It is reached only
+        where the sp level equals the opt level, where one job supplied both the geometry and the
+        energy and the two therefore share one SCF reference by construction, so the reference
+        comparison that record feeds has nothing to find. What it costs is that ``output.yml``
+        reports a null ``reference_mismatch`` for such a project rather than ``false``.
 
         Args:
             label (str): The species label.
             sp_path (str): The path to 'output.out' for the single point job.
             level (Level, optional): The level of theory used for the sp job.
+            job (JobAdapter, optional): The job whose log the electronic energy is read from.
         """
+        if job is not None:
+            self.record_scf_reference(label=label, job=job, reference_key='sp')
         original_sp_path = self.output[label]['paths']['sp'] if 'sp' in self.output[label]['paths'] else None
         self.output[label]['paths']['sp'] = sp_path
         if self.sp_level is not None and 'ccsd' in self.sp_level.method:
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
         self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'])
+        self.check_spin_contamination(label=label, sp_path=self.output[label]['paths']['sp'])
         if level is not None and level.method_type == 'wavefunction' and self.species_dict[label].active is None:
             self.species_dict[label].active = parser.parse_active_space(sp_path=self.output[label]['paths']['sp'],
                                                                         species=self.species_dict[label])
@@ -2923,6 +4172,9 @@ class Scheduler(object):
             job (JobAdapter): The IRC job object.
         """
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
+        self.output[label]['paths'].setdefault('irc_directions', list()).append(
+            getattr(job, 'irc_direction', None)
+        )
         index = 1
         if len(self.output[label]['paths']['irc']) == 2:
             index = 2
@@ -2973,7 +4225,8 @@ class Scheduler(object):
 
     def check_irc_species(self, label: str):
         """
-        Check that the optimized geometry of the two species created from a TS IRC runs makes sense
+        Check that the optimized geometry of the two species created from a TS IRC runs makes sense.
+        A TS for which the IRC check positively failed is rejected, and a different TS guess is sought.
 
         Args:
             label (str): The label of one of the optimized IRC-resulting species.
@@ -2982,10 +4235,53 @@ class Scheduler(object):
         if len(self.output[ts_label]['paths']['irc']) == 2:
             irc_species_labels = self.species_dict[ts_label].irc_label.split()
             if all(self.output[irc_label]['paths']['geo'] for irc_label in irc_species_labels):
+                rxn = self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None)
                 check_irc_species_and_rxn(xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
                                           xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
-                                          rxn=self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None),
+                                          rxn=rxn,
                                           )
+                self.process_irc_verdict(ts_label=ts_label, rxn=rxn)
+
+    def process_irc_verdict(self,
+                            ts_label: str,
+                            rxn: ARCReaction | None,
+                            ):
+        """
+        Act on the verdict of the IRC check of a TS species.
+
+        The verdict is three-valued: ``True`` means the optimized IRC endpoints correspond to the
+        requested wells, ``False`` means they positively do not, and ``None`` means the check was not
+        performed or its result could not be determined (e.g., IRC jobs were not requested).
+        Only a ``False`` verdict rejects the TS, in which case a different TS guess is sought.
+        Once every guess was tried, the TS is marked unconverged and the verdict is restored.
+
+        Args:
+            ts_label (str): The label of the TS species the IRC check was performed for.
+            rxn (ARCReaction, optional): The reaction the TS species belongs to.
+        """
+        ts_species = self.species_dict.get(ts_label, None)
+        ts_checks = getattr(ts_species, 'ts_checks', None)
+        verdict = ts_checks.get('IRC', None) if isinstance(ts_checks, dict) else None
+        rxn_label = getattr(rxn, 'label', None) or 'unknown reaction'
+        if verdict is True:
+            logger.info(f'The optimized IRC endpoints of TS {ts_label} correspond to the reactants and products '
+                        f'of reaction {rxn_label}.')
+            return
+        if verdict is not False:
+            logger.debug(f'The IRC check for TS {ts_label} of reaction {rxn_label} was not performed, '
+                         f'or its result could not be determined.')
+            return
+        logger.error(f'The optimized IRC endpoints of TS {ts_label} do NOT correspond to the reactants and '
+                     f'products of reaction {rxn_label}. This TS does not connect the requested wells, '
+                     f'therefore any rate coefficient computed from it does not describe this reaction.\n'
+                     f'Status is:\n{ts_checks}\n'
+                     f'Searching for a better TS conformer...')
+        self.switch_ts(ts_label)
+        if ts_species.ts_guesses_exhausted or ts_species.chosen_ts is None:
+            logger.error(f'Could not find a TS conformer for {ts_label} of reaction {rxn_label} '
+                         f'that passes the IRC check. Marking as unconverged.')
+            self.output[ts_label]['convergence'] = False
+            ts_species.ts_checks['IRC'] = False
 
     def check_scan_job(self,
                        label: str,
@@ -3093,6 +4389,7 @@ class Scheduler(object):
         # Save the path and invalidation reason for debugging and tracking the file.
         # If ``success`` is None, it means that the job is being troubleshooted.
         self.species_dict[label].rotors_dict[job.rotor_index]['scan_path'] = job.local_path_to_output_file
+        self.species_dict[label].rotors_dict[job.rotor_index]['scan_software'] = job.job_adapter
         self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] += invalidation_reason
 
         # If energies were obtained, draw the scan curve.
@@ -3211,7 +4508,7 @@ class Scheduler(object):
                 if rotor_dict['pivots'] == job.pivots:
                     key = tuple(f'{dihedral:.2f}' for dihedral in job.dihedrals)
                     rotor_dict['directed_scan'][key] = {'energy': parser.parse_e_elect(
-                        path=job.local_path_to_output_file),
+                        log_file_path=job.local_path_to_output_file),
                         'xyz': xyz,
                         'is_isomorphic': is_isomorphic,
                         'trsh': job.ess_trsh_methods,
@@ -3230,14 +4527,17 @@ class Scheduler(object):
         """
         all_converged = True
         if label in self.output and not self.output[label]['convergence']:
-            # A TS that failed the E0 check should stay unconverged even if all jobs succeeded.
+            # A TS that failed the E0 or the IRC check should stay unconverged even if all jobs succeeded.
             if self.species_dict[label].is_ts \
-                    and getattr(self.species_dict[label], 'ts_checks', {}).get('E0') is False \
+                    and any(getattr(self.species_dict[label], 'ts_checks', {}).get(check) is False
+                            for check in ['E0', 'IRC']) \
                     and (self.species_dict[label].ts_guesses_exhausted
                          or self.species_dict[label].chosen_ts is None):
                 all_converged = False
             else:
                 for job_type, spawn_job_type in self.job_types.items():
+                    if job_type == 'stability':
+                        continue
                     if spawn_job_type and not self.output[label]['job_types'][job_type] \
                             and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conf_opt'])
                                      or (self.species_dict[label].number_of_atoms == 1
@@ -3300,7 +4600,7 @@ class Scheduler(object):
         for server in self.servers:
             if specific_server is None or server == specific_server:
                 if server != 'local':
-                    with SSHClient(server) as ssh:
+                    with borrow_ssh_client(server) as ssh:
                         self.server_job_ids.extend(ssh.check_running_jobs_ids())
                 else:
                     self.server_job_ids.extend(check_running_jobs_ids())
@@ -3579,6 +4879,41 @@ class Scheduler(object):
         else:
             job.troubleshoot_server()
 
+    def record_tsg_job_error(self,
+                             label: str,
+                             job: JobAdapter,
+                             output_error: str,
+                             ):
+        """
+        Record an unrecoverable TS-search job error on the TS guesses that job produced.
+
+        A ``tsg<i>`` job name numbers the TS-search *adapter* that was dispatched for the
+        reaction, it is not a position in ``species.ts_guesses``: one adapter may contribute
+        several guesses or none at all, and guesses from other adapters are interleaved.
+        Using the job number as a list index therefore either annotates an unrelated guess or
+        raises an ``IndexError`` when the adapter number exceeds the number of guesses
+        generated so far. Match on the adapter that produced each guess instead.
+
+        Args:
+            label (str): The TS species label.
+            job (JobAdapter): The failed TS-search job.
+            output_error (str): The error string to record.
+        """
+        matched = False
+        for tsg in self.species_dict[label].ts_guesses:
+            if tsg.success:
+                # A guess that produced a geometry is not the casualty of this failure, and adapters
+                # merge their names into an equivalent guess (e.g. 'heuristics and gcn'), so matching
+                # a successful guess on the merged name would record the error on another method's work.
+                continue
+            sources = tsg.method_sources or [tsg.method]
+            if any(tsg_method_matches_adapter(source, job.job_adapter) for source in sources):
+                tsg.errors += f'; {output_error}'
+                matched = True
+        if not matched:
+            logger.warning(f'TS-search job {job.job_name} of {label} ({job.job_adapter}) generated no TS guess '
+                           f'to record the error "{output_error}" on: {output_error}')
+
     def troubleshoot_ess(self,
                          label: str,
                          job: JobAdapter,
@@ -3669,7 +5004,7 @@ class Scheduler(object):
         for output_error in output_errors:
             self.output[label]['errors'] += output_error
             if 'Could not troubleshoot' in output_error and 'tsg' in job.job_name:
-                self.species_dict[label].ts_guesses[get_i_from_job_name(job.job_name)].errors += f'; {output_error}'
+                self.record_tsg_job_error(label=label, job=job, output_error=output_error)
         if remove_checkfile:
             self.species_dict[label].checkfile = None
         job.ess_trsh_methods = ess_trsh_methods
@@ -3782,7 +5117,10 @@ class Scheduler(object):
                     logger.info(f'Deleted job {job_name}')
                     job.delete()
         self.running_jobs[label] = list()
-        self.output[label]['paths'] = {key: '' if key != 'irc' else list() for key in self.output[label]['paths'].keys()}
+        self.output[label]['paths'] = {
+            key: list() if key in ('irc', 'irc_directions') else ''
+            for key in self.output[label]['paths'].keys()
+        }
         for job_type in self.output[label]['job_types']:
             # rotors and bde are initialised to True (see initialize_output_dict) because
             # species with no torsional modes / no BDE targets should not be blocked from
@@ -3821,6 +5159,11 @@ class Scheduler(object):
         """
         Make Job objects for jobs which were running in the previous session.
         Important for the restart feature so long jobs won't run twice.
+
+        Rebuilding a job adapter re-composes its input file, which recomputes the SCF reference
+        from the species' state as it is now. The reference the queued job actually ran with is
+        therefore restored onto the rebuilt adapter from the restart file, so that a job which was
+        submitted before a stability verdict was adopted still reports the reference it declared.
         """
         jobs = self.restart_dict['running_jobs']
         if not jobs or not any([job for job in jobs.values()]):
@@ -3837,7 +5180,10 @@ class Scheduler(object):
                             and ('tsg' not in job_description or job_description['tsg'] is None):
                         self.running_jobs[spc_label].append(job_description['job_name'])
                     elif 'conformer' in job_description:
-                        self.running_jobs[spc_label].append(f'conformer{job_description["conformer"]}')
+                        # Emit the same name the live path uses (e.g. 'conf_opt_0'),
+                        # not the fossil 'conformer{i}' that no consumer of running_jobs accepts.
+                        self.running_jobs[spc_label].append(get_conformer_job_name(job_description['job_type'],
+                                                                                   job_description['conformer']))
                     elif 'tsg' in job_description:
                         self.running_jobs[spc_label].append(f'tsg{job_description["tsg"]}')
                     for species in self.species_list:
@@ -3853,24 +5199,31 @@ class Scheduler(object):
                         if 'reaction_indices' in job_description else None
                     if 'reaction_indices' in job_description:
                         del job_description['reaction_indices']
+                    restricted_used = job_description.pop('restricted_used', None)
                     job = job_factory(**job_description)
+                    if isinstance(restricted_used, (bool, list)):
+                        job.restricted_used = restricted_used
                     if spc_label not in self.job_dict.keys():
                         self.job_dict[spc_label] = dict()
-                    if job_description['job_type'] not in self.job_dict[spc_label].keys():
-                        if ('conformer' not in job_description or job_description['conformer'] is None) \
-                                and ('tsg' not in job_description or job_description['tsg'] is None):
-                            self.job_dict[spc_label][job_description['job_type']] = dict()
-                        elif 'conf_opt' not in self.job_dict[spc_label].keys():
-                            self.job_dict[spc_label]['conf_opt'] = dict()
-                        elif 'tsg' not in self.job_dict[spc_label].keys():
-                            self.job_dict[spc_label]['tsg'] = dict()
                     if ('conformer' not in job_description or job_description['conformer'] is None) \
                             and ('tsg' not in job_description or job_description['tsg'] is None):
+                        # Each branch below creates only the container its own job needs. Deciding the
+                        # container by a chain that ignores the job's job_type used to file the second
+                        # conformer job of a species under a phantom 'tsg' key.
+                        if job_description['job_type'] not in self.job_dict[spc_label].keys():
+                            self.job_dict[spc_label][job_description['job_type']] = dict()
                         self.job_dict[spc_label][job_description['job_type']][job_description['job_name']] = job
                     elif 'conformer' in job_description and job_description['conformer'] is not None:
+                        # File the job under its actual job_type ('conf_opt' or 'conf_sp'), the same
+                        # key the live path uses (see run_job) and the same key get_completed_incore_jobs
+                        # reads back -- filing a conf_sp job under 'conf_opt' would crash the first sweep
+                        # with KeyError: 'conf_sp'.
+                        conf_job_type = job_description['job_type']
                         if 'conf_opt' not in self.job_dict[spc_label].keys():
                             self.job_dict[spc_label]['conf_opt'] = dict()
-                        self.job_dict[spc_label]['conf_opt'][int(job_description['conformer'])] = job
+                        if conf_job_type == 'conf_sp' and 'conf_sp' not in self.job_dict[spc_label].keys():
+                            self.job_dict[spc_label]['conf_sp'] = dict()
+                        self.job_dict[spc_label][conf_job_type][int(job_description['conformer'])] = job
                         # don't generate additional conformers for this species
                         self.dont_gen_confs.append(spc_label)
                     elif 'tsg' in job_description and job_description['tsg'] is not None:
@@ -4069,8 +5422,12 @@ class Scheduler(object):
                     if species.is_ts:
                         if 'irc' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['irc'] = list()
+                        if 'irc_directions' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['irc_directions'] = list()
                         if 'neb' not in self.output[species.label]['paths']:
                             self.output[species.label]['paths']['neb'] = ''
+                        if 'gsm' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['gsm'] = ''
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:

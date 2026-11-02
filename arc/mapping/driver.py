@@ -7,11 +7,13 @@ Strategy:
     3) If the reaction is supported by RMG, it is sent to the driver. Else, it is mapped with map_general_rxn.
 """
 
+from itertools import product
 from typing import TYPE_CHECKING
 
 from arc.common import logger
 from arc.exceptions import ActionError, AtomTypeError
 from arc.mapping.engine import (are_adj_elements_in_agreement,
+                                build_pair_constraints,
                                 copy_species_list_for_mapping,
                                 cut_species_based_on_atom_indices,
                                 find_all_breaking_bonds,
@@ -23,6 +25,7 @@ from arc.mapping.engine import (are_adj_elements_in_agreement,
                                 label_species_atoms,
                                 make_bond_changes,
                                 map_pairs,
+                                map_pairs_all,
                                 pairing_reactants_and_products_for_mapping,
                                 reorder_p_label_map,
                                 update_xyz,
@@ -32,6 +35,7 @@ from arc.species.converter import check_molecule_list_order
 if TYPE_CHECKING:
     from arc.molecule.molecule import Molecule
     from arc.reaction import ARCReaction
+    from arc.species.species import ARCSpecies
 
 MAX_PDI = 25
 
@@ -60,7 +64,7 @@ def map_reaction(rxn: ARCReaction,
         except ValueError:
             return None
     if flip:
-        raw_map = try_mapping(rxn.flip_reaction())
+        raw_map = try_mapping(prepare_flipped_reaction(rxn))
         if raw_map is None:
             return None
         return check_atom_map_and_return(flip_map(raw_map))
@@ -70,10 +74,59 @@ def map_reaction(rxn: ARCReaction,
         if general_map is not None:
             return check_atom_map_and_return(general_map)
         return map_reaction(rxn, backend=backend, flip=True)
+    if rxn.product_dicts and all(product_dict.get('discovered_in_reverse', False)
+                                 for product_dict in rxn.product_dicts):
+        return map_reaction(rxn, backend=backend, flip=True)
     raw_map = try_mapping(rxn)
     if raw_map is None:
         return map_reaction(rxn, backend=backend, flip=True)
     return check_atom_map_and_return(raw_map)
+
+
+def prepare_flipped_reaction(rxn: ARCReaction) -> ARCReaction:
+    """
+    Build the flipped reaction and give it a usable, forward-discovered family template.
+
+    ``ARCReaction.flip_reaction`` resets the family, so the flipped copy re-derives its product dictionaries
+    lazily with the *default* family set. When the original reaction was matched only by a broader set - the
+    usual situation for a template discovered in reverse - that rederivation comes back empty and the flip
+    retry has nothing to map with. Widen the search in that case, and prefer a template that describes the
+    flipped reaction forward.
+
+    Args:
+        rxn (ARCReaction): The reaction to flip.
+
+    Returns:
+        ARCReaction: The flipped reaction, seeded with a family and product dictionaries where possible.
+    """
+    flipped = rxn.flip_reaction()
+    try:
+        product_dicts = flipped.product_dicts or list()
+    except (ValueError, KeyError, AttributeError):
+        product_dicts = list()
+    if all(pd.get('discovered_in_reverse') for pd in product_dicts):
+        try:
+            widened = flipped.get_product_dicts(rmg_family_set='all')
+        except (ValueError, KeyError, AttributeError):
+            widened = list()
+        logger.debug(f'Widened the family search for {flipped.label} to all families, '
+                     f'got {len(widened)} product dictionaries.')
+        product_dicts = widened or product_dicts
+    forward_dicts = [pd for pd in product_dicts if not pd.get('discovered_in_reverse')]
+    product_dicts = forward_dicts or product_dicts
+    if product_dicts:
+        # Keep only the chosen family's dictionaries. get_reaction_family_products() concatenates matches
+        # across every family without grouping them, while ``family`` can only name one, so leaving the
+        # whole list in place lets map_rxn's product_dict_index retry pair one family's recipe with
+        # another's label map. Every family labels its atoms *1/*2/*3, so that mispairing resolves against
+        # the wrong atoms and still yields a permutation, which is all check_atom_map_and_return verifies.
+        # TODO: replace with ARCReaction.restrict_product_dicts_to_family() once #978 lands.
+        family = product_dicts[0]['family']
+        product_dicts = [pd for pd in product_dicts if pd['family'] == family]
+        flipped.product_dicts = product_dicts
+        flipped.family = family
+        flipped.family_own_reverse = product_dicts[0]['own_reverse']
+    return flipped
 
 
 def check_atom_map_and_return(atom_map: list[int] | None) -> list[int] | None:
@@ -126,6 +179,28 @@ def map_general_rxn(rxn: ARCReaction,
     if rxn.is_isomerization():
         atom_map = map_isomerization_reaction(rxn=rxn)
     return atom_map
+
+
+def flatten_bond_orders(*species: ARCSpecies) -> None:
+    """
+    Set all bond orders of the given species' molecules to single.
+
+    Also discards the localized structures, the rotors and the directed rotor scans of each species,
+    which were derived from the previous bond orders, so that they are re-determined from the
+    flattened molecule. Species marked to skip rotor scans (a ``None`` ``rotors_dict``) keep that mark.
+
+    Args:
+        species (ARCSpecies): The species to flatten.
+    """
+    for spc in species:
+        for atom in spc.mol.atoms:
+            for bond in atom.bonds.values():
+                bond.order = 1
+        spc.mol_list = None
+        if spc.rotors_dict is not None:
+            spc.rotors_dict = dict()
+            spc.number_of_rotors = 0
+            spc.directed_rotors = dict()
 
 
 def map_isomerization_reaction(rxn: ARCReaction) -> list[int] | None:
@@ -210,9 +285,7 @@ def map_isomerization_reaction(rxn: ARCReaction) -> list[int] | None:
                 success = False
 
             if success:
-                for atom in r_copy.mol.atoms + p_copy.mol.atoms:
-                    for bd in atom.bonds.values():
-                        bd.order = 1
+                flatten_bond_orders(r_copy, p_copy)
                 return map_two_species(r_copy, p_copy, map_type='list')
 
         # 3) If fingerprint branch *didn’t* yield pairs, still do a deterministic edge‐removal mapping for *any* ring opening
@@ -232,9 +305,7 @@ def map_isomerization_reaction(rxn: ARCReaction) -> list[int] | None:
             except ValueError:
                 pass
             else:
-                for atom in r_copy.mol.atoms + p_copy.mol.atoms:
-                    for bd in atom.bonds.values():
-                        bd.order = 1
+                flatten_bond_orders(r_copy, p_copy)
                 return map_two_species(r_copy, p_copy, map_type='list')
 
     # 4) Fallback to the general mapping
@@ -284,7 +355,7 @@ def map_rxn(rxn: ARCReaction,
         p_label_map = rxn.product_dicts[pdi]['p_label_map']
         template_products = rxn.product_dicts[pdi]['products']
     except (IndexError, KeyError) as e:
-        logger.error(f"No valid template maps for reaction {rxn} ({rxn.family}), cannot atom map. Got:\n{e}")
+        logger.debug(f"No valid template maps for reaction {rxn} ({rxn.family}) in this orientation. Got:\n{e}")
         return None
     try:
         template_order = get_template_product_order(rxn, template_products)
@@ -292,7 +363,7 @@ def map_rxn(rxn: ARCReaction,
         if rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < MAX_PDI:
             return map_rxn(rxn, backend=backend, product_dict_index_to_try=pdi + 1)
         else:
-            logger.error(f'No valid template order for reaction {rxn} ({rxn.family}), cannot atom map.')
+            logger.debug(f'No valid template order for reaction {rxn} ({rxn.family}) in this orientation.')
             return None
 
     updated_p_label_map = reorder_p_label_map(p_label_map=p_label_map,
@@ -301,15 +372,22 @@ def map_rxn(rxn: ARCReaction,
                                               actual_products=rxn.get_reactants_and_products()[1])
     try:
         make_bond_changes(rxn, r_cuts, r_label_map)
-    except (ValueError, IndexError, ActionError, AtomTypeError) as e:
+    except (KeyError, ValueError, IndexError, ActionError, AtomTypeError) as e:
         logger.warning(e)
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
-    pairs = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
+    pairs = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts,
+                                                       r_label_map=r_label_map,
+                                                       p_label_map=updated_p_label_map,
+                                                       )
     if p_cuts:
         logger.error(f'Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}')
         return None
 
-    fragment_maps = map_pairs(pairs)
+    constraints = build_pair_constraints(pairs=pairs,
+                                         r_label_map=r_label_map,
+                                         p_label_map=updated_p_label_map,
+                                         )
+    fragment_maps = map_pairs(pairs, constraints=constraints)
     if any(m is None for m in fragment_maps):
         logger.debug(f'map_rxn (rxn={rxn}, pdi={pdi}): one or more fragment maps failed; returning None.')
         return None
@@ -323,6 +401,104 @@ def map_rxn(rxn: ARCReaction,
     if atom_map is None and rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < MAX_PDI:
         return map_rxn(rxn, backend=backend, product_dict_index_to_try=pdi + 1)
     return atom_map
+
+
+def map_rxn_all(rxn: ARCReaction,
+                backend: str = 'ARC',
+                product_dict_index_to_try: int = 0,
+                max_maps: int = 200,
+                max_per_pair: int | None = None,
+                ) -> list[list[int]]:
+    """
+    The multiplicity-preserving counterpart of :func:`map_rxn`: run the family-guided pipeline for one
+    template product dictionary and return *every* atom map it can produce, rather than only one.
+
+    The pipeline stages are identical to :func:`map_rxn` up to the point where fragment pairs are mapped.
+    There, :func:`map_pairs_all` returns all superimposable maps per fragment pair instead of the single
+    best-scoring one, and every combination across fragments is glued into a full-reaction map.
+
+    Unlike :func:`map_rxn` this function does not recurse to the next product dictionary on failure - it
+    returns an empty list instead. Sweeping product dictionaries is the caller's job, see
+    ``arc.mapping.cluster.enumerate_atom_maps``.
+
+    Args:
+        rxn (ARCReaction): An ARCReaction object instance belonging to an RMG reaction family.
+        backend (str, optional): Currently only supports ``'ARC'``.
+        product_dict_index_to_try (int, optional): The index of the reaction family product dictionary to use.
+        max_maps (int, optional): Stop after gluing this many combinations.
+        max_per_pair (int, optional): Keep at most this many candidate maps per fragment pair.
+
+    Returns:
+        list[list[int]]: The distinct atom maps produced for this product dictionary, possibly empty.
+    """
+    pdi = product_dict_index_to_try
+    reactants, products = rxn.get_reactants_and_products(return_copies=False)
+    reactants, products = copy_species_list_for_mapping(reactants), copy_species_list_for_mapping(products)
+    label_species_atoms(reactants), label_species_atoms(products)
+
+    r_bdes = find_all_breaking_bonds(rxn, r_direction=True, pdi=pdi)
+    p_bdes = find_all_breaking_bonds(rxn, r_direction=False, pdi=pdi)
+    r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
+    p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
+    if r_cuts is None or p_cuts is None:
+        logger.debug(f'map_rxn_all (rxn={rxn}, pdi={pdi}): could not cut species.')
+        return list()
+
+    try:
+        r_label_map = rxn.product_dicts[pdi]['r_label_map']
+        p_label_map = rxn.product_dicts[pdi]['p_label_map']
+        template_products = rxn.product_dicts[pdi]['products']
+    except (IndexError, KeyError) as e:
+        logger.debug(f'map_rxn_all (rxn={rxn}, pdi={pdi}): no valid template maps. Got:\n{e}')
+        return list()
+    try:
+        template_order = get_template_product_order(rxn, template_products)
+    except ValueError:
+        logger.debug(f'map_rxn_all (rxn={rxn}, pdi={pdi}): no valid template order.')
+        return list()
+
+    updated_p_label_map = reorder_p_label_map(p_label_map=p_label_map,
+                                              template_order=template_order,
+                                              template_products=template_products,
+                                              actual_products=rxn.get_reactants_and_products()[1])
+    try:
+        make_bond_changes(rxn, r_cuts, r_label_map)
+    except (ValueError, IndexError, ActionError, AtomTypeError) as e:
+        logger.warning(e)
+    r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
+    pairs = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
+    if p_cuts:
+        logger.debug(f'map_rxn_all (rxn={rxn}, pdi={pdi}): unpaired scissored products remain.')
+        return list()
+
+    fragment_map_options = map_pairs_all(pairs, max_per_pair=max_per_pair)
+    if fragment_map_options is None:
+        logger.debug(f'map_rxn_all (rxn={rxn}, pdi={pdi}): one or more fragment pairs could not be mapped.')
+        return list()
+
+    total_atoms = sum(len(sp.mol.atoms) for sp in reactants)
+    atom_maps, seen = list(), set()
+    for combination in product(*fragment_map_options):
+        if len(atom_maps) >= max_maps:
+            logger.debug(f'map_rxn_all (rxn={rxn}, pdi={pdi}): reached the cap of {max_maps} maps.')
+            break
+        try:
+            atom_map = glue_maps(maps=list(combination),
+                                 pairs=pairs,
+                                 r_label_map=r_label_map,
+                                 p_label_map=updated_p_label_map,
+                                 total_atoms=total_atoms,
+                                 )
+        except (ValueError, IndexError, KeyError) as e:
+            logger.debug(f'map_rxn_all (rxn={rxn}, pdi={pdi}): gluing a combination failed with {e!r}.')
+            continue
+        if atom_map is None:
+            continue
+        key = tuple(atom_map)
+        if key not in seen:
+            seen.add(key)
+            atom_maps.append(atom_map)
+    return atom_maps
 
 
 def convert_label_dict(label_dict: dict[str, int],

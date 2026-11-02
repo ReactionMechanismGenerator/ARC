@@ -8,6 +8,7 @@ import numpy as np
 from arc.common import logger
 from arc.exceptions import VectorsError
 from arc.molecule.molecule import Molecule
+from arc.species._zmat_kernels import lib as _ck, available as _ck_available
 
 
 def get_normal(v1: list[float],
@@ -25,6 +26,71 @@ def get_normal(v1: list[float],
     """
     normal = [v1[1] * v2[2] - v2[1] * v1[2], - v1[0] * v2[2] + v2[0] * v1[2], v1[0] * v2[1] - v2[0] * v1[1]]
     return unit_vector(normal)
+
+
+def get_perpendicular_unit_vector(vector: list[float]) -> list[float]:
+    """
+    Get a deterministic unit vector perpendicular to ``vector``.
+
+    Crossing ``vector`` with the Cartesian axis it is least aligned with can never be degenerate:
+    the smallest component of a vector of length L is at most L / sqrt(3), so the cross product has
+    a length of at least L * sqrt(2/3). Picking the axis by magnitude rather than arbitrarily keeps
+    the result reproducible for a given input.
+
+    Args:
+        vector (list): The vector to find a perpendicular of. Need not be normalized.
+
+    Raises:
+        VectorsError: If ``vector`` is not a finite, non-zero vector of length three.
+        ZeroDivisionError: If ``vector`` is non-zero but its squared length underflows to zero,
+                           which happens below a magnitude of about 1e-162.
+
+    Returns: list
+        A unit vector perpendicular to ``vector``.
+    """
+    if len(vector) != 3:
+        raise VectorsError(f'vector must be of length three, got {len(vector)}.')
+    if not all(math.isfinite(component) for component in vector):
+        raise VectorsError(f'vector must be finite, got {vector}.')
+    if not any(vector):
+        raise VectorsError(f'vector must be non-zero, got {vector}.')
+    reference = [0.0, 0.0, 0.0]
+    reference[min(range(3), key=lambda index: abs(vector[index]))] = 1.0
+    return get_normal(vector, reference)
+
+
+def get_perpendicular_axes(vector: list[float],
+                           tol: float = 1e-8,
+                           ) -> tuple[list[float], list[float]]:
+    """
+    Get the two unit vectors that complete a right-handed orthonormal frame with a given direction.
+
+    Writing ``e_x`` for the unit vector along ``vector``, the returned ``e_y`` and ``e_z`` satisfy
+    ``e_x`` x ``e_y`` = ``e_z``. Their common phase about ``e_x`` is arbitrary: it is fixed by
+    ``get_perpendicular_unit_vector()``, so it is reproducible for a given input but carries no
+    meaning of its own. Angles measured against the returned pair therefore retain their cyclic
+    order about ``e_x`` while their absolute values do not.
+
+    Args:
+        vector (list): The vector defining the first axis of the frame. Need not be normalized.
+        tol (float, optional): The minimal accepted length of ``vector``.
+
+    Raises:
+        VectorsError: If ``vector`` is not of length three, is not finite, is shorter than ``tol``,
+                      or is long enough for its squared length to overflow.
+
+    Returns: tuple
+        The ``e_y`` and ``e_z`` unit vectors.
+    """
+    if len(vector) != 3:
+        raise VectorsError(f'vector must be of length three, got {len(vector)}.')
+    if not all(math.isfinite(component) for component in vector):
+        raise VectorsError(f'vector must be finite, got {vector}.')
+    if get_vector_length(vector) < tol:
+        raise VectorsError(f'vector must be longer than {tol}, got {vector}.')
+    e_x = unit_vector(vector)
+    e_z = get_perpendicular_unit_vector(e_x)
+    return get_normal(e_z, e_x), e_z
 
 
 def get_angle(v1: list[float],
@@ -152,6 +218,9 @@ def calculate_distance(coords: list | tuple | dict,
     if not all([isinstance(a, int) for a in new_atoms]):
         raise VectorsError(f'all entries in atoms must be integers, got: {new_atoms} ({[type(a) for a in new_atoms]})')
     new_atoms = [a - index for a in new_atoms]  # convert 1-index to 0-index
+    if _ck_available:
+        c0, c1 = coords[new_atoms[0]], coords[new_atoms[1]]
+        return _ck.zmat_r_f32(c0[0], c0[1], c0[2], c1[0], c1[1], c1[2])
     coords = np.asarray(coords, dtype=np.float32)
     vector = coords[new_atoms[1]] - coords[new_atoms[0]]
     return get_vector_length(vector)
@@ -197,7 +266,18 @@ def calculate_angle(coords: list | tuple | dict,
     if not all([isinstance(a, int) for a in new_atoms]):
         raise VectorsError(f'all entries in atoms must be integers, got: {new_atoms} ({[type(a) for a in new_atoms]})')
     new_atoms = [a - index for a in new_atoms]  # convert 1-index to 0-index
-    coords = np.asarray(coords, dtype=np.float32)
+    # Computed in float64, not float32. Coordinates used to be truncated to float32 here
+    # (dd452891, 2020), which cost up to ~8e-4 deg -- the same order as the 1e-3 deg
+    # DEFAULT_CONSOLIDATION_A_TOL, so the noise alone could decide whether two equal angles
+    # consolidate into one z-matrix parameter. The kernel below is exact and matches this
+    # path bit-for-bit; keeping both in float64 is what lets them agree, so that whether
+    # the .so happens to be compiled cannot change a result.
+    if _ck_available:
+        c0, c1 = coords[new_atoms[0]], coords[new_atoms[1]]
+        c2 = coords[new_atoms[2]]
+        deg = _ck.zmat_a(c0[0], c0[1], c0[2], c1[0], c1[1], c1[2], c2[0], c2[1], c2[2])
+        return deg if 'degs' in units else math.radians(deg)
+    coords = np.asarray(coords, dtype=np.float64)
     v1 = coords[new_atoms[1]] - coords[new_atoms[0]]
     v2 = coords[new_atoms[1]] - coords[new_atoms[2]]
     return get_angle(v1, v2, units=units)
@@ -246,6 +326,25 @@ def calculate_dihedral_angle(coords: list | tuple | dict,
         raise VectorsError(f'all entries in torsion must be integers, got: {new_torsion} '
                            f'({[type(t) for t in new_torsion]})')
     new_torsion = [t - index for t in new_torsion]  # convert 1-index to 0-index if needed
+    if _ck_available:
+        c0, c1 = coords[new_torsion[0]], coords[new_torsion[1]]
+        c2, c3 = coords[new_torsion[2]], coords[new_torsion[3]]
+        deg = _ck.zmat_d_f32(c0[0], c0[1], c0[2], c1[0], c1[1], c1[2],
+                              c2[0], c2[1], c2[2], c3[0], c3[1], c3[2])
+        if not math.isnan(deg):
+            return deg if 'degs' in units else math.radians(deg)
+        # The kernel collapses two distinct degenerate cases onto NaN, while
+        # get_dihedral() distinguishes them: a zero-length bond vector raises
+        # VectorsError, and only a collinear (yet non-degenerate) triplet returns
+        # NaN. Whether the .so happens to be compiled must not change which errors
+        # ARC reports, so re-classify here -- but do not recompute the angle: the
+        # two paths draw the collinearity threshold at slightly different places,
+        # and letting numpy re-answer a borderline triplet with a finite value
+        # would silently change which reference atoms zmat.py picks.
+        pts = np.asarray([coords[i] for i in new_torsion], dtype=np.float32)
+        if any(not np.any(pts[i + 1] - pts[i]) for i in range(3)):
+            raise VectorsError('Input vectors must be non-zero.')
+        return deg  # NaN, in either unit
     coords = np.asarray(coords, dtype=np.float32)
     v1 = coords[new_torsion[1]] - coords[new_torsion[0]]
     v2 = coords[new_torsion[2]] - coords[new_torsion[1]]
@@ -342,6 +441,45 @@ def rotate_vector(point_a: list[float],
     new_vector = np.dot(rotation_matrix, vector).tolist()
     new_vector = [n_v + a for n_v, a in zip(new_vector, point_a)]  # root the vector at the original starting point
     return new_vector
+
+
+def apply_rodrigues_rotation(coords: list,
+                             axis_origin: tuple | list,
+                             axis_unit: tuple | list,
+                             angle_rad: float,
+                             indices: list[int],
+                             ) -> list:
+    """
+    Rotate atoms at ``indices`` around an axis using Rodrigues' formula.
+
+    Modifies ``coords`` in-place and returns it.
+
+    Args:
+        coords: list of (x, y, z) tuples representing all atom positions.
+        axis_origin: a point on the rotation axis (e.g., coords of the near-side pivot).
+        axis_unit: unit vector along the rotation axis.
+        angle_rad: rotation angle in radians (positive = right-hand rule around axis_unit).
+        indices: 0-indexed atom indices to rotate.
+
+    Returns:
+        list: The same ``coords`` list with rotated atoms.
+    """
+    c, s = math.cos(angle_rad), math.sin(angle_rad)
+    kx, ky, kz = axis_unit[0], axis_unit[1], axis_unit[2]
+    ox, oy, oz = axis_origin[0], axis_origin[1], axis_origin[2]
+    for idx in indices:
+        vx = coords[idx][0] - ox
+        vy = coords[idx][1] - oy
+        vz = coords[idx][2] - oz
+        kvx = ky * vz - kz * vy
+        kvy = kz * vx - kx * vz
+        kvz = kx * vy - ky * vx
+        kdv = kx * vx + ky * vy + kz * vz
+        one_minus_c = 1.0 - c
+        coords[idx] = (vx * c + kvx * s + kx * kdv * one_minus_c + ox,
+                       vy * c + kvy * s + ky * kdv * one_minus_c + oy,
+                       vz * c + kvz * s + kz * kdv * one_minus_c + oz)
+    return coords
 
 
 def get_vector(pivot: int,

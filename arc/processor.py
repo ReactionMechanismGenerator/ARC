@@ -6,9 +6,11 @@ import os
 import shutil
 
 import arc.plotter as plotter
+from arc.checks.common import get_ts_validation_comment
 from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file
 from arc.imports import settings
 from arc.level import Level
+from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
 from arc.statmech.factory import statmech_factory
 
@@ -28,6 +30,30 @@ def resolve_neb_level(ts_adapters: list) -> Level | None:
         if neb_level_repr:
             return Level(repr=neb_level_repr)
     return None
+
+
+def _thermo_lib_has_isomorph(spc: 'ARCSpecies', species_list: list) -> bool:
+    """
+    Whether ``species_list`` already contains a species with the same molecular identity as ``spc``.
+
+    Arkane keys thermo-library entries by adjacency list + multiplicity and rejects duplicates, so a
+    reaction with identical participants (e.g. OH + OH) must contribute each unique species only once.
+
+    Args:
+        spc (ARCSpecies): The candidate species.
+        species_list (list): Species already collected for the thermo library.
+
+    Returns:
+        bool: ``True`` if an isomorphic, same-multiplicity species is already present.
+    """
+    if spc.mol is None:
+        return False
+    for existing in species_list:
+        if existing.mol is not None \
+                and existing.multiplicity == spc.multiplicity \
+                and existing.mol.is_isomorphic(spc.mol):
+            return True
+    return False
 
 
 def process_arc_project(thermo_adapter: str,
@@ -194,7 +220,7 @@ def process_arc_project(thermo_adapter: str,
                                             )
         statmech_adapter.compute_thermo(e0_only=True)
     for spc in converged_species:
-        if spc.thermo is not None:
+        if spc.thermo is not None and not _thermo_lib_has_isomorph(spc, species_for_thermo_lib):
             species_for_thermo_lib.append(spc)
         plotter.augment_arkane_yml_file_with_mol_repr(spc, output_directory)
     if species_for_thermo_lib:
@@ -256,20 +282,10 @@ def compare_thermo(species_for_thermo_lib: list,
     species_thermo_path = os.path.join(output_directory, 'RMG_thermo.yml')
     save_yaml_file(path=species_thermo_path,
                    content=[{'label': spc.label, 'adjlist': spc.mol.copy(deep=True).to_adjacency_list()} for spc in species_for_thermo_lib])
-    env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
     rmg_db_path = settings.get('RMG_DB_PATH') or ""
-    commands = ['bash -lc "set -euo pipefail; '
-                f'export RMG_DB_PATH=\\"{rmg_db_path}\\"; '
-                f'export RMG_DATABASE=\\"{rmg_db_path}\\"; '
-                'if command -v micromamba >/dev/null 2>&1; then '
-                f'    micromamba run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
-                'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
-                f'    conda run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
-                'else '
-                '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
-                'fi"',
-                ]
-    stdout, stderr = execute_command(command=commands, no_fail=True)
+    command = rmg_env_command(py_args=[THERMO_SCRIPT_PATH, species_thermo_path],
+                              env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path})
+    stdout, stderr = execute_command(command=command, shell=True, no_fail=True, executable='/bin/bash')
     if len(stderr):
         logger.error(f'Error while running RMG thermo script: {stderr}')
     species_list = read_yaml_file(path=species_thermo_path)
@@ -306,32 +322,26 @@ def compare_rates(rxns_for_kinetics_lib: list,
     """
     reactions_to_compare = list()  # reactions for which a rate was both calculated and estimated.
     reactions_kinetics_path = os.path.join(output_directory, 'RMG_kinetics.yml')
-    save_yaml_file(path=reactions_kinetics_path,
-                   content=[{'label': rxn.label,
-                             'reactants': [spc.mol.to_adjacency_list() for spc in rxn.r_species],
-                             'products': [spc.mol.to_adjacency_list() for spc in rxn.p_species],
-                             'dh_rxn298': rxn.dh_rxn298,
-                             'family': rxn.family,
-                             } for rxn in rxns_for_kinetics_lib],
-                   )
-    env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
+    content = list()
+    for rxn in rxns_for_kinetics_lib:
+        rxn_content = {'label': rxn.label,
+                       'reactants': [spc.mol.to_adjacency_list() for spc in rxn.r_species],
+                       'products': [spc.mol.to_adjacency_list() for spc in rxn.p_species],
+                       'dh_rxn298': rxn.dh_rxn298,
+                       'family': rxn.family,
+                       }
+        ts_validation = get_ts_validation_comment(rxn.ts_species)
+        if ts_validation is not None:
+            rxn_content['ts_validation'] = ts_validation
+            logger.error(f'Reporting a rate coefficient for reaction {rxn.label} although its TS failed the IRC '
+                         f'check. {ts_validation}')
+        content.append(rxn_content)
+    save_yaml_file(path=reactions_kinetics_path, content=content)
     rmg_db_path = settings.get('RMG_DB_PATH') or ""
-    shell_script = f"""if command -v micromamba &> /dev/null; then
-    eval "$(micromamba shell hook --shell=bash)"
-    micromamba activate {env_name}
-elif command -v mamba &> /dev/null; then
-    eval "$(mamba shell hook --shell=bash)"
-    mamba activate {env_name}
-elif command -v conda &> /dev/null; then
-    source "$(conda info --base)/etc/profile.d/conda.sh"
-    conda activate {env_name}
-else
-    exit 1
-fi
-export RMG_DB_PATH="{rmg_db_path}"
-export RMG_DATABASE="{rmg_db_path}"
-python {KINETICS_SCRIPT_PATH} {reactions_kinetics_path}   > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)
-"""
+    log_suffix = ' > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)'
+    shell_script = rmg_env_command(py_args=[KINETICS_SCRIPT_PATH, reactions_kinetics_path],
+                                   env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path},
+                                   suffix=log_suffix)
     o, e = execute_command(command=shell_script,
                            shell=True,
                            no_fail=True,

@@ -1,0 +1,55 @@
+# Build-context exclusions for the ARC image.
+#
+# Only `dockerfiles/` is actually consumed from the build context: the entry
+# wrapper, the alias/helper scripts and dockerfiles/docker_tests. ARC, RMG-Py and
+# RMG-database are cloned from GitHub inside the builder stage. Never exclude
+# `dockerfiles/`.
+
+# Version control -- by far the largest single item in the context.
+.git
+.gitattributes
+.gitignore
+.github
+
+# Checked-in reference data used only by the ARC unit tests; the image gets its
+# copy from the in-builder clone, so shipping it in the context is pure overhead.
+arc/testing
+
+# Python build and import artefacts
+**/__pycache__
+**/*.py[cod]
+**/*.so
+**/*.pyd
+**/*.o
+build
+dist
+*.egg-info
+
+# Test, lint and type-check caches
+.pytest_cache
+.tox
+.nox
+.mypy_cache
+.ruff_cache
+.coverage
+.coverage.*
+htmlcov
+**/.ipynb_checkpoints
+
+# Local scratch, run output and generated docs
+artifacts
+Projects
+scratch
+testing
+ipython
+docs/build
+*.log
+
+# Editor / OS cruft and local virtualenvs
+.idea
+.vscode
+.history
+.DS_Store
+**/.fuse_hidden*
+venv
+.venv

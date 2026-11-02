@@ -1039,11 +1039,26 @@ class GroupBond(Edge):
         Update the bond group as a result of applying a CHANGE_BOND action,
         where `order` specifies whether the bond is incremented or decremented
         in bond order. `order` is normally 1 or -1, but can be any value
+
+        Each comprehension below binds its own loop variable. This function is declared ``cpdef`` in
+        ``group.pxd``, and Cython inlines a comprehension inside a ``cpdef`` function into the
+        function's own scope rather than giving it a scope of its own, so a loop variable reused
+        across two comprehensions here is one variable rather than two.
         """
         new_order = [value + order for value in self.order]
-        if any([value < 0 or value > 4 for value in new_order]):
+        out_of_range = [new_value for new_value in new_order if new_value < 0 or new_value > 4]
+        if out_of_range:
             raise ActionError('Unable to update Bond due to CHANGE_BOND action: '
-                              'Invalid resulting order "{0}".'.format(new_order))
+                              'Invalid resulting order "{0}". The orders outside the range [0, 4] are [{1}] '
+                              'of types [{2}], reached from the orders [{3}] of types [{4}] by an increment '
+                              'of {5!r} of type {6}.'.format(
+                                  new_order,
+                                  ', '.join([repr(bad_value) for bad_value in out_of_range]),
+                                  ', '.join([type(bad_value).__name__ for bad_value in out_of_range]),
+                                  ', '.join([repr(old_value) for old_value in self.order]),
+                                  ', '.join([type(old_value).__name__ for old_value in self.order]),
+                                  order,
+                                  type(order).__name__))
         # Change any modified benzene orders to the appropriate stable order
         new_order = set(new_order)
         if 0.5 in new_order:

@@ -75,17 +75,48 @@ else
     $COMMAND_PKG env create -n "$ENV_NAME" -f "$ENV_YAML" -y
 fi
 
-# Install PyTorch and UMA dependencies
+# Install UMA dependencies BEFORE PyTorch: fairchem-core pins a torch version
+# (currently torch~=2.8.0), so installing torch first only to have pip uninstall it
+# again a moment later makes --cpu/--gpu a no-op. Let fairchem settle the version,
+# then swap in the build for the requested device.
+echo ">>> Installing fairchem-core, sella, and ase"
 if [ "$DEVICE" = "cpu" ]; then
-    echo ">>> Installing CPU-only PyTorch"
-    $COMMAND_PKG run -n "$ENV_NAME" pip install torch --index-url https://download.pytorch.org/whl/cpu
+    # Offer the PyTorch CPU index alongside PyPI so the torch that fairchem pins is resolved as a
+    # '+cpu' build in this very step: its local version sorts above the plain PyPI wheel, which
+    # bundles CUDA and drags in ~3 GB of unusable nvidia-*-cu12 packages. Should that wheel be
+    # unavailable, pip falls back to PyPI and the swap below cleans up after it.
+    $COMMAND_PKG run -n "$ENV_NAME" pip install fairchem-core sella ase \
+        --extra-index-url https://download.pytorch.org/whl/cpu
 else
-    echo ">>> Installing CUDA/GPU PyTorch"
-    $COMMAND_PKG run -n "$ENV_NAME" pip install torch
+    $COMMAND_PKG run -n "$ENV_NAME" pip install fairchem-core sella ase
 fi
 
-echo ">>> Installing fairchem-core, sella, and ase"
-$COMMAND_PKG run -n "$ENV_NAME" pip install fairchem-core sella ase
+TORCH_CUDA="$($COMMAND_PKG run -n "$ENV_NAME" python -c 'import torch; print(torch.version.cuda or "")')"
+if [ "$DEVICE" = "cpu" ] && [ -n "$TORCH_CUDA" ]; then
+    echo ">>> Reinstalling PyTorch as a CPU-only build"
+    TORCH_VERSION="$($COMMAND_PKG run -n "$ENV_NAME" python -c 'import torch; print(torch.__version__.split("+")[0])')"
+    # --no-deps: torch's dependencies are already in place from the install above, and
+    # re-resolving them against the PyTorch index only re-downloads what is already there.
+    $COMMAND_PKG run -n "$ENV_NAME" pip install --force-reinstall --no-deps \
+        "torch==${TORCH_VERSION}" --index-url https://download.pytorch.org/whl/cpu
+    # The CUDA wheel's nvidia-*-cu12 packages are orphaned by the swap, not removed by it.
+    NVIDIA_PKGS="$($COMMAND_PKG run -n "$ENV_NAME" pip list --format=freeze | sed -n 's/^\(nvidia-[^=]*\)==.*/\1/p')"
+    if [ -n "$NVIDIA_PKGS" ]; then
+        echo ">>> Removing the now-unused CUDA runtime packages"
+        $COMMAND_PKG run -n "$ENV_NAME" pip uninstall -y $NVIDIA_PKGS
+    fi
+elif [ "$DEVICE" = "gpu" ]; then
+    echo ">>> Checking the installed PyTorch exposes a GPU"
+fi
+
+# Report what actually landed — the fairchem pin decides the version, not this script.
+# No --no-capture-output: micromamba rejects that flag (see arc/job/env_run.py).
+$COMMAND_PKG run -n "$ENV_NAME" python -c \
+    'import torch; print(f"    torch {torch.__version__} | cuda build: {torch.version.cuda} | available: {torch.cuda.is_available()}")'
+if [ "$DEVICE" = "gpu" ]; then
+    $COMMAND_PKG run -n "$ENV_NAME" python -c 'import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)' \
+        || echo "⚠️   --gpu was requested but torch reports no usable CUDA device. UMA will fall back to CPU."
+fi
 
 # 3) Verify the imports the UMA adapter / uma_script.py depend on.
 echo ">>> Verifying fairchem / Sella / ASE imports in '$ENV_NAME'"
@@ -98,15 +129,22 @@ PYCODE
 
 # 4) HuggingFace authentication for the gated uma-s-1p1 model.
 if [ "$SKIP_HF_LOGIN" -eq 0 ]; then
+    # Use the env's `hf` binary directly rather than `<conda> run ... hf`: `conda run`
+    # gives the child no TTY, so the interactive token prompt cannot read input.
+    # (`huggingface-cli` is gone in current huggingface_hub — it now errors, not warns.)
+    UMA_ENV_PREFIX="$($COMMAND_PKG run -n "$ENV_NAME" python -c 'import sys; print(sys.prefix)')"
+    HF_BIN="$UMA_ENV_PREFIX/bin/hf"
     if [ -n "$HF_TOKEN" ]; then
         echo ">>> Using HF_TOKEN from environment for HuggingFace authentication."
-        $COMMAND_PKG run -n "$ENV_NAME" huggingface-cli login --token "$HF_TOKEN"
-    elif $COMMAND_PKG run -n "$ENV_NAME" huggingface-cli whoami &>/dev/null; then
+        "$HF_BIN" auth login --token "$HF_TOKEN"
+    elif "$HF_BIN" auth whoami &>/dev/null; then
         echo "✔️  Already authenticated to HuggingFace."
     else
         echo ">>> HuggingFace login is required for the gated model 'facebook/UMA'."
         echo "    If you have not yet accepted the license, open https://huggingface.co/facebook/UMA first."
-        $COMMAND_PKG run -n "$ENV_NAME" huggingface-cli login
+        echo "    Then create a token with read access to gated repos:"
+        echo "    https://huggingface.co/settings/tokens"
+        "$HF_BIN" auth login
     fi
 fi
 

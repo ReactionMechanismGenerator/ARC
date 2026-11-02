@@ -5,13 +5,39 @@
 This module contains unit tests of the arc.species.species module
 """
 
+import itertools
+import math
 import unittest
 
+import arc.species.vectors as vectors
 import arc.species.zmat as zmat
-from arc.exceptions import ZMatError
+from arc.exceptions import VectorsError, ZMatError
 from arc.molecule.molecule import Molecule
-from arc.species.converter import str_to_xyz
+from arc.species.converter import str_to_xyz, zmat_to_xyz
 from arc.species.species import ARCSpecies
+
+KETENE_ON_Y = {'symbols': ('C', 'C', 'O', 'H', 'H'), 'isotopes': (12, 12, 16, 1, 1),
+               'coords': ((0.0, 0.0, 0.0), (0.0, 1.315, 0.0), (0.0, 2.478, 0.0),
+                          (0.941, -0.539, 0.0), (-0.941, -0.539, 0.0))}
+
+
+def max_distance_discrepancy(xyz_1: dict, xyz_2: dict) -> float:
+    """
+    Get the largest difference between two geometries' interatomic distances.
+
+    The distance matrix is invariant under every isometry, so this compares the molecules
+    themselves without first having to superpose them.
+
+    Args:
+        xyz_1 (dict): The first xyz dict.
+        xyz_2 (dict): The second xyz dict, with atoms in the same order.
+
+    Returns: float
+        The largest absolute difference, in Angstrom.
+    """
+    return max(abs(vectors.calculate_param(coords=xyz_1['coords'], atoms=[i, j])
+                   - vectors.calculate_param(coords=xyz_2['coords'], atoms=[i, j]))
+               for i in range(len(xyz_1['symbols'])) for j in range(i + 1, len(xyz_1['symbols'])))
 
 
 class TestZMat(unittest.TestCase):
@@ -836,7 +862,7 @@ class TestZMat(unittest.TestCase):
                                  ('R_14_0', 'A_14_0_1', 'DX_14_0_1_12'), ('R_15_13', 'A_15_13_11', 'D_15_13_11_14')),
                       'vars': {'R_1_0': 1.3280952001482191, 'R_11_9': 1.1999728537508982, 'R_13_11': 1.689800107747744,
                                'R_14_0': 0.9721366076390169, 'A_14_0_1': 110.47038205347816,
-                               'DX_14_0_1_12': 23.38932439442073, 'R_15_13': 1.3410220734118692,
+                               'DX_14_0_1_12': 180.72845407726243, 'R_15_13': 1.3410220734118692,
                                'A_15_13_11': 97.88723623341478, 'D_15_13_11_14': 179.99850519058072,
                                'RX_2|4|6|8|10|12_1|3|5|7|9|11': 1.0, 'R_3|7_1|5': 1.2000592040351243,
                                'R_5|9_3|7': 1.5398025274560583,
@@ -874,7 +900,7 @@ class TestZMat(unittest.TestCase):
                                  ('R_24_16', 'AX_2|3|4|5|6|7|11|12|13|14|15|16|17|18|19|20|21|22|23|24_1|1|3|3|5|5|8|8|9|9|10|10|14|14|18|18|0|0|16|16_0|2|1|4|3|6|7|11|7|13|7|15|9|17|14|19|1|21|10|23', 'DX_3|4|5|6|7|11|12|13|14|15|16|17|18|19|20|21|22|23|24_1|3|3|5|5|8|8|9|9|10|10|14|14|18|18|0|0|16|16_2|1|4|3|6|7|11|7|13|7|15|9|17|14|19|1|21|10|23_0|2|1|4|3|5|7|5|7|5|7|5|9|16|14|20|1|5|10')),
                       'vars': {'R_1_0': 1.199903964996338, 'R_3_1': 1.5391608476638794, 'R_5_3': 1.2011795043945312,
                                'R_7_5': 1.4856303930282593, 'R_8_7': 1.4922382831573486, 'A_8_7_5': 109.90699005126953,
-                               'DX_8_7_5_6': 359.9999987925818, 'R_9_7': 1.4877170324325562,
+                               'DX_8_7_5_6': 217.02802901839746, 'R_9_7': 1.4877170324325562,
                                'A_9_7_5': 109.04773712158203, 'D_9_7_5_8': 120.33149888420691,
                                'R_10_7': 1.4911911487579346, 'A_10_7_5': 109.24951171875,
                                'D_10_7_5_9': 118.98353452695731, 'R_12_8': 1.1634670495986938,
@@ -2450,6 +2476,293 @@ H   1.3230  -1.0712   1.2760""")
         result = zmat.find_smart_anchors(mol, breaking_bonds=[(0, 1)])
         self.assertEqual(len(result), len(set(result)),
                          msg=f'Duplicate anchors {result} with reactive core on cyclohexane')
+
+
+class TestCollinearReference(unittest.TestCase):
+    """
+    Test placing an atom whose three zmat reference atoms are collinear.
+
+    The dihedral about a collinear A-B-C is undefined, so no reference plane exists. The placement
+    must still honour the requested distance and angle rather than producing NaN coordinates.
+    """
+
+    @staticmethod
+    def build_collinear_zmat(cd_length: float, bcd_angle: float, abcd_dihedral: float = 0.0) -> dict:
+        """Build a 4-atom zmat whose first three atoms lie on a straight line."""
+        return {'symbols': ('H', 'H', 'H', 'H'),
+                'coords': ((None, None, None),
+                           ('R_1_0', None, None),
+                           ('R_2_1', 'A_2_1_0', None),
+                           ('R_3_2', 'A_3_2_1', 'D_3_2_1_0')),
+                'vars': {'R_1_0': 1.0, 'R_2_1': 1.0, 'A_2_1_0': 180.0,
+                         'R_3_2': cd_length, 'A_3_2_1': bcd_angle, 'D_3_2_1_0': abcd_dihedral},
+                'map': {0: 0, 1: 1, 2: 2, 3: 3}}
+
+    @staticmethod
+    def distance(p, q):
+        """The distance between points ``p`` and ``q``."""
+        return vectors.get_vector_length([p[k] - q[k] for k in range(3)])
+
+    @staticmethod
+    def angle(p, q, r):
+        """The angle at ``q`` in degrees."""
+        return vectors.get_angle([p[k] - q[k] for k in range(3)],
+                                 [r[k] - q[k] for k in range(3)],
+                                 units='degs')
+
+    def test_collinear_reference_does_not_produce_nan(self):
+        """The reported failure: a collinear A-B-C gave (nan, nan, nan) with only a RuntimeWarning."""
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5)
+        coords = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)]
+        coords = zmat._add_nth_atom_to_coords(zmat=z, coords=coords, i=3)
+        self.assertEqual(len(coords), 4)
+        for value in coords[3]:
+            self.assertFalse(math.isnan(value), f'Atom 3 was placed at {coords[3]}, which contains NaN.')
+
+    def test_propyne_round_trip_is_not_nan_or_collapsed(self):
+        """
+        An end-to-end guard on the path that actually failed: xyz -> zmat -> xyz.
+
+        A linear backbone lying on a Cartesian axis drove a NaN into the zmat vars, and
+        ``translate_to_center_of_mass`` then rewrote every NaN coordinate to 0.0, because
+        ``abs(nan) > 1e-10`` is False. The molecule therefore came back with all atoms at the
+        origin rather than as NaN, so asserting only that the coordinates are finite would not
+        detect the failure; the geometry itself is asserted.
+        """
+        c_c, cc3, ch_sp, ch3, ang = 1.46, 1.208, 1.062, 1.091, math.radians(110.0)
+        r, dz = ch3 * math.sin(ang), ch3 * math.cos(ang)
+        xyz = {'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H'),
+               'isotopes': (12, 12, 12, 1, 1, 1, 1),
+               'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, c_c), (0.0, 0.0, c_c + cc3),
+                          (0.0, 0.0, c_c + cc3 + ch_sp), (r, 0.0, dz),
+                          (-r / 2, r * math.sqrt(3) / 2, dz), (-r / 2, -r * math.sqrt(3) / 2, dz))}
+        z = zmat.xyz_to_zmat(xyz)
+        for key, value in z['vars'].items():
+            self.assertTrue(math.isfinite(value), f'zmat var {key} is {value}, which is not finite.')
+
+        back = zmat_to_xyz(z)
+        for index, atom_coords in enumerate(back['coords']):
+            for value in atom_coords:
+                self.assertTrue(math.isfinite(value), f'Atom {index} was placed at {atom_coords}.')
+        self.assertFalse(all(abs(value) < 1e-10 for atom_coords in back['coords'] for value in atom_coords),
+                         'Every atom collapsed onto the origin, which is what a laundered NaN looks like.')
+        self.assertAlmostEqual(self.distance(back['coords'][0], back['coords'][1]), c_c, places=4)
+        self.assertAlmostEqual(self.distance(back['coords'][1], back['coords'][2]), cc3, places=4)
+        self.assertAlmostEqual(self.distance(back['coords'][2], back['coords'][3]), ch_sp, places=4)
+        self.assertAlmostEqual(self.angle(back['coords'][0], back['coords'][1], back['coords'][2]), 180.0, places=3)
+
+    def test_collinear_reference_honours_distance_and_angle(self):
+        """Not merely non-NaN: the requested C-D distance and B-C-D angle must both be reproduced."""
+        for cd_length, bcd_angle in ((1.5, 109.5), (1.09, 120.0), (2.0, 90.0)):
+            with self.subTest(cd_length=cd_length, bcd_angle=bcd_angle):
+                z = self.build_collinear_zmat(cd_length=cd_length, bcd_angle=bcd_angle)
+                coords = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)]
+                coords = zmat._add_nth_atom_to_coords(zmat=z, coords=coords, i=3)
+                self.assertAlmostEqual(self.distance(coords[3], coords[2]), cd_length, places=6)
+                self.assertAlmostEqual(self.angle(coords[1], coords[2], coords[3]), bcd_angle, places=4)
+
+    def test_collinear_reference_is_deterministic(self):
+        """The arbitrary reference plane must be chosen reproducibly, not at random."""
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5)
+        first = zmat._add_nth_atom_to_coords(zmat=z, coords=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)], i=3)
+        second = zmat._add_nth_atom_to_coords(zmat=z, coords=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)], i=3)
+        self.assertEqual(first[3], second[3])
+
+    def test_non_collinear_reference_is_unchanged(self):
+        """A well-defined reference must keep using the real A-B-C plane, dihedral included."""
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5, abcd_dihedral=60.0)
+        coords = [(0.3, 1.2, -0.4), (0.0, 0.0, 0.0), (1.1, 0.2, 0.5)]
+        coords = zmat._add_nth_atom_to_coords(zmat=z, coords=coords, i=3)
+        self.assertAlmostEqual(self.distance(coords[3], coords[2]), 1.5, places=6)
+        self.assertAlmostEqual(self.angle(coords[1], coords[2], coords[3]), 109.5, places=4)
+        self.assertAlmostEqual(vectors.get_dihedral([coords[1][k] - coords[0][k] for k in range(3)],
+                                                    [coords[2][k] - coords[1][k] for k in range(3)],
+                                                    [coords[3][k] - coords[2][k] for k in range(3)],
+                                                    units='degs'),
+                               60.0, places=4)
+        for value in coords[3]:
+            self.assertFalse(math.isnan(value))
+
+    def test_coincident_reference_atoms_are_refused(self):
+        """
+        Coincident B and C reference atoms are refused rather than placed against an arbitrary frame.
+
+        A collinear A-B-C still leaves the B-C direction, so the requested distance and angle are
+        honoured and only the dihedral's zero is arbitrary. Coincident B and C leave no direction at
+        all, so neither the angle nor the dihedral of the atom being placed has a value.
+        """
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5)
+        coords = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 0.0)]
+        with self.assertRaises(VectorsError) as error:
+            zmat._add_nth_atom_to_coords(zmat=z, coords=coords, i=3)
+        self.assertIn('coincident', str(error.exception))
+
+    def test_coincident_reference_atoms_are_refused_by_zmat_to_coords(self):
+        """A zmat whose third atom sits on its own reference atom is refused by the public entry point."""
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5)
+        z['vars']['R_2_1'] = 0.0
+        with self.assertRaises(VectorsError):
+            zmat.zmat_to_coords(z)
+
+    def test_coincident_first_two_atoms_are_refused(self):
+        """The other documented refusal: atoms 0 and 1 coincident leave no axis for the third atom."""
+        z = self.build_collinear_zmat(cd_length=1.5, bcd_angle=109.5)
+        with self.assertRaises(VectorsError):
+            zmat._add_nth_atom_to_coords(zmat=z, coords=[(0.0, 0.0, 0.0), (0.0, 0.0, 0.0)], i=2)
+
+
+class TestThirdAtomFrame(unittest.TestCase):
+    """
+    Test that the third atom of a zmat is placed relative to the coordinates already present.
+
+    ``zmat_to_coords`` starts from an empty list and gets the canonical frame, while
+    ``add_dummy_atom`` extends the coordinates of a real molecule in its own frame. A dummy
+    atom that marks a linear segment starting at the first zmat atom is the third atom, so
+    both callers reach the same branch with different frames.
+    """
+
+    @staticmethod
+    def build_three_atom_zmat(bc_length: float, alpha: float, b_index: int = 1) -> dict:
+        """Build a 3-atom zmat whose third atom is at ``bc_length`` and ``alpha`` from atom ``b_index``."""
+        a_index = 1 - b_index
+        return {'symbols': ('H', 'H', 'H'),
+                'coords': ((None, None, None),
+                           ('R_1_0', None, None),
+                           (f'R_2_{b_index}', f'A_2_{b_index}_{a_index}', None)),
+                'vars': {'R_1_0': 1.0, f'R_2_{b_index}': bc_length, f'A_2_{b_index}_{a_index}': alpha},
+                'map': {0: 0, 1: 1, 2: 2}}
+
+    @staticmethod
+    def linear_molecule_on_axis(axis: str) -> dict:
+        """Allene with its C=C=C backbone along ``axis`` and the two CH2 planes perpendicular."""
+        cc, ch, hch = 1.308, 1.087, math.radians(118.0)
+        s, c = ch * math.sin(hch / 2), ch * math.cos(hch / 2)
+        points = ((0.0, 0.0, 0.0), (0.0, 0.0, cc), (0.0, 0.0, -cc),
+                  (s, 0.0, cc + c), (-s, 0.0, cc + c), (0.0, s, -cc - c), (0.0, -s, -cc - c))
+        permutation = {'z': (0, 1, 2), 'y': (0, 2, 1), 'x': (2, 1, 0)}[axis]
+        return {'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H'),
+                'isotopes': (12, 12, 12, 1, 1, 1, 1),
+                'coords': tuple(tuple(point[k] for k in permutation) for point in points)}
+
+    def test_third_atom_is_placed_relative_to_the_existing_frame(self):
+        """The requested distance and angle must be honoured in whatever frame ``coords`` is in."""
+        frames = {'canonical': [(0.0, 0.0, 0.0), (0.0, 0.0, 1.0)],
+                  'on the y axis': [(0.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+                  'on the x axis': [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+                  'translated': [(2.5, -1.5, 0.75), (2.5, -1.5, 1.75)],
+                  'general position': [(0.3, 1.2, -0.4), (0.9, 1.5, 0.3)]}
+        for name, frame in frames.items():
+            for b_index in (0, 1):
+                for alpha in (90.0, 109.5, 120.0):
+                    with self.subTest(frame=name, b_index=b_index, alpha=alpha):
+                        z = self.build_three_atom_zmat(bc_length=1.4, alpha=alpha, b_index=b_index)
+                        coords = zmat._add_nth_atom_to_coords(zmat=z, coords=list(frame), i=2)
+                        self.assertAlmostEqual(vectors.calculate_param(coords=coords, atoms=[2, b_index]),
+                                               1.4, places=6)
+                        self.assertAlmostEqual(vectors.calculate_param(coords=coords, atoms=[2, b_index, 1 - b_index]),
+                                               alpha, places=4)
+
+    def test_canonical_frame_placement_is_unchanged(self):
+        """The canonical frame must keep landing on exactly the same point, to the last bit."""
+        expected = {(0, 90.0): (0.0, 1.4, 8.572527594031472e-17),
+                    (0, 109.5): (0.0, 1.3196980875290496, -0.4673296029272794),
+                    (1, 90.0): (0.0, 1.4, 0.9999999999999999),
+                    (1, 109.5): (0.0, 1.3196980875290496, 1.4673296029272793)}
+        for (b_index, alpha), point in expected.items():
+            with self.subTest(b_index=b_index, alpha=alpha):
+                z = self.build_three_atom_zmat(bc_length=1.4, alpha=alpha, b_index=b_index)
+                coords = zmat._add_nth_atom_to_coords(zmat=z, coords=[(0.0, 0.0, 0.0), (0.0, 0.0, 1.0)], i=2)
+                self.assertEqual(coords[2], point)
+
+    def test_a_leading_dummy_atom_does_not_land_on_the_molecular_axis(self):
+        """
+        Allene on the y axis drove a NaN into the zmat vars, and then out of ``zmat_to_xyz``.
+
+        The dummy that marks the leading C=C=C segment is the third zmat atom, so it was placed
+        in the canonical frame while the molecule was in its own. On the y axis that put it on
+        the molecular axis, making the reference triad of a later dummy genuinely collinear.
+        """
+        for axis in ('x', 'y', 'z'):
+            for use_mol in (False, True):
+                with self.subTest(axis=axis, mol=use_mol):
+                    xyz = self.linear_molecule_on_axis(axis)
+                    mol = ARCSpecies(label='allene', xyz=xyz, smiles='C=C=C').mol if use_mol else None
+                    z = zmat.xyz_to_zmat(xyz, mol=mol, consolidate=False)
+                    self.assertIn('X', z['symbols'])
+                    for key, value in z['vars'].items():
+                        self.assertTrue(math.isfinite(value), f'zmat var {key} is {value}, which is not finite.')
+                    back = zmat_to_xyz(z)
+                    self.assertEqual(back['symbols'], xyz['symbols'])
+                    self.assertLess(max_distance_discrepancy(xyz, back), 1e-4,
+                                    msg=f'The geometry of allene on {axis} was not recovered.')
+
+    def test_ketene_on_the_y_axis_round_trips(self):
+        """Ketene is the other reported trigger, and it has no symmetry to mask the failure."""
+        xyz = KETENE_ON_Y
+        z = zmat.xyz_to_zmat(xyz, mol=ARCSpecies(label='ketene', xyz=xyz, smiles='C=C=O').mol, consolidate=False)
+        for key, value in z['vars'].items():
+            self.assertTrue(math.isfinite(value), f'zmat var {key} is {value}, which is not finite.')
+        self.assertLess(max_distance_discrepancy(xyz, zmat_to_xyz(z)), 1e-4)
+
+
+class TestDummyAtomIndexSpace(unittest.TestCase):
+    """
+    Test that a dummy atom's reference atoms are resolved in the zmat's index space.
+
+    ``add_dummy_atom`` is handed the xyz-ordered coordinates, while the parameter strings that say
+    where the dummy goes are written in zmat indices. The two orders coincide only for the identity
+    atom order, and a dummy guarantees they diverge from its own index on, since every later atom
+    sits one zmat index further along than its xyz index. Output read back from an ESS carries an
+    arbitrary atom order, so the shuffled orders below are the ordinary case, not a contrived one.
+    """
+
+    @staticmethod
+    def relabel(xyz: dict, order: tuple) -> dict:
+        """Relabel ``xyz`` so that its atom ``i`` is the original atom ``order[i]``."""
+        return {'symbols': tuple(xyz['symbols'][i] for i in order),
+                'isotopes': tuple(xyz['isotopes'][i] for i in order),
+                'coords': tuple(xyz['coords'][i] for i in order)}
+
+    def test_every_relabeling_of_ketene_round_trips(self):
+        """All 120 atom orders of the reported trigger, not only the one the input happened to use."""
+        for order in itertools.permutations(range(len(KETENE_ON_Y['symbols']))):
+            with self.subTest(order=order):
+                xyz = self.relabel(KETENE_ON_Y, order)
+                z = zmat.xyz_to_zmat(xyz, mol=None, consolidate=False)
+                self.assertIn('X', z['symbols'])
+                for key, value in z['vars'].items():
+                    self.assertTrue(math.isfinite(value), f'zmat var {key} is {value}, which is not finite.')
+                self.assertLess(max_distance_discrepancy(xyz, zmat_to_xyz(z)), 1e-4,
+                                msg=f'The geometry of ketene relabelled {order} was not recovered.')
+
+    def test_an_explicit_atom_order_round_trips(self):
+        """``atom_order`` divorces the zmat index space from the xyz index space from the first atom on."""
+        xyz = {'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 12, 12, 1, 1, 1, 1),
+               'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.46), (0.0, 0.0, 2.668), (0.0, 0.0, 3.73),
+                          (1.025, 0.0, -0.373), (-0.512, 0.888, -0.373), (-0.512, -0.888, -0.373))}
+        for atom_order in ([3, 2, 1, 0, 4, 5, 6], [4, 0, 5, 6, 1, 2, 3], [6, 5, 4, 0, 1, 2, 3]):
+            with self.subTest(atom_order=atom_order):
+                z = zmat.xyz_to_zmat(xyz, mol=None, consolidate=False, atom_order=atom_order)
+                for key, value in z['vars'].items():
+                    self.assertTrue(math.isfinite(value), f'zmat var {key} is {value}, which is not finite.')
+                self.assertLess(max_distance_discrepancy(xyz, zmat_to_xyz(z)), 1e-4)
+
+    def test_a_dummy_is_mapped_to_its_index_in_the_augmented_coordinates(self):
+        """
+        The placement reads reference coordinates through ``zmat['map']``, so the map must index them.
+
+        A dummy is mapped to 'X<i>', where ``i`` is its index in the coordinates the dummies are
+        appended to; ``map_index_to_int`` decodes it, the same decoding
+        ``vectors.calculate_dihedral_angle`` performs.
+        """
+        z = zmat.xyz_to_zmat(KETENE_ON_Y, mol=None, consolidate=False)
+        dummy_indices = [zmat.map_index_to_int(value) for value in z['map'].values() if isinstance(value, str)]
+        real_indices = [value for value in z['map'].values() if not isinstance(value, str)]
+        self.assertTrue(dummy_indices)
+        self.assertEqual(sorted(real_indices), list(range(len(KETENE_ON_Y['symbols']))))
+        self.assertEqual(sorted(dummy_indices),
+                         list(range(len(KETENE_ON_Y['symbols']),
+                                    len(KETENE_ON_Y['symbols']) + len(dummy_indices))))
 
 
 if __name__ == '__main__':

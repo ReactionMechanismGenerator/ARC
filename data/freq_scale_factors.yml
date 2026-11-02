@@ -178,6 +178,10 @@ freq_scale_factors:
     factor: 1.004
     source: 5
     note: 'Same as cbs-qb3, added for consistency with Arkane'
+  'g4, software: gaussian':
+    factor: 0.994
+    source: 4
+    note: '0.980 * 1.014, the 0.980 value is the ZPE scale factor of G4, fitted with Truhlar''s method over the 15-species standard set'
   'ccsd/cc-pvdz, software: molpro':
     factor: 0.947
     source: 2

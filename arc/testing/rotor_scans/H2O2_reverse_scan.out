@@ -1,0 +1,244 @@
+ Entering Gaussian System, Link 0=g03
+ Input=input.gjf
+ Output=input.log
+ Initial command:
+ /opt/g03/l1.exe /scratch/alongd/Gau-19672.inp -scrdir=/scratch/alongd/
+ Entering Link 1 = /opt/g03/l1.exe PID=     19674.
+  
+ Copyright (c) 1988,1990,1992,1993,1995,1998,2003,2004, Gaussian, Inc.
+                  All Rights Reserved.
+  
+ This is the Gaussian(R) 03 program.  It is based on the
+ the Gaussian(R) 98 system (copyright 1998, Gaussian, Inc.),
+ the Gaussian(R) 94 system (copyright 1995, Gaussian, Inc.),
+ the Gaussian 92(TM) system (copyright 1992, Gaussian, Inc.),
+ the Gaussian 90(TM) system (copyright 1990, Gaussian, Inc.),
+ the Gaussian 88(TM) system (copyright 1988, Gaussian, Inc.),
+ the Gaussian 86(TM) system (copyright 1986, Carnegie Mellon
+ University), and the Gaussian 82(TM) system (copyright 1983,
+ Carnegie Mellon University). Gaussian is a federally registered
+ trademark of Gaussian, Inc.
+  
+ This software contains proprietary and confidential information,
+ including trade secrets, belonging to Gaussian, Inc.
+  
+ This software is provided under written license and may be
+ used, copied, transmitted, or stored only in accord with that
+ written license.
+  
+ The following legend is applicable only to US Government
+ contracts under FAR:
+  
+                    RESTRICTED RIGHTS LEGEND
+  
+ Use, reproduction and disclosure by the US Government is
+ subject to restrictions as set forth in subparagraphs (a)
+ and (c) of the Commercial Computer Software - Restricted
+ Rights clause in FAR 52.227-19.
+  
+ Gaussian, Inc.
+ 340 Quinnipiac St., Bldg. 40, Wallingford CT 06492
+  
+  
+ ---------------------------------------------------------------
+ Warning -- This program may not be used in any manner that
+ competes with the business of Gaussian, Inc. or will provide
+ assistance to any competitor of Gaussian, Inc.  The licensee
+ of this program is prohibited from giving any competitor of
+ Gaussian, Inc. access to this program.  By using this program,
+ the user acknowledges that Gaussian, Inc. is engaged in the
+ business of creating and licensing software in the field of
+ computational chemistry and represents and warrants to the
+ licensee that it is not a competitor of Gaussian, Inc. and that
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 03, Revision D.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, J. A. Montgomery, Jr., T. Vreven, 
+ K. N. Kudin, J. C. Burant, J. M. Millam, S. S. Iyengar, J. Tomasi, 
+ V. Barone, B. Mennucci, M. Cossi, G. Scalmani, N. Rega, 
+ G. A. Petersson, H. Nakatsuji, M. Hada, M. Ehara, K. Toyota, 
+ R. Fukuda, J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, 
+ H. Nakai, M. Klene, X. Li, J. E. Knox, H. P. Hratchian, J. B. Cross, 
+ V. Bakken, C. Adamo, J. Jaramillo, R. Gomperts, R. E. Stratmann, 
+ O. Yazyev, A. J. Austin, R. Cammi, C. Pomelli, J. W. Ochterski, 
+ P. Y. Ayala, K. Morokuma, G. A. Voth, P. Salvador, J. J. Dannenberg, 
+ V. G. Zakrzewski, S. Dapprich, A. D. Daniels, M. C. Strain, 
+ O. Farkas, D. K. Malick, A. D. Rabuck, K. Raghavachari, 
+ J. B. Foresman, J. V. Ortiz, Q. Cui, A. G. Baboul, S. Clifford, 
+ J. Cioslowski, B. B. Stefanov, G. Liu, A. Liashenko, P. Piskorz, 
+ I. Komaromi, R. L. Martin, D. J. Fox, T. Keith, M. A. Al-Laham, 
+ C. Y. Peng, A. Nanayakkara, M. Challacombe, P. M. W. Gill, 
+ B. Johnson, W. Chen, M. W. Wong, C. Gonzalez, and J. A. Pople, 
+ Gaussian, Inc., Wallingford CT, 2004.
+ 
+ ******************************************
+ Gaussian 03:  AM64L-G03RevD.01 13-Oct-2005
+                31-Jan-2019 
+ ******************************************
+ %chk=check.chk
+ %mem=1500mb
+ %nproc=8
+ Will use up to    8 processors via shared memory.
+ --------------------------------------------------------------------
+ # opt=(modredundant, calcfc, noeigentest) b3lyp/6-311+g(d,p) scf=xqc
+
+ The following ModRedundant input section has been read:
+ D    3    1    2    4 S  36 -10.000
+
+ GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
+ NAtoms=    4 NActive=    4 NUniq=    2 SFac= 3.00D+00 NAtFMM=   80 NAOKFM=F Big=F
+ One-electron integrals computed using PRISM.
+
+ SCF Done:  E(RB+HF-LYP) =  -151.602059305     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            118.8736         -DE/DX =    0.0003              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601869908     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            108.8736         -DE/DX =    0.0019              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601365079     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)             98.8736         -DE/DX =    0.0039              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.600517481     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)             88.8736         -DE/DX =    0.0058              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.599341829     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)             78.8736         -DE/DX =    0.0076              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.597876940     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)             68.8736         -DE/DX =    0.0091              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.596190515     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)             58.8736         -DE/DX =    0.0101              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.594380469     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)             48.8736         -DE/DX =    0.0105              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.592582691     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)             38.8736         -DE/DX =    0.01                !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.590952335     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)             28.8736         -DE/DX =    0.0086              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.589650462     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)             18.8736         -DE/DX =    0.0062              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.588823637     A.U. after    6 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)              8.8736         -DE/DX =    0.0031              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.588581295     A.U. after    6 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)             -1.1264         -DE/DX =   -0.0004              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.588962051     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            -11.1264         -DE/DX =   -0.0039              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.589907026     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            -21.1264         -DE/DX =   -0.0068              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.591296703     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            -31.1264         -DE/DX =   -0.009               !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.592978726     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            -41.1264         -DE/DX =   -0.0102              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.594792509     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            -51.1264         -DE/DX =   -0.0105              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.596585295     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            -61.1264         -DE/DX =   -0.01                !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.598229143     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            -71.1264         -DE/DX =   -0.0088              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.599633708     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            -81.1264         -DE/DX =   -0.0072              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.600738015     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            -91.1264         -DE/DX =   -0.0054              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601508532     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)           -101.1264         -DE/DX =   -0.0034              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601938238     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)           -111.1264         -DE/DX =   -0.0015              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.602064496     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)           -121.1264         -DE/DX =    0.0                 !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601958140     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)           -131.1264         -DE/DX =    0.0011              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601709454     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)           -141.1264         -DE/DX =    0.0017              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601403058     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)           -151.1264         -DE/DX =    0.0018              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601118037     A.U. after   10 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)           -161.1264         -DE/DX =    0.0014              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.600924159     A.U. after   11 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)           -171.1264         -DE/DX =    0.0008              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.600864848     A.U. after   10 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            178.8736         -DE/DX =   -0.0001              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.600957616     A.U. after    6 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            168.8736         -DE/DX =   -0.0009              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601177264     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            158.8736         -DE/DX =   -0.0015              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601472935     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            148.8736         -DE/DX =   -0.0018              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601773366     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            138.8736         -DE/DX =   -0.0016              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.601997808     A.U. after    7 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            128.8736         -DE/DX =   -0.0009              !
+
+ SCF Done:  E(RB+HF-LYP) =  -151.602059309     A.U. after    6 cycles
+ Optimization completed.
+ ! D1    D(3,1,2,4)            118.8736         -DE/DX =    0.0003              !
+
+ Normal termination of Gaussian 03 at Thu Jan 31 07:15:02 2019.

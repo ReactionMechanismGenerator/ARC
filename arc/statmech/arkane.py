@@ -11,12 +11,17 @@ from typing import TYPE_CHECKING
 from mako.template import Template
 
 import arc.plotter as plotter
+from arc.checks.common import get_ts_validation_comment
 from arc.common import ARC_PATH, get_logger, read_yaml_file
-from arc.exceptions import InputError
+from arc.exceptions import AtomTypeError, InputError
 from arc.imports import incore_commands, settings
+from arc.molecule.molecule import Molecule
+from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
 from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
+
+from arc.species.species import ThermoData
 
 if TYPE_CHECKING:
     from arc.level import Level
@@ -25,7 +30,6 @@ if TYPE_CHECKING:
 
 
 RMG_DB_PATH = settings['RMG_DB_PATH']
-RMG_ENV_NAME = settings.get('RMG_ENV_NAME', 'rmg_env')
 logger = get_logger()
 
 # Section boundary markers in the RMG quantum_corrections/data.py file.
@@ -36,6 +40,13 @@ PBAC_SECTION_END = "mbac = {"
 MBAC_SECTION_START = "mbac = {"
 MBAC_SECTION_END = "freq_dict ="
 FREQ_SECTION_START = "freq_dict = {"
+
+# Tunneling method ARC uses for every reaction kinetics fit. Single source
+# of truth: the Arkane input template renders this constant, and output.yml
+# / the TCKDB adapter both read it back so downstream consumers know which
+# correction was applied.
+ARKANE_TUNNELING_METHOD = 'Eckart'
+
 
 main_input_template = """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
@@ -57,7 +68,11 @@ bondCorrectionType = '${bac_type}'
 % endif
 
 % for spc in species_list:
-% if spc['smiles']:
+% if spc.get('adjlist'):
+species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
+        structure=adjacencyList(\"\"\"
+${spc['adjlist']}\"\"\"))
+% elif spc['smiles']:
 species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
         structure=SMILES('${spc['smiles']}'), spinMultiplicity=${spc['multiplicity']})
 % else:
@@ -75,7 +90,7 @@ reaction(
     reactants=${rxn.reactants},
     products=${rxn.products},
     transitionState='${rxn.ts_species.label}',
-    tunneling='Eckart',
+    tunneling='${tunneling_method}',
 )
 % endfor
 
@@ -249,6 +264,10 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.parse_arkane_kinetics_output(statmech_dir)
         for reaction in self.reactions:
             plotter.log_kinetics(reaction.ts_species.label, path=statmech_dir)
+            ts_validation = get_ts_validation_comment(reaction.ts_species)
+            if ts_validation is not None:
+                logger.error(f'The above rate coefficient of reaction {reaction.label} is not validated. '
+                             f'{ts_validation}')
             clean_output_directory(species_path=os.path.join(self.output_directory, 'rxns', reaction.ts_species.label),
                                    is_ts=True)
 
@@ -331,12 +350,37 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
             e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0. Default: ``False``.
         """
+        reaction_species_labels = set()
+        for rxn in self.reactions or list():
+            reactants, products = rxn.get_reactants_and_products(return_copies=False)
+            rxn.reactants = [spc.label for spc in reactants]
+            rxn.products = [spc.label for spc in products]
+            reaction_species_labels.update(rxn.reactants + rxn.products)
         species_list = list()
         for spc in self.species:
-            if e0_only or spc.compute_thermo:
+            # A species named by a reaction must be declared even when its thermo is not being
+            # computed: Arkane's reaction() references species by label from the declared-species
+            # dict, so an undeclared reactant/product raises KeyError and no rate is produced.
+            if e0_only or spc.compute_thermo or spc.label in reaction_species_labels:
+                smiles = spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else ''
+                adjlist = ''
+                if smiles:
+                    # SMILES cannot encode a lone-pair singlet (e.g. a singlet carbene [CH2]): re-perceiving
+                    # the SMILES yields unpaired radicals whose count clashes with the multiplicity (Hund's
+                    # rule) when Arkane saves the thermo library, crashing the whole thermo step. When the
+                    # SMILES does not round-trip to the same multiplicity, emit the lossless adjacency list.
+                    perceived_mult = None
+                    try:
+                        perceived_mult = Molecule(smiles=smiles).multiplicity
+                    except (ValueError, AtomTypeError):
+                        perceived_mult = None
+                    if perceived_mult != spc.mol.multiplicity:
+                        adjlist = spc.mol.copy(deep=True).to_adjacency_list()
+                        smiles = ''
                 species_list.append({'label': spc.label,
                                      'path': spc.yml_path or os.path.join(statmech_dir, 'species', f'{spc.label}.py'),
-                                     'smiles': spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else '',
+                                     'smiles': smiles,
+                                     'adjlist': adjlist,
                                      'multiplicity': spc.multiplicity,
                                      })
         ts_list = [{'label': rxn.ts_species.label,
@@ -359,11 +403,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         freq_scale_factor = f'\nfrequencyScaleFactor = {self.freq_scale_factor}' \
             if self.freq_scale_factor is not None else ''
-        if self.reactions is not None:
-            for rxn in self.reactions:
-                reactants, products = rxn.get_reactants_and_products()
-                rxn.reactants = [spc.label for spc in reactants]
-                rxn.products = [spc.label for spc in products]
         calc_type = 'kinetics' if self.reactions else 'thermo'
         return Template(main_input_template).render(
             title=f'Arkane {calc_type} calculation',
@@ -382,6 +421,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             t_min=self.T_min,
             t_max=self.T_max,
             t_count=self.T_count,
+            tunneling_method=ARKANE_TUNNELING_METHOD,
         )
 
     def generate_species_files(self,
@@ -462,22 +502,14 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'save_arkane_thermo.py')
         rmg_db_path = RMG_DB_PATH or ""
-        commands = [f'cd {statmech_dir}',
-                    'bash -lc "set -euo pipefail; '
-                    f'export RMG_DB_PATH=\\"{rmg_db_path}\\"; '
-                    f'export RMG_DATABASE=\\"{rmg_db_path}\\"; '
-                    'if command -v micromamba >/dev/null 2>&1; then '
-                    f'    micromamba run -n {RMG_ENV_NAME} python {script_path}; '
-                    'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
-                    f'    conda run -n {RMG_ENV_NAME} python {script_path}; '
-                    'else '
-                    '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
-                    'fi"',
-                    ]
-        stdout, stderr = execute_command(command=commands, executable='/bin/bash')
+        command = rmg_env_command(py_args=[script_path],
+                                  cwd=statmech_dir,
+                                  env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path})
+        stdout, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
         if len(stderr):
             logger.error(f'Error while running Arkane thermo script:\n{stderr}')
         thermo_yaml_path = os.path.join(statmech_dir, 'thermo.yaml')
+        content = dict()
         if os.path.isfile(thermo_yaml_path):
             content = read_yaml_file(thermo_yaml_path) or {}
             valid_labels = [lbl for lbl in content if lbl in self.species_dict]
@@ -494,12 +526,30 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                 logger.info(header)
                 for lbl in valid_labels:
                     spc = self.species_dict[lbl]
+                    if spc.thermo is None:
+                        # ``ARCSpecies.__init__`` sets ``self.thermo = ThermoData()`` unconditionally,
+                        # so no species ARC builds itself can reach this loop with ``None``. A caller's
+                        # subclass can, though, by re-assigning the attribute after ``super().__init__()``
+                        # -- which is exactly how T3's ``T3Species`` produced the crash this guards
+                        # (fixed at the source in T3 PR #187). Other call sites across the codebase
+                        # (e.g., ``ArkaneAdapter.set_reaction_dh_rxn``, ``processor.process_arc_project``,
+                        # ``output.get_species_output_dict``) already tolerate ``None`` here.
+                        #
+                        # Supply the container rather than crash: the Arkane results being assigned are
+                        # real and already computed, and losing them means discarding converged QM jobs
+                        # at the reporting stage. Warn rather than repair silently, so a caller
+                        # re-introducing this stays visible instead of being absorbed.
+                        logger.warning(f'Species {lbl} reached the Arkane thermo assignment loop with '
+                                       f'.thermo set to None, instead of the ThermoData() instance '
+                                       f'ARCSpecies.__init__() assigns. Supplying an empty ThermoData() '
+                                       f'container so the computed results are not lost.')
+                        spc.thermo = ThermoData()
                     spc.thermo.H298 = content[lbl]['H298']
                     spc.thermo.S298 = content[lbl]['S298']
                     spc.thermo.data = content[lbl]['data']
                     spc.thermo.nasa_low = content[lbl].get('nasa_low')
                     spc.thermo.nasa_high = content[lbl].get('nasa_high')
-                    spc.thermo.cp_data = content[lbl].get('cp_data')
+                    spc.thermo.thermo_points = content[lbl].get('thermo_points')
 
                     line = (
                         f"   {lbl:<{label_width}}  "
@@ -507,6 +557,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                         f"{spc.thermo.S298:>{s_width}.2f}"
                     )
                     logger.info(line)
+
+        pressure_pa = get_standard_state_pressure(content)
+        for species in self.species:
+            if species.thermo is not None and species.thermo.H298 is not None:
+                species.thermo.standard_state_pressure_pa = pressure_pa
 
     def parse_arkane_kinetics_output(self, statmech_dir: str) -> None:
         """Parse Arkane kinetic output and assign results to reactions."""
@@ -545,53 +600,104 @@ def run_arkane(statmech_dir: str) -> bool:
         logger.error(f'Cannot run Arkane in {statmech_dir} because it does not contain an input.py file.')
         return False
     rmg_db_path = RMG_DB_PATH or ""
-    arkane_cmd = 'python -m arkane input.py'
-    arkane_cmd += ' 2> >(tee -a stderr.log >&2) | tee -a stdout.log'
-    shell_script = rf'''bash -lc 'set -euo pipefail
-cd "{statmech_dir}"
-export RMG_DB_PATH="{rmg_db_path}"
-export RMG_DATABASE="{rmg_db_path}"
-
-if command -v micromamba >/dev/null 2>&1; then
-    micromamba run -n {RMG_ENV_NAME} {arkane_cmd}
-elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then
-    conda run -n {RMG_ENV_NAME} {arkane_cmd}
-else
-    echo "❌ Micromamba/Mamba/Conda required" >&2
-    exit 1
-fi' '''
+    arkane_suffix = ' 2> >(tee -a stderr.log >&2) | tee -a stdout.log'
+    shell_script = rmg_env_command(py_args=['-m', 'arkane', 'input.py'],
+                                   cwd=statmech_dir,
+                                   env_vars={'RMG_DB_PATH': rmg_db_path, 'RMG_DATABASE': rmg_db_path},
+                                   suffix=arkane_suffix)
 
     std_out, std_err = execute_command(command=shell_script,
                                        shell=True,
                                        no_fail=True,
                                        executable='/bin/bash')
-    if std_err:
-        ignorable_phrases = [
-            "Open Babel Warning",
-            "Accepted unusual valence",
-            "==============================",
-            "pjrt_executable.cc",
-        ]
 
-        real_errors = []
-        for line in std_err:
-            line = line.strip()
-            if not line:
-                continue
-            if not any(phrase in line for phrase in ignorable_phrases):
-                real_errors.append(line)
-
-        if real_errors:
-            logger.info(f'Arkane run failed with errors:\n{std_err}')
-            return False
-
+    # The authoritative success signal is whether Arkane wrote
+    # ``output.py``. Stderr content alone is unreliable — upstream tools
+    # (OpenBabel, Arkane's ``git rev-parse`` provenance stamp, JAX/XLA's
+    # TPU probe) emit lines that look like errors but don't represent
+    # failure, and using stderr-non-empty as a gate caused us to discard
+    # complete Arkane runs (see the kinetics caller, which bails on a
+    # False return). The classification below is now advisory: if stderr
+    # has lines that don't match a known-cosmetic pattern, we log them
+    # at WARNING so they're visible without making them load-bearing.
+    real_errors = _classify_arkane_stderr(std_err)
     output_file = os.path.join(statmech_dir, 'output.py')
-    if not os.path.isfile(output_file):
-        logger.error(f'Arkane run finished but {output_file} was not created. Check stdout/stderr.')
+    output_present = os.path.isfile(output_file)
+
+    if real_errors and output_present:
+        logger.warning(
+            "Arkane emitted errors but still produced output.py (proceeding): %s",
+            _summarize_arkane_stderr(real_errors),
+        )
+    elif real_errors and not output_present:
+        # Genuine failure: stderr has real errors AND no output. Log the salient error (the full
+        # traceback is preserved in the run directory's stderr.log if a deeper look is needed).
+        logger.error("Arkane run failed: %s", _summarize_arkane_stderr(real_errors))
+
+    if not output_present:
+        logger.error(
+            f'Arkane run finished but {output_file} was not created. '
+            'Check stdout/stderr.'
+        )
         return False
 
     logger.debug(f'Arkane run completed:\n{std_out}')
     return True
+
+
+# Cosmetic stderr lines from upstream tools that Arkane shells out to.
+# Tracking these explicitly (rather than accepting all stderr) keeps the
+# WARNING log signal-rich: if a NEW source of stderr noise appears, it
+# shows up loudly until we either fix it or add it here.
+_ARKANE_STDERR_IGNORABLE_PHRASES: tuple[str, ...] = (
+    "Open Babel Warning",
+    "Accepted unusual valence",
+    "==============================",
+    "pjrt_executable.cc",
+    # Arkane runs `git rev-parse` to stamp its output with the
+    # RMG-database commit; when run from a non-git CWD (the
+    # common case under conda-installed databases) git emits
+    # this and Arkane carries on regardless.
+    "fatal: not a git repository",
+)
+
+
+def _classify_arkane_stderr(std_err: list[str] | None) -> list[str]:
+    """Return the subset of ``std_err`` lines that aren't known cosmetic noise.
+
+    Used by :func:`run_arkane` for advisory logging only — the boolean
+    success signal is whether Arkane produced ``output.py``, not whether
+    this list is empty.
+    """
+    if not std_err:
+        return []
+    real: list[str] = []
+    for line in std_err:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not any(phrase in stripped for phrase in _ARKANE_STDERR_IGNORABLE_PHRASES):
+            real.append(stripped)
+    return real
+
+
+def _summarize_arkane_stderr(real_errors: list[str]) -> str:
+    """Condense classified Arkane stderr to the salient error line for logging.
+
+    Arkane failures surface as a full Python traceback; dumping every line into arc.log is noise,
+    especially when Arkane still produced output.py (e.g. a first attempt that failed on the Eckart
+    barrier and was retried). Return the actual exception line — the informative part — plus a count
+    of the remaining lines, rather than the whole traceback.
+    """
+    if not real_errors:
+        return ''
+    # Prefer the Python exception line, e.g. "ValueError: ...". Skip the conda wrapper's own
+    # "ERROR conda.cli..." line, which only reports that the child process exited non-zero.
+    exception_lines = [ln for ln in real_errors
+                       if re.match(r'^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):', ln)]
+    salient = exception_lines[-1] if exception_lines else real_errors[-1]
+    extra = len(real_errors) - 1
+    return salient + (f' [+{extra} more stderr line(s)]' if extra > 0 else '')
 
 
 def clean_output_directory(species_path: str,  # todo
@@ -1164,6 +1270,26 @@ def check_arkane_bacs(sp_level: Level,
     return has_encorr
 
 
+def get_standard_state_pressure(content: dict) -> float | None:
+    """
+    Return the standard-state pressure in Pa recorded in an Arkane ``thermo.yaml`` mapping.
+
+    Every record written by one Arkane run carries the same pressure, which
+    ``arc/scripts/save_arkane_thermo.py`` reads from RMG's translational partition
+    function, so the first record carrying one supplies it for the whole run.
+
+    Args:
+        content (dict): The parsed ``thermo.yaml`` content, keyed by species label.
+
+    Returns:
+        Optional[float]: The standard-state pressure in Pa, or ``None`` when no record carries one.
+    """
+    for record in content.values():
+        if isinstance(record, dict) and record.get('standard_state_pressure_pa') is not None:
+            return record['standard_state_pressure_pa']
+    return None
+
+
 def parse_species_thermo(species, output_content: str) -> None:
     """Parse thermodynamic data for a single species."""
     # Parse E0
@@ -1262,7 +1388,39 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
         if m_dea:
             kinetics['dEa'] = float(m_dea.group(1))
             kinetics['dEa_units'] = m_dea.group(2) or 'kJ/mol'
+    mark_ts_validation_in_kinetics(reaction=reaction, kinetics=kinetics)
+    # Stamp the tunneling method here, where we know these specific A/n/Ea came
+    # out of the Arkane run ARC rendered ARKANE_TUNNELING_METHOD into. Callers
+    # that default this from the template constant instead would also stamp
+    # kinetics restored from a restart file, supplied in the input YAML, or
+    # produced by a future non-Arkane StatmechAdapter, none of which carry the
+    # correction.
+    kinetics['tunneling'] = ARKANE_TUNNELING_METHOD
     reaction.kinetics = kinetics
+
+
+def mark_ts_validation_in_kinetics(reaction, kinetics: dict) -> None:
+    """
+    Stamp the TS validation verdict onto a parsed kinetics dictionary.
+
+    Adds a ``ts_validation`` key and appends the marker to the Arrhenius ``comment``. The rate
+    coefficient values are not modified. A TS for which the IRC check was not performed
+    (``None``) or was passed (``True``) leaves ``kinetics`` untouched.
+
+    Args:
+        reaction: The reaction object the kinetics were computed for.
+        kinetics (dict): The parsed Arrhenius kinetics dictionary, modified in place.
+    """
+    ts_species = getattr(reaction, 'ts_species', None)
+    marker = get_ts_validation_comment(ts_species)
+    if marker is None:
+        return
+    kinetics['ts_validation'] = marker
+    comment = kinetics.get('comment', None) or ''
+    kinetics['comment'] = f'{comment}\n{marker}' if comment else marker
+    logger.error(f'Computed a rate coefficient for reaction {reaction.label} although its TS '
+                 f'{ts_species.label} failed the IRC check. {marker}\n'
+                 f'TS checks: {ts_species.ts_checks}')
 
 
 def _parse_conformer_statmech(species, content: str) -> None:

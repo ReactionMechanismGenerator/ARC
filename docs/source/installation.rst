@@ -106,18 +106,45 @@ select it (it resolves to the latest UMA model implemented in ARC).
 
 UMA runs in its own ``uma_env`` conda environment and is **not** installed by
 ``make install-all`` or in CI, because the model is gated behind a Meta license and a
-HuggingFace token and is heavy to download. To set it up, run:
+HuggingFace token and is heavy to download.
 
-.. code-block:: bash
+Set it up in three steps, in this order:
 
-   make install-uma          # or: bash devtools/install_uma.sh
+1. **Get access to the gated model.** In a browser logged into HuggingFace, accept the
+   license at https://huggingface.co/facebook/UMA, then create an access token at
+   https://huggingface.co/settings/tokens with read access to gated repositories.
+   Accepting the license is not by itself enough — the download needs the token.
 
-This creates ``uma_env`` (``fairchem-core`` + ``sella`` + ``ase``), verifies the
-required imports, and walks you through the one-time HuggingFace login for the gated
-model. Before running it, accept the model license at
-https://huggingface.co/facebook/UMA (in a browser logged into HuggingFace) and create
-a token with read access to gated repositories. To also run the UMA model-dependent
-unit tests after installing, use ``bash devtools/install_uma.sh --test``.
+2. **Create the environment:**
+
+   .. code-block:: bash
+
+      make install-uma                      # CPU-only build (the default)
+      bash devtools/install_uma.sh --gpu    # CUDA machine
+
+   This creates ``uma_env`` (``fairchem-core`` + ``sella`` + ``ase`` + ``torch``) and
+   verifies the required imports. ``make install-uma`` always takes the CPU path; call
+   the script directly with ``--gpu`` on a CUDA machine. Note that ``fairchem-core``
+   pins its own ``torch`` version, so the installed one is whatever it requires; the script prints the
+   resulting build and warns if ``--gpu`` was asked for but no CUDA device is visible.
+
+3. **Authenticate.** The script prompts for the login at the end. If you skipped it
+   (``--skip-hf-login``) or it did not take, authenticate manually — activate the
+   environment first, since ``hf`` is installed inside ``uma_env``:
+
+   .. code-block:: bash
+
+      conda activate uma_env
+      hf auth login
+
+   Use ``conda activate``, not ``conda run``: ``conda run`` gives the child process no
+   TTY, so the interactive token prompt cannot read your input. To authenticate
+   non-interactively instead, export ``HF_TOKEN`` before running the install script.
+   Confirm with ``hf auth whoami``.
+
+Re-running the install script is safe; an existing ``uma_env`` is updated in place. To
+also run the UMA model-dependent unit tests after installing, use
+``bash devtools/install_uma.sh --test``.
 
 Personal Configuration
 ----------------------
@@ -148,14 +175,18 @@ defaults. Missing values fall back to ARC's repository defaults.
 Remote Servers and SSH
 ----------------------
 
-Use SSH keys for remote servers. A remote server entry needs:
+Remote servers are reached over SSH. A remote server entry needs:
 
 * ``cluster_soft`` - one of the cluster software names configured in ARC;
 * ``address`` - SSH hostname;
 * ``un`` - username;
-* ``key`` - path to the private SSH key on the machine running ARC.
+* ``path`` - the absolute path on the server holding the user directories, under which
+  ARC runs. See :doc:`remote_submission`.
 
-Example:
+Authentication is by SSH key. The recommended setup is to load the key into an
+ssh-agent and leave the server entry without a ``key``, in which case ARC falls back
+to the agent and then to the default key paths (``~/.ssh/id_rsa``,
+``~/.ssh/id_ecdsa``, ``~/.ssh/id_ed25519``):
 
 .. code-block:: python
 
@@ -163,12 +194,39 @@ Example:
        'my_slurm': {
            'cluster_soft': 'Slurm',
            'address': 'login.cluster.edu',
+           'path': '/home',
            'un': 'my_user',
-           'key': '/home/my_user/.ssh/id_rsa',
            'cpus': 32,
            'memory': 128,
        },
    }
+
+Two optional keys control the connection:
+
+* ``key`` - the path, on the machine running ARC, of the SSH **private** key to
+  authenticate with. Set it only when you are not using an agent. The file must
+  exist and be readable, or the connection fails.
+* ``strict_host_key_checking`` - ``False`` by default, meaning a host that is
+  absent from ``known_hosts`` is only warned about. Set it to ``True`` to refuse
+  such hosts outright, having first seeded ``~/.ssh/known_hosts``.
+
+.. code-block:: python
+
+   servers = {
+       'my_slurm': {
+           'cluster_soft': 'Slurm',
+           'address': 'login.cluster.edu',
+           'path': '/home',
+           'un': 'my_user',
+           'key': '/home/my_user/.ssh/id_ed25519',
+           'strict_host_key_checking': True,
+           'cpus': 32,
+           'memory': 128,
+       },
+   }
+
+See :ref:`remote_submission` for the full details, including how to do this from
+the Docker image.
 
 Local and HPC Execution
 -----------------------

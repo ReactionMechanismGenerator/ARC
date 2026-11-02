@@ -5,12 +5,18 @@
 This module contains unit tests of the arc.species.species module
 """
 
+import datetime
 import os
 import shutil
 import tempfile
 import unittest
 
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, check_that_all_entries_are_in_list
+from arc.common import (ARC_PATH,
+                        ARC_TESTING_PATH,
+                        almost_equal_coords_lists,
+                        check_that_all_entries_are_in_list,
+                        save_yaml_file,
+                        )
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
@@ -30,8 +36,11 @@ from arc.species.species import (ARCSpecies,
                                  check_label,
                                  check_xyz,
                                  colliding_atoms,
+                                 cyclic_index_i_minus_1,
+                                 cyclic_index_i_plus_1,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 process_run_time,
                                  rmg_mol_from_dict_repr,
                                  rmg_mol_to_dict_repr,
                                  split_mol,
@@ -277,6 +286,71 @@ class TestARCSpecies(unittest.TestCase):
         self.assertFalse(self.spc3.is_monoatomic())
         n_rad = ARCSpecies(label='N', smiles='[N]')
         self.assertTrue(n_rad.is_monoatomic())
+
+    def test_set_final_xyz_for_monoatomic_generates_a_geometry(self):
+        """Test that a monoatomic species gets a final_xyz at initialization."""
+        for label, smiles in [('H', '[H]'), ('O', '[O]'), ('Cl', '[Cl]')]:
+            spc = ARCSpecies(label=label, smiles=smiles)
+            self.assertIsNotNone(spc.final_xyz)
+            self.assertEqual(spc.final_xyz['symbols'], (label,))
+            self.assertEqual(spc.final_xyz['coords'], ((0.0, 0.0, 0.0),))
+            self.assertEqual(spc.initial_xyz, spc.final_xyz)
+            self.assertEqual(spc.cheap_conformer, spc.final_xyz)
+
+    def test_set_final_xyz_for_monoatomic_preserves_user_xyz(self):
+        """Test that a user-supplied monoatomic geometry is used as-is, from any input route."""
+        xyz = {'symbols': ('O',), 'isotopes': (16,), 'coords': ((1.5, -2.5, 3.5),)}
+        adjlist = """multiplicity 3
+1 O u2 p2 c0"""
+        for kwargs in [{'smiles': '[O]', 'xyz': xyz}, {'adjlist': adjlist, 'xyz': xyz}, {'xyz': xyz}]:
+            spc = ARCSpecies(label='O', **kwargs)
+            self.assertEqual(spc.final_xyz['coords'], ((1.5, -2.5, 3.5),))
+            self.assertIsNone(spc.initial_xyz)
+
+    def test_set_final_xyz_for_monoatomic_from_adjlist(self):
+        """Test that a monoatomic species given only an adjlist gets a final_xyz."""
+        adjlist = """multiplicity 3
+1 O u2 p2 c0"""
+        spc = ARCSpecies(label='O', adjlist=adjlist)
+        self.assertEqual(spc.final_xyz, {'symbols': ('O',), 'isotopes': (16,), 'coords': ((0.0, 0.0, 0.0),)})
+
+    def test_set_final_xyz_for_monoatomic_from_species_dict(self):
+        """Test that a monoatomic species restored from a dictionary gets a final_xyz."""
+        xyz_dict = {'label': 'tst_atom_1', 'xyz': 'C 0.1 0.5 0.0'}
+        initial_xyz_dict = {'label': 'tst_atom_2', 'initial_xyz': 'C 0.2 0.5 0.0'}
+        final_xyz_dict = {'label': 'tst_atom_3', 'final_xyz': 'C 0.3 0.5 0.0'}
+        conformers_dict = {'label': 'tst_atom_4', 'xyz': ['C 0.4 0.5 0.0', 'C 0.5 0.5 0.0']}
+        smiles_dict = {'label': 'tst_atom_5', 'smiles': '[H]'}
+
+        spc1 = ARCSpecies(species_dict=xyz_dict)
+        spc2 = ARCSpecies(species_dict=initial_xyz_dict)
+        spc3 = ARCSpecies(species_dict=final_xyz_dict)
+        spc4 = ARCSpecies(species_dict=conformers_dict)
+        spc5 = ARCSpecies(species_dict=smiles_dict)
+
+        self.assertEqual(spc1.final_xyz, {'coords': ((0.1, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertIsNone(spc1.initial_xyz)
+        self.assertEqual(spc2.final_xyz, {'coords': ((0.2, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertEqual(spc3.final_xyz, {'coords': ((0.3, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertEqual(spc4.final_xyz, {'coords': ((0.4, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertEqual(spc5.final_xyz, {'coords': ((0.0, 0.0, 0.0),), 'isotopes': (1,), 'symbols': ('H',)})
+
+    def test_set_final_xyz_for_monoatomic_feeds_get_xyz_without_generating(self):
+        """Test that run_sp_job's get_xyz(generate=False) call returns a geometry for a standalone atom."""
+        self.assertEqual(ARCSpecies(label='H', smiles='[H]').get_xyz(generate=False),
+                         {'symbols': ('H',), 'isotopes': (1,), 'coords': ((0.0, 0.0, 0.0),)})
+        xyz = {'symbols': ('O',), 'isotopes': (16,), 'coords': ((1.5, -2.5, 3.5),)}
+        self.assertEqual(ARCSpecies(label='O', smiles='[O]', xyz=xyz).get_xyz(generate=False), xyz)
+
+    def test_set_final_xyz_for_monoatomic_skips_ts(self):
+        """Test that a TS is not assigned a monoatomic final_xyz."""
+        ts = ARCSpecies(label='TS0', is_ts=True, smiles='[H]')
+        self.assertIsNone(ts.final_xyz)
+
+    def test_set_final_xyz_for_monoatomic_ignores_polyatomic(self):
+        """Test that a polyatomic species is unaffected."""
+        for smiles in ['C', '[H][H]', 'O']:
+            self.assertIsNone(ARCSpecies(label='spc', smiles=smiles).final_xyz)
 
     def test_is_diatomic(self):
         """Test the is_diatomic() method."""
@@ -608,6 +682,157 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc7.multiplicity, 2)
         self.assertEqual(spc8.multiplicity, 1)
 
+    def test_non_str_smiles_raises_named_error(self):
+        """Test that a non-string SMILES raises a SpeciesError naming the species, not a RecursionError."""
+        for smiles in [False, True, 5]:
+            with self.assertRaises(SpeciesError) as cm:
+                ARCSpecies(label='hydroxylamine', smiles=smiles, compute_thermo=False)
+            self.assertIn('hydroxylamine', str(cm.exception))
+            self.assertIn('SMILES', str(cm.exception))
+            self.assertIn(str(type(smiles)), str(cm.exception))
+            with self.assertRaises(SpeciesError) as cm:
+                ARCSpecies(species_dict={'label': 'hydroxylamine', 'smiles': smiles, 'compute_thermo': False})
+            self.assertIn('hydroxylamine', str(cm.exception))
+        # A SMILES that is a string but chemically invalid must not recurse either.
+        with self.assertRaises((SpeciesError, ValueError)):
+            ARCSpecies(label='junk', smiles='this is not a SMILES', compute_thermo=False)
+
+    def test_is_diatomic_does_not_generate_conformers(self):
+        """Test that is_diatomic() queries existing coordinates only and never triggers conformer generation."""
+        spc = ARCSpecies(label='NO', smiles='[N]=O', compute_thermo=False)
+        self.assertTrue(spc.is_diatomic())
+        spc_no_structure = ARCSpecies(label='no_structure', smiles='C', compute_thermo=False)
+        spc_no_structure.mol = None
+        spc_no_structure.mol_list = None
+        spc_no_structure.conformers = list()
+        spc_no_structure.final_xyz, spc_no_structure.initial_xyz = None, None
+        spc_no_structure.most_stable_conformer, spc_no_structure.cheap_conformer = None, None
+        self.assertIsNone(spc_no_structure.is_diatomic())
+
+    def test_check_multiplicity_parity_neutral(self):
+        """Test that an impossible electron-count/multiplicity parity of a neutral species raises SpeciesError."""
+        spc_even = ARCSpecies(label='ethylene', smiles='C=C', multiplicity=1, compute_thermo=False)
+        self.assertEqual(spc_even.get_number_of_electrons(), 16)
+        self.assertEqual(spc_even.multiplicity, 1)
+        spc_odd = ARCSpecies(label='HO2', smiles='[O]O', multiplicity=2, compute_thermo=False)
+        self.assertEqual(spc_odd.get_number_of_electrons(), 17)
+        self.assertEqual(spc_odd.multiplicity, 2)
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='ethylene_bad', smiles='C=C', multiplicity=2, compute_thermo=False)
+        self.assertIn('Impossible multiplicity for species ethylene_bad', str(cm.exception))
+        self.assertIn('has 16 electrons', str(cm.exception))
+        self.assertIn('requires an odd multiplicity', str(cm.exception))
+        self.assertIn('nearest valid multiplicities are [1, 3]', str(cm.exception))
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='HO2_bad', smiles='[O]O', multiplicity=1, compute_thermo=False)
+        self.assertIn('Impossible multiplicity', str(cm.exception))
+        self.assertIn('requires an even multiplicity', str(cm.exception))
+        self.assertIn('nearest valid multiplicities are [2]', str(cm.exception))
+
+    def test_check_multiplicity_parity_ions(self):
+        """Test the electron-count/multiplicity parity check for cations and anions, radicals and non-radicals."""
+        oh_anion = ARCSpecies(label='OH_anion', smiles='[OH-]', multiplicity=1, compute_thermo=False)
+        self.assertEqual((oh_anion.charge, oh_anion.get_number_of_electrons()), (-1, 10))
+        o2_anion = ARCSpecies(label='O2_anion', smiles='[O-][O]', multiplicity=2, compute_thermo=False)
+        self.assertEqual((o2_anion.charge, o2_anion.get_number_of_electrons()), (-1, 17))
+        nh4_cation = ARCSpecies(label='NH4_cation', smiles='[NH4+]', multiplicity=1, compute_thermo=False)
+        self.assertEqual((nh4_cation.charge, nh4_cation.get_number_of_electrons()), (1, 10))
+        ch4_cation = ARCSpecies(label='CH4_cation', smiles='C', charge=1, multiplicity=2, compute_thermo=False)
+        self.assertEqual((ch4_cation.charge, ch4_cation.get_number_of_electrons()), (1, 9))
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='OH_anion_bad', smiles='[OH-]', multiplicity=2, compute_thermo=False)
+        self.assertIn('Impossible multiplicity', str(cm.exception))
+        self.assertIn('has 10 electrons (9 in its neutral composition, at a net charge of -1)', str(cm.exception))
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='O2_anion_bad', smiles='[O-][O]', multiplicity=1, compute_thermo=False)
+        self.assertIn('has 17 electrons (16 in its neutral composition, at a net charge of -1)', str(cm.exception))
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='NH4_cation_bad', smiles='[NH4+]', multiplicity=2, compute_thermo=False)
+        self.assertIn('has 10 electrons (11 in its neutral composition, at a net charge of 1)', str(cm.exception))
+
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='CH4_cation_bad', smiles='C', charge=1, multiplicity=1, compute_thermo=False)
+        self.assertIn('has 9 electrons (10 in its neutral composition, at a net charge of 1)', str(cm.exception))
+
+    def test_check_multiplicity_parity_high_multiplicity(self):
+        """Test the electron-count/multiplicity parity check for a high spin multiplicity."""
+        n_xyz = {'symbols': ('N',), 'isotopes': (14,), 'coords': ((0.0, 0.0, 0.0),)}
+        n_quartet = ARCSpecies(label='N_quartet', xyz=n_xyz, multiplicity=4, compute_thermo=False)
+        self.assertEqual(n_quartet.multiplicity, 4)
+        self.assertEqual(n_quartet.get_number_of_electrons(), 7)
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='N_bad', xyz=n_xyz, multiplicity=3, compute_thermo=False)
+        self.assertIn('Impossible multiplicity for species N_bad', str(cm.exception))
+        self.assertIn('nearest valid multiplicities are [2, 4]', str(cm.exception))
+
+    def test_check_multiplicity_parity_xyz_only(self):
+        """Test that the parity check runs at init for a species defined by coordinates only."""
+        h2o_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                   'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.48), (0.0, -0.76, -0.48))}
+        self.assertEqual(ARCSpecies(label='water', xyz=h2o_xyz, multiplicity=1,
+                                    compute_thermo=False).get_number_of_electrons(), 10)
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='xyz_bad', xyz=h2o_xyz, multiplicity=2, compute_thermo=False)
+        self.assertIn('Impossible multiplicity for species xyz_bad', str(cm.exception))
+
+    def test_check_multiplicity_parity_species_dict(self):
+        """Test that the parity check also guards the restart (species_dict) path."""
+        ethane_adjlist = '1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}\n2 C u0 p0 c0 {1,S} {6,S} {7,S} {8,S}\n' \
+                         '3 H u0 p0 c0 {1,S}\n4 H u0 p0 c0 {1,S}\n5 H u0 p0 c0 {1,S}\n6 H u0 p0 c0 {2,S}\n' \
+                         '7 H u0 p0 c0 {2,S}\n8 H u0 p0 c0 {2,S}\n'
+        species_dict = {'label': 'restart_spc', 'multiplicity': 1, 'charge': 0, 'mol': ethane_adjlist,
+                        'is_ts': False, 'compute_thermo': False, 'number_of_rotors': 0, 'rotors_dict': {}}
+        self.assertEqual(ARCSpecies(species_dict=species_dict).get_number_of_electrons(), 18)
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(species_dict={**species_dict, 'multiplicity': 2})
+        self.assertIn('Impossible multiplicity for species restart_spc', str(cm.exception))
+
+    def test_get_number_of_electrons(self):
+        """Test the get_number_of_electrons() method (atomic number sum less the net charge)."""
+        self.assertEqual(ARCSpecies(label='eth', smiles='C=C', compute_thermo=False).get_number_of_electrons(), 16)
+        self.assertEqual(ARCSpecies(label='OH', smiles='[OH]', compute_thermo=False).get_number_of_electrons(), 9)
+        self.assertEqual(ARCSpecies(label='water', smiles='O', compute_thermo=False).get_number_of_electrons(), 10)
+
+        cation = ARCSpecies(label='CH4_cation', smiles='C', charge=1, multiplicity=2, compute_thermo=False)
+        self.assertEqual(cation.get_number_of_electrons(), 9)
+        anion = ARCSpecies(label='OH_anion', smiles='[OH-]', compute_thermo=False)
+        self.assertEqual(anion.get_number_of_electrons(), 10)
+
+        xyz_spc = ARCSpecies(label='xyz_only', is_ts=True, multiplicity=1,
+                             xyz={'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                                  'coords': ((0.0, 0.0, 0.12), (0.0, 0.76, -0.48), (0.0, -0.76, -0.48))})
+        xyz_spc.mol = None
+        self.assertEqual(xyz_spc.get_number_of_electrons(), 10)
+
+        self.assertIsNone(ARCSpecies(label='TS0', is_ts=True).get_number_of_electrons())
+        self.assertIsNone(ARCSpecies(label='TS1', is_ts=True, multiplicity=2).get_number_of_electrons())
+
+        bad = ARCSpecies(label='bad_symbol', smiles='O', compute_thermo=False)
+        bad.mol = None
+        bad.final_xyz = {'symbols': ('O', 'Xx'), 'isotopes': (16, 1),
+                         'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))}
+        with self.assertRaises(SpeciesError) as cm:
+            bad.get_number_of_electrons()
+        self.assertIn('Could not identify atom symbol Xx of species bad_symbol', str(cm.exception))
+
+    def test_get_number_of_electrons_does_not_generate_a_conformer(self):
+        """Test that counting electrons never triggers force-field conformer generation.
+
+        The ``mol is None`` / ``mol_list is not None`` state below is the only one in which
+        ``get_xyz()`` would try to generate a conformer from within this method.
+        """
+        spc = ARCSpecies(label='propane', smiles='CCC', compute_thermo=False)
+        spc.mol_list = spc.mol_list or [spc.mol]
+        spc.mol = None
+        self.assertIsNone(spc.get_number_of_electrons())
+        self.assertIsNone(spc.cheap_conformer)
+        self.assertEqual(spc.conformers, list())
+
     def test_as_dict(self):
         """Test Species.as_dict()"""
         spc_dict = self.spc3.as_dict()
@@ -649,6 +874,99 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         restored = ARCSpecies(species_dict=spc_dict)
         self.assertTrue(restored.thermo_at_own_level)
         self.assertEqual(restored.adaptive_lot_n_heavy, 8)
+
+    def test_run_time_coercion(self):
+        """Test that run_time is coerced to a timedelta at construction and round-trips."""
+        # None stays None.
+        spc_none = ARCSpecies(label='x', smiles='C')
+        self.assertIsNone(spc_none.run_time)
+
+        # A plain number is interpreted as seconds and coerced to a timedelta.
+        spc = ARCSpecies(label='x', smiles='C', run_time=12.5)
+        self.assertEqual(spc.run_time, datetime.timedelta(seconds=12.5))
+        restored = ARCSpecies(species_dict=spc.as_dict())
+        self.assertEqual(restored.run_time, datetime.timedelta(seconds=12.5))
+
+        # An int is likewise seconds.
+        self.assertEqual(ARCSpecies(label='x', smiles='C', run_time=90).run_time,
+                         datetime.timedelta(seconds=90))
+
+        # A timedelta is stored unchanged.
+        td = datetime.timedelta(hours=1, seconds=5)
+        self.assertEqual(ARCSpecies(label='x', smiles='C', run_time=td).run_time, td)
+
+        # An unacceptable type raises immediately at construction.
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='x', smiles='C', run_time='12.5')
+        self.assertIn('run_time', str(cm.exception))
+        self.assertIn('str', str(cm.exception))
+
+        # A boolean is a caller mistake, not 1 second.
+        with self.assertRaises(SpeciesError):
+            ARCSpecies(label='x', smiles='C', run_time=True)
+
+        # A non-finite number cannot be a duration.
+        with self.assertRaises(SpeciesError) as cm:
+            ARCSpecies(label='x', smiles='C', run_time=float('inf'))
+        self.assertIn('finite', str(cm.exception))
+
+    def test_process_run_time(self):
+        """Test the process_run_time() coercion helper directly."""
+        self.assertIsNone(process_run_time(None))
+        self.assertEqual(process_run_time(12.5), datetime.timedelta(seconds=12.5))
+        self.assertEqual(process_run_time(90), datetime.timedelta(seconds=90))
+        td = datetime.timedelta(minutes=3)
+        self.assertIs(process_run_time(td), td)
+        with self.assertRaises(SpeciesError):
+            process_run_time('12.5')
+        with self.assertRaises(SpeciesError):
+            process_run_time(True)
+        for non_finite in [float('inf'), float('-inf'), float('nan')]:
+            with self.assertRaises(SpeciesError):
+                process_run_time(non_finite)
+
+    def test_derived_stability_verdict_round_trip(self):
+        """Test that a measured stability verdict and the SCF references used round-trip through a restart"""
+        default_spc = ARCSpecies(label='ozone', smiles='[O-][O+]=O')
+        default_dict = default_spc.as_dict()
+        self.assertNotIn('derived_stability_verdict', default_dict)
+        self.assertNotIn('scf_references', default_dict)
+        restored_default = ARCSpecies(species_dict=default_dict)
+        self.assertIsNone(restored_default.derived_stability_verdict)
+        self.assertEqual(restored_default.scf_references, dict())
+
+        spc = ARCSpecies(label='ozone', smiles='[O-][O+]=O')
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True,
+                                         'negative_eigenvectors': [{'label': 'Triplet-A', 'eigenvalue': -0.0642}]}
+        spc.scf_references = {'freq': 'restricted', 'sp': 'unrestricted'}
+        spc_dict = spc.as_dict()
+        restored = ARCSpecies(species_dict=spc_dict)
+        self.assertEqual(restored.derived_stability_verdict['verdict'], 'external_instability')
+        self.assertIs(restored.derived_stability_verdict['restricted'], True)
+        self.assertEqual(restored.derived_stability_verdict['negative_eigenvectors'],
+                         [{'label': 'Triplet-A', 'eigenvalue': -0.0642}])
+        self.assertEqual(restored.scf_references, {'freq': 'restricted', 'sp': 'unrestricted'})
+        self.assertIsNone(restored.number_of_radicals)
+
+    def test_stability_sequencing_state_round_trip(self):
+        """Test that the stability analysis sequencing state round-trips through a restart"""
+        default_spc = ARCSpecies(label='ozone', smiles='[O-][O+]=O')
+        default_dict = default_spc.as_dict()
+        for key in ['stability_analysis_ran', 'stability_pending_opt_job', 'stability_reoptimized']:
+            self.assertNotIn(key, default_dict)
+        restored_default = ARCSpecies(species_dict=default_dict)
+        self.assertFalse(restored_default.stability_analysis_ran)
+        self.assertIsNone(restored_default.stability_pending_opt_job)
+        self.assertFalse(restored_default.stability_reoptimized)
+
+        spc = ARCSpecies(label='ozone', smiles='[O-][O+]=O')
+        spc.stability_analysis_ran = True
+        spc.stability_pending_opt_job = 'opt_a7'
+        spc.stability_reoptimized = True
+        restored = ARCSpecies(species_dict=spc.as_dict())
+        self.assertTrue(restored.stability_analysis_ran)
+        self.assertEqual(restored.stability_pending_opt_job, 'opt_a7')
+        self.assertTrue(restored.stability_reoptimized)
 
     def test_from_dict(self):
         """Test Species.from_dict()"""
@@ -1349,6 +1667,45 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertAlmostEqual(e5, 0.099359417)
         self.assertEqual(n5, 6)
 
+    def test_rotor_symmetry_second_criterion_applies_in_kj_mol(self):
+        """Test that the 10%-of-the-highest-peak criterion fires, and fires on kJ/mol energies.
+
+        The gate used to be the bare literal ``2000`` -- 2 kJ/mol written in J/mol -- while
+        ``parse_1d_scan_energies`` returns kJ/mol, so ``max_e > 2000`` was false for every
+        realistic torsional barrier and the criterion never ran at all.
+        """
+        # Two peaks at 10 and 12 kJ/mol. The spread of 2 is INSIDE the worst peak-to-neighbour
+        # step (6), so the resolution criterion cannot decide this rotor -- only the 10% criterion
+        # can, and 2 > 0.1 * 12. A scan shaped like this must come back asymmetric.
+        energies = [0.0, 5.0, 10.0, 5.0, 0.0, 6.0, 12.0, 6.0]
+        symmetry, max_e, num_wells = determine_rotor_symmetry(label='label', pivots=[1, 2],
+                                                              energies=energies,
+                                                              return_num_wells=True, log=False)
+        self.assertEqual(symmetry, 1)
+        self.assertAlmostEqual(max_e, 12.0)
+        self.assertEqual(num_wells, 2)
+
+        # The same shape scaled below the 2 kJ/mol floor: the criterion does not apply there, and
+        # a shallow scan's peak spread must not be allowed to decide the symmetry.
+        shallow = [0.1 * e for e in energies]
+        symmetry, max_e, _ = determine_rotor_symmetry(label='label', pivots=[1, 2],
+                                                      energies=shallow, log=False)
+        self.assertEqual(symmetry, 2)
+        self.assertAlmostEqual(max_e, 1.2)
+
+    def test_cyclic_index_i_minus_1(self):
+        """Test that the cyclic predecessor is correct at the start of a scan.
+
+        The former ``i - 1 if i - 1 > 0 else -1`` used a strict ``>``, so index 1 also returned
+        ``-1`` and was compared against the LAST scan point instead of index 0 -- which can invent
+        a spurious peak or valley at the start of a scan and trip the "peaks != valleys" guard.
+        """
+        self.assertEqual(cyclic_index_i_minus_1(0), -1)  # wraps to the last point, as intended
+        self.assertEqual(cyclic_index_i_minus_1(1), 0)
+        self.assertEqual(cyclic_index_i_minus_1(2), 1)
+        self.assertEqual(cyclic_index_i_plus_1(2, 8), 3)
+        self.assertEqual(cyclic_index_i_plus_1(7, 8), 0)  # wraps to the first point
+
     def test_xyz_from_file(self):
         """Test parsing xyz from a file and saving it in the .initial_xyz attribute"""
         expected_xyz = {'symbols': ('N', 'N', 'N', 'N', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
@@ -1722,11 +2079,12 @@ H       1.32129900    0.71837500    0.38017700
                                                            'Number was not determined, default value is 2')
 
     def test_xyz_from_dict(self):
-        """Test correctly assigning xyz from dictionary"""
-        species_dict1 = {'label': 'tst_spc_1', 'xyz': 'C 0.1 0.5 0.0'}
-        species_dict2 = {'label': 'tst_spc_2', 'initial_xyz': 'C 0.2 0.5 0.0'}
-        species_dict3 = {'label': 'tst_spc_3', 'final_xyz': 'C 0.3 0.5 0.0'}
-        species_dict4 = {'label': 'tst_spc_4', 'xyz': ['C 0.4 0.5 0.0', 'C 0.5 0.5 0.0']}
+        """Test correctly assigning xyz from a dictionary for a polyatomic species"""
+        species_dict1 = {'label': 'tst_spc_1', 'xyz': 'C 0.1 0.5 0.0\nH 1.2 0.5 0.0'}
+        species_dict2 = {'label': 'tst_spc_2', 'initial_xyz': 'C 0.2 0.5 0.0\nH 1.3 0.5 0.0'}
+        species_dict3 = {'label': 'tst_spc_3', 'final_xyz': 'C 0.3 0.5 0.0\nH 1.4 0.5 0.0'}
+        species_dict4 = {'label': 'tst_spc_4', 'xyz': ['C 0.4 0.5 0.0\nH 1.5 0.5 0.0',
+                                                       'C 0.5 0.5 0.0\nH 1.6 0.5 0.0']}
 
         spc1 = ARCSpecies(species_dict=species_dict1)
         spc2 = ARCSpecies(species_dict=species_dict2)
@@ -1735,23 +2093,28 @@ H       1.32129900    0.71837500    0.38017700
 
         self.assertIsNone(spc1.initial_xyz)
         self.assertIsNone(spc1.final_xyz)
-        self.assertEqual(spc1.conformers, [{'coords': ((0.1, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
+        self.assertEqual(spc1.conformers, [{'coords': ((0.1, 0.5, 0.0), (1.2, 0.5, 0.0)),
+                                            'isotopes': (12, 1), 'symbols': ('C', 'H')}])
         self.assertEqual(spc1.conformer_energies, [None])
 
-        self.assertEqual(spc2.initial_xyz, {'coords': ((0.2, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertEqual(spc2.initial_xyz, {'coords': ((0.2, 0.5, 0.0), (1.3, 0.5, 0.0)),
+                                            'isotopes': (12, 1), 'symbols': ('C', 'H')})
         self.assertIsNone(spc2.final_xyz)
         self.assertEqual(spc2.conformers, [])
         self.assertEqual(spc2.conformer_energies, [])
 
         self.assertIsNone(spc3.initial_xyz)
-        self.assertEqual(spc3.final_xyz, {'coords': ((0.3, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)})
+        self.assertEqual(spc3.final_xyz, {'coords': ((0.3, 0.5, 0.0), (1.4, 0.5, 0.0)),
+                                          'isotopes': (12, 1), 'symbols': ('C', 'H')})
         self.assertEqual(spc3.conformers, [])
         self.assertEqual(spc3.conformer_energies, [])
 
         self.assertIsNone(spc4.initial_xyz)
         self.assertIsNone(spc4.final_xyz)
-        self.assertEqual(spc4.conformers, [{'coords': ((0.4, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)},
-                                           {'coords': ((0.5, 0.5, 0.0),), 'isotopes': (12,), 'symbols': ('C',)}])
+        self.assertEqual(spc4.conformers, [{'coords': ((0.4, 0.5, 0.0), (1.5, 0.5, 0.0)),
+                                            'isotopes': (12, 1), 'symbols': ('C', 'H')},
+                                           {'coords': ((0.5, 0.5, 0.0), (1.6, 0.5, 0.0)),
+                                            'isotopes': (12, 1), 'symbols': ('C', 'H')}])
         self.assertEqual(spc4.conformer_energies, [None, None])
 
     def test_mol_from_xyz(self):
@@ -2001,6 +2364,11 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertFalse(check_xyz(xyz_dict1, multiplicity=1, charge=0))
         self.assertFalse(check_xyz(xyz_dict1, multiplicity=2, charge=1))
         self.assertTrue(check_xyz(xyz_dict1, multiplicity=1, charge=-1))
+
+        bad_xyz = {'symbols': ('O', 'Xx'), 'isotopes': (16, 1),
+                   'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))}
+        with self.assertRaises(SpeciesError):
+            check_xyz(bad_xyz, multiplicity=1, charge=0)
 
     def test_check_xyz_isomorphism(self):
         """Test the check_xyz_isomorphism() method"""
@@ -2496,6 +2864,162 @@ H       1.11582953    0.94384729   -0.10134685"""
         # No coordinate-less guess was added as a successful clusterable guess.
         self.assertTrue(all(tsg.get_xyz() is not None or not tsg.success for tsg in spc.ts_guesses))
         self.assertFalse(any(tsg.success and tsg.get_xyz() is None for tsg in spc.ts_guesses))
+
+    def test_next_ts_guess_index_survives_clustering(self):
+        """A TSGuess identity must never be reused after clustering shrank the ts_guesses list."""
+        xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_2 = xyz_1.replace('0.8327683174', '1.8327683174')
+        spc = ARCSpecies(label='TS_identity', is_ts=True)
+        for i, xyz in enumerate([xyz_1, xyz_1, xyz_2, xyz_2]):
+            spc.ts_guesses.append(TSGuess(index=i, method=f'gcn {i}', xyz=xyz, success=True,
+                                          execution_time='00:00:01'))
+        spc.cluster_tsgs()
+        # Clustering keeps the first guess of each cluster, so the surviving indices are sparse
+        # and len(ts_guesses) is an index that is still in use.
+        surviving = [tsg.index for tsg in spc.ts_guesses]
+        self.assertEqual(surviving, [0, 2])
+        self.assertIn(len(spc.ts_guesses), surviving)
+        self.assertNotIn(spc.next_ts_guess_index(), surviving)
+        spc.ts_guesses.append(TSGuess(index=spc.next_ts_guess_index(), method='orca_neb', xyz=xyz_2,
+                                      success=True, execution_time='00:00:01'))
+        indices = [tsg.index for tsg in spc.ts_guesses]
+        self.assertEqual(len(indices), len(set(indices)))
+
+    def test_append_ts_guess_assigns_an_identity_to_an_index_less_guess(self):
+        """A guess appended without an index must be given one: this is the path every TS adapter uses.
+
+        The TS adapters construct a TSGuess without an index and let append_ts_guess() allocate it,
+        so a guess that keeps ``index=None`` can never be referred to by ``chosen_ts``.
+        """
+        xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_2 = xyz_1.replace('0.9177905887', '9.9177905887')
+        spc = ARCSpecies(label='TS_append', is_ts=True)
+        first = spc.append_ts_guess(TSGuess(method='gcn', success=True, xyz=xyz_1, execution_time='00:00:01'))
+        second = spc.append_ts_guess(TSGuess(method='autotst', success=True, xyz=xyz_2, execution_time='00:00:01'))
+        self.assertEqual([first.index, second.index], [0, 1])
+        self.assertNotIn(None, [tsg.index for tsg in spc.ts_guesses])
+        # An index already taken is reallocated; a free one is left alone.
+        collide = spc.append_ts_guess(TSGuess(index=0, method='kinbot', success=True, xyz=xyz_1,
+                                              execution_time='00:00:01'))
+        self.assertEqual(collide.index, 2)
+        free = spc.append_ts_guess(TSGuess(index=9, method='qst2', success=True, xyz=xyz_2,
+                                           execution_time='00:00:01'))
+        self.assertEqual(free.index, 9)
+        indices = [tsg.index for tsg in spc.ts_guesses]
+        self.assertEqual(len(indices), len(set(indices)))
+
+    def test_next_ts_guess_index_skips_indices_recorded_in_a_cluster(self):
+        """An index absorbed by clustering is still spoken for and must not be handed out again."""
+        xyz = """N       0.9177905887     0.5194617797     0.0000000000
+                 H       1.8140204898     1.0381941417     0.0000000000
+                 H      -0.4763167868     0.7509348722     0.0000000000
+                 N       0.9992350860    -0.7048575683     0.0000000000
+                 N      -1.4430010939     0.0274543367     0.0000000000
+                 H      -0.6371484821    -0.7497769134     0.0000000000
+                 H      -2.0093636431     0.0331190314    -0.8327683174
+                 H      -2.0093636431     0.0331190314     0.8327683174"""
+        spc = ARCSpecies(label='TS_cluster_idx', is_ts=True)
+        tsg = TSGuess(index=0, method='gcn', success=True, xyz=xyz, execution_time='00:00:01')
+        tsg.cluster = [0, 1, 5]
+        spc.ts_guesses = [tsg]
+        self.assertEqual(spc.next_ts_guess_index(), 6)
+
+    def test_process_completed_tsg_queue_jobs_keeps_indices_unique(self):
+        """A TS guess ingested from a queue job must not reuse an index that is already taken."""
+        xyz = """N       0.9177905887     0.5194617797     0.0000000000
+                 H       1.8140204898     1.0381941417     0.0000000000
+                 H      -0.4763167868     0.7509348722     0.0000000000
+                 N       0.9992350860    -0.7048575683     0.0000000000
+                 N      -1.4430010939     0.0274543367     0.0000000000
+                 H      -0.6371484821    -0.7497769134     0.0000000000
+                 H      -2.0093636431     0.0331190314    -0.8327683174
+                 H      -2.0093636431     0.0331190314     0.8327683174"""
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        yml_path = os.path.join(tmp_dir, 'tsgs.yml')
+        save_yaml_file(path=yml_path, content=[{'index': 4,
+                                                'method': 'orca_neb',
+                                                'success': True,
+                                                'initial_xyz': str_to_xyz(xyz.replace('0.8327683174',
+                                                                                      '1.8327683174')),
+                                                'execution_time': '00:00:01'}])
+        spc = ARCSpecies(label='TS_queue_identity', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=4, method='gcn', xyz=xyz, success=True, execution_time='00:00:01')]
+        spc.process_completed_tsg_queue_jobs(path=yml_path)
+        indices = [tsg.index for tsg in spc.ts_guesses]
+        self.assertEqual(len(spc.ts_guesses), 2)
+        self.assertEqual(len(indices), len(set(indices)))
+
+    def test_renumber_ambiguous_ts_guesses_on_restart(self):
+        """A restart file holding duplicated TSGuess indices is repaired, and an ambiguous chosen_ts is reset."""
+        xyz = """N       0.9177905887     0.5194617797     0.0000000000
+                 H       1.8140204898     1.0381941417     0.0000000000
+                 H      -0.4763167868     0.7509348722     0.0000000000
+                 N       0.9992350860    -0.7048575683     0.0000000000
+                 N      -1.4430010939     0.0274543367     0.0000000000
+                 H      -0.6371484821    -0.7497769134     0.0000000000
+                 H      -2.0093636431     0.0331190314    -0.8327683174
+                 H      -2.0093636431     0.0331190314     0.8327683174"""
+        spc = ARCSpecies(label='TS_restart_identity', is_ts=True)
+        spc.ts_guesses = [TSGuess(index=0, method='gcn', xyz=xyz, success=True, execution_time='00:00:01'),
+                          TSGuess(index=2, method='heuristics', xyz=xyz, success=True, execution_time='00:00:01'),
+                          TSGuess(index=2, method='kinbot', xyz=xyz, success=True, execution_time='00:00:01'),
+                          TSGuess(method='autotst', xyz=xyz, success=True, execution_time='00:00:01')]
+        spc.chosen_ts = 2
+        spc.chosen_ts_list = [0, 2]
+        spc_dict = spc.as_dict()
+        restored = ARCSpecies(species_dict=spc_dict)
+        indices = [tsg.index for tsg in restored.ts_guesses]
+        self.assertEqual(len(indices), len(set(indices)))
+        self.assertNotIn(None, indices)
+        # An unambiguous identity is preserved, and the first holder of a duplicated index keeps it.
+        self.assertEqual(indices[0], 0)
+        self.assertEqual(indices[1], 2)
+        self.assertIsNone(restored.chosen_ts)
+        # The ambiguous index is dropped from chosen_ts_list so that neither the guess that kept it
+        # nor the guess that was re-indexed is barred from selection; unambiguous entries remain.
+        self.assertEqual(restored.chosen_ts_list, [0])
+
+    def test_process_xyz_assigns_ts_guess_indices(self):
+        """User TS guesses must get an explicit TSGuess.index, continuing past the indices in use.
+
+        A surviving guess keeps its index when clustering shrinks the list, so the next index must
+        come from the indices in use, not from the list length.
+        """
+        xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
+                   H       1.8140204898     1.0381941417     0.0000000000
+                   H      -0.4763167868     0.7509348722     0.0000000000
+                   N       0.9992350860    -0.7048575683     0.0000000000
+                   N      -1.4430010939     0.0274543367     0.0000000000
+                   H      -0.6371484821    -0.7497769134     0.0000000000
+                   H      -2.0093636431     0.0331190314    -0.8327683174
+                   H      -2.0093636431     0.0331190314     0.8327683174"""
+        xyz_2 = xyz_1.replace('0.9177905887', '9.9177905887')
+        spc = ARCSpecies(label='TS_user_guesses', is_ts=True, xyz=[xyz_1, xyz_2])
+        self.assertEqual([tsg.index for tsg in spc.ts_guesses], [0, 1])
+        self.assertEqual([tsg.method for tsg in spc.ts_guesses], ['user guess 0', 'user guess 1'])
+        self.assertTrue(all(tsg.success for tsg in spc.ts_guesses))
+        spc_2 = ARCSpecies(label='TS_gapped', is_ts=True)
+        spc_2.ts_guesses = [TSGuess(index=0, method='gcn', success=True, xyz=xyz_1),
+                            TSGuess(index=4, method='qst2', success=True, xyz=xyz_2),
+                            ]
+        spc_2.process_xyz([xyz_1])
+        self.assertEqual(spc_2.ts_guesses[-1].index, 5)
+        self.assertEqual(spc_2.ts_guesses[-1].method, 'user guess 5')
 
     def test_are_coords_compliant_with_graph(self):
         """Test coordinates compliant with 2D graph connectivity"""

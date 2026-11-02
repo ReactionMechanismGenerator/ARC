@@ -23,7 +23,6 @@ from arc.job.adapters.common import (_initialize_adapter,
                                      )
 from arc.job.factory import register_job_adapter
 from arc.job.local import execute_command, submit_job
-from arc.job.ssh import SSHClient
 from arc.level import Level
 from arc.species.converter import zmat_from_xyz, zmat_to_str
 
@@ -302,7 +301,7 @@ class CFourAdapter(JobAdapter):
         """
         self._log_job_execution()
         if self.server != 'local':
-            with SSHClient(self.server) as ssh:
+            with self._open_or_borrow_ssh() as ssh:
                 self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
         else:
             self.job_status[0], self.job_id = submit_job(path=self.local_path)

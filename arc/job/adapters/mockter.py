@@ -6,7 +6,7 @@ import datetime
 import os
 from typing import TYPE_CHECKING
 
-from arc.common import get_logger, read_yaml_file, save_yaml_file
+from arc.common import get_logger, is_xyz_linear, read_yaml_file, save_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, update_input_dict_with_args
@@ -263,8 +263,15 @@ class MockAdapter(JobAdapter):
         input = read_yaml_file(os.path.join(self.local_path, input_filenames[self.job_adapter]))
         xyz = str_to_xyz(input['xyz'])
         e_elect = 0.0 if not self.species[0].is_ts else 50
-        freqs = [500 + 20 * i for i in range(3 * len(xyz['symbols']) - 6)]
-        if self.species[0].is_ts:
+        n_atoms = len(xyz['symbols'])
+        if n_atoms == 1:
+            num_freqs = 0
+        elif is_xyz_linear(xyz):
+            num_freqs = 3 * n_atoms - 5
+        else:
+            num_freqs = 3 * n_atoms - 6
+        freqs = [500 + 20 * i for i in range(num_freqs)]
+        if self.species[0].is_ts and freqs:
             freqs[0] = -500
         output = {'adapter': 'mockter',
                   'xyz': xyz,
