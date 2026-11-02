@@ -45,8 +45,11 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       job_scf_reference_is_restricted,
                                       level_admits_a_broken_symmetry_reference,
                                       REFERENCE_CHANGE_AVAILABLE_KEY,
+                                      has_one_molecule_side,
+                                      ts_adapters_at_ts_guess_level,
                                       ts_adapters_by_rmg_family,
-                                      ts_adapters_for_unknown_unimolecular)
+                                      ts_adapters_for_unknown_unimolecular,
+                                      ts_adapters_needing_one_molecule_side)
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
@@ -81,6 +84,7 @@ logger = get_logger()
 
 _TS_GUESS_METHOD_TO_PATHS_KEY = {
     'orca_neb': 'neb',
+    'ase_neb': 'neb',
     'xtb_gsm': 'gsm',
     'xtb-gsm': 'gsm',
 }
@@ -2755,6 +2759,8 @@ class Scheduler(object):
                     tsg_index, eligible_methods = 0, list()
                     family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
                     for method in self.ts_adapters:
+                        if method in ts_adapters_needing_one_molecule_side and not has_one_molecule_side(rxn):
+                            continue
                         admit_unknown_family = (not family_known
                                                 and method in ts_adapters_for_unknown_unimolecular
                                                 and rxn.is_unimolecular())
@@ -2772,6 +2778,8 @@ class Scheduler(object):
                                              job_adapter=method,
                                              reactions=[rxn],
                                              tsg=tsg_index,
+                                             level_of_theory=self.ts_guess_level
+                                             if method in ts_adapters_at_ts_guess_level else None,
                                              )
                             except DependencyError as e:
                                 # An optional adapter's backend (e.g. KinBot, AutoTST) is not installed;

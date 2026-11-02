@@ -85,7 +85,6 @@ class JobEnum(str, Enum):
         - TS search:
             - gsm   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162]
             - pygsm  # Double ended growing string method (DE-GSM): pyGSM: https://github.com/ZimmermanGroup/molecularGSM/wiki
-            - neb_ase  # NEB in ASE: https://www.scm.com/doc/Tutorials/ADF/Transition_State_with_ASE.html, https://wiki.fysik.dtu.dk/ase/ase/neb.html, https://wiki.fysik.dtu.dk/ase/tutorials/neb/idpp.html#idpp-tutorial., ASE autoNEB: https://wiki.fysik.dtu.dk/ase/dev/_modules/ase/autoneb.html
             - neb_terachem  # NEB in TeraChem, [10.1063/1.1329672, 10.1063/1.1323224]
             - neb_gpr  # NEB GPR:  https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.122.156001
             - neb_terpolation  # NEBTERPOLATION using MD to find TSs: https://pubs.acs.org/doi/full/10.1021/acs.jctc.5b00830?src=recsys
@@ -121,6 +120,7 @@ class JobEnum(str, Enum):
     user = 'user'  # user guesses
     xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
     orca_neb = 'orca_neb'
+    ase_neb = 'ase_neb'  # NEB, DyNEB or AutoNEB in ASE (ase.mep) on an ASE calculator, e.g. an MLIP
 
 
 class JobTypeEnum(str, Enum):

@@ -109,6 +109,7 @@ global_ess_settings = {
     'openbabel': 'local',
     'orca_neb': 'local',
     'ase': 'local',
+    'ase_neb': 'local',
     'pyscf': 'local',
 }
 
@@ -192,6 +193,7 @@ t_max_format = {'OGE': 'hours',
                 }
 
 input_filenames = {'ase': 'input.yml',
+                   'ase_neb': 'input.yml',
                    'cfour': 'ZMAT',
                    'gaussian': 'input.gjf',
                    'mockter': 'input.yml',
@@ -206,6 +208,7 @@ input_filenames = {'ase': 'input.yml',
                    }
 
 output_filenames = {'ase': 'output.yml',
+                    'ase_neb': 'output.yml',
                     'cfour': 'output.out',
                     'gaussian': 'input.log',
                     'gcn': 'output.yml',
@@ -296,6 +299,21 @@ orca_neb_settings = {'keyword': {
                         'preopt': 'true',
                     },
                     'level': 'wb97xd/def2tzvp',
+                    }
+
+# ASE NEB (the 'ase_neb' TS adapter): a band relaxed with ase.mep on an ASE calculator. It runs at the TS-guess level
+# if that is an ASE level (e.g., an MLIP), else at 'level' here (None: skip the adapter). 'keyword' holds the band
+# settings ase_script.py reads (see run_neb() there).
+ase_neb_settings = {'keyword': {
+                        'neb_method': 'autoneb',  # 'autoneb', 'neb' or 'dyneb'; AutoNEB adds images where the
+                                                  # energy changes fastest, which a bond breaking near one end needs
+                        'neb_images': 10,  # interior images (AutoNEB: the most it adds)
+                        'neb_bands': 3,  # bands from different atom maps, each giving a TS guess
+                        'neb_fmax': 0.05,  # eV/A, with the climbing image
+                        'neb_fmax_pre': 0.1,  # eV/A, before the climbing image is switched on
+                        'neb_steps': 500,  # per stage
+                    },
+                    'level': None,
                     }
 
 ase_default_options_dict = {'optimizer': 'BFGS',
