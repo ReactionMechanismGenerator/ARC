@@ -6,6 +6,7 @@ This module contains unit tests for the arc.scheduler module
 """
 
 import logging
+import numpy as np
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -4605,6 +4606,119 @@ class TestSchedulerReactionChargeBalance(unittest.TestCase):
         rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-')
         self.build_scheduler(rxn, species)
         self.assertEqual(rxn.charge, -1)
+
+
+class TestTSRotorScanChecks(unittest.TestCase):
+    """
+    Contains unit tests for the checks of a TS's rotor scans.
+    """
+
+    def test_get_ts_reactive_bonds(self):
+        """Test that a TS's rotor scans must preserve the bonds its reaction forms and breaks, 1-indexed"""
+        r_species = [ARCSpecies(label='HOCHO', smiles='OC=O')]
+        p_species = [ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')]
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        project = 'test_ts_reactive_bonds'
+        project_directory = os.path.join(ARC_PATH, 'Projects', f'{project}_delete')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=project,
+                          ess_settings={'gaussian': ['server1']},
+                          species_list=r_species + p_species,
+                          rxn_list=[rxn],
+                          project_directory=project_directory,
+                          job_types=initialize_job_types(),
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          testing=True,
+                          )
+        formed_bonds, broken_bonds = rxn.get_formed_and_broken_bonds()
+        self.assertTrue(formed_bonds and broken_bonds)
+        expected = sorted([bond[0] + 1, bond[1] + 1] for bond in list(formed_bonds) + list(broken_bonds))
+        self.assertEqual(sorted(sched.get_ts_reactive_bonds(rxn.ts_label)), expected)
+        # With a geometry, a mapped pair too far apart to be a partial bond (here, an atom moved 10 A away) is left out.
+        xyz = r_species[0].get_xyz()
+        far_atom = expected[0][1] - 1
+        coords = [list(coord) for coord in xyz['coords']]
+        coords[far_atom][0] += 10.0
+        sched.species_dict[rxn.ts_label].final_xyz = dict(xyz, coords=tuple(tuple(coord) for coord in coords))
+        bonds = sched.get_ts_reactive_bonds(rxn.ts_label) or list()
+        self.assertFalse(any(far_atom + 1 in bond for bond in bonds))
+        self.assertTrue(all(bond in expected for bond in bonds))
+        # A TS whose reaction is unknown has no reactive bonds to check.
+        sched.species_dict[rxn.ts_label].rxn_index = 99
+        self.assertIsNone(sched.get_ts_reactive_bonds(rxn.ts_label))
+
+    def test_get_ts_reactive_bonds_follows_the_transferred_atom(self):
+        """Test that the reactive bonds follow the H a TS transfers, not an equivalent H the atom map names"""
+        ch4_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1),
+                   'coords': ((0.0, 0.0, 0.0), (0.629, 0.629, 0.629), (-0.629, -0.629, 0.629),
+                              (-0.629, 0.629, -0.629), (0.629, -0.629, -0.629))}
+        oh_xyz = {'symbols': ('O', 'H'), 'isotopes': (16, 1), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 0.97))}
+        r_species = [ARCSpecies(label='CH4', smiles='C', xyz=ch4_xyz), ARCSpecies(label='OH', smiles='[OH]', xyz=oh_xyz)]
+        p_species = [ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        project = 'test_ts_reactive_bonds_equivalent'
+        project_directory = os.path.join(ARC_PATH, 'Projects', f'{project}_delete')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=project,
+                          ess_settings={'gaussian': ['server1']},
+                          species_list=r_species + p_species,
+                          rxn_list=[rxn],
+                          project_directory=project_directory,
+                          job_types=initialize_job_types(),
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          testing=True,
+                          )
+        formed_bonds, broken_bonds = rxn.get_formed_and_broken_bonds()
+        mapped_h = [atom for bond in broken_bonds for atom in bond if atom != 0][0]
+        transferred_h = next(h for h in range(1, 5) if h != mapped_h)
+        # A TS that abstracts another H than the mapped one: C-H stretched to 1.25 A, the O 1.30 A beyond that H.
+        direction = np.array(ch4_xyz['coords'][transferred_h]) / np.linalg.norm(ch4_xyz['coords'][transferred_h])
+        coords = [list(coord) for coord in ch4_xyz['coords']]
+        coords[transferred_h] = list(1.25 * direction)
+        o, perpendicular = 2.55 * direction, np.cross(direction, [1.0, 0.0, 0.0])
+        coords += [list(o), list(o + 0.97 * perpendicular / np.linalg.norm(perpendicular))]
+        sched.species_dict[rxn.ts_label].final_xyz = {'symbols': ch4_xyz['symbols'] + oh_xyz['symbols'],
+                                                       'isotopes': ch4_xyz['isotopes'] + oh_xyz['isotopes'],
+                                                       'coords': tuple(tuple(coord) for coord in coords)}
+        self.assertEqual(sorted(sched.get_ts_reactive_bonds(rxn.ts_label)),
+                         sorted([[1, transferred_h + 1], [transferred_h + 1, 6]]))
+
+    def test_get_ts_reactive_bonds_follows_the_leaving_atom(self):
+        """Test that the broken bond of an H loss TS is the stretched one, not the normal bond of an equivalent H"""
+        ethyl_xyz = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (12, 12, 1, 1, 1, 1, 1),
+                     'coords': ((0.0, 0.0, 0.761), (0.0, 0.0, -0.761), (0.880, -0.508, 1.157), (-0.880, -0.508, 1.157),
+                                (0.880, 0.508, -1.157), (-0.880, 0.508, -1.157), (0.0, -1.017, -1.157))}
+        r_species = [ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=ethyl_xyz)]
+        p_species = [ARCSpecies(label='C2H4', smiles='C=C'), ARCSpecies(label='H', smiles='[H]')]
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        project = 'test_ts_reactive_bonds_leaving'
+        project_directory = os.path.join(ARC_PATH, 'Projects', f'{project}_delete')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        with patch.object(Scheduler, 'run_sp_job'):  # the H atom's single point would query 'server1'
+            sched = Scheduler(project=project,
+                              ess_settings={'gaussian': ['server1']},
+                              species_list=r_species + p_species,
+                              rxn_list=[rxn],
+                              project_directory=project_directory,
+                              job_types=initialize_job_types(),
+                              conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                              opt_level=Level(repr=default_levels_of_theory['opt']),
+                              testing=True,
+                              )
+        broken_bonds = rxn.get_formed_and_broken_bonds()[1]
+        self.assertEqual(len(broken_bonds), 1)
+        carbon, mapped_h = sorted(broken_bonds[0])
+        methyl_hs = [h for h in range(2, 7) if np.linalg.norm(np.subtract(ethyl_xyz['coords'][h],
+                                                                           ethyl_xyz['coords'][carbon])) < 1.2]
+        leaving_h = next(h for h in methyl_hs if h != mapped_h)
+        # A TS that releases another methyl H than the mapped one, 1.8 A from its C.
+        coords = [list(coord) for coord in ethyl_xyz['coords']]
+        bond = np.subtract(coords[leaving_h], coords[carbon])
+        coords[leaving_h] = list(np.array(coords[carbon]) + 1.8 * bond / np.linalg.norm(bond))
+        sched.species_dict[rxn.ts_label].final_xyz = dict(ethyl_xyz, coords=tuple(tuple(coord) for coord in coords))
+        self.assertEqual(sched.get_ts_reactive_bonds(rxn.ts_label), [[carbon + 1, leaving_h + 1]])
 
 
 if __name__ == '__main__':

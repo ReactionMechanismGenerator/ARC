@@ -1070,6 +1070,33 @@ class TestTrsh(unittest.TestCase):
                           (-2.692729, 1.430409, -0.273456), (3.12969, 0.581231, -0.659714))}
         self.assertEqual(actions, {'change conformer': xyz})
 
+        # Case 3: a TS scan that breaks a preserved (reactive) bond is invalidated before any troubleshooting.
+        ts_xyz = {'symbols': ('C', 'H', 'O'), 'isotopes': (12, 1, 16),
+                  'coords': ((0.0, 0.0, 0.0), (1.2, 0.0, 0.0), (2.5, 0.0, 0.0))}
+        slid = {'symbols': ts_xyz['symbols'], 'isotopes': ts_xyz['isotopes'],
+                'coords': ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.5, 0.0, 0.0))}
+        invalidate, invalidation_reason, message, actions = trsh.scan_quality_check(
+            **case1, preserve_params=[[1, 2], [2, 3]], trajectory=[ts_xyz, slid], original_xyz=ts_xyz)
+        self.assertTrue(invalidate)
+        self.assertTrue(invalidation_reason.startswith('The rotor breaks the TS around atoms [1, 2]'))
+        self.assertEqual(actions, dict())  # not case 1's 'freeze'
+
+    def test_check_preserved_distances(self):
+        """Test that only a change of a preserved distance beyond the tolerance breaks the TS"""
+        ts_xyz = {'symbols': ('C', 'H', 'O'), 'isotopes': (12, 1, 16),
+                  'coords': ((0.0, 0.0, 0.0), (1.2, 0.0, 0.0), (2.5, 0.0, 0.0))}
+        # A scan point that moves the H by 0.05 A keeps both distances within 10%.
+        nearby = {'symbols': ts_xyz['symbols'], 'isotopes': ts_xyz['isotopes'],
+                  'coords': ((0.0, 0.0, 0.0), (1.25, 0.05, 0.0), (2.5, 0.0, 0.0))}
+        # One that moves it toward the O, as a minimizing scan slides to the product, shortens H-O by 15%.
+        slid = {'symbols': ts_xyz['symbols'], 'isotopes': ts_xyz['isotopes'],
+                'coords': ((0.0, 0.0, 0.0), (1.4, 0.0, 0.0), (2.5, 0.0, 0.0))}
+        self.assertIsNone(trsh.check_preserved_distances([[1, 2], [2, 3]], [ts_xyz, nearby], ts_xyz))
+        message = trsh.check_preserved_distances([[2, 3]], [ts_xyz, nearby, slid], ts_xyz)
+        self.assertEqual(message, 'The rotor breaks the TS around atoms [2, 3]: at scan point 2, their distance is '
+                                  '1.10 Angstrom, 0.85 times the 1.30 Angstrom of the original geometry.')
+        self.assertIsNone(trsh.check_preserved_distances([[2, 3]], [ts_xyz, slid], ts_xyz, tolerance=0.2))
+
     def test_trsh_scan_job(self):
         """Test troubleshooting problematic 1D rotor scan"""
         case = {

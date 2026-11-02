@@ -23,6 +23,7 @@ from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
                         get_number_with_ordinal_indicator,
+                        get_single_bond_length,
                         is_angle_linear,
                         read_yaml_file,
                         safe_copy_file,
@@ -73,7 +74,7 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_to_str,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz
-from arc.species.vectors import get_angle, calculate_dihedral_angle
+from arc.species.vectors import calculate_dihedral_angle, calculate_distance, get_angle
 
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
@@ -4384,6 +4385,9 @@ class Scheduler(object):
                 # quality check of the points it did reach would overwrite that verdict, turning it into a success.
                 trajectory = parser.parse_1d_scan_coords(log_file_path=job.local_path_to_output_file) \
                     if self.species_dict[label].is_ts else None
+                preserve_params = self.species_dict[label].preserve_param_in_scan
+                if preserve_params is None and self.species_dict[label].is_ts:
+                    preserve_params = self.get_ts_reactive_bonds(label)
                 invalidate, invalidation_reason, message, actions = scan_quality_check(
                     label=label,
                     pivots=self.species_dict[label].rotors_dict[job.rotor_index]['pivots'],
@@ -4391,7 +4395,7 @@ class Scheduler(object):
                     used_methods=self.species_dict[label].rotors_dict[job.rotor_index]['trsh_methods'],
                     log_file=job.local_path_to_output_file,
                     species=self.species_dict[label],
-                    preserve_params=self.species_dict[label].preserve_param_in_scan,
+                    preserve_params=preserve_params,
                     trajectory=trajectory,
                     original_xyz=self.species_dict[label].final_xyz,
                 )
@@ -4456,6 +4460,81 @@ class Scheduler(object):
                                        )
 
         self.save_restart_dict()
+
+    def get_ts_reactive_bonds(self,
+                              label: str,
+                              max_bond_ratio: float = 2.2,
+                              max_relabelings: int = 20000,
+                              ) -> list[list[int]] | None:
+        """
+        The bonds a TS's reaction forms and breaks, which the TS's rotor scans must preserve. A scan that stretches
+        or shortens one of them has left the saddle (e.g., a minimizing scan slides toward the reactant or product),
+        and its energies are then not a torsional potential of the TS.
+
+        The atom map names one atom among symmetry-equivalent ones, which need not be the one the TS uses: e.g.,
+        another H of C2H6 than the one an OH abstraction TS transfers (3.5 A from the O), or, in i-C3H7 -> C3H6 + H,
+        an H of the other methyl group than the one leaving. The reactant atoms are therefore relabeled by the
+        symmetry of the reactants' graphs (their automorphisms) that best fits the TS geometry: the one that makes
+        the bonds the reaction leaves unchanged the shortest, relative to single bonds. Only then are the reactive
+        bonds mapped onto the TS. A pair still longer than ``max_bond_ratio`` times its single-bond length is left
+        out as no partial bond of this TS. The loosest TS bonds, such as the C...H of H + C2H4 (about 1.9 A, 1.7 times
+        a C-H bond), stay in.
+
+        Args:
+            label (str): The TS label.
+            max_bond_ratio (float, optional): The longest TS distance of a reactive bond, relative to its
+                                              single-bond length.
+            max_relabelings (int, optional): The most symmetry relabelings to try; with more, the atom map is used as
+                                             it is.
+
+        Returns:
+            list[list[int]] | None: The bonds as 1-indexed atom pairs of the TS (whose atoms are ordered as the
+                                    reactants'), or ``None`` if they are unknown.
+        """
+        rxn = self.rxn_dict.get(self.species_dict[label].rxn_index)
+        if rxn is None:
+            return None
+        try:
+            r_bonds, p_bonds = rxn.get_bonds()
+            r_bonds, p_bonds = {tuple(bond) for bond in r_bonds}, {tuple(bond) for bond in p_bonds}
+            bonds, unchanged_bonds = sorted(r_bonds ^ p_bonds), sorted(r_bonds & p_bonds)
+        except Exception as e:
+            try:
+                formed_bonds, broken_bonds = rxn.get_formed_and_broken_bonds()
+            except Exception as e:
+                logger.warning(f'Could not determine the reactive bonds of {label} ({type(e).__name__}: {e}), so its '
+                               f'rotor scans are not checked for breaking the TS.')
+                return None
+            bonds, unchanged_bonds = [tuple(bond) for bond in list(formed_bonds) + list(broken_bonds)], list()
+        xyz = self.species_dict[label].final_xyz
+        if xyz is None:
+            return [[i + 1, j + 1] for i, j in bonds] or None
+        coords = np.array(xyz['coords'], dtype=float)
+        distances = np.linalg.norm(coords[:, None, :] - coords[None, :, :], axis=-1)
+        single_bonds = {bond: get_single_bond_length(xyz['symbols'][bond[0]], xyz['symbols'][bond[1]])
+                        for bond in bonds + unchanged_bonds}
+        if unchanged_bonds:
+            relabelings, offset = list(), 0
+            for reactant in rxn.get_reactants_and_products(return_copies=True)[0]:
+                mol, copy = reactant.mol, reactant.mol.copy(deep=True)
+                maps = mol.find_isomorphism(copy, save_order=True) or [dict(zip(mol.atoms, copy.atoms))]
+                relabelings.append([[offset + copy.atoms.index(mapping[atom]) for atom in mol.atoms]
+                                    for mapping in maps])
+                offset += len(mol.atoms)
+            if offset == len(coords) and np.prod([len(r) for r in relabelings], dtype=float) <= max_relabelings:
+                best, best_cost = None, np.inf
+                for parts in itertools.product(*relabelings):
+                    relabel = [atom for part in parts for atom in part]
+                    cost = sum(distances[relabel[i], relabel[j]] / single_bonds[(i, j)] for i, j in unchanged_bonds)
+                    if cost < best_cost - 1e-9:
+                        best, best_cost = relabel, cost
+                bonds = [(best[i], best[j]) for i, j in bonds]
+        partial_bonds = list()
+        for i, j in bonds:
+            single_bond = get_single_bond_length(xyz['symbols'][i], xyz['symbols'][j])
+            if distances[i, j] <= max_bond_ratio * single_bond:
+                partial_bonds.append(sorted([i + 1, j + 1]))
+        return sorted(partial_bonds) or None
 
     def check_directed_scan(self, label, pivots, scan, energies):
         """

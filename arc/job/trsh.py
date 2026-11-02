@@ -1562,9 +1562,9 @@ def scan_quality_check(label: str,
        - whether the optimized geometry indeed represents the minimum energy conformer (for a non-TS species)
        - whether the barrier height is reasonable
 
-    4. Based on requested parameters to preserve:
+    4. Based on requested parameters to preserve (checked first):
 
-       - whether specified atom distances to preserve criteria aren't violated
+       - whether specified atom distances to preserve criteria aren't violated (see check_preserved_distances())
 
     Args:
         label (str): The species label.
@@ -1575,8 +1575,8 @@ def scan_quality_check(label: str,
         log_file (str, optional): The path to the output file.
         species (ARCSpecies, optional): The ARCSpecies this scan is related to.
         preserve_params (list, optional): Entries are length 2 lists of atom indices (1-indexed) between which the
-                                          distance as well as a torsion dihedral angle with these atoms as its pivots
-                                          must be preserved throughout the scan to a tolerance.
+                                          distance must be preserved throughout the scan to a tolerance (for a TS,
+                                          its forming and breaking bonds).
         trajectory (list, optional): Entries are Cartesian coordinates along the scan trajectory.
         original_xyz (dict, optional): The optimized coordinated for the species.
 
@@ -1605,6 +1605,15 @@ def scan_quality_check(label: str,
         logger.error(message)
         actions = {}
         return invalidate, invalidation_reason, message, actions
+
+    if preserve_params and trajectory and original_xyz is not None:
+        # First: a scan that broke the TS has no torsional potential to check, nor a conformer to change to.
+        tolerance = preserve_params_in_scan.get('ts_bond', 0.2) if species is not None and species.is_ts \
+            else preserve_params_in_scan['bond']
+        message = check_preserved_distances(preserve_params, trajectory, original_xyz, tolerance=tolerance)
+        if message is not None:
+            logger.warning(f'{message} Invalidating rotor {pivots} of {label}.')
+            return True, message, message, dict()
 
     scan_conformers = None
 
@@ -1800,64 +1809,35 @@ def scan_quality_check(label: str,
                            f'this species at the higher wells will not be taken into account. NOT invalidating this '
                            f'torsional mode.')
 
-    if preserve_params is not None:
-        success = True
-        pivots = list()
-        for atoms in preserve_params:
-            for i, xyz in enumerate(trajectory):
-                if i != 0:
-                    current_distance = calculate_distance(coords=xyz, atoms=atoms, index=1)
-                    previous_distance = calculate_distance(coords=trajectory[i - 1], atoms=atoms, index=1)
-                    original_distance = calculate_distance(coords=original_xyz, atoms=atoms, index=1)
-                    if previous_distance * (1.0 - preserve_params_in_scan['bond']) < \
-                            current_distance < \
-                            previous_distance * (1.0 + preserve_params_in_scan['bond']) \
-                            or original_distance * (1.0 - preserve_params_in_scan['bond']) < \
-                            current_distance < \
-                            original_distance * (1.0 + preserve_params_in_scan['bond']):
-                        success = False
-                        pivots.append(atoms)
-                        message = (f"The rotor breaks the TS around pivots {pivots}: In trajectory {i}, the distance "
-                                   f"between pivots is {current_distance} Angstroms, which is "
-                                   f"{current_distance / previous_distance:.2f} of the previous frame, and "
-                                   f"{current_distance / original_distance:.2f} of the original geometry.")
-                        break
-
-                    if species.mol is not None:
-                        scan = [determine_smallest_atom_index_in_scan(atom1=species.mol.atoms.index(atoms[0]),
-                                                                      atom2=species.mol.atoms.index(atoms[1]),
-                                                                      mol=species.mol)]
-                        scan.extend(atoms)
-                        scan.append(
-                            determine_smallest_atom_index_in_scan(atom1=species.mol.atoms.index(atoms[1]),
-                                                                  atom2=species.mol.atoms.index(atoms[0]),
-                                                                  mol=species.mol))
-                        current_dihedral = calculate_dihedral_angle(coords=xyz, torsion=scan, index=1)
-                        previous_dihedral = calculate_dihedral_angle(coords=trajectory[i - 1], torsion=scan, index=1)
-                        original_dihedral = calculate_dihedral_angle(coords=original_xyz, torsion=scan, index=1)
-                        if abs(current_dihedral - previous_dihedral) < preserve_params_in_scan['dihedral'] \
-                                or abs(current_dihedral - original_dihedral) < preserve_params_in_scan['dihedral']:
-                            success = False
-                            pivots.append(atoms)
-                            message = (f"The rotor breaks the TS around pivots {pivots}: In trajectory {i}, the "
-                                       f"dihedral angle is {current_dihedral} degrees, a "
-                                       f"{abs(current_dihedral - previous_dihedral)} change relative to the previous "
-                                       f"frame, and a {abs(current_dihedral - original_dihedral)} change relative to "
-                                       f"the original geometry.")
-                            break
-
-        if species.mol is None:
-            logger.warning(
-                f'Cannot check that the dihedral angle of {species.label} is consistent throughout rotor '
-                f'scans without a .mol attribute')
-        if not success:
-            invalidate = True
-            invalidation_reason = message
-            logger.info(message)
-            actions = dict()
-            return invalidate, invalidation_reason, message, actions
-
     return invalidate, invalidation_reason, message, actions
+
+
+def check_preserved_distances(preserve_params: list,
+                              trajectory: list,
+                              original_xyz: dict,
+                              tolerance: float = preserve_params_in_scan['bond'],
+                              ) -> str | None:
+    """
+    Check that a rotor scan kept the distances it had to preserve, e.g., the bonds a TS forms and breaks.
+
+    Args:
+        preserve_params (list): Entries are length 2 lists of atom indices (1-indexed).
+        trajectory (list): The geometry (an xyz dict) at each scan point.
+        original_xyz (dict): The geometry the scan started from.
+        tolerance (float, optional): The largest allowed change of a distance, relative to its original value.
+
+    Returns:
+        str | None: How the scan broke a preserved distance, or ``None`` if it kept all of them.
+    """
+    for atoms in preserve_params:
+        original_distance = calculate_distance(coords=original_xyz, atoms=atoms, index=1)
+        for i, xyz in enumerate(trajectory):
+            distance = calculate_distance(coords=xyz, atoms=atoms, index=1)
+            if abs(distance - original_distance) > tolerance * original_distance:
+                return (f'The rotor breaks the TS around atoms {list(atoms)}: at scan point {i}, their distance is '
+                        f'{distance:.2f} Angstrom, {distance / original_distance:.2f} times the '
+                        f'{original_distance:.2f} Angstrom of the original geometry.')
+    return None
 
 
 def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> tuple[bool, list, bool]:
