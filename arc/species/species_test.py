@@ -2964,6 +2964,31 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(len(spc.ts_guesses), 2)
         self.assertEqual(len(indices), len(set(indices)))
 
+    def test_process_completed_tsg_queue_jobs_from_an_ase_output(self):
+        """An ASE job's output.yml (e.g., 'ase_neb') is a dict that carries its TS guesses under 'ts_guesses'."""
+        xyz = str_to_xyz("""C      -0.79286713    0.00021434   -0.00488532
+                            C       0.69009402   -0.00048893    0.01264458
+                            H      -1.19389316    0.88538716    0.50369548
+                            H      -1.65736023    0.00335563   -1.83735733
+                            H      -1.19455587   -0.88746226    0.49685810
+                            H       1.23960066    0.92705716   -0.01845001
+                            H       1.23940418   -0.92770023   -0.01993618""")
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        yml_path = os.path.join(tmp_dir, 'output.yml')
+        save_yaml_file(path=yml_path, content={'schema_version': 2,
+                                               'neb_energies': [0.0, 150.0, 120.0],
+                                               'ts_guesses': [{'method': 'ase_neb', 'method_index': 0,
+                                                               'success': True, 'energy': 150.0,
+                                                               'initial_xyz': xyz,
+                                                               'execution_time': '0:00:42'}]})
+        spc = ARCSpecies(label='TS_ase_neb', is_ts=True)
+        spc.process_completed_tsg_queue_jobs(path=yml_path)
+        self.assertEqual(len(spc.ts_guesses), 1)
+        self.assertEqual(spc.ts_guesses[0].method, 'ase_neb')
+        self.assertTrue(spc.ts_guesses[0].success)
+        self.assertEqual(spc.ts_guesses[0].initial_xyz['symbols'], xyz['symbols'])
+
     def test_renumber_ambiguous_ts_guesses_on_restart(self):
         """A restart file holding duplicated TSGuess indices is repaired, and an ambiguous chosen_ts is reset."""
         xyz = """N       0.9177905887     0.5194617797     0.0000000000

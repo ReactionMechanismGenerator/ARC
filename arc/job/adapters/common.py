@@ -107,7 +107,19 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', '
                              'nitrile_hydrolysis': ['heuristics']
                              }
 
-all_families_ts_adapters = []
+all_families_ts_adapters = ['ase_neb']
+
+# Adapters that run at the TS-guess level (the scheduler passes it to them), and that need one side of the reaction
+# to be a single molecule (they build both endpoints from it). 'ase_neb' relaxes its band on that level's ASE
+# calculator (see arc/job/adapters/ts/ase_neb.py).
+ts_adapters_at_ts_guess_level = ['ase_neb']
+ts_adapters_needing_one_molecule_side = ['ase_neb']
+
+
+def has_one_molecule_side(reaction) -> bool:
+    """Whether the reactants or the products of an ARCReaction are a single molecule (counting repeated species)."""
+    return any(sum(reaction.get_species_count(species=spc, well=well) for spc in side) == 1
+               for well, side in ((0, reaction.r_species), (1, reaction.p_species)))
 
 # Adapters that may run on any unimolecular reaction when RMG fails to assign a
 # family. These adapters must tolerate rxn.family being None or unknown.
