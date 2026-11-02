@@ -1,0 +1,196 @@
+# Request a Copilot code review the first time CI passes on a PR to main.
+#
+# Why workflow_run rather than a `copilot_code_review` branch ruleset: a ruleset can only fire on
+# PR open or on every push, never "once CI is green". Gating on CI keeps Copilot off red PRs and
+# off the quota until the branch actually builds, and the dedup below keeps it to a single pass.
+name: Copilot review on green
+
+on:
+  workflow_run:
+    workflows: ["CI"]        # must match the `name:` of ci.yml
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# Serialise per commit, so the dedup below is a safe check-then-act. One commit can see more than
+# one completed CI run — re-running a run creates another, and ci.yml also fires on `reopened` —
+# and two of them would otherwise both read "Copilot not engaged" before either requested. Runs for
+# *different* commits are not a race: the head-SHA guard below makes the superseded one exit.
+# cancel-in-progress is false deliberately: the second run must still execute so it can observe the
+# first one's request and no-op, where cancelling it would discard that check.
+concurrency:
+  group: copilot-review-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  request-copilot:
+    # Only for a PR whose CI run went green.
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request Copilot review (once, on first green)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PRS_JSON: ${{ toJSON(github.event.workflow_run.pull_requests) }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          # Resolve the PR: the workflow_run payload carries it for same-repo PRs; for fork PRs the
+          # array is empty, so fall back to a lookup by the run's head SHA.
+          #
+          # The fallback asks the commit which pull requests it belongs to, rather than searching for
+          # the SHA as free text. `gh pr list --search "$SHA"` goes through the issue search index,
+          # which is eventually consistent — a fork PR's commit need not be indexed yet when its CI
+          # finishes — and it matches the SHA anywhere in a PR, so it can also return an unrelated PR
+          # that merely quotes the commit. The head-SHA guard below would catch that and skip, but
+          # silently, leaving the fork PR with no review at all. This endpoint is exact and
+          # index-free.
+          #
+          # Both paths filter on the base branch for the same reason: one head commit can belong to
+          # several open PRs targeting different bases, and taking `.[0]` blind could pick the one
+          # that does not target main. The base guard below would then exit, leaving the PR that
+          # *does* target main with no review — silently, since the run is green either way. The
+          # payload carries `base.ref` on every entry (its keys are base, head, id, number, url),
+          # so the filter costs nothing here. Two open PRs cannot share a head *and* a base, so
+          # `first` is unambiguous once the base is fixed.
+          pr=$(jq -r '[.[] | select(.base.ref == "main") | .number] | first // empty' <<<"$PRS_JSON")
+          if [ -z "$pr" ]; then
+            pr=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
+                   --jq '[.[] | select(.state == "open" and .base.ref == "main") | .number] | first // empty')
+          fi
+          if [ -z "$pr" ]; then
+            echo "No open PR to main for $HEAD_SHA — nothing to do."
+            exit 0
+          fi
+
+          pr_json=$(gh pr view "$pr" --repo "$REPO" --json state,baseRefName,headRefOid)
+          state=$(jq -r .state <<<"$pr_json")
+          base=$(jq -r .baseRefName <<<"$pr_json")
+          head_oid=$(jq -r .headRefOid <<<"$pr_json")
+
+          # A PR merged or closed while its CI was still running is a routine race, not a failure:
+          # there is nothing left to review, and the request below would return HTTP 422 ("Reviews
+          # may only be requested on open pull requests") and redden this workflow. The same-repo
+          # path needs this explicitly — `workflow_run.pull_requests` carries no state, unlike the
+          # fork fallback above, which keeps only open PRs in its jq filter. Checked before base and
+          # head so a closed PR exits as a no-op whatever else it looks like.
+          if [ "$state" != "OPEN" ]; then
+            echo "PR #$pr is $state, not open — nothing left to review; skip."
+            exit 0
+          fi
+
+          # Re-check the base live. Both lookups above already select on main, but they read the
+          # base as it was when the run started; this one catches a PR retargeted since.
+          if [ "$base" != "main" ]; then
+            echo "PR #$pr targets '$base', not main — skip."
+            exit 0
+          fi
+
+          # Only while the run's commit is still the PR head. A push during a CI run leaves that run
+          # to finish green against a commit that is no longer current, so requesting a review on the
+          # strength of it would put Copilot on a head whose own CI has not passed — the opposite of
+          # what gating on green is for. The newer commit's own run will arrive here in its turn.
+          if [ "$head_oid" != "$HEAD_SHA" ]; then
+            echo "This run is for $HEAD_SHA but #$pr is now at $head_oid — superseded by a newer commit; skip."
+            exit 0
+          fi
+
+          # Dedup: skip if Copilot is already a requested reviewer or has already reviewed. This is
+          # what makes it "first green only" — later green runs find Copilot engaged and no-op.
+          # A team review request carries no `login`, and a review by a deleted account carries a
+          # null `author`; feeding either to ascii_downcase errors, which under `set -e` would kill
+          # this step before the request below is ever made. Keep only string logins.
+          #
+          # The login is matched exactly, not as a substring: `test("copilot")` would also match a
+          # human account such as `copilot-tester`, and one of those requested or reviewing the PR
+          # would mark Copilot engaged and suppress the request for good. GraphQL returns the bare
+          # `copilot-pull-request-reviewer` — for a pending request and a completed review alike,
+          # measured on #1016 — and the optional `[bot]` suffix keeps the REST spelling matching
+          # too. Do not loosen the anchor on the strength of a third spelling: REST reports an
+          # *inline comment's* author as plain `Copilot`, which this regex deliberately does not
+          # match, because the dedup reads only review authors and requested reviewers.
+          #
+          # Asked over GraphQL because Copilot is a *Bot*, and a pending Bot review request is
+          # invisible to the REST-backed views: `gh pr view --json reviewRequests` and
+          # `GET /pulls/N/requested_reviewers` both report only `users` and `teams`, so a pending
+          # Copilot request reads as "nobody requested". Measured on #1016 with a live pending
+          # request: the REST arm answers false where the GraphQL arm answers true. Using the blind
+          # arm would re-request on every green run until Copilot posted its first review, and each
+          # request triggers a fresh pass — the quota this workflow gates for.
+          #
+          # Defined once as a function because it is asked twice — here, and again as the read-back
+          # after the request. Two copies of a check drift: this workflow has already shipped one
+          # defect of exactly that shape, where a filter was applied to one of two lookups and not
+          # the other.
+          copilot_engaged() {
+            gh api graphql \
+              -f query='query($owner:String!,$name:String!,$pr:Int!){repository(owner:$owner,name:$name){
+                pullRequest(number:$pr){
+                  reviewRequests(first:100){nodes{requestedReviewer{__typename ... on Bot{login} ... on User{login}}}}
+                  reviews(first:100){nodes{author{login}}}}}}' \
+              -f owner="${REPO%%/*}" -f name="${REPO##*/}" -F pr="$1" \
+              --jq '[(.data.repository.pullRequest.reviewRequests.nodes[]?.requestedReviewer.login),
+                     (.data.repository.pullRequest.reviews.nodes[]?.author.login)]
+                     | map(select(type == "string") | ascii_downcase) | any(test("^copilot-pull-request-reviewer(\\[bot\\])?$"))'
+          }
+
+          # A plain assignment, so `set -e` aborts the step if the query itself fails. Failing loudly
+          # is right here: a request sent while engagement is unknown is the re-request spam this
+          # workflow exists to prevent, so "could not tell" must not fall through to the POST.
+          engaged=$(copilot_engaged "$pr")
+          if [ "$engaged" = "true" ]; then
+            echo "Copilot already engaged on #$pr — skip."
+            exit 0
+          fi
+
+          # The reviewer login the request API expects (distinct from the review author's slug).
+          gh api --method POST "repos/$REPO/pulls/$pr/requested_reviewers" \
+            -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
+
+          # Confirm the request actually attached, over GraphQL for the same reason as above. The
+          # POST returns 200 and echoes a `requested_reviewers` array that never lists a Bot, so its
+          # success tells us nothing: a request that silently fails to attach would otherwise leave
+          # this workflow green with Copilot never added. Warn rather than fail — the PR's own CI is
+          # already green and reddening this run would not change that — but say so where it shows
+          # up in the run summary instead of exiting silently.
+          #
+          # Three things this read-back has to get right, none of them obvious:
+          #
+          #   * It asks the *same* question as the dedup — requested OR reviewed — not "is there a
+          #     pending request". A requests-only check would warn falsely in the one case where
+          #     everything worked unusually well: Copilot having already completed its review, which
+          #     clears the pending request.
+          #   * It retries once, because a read immediately after a write can miss it.
+          #   * The call is assigned, and its status checked, rather than inlined into the `if`.
+          #     Inside `if [ "$(gh api …)" != "true" ]` a failed call yields an empty string, which
+          #     compares unequal to "true" and so reports "Copilot not attached" for what is really
+          #     a network or API error — and `set -e` does not catch it, because it does not act on
+          #     a command in a condition. The two cases get two different warnings.
+          attached=false
+          for attempt in 1 2; do
+            if ! engaged_now=$(copilot_engaged "$pr"); then
+              echo "::warning title=Copilot read-back failed::Could not verify the review request on #$pr: the GitHub API call failed. The request itself returned success, so Copilot may well be attached — this is a verification failure, not a confirmed miss."
+              exit 0
+            fi
+            if [ "$engaged_now" = "true" ]; then
+              attached=true
+              break
+            fi
+            # A full `if`, not `[ … ] && sleep 5`: that form is the last command in the loop body,
+            # so on the final attempt its false test makes the body exit non-zero and `set -e`
+            # would kill the step before the warning below is ever printed.
+            if [ "$attempt" -eq 1 ]; then
+              sleep 5
+            fi
+          done
+          if [ "$attached" != "true" ]; then
+            echo "::warning title=Copilot review not attached::The request for #$pr returned success but Copilot is neither a requested reviewer nor a reviewer. Check that Copilot code review is enabled for this repository and that the acting token may request it."
+            exit 0
+          fi
+          echo "Requested Copilot review on #$pr."
