@@ -20,6 +20,8 @@ import traceback
 import uuid
 import yaml
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable
 
 from ase import Atoms
 from ase.calculators.calculator import Calculator, all_changes
@@ -170,6 +172,10 @@ def uma_hessian(atoms: Atoms, settings: dict, cache: dict | None = None) -> np.n
     It uses a predictor of its own. With the Hessian enabled, fairchem computes it on every call, and
     builds the double-backward graph for every force call too, which would slow optimizations and scans.
 
+    On a GPU, ``hessian_vmap`` is much faster (0.15 s instead of 2.4 s for a 13-atom TS with UMA-S on a V100), but
+    its memory grows steeply with the number of atoms. If it runs out of GPU memory, the Hessian is computed
+    without it instead, and with ``cache``, so is every later Hessian of as many atoms or more.
+
     Args:
         atoms (Atoms): The structure, with its charge and spin in ``atoms.info``.
         settings (dict): The run settings.
@@ -180,6 +186,9 @@ def uma_hessian(atoms: Atoms, settings: dict, cache: dict | None = None) -> np.n
                            compute one.
     """
     from fairchem.core import FAIRChemCalculator
+    too_large = ('uma_hessian_vmap_too_large', settings.get('model'), settings.get('device'))
+    if settings.get('hessian_vmap') and cache is not None and len(atoms) >= cache.get(too_large, np.inf):
+        return uma_hessian(atoms, dict(settings, hessian_vmap=False), cache)
     try:
         predictor = load_uma_predictor(settings, cache=cache, hessian=True)
     except NotImplementedError as exc:
@@ -188,7 +197,17 @@ def uma_hessian(atoms: Atoms, settings: dict, cache: dict | None = None) -> np.n
     hessian_atoms = atoms.copy()
     hessian_atoms.calc = FAIRChemCalculator(predictor, task_name=settings.get('task', 'omol'))
     n_coords = 3 * len(atoms)
-    return np.asarray(hessian_atoms.calc.get_property('hessian', hessian_atoms), dtype=float).reshape(n_coords, n_coords)
+    try:
+        hessian = hessian_atoms.calc.get_property('hessian', hessian_atoms)
+    except Exception as exc:
+        if not settings.get('hessian_vmap') or not is_out_of_gpu_memory(exc):
+            raise
+        release_gpu_memory()
+        print(f'The vectorized Hessian of {len(atoms)} atoms ran out of GPU memory; computing it without vmap.')
+        if cache is not None:
+            cache[too_large] = min(len(atoms), cache.get(too_large, np.inf))
+        return uma_hessian(atoms, dict(settings, hessian_vmap=False), cache)
+    return np.asarray(hessian, dtype=float).reshape(n_coords, n_coords)
 
 
 def sella_hessian_function(settings: dict, cache: dict | None = None):
@@ -346,7 +365,7 @@ def apply_constraints(atoms: Atoms, constraints_data: list):
 
 
 def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
-              pivot_mult: float = 1.8) -> list:
+              pivot_mult: float = 1.8, extra_bonds: list | None = None) -> list:
     """
     Determine the rotating group (the "top") on the ``pivot_2`` side of the ``pivot_1``-``pivot_2`` bond.
 
@@ -364,7 +383,9 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
     fall outside the default cutoff and look non-bonded. Only the pivot pair is given the looser
     ``pivot_mult`` allowance; the rest of the graph stays at ``mult``. Loosening the whole graph
     instead would let the substituents on the two pivots reach each other across the widened gap and
-    fuse into a spurious ring, which the ring check below would then report.
+    fuse into a spurious ring, which the ring check below would then report. A TS's partial bonds are
+    therefore given explicitly as ``extra_bonds`` (ARC knows them from the reaction): with them, a torsion
+    inside a cyclic TS (e.g., of an intramolecular H shift) is part of a ring and no rotor.
 
     Args:
         atoms (Atoms): The molecule.
@@ -373,6 +394,7 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
         mult (float, optional): The natural-cutoff multiplier defining the bond graph.
         pivot_mult (float, optional): The covalent-radii multiplier allowed for the pivot bond
                                       alone, accommodating a stretched TS bond.
+        extra_bonds (list, optional): 0-indexed atom pairs to bond whatever their distance (a TS's partial bonds).
 
     Raises:
         ValueError: If the pivots are too far apart to be bonded even under ``pivot_mult``, or if
@@ -386,6 +408,9 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
     nl = build_neighbor_list(atoms, natural_cutoffs(atoms, mult=mult),
                              self_interaction=False, bothways=True, skin=0.0)
     adj = {i: set(nl.get_neighbors(i)[0]) for i in range(len(atoms))}
+    for atom_1, atom_2 in extra_bonds or list():
+        adj[atom_1].add(atom_2)
+        adj[atom_2].add(atom_1)
     if pivot_2 not in adj[pivot_1]:
         numbers = atoms.get_atomic_numbers()
         radii_sum = covalent_radii[numbers[pivot_1]] + covalent_radii[numbers[pivot_2]]
@@ -447,14 +472,214 @@ def well_defined_torsion(atoms: Atoms, torsion: list, max_angle: float = 165.0, 
     return [int(outward(i, j, k)), j, k, int(outward(l, k, j))]
 
 
+def is_out_of_gpu_memory(exc: BaseException) -> bool:
+    """Whether an error means the GPU ran out of memory (cuBLAS reports it as a failed allocation of its own)."""
+    message = str(exc).lower()
+    return 'out of memory' in message or 'alloc_failed' in message
+
+
+def is_transient_gpu_error(exc: BaseException) -> bool:
+    """
+    Whether an error is a cuBLAS failure that the same call may not hit again. With eight processes sharing a V100,
+    two of some 30,000 batched UMA calls failed with CUBLAS_STATUS_EXECUTION_FAILED, and the next calls ran normally.
+    A failed cuBLAS allocation is an out-of-memory error instead (see ``is_out_of_gpu_memory()``).
+    """
+    return 'cublas_status' in str(exc).lower() and not is_out_of_gpu_memory(exc)
+
+
+def release_gpu_memory() -> None:
+    """Return PyTorch's cached GPU memory after an out-of-memory error, if PyTorch is loaded."""
+    torch = sys.modules.get('torch')
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def bare_copy(atoms: Atoms) -> Atoms:
+    """A copy of a structure with its atoms, positions and info (charge and spin) only: no calculator or constraints."""
+    return Atoms(numbers=atoms.get_atomic_numbers(), positions=atoms.get_positions(), info=dict(atoms.info))
+
+
+def batch_evaluation_function(calc: Calculator) -> Callable:
+    """
+    A function that evaluates a list of structures with ``calc`` and returns their (energy in eV, forces in eV/A).
+
+    For UMA (a fairchem calculator), the structures go to the model in one batched forward pass, converted exactly as
+    the calculator converts a single structure; each structure's charge and spin come from its own ``info``. Any other
+    calculator evaluates them one after another.
+
+    Args:
+        calc (Calculator): The calculator.
+
+    Returns:
+        Callable: A function of a list of structures, returning a list of (energy, forces) tuples in the same order.
+    """
+    predictor, a2g = getattr(calc, 'predictor', None), getattr(calc, 'a2g', None)
+    if predictor is not None and a2g is not None:
+        from fairchem.core.datasets.atomic_data import atomicdata_list_to_batch
+
+        def evaluate_batch(structures: list) -> list:
+            for structure in structures:
+                predictor.validate_atoms_data(structure, calc.task_name)
+            prediction = predictor.predict(atomicdata_list_to_batch([a2g(structure) for structure in structures]))
+            energies = prediction['energy'].detach().cpu().numpy().astype(float)
+            forces = prediction['forces'].detach().cpu().numpy().astype(float)
+            forces = np.split(forces, np.cumsum([len(structure) for structure in structures])[:-1])
+            return [(float(energy), force) for energy, force in zip(energies, forces)]
+
+        return evaluate_batch
+
+    def evaluate_one_by_one(structures: list) -> list:
+        results = list()
+        for structure in structures:
+            structure = bare_copy(structure)
+            structure.calc = calc
+            results.append((float(structure.get_potential_energy()), np.array(structure.get_forces())))
+        return results
+
+    return evaluate_one_by_one
+
+
+class BatchedEvaluator:
+    """
+    Evaluates the force calls of optimizations that run in threads together, in one call to the model.
+
+    A torsional scan walks each torsion in both directions, and a worker can run several scans at once. Each walk runs
+    in its own thread, with an ``EvaluatorCalculator`` that hands its structure to this evaluator and waits. Once every
+    registered walk is waiting, the last one to arrive evaluates all of them: for UMA in one batched forward pass,
+    which keeps a GPU busy where a single small molecule leaves it mostly idle. Hessian requests (from a TS walk's
+    Sella searches) are evaluated one at a time in the same round. The models are thus only ever called from one
+    thread at a time.
+
+    A walk registers with ``join()`` before it starts, and it must call ``leave()`` when it ends, also after an
+    error; the other walks would otherwise wait for it forever.
+
+    A batch that runs out of GPU memory is evaluated in halves, and ``max_batch`` stays at the size that fit
+    (all 98 walks of the CC//UMA-M TS scans, about 15 atoms each, did not fit on a 32 GB V100 at once). A batch or
+    Hessian that fails with a transient cuBLAS error (``is_transient_gpu_error()``) is evaluated again, up to
+    ``max_retries`` times; only then do its walks get the error.
+
+    Args:
+        evaluate (Callable): Evaluates a list of structures (see ``batch_evaluation_function()``).
+        hessian (Callable, optional): The (3N, 3N) Hessian of a structure, in eV/A^2.
+        max_batch (int, optional): The most structures per call of ``evaluate``.
+        max_retries (int, optional): How often to repeat a call that failed with a transient cuBLAS error.
+    """
+
+    def __init__(self, evaluate: Callable, hessian: Callable | None = None, max_batch: int = 256,
+                 max_retries: int = 3):
+        self.evaluate = evaluate
+        self.hessian = hessian
+        self.max_batch = max_batch
+        self.max_retries = max_retries
+        self.n_rounds, self.n_structures, self.n_retries = 0, 0, 0
+        self._condition = threading.Condition()
+        self._clients = 0
+        self._pending, self._results = dict(), dict()
+        self._next_key = 0
+
+    def join(self, n: int = 1) -> None:
+        """Register ``n`` walks."""
+        with self._condition:
+            self._clients += n
+
+    def leave(self) -> None:
+        """Unregister a walk that has ended. The walks still waiting may now be complete, so evaluate them."""
+        with self._condition:
+            self._clients -= 1
+            self._evaluate_if_all_wait()
+
+    def request(self, kind: str, structure: Atoms):
+        """
+        Evaluate a structure together with the other walks' structures, and wait for the result.
+
+        Args:
+            kind (str): 'forces' for (energy, forces), or 'hessian'.
+            structure (Atoms): The structure (see ``bare_copy()``), which must not change until this returns.
+        """
+        with self._condition:
+            key = self._next_key
+            self._next_key += 1
+            self._pending[key] = (kind, structure)
+            self._evaluate_if_all_wait()
+            while key not in self._results:
+                self._condition.wait()
+            result = self._results.pop(key)
+        if isinstance(result, BaseException):
+            raise result
+        return result
+
+    def _evaluate_if_all_wait(self) -> None:
+        """Evaluate the pending requests if no registered walk is still running. Called with the lock held."""
+        if not self._pending or len(self._pending) < self._clients:
+            return
+        pending, self._pending = self._pending, dict()
+        forces = [key for key, (kind, _) in pending.items() if kind == 'forces']
+        start, retries = 0, 0
+        while start < len(forces):
+            keys = forces[start:start + self.max_batch]
+            try:
+                results = self.evaluate([pending[key][1] for key in keys])
+            except Exception as exc:
+                if is_out_of_gpu_memory(exc) and len(keys) > 1:
+                    self.max_batch = len(keys) // 2
+                    release_gpu_memory()
+                    continue
+                if is_transient_gpu_error(exc) and retries < self.max_retries:
+                    retries += 1
+                    self.n_retries += 1
+                    release_gpu_memory()
+                    continue
+                results = [exc] * len(keys)
+            self._results.update(zip(keys, results))
+            start += len(keys)
+            retries = 0
+        for key, (kind, structure) in pending.items():
+            if kind == 'hessian':
+                self._results[key] = self._hessian_with_retries(structure)
+        self.n_rounds += 1
+        self.n_structures += len(forces)
+        self._condition.notify_all()
+
+    def _hessian_with_retries(self, structure: Atoms):
+        """The Hessian of a structure, or the error that remained after ``max_retries`` retries of a transient one."""
+        for attempt in range(self.max_retries + 1):
+            try:
+                return self.hessian(structure)
+            except Exception as exc:
+                if not is_transient_gpu_error(exc) or attempt == self.max_retries:
+                    return exc
+                self.n_retries += 1
+                release_gpu_memory()
+
+
+class EvaluatorCalculator(Calculator):
+    """An ASE calculator that gets its energy and forces from a ``BatchedEvaluator``. Each walk needs its own."""
+    implemented_properties = ['energy', 'free_energy', 'forces']
+
+    def __init__(self, evaluator: BatchedEvaluator):
+        super().__init__()
+        self.evaluator = evaluator
+
+    def calculate(self, atoms=None, properties=('energy',), system_changes=all_changes):
+        super().calculate(atoms, properties, system_changes)
+        energy, forces = self.evaluator.request('forces', bare_copy(self.atoms))
+        self.results = {'energy': energy, 'free_energy': energy, 'forces': forces}
+
+
 def _scan_walk(atoms: Atoms, torsion: list, step_deg: float, nsteps: int, top: list,
-               fmax: float, steps: int, direction: int, optimizer) -> tuple:
+               fmax: float, steps: int, direction: int, optimizer, calc: Calculator | None = None,
+               saddle: bool = False, hessian_function: Callable | None = None) -> tuple:
     """
     Perform one directional sequential relaxed torsional walk.
 
     Each grid point starts from the previous point's relaxed geometry (a hysteretic walk), so a
     coupled coordinate can carry the walk into a different conformer and never return - which is
     why a full scan runs this in both directions and keeps the lower branch at each point.
+
+    A TS walk (``saddle``) searches each point for a first-order saddle point with the dihedral fixed (Sella,
+    order 1), as Gaussian's TS scans do (opt=(ts, modredundant)). Minimizing each point instead, as for a
+    minimum, slides the structure off the saddle: in UMA scans of n-C4H9 -> C2H4 + C2H5, the breaking C-C
+    bond of 2.26 A opened to 3.7-4.0 A.
 
     Args:
         atoms (Atoms): The molecule with a calculator attached (not modified; a copy is walked).
@@ -465,7 +690,10 @@ def _scan_walk(atoms: Atoms, torsion: list, step_deg: float, nsteps: int, top: l
         fmax (float): The force convergence criterion in eV/Angstrom.
         steps (int): The maximum optimizer steps per point.
         direction (int): +1 for a 0->360 walk, -1 for a 360->0 walk.
-        optimizer: The ASE optimizer class to relax each point.
+        optimizer: The ASE optimizer class to relax each point of a minimum.
+        calc (Calculator, optional): The calculator of the walk, if not ``atoms.calc``.
+        saddle (bool, optional): Whether ``atoms`` is a TS whose walk must stay on the saddle.
+        hessian_function (Callable, optional): The exact Hessian for the Sella searches of a TS walk.
 
     Returns:
         tuple: (energies in eV, residual max-forces in eV/Angstrom, relaxed Cartesian coordinates),
@@ -473,14 +701,19 @@ def _scan_walk(atoms: Atoms, torsion: list, step_deg: float, nsteps: int, top: l
     """
     i, j, k, l = torsion
     work = atoms.copy()
-    work.calc = atoms.calc
+    work.calc = calc or atoms.calc
     energies, residual_forces, coords = list(), list(), list()
     for n in range(nsteps + 1):
         if n:
             work.rotate_dihedral(i, j, k, l, angle=direction * step_deg, indices=top)
         target = work.get_dihedral(i, j, k, l)
         work.set_constraint(FixInternals(dihedrals_deg=[[target, [i, j, k, l]]]))
-        opt = optimizer(work, logfile=None)
+        if saddle:
+            from sella import Sella
+            opt = Sella(work, order=1, logfile=None,
+                        **({'hessian_function': hessian_function} if hessian_function else dict()))
+        else:
+            opt = optimizer(work, logfile=None)
         opt.run(fmax=fmax, steps=steps)
         # Residual force WITH the dihedral constraint still applied is the convergence criterion:
         # reading opt.converged() after clearing the constraint re-evaluates the free torsional
@@ -538,7 +771,8 @@ def merge_scan_branches(e_f: list, e_b: list, nsteps: int, coords_f: list = None
 
 def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: int,
                          top: list = None, fmax: float = 0.005, steps: int = 500,
-                         optimizer=LBFGS) -> dict:
+                         optimizer=LBFGS, saddle: bool = False, evaluator: BatchedEvaluator | None = None,
+                         hessian_function: Callable | None = None) -> dict:
     """
     Perform a full 1D relaxed torsional scan in a single process.
 
@@ -547,6 +781,9 @@ def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: i
     coupled coordinate flips partway round, that walk finishes in a different conformer and its
     curve is not a torsional potential. Walking both ways and taking the pointwise minimum recovers
     the lowest torsional path, which is the one the downstream statistical mechanics wants.
+
+    The two walks run in two threads whose force calls a ``BatchedEvaluator`` evaluates together. A worker that
+    runs several scans at once passes one evaluator to all of them, so that every walk shares each call.
 
     Points that do not fully converge are kept (never dropped), so the periodic grid the downstream
     Fourier fit reads is always complete; ``fmax_worst`` reports the largest residual force.
@@ -559,7 +796,12 @@ def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: i
         top (list, optional): The 0-indexed rotating group; determined from the graph if not given.
         fmax (float): The force convergence criterion in eV/Angstrom.
         steps (int): The maximum optimizer steps per point.
-        optimizer: The ASE optimizer class to relax each point.
+        optimizer: The ASE optimizer class to relax each point of a minimum.
+        saddle (bool, optional): Whether ``atoms`` is a TS, whose walks search each point for a saddle point.
+        evaluator (BatchedEvaluator, optional): The evaluator shared with other scans. By default, one that
+                                                evaluates ``atoms.calc``, with ``hessian_function``.
+        hessian_function (Callable, optional): The exact Hessian for a TS walk's Sella searches, if no
+                                               ``evaluator`` is given.
 
     Raises:
         ValueError: If ``nsteps`` is less than 1, ``step_deg`` is not positive, or the two do not
@@ -585,8 +827,25 @@ def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: i
     if top is None:
         top = rotor_top(atoms, j, k)
 
-    e_f, r_f, c_f = _scan_walk(atoms, torsion, step_deg, nsteps, top, fmax, steps, +1, optimizer)
-    e_b, r_b, c_b = _scan_walk(atoms, torsion, step_deg, nsteps, top, fmax, steps, -1, optimizer)
+    if evaluator is None:
+        evaluator = BatchedEvaluator(batch_evaluation_function(atoms.calc), hessian=hessian_function)
+    walk_hessian = None
+    if saddle and evaluator.hessian is not None:
+        def walk_hessian(structure: Atoms) -> np.ndarray:
+            return evaluator.request('hessian', bare_copy(structure))
+
+    def walk(direction: int) -> tuple:
+        try:
+            return _scan_walk(atoms, torsion, step_deg, nsteps, top, fmax, steps, direction, optimizer,
+                              calc=EvaluatorCalculator(evaluator), saddle=saddle, hessian_function=walk_hessian)
+        finally:
+            evaluator.leave()
+
+    evaluator.join(2)  # before either walk starts, so that the first force call already waits for both
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        forward, backward = pool.submit(walk, +1), pool.submit(walk, -1)
+        e_f, r_f, c_f = forward.result()
+        e_b, r_b, c_b = backward.result()
 
     merged, grid_f, grid_b, coords = merge_scan_branches(e_f, e_b, nsteps, c_f, c_b)
     energies = merged.tolist()
@@ -599,22 +858,35 @@ def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: i
         'angles': angles,
         'scan_coords': scan_coords,
         'top': top,
+        'saddle': saddle,
         'branch_gap_max': float(np.abs(grid_f - grid_b).max()),
         'fmax_worst': float(max(r_f + r_b)),
         'converged': bool(max(r_f + r_b) <= fmax),
     }
 
 
-def run_torsion_scan(atoms: Atoms, input_dict: dict, settings: dict) -> dict:
+def run_torsion_scan(atoms: Atoms, input_dict: dict, settings: dict, evaluator: BatchedEvaluator | None = None,
+                     cache: dict | None = None) -> dict:
     """
     Run a 1D relaxed torsional scan for an ARC ``scan`` job and shape it for ARC's YAML parser.
+    The scan of a TS (``is_ts``) stays on the saddle (see ``_scan_walk()``).
 
     Args:
         atoms (Atoms): The molecule with a calculator attached.
-        input_dict (dict): The job input; ``torsions`` (a list holding one 0-indexed torsion) and
-                           ``scan_res`` (the dihedral increment in degrees) are read here.
+        input_dict (dict): The job input; ``torsions`` (a list holding one 0-indexed torsion),
+                           ``scan_res`` (the dihedral increment in degrees), ``is_ts`` and, optionally,
+                           ``partial_bonds`` (a TS's 0-indexed forming and breaking bonds) and ``top`` (ARC's
+                           0-indexed rotating group, on either side of the pivots) are read here. The rotating group
+                           is rebuilt from distances plus ``partial_bonds`` if given, else ``top`` is used, else
+                           distances alone (see ``rotor_top()``). Distances alone miss a TS's partial bonds: in
+                           n-C4H9 -> C2H4 + C2H5, the group of the C0-C1 rotor then stopped at the breaking
+                           C1...C2 bond, the dihedral never turned, and Sella relaxed each point back to the TS.
+                           ARC's ``top`` comes from a graph without the partial bonds too, so in C2H6 + OH it
+                           leaves the OH out of the methyl group whose H the OH abstracts.
         settings (dict): ASE run settings; optional ``fmax``, ``steps``, ``optimizer`` override the
                          relaxed-scan defaults (LBFGS, fmax 0.005 eV/Angstrom, 500 steps per point).
+        evaluator (BatchedEvaluator, optional): An evaluator shared with other scans (see ``run_scan_group()``).
+        cache (dict, optional): Loaded models, kept across jobs by a persistent worker.
 
     Raises:
         ValueError: If no torsion is supplied or more than one is (a 1D scan sweeps a single
@@ -641,9 +913,22 @@ def run_torsion_scan(atoms: Atoms, input_dict: dict, settings: dict) -> dict:
     engine_dict = {'bfgs': BFGS, 'lbfgs': LBFGS, 'gpmin': GPMin,
                    'scipyfminbfgs': SciPyFminBFGS, 'scipyfmincg': SciPyFminCG}
     optimizer = engine_dict.get(str(settings.get('optimizer', 'LBFGS')).lower(), LBFGS)
+    saddle = bool(input_dict.get('is_ts', False))
+    hessian_function = sella_hessian_function(settings, cache) if saddle and evaluator is None else None
+    top = input_dict.get('top')
+    if input_dict.get('partial_bonds'):
+        top = rotor_top(atoms, *well_defined_torsion(atoms, torsion)[1:3],
+                        extra_bonds=[tuple(bond) for bond in input_dict['partial_bonds']])
+    if top is not None and torsion[1] in top and torsion[2] not in top:
+        # ARC's group is on the first pivot's side; the two sides of a pivot bond outside a ring are complements.
+        top = sorted(set(range(len(atoms))) - set(top))
+    if top is not None and (torsion[2] not in top or torsion[1] in top):
+        print(f'Ignoring the rotating group {top}, which does not separate the pivots {torsion[1:3]}.')
+        top = None
 
-    result = relaxed_torsion_scan(atoms, torsion, scan_res, nsteps, top=None,
-                                  fmax=fmax, steps=steps, optimizer=optimizer)
+    result = relaxed_torsion_scan(atoms, torsion, scan_res, nsteps, top=top, fmax=fmax, steps=steps,
+                                  optimizer=optimizer, saddle=saddle, evaluator=evaluator,
+                                  hessian_function=hessian_function)
     # ARC's YAML scan parser reads absolute energies and subtracts the minimum before converting
     # Hartree->kJ/mol, so the energies must be in Hartree.
     result['energies'] = [energy * e / E_h for energy in result['energies']]
@@ -1146,7 +1431,8 @@ def resolve_input_path(yml_path: str) -> str:
     return input_path
 
 
-def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None = None) -> dict:
+def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None = None,
+            evaluator: BatchedEvaluator | None = None) -> dict:
     """
     Run one ASE job and write its output.yml next to its input.yml.
 
@@ -1154,6 +1440,7 @@ def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None 
         input_path (str): The path to the job's input.yml.
         input_dict (dict, optional): The parsed input.yml. Read from ``input_path`` if not given.
         cache (dict, optional): Loaded models, kept across jobs by a persistent worker.
+        evaluator (BatchedEvaluator, optional): For a scan, an evaluator shared with other scans.
 
     Returns:
         dict: The output, as written to output.yml.
@@ -1196,7 +1483,7 @@ def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None 
 
     if job_type == 'scan':
         try:
-            output.update(run_torsion_scan(atoms, input_dict, settings))
+            output.update(run_torsion_scan(atoms, input_dict, settings, evaluator=evaluator, cache=cache))
             warning = scan_convergence_warning(output, float(settings.get('fmax', 0.005)))
             if warning is not None:
                 # The scan is kept and reported: a loose point still carries a usable potential,
@@ -1416,12 +1703,17 @@ def finish_ticket(spool_dir: str, ticket: str, content: dict) -> None:
         pass
 
 
-def claim_ticket(spool_dir: str, worker_id: str) -> tuple | None:
+def claim_ticket(spool_dir: str, worker_id: str, accept: Callable | None = None) -> tuple | None:
     """
     Claim the oldest queued ticket for a worker.
 
+    Args:
+        spool_dir (str): The spool directory.
+        worker_id (str): The worker's ID.
+        accept (Callable, optional): Claim only a ticket whose content this function of the content accepts.
+
     Returns:
-        tuple: The ticket ID and its content, or ``None`` if nothing is queued.
+        tuple: The ticket ID and its content, or ``None`` if nothing (acceptable) is queued.
     """
     dirs = spool_dirs(spool_dir)
     queued = list()
@@ -1431,6 +1723,8 @@ def claim_ticket(spool_dir: str, worker_id: str) -> tuple | None:
         except FileNotFoundError:
             continue
     for _, file_name in sorted(queued):
+        if accept is not None and not accept(read_json(os.path.join(dirs['queue'], file_name)) or dict()):
+            continue
         running_path = os.path.join(dirs['running'], file_name)
         try:
             os.rename(os.path.join(dirs['queue'], file_name), running_path)
@@ -1467,10 +1761,13 @@ def start_heartbeat(path: str, info: dict, interval: float = HEARTBEAT_INTERVAL)
     return stop
 
 
-def run_ticket(spool_dir: str, ticket: str, content: dict, worker_id: str, cache: dict) -> dict:
+def run_ticket(spool_dir: str, ticket: str, content: dict, worker_id: str, cache: dict,
+               evaluator: BatchedEvaluator | None = None) -> dict:
     """
     Run a claimed ticket's job in its own directory and mark the ticket as finished.
     Any failure, including a ``sys.exit()`` in the job, is recorded in the ticket instead of ending the worker.
+    A scan run with a shared ``evaluator`` runs in a thread, and leaves the working directory alone: the working
+    directory is per process, and a scan writes only its output.yml, by its full path.
 
     Returns:
         dict: The ticket's final content.
@@ -1478,29 +1775,98 @@ def run_ticket(spool_dir: str, ticket: str, content: dict, worker_id: str, cache
     t0, cwd = time.time(), os.getcwd()
     result = {'input_path': content.get('input_path'), 'worker': worker_id, 'status': 'done'}
     try:
-        os.chdir(os.path.dirname(content['input_path']))  # as a queue job runs in its job directory
-        run_job(content['input_path'], cache=cache)
+        if evaluator is None:
+            os.chdir(os.path.dirname(content['input_path']))  # as a queue job runs in its job directory
+        run_job(content['input_path'], cache=cache, evaluator=evaluator)
     except (Exception, SystemExit):
         result.update({'status': 'errored', 'error': traceback.format_exc()})
     finally:
-        os.chdir(cwd)
+        if evaluator is None:
+            os.chdir(cwd)
     finished = time.time()
     result.update({'started': t0, 'finished': finished, 'run_time': finished - t0})
     finish_ticket(spool_dir, ticket, result)
     return result
 
 
+def scan_group_key(input_path: str) -> str | None:
+    """
+    The key under which a worker runs a scan job together with other scans, or ``None`` for a job it runs alone.
+
+    Only UMA scans of the same model and settings are grouped. UMA reads each structure's charge and spin from the
+    structure, so one model serves every species; other calculators (e.g., xTB) are built for one charge and spin.
+
+    Args:
+        input_path (str): The path to the job's input.yml.
+    """
+    try:
+        input_dict = read_yaml_file(input_path)
+    except Exception:
+        return None
+    settings = input_dict.get('settings') or dict()
+    if input_dict.get('job_type') != 'scan' or str(settings.get('calculator', '')).lower() not in ('uma', 'fairchem'):
+        return None
+    return json.dumps({key: settings.get(key) for key in ('calculator', 'model', 'task', 'device', 'inference_settings',
+                                                          'hessian', 'hessian_vmap')}, sort_keys=True, default=str)
+
+
+def scan_group_evaluator(input_paths: list, cache: dict) -> BatchedEvaluator:
+    """
+    One evaluator for UMA scan jobs with the same settings (see ``scan_group_key()``): their walks, two per torsion,
+    all go to the model in one batch. The Hessian predictor is loaded only if one of the jobs scans a TS.
+
+    Args:
+        input_paths (list): The jobs' input.yml paths.
+        cache (dict): Loaded models, kept across jobs by a persistent worker.
+    """
+    input_dicts = [read_yaml_file(path) for path in input_paths]
+    settings = input_dicts[0].get('settings') or dict()
+    calc = get_calculator(settings, cache=cache)
+    hessian = sella_hessian_function(settings, cache) if any(d.get('is_ts') for d in input_dicts) else None
+    return BatchedEvaluator(batch_evaluation_function(calc), hessian=hessian)
+
+
+def run_scan_group(spool_dir: str, group: list, worker_id: str, cache: dict) -> list:
+    """
+    Run claimed scan tickets at the same time, one thread per job, sharing one ``BatchedEvaluator``.
+
+    Args:
+        spool_dir (str): The spool directory.
+        group (list): The (ticket, content) of each claimed ticket, all with the same ``scan_group_key()``.
+        worker_id (str): The worker's ID.
+        cache (dict): Loaded models, kept across jobs by a persistent worker.
+
+    Returns:
+        list: The tickets' final contents, in the order of ``group``.
+    """
+    try:
+        evaluator = scan_group_evaluator([content['input_path'] for _, content in group], cache)
+    except (Exception, SystemExit):
+        # Without a shared evaluator, run the jobs one at a time, each with its own error handling.
+        return [run_ticket(spool_dir, ticket, content, worker_id, cache) for ticket, content in group]
+    with ThreadPoolExecutor(max_workers=len(group)) as pool:
+        futures = [pool.submit(run_ticket, spool_dir, ticket, content, worker_id, cache, evaluator)
+                   for ticket, content in group]
+        return [future.result() for future in futures]
+
+
 def serve(spool_dir: str, max_jobs: int | None = None, idle_timeout: float | None = None,
-          poll_interval: float = 0.5) -> int:
+          poll_interval: float = 0.5, max_scan_group: int = 64, scan_group_wait: float = 2.0) -> int:
     """
     Run as a persistent worker: claim and run the spool's tickets one at a time, keeping loaded models.
     SIGTERM or SIGINT stops the worker after its current job; a second signal acts as usual.
+
+    UMA scans are the exception: having claimed one, the worker also claims the other queued scans with the same
+    settings, waiting ``scan_group_wait`` seconds for more (ARC submits a species' rotor scans together), and runs
+    them at the same time, all their walks sharing each batched force call (see ``run_scan_group()``).
 
     Args:
         spool_dir (str): The spool directory.
         max_jobs (int, optional): Stop after this many jobs.
         idle_timeout (float, optional): Stop after this many seconds without a ticket.
         poll_interval (float, optional): Seconds between checks of an empty queue.
+        max_scan_group (int, optional): The most scans run at the same time (1 runs every scan alone).
+        scan_group_wait (float, optional): Seconds to wait for more scans to run with a claimed one.
 
     Returns:
         int: The number of jobs run.
@@ -1533,10 +1899,27 @@ def serve(spool_dir: str, max_jobs: int | None = None, idle_timeout: float | Non
                     break
                 stopping.wait(poll_interval)
                 continue
-            ticket, content = claimed
-            result = run_ticket(spool_dir, ticket, content, worker_id, cache)
-            print(f'{ticket}: {result["status"]} in {result["run_time"]:.1f} s', flush=True)
-            n_jobs, idle_since = n_jobs + 1, time.time()
+            group = [claimed]
+            key = scan_group_key(claimed[1].get('input_path', '')) if max_scan_group > 1 else None
+            if key is not None:
+                limit = max_scan_group if max_jobs is None else min(max_scan_group, max_jobs - n_jobs)
+                deadline = time.time() + scan_group_wait
+                while len(group) < limit and not stopping.is_set():
+                    more = claim_ticket(spool_dir, worker_id,
+                                        accept=lambda c: scan_group_key(c.get('input_path', '')) == key)
+                    if more is not None:
+                        group.append(more)
+                    elif time.time() < deadline:
+                        stopping.wait(min(poll_interval, 0.2))
+                    else:
+                        break
+            if len(group) == 1:
+                results = [run_ticket(spool_dir, *claimed, worker_id, cache)]
+            else:
+                results = run_scan_group(spool_dir, group, worker_id, cache)
+            for (ticket, _), result in zip(group, results):
+                print(f'{ticket}: {result["status"]} in {result["run_time"]:.1f} s', flush=True)
+            n_jobs, idle_since = n_jobs + len(group), time.time()
     finally:
         stop_heartbeat.set()
         try:
@@ -1559,10 +1942,12 @@ def main():
     parser.add_argument('--max_jobs', type=int, default=None, help='Worker: stop after this many jobs.')
     parser.add_argument('--idle_timeout', type=float, default=None,
                         help='Worker: stop after this many seconds without a job.')
+    parser.add_argument('--max_scan_group', type=int, default=64,
+                        help='Worker: the most UMA scans run at the same time, sharing batched force calls.')
     args = parser.parse_args()
 
     if args.serve:
-        serve(args.serve, max_jobs=args.max_jobs, idle_timeout=args.idle_timeout)
+        serve(args.serve, max_jobs=args.max_jobs, idle_timeout=args.idle_timeout, max_scan_group=args.max_scan_group)
         return
 
     input_path = resolve_input_path(args.yml_path)
