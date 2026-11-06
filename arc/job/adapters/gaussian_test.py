@@ -12,7 +12,9 @@ import shutil
 import tempfile
 import unittest
 
-from arc.job.adapters.gaussian import STABILITY_KEYWORD, GaussianAdapter, get_memory_headroom_fraction
+from arc.job.adapters.gaussian import (STABILITY_KEYWORD, GaussianAdapter, fold_integral_options,
+                                       get_integral_option_name, get_memory_headroom_fraction,
+                                       pop_integral_options)
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames, servers, submit_filenames
 from arc.species import ARCSpecies
@@ -793,8 +795,37 @@ O       0.00000000    0.00000000    1.00000000
         self.assertEqual(self.job_3.files_to_download, job_3_files_to_download)
 
     def test_gaussian_def2tzvp(self):
-        """Test a Gaussian job using def2-tzvp"""
-        self.assertEqual(self.job_9.level.basis.lower(), 'def2tzvp')
+        """Test that a Gaussian job using def2-tzvp keeps its level and writes the Gaussian spelling"""
+        self.assertEqual(self.job_9.level.basis.lower(), 'def2-tzvp')
+        self.job_9.write_input_file()
+        with open(os.path.join(self.job_9.local_path, input_filenames[self.job_9.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('/def2tzvp', content)
+        self.assertNotIn('def2-tzvp', content.lower())
+        self.assertEqual(self.job_9.level.basis.lower(), 'def2-tzvp')
+
+    def test_the_paraskevas_method_is_written_as_cbs_qb3_and_the_level_is_kept(self):
+        """Test that the input deck names cbs-qb3 while the job's level still states the requested method"""
+        self.job_1.write_input_file()
+        with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('cbs-qb3', content)
+        self.assertNotIn('paraskevas', content)
+        self.assertEqual(self.job_1.level.method, 'cbs-qb3-paraskevas')
+
+    def test_a_respawned_job_and_a_restored_job_record_the_same_basis_spelling(self):
+        """Test that a level passed back to a new job, or restored from a job's dictionary, is unchanged"""
+        first = GaussianAdapter(execution_type='incore', job_type='opt',
+                                level=Level(method='wb97xd', basis='def2-tzvp'), project='test',
+                                project_directory=self.project_directory,
+                                species=[ARCSpecies(label='spc_respawn', xyz=['O 0 0 1'], multiplicity=3)],
+                                testing=True)
+        second = GaussianAdapter(execution_type='incore', job_type='opt', level=Level(repr=first.level),
+                                 project='test', project_directory=self.project_directory,
+                                 species=[ARCSpecies(label='spc_respawn', xyz=['O 0 0 1'], multiplicity=3)],
+                                 testing=True)
+        restored = Level(repr=first.as_dict()['level'])
+        self.assertEqual({first.level.basis, second.level.basis, restored.basis}, {'def2-tzvp'})
     
     def test_trsh_write_input_file(self):
         """Test writing a trsh input file
@@ -970,7 +1001,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(cartesian) integral=(grid=ultrafine, Acc2E=14) guess=INDO wb97xd   IOp(2/9=2000)        nosymm  scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
+#P opt=(cartesian) integral=(grid=ultrafine, Acc2E=14) guess=INDO wb97xd   IOp(2/9=2000)        nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
 
 ethanol
 
@@ -1023,7 +1054,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=300590, Acc2E=14) IOp(2/9=2000)     scf=(direct,tight)
 
 ethanol
 
@@ -1075,7 +1106,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=300590, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
@@ -1102,7 +1133,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight) guess=INDO wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     int=grid=300590   scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight) guess=INDO wb97xd  integral=(grid=300590, Acc2E=14) IOp(2/9=2000)        scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
@@ -1129,7 +1160,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     scf=(direct,tight)
 
 ethanol
 
@@ -1156,7 +1187,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(RFO,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(RFO,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     scf=(direct,tight)
 
 ethanol
 
@@ -1183,7 +1214,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     scf=(direct,tight)
 
 ethanol
 
@@ -1242,6 +1273,177 @@ H       0.04768200    1.19305700   -0.88359100
         with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
             content = f.read()
         return [line for line in content.splitlines() if line.startswith('#P')][0]
+
+    def _route_with_level_args(self,
+                               job_type: str,
+                               level_args: dict,
+                               trsh: list | None = None,
+                               ess_trsh_methods: list | None = None,
+                               checkfile: str | None = None,
+                               fine: bool = False,
+                               torsions: list | None = None,
+                               ) -> str:
+        """Write a Gaussian input file for a level carrying args and return its route line."""
+        job = GaussianAdapter(execution_type='queue',
+                              job_type=job_type,
+                              level=Level(method='wb97xd', basis='def2-TZVP', args=level_args),
+                              args={'trsh': {'trsh': trsh}} if trsh else None,
+                              ess_trsh_methods=ess_trsh_methods,
+                              checkfile=checkfile,
+                              fine=fine,
+                              irc_direction='forward' if job_type == 'irc' else None,
+                              torsions=torsions,
+                              project='test',
+                              project_directory=self.project_directory,
+                              species=[ARCSpecies(label='TS0', is_ts=True,
+                                                  xyz=['O 0 0 1\nH 0 0 2'] if torsions is None else
+                                                  ['O 0 0 0\nO 0 0 1.45\nH 0.9 0 -0.3\nH -0.9 0.5 1.75'])],
+                              testing=True,
+                              )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            content = f.read()
+        return [line for line in content.splitlines() if line.startswith('#P')][0]
+
+    def test_a_user_integral_option_is_folded_into_the_single_integral_keyword(self):
+        """Test that a freq route carries one Integral keyword holding ARC's and the user's options."""
+        for user_keyword in ['int=dkh2', 'integral=(dkh2)', 'Int(DKH2)']:
+            route = self._route_with_level_args('freq', {'keyword': {'general': user_keyword}})
+            self.assertEqual(len(re.findall(r'\bint(?:egral)?\b', route, flags=re.IGNORECASE)), 1, route)
+            self.assertIn('integral=(grid=ultrafine, Acc2E=12, dkh2)', route)
+
+    def test_a_user_integral_grid_wins_over_the_default_grid(self):
+        """Test that a user's grid replaces ARC's ultrafine grid and a user's Acc2E replaces ARC's."""
+        route = self._route_with_level_args('sp', {'keyword': {'general': 'int=(grid=superfine, acc2e=11) scf=(qc)'}})
+        self.assertIn('integral=(grid=superfine, acc2e=11)', route)
+        self.assertEqual(len(re.findall(r'\bint(?:egral)?\b', route, flags=re.IGNORECASE)), 1, route)
+        self.assertIn('scf=', route)
+
+    def test_a_troubleshooting_grid_and_a_user_option_share_the_integral_keyword(self):
+        """Test that the grid remedy of a retry and a user's option end up in one Integral keyword."""
+        route = self._route_with_level_args('freq', {'keyword': {'general': 'int=dkh2'}},
+                                            trsh=['int=grid=300590', 'int=(Acc2E=14)'])
+        self.assertIn('integral=(grid=300590, Acc2E=14, dkh2)', route)
+        self.assertEqual(len(re.findall(r'\bint(?:egral)?\b', route, flags=re.IGNORECASE)), 1, route)
+
+    def test_a_user_integral_option_survives_on_a_job_without_an_arc_integral_keyword(self):
+        """Test that a user's Integral option is kept, once, on a job type for which ARC adds none."""
+        route = self._route_with_level_args('optfreq', {'keyword': {'general': 'int=dkh2'}})
+        self.assertEqual(len(re.findall(r'\bint(?:egral)?\b', route, flags=re.IGNORECASE)), 1, route)
+        self.assertIn('dkh2', route)
+
+    def test_integral_grid_and_relativistic_options_compete_by_group(self):
+        """Test that named grids, pruned-grid integers and relativistic Hamiltonians each survive once."""
+        for user_keyword, expected in [('int=SG1Grid', 'integral=(sg1grid, Acc2E=12)'),
+                                       ('int=UltraFineGrid', 'integral=(ultrafinegrid, Acc2E=12)'),
+                                       ('int=-96032', 'integral=(-96032, Acc2E=12)'),
+                                       ('int=(grid=superfine, DKH0)', 'integral=(grid=superfine, Acc2E=12, dkh0)')]:
+            route = self._route_with_level_args('sp', {'keyword': {'general': user_keyword}})
+            self.assertIn(expected, route)
+        route = self._route_with_level_args('freq', {'keyword': {'general': 'int=dkh0'}}, trsh=['int=dkh2'])
+        self.assertIn('integral=(grid=ultrafine, Acc2E=12, dkh2)', route)
+        self.assertNotIn('dkh0', route.lower())
+
+    def test_the_grid_remedy_persists_when_the_current_trsh_does_not_repeat_it(self):
+        """Test that int=grid=300590 in ess_trsh_methods is written although the trsh string lacks it."""
+        route = self._route_with_level_args('freq', {'keyword': {'general': 'int=dkh2'}},
+                                            trsh=['scf=(NoVarAcc)'],
+                                            ess_trsh_methods=['int=grid=300590', 'scf=(NoVarAcc)'])
+        self.assertIn('integral=(grid=300590, Acc2E=12, dkh2)', route)
+        self.assertEqual(len(re.findall(r'\bint(?:egral)?\b', route, flags=re.IGNORECASE)), 1, route)
+        route = self._route_with_level_args('optfreq', {'keyword': {'general': 'scf=(tight)'}},
+                                            ess_trsh_methods=['int=grid=300590'])
+        self.assertIn('integral=(grid=300590)', route)
+
+    def test_no_xqc_remedy_removes_a_level_xqc(self):
+        """Test that the no_xqc remedy removes the xqc a level's keywords ask for, and its absence keeps it."""
+        route = self._route_with_level_args('sp', {'keyword': {'general': 'scf=(xqc, maxcycle=64)'}})
+        self.assertIn('xqc', route)
+        route = self._route_with_level_args('sp', {'keyword': {'general': 'scf=(xqc, maxcycle=64)'}},
+                                            ess_trsh_methods=['no_xqc'])
+        self.assertNotIn('qc', route)
+        self.assertIn('maxcycle=64', route)
+
+    def test_a_trsh_guess_replaces_a_level_guess(self):
+        """Test that exactly one guess option is written: the level's over ARC's, the remedy's over both."""
+        route = self._route_with_level_args('opt', {'keyword': {'general': 'guess=core'}})
+        self.assertEqual(len(re.findall(r'guess', route)), 1, route)
+        self.assertIn('guess=core', route)
+        route = self._route_with_level_args('opt', {'keyword': {'general': 'guess=core'}}, trsh=['guess=INDO'])
+        self.assertEqual(len(re.findall(r'guess', route)), 1, route)
+        self.assertIn('guess=INDO', route)
+        self.assertNotIn('core', route)
+
+    def test_a_trsh_opt_option_replaces_the_same_option_of_the_level(self):
+        """Test that the trsh value of an opt option wins over the level's and ARC's, and the level's over ARC's."""
+        route = self._route_with_level_args('opt', {'keyword': {'general': 'opt=(maxcycle=50, verytight)'}})
+        self.assertEqual(route.count('maxcycle='), 1, route)
+        self.assertIn('maxcycle=50', route)
+        self.assertIn('verytight', route)
+        self.assertNotIn(',tight', route)
+        route = self._route_with_level_args('opt', {'keyword': {'general': 'opt=(maxcycle=50)'}},
+                                            trsh=['opt=(maxcycle=200)'])
+        self.assertEqual(route.count('maxcycle='), 1, route)
+        self.assertIn('maxcycle=200', route)
+
+    def test_guess_modifiers_do_not_compete_with_guess_sources(self):
+        """Test that only guess sources compete, and that ARC's own read is kept beside a modifier-only level guess."""
+        checkfile = os.path.join(self._scratch_for_guess(), 'check.chk')
+        with open(checkfile, 'w') as handle:
+            handle.write('chk')
+        for level_guess, expected in [('guess=(read,mix)', 'guess=(read,mix)'),
+                                      ('guess=(read,alter)', 'guess=(read,alter)'),
+                                      ('guess=(mix,always)', 'guess=(mix,always)'),
+                                      ('guess=(read,always)', 'guess=(read,always)'),
+                                      ('guess=(alter)', 'guess=(read,alter)')]:
+            route = self._route_with_level_args('opt', {'keyword': {'general': level_guess}}, checkfile=checkfile)
+            self.assertIn(expected, route)
+            self.assertEqual(route.count('guess'), 1, route)
+        route = self._route_with_level_args('opt', {'keyword': {'general': 'guess=(mix,always)'}})
+        self.assertIn('guess=(mix,always)', route)
+        route = self._route_with_level_args('opt', {'keyword': {'general': 'guess=(core,always)'}},
+                                            trsh=['guess=INDO'])
+        self.assertIn('guess=(INDO,always)', route)
+
+    def _scratch_for_guess(self) -> str:
+        """Return a scratch directory which is removed when the test ends."""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_gaussian_guess_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        return scratch_dir
+
+    def test_arc_job_defaults_yield_to_the_level_and_the_level_to_the_remedy(self):
+        """Test that a level scf=(verytight) survives every job type and that a trsh scf remedy still wins."""
+        for job_type, fine in [('sp', False), ('stability', False), ('scan', False), ('opt', True), ('freq', False),
+                               ('irc', True)]:
+            route = self._route_with_level_args(job_type, {'keyword': {'general': 'scf=(verytight)'}}, fine=fine,
+                                                torsions=[[0, 1, 2, 3]] if job_type == 'scan' else None)
+            self.assertEqual(route.count('scf='), 1, (job_type, route))
+            scf_options = re.search(r'scf=\(([^)]*)\)', route).group(1).split(',')
+            self.assertIn('verytight', scf_options, (job_type, route))
+            self.assertNotIn('tight', scf_options, (job_type, route))
+        route = self._route_with_level_args('sp', {'keyword': {'general': 'scf=(verytight)'}}, trsh=['scf=(tight)'])
+        self.assertNotIn('verytight', route)
+        route = self._route_with_level_args('opt', {'keyword': {'general': 'opt=(loose)'}}, fine=True)
+        opt_options = re.search(r'opt=\(([^)]*)\)', route).group(1).split(',')
+        self.assertIn('loose', opt_options)
+        self.assertNotIn('tight', opt_options)
+
+    def test_integral_option_helpers(self):
+        """Test the Integral keyword helpers."""
+        self.assertEqual(get_integral_option_name('grid=ultrafine'), 'grid')
+        self.assertEqual(get_integral_option_name('UltraFine'), 'grid')
+        self.assertEqual(get_integral_option_name('99590'), 'grid')
+        self.assertEqual(get_integral_option_name('Acc2E=12'), 'acc2e')
+        self.assertEqual(get_integral_option_name('DKH2'), 'relativistic')
+        self.assertEqual(get_integral_option_name('SG1Grid'), 'grid')
+        self.assertEqual(get_integral_option_name('UltraFineGrid'), 'grid')
+        self.assertEqual(get_integral_option_name('-96032'), 'grid')
+        self.assertEqual(pop_integral_options('print=1 int=dkh2 scf=(tight)'), ('print=1  scf=(tight)', ['dkh2']))
+        self.assertEqual(pop_integral_options('Integral(grid=fine, acc2e=10)')[1], ['grid=fine', 'acc2e=10'])
+        self.assertEqual(pop_integral_options('scf=(tight)'), ('scf=(tight)', []))
+        self.assertEqual(fold_integral_options(['grid=ultrafine', 'Acc2E=12'], ['dkh2'], ['grid=300590']),
+                         'integral=(grid=300590, Acc2E=12, dkh2)')
+        self.assertEqual(fold_integral_options(list(), list()), '')
 
     def test_stability_keyword_in_route(self):
         """Test that the wavefunction stability keyword is written for a stability job only"""
