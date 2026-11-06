@@ -298,8 +298,8 @@ class Level(object):
                                      f'Got {arg} which is a {type(arg)} in {self.args}.')
             self.args = ' '.join([arg.lower() for arg in self.args])
         if isinstance(self.args, str):
-            self.args = {'keyword': {'general': args.lower()}, 'block': dict()}
-        elif self.args is not None and not isinstance(args, dict):
+            self.args = {'keyword': {'general': self.args.lower()}, 'block': dict()}
+        elif self.args is not None and not isinstance(self.args, dict):
             raise ValueError(f'The args argument must be either a string, an iterable or a dictionary.\n'
                              f'Got {self.args} which is a {type(self.args)}.')
 

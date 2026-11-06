@@ -1198,8 +1198,6 @@ class Scheduler(object):
             args['shift'] = shift
         if scan_trsh:
             args['keyword']['scan_trsh'] = scan_trsh
-        if isinstance(level_of_theory, Level) and level_of_theory.args is not None:
-            args.update(level_of_theory.get_args())
 
         job = job_factory(job_adapter=job_adapter,
                           project=self.project,

@@ -856,24 +856,30 @@ def get_dropped_level_args(args: dict,
                            level_args: dict,
                            ) -> dict:
     """
-    Get the options of a level of theory which the job args do not carry.
+    Get the options of a level of theory which the job args replace with a different value.
 
-    An option of ``level_args`` is dropped if ``args`` holds no entry under the same two keys or
-    holds a different value for it. An entry of ``args`` which is not a dictionary is treated as
-    carrying no options at all.
+    A level option which the job args do not mention is not dropped, since it is merged into the job
+    args. A level option is dropped if ``args`` holds a different value under the same two keys. An
+    entry of ``args`` which is not a dictionary replaces the whole level entry, so all of the
+    level's options under that key are dropped.
 
     Args:
         args (dict): The job specific arguments.
         level_args (dict): The args of the level of theory, a dictionary of dictionaries.
 
     Returns:
-        dict: The dropped options, keyed as ``level_args`` is, without the empty entries.
+        dict: The replaced level options, keyed as ``level_args`` is, without the empty entries.
     """
     dropped_args = dict()
     for key, val in level_args.items():
-        job_val = args.get(key, None)
-        job_val = job_val if isinstance(job_val, dict) else dict()
-        dropped = {key_2: val_2 for key_2, val_2 in val.items() if job_val.get(key_2, None) != val_2}
+        if key not in args or args[key] is None:
+            continue
+        job_val = args[key]
+        if isinstance(job_val, dict):
+            dropped = {key_2: val_2 for key_2, val_2 in val.items()
+                       if key_2 in job_val and job_val[key_2] != val_2}
+        else:
+            dropped = dict(val)
         if dropped:
             dropped_args[key] = dropped
     return dropped_args
@@ -886,10 +892,10 @@ def set_job_args(args: dict | None,
     """
     Set the job args considering args from ``level`` and from ``trsh``.
 
-    The args of ``level`` are adopted when ``args`` carries no options, deep-copied so that keywords
-    which the adapters later inject into the returned dictionary do not reach the ``Level`` object
-    itself. When ``args`` does carry options it is used as given, and a warning reports the options
-    of ``level`` which it does not carry, i.e., only the options which are actually being dropped.
+    The args of ``level`` are the base and the job ``args`` override them per option, i.e., per
+    (key1, key2) pair, so that a troubleshooting job runs with the options of its level. A warning
+    reports the level options which ``args`` replaces with a different value. An entry of ``args``
+    which is not a dictionary is kept as given, in place of the level's entry under that key.
 
     Args:
         args (dict): The job specific arguments.
@@ -899,14 +905,23 @@ def set_job_args(args: dict | None,
     Returns:
         dict: The initialized job specific arguments.
     """
-    args_carry_options = args is not None and any(val for val in args.values())
-    if args_carry_options and level is not None and level.args and any(val for val in level.args.values()):
-        dropped_args = get_dropped_level_args(args=args, level_args=level.args)
+    args = args if args is not None else dict()
+    if level is not None and level.args:
+        level_args = level.get_args()
+        dropped_args = get_dropped_level_args(args=args, level_args=level_args)
         if dropped_args:
             logger.warning(f'ARC ignores the following user-specified level of theory options '
                            f'in job {job_name}:\n{pformat(dropped_args)}')
-    elif not args_carry_options and level is not None:
-        args = {**(args or dict()), **level.get_args()}
+        merged_args = dict()
+        for key, level_val in level_args.items():
+            job_val = args.get(key, None)
+            if job_val is None:
+                merged_args[key] = level_val
+            elif isinstance(job_val, dict):
+                merged_args[key] = {**level_val, **job_val}
+            else:
+                merged_args[key] = job_val
+        args = {**args, **merged_args}
     for key in ['keyword', 'block', 'trsh']:
         if key not in args.keys():
             args[key] = dict()

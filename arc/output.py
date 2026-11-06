@@ -1794,7 +1794,7 @@ def _gaussian_freq_hessian_method(deck_path: str | None,
     return _gaussian_method_hessian_method(method, getattr(level, 'method_type', None))
 
 
-def _orca_input_lines(path: str) -> list[str] | None:
+def _orca_input_lines(path: str, echoed_only: bool = False) -> list[str] | None:
     """Return the stripped lines of the input of an Orca deck or log, or ``None`` if unreadable.
 
     A log echoes the deck one line at a time behind an ``|  <n]> `` prefix; for a log that carries such lines
@@ -1803,6 +1803,7 @@ def _orca_input_lines(path: str) -> list[str] | None:
     ``****END OF INPUT****`` line that closes a log's echoed input block, and in any case after
     ``ORCA_LOG_EVIDENCE_SCAN_LINE_LIMIT`` lines, a bound that no deck reaches. Every line of a deck and of a
     log's echoed input is read, so a directive anywhere in the input is seen, as it is by TCKDB's detector.
+    With ``echoed_only`` a file that carries no echoed input line gives ``None`` instead of being read as a deck.
     """
     echoed: list[str] = []
     plain: list[str] = []
@@ -1822,6 +1823,8 @@ def _orca_input_lines(path: str) -> list[str] | None:
     except OSError as exc:
         logger.debug("Could not read an Orca input from '%s': %s", path, exc)
         return None
+    if echoed_only and not echoed:
+        return None
     return [line for line in (echoed or plain) if ORCA_INPUT_ECHO_END_MARKER not in line]
 
 
@@ -1835,6 +1838,39 @@ def _orca_route_text(path: str) -> str | None:
     keyword_lines = [' '.join(re.sub(r'#[^#]*(#|$)', ' ', content[1:]).lower().split())
                      for content in lines or list() if content.startswith('!')]
     return ' '.join(keyword_lines) or None
+
+
+def _orca_blocks_text(path: str) -> str | None:
+    """Return the ``%`` blocks of the input echoed by an Orca log, verbatim, joined by newlines.
+
+    Only the log's echoed input lines are read (never a deck). A block starts at a line beginning with ``%`` and
+    holds every following line up to the next line that begins with ``%``, ``!``, ``*`` or ``$``, so nested
+    sub-blocks and their ``end`` lines are kept. Lines are stripped of surrounding whitespace, comments
+    are kept. The coordinate input (a ``* xyz``, ``* int`` or ``* gzmt`` block and a ``%coords`` block) is
+    excluded. Returns ``None`` when the file cannot be read, echoes no input, or echoes no ``%`` block.
+    """
+    lines = _orca_input_lines(path, echoed_only=True)
+    blocks: list[tuple[str, list[str]]] = list()
+    current: list[str] | None = None
+    in_coordinates = False
+    for line in lines or list():
+        if in_coordinates:
+            in_coordinates = not line.startswith('*')
+        elif line.startswith('%'):
+            blocks.append((line[1:].split(None, 1)[0].lower() if line[1:].strip() else '', [line]))
+            current = blocks[-1][1]
+        elif line.startswith(('!', '*', '$')):
+            current = None
+            in_coordinates = line.startswith('*') and line[1:].lower().split()[:1] in (['xyz'], ['int'], ['gzmt'])
+        elif current is not None:
+            current.append(line)
+    texts = list()
+    for name, block in blocks:
+        while block and not block[-1]:
+            block.pop()
+        if name != 'coords':
+            texts.append('\n'.join(block))
+    return '\n'.join(texts) or None
 
 
 def _orca_functional_key(method: str) -> str:
@@ -2162,6 +2198,23 @@ def _get_ess_route(log_path: str | None, project_directory: str) -> str | None:
         if route:
             return route
     return None
+
+
+def _get_ess_blocks(log_path: str | None, project_directory: str) -> str | None:
+    """
+    The ``%`` blocks of an Orca job as the log echoes its input (see ``_orca_blocks_text``), the companion of
+    ``_get_ess_route``, which holds the ``!`` keyword lines. Only the log is read, never the input deck beside it,
+    and only a log the program identifies as Orca. ``None`` for any other program, when the log is missing, and
+    when it echoes no ``%`` block. Never raises.
+    """
+    abs_log = _abs_existing_path(log_path, project_directory)
+    if abs_log is None or _identify_log_ess(abs_log, project_directory) != 'orca':
+        return None
+    try:
+        return _orca_blocks_text(abs_log)
+    except Exception:
+        logger.debug(f"Could not read the input blocks of '{abs_log}'", exc_info=True)
+        return None
 
 
 def _get_composite_step_routes(log_path: str | None, project_directory: str) -> list[str] | None:
@@ -2974,6 +3027,10 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     d['composite_route'] = _get_ess_route(paths.get('composite') or None, project_directory) if converged else None
     d['composite_step_routes'] = _get_composite_step_routes(paths.get('composite') or None, project_directory) \
         if converged else None
+    d['opt_blocks'] = _get_ess_blocks(paths.get('geo') or None, project_directory) if converged else None
+    d['freq_blocks'] = _get_ess_blocks(paths.get('freq') or None, project_directory) if converged else None
+    d['sp_blocks'] = _get_ess_blocks(paths.get('sp') or None, project_directory) if converged else None
+    d['composite_blocks'] = _get_ess_blocks(paths.get('composite') or None, project_directory) if converged else None
     d['opt_dipole_moment_debye'], d['opt_dipole_moment_density'] = _get_gaussian_dipole_moment(
         paths.get('geo') or None, project_directory) if converged and not is_mono and spc.charge == 0 \
         else (None, None)
@@ -3131,6 +3188,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         irc_paths = list(paths.get('irc') or [])
         d['irc_logs'] = [_make_rel_path(path, project_directory) for path in irc_paths]
         d['irc_log_routes'] = [_get_ess_route(path or None, project_directory) for path in irc_paths]
+        d['irc_log_blocks'] = [_get_ess_blocks(path or None, project_directory) for path in irc_paths]
         irc_directions = list(paths.get('irc_directions') or [])
         d['irc_log_directions'] = (
             irc_directions + [None] * (len(irc_paths) - len(irc_directions))

@@ -517,43 +517,46 @@ H      0.00000000   -0.76336400   -0.47261500"""
         level_args = {'keyword': {'opt': 'opt=(verytight)', 'general': 'scf=(qc)'}, 'block': dict()}
 
         self.assertEqual(common.get_dropped_level_args(args=dict(), level_args=dict()), dict())
-        self.assertEqual(common.get_dropped_level_args(args=dict(), level_args=level_args),
-                         {'keyword': {'opt': 'opt=(verytight)', 'general': 'scf=(qc)'}})
+        self.assertEqual(common.get_dropped_level_args(args=dict(), level_args=level_args), dict())
+        self.assertEqual(common.get_dropped_level_args(args={'keyword': {'trsh_only': 'x'}}, level_args=level_args),
+                         dict())
         self.assertEqual(common.get_dropped_level_args(args={'keyword': {'opt': 'opt=(verytight)'}},
-                                                       level_args=level_args),
-                         {'keyword': {'general': 'scf=(qc)'}})
-        self.assertEqual(common.get_dropped_level_args(args={'keyword': {'opt': 'opt=(verytight)',
-                                                                        'general': 'scf=(qc)'}},
                                                        level_args=level_args),
                          dict())
         self.assertEqual(common.get_dropped_level_args(args={'keyword': {'opt': 'opt=(tight)'}},
                                                        level_args=level_args),
-                         {'keyword': {'opt': 'opt=(verytight)', 'general': 'scf=(qc)'}})
+                         {'keyword': {'opt': 'opt=(verytight)'}})
         self.assertEqual(common.get_dropped_level_args(args={'keyword': 'k1'}, level_args=level_args),
                          {'keyword': {'opt': 'opt=(verytight)', 'general': 'scf=(qc)'}})
-        self.assertEqual(common.get_dropped_level_args(args={'keyword': None}, level_args=level_args),
-                         {'keyword': {'opt': 'opt=(verytight)', 'general': 'scf=(qc)'}})
+        self.assertEqual(common.get_dropped_level_args(args={'keyword': None}, level_args=level_args), dict())
 
-    def test_set_job_args_warns_only_for_dropped_options(self):
-        """Test that set_job_args() warns only for level options which the job args do not carry."""
-        level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
-
-        applied_args = {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()}
+    def test_set_job_args_merges_level_args_into_a_troubleshooting_job(self):
+        """Test that the level's options are kept on a job whose own args carry options."""
+        level = Level(method='wb97xd', basis='def2tzvp',
+                      args={'keyword': {'opt': 'opt=(verytight)', 'general': 'int=dkh2'}, 'block': {'1': 'blk'}})
+        job_args = {'keyword': {'scan_trsh': 'x'}, 'block': dict(), 'trsh': {'trsh': ['scf=(qc)']}}
         with self.assertNoLogs(logger='arc', level='WARNING'):
-            args = common.set_job_args(args=applied_args, level=level, job_name='j1')
-        self.assertEqual(args['keyword']['opt'], 'opt=(verytight)')
+            args = common.set_job_args(args=job_args, level=level, job_name='j1')
+        self.assertEqual(args['keyword'], {'opt': 'opt=(verytight)', 'general': 'int=dkh2', 'scan_trsh': 'x'})
+        self.assertEqual(args['block'], {'1': 'blk'})
+        self.assertEqual(args['trsh'], {'trsh': ['scf=(qc)']})
+        args['keyword']['dft_grid'] = 'defgrid2'
+        self.assertNotIn('dft_grid', level.args['keyword'])
 
-        dropping_args = {'keyword': dict(), 'block': dict(), 'trsh': {'trsh': 'scf=(qc)'}}
+    def test_set_job_args_job_overrides_level_on_the_same_option(self):
+        """Test that a job option wins over the level's on the same key and is warned about."""
+        level = Level(method='wb97xd', basis='def2tzvp',
+                      args={'keyword': {'opt': 'opt=(verytight)', 'general': 'int=dkh2'}})
+        job_args = {'keyword': {'opt': 'opt=(tight)'}, 'block': dict(), 'trsh': {'trsh': ['scf=(qc)']}}
         with self.assertLogs(logger='arc', level='WARNING') as captured:
-            args = common.set_job_args(args=dropping_args, level=level, job_name='j1')
-        self.assertEqual(args['trsh'], {'trsh': 'scf=(qc)'})
+            args = common.set_job_args(args=job_args, level=level, job_name='j1')
+        self.assertEqual(args['keyword'], {'opt': 'opt=(tight)', 'general': 'int=dkh2'})
         message = ''.join(captured.output)
         self.assertIn('opt=(verytight)', message)
-        self.assertIn('j1', message)
-        self.assertNotIn('troubleshooting', message)
+        self.assertNotIn('int=dkh2', message)
 
     def test_set_job_args_with_a_non_dict_args_entry(self):
-        """Test that set_job_args() tolerates a job args entry which is not a dictionary."""
+        """Test that set_job_args() keeps a job args entry which is not a dictionary."""
         level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
         with self.assertLogs(logger='arc', level='WARNING') as captured:
             args = common.set_job_args(args={'keyword': 'k1'}, level=level, job_name='j1')

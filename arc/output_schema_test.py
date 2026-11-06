@@ -2022,7 +2022,8 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         """A producer that forgets a latent key cannot pass as a null, and a null of each is valid."""
         record_keys = ('xyz_isotopes', 'coarse_opt_input_xyz_isotopes', 'coarse_opt_output_xyz_isotopes',
                        'opt_input_xyz_isotopes', 'opt_route', 'freq_route', 'sp_route', 'composite_route',
-                       'composite_step_routes', 'sp_t1_diagnostic', 'opt_dipole_moment_debye', 'opt_dipole_moment_density',
+                       'composite_step_routes', 'opt_blocks', 'freq_blocks', 'sp_blocks', 'composite_blocks',
+                       'sp_t1_diagnostic', 'opt_dipole_moment_debye', 'opt_dipole_moment_density',
                        'freq_polarizability_angstrom3')
         for record in (self.species, self.ts):
             for key in record_keys:
@@ -2037,6 +2038,11 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
             self.assert_invalid(self.document, 'irc_log_routes')
             self.ts['irc_log_routes'] = value
             self.assert_valid(self.document)
+        with self.subTest(key='irc_log_blocks'):
+            value = self.ts.pop('irc_log_blocks')
+            self.assert_invalid(self.document, 'irc_log_blocks')
+            self.ts['irc_log_blocks'] = value
+            self.assert_valid(self.document)
         reaction = self.document['reactions'][0]
         for container, keys in ((reaction, ('reversible',)), (reaction['kinetics'], ('comment', 'ts_validation'))):
             for key in keys:
@@ -2050,7 +2056,7 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
     def test_the_latent_export_keys_reject_a_wrong_type(self):
         """Isotopes are positive integers, routes and kinetics text are strings, numbers are numbers."""
         cases = (('xyz_isotopes', [12, 'H']), ('xyz_isotopes', [0, 1]), ('xyz_isotopes', 12),
-                 ('opt_input_xyz_isotopes', [1.5]), ('opt_route', 7), ('sp_t1_diagnostic', 'high'),
+                 ('opt_input_xyz_isotopes', [1.5]), ('opt_route', 7), ('opt_blocks', ['%pal']), ('sp_t1_diagnostic', 'high'),
                  ('opt_dipole_moment_debye', '0.2'), ('opt_dipole_moment_density', 3),
                  ('freq_polarizability_angstrom3', [1.0]))
         for key, value in cases:
@@ -2062,6 +2068,9 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.ts['irc_log_routes'] = [1]
         self.assert_invalid(self.document, 'irc_log_routes')
         self.ts['irc_log_routes'] = [None, None]
+        self.ts['irc_log_blocks'] = [1]
+        self.assert_invalid(self.document, 'irc_log_blocks')
+        self.ts['irc_log_blocks'] = [None, None]
         reaction = self.document['reactions'][0]
         for container, key, value in ((reaction, 'reversible', 'yes'), (reaction['kinetics'], 'comment', 5),
                                       (reaction['kinetics'], 'ts_validation', False)):
@@ -2071,6 +2080,11 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
                 self.assert_invalid(self.document, key)
                 container[key] = original
         self.assert_valid(self.document)
+
+    def test_irc_log_blocks_belong_to_transition_states_only(self):
+        """A species record must not carry the TS-only IRC blocks."""
+        self.species['irc_log_blocks'] = []
+        self.assert_invalid(self.document, 'irc_log_blocks')
 
     def test_irc_log_routes_belong_to_transition_states_only(self):
         """A species record must not carry the TS-only IRC routes."""

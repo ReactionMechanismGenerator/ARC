@@ -87,6 +87,17 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level.solvent, 'water')
         self.assertEqual(level.args, {'keyword': {'general': 'iop(99/33=1)'}, 'block': {}})
 
+    def test_set_args_from_string_list_and_invalid(self):
+        """Test that string and list args are normalized and that unsupported args raise"""
+        level = Level(method='wb97xd', basis='def2tzvp', args='IOP(99/33=1)')
+        self.assertEqual(level.args, {'keyword': {'general': 'iop(99/33=1)'}, 'block': {}})
+        level = Level(method='wb97xd', basis='def2tzvp', args=['Int=DKH2', 'TightPNO'])
+        self.assertEqual(level.args, {'keyword': {'general': 'int=dkh2 tightpno'}, 'block': {}})
+        with self.assertRaises(ValueError):
+            Level(method='wb97xd', basis='def2tzvp', args=5)
+        with self.assertRaises(ValueError):
+            Level(method='wb97xd', basis='def2tzvp', args=['ok', 5])
+
     def test_equal(self):
         """Test identifying equal levels."""
         level_1 = Level(method='b3lyp', basis='def2tzvp', auxiliary_basis='aug-def2-svp',

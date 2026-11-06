@@ -1983,6 +1983,10 @@
         "sp_route",
         "composite_route",
         "composite_step_routes",
+        "opt_blocks",
+        "freq_blocks",
+        "sp_blocks",
+        "composite_blocks",
         "sp_t1_diagnostic",
         "opt_dipole_moment_debye",
         "opt_dipole_moment_density",
@@ -2314,6 +2318,34 @@
             "type": "string"
           },
           "minItems": 1
+        },
+        "opt_blocks": {
+          "description": "The '%' input blocks the opt job ran with, as the opt_log's echoed input lists them, verbatim: every line from a line starting with '%' up to the next line starting with '%', '!', '*' or '$' (or the end of the input), with surrounding whitespace stripped, '#' comments kept and nested 'end' lines kept, the blocks joined by newlines in the order echoed (with $new_job, the blocks of all steps concatenated). The coordinate input ('* xyz', '* int', '* gzmt', matched case-insensitively, and '%coords') is excluded. Beside opt_route, which holds the '!' keyword lines of an Orca job only. ORCA defaults (RI-J or RIJCOSX, frozen core, the DFT grid, NormalPNO) appear in neither opt_route nor opt_blocks, so the absence of a keyword is not the absence of the approximation; defaults are resolved with the job's ESS version. Read from the log's echoed input only, never from the input deck and never rebuilt from a level of theory or job.args; no qualifier is derived from it. null for any program other than Orca, for an unconverged species, when there is no log, and when the log echoes no '%' block.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "freq_blocks": {
+          "description": "As opt_blocks, for the freq job and freq_log.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sp_blocks": {
+          "description": "As opt_blocks, for the sp job and sp_log.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "composite_blocks": {
+          "description": "As opt_blocks, for the composite-method job and composite_log.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "sp_t1_diagnostic": {
           "description": "The T1 diagnostic (unitless) that the exported sp log prints for its correlated method (for example coupled cluster, or the coupled-pair methods of ORCA, which also print one), parsed from that log at export time by ARC's parser for its program; no method name is matched. Null when there is no sp log, when it prints none, when it cannot be parsed, and for an unconverged species.",
@@ -2725,6 +2757,7 @@
         "ts_guesses",
         "irc_logs",
         "irc_log_routes",
+        "irc_log_blocks",
         "irc_log_directions",
         "irc_log_levels",
         "irc_converged",
@@ -2790,6 +2823,16 @@
         },
         "irc_log_routes": {
           "description": "Index-aligned with irc_logs: the effective keyword line of each IRC job, as for opt_route (the log's echoed route first). null for a log that is missing, from another program, or that holds no keyword line.",
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "irc_log_blocks": {
+          "description": "Index-aligned with irc_logs: the '%' input blocks of each IRC job, as for opt_blocks (the log's echoed input only). null for a log that is missing, from another program, or that echoes no '%' block.",
           "type": "array",
           "items": {
             "type": [

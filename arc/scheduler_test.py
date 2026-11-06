@@ -4161,17 +4161,19 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertEqual(reported.call_args.kwargs['label'], 'C2H6')
         self.assertIs(reported.call_args.kwargs['job'], job_mock)
 
+    @patch('arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit')
+    @patch('arc.job.adapter.JobAdapter.execute')
     @patch('arc.scheduler.job_factory')
-    def test_run_job_does_not_alias_level_args(self, mock_job_factory):
-        """Test that run_job() passes a detached copy of the level args to the job."""
-        job_mock = MagicMock()
-        job_mock.job_name = 'opt_a0000'
-        job_mock.server = None
-        mock_job_factory.return_value = job_mock
+    def test_run_job_keeps_the_level_args_and_the_scan_trsh_in_the_adapter_args(self,
+                                                                                 mock_job_factory,
+                                                                                 mock_execute,
+                                                                                 mock_limit):
+        """Test that the adapter's args hold both the level's options and the scan troubleshooting keyword,
+        and that mutating them leaves the level alone."""
+        mock_job_factory.side_effect = lambda **kwargs: job_factory(testing=True, **kwargs)
         level = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
                       args={'keyword': {'opt': 'opt=(verytight)'}})
-
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_run_job_level_args')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_run_job_level_args_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='test_run_job_level_args', ess_settings=self.ess_settings,
                           species_list=[ARCSpecies(label='C2H6', smiles='CC')],
@@ -4183,13 +4185,18 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                           testing=True,
                           job_types=self.job_types1,
                           )
-        sched.run_job(label='C2H6', job_type='opt', level_of_theory=level, job_adapter='gaussian')
-
-        args = mock_job_factory.call_args.kwargs['args']
-        self.assertEqual(args['keyword'], {'opt': 'opt=(verytight)'})
-        self.assertIsNot(args['keyword'], level.args['keyword'])
-        args['keyword']['dft_grid'] = 'defgrid2'
+        sched.run_job(label='C2H6', job_type='opt', level_of_theory=level, job_adapter='gaussian',
+                      scan_trsh='scf=(tight)')
+        job = sched.job_dict['C2H6']['opt'][next(iter(sched.job_dict['C2H6']['opt']))]
+        self.assertEqual(job.args['keyword'], {'opt': 'opt=(verytight)', 'scan_trsh': 'scf=(tight)'})
+        job.args['keyword']['dft_grid'] = 'defgrid2'
         self.assertEqual(level.args, {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()})
+
+        sched.run_job(label='C2H6', job_type='opt', level_of_theory=level.as_dict(), job_adapter='gaussian',
+                      trsh=['scf=(qc)'])
+        names = list(sched.job_dict['C2H6']['opt'])
+        retry = sched.job_dict['C2H6']['opt'][names[-1]]
+        self.assertEqual(retry.args['keyword'], {'opt': 'opt=(verytight)'})
 
     @patch('arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit')
     @patch('arc.scheduler.job_factory')

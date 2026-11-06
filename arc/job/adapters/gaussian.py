@@ -8,6 +8,7 @@ import datetime
 import math
 import os
 import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from mako.template import Template
@@ -48,6 +49,140 @@ default_job_settings, gaussian_memory_headroom_fractions, global_ess_settings, i
 GAUSSIAN_MEMORY_HEADROOM_FRACTION = gaussian_memory_headroom_fractions[0]
 
 STABILITY_KEYWORD = 'stable=(rext,noopt)'
+
+
+INTEGRAL_GRID_NAMES = frozenset({'coarse', 'coarsegrid', 'fine', 'finegrid', 'pass0grid', 'sg1', 'sg1grid',
+                                 'superfine', 'superfinegrid', 'ultrafine', 'ultrafinegrid'})
+INTEGRAL_RELATIVISTIC_NAMES = frozenset({'dkh', 'dkh0', 'dkh2', 'dkhso', 'douglaskrollhess', 'nodkh',
+                                         'nonrelativistic', 'resc'})
+OPT_CONVERGENCE_NAMES = frozenset({'loose', 'tight', 'verytight'})
+SCF_ALGORITHM_NAMES = frozenset({'qc', 'xqc', 'yqc'})
+SCF_CONVERGENCE_NAMES = frozenset({'tight', 'verytight'})
+GUESS_SOURCE_NAMES = frozenset({'am1', 'cards', 'checkpoint', 'core', 'harris', 'huckel', 'indo', 'local', 'read'})
+INTEGRAL_GROUPS = {'grid': INTEGRAL_GRID_NAMES, 'relativistic': INTEGRAL_RELATIVISTIC_NAMES}
+OPT_GROUPS = {'convergence': OPT_CONVERGENCE_NAMES}
+SCF_GROUPS = {'algorithm': SCF_ALGORITHM_NAMES, 'convergence': SCF_CONVERGENCE_NAMES}
+GUESS_GROUPS = {'source': GUESS_SOURCE_NAMES}
+
+
+def get_integral_option_name(option: str) -> str:
+    """
+    Get the name under which a Gaussian ``Integral`` option competes with other options.
+    All integration grid specifications (``grid=ultrafine``, ``UltraFineGrid``, ``grid=300590``, ``-96032``) share
+    the name ``grid``, and all relativistic Hamiltonian options (``DKH``, ``DKH0``, ``DKH2``, ``DKHSO``,
+    ``DouglasKrollHess``, ``RESC``, ``NoDKH``, ``NonRelativistic``) share the name ``relativistic``.
+
+    Args:
+        option (str): A single option of the ``Integral`` keyword.
+
+    Returns:
+        str: The lowercase option name.
+    """
+    option = option.strip().lower()
+    if re.fullmatch(r'-?\d+', option):
+        return 'grid'
+    return get_route_option_name(option, INTEGRAL_GROUPS)
+
+
+def get_route_option_name(option: str, groups: dict[str, frozenset[str]] | None = None) -> str:
+    """
+    Get the name under which an option of a route keyword competes with other options of that keyword.
+
+    Args:
+        option (str): A single option, e.g., ``'maxcycle=100'`` or ``'tight'``.
+        groups (dict, optional): Names of mutually exclusive bare options, keyed by the shared option name.
+
+    Returns:
+        str: The lowercase option name.
+    """
+    option = option.strip().lower()
+    if '=' in option:
+        return option.split('=', 1)[0].strip()
+    return next((name for name, members in (groups or dict()).items() if option in members), option)
+
+
+def pop_route_options(text: str, keywords: tuple[str, ...]) -> tuple[str, list[str]]:
+    """
+    Remove all occurrences of the given keywords from a string of route keywords and return their options.
+
+    Args:
+        text (str): Route keywords, e.g., ``'int=dkh2 scf=(tight)'``.
+        keywords (tuple[str, ...]): The keyword names to remove, e.g., ``('int', 'integral')``.
+
+    Returns:
+        tuple[str, list[str]]: The text without the keywords, and their options in order of appearance.
+    """
+    pattern = re.compile(r'(?<!\w)(?:' + '|'.join(keywords) + r')(?:=(\([^)]*\)|[^\s()]+)|(\([^)]*\)))',
+                         re.IGNORECASE)
+    options = list()
+    for match in pattern.finditer(text):
+        options.extend(option for option in re.split(r'[,\s]+', (match.group(1) or match.group(2)).strip('()'))
+                       if option)
+    return pattern.sub('', text), options
+
+
+def fold_route_options(option_lists: list[list[str]],
+                       name_fn: Callable[[str], str] = get_route_option_name,
+                       ) -> list[str]:
+    """
+    Fold lists of options of one route keyword into a single list in which each option name appears once.
+    A later list overrides an earlier one on the same option name, keeping the position of the first occurrence.
+
+    Args:
+        option_lists (list[list[str]]): Lists of options, from lowest to highest precedence.
+        name_fn (Callable, optional): Maps an option to the name under which it competes with others.
+
+    Returns:
+        list[str]: The folded options.
+    """
+    folded = dict()
+    for options in option_lists:
+        for option in options:
+            folded[name_fn(option)] = option
+    return list(folded.values())
+
+
+def get_opt_option_name(option: str) -> str:
+    """The name under which an ``Opt`` option competes with others (see ``get_route_option_name``)."""
+    return get_route_option_name(option, OPT_GROUPS)
+
+
+def get_scf_option_name(option: str) -> str:
+    """The name under which an ``SCF`` option competes with others (see ``get_route_option_name``)."""
+    return get_route_option_name(option, SCF_GROUPS)
+
+
+def get_guess_option_name(option: str) -> str:
+    """The name under which a ``Guess`` option competes with others (see ``get_route_option_name``)."""
+    return get_route_option_name(option, GUESS_GROUPS)
+
+
+def pop_integral_options(text: str) -> tuple[str, list[str]]:
+    """
+    Remove all ``Integral`` (``int``) keywords from a string of route keywords and return their options.
+
+    Args:
+        text (str): Route keywords, e.g., ``'int=dkh2 scf=(tight)'``.
+
+    Returns:
+        tuple[str, list[str]]: The text without the ``Integral`` keywords, and their options in order of appearance.
+    """
+    return pop_route_options(text, ('int', 'integral'))
+
+
+def fold_integral_options(*option_lists: list[str]) -> str:
+    """
+    Fold lists of ``Integral`` options into a single ``integral=(...)`` keyword.
+    A later list overrides an earlier one on the same option name, keeping the position of the first occurrence.
+
+    Args:
+        *option_lists (list[str]): Lists of options, from lowest to highest precedence.
+
+    Returns:
+        str: The single ``Integral`` keyword, or an empty string if there are no options.
+    """
+    folded = fold_route_options(list(option_lists), get_integral_option_name)
+    return f"integral=({', '.join(folded)})" if folded else ''
 
 
 # job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
@@ -247,13 +382,44 @@ class GaussianAdapter(JobAdapter):
         joined = ' '.join(str(v) for v in keyword_args.values())
         return re.search(r'\bverytight\b', joined, re.IGNORECASE) is not None
 
+    @staticmethod
+    def _fold_route_keyword(input_dict: dict,
+                            keys: list[str],
+                            keywords: tuple[str, ...],
+                            name_fn: Callable[[str], str],
+                            ) -> tuple[dict, list[str]]:
+        """
+        Remove a route keyword from the given entries of ``input_dict`` and fold its options into one list.
+        The entries are read in the order given, so a later entry overrides an earlier one on the same option name.
+
+        Args:
+            input_dict (dict): The input dictionary.
+            keys (list[str]): The entries to read, from lowest to highest precedence.
+            keywords (tuple[str, ...]): The names of the route keyword, e.g., ``('scf',)``.
+            name_fn (Callable): Maps an option to the name under which it competes with others.
+
+        Returns:
+            tuple[dict, list[str]]: A copy of ``input_dict`` without the keyword, and the folded options.
+        """
+        input_dict = input_dict.copy()
+        option_lists = list()
+        for key in keys:
+            input_dict[key], options = pop_route_options(input_dict[key], keywords)
+            option_lists.append(options)
+        return input_dict, fold_route_options(option_lists, name_fn)
+
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
+
+        Each of the ``integral``, ``opt``, ``scf`` and ``guess`` keywords is written once per route. Where an option
+        is given more than once, the precedence is ARC's job default, then the level's option, then a troubleshooting
+        remedy, and the highest wins. ARC's job defaults are collected apart from the troubleshooting remedies.
         """
         input_dict = dict()
         for key in ['block',
                     'dispersion',
+                    'arc_defaults',
                     'fine',
                     'job_type_1',
                     'job_type_2',
@@ -276,17 +442,13 @@ class GaussianAdapter(JobAdapter):
         input_dict['method'] = 'cbs-qb3' if self.level.method == 'cbs-qb3-paraskevas' else self.level.method
         input_dict['multiplicity'] = self.multiplicity
         input_dict['scan_trsh'] = self.args['keyword']['scan_trsh'] if 'scan_trsh' in self.args['keyword'] else ''
-        acc2e_requested = 'Acc2E=14' in input_dict['trsh']  # troubleshooting asked to tighten integrals
-        integral_algorithm = 'Acc2E=14' if acc2e_requested else 'Acc2E=12'
-        input_dict['trsh'] = input_dict['trsh'].replace('int=(Acc2E=14)', '') if acc2e_requested else input_dict['trsh']
-        # The InaccurateQuadrature remedy escalates to a finer DFT integration grid (recorded as
-        # 'int=grid=NNNMMM'). Fold that grid into the single integral=() keyword (replacing the
-        # default ultrafine) rather than emitting a second, conflicting Int keyword - ultrafine is
-        # (99,590), the remedy grid e.g. 300590 = (300,590) is finer. Sourced from ess_trsh_methods
-        # so the finer grid persists across retries, and the standalone int=grid= token is dropped.
-        grid_remedy = next((m for m in (self.ess_trsh_methods or []) if m.startswith('int=grid=')), None)
-        integration_grid = grid_remedy.split('int=grid=', 1)[1] if grid_remedy else 'ultrafine'
-        input_dict['trsh'] = re.sub(r'\s*int=grid=\S+', '', input_dict['trsh']) if grid_remedy else input_dict['trsh']
+        acc2e_options = ['Acc2E=14'] if 'Acc2E=14' in input_dict['trsh'] else list()
+        input_dict['trsh'], trsh_options = pop_integral_options(input_dict['trsh'])
+        grid_remedies = [method.split('int=grid=', 1)[1] for method in (self.ess_trsh_methods or list())
+                         if method.startswith('int=grid=')]
+        trsh_integral_options = acc2e_options + trsh_options + [f'grid={grid}' for grid in grid_remedies[:1]]
+        input_dict['keywords'], level_integral_options = pop_integral_options(input_dict.get('keywords', ''))
+        integral = fold_integral_options(['grid=ultrafine', 'Acc2E=12'], level_integral_options, trsh_integral_options)
         input_dict['xyz'] = [xyz_to_str(xyz) for xyz in self.xyz] if self.run_multi_species else xyz_to_str(self.xyz)
 
         if self.level.basis is not None:
@@ -327,22 +489,8 @@ class GaussianAdapter(JobAdapter):
             if self.fine:
                 if self.level.method_type in ['dft', 'composite']:
                     # Note that the Acc2E argument is not available in Gaussian03
-                    input_dict['fine'] = f'integral=(grid={integration_grid}, {integral_algorithm})'
-                    # input_dict['trsh'] may have scf=(...) in it, so we need to add the tight and direct keywords to it
-                    scf_start = input_dict['trsh'].find('scf=(')
-                    scf_end = input_dict['trsh'].find(')', scf_start)
-                    scf_fine_content = 'tight,direct'
-                    if scf_start != -1 and scf_end != -1:
-                        scf_content = input_dict['trsh'][scf_start + 5:scf_end]
-                        scf_fine_content += ',' + scf_content
-                        # Remove ')' if it's the last character in the scf content
-                        if scf_fine_content == ')':
-                            scf_fine_content = scf_fine_content[:-1]
-                        input_dict['trsh'] = input_dict['trsh'][:scf_start + 4] + '(' + scf_fine_content + ')' + input_dict['trsh'][scf_end + 1:]
-                    else:
-                        if input_dict['trsh']:
-                            input_dict['trsh'] += ' '
-                        input_dict['trsh'] += 'scf=(tight,direct)'
+                    input_dict['fine'] = integral
+                    input_dict['arc_defaults'] += ' scf=(tight,direct)'
                 # 'no_tight' is set by trsh_keyword_loose_disp when a previous attempt hit
                 # MaxOptCycles with forces converged but displacement criteria unreachable.
                 # 'tight' is also dropped when the user requested verytight, which replaces it.
@@ -356,23 +504,18 @@ class GaussianAdapter(JobAdapter):
                 else f"opt=({', '.join(key for key in keywords)})"
 
         elif self.job_type == 'freq':
-            input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid={integration_grid}, {integral_algorithm})'
+            input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) {integral}'
 
         elif self.job_type == 'optfreq':
             input_dict['job_type_2'] = 'freq IOp(7/33=1)'
 
         elif self.job_type in ['sp', 'conf_sp']:
-            input_dict['job_type_1'] = f'integral=(grid={integration_grid}, {integral_algorithm})'
-            if input_dict['trsh']:
-                input_dict['trsh'] += ' '
-            input_dict['trsh'] += 'scf=(tight, direct)'
+            input_dict['job_type_1'] = integral
+            input_dict['arc_defaults'] += ' scf=(tight, direct)'
 
         elif self.job_type == 'stability':
-            input_dict['job_type_1'] = f'{STABILITY_KEYWORD} ' \
-                                       f'integral=(grid=ultrafine, {integral_algorithm})'
-            if input_dict['trsh']:
-                input_dict['trsh'] += ' '
-            input_dict['trsh'] += 'scf=(tight, direct)'
+            input_dict['job_type_1'] = f'{STABILITY_KEYWORD} {integral}'
+            input_dict['arc_defaults'] += ' scf=(tight, direct)'
 
         elif self.job_type == 'scan':
             scans, scans_strings = list(), list()
@@ -389,11 +532,8 @@ class GaussianAdapter(JobAdapter):
                 self.torsions = torsions_to_scans(scans, direction=-1)
 
             ts = 'ts, ' if self.is_ts else ''
-            input_dict['job_type_1'] = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5)' \
-                                       f'integral=(grid={integration_grid}, {integral_algorithm})'
-            if input_dict['trsh']:
-                input_dict['trsh'] += ' '
-            input_dict['trsh'] += 'scf=(tight, direct)'
+            input_dict['job_type_1'] = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5){integral}'
+            input_dict['arc_defaults'] += ' scf=(tight, direct)'
             input_dict['scan'] = '\n\n' if not input_dict['scan'] else input_dict['scan']
             for scan in scans_strings:
                 input_dict['scan'] += f'D {scan} S {int(360 / self.scan_res)} {self.scan_res:.1f}\n'
@@ -401,36 +541,9 @@ class GaussianAdapter(JobAdapter):
         elif self.job_type == 'irc':
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03
-                input_dict['fine'] = f'integral=(grid={integration_grid}, {integral_algorithm})'
-                # We need to add scf=(direct) to the trsh argument
-                # But we to check if it's already there, and
-                if 'direct' not in input_dict['trsh']:
-                    scf_start = input_dict['trsh'].find('scf=(')
-                    scf_end = input_dict['trsh'].find(')', scf_start)
-                    scf_fine_content = 'direct'
-                    if scf_start != -1 and scf_end != -1:
-                        scf_content = input_dict['trsh'][scf_start + 5:scf_end]
-                        scf_fine_content += ',' + scf_content
-                        # Remove ')' if it's the last character in the scf content
-                        if scf_fine_content == ')':
-                            scf_fine_content = scf_fine_content[:-1]
-                        input_dict['trsh'] = input_dict['trsh'][:scf_start + 4] + '(' + scf_fine_content + ')' + input_dict['trsh'][scf_end + 1:]
-                    else:
-                        if input_dict['trsh']:
-                            input_dict['trsh'] += ' '
-                        input_dict['trsh'] += 'scf=(direct)'
-                
+                input_dict['fine'] = integral
+                input_dict['arc_defaults'] += ' scf=(direct)'
             input_dict['job_type_1'] = f'irc=(CalcAll, {self.irc_direction}, maxpoints=50, stepsize=7)'
-
-        if (acc2e_requested or grid_remedy) and not self.fine and not input_dict['fine'] \
-                and self.job_type in ['opt', 'conf_opt', 'optfreq', 'composite', 'irc']:
-            # Fine jobs fold Acc2E=14 (and any InaccurateQuadrature grid remedy) into integral=(...).
-            # A non-fine opt/IRC job would otherwise silently drop those troubleshooting requests
-            # (no integral= in the route), producing a byte-identical resubmit. Emit the integral=()
-            # keyword so the tightened accuracy and/or finer grid actually take effect (the default
-            # ultrafine grid stays a fine-only concern - only an explicit grid remedy is emitted here).
-            grid_part = f'grid={integration_grid}, ' if grid_remedy else ''
-            input_dict['fine'] = f'integral=({grid_part}{integral_algorithm})'
 
         for constraint_tuple in self.constraints:
             constraint_type = constraint_type_dict[len(constraint_tuple[0])]
@@ -442,51 +555,58 @@ class GaussianAdapter(JobAdapter):
         if self.level.solvation_method is not None:
             input_dict['job_type_1'] += f' SCRF=({self.level.solvation_method}, Solvent={self.level.solvent})'
 
+        input_dict['keywords'], level_guess_options = pop_route_options(input_dict['keywords'], ('guess',))
+        input_dict['trsh'], trsh_guess_options = pop_route_options(input_dict['trsh'], ('guess',))
         if self.species[0].number_of_atoms > 1:
-            guess_keyword = ''
-            if 'guess=INDO' in input_dict['trsh']:
-                guess_keyword = 'guess=INDO'
-                input_dict['trsh'] = input_dict['trsh'].replace('guess=INDO', '')
-            elif self.checkfile is not None and os.path.isfile(self.checkfile):
-                guess_keyword = ' guess=read'
+            guess_options = fold_route_options([level_guess_options, trsh_guess_options], get_guess_option_name)
+            if self.checkfile is not None and os.path.isfile(self.checkfile):
+                default_guess = 'read'
             elif any(spc.is_ts or (spc.multiplicity == 1 and spc.number_of_radicals is not None
                                    and spc.number_of_radicals > 1)
                      for spc in self.species):
-                # guess=mix mixes the HOMO and LUMO to break alpha-beta (and spatial) symmetry in the initial
-                # guess, i.e., it seeds a broken-symmetry unrestricted wavefunction. This is desired for
-                # open-shell (biradical) singlets and for TSs (partial diradical character along the breaking
-                # bonds), but serves no purpose for restricted closed-shell species (the wavefunction cannot
-                # break spin symmetry, so the SCF merely starts from a deliberately perturbed guess) or for
-                # simple high-spin radicals (doublets/triplets converge to the correct state from the default
-                # guess). Benchmark data (arcbench, 2026-07): 426 doublet jobs show identical, clean <S**2>
-                # (~0.755) whether seeded with guess=mix or guess=read.
-                guess_keyword = ' guess=mix'
-            if guess_keyword:
+                # guess=mix seeds a broken-symmetry unrestricted wavefunction. It is wanted for TSs and
+                # open-shell singlets (biradicals) only; restricted closed-shell species and high-spin
+                # radicals converge to the correct state from the default guess.
+                default_guess = 'mix'
+            else:
+                default_guess = None
+            always = any(option.lower() == 'always' for option in guess_options)
+            if default_guess is not None \
+                    and not any(get_guess_option_name(option) == 'source' for option in guess_options) \
+                    and not (default_guess == 'read' and always):
+                guess_options = [default_guess] + [option for option in guess_options
+                                                   if option.lower() != default_guess]
+            if guess_options:
                 if input_dict['job_type_1']:
                     input_dict['job_type_1'] += ' '
-                input_dict['job_type_1'] += guess_keyword
+                guess = f"guess={guess_options[0]}" if len(guess_options) == 1 \
+                    else f"guess=({','.join(guess_options)})"
+                input_dict['job_type_1'] += guess if trsh_guess_options else f' {guess}'
+        elif level_guess_options or trsh_guess_options:
+            guess_options = fold_route_options([level_guess_options, trsh_guess_options], get_guess_option_name)
+            input_dict['keywords'] = ' '.join(part for part in [input_dict['keywords'],
+                                                                f"guess=({','.join(guess_options)})"] if part)
 
-        # Fix OPT
-        terms_opt = [r'opt=\((.*?)\)', r'opt=(\w+)']
-        input_dict, parameters_opt = combine_parameters(input_dict, terms_opt)
-        # If 'opt' parameters are found, concatenate and reinsert them
-        if parameters_opt:
-            # Keep a single force-constant recompute directive (calcall > recalcfc=* > calcfc) so a
-            # troubleshot opt=() clause never carries conflicting Hessian options - the base route
-            # always contributes 'calcfc', while the MaxOptCycles ladder may add recalcfc/calcall.
-            if 'calcall' in parameters_opt:
-                parameters_opt = [p for p in parameters_opt if p != 'calcfc' and not p.startswith('recalcfc')]
-            elif any(p.startswith('recalcfc') for p in parameters_opt):
-                parameters_opt = [p for p in parameters_opt if p != 'calcfc']
-            combined_opt_params = ','.join(parameters_opt)
-            input_dict['job_type_1'] = f"opt=({combined_opt_params}) {input_dict['job_type_1']}"
+        if not any(integral in input_dict[key] for key in ['job_type_1', 'job_type_2', 'fine']):
+            input_dict['keywords'] = ' '.join(
+                part for part in [input_dict['keywords'],
+                                  fold_integral_options(level_integral_options, trsh_integral_options)] if part)
 
-        #Fix SCF
-        # This may be redundant due to additional fixes in the above code
-        terms = [r'scf=\((.*?)\)', r'scf=(\w+)']
-        input_dict, parameters = combine_parameters(input_dict, terms)
-        if parameters:
-            input_dict['trsh'] += f" scf=({','.join(parameters)})"
+        route_keys = ['arc_defaults', 'job_type_1', 'job_type_2', 'fine', 'keywords', 'trsh']
+        input_dict, opt_options = self._fold_route_keyword(input_dict, route_keys, ('opt',), get_opt_option_name)
+        if opt_options:
+            if 'calcall' in opt_options:
+                opt_options = [p for p in opt_options if p != 'calcfc' and not p.startswith('recalcfc')]
+            elif any(p.startswith('recalcfc') for p in opt_options):
+                opt_options = [p for p in opt_options if p != 'calcfc']
+            input_dict['job_type_1'] = f"opt=({','.join(sorted(opt_options))}) {input_dict['job_type_1']}"
+
+        no_xqc = 'no_xqc' in (self.ess_trsh_methods or list()) or 'no_xqc' in list(self.args['trsh'].values())
+        input_dict, scf_options = self._fold_route_keyword(input_dict, route_keys, ('scf',), get_scf_option_name)
+        if no_xqc:
+            scf_options = [option for option in scf_options if option.lower() not in SCF_ALGORITHM_NAMES]
+        if scf_options:
+            input_dict['trsh'] += f" scf=({','.join(sorted(scf_options))})"
 
         # Fix IRC
         terms_irc = [r'irc=\((.*?)\)', r'irc=(\w+)']

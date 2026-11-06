@@ -41,6 +41,7 @@ from arc.output import (
     _get_rmg_py_git_commit,
     _get_energy_corrections,
     _match_arkane_correction_keys,
+    _get_ess_blocks,
     _get_ess_route,
     _get_gaussian_dipole_moment,
     _get_gaussian_polarizability,
@@ -68,6 +69,7 @@ from arc.output import (
     _orca_input_lines,
     _orca_log_evidence,
     _orca_is_double_hybrid,
+    _orca_blocks_text,
     _orca_route_text,
     _parse_arkane_log_provenance,
     _parse_opt_log,
@@ -7507,6 +7509,121 @@ class TestLatentExports(unittest.TestCase):
         self.assertIn(' freq ', result['irc_log_routes'][0])
         self.assertIsNone(result['irc_log_routes'][1])
         self.assertEqual(result['irc_log_routes'][2], 'rks b3lyp/g sv(p) tightscf opt')
+
+    def _orca_log_with_echoed_input(self, echoed: list[str], source: str | None = None) -> str:
+        """Return a copy of an Orca freq log whose echoed input is replaced by ``echoed``."""
+        source = source or os.path.join(ARC_TESTING_PATH, 'freq', 'orca_5.0.4_zora_freq_h2o.out')
+        with open(source) as handle:
+            lines = handle.read().splitlines()
+        first = next(i for i, line in enumerate(lines) if line.startswith('|  1>'))
+        last = next(i for i, line in enumerate(lines) if '****END OF INPUT****' in line)
+        echo = [f'|{number:>3}> {text}' for number, text in enumerate(echoed, start=1)]
+        path = os.path.join(self._scratch(), 'orca.out')
+        with open(path, 'w') as handle:
+            handle.write('\n'.join(lines[:first] + echo + lines[last:]) + '\n')
+        return path
+
+    def test_orca_blocks_are_the_echoed_percent_blocks_verbatim(self):
+        """Test that %rel and friends are exported verbatim, nested ends kept, coordinates excluded."""
+        log = self._orca_log_with_echoed_input([
+            '! DLPNO-CCSD(T) def2-TZVP def2-TZVP/C TightPNO',
+            '%maxcore 8000',
+            '%rel',
+            '  method DKH',
+            '  order 2',
+            'end',
+            '%mdci # PNO',
+            '  TCutPNO 3.33e-7',
+            '  Localize true',
+            'end',
+            '%basis',
+            '  NewGTO H "def2-SVP" end',
+            'end',
+            '%pal nprocs 2 end',
+            '%coords',
+            '  CTyp xyz',
+            'end',
+            '* xyz 0 1',
+            '  O 0.0 0.0 0.1',
+            '%notablock 1',
+            '*',
+        ])
+        self.assertEqual(_orca_blocks_text(log),
+                         '%maxcore 8000\n%rel\nmethod DKH\norder 2\nend\n%mdci # PNO\nTCutPNO 3.33e-7\n'
+                         'Localize true\nend\n%basis\nNewGTO H "def2-SVP" end\nend\n%pal nprocs 2 end')
+        self.assertEqual(_get_ess_blocks(log, '/dummy'), _orca_blocks_text(log))
+        self.assertEqual(_get_ess_route(log, '/dummy'), 'dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightpno')
+
+    def test_orca_block_with_a_trailing_end_on_its_first_line_runs_to_the_next_block(self):
+        """Test that a first line ending in 'end' closes a sub-block, not the block, and uppercase coordinates."""
+        log = self._orca_log_with_echoed_input([
+            '! B3LYP def2-SVP Opt',
+            '%basis NewGTO H "def2-SVP" end',
+            '  NewGTO O "def2-TZVP" end',
+            'end',
+            '%geom Constraints {B 0 1 C} end',
+            '  MaxIter 200',
+            'end',
+            '%pal nprocs 2 end',
+            '* XYZ 0 1',
+            '  O 0.0 0.0 0.1',
+            '%notablock 1',
+            '*',
+            '%maxcore 1000',
+        ])
+        self.assertEqual(_orca_blocks_text(log),
+                         '%basis NewGTO H "def2-SVP" end\nNewGTO O "def2-TZVP" end\nend\n'
+                         '%geom Constraints {B 0 1 C} end\nMaxIter 200\nend\n%pal nprocs 2 end\n%maxcore 1000')
+
+    def test_orca_blocks_of_the_real_zora_and_dkh2_fixtures(self):
+        """Test the fixtures: the relativistic keyword stays in the route, the blocks are %pal and %maxcore."""
+        for name, keyword in (('orca_5.0.4_zora_freq_h2o.out', 'zora'), ('orca_5.0.4_dkh2_freq_h2o.out', 'dkh2')):
+            with self.subTest(name=name):
+                log = os.path.join(ARC_TESTING_PATH, 'freq', name)
+                self.assertEqual(_get_ess_blocks(log, '/dummy'), '%pal nprocs 2 end\n%maxcore 1536')
+                self.assertIn(keyword, _get_ess_route(log, '/dummy').split())
+
+    def test_orca_blocks_multi_line_block_of_the_example_log(self):
+        """Test a block written over several lines, as ARC writes %pal."""
+        self.assertEqual(_get_ess_blocks(self.orca_log, '/dummy'), '%maxcore 8000\n%pal\nnprocs 2\nend')
+
+    def test_no_orca_blocks_for_other_programs_decks_or_logs_without_blocks(self):
+        """Test null for Gaussian, a deck (never read), a missing log and an echo without a % line."""
+        scratch = self._scratch()
+        self.assertIsNone(_get_ess_blocks(self.gaussian_opt_log, scratch))
+        deck = os.path.join(scratch, 'input.in')
+        with open(deck, 'w') as handle:
+            handle.write('! B3LYP def2-SVP Opt\n%pal nprocs 4 end\n* xyz 0 1\n')
+        self.assertIsNone(_orca_blocks_text(deck))
+        self.assertIsNone(_get_ess_blocks(None, scratch))
+        self.assertIsNone(_get_ess_blocks('/nonexistent.log', scratch))
+        log = self._orca_log_with_echoed_input(['! PBE0 def2-SVP', '* xyz 0 1', '  O 0 0 0', '*'])
+        self.assertIsNone(_get_ess_blocks(log, scratch))
+        with patch('arc.output._orca_blocks_text', side_effect=RuntimeError('boom')):
+            self.assertIsNone(_get_ess_blocks(self.orca_log, scratch))
+
+    def test_the_species_record_carries_the_blocks_of_each_job(self):
+        """Test the blocks keys of a species record: per job, null for a non-Orca log and when unconverged."""
+        paths = {'geo': self.orca_log, 'freq': self.gaussian_freq_log, 'sp': self.orca_log,
+                 'composite': '/nonexistent.log'}
+        result = self._species_dict(paths=paths)
+        self.assertEqual(result['opt_blocks'], '%maxcore 8000\n%pal\nnprocs 2\nend')
+        self.assertIsNone(result['freq_blocks'])
+        self.assertEqual(result['sp_blocks'], result['opt_blocks'])
+        self.assertIsNone(result['composite_blocks'])
+        unconverged = self._species_dict(paths=paths, converged=False)
+        for key in ('opt_blocks', 'freq_blocks', 'sp_blocks', 'composite_blocks'):
+            self.assertIsNone(unconverged[key], key)
+        self.assertEqual(result['opt_route'], 'rks b3lyp/g sv(p) tightscf opt')
+
+    def test_the_ts_record_carries_the_blocks_of_each_irc_job(self):
+        """Test that irc_log_blocks is index-aligned with irc_logs."""
+        ts_spc = TestSpcToDict._make_spc_mock(self, label='TS0', is_ts=True)
+        output_dict = {'TS0': {'convergence': True, 'job_types': {'opt': True},
+                               'paths': {'irc': [self.gaussian_freq_log, '/nonexistent.log', self.orca_log]}}}
+        result = _spc_to_dict(ts_spc, output_dict, '/abs')
+        self.assertEqual(result['irc_log_blocks'],
+                         [None, None, '%maxcore 8000\n%pal\nnprocs 2\nend'])
 
     def test_the_dipole_moment_its_density_and_the_polarizability_come_from_the_gaussian_logs(self):
         """Test the last Debye dipole and its density header of the opt log and the freq log's polarizability."""
