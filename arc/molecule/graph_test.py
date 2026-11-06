@@ -108,6 +108,37 @@ class TestGraph(unittest.TestCase):
         self.assertIsInstance(edges, list)
         self.assertEqual(len(edges), 5)
 
+    def test_get_all_edges_order_is_a_function_of_the_graph(self):
+        """
+        Test that Graph.get_all_edges() returns the edges in a pinned, graph-determined order.
+
+        The expected order is written out literally rather than recomputed from the graph, so an
+        implementation that orders by anything other than the graph fails here.
+        """
+        vertices = [Vertex() for _ in range(5)]
+        graph = Graph(vertices)
+        # Vertex 0 carries three of the edges and no vertex receives its edges in index order,
+        # so the expected list below differs from this insertion sequence: it pins the outer
+        # rule (self.vertices order) and the inner one (a vertex's own edges order) at once.
+        # Every edge is reached from both of its endpoints, so each must be emitted at its
+        # first sighting and suppressed at the second.
+        added = [graph.add_edge(Edge(vertices[i], vertices[j]))
+                 for i, j in [(3, 4), (0, 2), (1, 2), (0, 3), (0, 1)]]
+
+        index = {id(vertex): i for i, vertex in enumerate(vertices)}
+        edges = graph.get_all_edges()
+        order = [(index[id(edge.vertex1)], index[id(edge.vertex2)]) for edge in edges]
+
+        self.assertEqual(order, [(0, 2), (0, 3), (0, 1), (1, 2), (3, 4)])
+        # the graph's own edge objects, not equal copies
+        for edge in edges:
+            self.assertTrue(any(edge is candidate for candidate in added))
+        self.assertEqual(len(edges), len(added))
+        # repeated calls agree with each other
+        self.assertEqual(graph.get_all_edges(), edges)
+        # and every edge is present exactly once
+        self.assertEqual(len(edges), len({id(edge) for edge in edges}))
+
     def test_has_vertex(self):
         """
         Test the Graph.has_vertex() method.
