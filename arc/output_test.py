@@ -5,6 +5,7 @@ Tests for the arc.output module (consolidated output.yml writer).
 import copy
 import datetime
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -1249,8 +1250,8 @@ class TestGetFreqHessianMethod(unittest.TestCase):
 
     def test_gaussian_dft_functionals_starting_like_a_correlated_method_stay_analytic(self):
         """A DFT functional whose name opens with a correlated-method prefix stays analytic."""
-        for index, method in enumerate(('b3lyp', 'mpw3lyp', 'mpw2plyp', 'b2plyp', 'b2plypd3',
-                                        'b97d3', 'wb97xd')):
+        for index, method in enumerate(('b3lyp', 'mpw3lyp', 'mpw2plyp', 'b2plyp', 'b2plypd',
+                                        'mpw2plypd', 'b97d3', 'wb97xd')):
             level = Level(method=method, basis='def2tzvp', software='gaussian')
             self.assertEqual(level.method_type, 'dft')
             self.assertEqual(self.gaussian(f'dftlike_{index}.gjf',
@@ -1272,6 +1273,60 @@ class TestGetFreqHessianMethod(unittest.TestCase):
             level = Level(method=method, basis='def2tzvp', software='gaussian')
             self.assertIsNone(self.gaussian(f'dh_{index}.gjf',
                                             f'#P {method}/def2tzvp freq', level))
+
+    def test_gaussian_freq_option_list_forms_agree_on_the_hessian_method(self):
+        """Every spelling of the Freq option list that names Numer or EnOnly states it, in any option order."""
+        level = Level(method='b3lyp', basis='def2tzvp', software='gaussian')
+        cases = (('freq=numer', 'finite_difference_gradient'),
+                 ('freq=numerical', 'finite_difference_gradient'),
+                 ('freq(numer)', 'finite_difference_gradient'),
+                 ('freq=(numer)', 'finite_difference_gradient'),
+                 ('freq=(noraman,numer)', 'finite_difference_gradient'),
+                 ('freq=(noraman, numer)', 'finite_difference_gradient'),
+                 ('freq=(numer,noraman)', 'finite_difference_gradient'),
+                 ('freq=noraman,numer', 'finite_difference_gradient'),
+                 ('freq=numer,noraman', 'finite_difference_gradient'),
+                 ('FREQ=NoRaman,NUMER', 'finite_difference_gradient'),
+                 ('Frequency=(NoRaman,Numer)', 'finite_difference_gradient'),
+                 ('freq (numer)', 'finite_difference_gradient'),
+                 ('freq = numer', 'finite_difference_gradient'),
+                 ('freq=noraman,enonly', 'finite_difference_energy'),
+                 ('freq=(noraman,enonly)', 'finite_difference_energy'),
+                 ('freq=enonly', 'finite_difference_energy'),
+                 ('freq=(noraman,doublenumer)', 'finite_difference_energy'),
+                 ('freq=analytic', 'analytic'),
+                 ('freq=(analytic,noraman)', 'analytic'),
+                 ('freq=noraman', 'analytic'),
+                 ('freq=(noraman)', 'analytic'))
+        for index, (freq, expected) in enumerate(cases):
+            self.assertEqual(self.gaussian(f'optlist_{index}.gjf', f'#P b3lyp/def2tzvp {freq}', level), expected,
+                             msg=freq)
+
+    def test_gaussian_unparenthesised_freq_list_stops_at_whitespace(self):
+        """The option list ends at the first whitespace, so a later keyword's Numer is not a Freq option."""
+        level = Level(method='b3lyp', basis='def2tzvp', software='gaussian')
+        self.assertEqual(self.gaussian('stop_ws.gjf', '#P b3lyp/def2tzvp freq=noraman scf=(numer)', level), 'analytic')
+        self.assertEqual(self.gaussian('stop_ws2.gjf', '#P b3lyp/def2tzvp freq=noraman,numer scf=xqc', level),
+                         'finite_difference_gradient')
+        self.assertEqual(self.gaussian('stop_paren.gjf', '#P b3lyp/def2tzvp freq=(noraman) opt=(numer)', level),
+                         'analytic')
+
+    def test_gaussian_double_hybrid_table(self):
+        """G16 documents analytic frequencies for the B2PLYP and mPW2PLYP families; the rest is null."""
+        expected = {'b2plyp': 'analytic', 'b2plypd': 'analytic', 'mpw2plyp': 'analytic', 'mpw2plypd': 'analytic',
+                    'b2plypd3': None, 'mpw2plypd3': None, 'dsdpbep86': None, 'pbe0dh': None, 'pbeqidh': None,
+                    'b2gpplyp': None}
+        for index, (method, value) in enumerate(expected.items()):
+            level = Level(method=method, basis='def2tzvp', software='gaussian')
+            self.assertEqual(self.gaussian(f'dhtable_{index}.gjf', f'#P {method}/def2tzvp freq', level), value,
+                             msg=method)
+
+    def test_orca_directive_past_line_5000_of_a_deck_is_read(self):
+        """A directive anywhere in a deck is seen, as it is by TCKDB's detector."""
+        level = Level(method='b3lyp', basis='def2svp', software='orca')
+        deck = self.deck('orca_late.inp', '# filler\n' * 6000 + '! b3lyp def2-svp NumFreq\n')
+        self.assertEqual(_get_freq_hessian_method(deck, None, 'orca', level, None, self.scratch),
+                         'finite_difference_gradient')
 
     def test_gaussian_deck_wins_over_the_log(self):
         """The deck is ARC's request; the log only echoes it."""
@@ -1693,6 +1748,61 @@ class TestGetFreqHessianMethod(unittest.TestCase):
         level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
         self.assertIsNone(_get_freq_hessian_method('nonexistent.gjf', '/also/missing.log',
                                                    'gaussian', level, None, self.scratch))
+
+
+def _tckdb_detector():
+    """Return TCKDB's ``detect_hessian_method``, or ``None`` when ``tckdb_schemas`` is not installed."""
+    if importlib.util.find_spec('tckdb_schemas') is None:
+        return None
+    return importlib.import_module('tckdb_schemas.hessian_method_detection').detect_hessian_method
+
+
+@unittest.skipUnless(_tckdb_detector() is not None, 'tckdb_schemas.hessian_method_detection is not importable')
+class TestFreqHessianMethodAgreesWithTckdbDetector(unittest.TestCase):
+    """ARC's ``_get_freq_hessian_method`` never states a value that TCKDB's deck detector contradicts."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scratch = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.scratch, True)
+        cls.detect = staticmethod(_tckdb_detector())
+
+    def decks(self):
+        """Return ``(label, software, method, deck text, expected ARC value)`` for each deck under test."""
+        gjf = '%chk=c.chk\n#P {method}/def2tzvp {freq}\n\ntitle\n\n0 1\nC 0.0 0.0 0.0\n\n'
+        orca = '! {method} def2-svp {keywords}\n* xyz 0 1\nC 0 0 0\n*\n'
+        return (
+            ('g freq=noraman,numer', 'gaussian', 'b3lyp', gjf.format(method='b3lyp', freq='freq=noraman,numer'),
+             'finite_difference_gradient'),
+            ('g freq=(noraman,numer)', 'gaussian', 'b3lyp', gjf.format(method='b3lyp', freq='freq=(noraman,numer)'),
+             'finite_difference_gradient'),
+            ('g freq=numer', 'gaussian', 'b3lyp', gjf.format(method='b3lyp', freq='freq=numer'),
+             'finite_difference_gradient'),
+            ('g freq=enonly', 'gaussian', 'b3lyp', gjf.format(method='b3lyp', freq='freq=enonly'),
+             'finite_difference_energy'),
+            ('g bare freq b3lyp', 'gaussian', 'b3lyp', gjf.format(method='b3lyp', freq='freq'), 'analytic'),
+            ('g bare freq b2plyp', 'gaussian', 'b2plyp', gjf.format(method='b2plyp', freq='freq'), 'analytic'),
+            ('g bare freq b2plypd3', 'gaussian', 'b2plypd3', gjf.format(method='b2plypd3', freq='freq'), None),
+            ('o NumFreq', 'orca', 'b3lyp', orca.format(method='b3lyp', keywords='NumFreq'),
+             'finite_difference_gradient'),
+            ('o NumFreq NumGrad', 'orca', 'b3lyp', orca.format(method='b3lyp', keywords='NumFreq NumGrad'),
+             'finite_difference_energy'),
+            ('o AnFreq', 'orca', 'b3lyp', orca.format(method='b3lyp', keywords='AnFreq'), 'analytic'),
+            ('o NumFreq past line 5000', 'orca', 'b3lyp',
+             '# filler\n' * 6000 + orca.format(method='b3lyp', keywords='NumFreq'), 'finite_difference_gradient'),
+        )
+
+    def test_arc_never_contradicts_a_directive_tckdb_detects(self):
+        for index, (label, software, method, text, expected) in enumerate(self.decks()):
+            level = Level(method=method, basis='def2tzvp', software=software)
+            name = f'deck_{index}.inp'
+            with open(os.path.join(self.scratch, name), 'w') as handle:
+                handle.write(text)
+            arc_value = _get_freq_hessian_method(name, None, software, level, None, self.scratch)
+            tckdb_value = self.detect(software, text)
+            self.assertEqual(arc_value, expected, msg=label)
+            if tckdb_value is not None:
+                self.assertEqual(arc_value, tckdb_value.value, msg=label)
 
 
 class TestGetEnergyCorrections(unittest.TestCase):

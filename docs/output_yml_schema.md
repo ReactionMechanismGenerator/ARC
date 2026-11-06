@@ -568,10 +568,12 @@ log is on disk.
 
 | ESS | Signal | Result |
 |---|---|---|
-| `gaussian` | route's `freq` carries `numer`/`numerical` | `finite_difference_gradient` |
-| `gaussian` | route's `freq` carries `enonly` | `finite_difference_energy` |
+| `gaussian` | route's `freq` option list carries `numer`/`numerical` | `finite_difference_gradient` |
+| `gaussian` | route's `freq` option list carries `enonly`/`doublenumer` (`enonly` wins over `numer`) | `finite_difference_energy` |
+| `gaussian` | route's `freq` option list carries `analytic` and neither of the above | `analytic` |
 | `gaussian` | bare `freq`, method `hf`/`rhf`/`uhf`, `mp2`, `cis`, `casscf` | `analytic` |
-| `gaussian` | bare `freq`, R/U DFT functional (`b2plyp`, `b2plypd3`, `mpw2plyp` included) | `analytic` |
+| `gaussian` | bare `freq`, R/U DFT functional (`b2plyp`, `b2plypd`, `mpw2plyp`, `mpw2plypd` included) | `analytic` |
+| `gaussian` | bare `freq`, `b2plypd3`, `mpw2plypd3`, DSDPBEP86, PBE0DH, PBEQIDH, B2GPPLYP or another double hybrid G16 does not document with analytic frequencies | `null` |
 | `gaussian` | bare `freq`, method `mp3`, `mp4(sdq)`, `mp4(dq)`, `ccd`, `ccsd`, `cid`, `cisd`, `qcisd`, `bd` | `finite_difference_gradient` |
 | `gaussian` | bare `freq`, method `rohf` | `finite_difference_gradient` |
 | `gaussian` | bare `freq`, method `mp4` (i.e. MP4(SDTQ)), `mp5`, `ccsd(t)`, `qcisd(t)`, `qcisd(tq)`, `bd(t)`, `bd(tq)` | `finite_difference_energy` |
@@ -710,9 +712,8 @@ The double hybrids Gaussian does not document an analytic Hessian for are exclud
 from the DFT rule by **substring** match, matching how the Orca branch excludes the
 same family: a name carrying `dsd`, `pwpb95`, `qidh`, `pbe0dh`, `pbe0-dh`, `b2gpplyp`
 or `wb97x-2` is `null`. This covers spelling variants — `dsd-pbep86`, `revdsdpbep86`,
-`dsd-blyp`, `pbe-qidh` — that an exact-match list missed. `b2plyp`, `b2plypd3` and
-`mpw2plyp`, which Gaussian *does* implement with analytic second derivatives, are not
-matched by any of those substrings and stay `analytic`.
+`dsd-blyp`, `pbe-qidh` — that an exact-match list missed. `b2plyp`, `b2plypd` and
+`mpw2plyp`, `mpw2plypd` stay `analytic`; `b2plypd3` and `mpw2plypd3` are `null`.
 
 A **composite** level yields `null`: the internal frequency step of a composite
 method is the method's own choice, not ARC's request. Gaussian *log* text is not
@@ -726,9 +727,11 @@ semiempirical, so it is reported `null` rather than `analytic`. That is the
 conservative direction — a missing value, never a wrong one — but it is a limitation
 of the type deduction rather than a statement about the functional.
 
-On the Orca side the keyword line is read from the head of the file: a log's echoed
-input block ends at `****END OF INPUT****` and the scan stops there, and in any case
-after a few thousand lines, so a multi-hundred-megabyte log is not read through. When
+On the Orca side every line of a deck is read, and so is every line of a log's echoed
+input block, which ends at `****END OF INPUT****`; the scan stops there, and in any case
+after 2,000,000 lines (the log-evidence limit), so a multi-hundred-megabyte log without an
+echoed block is not read through. A directive anywhere in the input is therefore seen, as it
+is by TCKDB's `detect_hessian_method`. When
 no keyword line can be read at all — an archived log truncated to its tail — the value
 is `null`.
 
@@ -738,9 +741,32 @@ documents an analytic Hessian for, as listed above.
 
 For Gaussian, the bare-`freq` rows were checked against the Gaussian manual indexed in
 the group knowledge base (the G09 `Freq` page: `Analytic` is available for RHF, UHF, CIS,
-CASSCF, MP2 and all DFT methods and is their default; the G09 MP2 page: "MP2, B2PLYP[D],
-mPW2PLYP[D]: Energies, analytic gradients, and analytic frequencies"). Nothing there
-contradicts a row, so none changed.
+CASSCF, MP2 and all DFT methods and is their default) and against the Gaussian 16 pages.
+
+Gaussian 16 double hybrids, from https://gaussian.com/mp/ (the DFT page,
+https://gaussian.com/dft/, only says "The double hybrid functionals are discussed with the
+MP2 keyword since they have similar computational cost"): the availability line reads "MP2,
+B2PLYP methods, mPW2PLYP methods: Energies, analytic gradients, and analytic frequencies."
+The page defines "Grimme's B2PLYP and mPW2PLYP methods; the empirical dispersion corrected
+variations are specified by appending a D to the keyword name: e.g., B2PLYPD". `B2PLYPD3`
+is described only as "the B2PLYP method combined with Grimme's D3BJ dispersion", and
+DSDPBEP86 and the PBE0DH and PBEQIDH functionals carry no analytic-frequency statement.
+
+| Gaussian double hybrid | `freq_hessian_method` under a bare `freq` |
+|---|---|
+| `B2PLYP`, `B2PLYPD`, `mPW2PLYP`, `mPW2PLYPD` | `analytic` |
+| `B2PLYPD3` | `null` (the page does not say whether the "B2PLYP methods" line covers the D3BJ variant) |
+| `mPW2PLYPD3`, `DSDPBEP86`, `PBE0DH`, `PBEQIDH`, `B2GPPLYP`, `wB97X-2`, `PWPB95` | `null` |
+
+A wrong `analytic` is the harmful error, because TCKDB 0.144 and later refuses an upload whose
+stated Hessian method the shipped deck contradicts (422 `hessian_method_contradicts_input_deck`).
+The `Freq` option list is read as the text in parentheses (`freq=(noraman,numer)`,
+`freq(numer)`, `freq (numer)`), or, unparenthesised, as the text after `=` up to the next
+whitespace (`freq=noraman,numer`); keyword and option names are case-insensitive. Gaussian
+documents the parenthesised form for several options (G09 Input Overview: "Multiple options
+are enclosed in parentheses and separated by any valid delimiter"), and the documentation
+read does not state whether the unparenthesised comma list is accepted; ARC reads it so that
+it never states `analytic` for a deck TCKDB reads as finite difference.
 
 The PySCF rule is not re-derived here: `run_freq` in
 `arc/job/adapters/scripts/pyscf_script.py` branches on the spin multiplicity alone —

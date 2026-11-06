@@ -99,10 +99,14 @@ GAUSSIAN_RO_FD_ENERGY_METHODS = frozenset({'mp2', 'mp3', 'mp4', 'mp4(sdq)', 'mp4
                                            'mp4(sdtq)', 'mp4sdtq',
                                            'ccd', 'ccsd', 'ccsd(t)', 'ccsd-t'})
 GAUSSIAN_NO_ANALYTIC_HESSIAN_DFT_MARKERS = ('dsd', 'pwpb95', 'qidh', 'pbe0dh', 'pbe0-dh',
-                                            'b2gpplyp', 'wb97x-2')
+                                            'b2gpplyp', 'wb97x-2',
+                                            'b2plypd3', 'b2plyp-d3', 'mpw2plypd3', 'mpw2plyp-d3')
+GAUSSIAN_FREQ_ANALYTIC_OPTIONS = frozenset({'analytic'})
+GAUSSIAN_FREQ_FD_GRADIENT_OPTIONS = frozenset({'numer', 'numerical'})
+GAUSSIAN_FREQ_FD_ENERGY_OPTIONS = frozenset({'enonly', 'doublenumer'})
 GAUSSIAN_CORRELATED_METHOD_REGEX = re.compile(r'^(?:ro|r|u)?(?:mp[3-9]|cc|qci|ci|bd|cas|hf)(?:\b|[a-z]*\()')
 GAUSSIAN_FREQ_KEYWORD_REGEX = re.compile(
-    r'\bfreq(?:uency)?(?![a-z])(?:\s*=?\s*\(([^)]*)\)|\s*=\s*([^\s,]+))?',
+    r'\bfreq(?:uency)?(?![a-z])(?:\s*=?\s*\(([^)]*)\)|\s*=\s*([^\s()]+))?',
     re.IGNORECASE)
 
 GAUSSIAN_ATOM_MASS_REGEX = re.compile(r'^\s*Atom\s+\d+\s+has atomic number\s+(\d+)\s+and mass\s+(\d+\.\d+)\s*$')
@@ -144,7 +148,6 @@ ORCA_ANALYTIC_HESSIAN_HEADER = 'ORCA SCF HESSIAN'
 ORCA_OPTIMIZATION_MARKERS = ('GEOMETRY OPTIMIZATION CYCLE', 'THE OPTIMIZATION HAS CONVERGED')
 ORCA_LOG_EVIDENCE_SCAN_LINE_LIMIT = 2000000
 ORCA_INPUT_ECHO_END_MARKER = '****END OF INPUT****'
-ORCA_ROUTE_SCAN_LINE_LIMIT = 5000
 ORCA_FREQ_KEYWORD_REGEX = re.compile(r'(?<![a-z])freq(?![a-z])')
 
 ARKANE_STATMECH_SUBDIRS = ('thermo', 'kinetics')
@@ -1676,14 +1679,27 @@ def _gaussian_freq_keyword_options(route: str) -> str | None:
     """Return the lowercase options attached to the route's ``freq`` keyword.
 
     ``''`` means the route requested a bare ``freq`` with no options, ``None`` means the
-    route carries no ``freq`` keyword at all. ``freq=numer``, ``freq=(noraman,numer)``
-    and ``freq(numer)`` all yield the text between the delimiters. A letter may not
-    follow the keyword, so log prose such as ``Frequencies --`` does not match.
+    route carries no ``freq`` keyword at all. ``freq=numer``, ``freq=(noraman,numer)``,
+    ``freq(numer)`` and the unparenthesised list ``freq=noraman,numer`` all yield the text
+    between the delimiters, or after the ``=`` up to the next whitespace. Gaussian documents
+    the parenthesised form for several options (G09 Input Overview, "Input Syntax":
+    ``keyword=(option1, option2, ...)``, and the G16 Freq page: ``Freq=(Numer, Polar)``);
+    the unparenthesised list is read as well, so that ARC never states a value that the
+    deck contradicts. A letter may not follow the keyword, so log prose such as
+    ``Frequencies --`` does not match.
     """
     match = GAUSSIAN_FREQ_KEYWORD_REGEX.search(route)
     if match is None:
         return None
     return (match.group(1) or match.group(2) or '').lower()
+
+
+def _gaussian_freq_option_names(options: str) -> set[str]:
+    """Return the option names of a ``freq`` option string, split on commas and whitespace.
+
+    A ``name=value`` option contributes ``name``.
+    """
+    return {part.split('=', 1)[0] for part in re.split(r'[,\s]+', options) if part.split('=', 1)[0]}
 
 
 def _gaussian_method_hessian_method(method: str, method_type: str | None) -> str | None:
@@ -1702,6 +1718,14 @@ def _gaussian_method_hessian_method(method: str, method_type: str | None) -> str
     a ``'dft'`` level carrying none of the ``GAUSSIAN_NO_ANALYTIC_HESSIAN_DFT_MARKERS``
     substrings is analytic. Anything else — composite, semiempirical, force field, an
     unlisted wavefunction method — is ``None``.
+
+    Double hybrids follow the Gaussian 16 MP2 page (https://gaussian.com/mp/): "MP2, B2PLYP methods,
+    mPW2PLYP methods: Energies, analytic gradients, and analytic frequencies." The page names B2PLYP and
+    mPW2PLYP and their ``D`` variants ("the empirical dispersion corrected variations are specified by
+    appending a D to the keyword name"), so ``b2plyp``, ``b2plypd``, ``mpw2plyp`` and ``mpw2plypd`` are
+    analytic. It describes ``B2PLYPD3`` only as "the B2PLYP method combined with Grimme's D3BJ dispersion"
+    and does not place it under the analytic-frequency line, so ``b2plypd3`` is ``None``, as are
+    DSDPBEP86, PBE0DH and PBEQIDH, which the page lists without an analytic-frequency statement.
     """
     normalized = method.lower().strip()
     if normalized.startswith('ro'):
@@ -1757,10 +1781,13 @@ def _gaussian_freq_hessian_method(deck_path: str | None,
     options = _gaussian_freq_keyword_options(route)
     if options is None:
         return None
-    if 'enonly' in options:
+    names = _gaussian_freq_option_names(options)
+    if names & GAUSSIAN_FREQ_FD_ENERGY_OPTIONS:
         return HESSIAN_METHOD_FD_ENERGY
-    if 'numer' in options:
+    if names & GAUSSIAN_FREQ_FD_GRADIENT_OPTIONS:
         return HESSIAN_METHOD_FD_GRADIENT
+    if names & GAUSSIAN_FREQ_ANALYTIC_OPTIONS:
+        return HESSIAN_METHOD_ANALYTIC
     method = getattr(level, 'method', None)
     if not method:
         return None
@@ -1774,14 +1801,15 @@ def _orca_input_lines(path: str) -> list[str] | None:
     only they are returned, prefix removed, so a deck and a log yield the same lines and the banner and warnings
     of the log are never read. A file without echoed lines is read as a deck, line by line. The scan stops at the
     ``****END OF INPUT****`` line that closes a log's echoed input block, and in any case after
-    ``ORCA_ROUTE_SCAN_LINE_LIMIT`` lines.
+    ``ORCA_LOG_EVIDENCE_SCAN_LINE_LIMIT`` lines, a bound that no deck reaches. Every line of a deck and of a
+    log's echoed input is read, so a directive anywhere in the input is seen, as it is by TCKDB's detector.
     """
     echoed: list[str] = []
     plain: list[str] = []
     try:
         with open(path, 'r', errors='ignore') as f:
             for line_number, line in enumerate(f):
-                if line_number >= ORCA_ROUTE_SCAN_LINE_LIMIT:
+                if line_number >= ORCA_LOG_EVIDENCE_SCAN_LINE_LIMIT:
                     break
                 content = line.strip()
                 if content.startswith('|') and '>' in content:
