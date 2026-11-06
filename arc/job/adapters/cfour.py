@@ -22,6 +22,7 @@ from arc.job.adapters.common import (_initialize_adapter,
                                      which,
                                      )
 from arc.job.factory import register_job_adapter
+from arc.job.input_options import capture_input_options
 from arc.job.local import execute_command, submit_job
 from arc.level import Level
 from arc.species.converter import zmat_from_xyz, zmat_to_str
@@ -224,8 +225,10 @@ class CFourAdapter(JobAdapter):
 
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
 
+        input_file = Template(input_template).render(**input_dict)
+        capture_input_options(self, input_file)
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
-            f.write(Template(input_template).render(**input_dict))
+            f.write(input_file)
 
     def set_files(self) -> None:
         """

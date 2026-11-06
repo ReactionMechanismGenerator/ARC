@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.job.adapters.common module
 """
 
+import os
 import shutil
 import tempfile
 import unittest
@@ -12,9 +13,16 @@ import unittest
 from types import SimpleNamespace
 
 import arc.job.adapters.common as common
+from arc.job.adapters.cfour import CFourAdapter
 from arc.job.adapters.gaussian import GaussianAdapter
+from arc.job.adapters.mockter import MockAdapter
 from arc.job.adapters.molpro import MolproAdapter
+from arc.job.adapters.qchem import QChemAdapter
+from arc.job.adapters.terachem import TeraChemAdapter
+from arc.job.adapters.xtb_adapter import xTBAdapter
+from arc.job.input_options import get_input_options, job_input_options
 from arc.level import Level
+from arc.settings.settings import input_filenames
 from arc.species import ARCSpecies
 
 
@@ -517,42 +525,46 @@ H      0.00000000   -0.76336400   -0.47261500"""
         level_args = {'keyword': {'opt': 'opt=(verytight)', 'general': 'scf=(qc)'}, 'block': dict()}
 
         self.assertEqual(common.get_dropped_level_args(args=dict(), level_args=dict()), dict())
-        self.assertEqual(common.get_dropped_level_args(args=dict(), level_args=level_args),
-                         {'keyword': {'opt': 'opt=(verytight)', 'general': 'scf=(qc)'}})
+        self.assertEqual(common.get_dropped_level_args(args=dict(), level_args=level_args), dict())
+        self.assertEqual(common.get_dropped_level_args(args={'keyword': {'trsh_only': 'x'}}, level_args=level_args),
+                         dict())
         self.assertEqual(common.get_dropped_level_args(args={'keyword': {'opt': 'opt=(verytight)'}},
-                                                       level_args=level_args),
-                         {'keyword': {'general': 'scf=(qc)'}})
-        self.assertEqual(common.get_dropped_level_args(args={'keyword': {'opt': 'opt=(verytight)',
-                                                                        'general': 'scf=(qc)'}},
                                                        level_args=level_args),
                          dict())
         self.assertEqual(common.get_dropped_level_args(args={'keyword': {'opt': 'opt=(tight)'}},
                                                        level_args=level_args),
-                         {'keyword': {'opt': 'opt=(verytight)', 'general': 'scf=(qc)'}})
+                         {'keyword': {'opt': 'opt=(verytight)'}})
         self.assertEqual(common.get_dropped_level_args(args={'keyword': 'k1'}, level_args=level_args),
                          {'keyword': {'opt': 'opt=(verytight)', 'general': 'scf=(qc)'}})
-        self.assertEqual(common.get_dropped_level_args(args={'keyword': None}, level_args=level_args),
-                         {'keyword': {'opt': 'opt=(verytight)', 'general': 'scf=(qc)'}})
+        self.assertEqual(common.get_dropped_level_args(args={'keyword': None}, level_args=level_args), dict())
 
-    def test_set_job_args_warns_only_for_dropped_options(self):
-        """Test that set_job_args() warns only for level options which the job args do not carry."""
-        level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
-
-        applied_args = {'keyword': {'opt': 'opt=(verytight)'}, 'block': dict()}
+    def test_set_job_args_merges_level_args_into_a_troubleshooting_job(self):
+        """Test that the level's options are kept on a job whose own args carry options."""
+        level = Level(method='wb97xd', basis='def2tzvp',
+                      args={'keyword': {'opt': 'opt=(verytight)', 'general': 'int=dkh2'}, 'block': {'1': 'blk'}})
+        job_args = {'keyword': {'scan_trsh': 'x'}, 'block': dict(), 'trsh': {'trsh': ['scf=(qc)']}}
         with self.assertNoLogs(logger='arc', level='WARNING'):
-            args = common.set_job_args(args=applied_args, level=level, job_name='j1')
-        self.assertEqual(args['keyword']['opt'], 'opt=(verytight)')
+            args = common.set_job_args(args=job_args, level=level, job_name='j1')
+        self.assertEqual(args['keyword'], {'opt': 'opt=(verytight)', 'general': 'int=dkh2', 'scan_trsh': 'x'})
+        self.assertEqual(args['block'], {'1': 'blk'})
+        self.assertEqual(args['trsh'], {'trsh': ['scf=(qc)']})
+        args['keyword']['dft_grid'] = 'defgrid2'
+        self.assertNotIn('dft_grid', level.args['keyword'])
 
-        dropping_args = {'keyword': dict(), 'block': dict(), 'trsh': {'trsh': 'scf=(qc)'}}
+    def test_set_job_args_job_overrides_level_on_the_same_option(self):
+        """Test that a job option wins over the level's on the same key and is warned about."""
+        level = Level(method='wb97xd', basis='def2tzvp',
+                      args={'keyword': {'opt': 'opt=(verytight)', 'general': 'int=dkh2'}})
+        job_args = {'keyword': {'opt': 'opt=(tight)'}, 'block': dict(), 'trsh': {'trsh': ['scf=(qc)']}}
         with self.assertLogs(logger='arc', level='WARNING') as captured:
-            common.set_job_args(args=dropping_args, level=level, job_name='j1')
+            args = common.set_job_args(args=job_args, level=level, job_name='j1')
+        self.assertEqual(args['keyword'], {'opt': 'opt=(tight)', 'general': 'int=dkh2'})
         message = ''.join(captured.output)
         self.assertIn('opt=(verytight)', message)
-        self.assertIn('j1', message)
-        self.assertNotIn('troubleshooting', message)
+        self.assertNotIn('int=dkh2', message)
 
     def test_set_job_args_with_a_non_dict_args_entry(self):
-        """Test that set_job_args() tolerates a job args entry which is not a dictionary."""
+        """Test that set_job_args() keeps a job args entry which is not a dictionary."""
         level = Level(method='wb97xd', basis='def2tzvp', args={'keyword': {'opt': 'opt=(verytight)'}})
         with self.assertLogs(logger='arc', level='WARNING') as captured:
             args = common.set_job_args(args={'keyword': 'k1'}, level=level, job_name='j1')
@@ -719,6 +731,80 @@ class TestResolveJobServer(unittest.TestCase):
         self.assertEqual(common.resolve_job_server({'gaussian': ['zeus']}, 'gaussian',
                                                    args={'keyword': {}}),
                          'zeus')
+
+
+class TestAdapterInputOptions(unittest.TestCase):
+    """
+    Contains unit tests of the options each adapter records when it writes its input deck.
+    """
+    XYZ = """O 0.0 0.0 0.1173
+H 0.0 0.7572 -0.4692
+H 0.0 -0.7572 -0.4692"""
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.project_directory = tempfile.mkdtemp(prefix='test_input_options_')
+        cls.addClassCleanup(shutil.rmtree, cls.project_directory, ignore_errors=True)
+
+    def _job(self, adapter_class, job_type: str, level: Level, name: str, **kwargs):
+        """Build a job of ``adapter_class`` for H2O in testing mode, which writes its input deck."""
+        return adapter_class(execution_type=kwargs.pop('execution_type', 'queue'),
+                             job_type=job_type,
+                             level=level,
+                             project='test',
+                             project_directory=tempfile.mkdtemp(prefix=f'{name}_', dir=self.project_directory),
+                             species=[ARCSpecies(label='H2O', smiles='O', xyz=self.XYZ)],
+                             testing=True,
+                             **kwargs)
+
+    def test_each_deck_writing_adapter_captures_its_options(self):
+        """Each adapter that writes an input deck records the options it wrote, keyed by the species label"""
+        cases = [(QChemAdapter, 'opt', Level(method='wb97x-d', basis='def2-tzvp'),
+                  '$rem\nJOBTYPE       opt\nMETHOD        wb97x-d\nUNRESTRICTED  False\nBASIS         def2-tzvp\n$end'),
+                 (MolproAdapter, 'sp', Level(method='ccsd(t)-f12', basis='cc-pvtz-f12'),
+                  'gprint,orbitals;\nbasis=cc-pvtz-f12\nint;\n{hf;\nmaxit,999;\nwf,spin=0,charge=0;\n}\nccsd(t)-f12;'),
+                 (TeraChemAdapter, 'opt', Level(method='wb97x-d3', basis='def2-tzvp'),
+                  'run minimize\nnew_minimizer yes\ncharge 0\nspinmult 1\nbasis def2-tzvp\nmethod rwb97x-d3\n'
+                  'dispersion d3\ndftgrid 1')]
+        for adapter_class, job_type, level, expected in cases:
+            with self.subTest(adapter=adapter_class.__name__):
+                job = self._job(adapter_class, job_type, level, adapter_class.__name__)
+                self.assertEqual(job.input_options, {'H2O': expected})
+                with open(os.path.join(job.local_path, input_filenames[job.job_adapter])) as f:
+                    self.assertEqual(get_input_options(job.job_adapter, f.read()), expected)
+        cfour = self._job(CFourAdapter, 'sp', Level(method='ccsd(t)', basis='cc-pvtz'), 'cfour')
+        self.assertEqual(cfour.input_options['H2O'], '*CFOUR(CALC=ccsd(t),BASIS=cc-pvtz,CHARGE=0,MULTIPLICITY=1\n)')
+        with open(os.path.join(cfour.local_path, input_filenames[cfour.job_adapter])) as f:
+            self.assertIn('MEMORY_SIZE=', f.read())
+        cfour = self._job(CFourAdapter, 'sp', Level(method='ccsd(t)', basis='cc-pvtz',
+                                                     args={'keyword': {'general': 'FROZEN_CORE=ON,SCF_CONV=10'}}),
+                          'cfour_keywords')
+        self.assertEqual(cfour.input_options['H2O'],
+                         '*CFOUR(CALC=ccsd(t),BASIS=cc-pvtz,CHARGE=0,MULTIPLICITY=1\nfrozen_core=on,scf_conv=10)')
+        xtb = self._job(xTBAdapter, 'opt', Level(method='gfn2'), 'xtb', execution_type='incore')
+        self.assertEqual(xtb.input_options, {'H2O': '--opt tight --gfn2 --uhf 0 --chrg 0'})
+        self.assertIn('--parallel', xtb.long_command)
+
+    def test_an_adapter_that_writes_no_deck_records_no_options(self):
+        """The mock adapter writes a YAML file for ARC's own script, so its options are null"""
+        job = self._job(MockAdapter, 'sp', Level(method='mock', basis='mock'), 'mockter')
+        self.assertIsNone(job.input_options)
+        self.assertNotIn('input_options', job.as_dict())
+        self.assertIsNone(job_input_options(job, 'H2O'))
+        self.assertIsNone(job_input_options(None, 'H2O'))
+
+    def test_the_options_are_saved_with_the_job_for_a_restart(self):
+        """as_dict carries the options as an independent dictionary, and job_input_options reads one species"""
+        job = self._job(QChemAdapter, 'sp', Level(method='b3lyp', basis='def2-svp'), 'restart')
+        job_dict = job.as_dict()
+        self.assertEqual(job_dict['input_options'], job.input_options)
+        self.assertIsNot(job_dict['input_options'], job.input_options)
+        self.assertEqual(job_input_options(job, 'H2O'), job.input_options['H2O'])
+        self.assertIsNone(job_input_options(job, 'CH4'))
 
 
 if __name__ == '__main__':
