@@ -14,6 +14,8 @@ from arc.checks.common import TS_IRC_FAILED_MARKER
 from arc.common import ARC_TESTING_PATH, read_yaml_file
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
+from arc.species.conformers import embed_rdkit, read_rdkit_embedded_conformer_i
+from arc.species.species import are_coords_compliant_with_graph
 
 
 class TestProcessor(unittest.TestCase):
@@ -78,6 +80,41 @@ class TestProcessor(unittest.TestCase):
         self.assertIn(TS_IRC_FAILED_MARKER, content[0]['ts_validation'])
         self.assertNotIn('ts_validation', content[1])
 
+
+    @staticmethod
+    def _spc_with_xyz(label, smiles):
+        """Build an ARCSpecies whose xyz follows the atom order of its SMILES-built mol."""
+        spc = ARCSpecies(label=label, smiles=smiles)
+        rd_mol = embed_rdkit(label, spc.mol, num_confs=1)
+        spc.final_xyz = read_rdkit_embedded_conformer_i(rd_mol, 0)
+        return spc
+
+    @staticmethod
+    def _mol_state(spc):
+        """The atom order and bonds of a species' mol, as indices."""
+        atoms = spc.mol.atoms
+        return ([atom.element.symbol for atom in atoms],
+                sorted((atoms.index(a1), atoms.index(a2)) for a1 in atoms for a2 in a1.edges if atoms.index(a1) < atoms.index(a2)))
+
+    def test_thermo_lib_has_isomorph_keeps_atom_order(self):
+        """Test that _thermo_lib_has_isomorph() does not re-sort the atoms of the compared species' mols"""
+        acetaldehyde = self._spc_with_xyz('acetaldehyde', 'CC=O')
+        vinyl_alcohol = self._spc_with_xyz('vinyl_alcohol', 'C=CO')
+        states = [self._mol_state(acetaldehyde), self._mol_state(vinyl_alcohol)]
+        self.assertFalse(processor._thermo_lib_has_isomorph(vinyl_alcohol, [acetaldehyde]))
+        self.assertEqual([self._mol_state(acetaldehyde), self._mol_state(vinyl_alcohol)], states)
+        self.assertTrue(are_coords_compliant_with_graph(acetaldehyde.final_xyz, acetaldehyde.mol))
+        self.assertTrue(are_coords_compliant_with_graph(vinyl_alcohol.final_xyz, vinyl_alcohol.mol))
+
+    def test_thermo_lib_has_isomorph_isomorphic_keeps_atom_order(self):
+        """Test that an isomorphic match is found without re-sorting the atoms of either mol"""
+        first = self._spc_with_xyz('first', 'CC=O')
+        second = self._spc_with_xyz('second', 'O=CC')
+        states = [self._mol_state(first), self._mol_state(second)]
+        self.assertTrue(processor._thermo_lib_has_isomorph(second, [first]))
+        self.assertEqual([self._mol_state(first), self._mol_state(second)], states)
+        self.assertTrue(are_coords_compliant_with_graph(first.final_xyz, first.mol))
+        self.assertTrue(are_coords_compliant_with_graph(second.final_xyz, second.mol))
 
     @classmethod
     def tearDownClass(cls):
