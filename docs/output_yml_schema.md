@@ -360,6 +360,19 @@ A level dict inside a species or TS record (`levels`, `conformer_levels`, `confo
 conformer jobs are not stated. The header levels are requested
 levels and keep `software`.
 
+**ORCA method spelling.** A `method` is exported as ARC writes it into the input of the program that ran the job, so it
+matches the method the ORCA log prints: for an ORCA job `wb97xd3` is exported as `wb97x-d3` (the spelling of
+`ORCA_METHOD_ALIASES` in `arc/job/adapters/orca.py`, applied by its `_format_orca_method`). The program is the one the
+document states: `ess_software` for `levels` and `conformer_levels` (that conformer's optimization log), the program
+that log states for each `irc_log_levels` entry, the level's own `software` for the header levels and
+`adaptive_levels`, and ORCA for `neb_level`, which is the level of the `orca_neb` adapter. `conformer_energy_level` is
+the level of the conformer energies and is respelled consistently with the job that computed them: by the conformer
+optimization logs when the energies are those optimizations' own, and by the `software` of the conformer single-point
+level when they are single-point energies, in both cases only when every energy-holding conformer agrees on ORCA. A level
+whose program is not stated, is mixed, or is not ORCA is exported as recorded, and so are `arkane_level_of_theory` and
+the levels of `statmech` and `thermo`, which identify energy-correction entries and name no program. The respelling
+changes the export only; the levels ARC reads back from `restart.yml` are unchanged.
+
 `solvation_scheme_level` is itself a nested level dict, held to the same key set —
 `Level.as_dict()` leaves a `Level` object there, which ARC converts recursively so
 the document contains only plain types that `yaml.safe_load` accepts. `args` is the
@@ -1093,7 +1106,7 @@ substitute.
 | `chosen_ts_method` | `str?` | The TS search method that was selected |
 | `successful_ts_methods` | `list[str]?` | All TS methods that succeeded |
 | `ts_guesses` | `list[dict]` | Sanitized provenance for the chosen guess: `index`, `chosen`, `method`, and merged `method_sources` |
-| `neb_log` | `str?` | Run-relative path to the NEB log. Taken from the run's `neb` path slot, falling back to the chosen TS guess's log when that guess's method is `orca_neb` |
+| `neb_log` | `str?` | Run-relative path to the NEB log. Taken from the run's `neb` path slot, falling back to the chosen TS guess's log when that guess's method is `orca_neb`. Whichever way it is taken, a log that exists is identified in `ess_software.neb` and `ess_versions.neb` |
 | `gsm_log` | `str?` | Run-relative path to the selected GSM stringfile. Taken from the run's `gsm` path slot, falling back to the chosen TS guess's log when that guess's method is `xtb_gsm` |
 | `irc_logs` | `list[str]` | Run-relative paths to IRC logs |
 | `irc_log_routes` | `list[str?]` | The keyword line each IRC job ran with, in lockstep with `irc_logs` (see Effective ESS Keywords) |

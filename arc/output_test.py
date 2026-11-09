@@ -62,7 +62,10 @@ from arc.output import (
     _get_imaginary_freqs,
     _flat_parameter_values,
     LEVEL_DICT_STRIPPED_KEYS,
+    _adaptive_levels_as_written,
+    _level_as_written_for,
     _level_to_dict,
+    _requested_level_to_dict,
     _recorded_level_to_dict,
     _make_rel_path,
     _freq_job_level,
@@ -7736,6 +7739,156 @@ class TestLatentExports(unittest.TestCase):
         with patch('arc.output.parse_dipole_moment', side_effect=RuntimeError('boom')):
             result = self._species_dict(paths={'geo': self.gaussian_opt_log})
         self.assertIsNone(result['opt_dipole_moment_debye'])
+
+
+class TestOrcaMethodSpelling(unittest.TestCase):
+    """Tests for the ORCA spelling of exported methods and for the NEB log of a TS guess stating its program."""
+
+    orca_log = os.path.join(ARC_TESTING_PATH, 'orca_example_opt.log')
+    gaussian_log = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+    neb_log = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
+    ARC_LEVEL = {'method': 'wb97xd3', 'basis': 'def2tzvp'}
+    ORCA_LEVEL = {'method': 'wb97x-d3', 'basis': 'def2tzvp'}
+
+    def _record(self, label='CH4', is_ts=False, **paths):
+        spc = TestSpeciesLevelsAndIrcEndpoints.make_spc(self, label, is_ts=is_ts)
+        return spc, {label: {'convergence': True, 'job_types': {}, 'paths': paths,
+                             'levels': {'opt': dict(self.ARC_LEVEL), 'freq': dict(self.ARC_LEVEL)}}}
+
+    make_spc = TestSpeciesLevelsAndIrcEndpoints.make_spc
+
+    def test_an_orca_method_is_spelled_as_arc_writes_it_to_the_orca_input(self):
+        """Test that only an ORCA level is respelled, and the input level is not modified"""
+        level = dict(self.ARC_LEVEL)
+        self.assertEqual(_level_as_written_for(level, 'orca'), self.ORCA_LEVEL)
+        self.assertEqual(level, self.ARC_LEVEL)
+        self.assertEqual(_level_as_written_for(level, 'gaussian'), self.ARC_LEVEL)
+        self.assertEqual(_level_as_written_for(level, None), self.ARC_LEVEL)
+        self.assertEqual(_level_as_written_for({'method': 'b3lyp'}, 'orca'), {'method': 'b3lyp'})
+        self.assertIsNone(_level_as_written_for(None, 'orca'))
+
+    def test_a_requested_level_is_respelled_by_its_own_software_or_the_given_program(self):
+        """Test the header levels: the level's software decides, and the NEB level is an ORCA level by construction"""
+        self.assertEqual(_requested_level_to_dict({**self.ARC_LEVEL, 'software': 'orca'})['method'], 'wb97x-d3')
+        self.assertEqual(_requested_level_to_dict({**self.ARC_LEVEL, 'software': 'gaussian'})['method'], 'wb97xd3')
+        self.assertEqual(_requested_level_to_dict(dict(self.ARC_LEVEL))['method'], 'wb97xd3')
+        self.assertEqual(_requested_level_to_dict(dict(self.ARC_LEVEL), program='orca')['method'], 'wb97x-d3')
+        self.assertIsNone(_requested_level_to_dict(None, program='orca'))
+
+    def test_the_adaptive_levels_are_respelled_by_each_levels_software(self):
+        """Test that each adaptive level follows its own software"""
+        adaptive = [{'atom_range': [1, 'inf'], 'levels': {'opt freq': {**self.ARC_LEVEL, 'software': 'orca'},
+                                                          'sp': {**self.ARC_LEVEL, 'software': 'gaussian'}}}]
+        result = _adaptive_levels_as_written(adaptive)
+        self.assertEqual(result[0]['levels']['opt freq']['method'], 'wb97x-d3')
+        self.assertEqual(result[0]['levels']['sp']['method'], 'wb97xd3')
+        self.assertEqual(adaptive[0]['levels']['opt freq']['method'], 'wb97xd3')
+        self.assertIsNone(_adaptive_levels_as_written(None))
+
+    def test_the_writer_respells_the_orca_header_levels_and_keeps_the_arkane_level(self):
+        """Test that write_output_yml respells ORCA header levels, including neb_level, and not the Arkane level"""
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        orca = Level(method='wb97xd3', basis='def2tzvp', software='orca')
+        with patch('arc.output._compute_point_groups', return_value={}), \
+                patch('arc.output._get_arkane_provenance', return_value=('3.3.0', 'abc123')), \
+                patch('arc.output.get_git_commit', return_value=('def456', '2026-01-01')):
+            write_output_yml(project='p', project_directory=scratch, species_dict=dict(), reactions=[],
+                             output_dict=dict(), opt_level=orca, neb_level=Level(method='wb97xd3', basis='def2tzvp'),
+                             arkane_level_of_theory=orca,
+                             adaptive_levels={(1, 'inf'): {('sp',): orca}})
+        document = read_yaml_file(os.path.join(scratch, 'output', 'output.yml'))
+        self.assertEqual(document['opt_level']['method'], 'wb97x-d3')
+        self.assertEqual(document['neb_level']['method'], 'wb97x-d3')
+        self.assertEqual(document['adaptive_levels'][0]['levels']['sp']['method'], 'wb97x-d3')
+        self.assertEqual(document['arkane_level_of_theory']['method'], 'wb97xd3')
+
+    def test_the_record_levels_follow_the_program_ess_software_states(self):
+        """Test that each job's level is respelled only where the log of that job is an ORCA log"""
+        spc, output_dict = self._record(geo=self.orca_log, freq=self.gaussian_log)
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertEqual(result['ess_software'], {'opt': 'orca', 'freq': 'gaussian'})
+        self.assertEqual(result['levels']['opt'], self.ORCA_LEVEL)
+        self.assertEqual(result['levels']['freq'], self.ARC_LEVEL)
+        self.assertEqual(output_dict['CH4']['levels']['opt'], self.ARC_LEVEL)
+
+    def test_a_record_level_whose_program_is_unknown_is_exported_unchanged(self):
+        """Test that a job without a readable log keeps the level as recorded"""
+        spc, output_dict = self._record(geo='/nonexistent.log')
+        self.assertEqual(_spc_to_dict(spc, output_dict, '/abs')['levels']['opt'], self.ARC_LEVEL)
+
+    def test_the_irc_log_levels_follow_the_program_each_log_states(self):
+        """Test that irc_log_levels are respelled per log by the program that log states"""
+        spc, output_dict = self._record('TS0', is_ts=True, irc=[self.orca_log, self.gaussian_log],
+                                        irc_levels=[dict(self.ARC_LEVEL), dict(self.ARC_LEVEL)])
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertEqual(result['irc_log_levels'], [self.ORCA_LEVEL, self.ARC_LEVEL])
+
+    def test_the_conformer_levels_follow_the_program_each_conformer_log_states(self):
+        """Test that conformer_levels are respelled per conformer by the program of its optimization log"""
+        spc, output_dict = self._record()
+        spc.conformers = [spc.final_xyz] * 2
+        spc.conformer_energies = [0.0, 1.0]
+        spc.conformer_levels = [dict(self.ARC_LEVEL), dict(self.ARC_LEVEL)]
+        spc.conformer_logs = [self.orca_log, self.gaussian_log]
+        spc.conformer_energy_sources = [{'kind': 'electronic_kj_mol', 'level': dict(self.ARC_LEVEL, software='orca')}] * 2
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertEqual(result['conformer_levels'], [self.ORCA_LEVEL, self.ARC_LEVEL])
+        self.assertEqual(result['conformer_energy_level'], self.ARC_LEVEL)
+
+    def _conformer_energy_level(self, logs, energy_level):
+        spc, output_dict = self._record()
+        spc.conformers = [spc.final_xyz] * len(logs)
+        spc.conformer_energies = [-100.0 - index for index in range(len(logs))]
+        spc.conformer_levels = [dict(self.ARC_LEVEL, software='orca')] * len(logs)
+        spc.conformer_logs = logs
+        spc.conformer_energy_sources = [{'kind': 'electronic_kj_mol', 'level': dict(energy_level)}] * len(logs)
+        return _spc_to_dict(spc, output_dict, '/abs')
+
+    def test_the_conformer_energy_level_of_conformer_optimization_energies_follows_their_logs(self):
+        """Test that energies that are the optimizations' own are respelled when every conformer log is ORCA"""
+        level = {**self.ARC_LEVEL, 'software': 'orca'}
+        result = self._conformer_energy_level([self.orca_log, self.orca_log], level)
+        self.assertEqual(result['conformer_energy_level'], self.ORCA_LEVEL)
+        self.assertEqual(result['conformer_levels'], [self.ORCA_LEVEL] * 2)
+        mixed = self._conformer_energy_level([self.orca_log, self.gaussian_log], level)
+        self.assertEqual(mixed['conformer_energy_level'], self.ARC_LEVEL)
+
+    def test_the_conformer_energy_level_of_conformer_single_points_follows_their_software(self):
+        """Test that single-point energies are respelled by the software of the single-point level"""
+        orca_sp = {'method': 'wb97xd3', 'basis': 'def2qzvp', 'software': 'orca'}
+        result = self._conformer_energy_level([self.gaussian_log, self.gaussian_log], orca_sp)
+        self.assertEqual(result['conformer_energy_level'], {'method': 'wb97x-d3', 'basis': 'def2qzvp'})
+        gaussian_sp = {'method': 'wb97xd3', 'basis': 'def2qzvp', 'software': 'gaussian'}
+        result = self._conformer_energy_level([self.orca_log, self.orca_log], gaussian_sp)
+        self.assertEqual(result['conformer_energy_level'], {'method': 'wb97xd3', 'basis': 'def2qzvp'})
+
+    def _neb_ts(self, scratch, method='orca_neb'):
+        log = os.path.join(scratch, 'calcs', 'TS_guesses', 'TS0', 'tsg4', 'input.log')
+        os.makedirs(os.path.dirname(log))
+        shutil.copyfile(self.neb_log, log)
+        spc, output_dict = self._record('TS0', is_ts=True, neb='')
+        guess = TSGuess(index=4, method=method, success=True, xyz='C 0 0 0', log_path=log)
+        spc.ts_guesses = [guess]
+        spc.chosen_ts = 4
+        return _spc_to_dict(spc, output_dict, scratch)
+
+    def test_a_neb_log_recorded_only_on_the_guess_states_its_program_and_version(self):
+        """Test that ess_software and ess_versions name the NEB log the record exports as neb_log"""
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        result = self._neb_ts(scratch)
+        self.assertEqual(result['neb_log'], os.path.join('calcs', 'TS_guesses', 'TS0', 'tsg4', 'input.log'))
+        self.assertEqual(result['ess_software'], {'neb': 'orca'})
+        self.assertTrue(result['ess_versions']['neb'].startswith('ORCA'))
+
+    def test_a_ts_without_a_neb_log_states_no_neb_program(self):
+        """Test that a guess of another method adds no neb entry"""
+        scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch, True)
+        result = self._neb_ts(scratch, method='heuristics')
+        self.assertIsNone(result['neb_log'])
+        self.assertIsNone(result['ess_software'])
 
 
 if __name__ == '__main__':

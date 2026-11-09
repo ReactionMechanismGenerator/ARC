@@ -36,6 +36,7 @@ from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.job.adapters.common import open_shell_character_source
+from arc.job.adapters.orca import ORCA_METHOD_ALIASES, _format_orca_method
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
 from arc.level import Level, RECORDED_LEVEL_STRIPPED_KEYS, adaptive_levels_as_list, level_as_plain_dict
@@ -258,20 +259,21 @@ def write_output_yml(
     doc['cost_metrics'] = _compute_cost_metrics(completed_job_records, t0)
 
     # ---- levels of theory -------------------------------------------------------
-    doc['composite_method'] = _level_to_dict(composite_method)
-    doc['opt_level'] = _level_to_dict(opt_level)
-    doc['freq_level'] = _level_to_dict(freq_level)
-    doc['sp_level'] = _level_to_dict(sp_level)
+    doc['composite_method'] = _requested_level_to_dict(composite_method)
+    doc['opt_level'] = _requested_level_to_dict(opt_level)
+    doc['freq_level'] = _requested_level_to_dict(freq_level)
+    doc['sp_level'] = _requested_level_to_dict(sp_level)
     if neb_level is not None:
-        doc['neb_level'] = _level_to_dict(neb_level)
-    doc['scan_level'] = _level_to_dict(scan_level)
-    doc['irc_level'] = _level_to_dict(irc_level)
-    doc['conformer_opt_level'] = _level_to_dict(conformer_opt_level)
-    doc['conformer_sp_level'] = _level_to_dict(conformer_sp_level)
-    doc['ts_guess_level'] = _level_to_dict(ts_guess_level)
+        doc['neb_level'] = _requested_level_to_dict(neb_level, program='orca')
+    doc['scan_level'] = _requested_level_to_dict(scan_level)
+    doc['irc_level'] = _requested_level_to_dict(irc_level)
+    doc['conformer_opt_level'] = _requested_level_to_dict(conformer_opt_level)
+    doc['conformer_sp_level'] = _requested_level_to_dict(conformer_sp_level)
+    doc['ts_guess_level'] = _requested_level_to_dict(ts_guess_level)
     doc['gsm_level'] = None
     doc['arkane_level_of_theory'] = _level_to_dict(arkane_level_of_theory)
-    doc['adaptive_levels'] = adaptive_levels_as_list(adaptive_levels, strip=LEVEL_DICT_STRIPPED_KEYS)
+    doc['adaptive_levels'] = _adaptive_levels_as_written(
+        adaptive_levels_as_list(adaptive_levels, strip=LEVEL_DICT_STRIPPED_KEYS))
     doc['freq_scale_factor'] = freq_scale_factor
     freq_scale_factor_key, freq_scale_factor_source = (
         (None, None) if freq_scale_factor_user_provided
@@ -830,6 +832,50 @@ def _level_to_dict(level) -> dict | None:
     }
 
 
+def _level_as_written_for(level: dict | None, program: str | None) -> dict | None:
+    """
+    Return ``level`` with its method spelled as ARC writes it into the input of ``program``.
+
+    Only an ORCA level is respelled (``wb97xd3`` becomes ``wb97x-d3``, as ``ORCA_METHOD_ALIASES`` defines), so the
+    exported method matches the one the ORCA log prints. ``level`` is returned unchanged when ``program`` is not
+    ``'orca'`` or unknown, when it is not a dict, or when its method has no ORCA spelling. The input is not modified.
+    """
+    if program != 'orca' or not isinstance(level, dict):
+        return level
+    method = level.get('method')
+    if not isinstance(method, str) or method.lower() not in ORCA_METHOD_ALIASES:
+        return level
+    return {**level, 'method': _format_orca_method(method)}
+
+
+def _requested_level_to_dict(level, program: str | None = None) -> dict | None:
+    """
+    Convert a requested level to its exported dict, with the method spelled as the program that runs it writes it.
+
+    The program is ``program`` when given, and the level's own ``software`` otherwise. See ``_level_as_written_for``.
+    """
+    level_dict = _level_to_dict(level)
+    if level_dict is None:
+        return None
+    return _level_as_written_for(level_dict, program or level_dict.get('software'))
+
+
+def _adaptive_levels_as_written(adaptive_levels: list | None) -> list | None:
+    """Apply ``_level_as_written_for`` to every level of the exported adaptive-levels list, by each level's ``software``."""
+    if not adaptive_levels:
+        return adaptive_levels
+    result = list()
+    for entry in adaptive_levels:
+        levels = entry.get('levels') if isinstance(entry, dict) else None
+        if not isinstance(levels, dict):
+            result.append(entry)
+            continue
+        result.append({**entry, 'levels': {job_types: _level_as_written_for(level, level.get('software')
+                                                                           if isinstance(level, dict) else None)
+                                           for job_types, level in levels.items()}})
+    return result
+
+
 def _recorded_level_to_dict(level) -> dict | None:
     """Convert a stored per-job level to a dict without the fields ARC only deduced, or None.
 
@@ -840,8 +886,8 @@ def _recorded_level_to_dict(level) -> dict | None:
         if isinstance(level, dict) or hasattr(level, 'as_dict') else None
 
 
-def _conformer_provenance_to_fields(spc, n_conformers: int) -> tuple[list | None, str | None, dict | None,
-                                                                     str | None]:
+def _conformer_provenance_to_fields(spc, n_conformers: int, conformer_software: list | None = None,
+                                    ) -> tuple[list | None, str | None, dict | None, str | None]:
     """
     Build ``conformer_levels``, ``conformer_energy_kind``, ``conformer_energy_level`` and
     ``conformer_force_field`` of a record.
@@ -855,13 +901,18 @@ def _conformer_provenance_to_fields(spc, n_conformers: int) -> tuple[list | None
     (``'force_field_kcal_mol'`` or ``'electronic_kj_mol'``); an energy of unknown origin, or a mixture of kinds
     (some conformers optimized, others still holding force-field energies), makes it ``None``.
     ``conformer_energy_level`` is the shared level of those entries when the kind is electronic and all of them
-    were computed at the same level, and ``None`` otherwise (force-field energies have no level).
+    were computed at the same level, and ``None`` otherwise (force-field energies have no level). Its method is
+    spelled as ORCA's input spells it when every energy-holding conformer's energy came from an ORCA job: the
+    conformer's own optimization log states ORCA when the energy is that optimization's (the source level equals the
+    conformer's level), and the source level's ``software`` states ORCA when the energy is a conformer single point's.
     ``conformer_force_field`` is the force field and backend that produced those entries when every one of them
     names the same, and ``None`` otherwise. A kind or force field that is not a non-empty string counts as unknown.
 
     Args:
         spc: The species (an ``ARCSpecies`` or anything with the same conformer attributes).
         n_conformers (int): The number of exported conformers.
+        conformer_software (list, optional): The program stated by the optimization log of each conformer, in
+            lockstep with the conformers (``conformer_ess_software``).
 
     Returns:
         tuple: ``(conformer_levels, conformer_energy_kind, conformer_energy_level, conformer_force_field)``.
@@ -892,7 +943,16 @@ def _conformer_provenance_to_fields(spc, n_conformers: int) -> tuple[list | None
         return levels, kind, None, force_field
     energy_levels = [_recorded_level_to_dict(source.get('level')) for source in held]
     energy_level = energy_levels[0] if all(level == energy_levels[0] for level in energy_levels) else None
-    return levels, kind, energy_level, None
+    programs = (list(conformer_software or list()) + [None] * n_conformers)[:n_conformers]
+    energy_programs = set()
+    for energy, source, conformer_level, program in zip(energies, sources, levels, programs):
+        if energy is None:
+            continue
+        source_level = source.get('level')
+        energy_programs.add(program if _recorded_level_to_dict(source_level) == conformer_level
+                            else source_level.get('software') if isinstance(source_level, dict) else None)
+    program = energy_programs.pop() if len(energy_programs) == 1 else None
+    return levels, kind, _level_as_written_for(energy_level, program), None
 
 
 def _get_conformer_ess(spc, n_conformers: int, project_directory: str) -> tuple[list[str | None], list[str | None]]:
@@ -2926,7 +2986,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         d['conformer_ess_software'], d['conformer_ess_version'] = \
             _get_conformer_ess(spc, len(raw_conformers), project_directory)
     d['conformer_levels'], d['conformer_energy_kind'], d['conformer_energy_level'], d['conformer_force_field'] = \
-        _conformer_provenance_to_fields(spc, len(raw_conformers))
+        _conformer_provenance_to_fields(spc, len(raw_conformers), d.get('conformer_ess_software'))
 
     # ``opt_input_xyz`` and the coarse-opt xyz fields are populated below,
     # AFTER coarse-opt parsing (we need ``coarse_final_xyz`` to set the
@@ -3127,6 +3187,12 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     d['ess_versions'] = _get_ess_versions(paths, project_directory) if converged else None
     d['ess_software'] = _get_ess_software(paths, project_directory) if converged else None
     d['levels'] = _species_levels_to_dict(entry, spc.is_ts)
+    for job_key, job_level in d['levels'].items():
+        d['levels'][job_key] = _level_as_written_for(job_level, (d['ess_software'] or dict()).get(job_key))
+    if d.get('conformer_levels'):
+        d['conformer_levels'] = [
+            _level_as_written_for(level, program) for level, program in
+            zip(d['conformer_levels'], (d.get('conformer_ess_software') or []) + [None] * len(d['conformer_levels']))]
     d['sp_t1_diagnostic'] = _get_t1_diagnostic(paths.get('sp') or None, project_directory) if converged else None
     if not spc.is_ts:
         irc_label = getattr(spc, 'irc_label', None)
@@ -3184,6 +3250,14 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
                         break
         else:
             d['ts_guesses'] = []
+        if converged and d.get('neb_log') and not paths.get('neb'):
+            neb_only = {'neb': d['neb_log']}
+            neb_versions = _get_ess_versions(neb_only, project_directory)
+            neb_software = _get_ess_software(neb_only, project_directory)
+            if neb_versions:
+                d['ess_versions'] = {**(d['ess_versions'] or dict()), **neb_versions}
+            if neb_software:
+                d['ess_software'] = {**(d['ess_software'] or dict()), **neb_software}
 
         irc_paths = list(paths.get('irc') or [])
         d['irc_logs'] = [_make_rel_path(path, project_directory) for path in irc_paths]
@@ -3195,8 +3269,8 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
         )[:len(irc_paths)]
         irc_levels = list(paths.get('irc_levels') or [])
         d['irc_log_levels'] = [
-            _recorded_level_to_dict(level)
-            for level in (irc_levels + [None] * (len(irc_paths) - len(irc_levels)))[:len(irc_paths)]
+            _level_as_written_for(_recorded_level_to_dict(level), _identify_log_ess(path or None, project_directory))
+            for path, level in zip(irc_paths, (irc_levels + [None] * len(irc_paths))[:len(irc_paths)])
         ]
         if not irc_requested:
             d['irc_converged'] = None

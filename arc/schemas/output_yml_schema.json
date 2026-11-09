@@ -597,7 +597,7 @@
       "additionalProperties": false
     },
     "level_dict": {
-      "description": "Level.as_dict() with the 'repr' and 'compatible_ess' keys removed. Only the level's non-None attributes appear, so the key set varies between runs.",
+      "description": "Level.as_dict() with the 'repr' and 'compatible_ess' keys removed. Only the level's non-None attributes appear, so the key set varies between runs. For a level of an ORCA job the 'method' is spelled as ARC writes it into the ORCA input (wb97xd3 is exported as wb97x-d3), so it matches the method the ORCA log prints.",
       "type": "object",
       "properties": {
         "method": {
@@ -744,7 +744,7 @@
       "additionalProperties": false
     },
     "ess_software": {
-      "description": "The ESS that produced each available log, keyed by the same job types as 'ess_versions' and read from the same files, so a version banner can be paired with the program that produced it rather than with the software a level of theory declared. Values are ARC's lowercase ESS names ('gaussian', 'orca', 'molpro', ...). The key set is a superset of the 'ess_versions' key set. 'irc' is present only when every IRC log of the record was identified as the same program. 'gsm' is 'xtb', present only when every archived GSM node output of a transition state was identified as xtb.",
+      "description": "The ESS that produced each available log, keyed by the same job types as 'ess_versions' and read from the same files, so a version banner can be paired with the program that produced it rather than with the software a level of theory declared. Values are ARC's lowercase ESS names ('gaussian', 'orca', 'molpro', ...). The key set is a superset of the 'ess_versions' key set. 'irc' is present only when every IRC log of the record was identified as the same program. 'gsm' is 'xtb', present only when every archived GSM node output of a transition state was identified as xtb. 'neb' is the program of the record's neb_log, including a neb_log taken from the chosen TS guess.",
       "type": "object",
       "properties": {
         "opt": {
@@ -2123,7 +2123,7 @@
           ]
         },
         "conformer_energy_level": {
-          "description": "The level the electronic energies of conformer_energies were computed at: the conformer single-point level when conformer single points overwrote the optimization energies, else the conformer optimization level. null unless conformer_energy_kind is 'electronic_kj_mol' and every energy held was computed at one and the same level; null for force-field energies (they have no level) and when the energies came from different levels (e.g. only some conformers got a single point).",
+          "description": "The level the electronic energies of conformer_energies were computed at: the conformer single-point level when conformer single points overwrote the optimization energies, else the conformer optimization level. For an ORCA job its method is spelled as ARC writes it into the ORCA input, consistently with conformer_levels and the header conformer_sp_level. null unless conformer_energy_kind is 'electronic_kj_mol' and every energy held was computed at one and the same level; null for force-field energies (they have no level) and when the energies came from different levels (e.g. only some conformers got a single point).",
           "$ref": "#/$defs/nullable_record_level_dict"
         },
         "conformer_force_field": {
