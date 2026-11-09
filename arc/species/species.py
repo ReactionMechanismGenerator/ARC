@@ -319,7 +319,8 @@ class ARCSpecies(object):
         ts_atom_map (dict | None): The 0-based TS atom of every reactant atom and of every product atom of the reaction
                                    (``reactants``, ``products``), with the ``ts_label``, the ``method`` and
                                    ``ts_atom_order_follows_reactants``, recorded only when the IRC check established its
-                                   verdict by graph isomorphism and the reaction's atom map is consistent with the TS
+                                   verdict by graph isomorphism or by a bond-list fallback that matched the bonds of the
+                                   reaction, and the reaction's atom map is consistent with the TS
                                    (see ``arc.checks.ts``). ``None`` otherwise.
         ts_atom_map_unavailable_reason (str | None): Why the IRC check recorded no ``ts_atom_map``, ``None`` when it
                                                      recorded one or has not run.
