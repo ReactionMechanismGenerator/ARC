@@ -94,7 +94,8 @@ class TestProcessor(unittest.TestCase):
         """The atom order and bonds of a species' mol, as indices."""
         atoms = spc.mol.atoms
         return ([atom.element.symbol for atom in atoms],
-                sorted((atoms.index(a1), atoms.index(a2)) for a1 in atoms for a2 in a1.edges if atoms.index(a1) < atoms.index(a2)))
+                sorted((atoms.index(a1), atoms.index(a2))
+                       for a1 in atoms for a2 in a1.edges if atoms.index(a1) < atoms.index(a2)))
 
     def test_thermo_lib_has_isomorph_keeps_atom_order(self):
         """Test that _thermo_lib_has_isomorph() does not re-sort the atoms of the compared species' mols"""
@@ -115,6 +116,15 @@ class TestProcessor(unittest.TestCase):
         self.assertEqual([self._mol_state(first), self._mol_state(second)], states)
         self.assertTrue(are_coords_compliant_with_graph(first.final_xyz, first.mol))
         self.assertTrue(are_coords_compliant_with_graph(second.final_xyz, second.mol))
+
+    def test_thermo_lib_has_isomorph_after_plain_isomorphism_check(self):
+        """Test that a preceding plain is_isomorphic() call on the same mols does not break or reorder the check"""
+        first = self._spc_with_xyz('first', 'CC=O')
+        second = self._spc_with_xyz('second', 'O=CC')
+        self.assertTrue(first.mol.is_isomorphic(second.mol))
+        states = [self._mol_state(first), self._mol_state(second)]
+        self.assertTrue(processor._thermo_lib_has_isomorph(second, [first]))
+        self.assertEqual([self._mol_state(first), self._mol_state(second)], states)
 
     @classmethod
     def tearDownClass(cls):
