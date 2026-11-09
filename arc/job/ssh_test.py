@@ -1133,5 +1133,43 @@ class TestDeleteCheckFilesOnServers(unittest.TestCase):
         self.assertEqual(attempts, [1])
 
 
+class TestSubmitJobCap(unittest.TestCase):
+    """A per-user job cap must be waited out, and the job that finally gets submitted must be tracked."""
+
+    def _client(self, cluster_soft):
+        """Build an SSHClient without connecting to anything."""
+        server = {'address': 'host.example.edu', 'un': 'user', 'key': '/dev/null', 'cluster_soft': cluster_soft}
+        with patch.object(ssh, 'servers', {'srv': server}):
+            return ssh.SSHClient('srv')
+
+    def _submit(self, cluster_soft, responses):
+        """Submit through a transport that returns ``responses`` in order."""
+        client = self._client(cluster_soft)
+        server = {'address': 'host.example.edu', 'un': 'user', 'key': '/dev/null', 'cluster_soft': cluster_soft}
+        with patch.object(ssh, 'servers', {'srv': server}), \
+                patch.object(ssh, 'submit_command', {cluster_soft: 'sub'}), \
+                patch.object(ssh, 'submit_filenames', {cluster_soft: 'submit.sh'}), \
+                patch.object(client, '_send_command_to_server', side_effect=responses) as mock_send, \
+                patch('time.sleep', return_value=None) as mock_sleep:
+            result = client.submit_job(remote_path='/remote/path')
+        return result, mock_send, mock_sleep
+
+    def test_slurm_cap_retries_until_accepted(self):
+        """The job ID of the attempt that finally succeeds is returned after waiting out the cap."""
+        cap = ([], ['sbatch: error: AssocMaxSubmitJobLimit'])
+        result, mock_send, mock_sleep = self._submit('slurm', [cap, cap, cap, (['Submitted batch job 4242'], [])])
+        self.assertEqual(result, ('running', '4242'))
+        self.assertEqual(mock_send.call_count, 4)
+        self.assertEqual(mock_sleep.call_count, 3)
+        mock_sleep.assert_called_with(ssh.SUBMISSION_CAP_WAIT_SECONDS)
+
+    def test_slurm_accepted_submission_does_not_wait(self):
+        """An accepted submission neither sleeps nor retries."""
+        result, mock_send, mock_sleep = self._submit('slurm', [(['Submitted batch job 5'], [])])
+        self.assertEqual(result, ('running', '5'))
+        self.assertEqual(mock_send.call_count, 1)
+        mock_sleep.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

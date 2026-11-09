@@ -107,6 +107,63 @@ class TestLocal(unittest.TestCase):
                     local.submit_job(path='.', cluster_soft='pbs', submit_cmd='qsub', submit_filename='submit.sh')
         self.assertIn('compute node', str(cm.exception))
 
+    def _submit_with_cap(self, cluster_soft, cap_stderr, success_stdout, n_refusals):
+        """Submit through a scheduler that refuses ``n_refusals`` times, then accepts."""
+        responses = [([], list(cap_stderr))] * n_refusals + [(success_stdout, [])]
+        with patch('arc.job.local.execute_command', side_effect=responses) as mock_execute:
+            with patch('time.sleep', return_value=None) as mock_sleep:
+                result = local.submit_job(path='.', cluster_soft=cluster_soft, submit_cmd='sub',
+                                          submit_filename='submit.sh')
+        return result, mock_execute, mock_sleep
+
+    def test_submit_job_pbs_cap_retries_until_accepted(self):
+        """Test that a PBS per-user cap keeps retrying and then tracks the job that finally got submitted"""
+        for cap_line in ('qsub: would exceed queue generic per-user limit of 40 jobs',
+                         'qsub: Maximum number of jobs already in queue'):
+            with self.subTest(cap_line=cap_line):
+                result, mock_execute, mock_sleep = self._submit_with_cap(
+                    'pbs', [cap_line], ['12345.zeus'], n_refusals=3)
+                self.assertEqual(result, ('running', '12345'))
+                self.assertEqual(mock_execute.call_count, 4)
+                cap_sleeps = [call.args[0] for call in mock_sleep.call_args_list
+                              if call.args[0] == local.SUBMISSION_CAP_WAIT_SECONDS]
+                self.assertEqual(len(cap_sleeps), 3)
+
+    def test_submit_job_slurm_cap_retries_until_accepted(self):
+        """Test that a Slurm per-user cap keeps retrying and then tracks the job that finally got submitted"""
+        result, mock_execute, mock_sleep = self._submit_with_cap(
+            'slurm', ['sbatch: error: AssocMaxSubmitJobLimit'], ['Submitted batch job 777'], n_refusals=2)
+        self.assertEqual(result, ('running', '777'))
+        self.assertEqual(mock_execute.call_count, 3)
+        cap_sleeps = [call.args[0] for call in mock_sleep.call_args_list
+                      if call.args[0] == local.SUBMISSION_CAP_WAIT_SECONDS]
+        self.assertEqual(len(cap_sleeps), 2)
+
+    def test_submit_job_without_cap_does_not_wait(self):
+        """Test that an accepted submission neither waits for the cap nor retries"""
+        result, mock_execute, mock_sleep = self._submit_with_cap('pbs', [], ['999.zeus'], n_refusals=0)
+        self.assertEqual(result, ('running', '999'))
+        self.assertEqual(mock_execute.call_count, 1)
+        mock_sleep.assert_not_called()
+
+    def test_submit_job_pbs_illegal_attribute_error(self):
+        """Test that an illegal PBS attribute is still reported as an error"""
+        stderr = ['qsub: Illegal attribute or resource value']
+        with patch('arc.job.local.execute_command', return_value=(['x'], stderr)):
+            with self.assertRaises(ValueError) as cm:
+                local.submit_job(path='.', cluster_soft='pbs', submit_cmd='qsub', submit_filename='submit.sh')
+        self.assertIn('check your submit script', str(cm.exception))
+
+    def test_submit_job_empty_stdout_without_cap_returns_nothing(self):
+        """Test that an empty stdout without a cap error retries once after 10 s and then gives up"""
+        with patch('arc.job.local.execute_command', return_value=([], [])) as mock_execute:
+            with patch('time.sleep', return_value=None) as mock_sleep:
+                result = local.submit_job(path='.', cluster_soft='pbs', submit_cmd='qsub',
+                                          submit_filename='submit.sh')
+        self.assertEqual(result, (None, None))
+        self.assertEqual(mock_execute.call_count, 2)
+        mock_sleep.assert_called_once_with(10)
+
     def test_check_running_jobs_ids_without_a_queueing_system(self):
         """Test that a machine with no queueing system reports no queue job IDs"""
         for cluster_soft in ['local', 'Local']:
