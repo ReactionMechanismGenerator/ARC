@@ -510,10 +510,13 @@ def check_irc_species_and_rxn(xyz_1: dict,
     Check that the two species that result from optimizing the outputs of two IRC runs
     correspond to the desired reactants and products of the corresponding reaction.
 
-    Uses molecular graph isomorphism (including bond orders and resonance structures)
-    when molecule perception succeeds for both endpoints. Falls back to distance-matrix-based
-    bond-list comparison if perception fails for either endpoint or if the expected
-    reactant/product ``Molecule`` objects are unavailable.
+    Uses molecular graph isomorphism (including bond orders and resonance structures).
+    Each endpoint is perceived with the default spin and, if that does not match the reactants or
+    the products, again with each fragment perceived at the charge, multiplicity and number of radicals
+    of the species it is compared with (``_assign_irc_endpoint_to_species``); that perception is
+    accepted only if it is isomorphic to the species. Falls back to distance-matrix-based
+    bond-list comparison if neither perception matches, if perception fails for either endpoint,
+    or if the expected reactant/product ``Molecule`` objects are unavailable.
 
     Sets ``rxn.ts_species.ts_checks['IRC']`` to ``True`` if the endpoints match the reactants
     and products, to ``False`` only if a comparison was actually performed and the endpoints
@@ -529,6 +532,9 @@ def check_irc_species_and_rxn(xyz_1: dict,
     connected molecule, so a dissociated fragment stays dissociated instead of being bonded
     to its nearest neighbour regardless of distance.
 
+    A warning is logged, and nothing else changes, for a side of the reaction whose species spins cannot
+    couple to the multiplicity of the TS (``_warn_if_spins_cannot_couple``).
+
     Args:
         xyz_1 (dict): The coordinates of IRC species 1.
         xyz_2 (dict): The coordinates of IRC species 2.
@@ -543,18 +549,18 @@ def check_irc_species_and_rxn(xyz_1: dict,
     reactants, products = rxn.get_reactants_and_products(return_copies=True)
     r_mols = [r.mol for r in reactants]
     p_mols = [p.mol for p in products]
+    _warn_if_spins_cannot_couple(rxn, reactants, products)
 
     if not any(m is None for m in r_mols + p_mols):
         charge = rxn.charge or 0
-        frags_1 = _perceive_irc_fragments(xyz_1, charge=charge)
-        frags_2 = _perceive_irc_fragments(xyz_2, charge=charge)
-        if (_irc_endpoint_matches_species(xyz_1, frags_1, r_mols)
-                and _irc_endpoint_matches_species(xyz_2, frags_2, p_mols)) \
-                or (_irc_endpoint_matches_species(xyz_1, frags_1, p_mols)
-                    and _irc_endpoint_matches_species(xyz_2, frags_2, r_mols)):
+        endpoint_xyzs = {1: xyz_1, 2: xyz_2}
+        endpoint_frags = {1: _perceive_irc_fragments(xyz_1, charge=charge),
+                          2: _perceive_irc_fragments(xyz_2, charge=charge)}
+        matched = _match_irc_endpoints_to_sides(endpoint_xyzs, endpoint_frags, r_mols, p_mols)
+        if matched is not None:
             rxn.ts_species.ts_checks['IRC'] = True
             return
-        if frags_1 is None or frags_2 is None:
+        if endpoint_frags[1] is None or endpoint_frags[2] is None:
             logger.debug('IRC molecule perception failed for one or both endpoints, '
                          'falling back to bond-list comparison.')
         else:
@@ -578,21 +584,68 @@ def check_irc_species_and_rxn(xyz_1: dict,
         rxn.ts_species.ts_checks['IRC'] = False
 
 
-def _split_irc_endpoint_into_fragments(xyz: dict) -> list[dict]:
+def _warn_if_spins_cannot_couple(rxn: ARCReaction,
+                                 reactants: list[ARCSpecies],
+                                 products: list[ARCSpecies],
+                                 ):
     """
-    Split an IRC endpoint geometry into its connected components.
+    Log a warning for each side of a reaction whose species cannot couple to the multiplicity of its TS. The IRC of
+    such a TS connects to a different spin state than the species declare. Neither the IRC verdict nor anything
+    else is altered, and nothing is logged when the multiplicity of the TS is unknown.
 
-    Connectivity is taken from the distance-matrix-based bond list, without assuming
-    that the endpoint is a single molecule (``n_fragments=0`` skips the heavy-atom bridging heuristic).
+    Args:
+        rxn (ARCReaction): The reaction.
+        reactants (list[ARCSpecies]): The reactants, repeated species included.
+        products (list[ARCSpecies]): The products, repeated species included.
+    """
+    ts_multiplicity = getattr(rxn.ts_species, 'multiplicity', None)
+    if not isinstance(ts_multiplicity, int):
+        return
+    for side, species in (('reactants', reactants), ('products', products)):
+        multiplicities = [spc.multiplicity for spc in species]
+        if not species or not all(isinstance(m, int) for m in multiplicities) \
+                or can_spins_couple(multiplicities, ts_multiplicity):
+            continue
+        logger.warning(f'The spin multiplicities of the {side} of {rxn} '
+                       f'({", ".join(f"{spc.label}: {spc.multiplicity}" for spc in species)}) cannot couple to the '
+                       f'multiplicity {ts_multiplicity} of {rxn.ts_species.label}, so its IRC connects to a '
+                       f'different spin state than the {side} declare. The IRC verdict is unaffected.')
+
+
+def can_spins_couple(multiplicities: list[int], target: int) -> bool:
+    """
+    Check whether species of the given spin multiplicities can couple to a total spin multiplicity.
+    The total spin ranges from the largest spin minus the sum of the others (or 0 or 1/2 if that is not positive)
+    up to the sum of the spins, in steps of one.
+
+    Args:
+        multiplicities (list[int]): The spin multiplicities ``2S + 1`` of the species.
+        target (int): The total spin multiplicity.
+
+    Returns:
+        bool: Whether the species can couple to the target multiplicity.
+    """
+    twice_spins = [m - 1 for m in multiplicities]
+    total = sum(twice_spins)
+    largest = max(twice_spins)
+    lowest = largest - (total - largest) if largest > total - largest else total % 2
+    return lowest <= target - 1 <= total and (total - (target - 1)) % 2 == 0
+
+
+def _get_irc_fragment_atom_indices(xyz: dict) -> list[list[int]]:
+    """
+    Get the atoms of each connected component of an IRC endpoint geometry, from its distance-matrix-based bond list
+    (``n_fragments=0`` skips the heavy-atom bridging heuristic of ``get_bonds_from_dmat``, so a dissociated fragment
+    is not bonded to its nearest neighbor).
 
     Args:
         xyz (dict): The Cartesian coordinates of the IRC endpoint.
 
     Returns:
-        list[dict]: The Cartesian coordinates of each connected component, in order of its lowest atom index.
+        list[list[int]]: The ascending 0-based atom indices of each component, the components ordered by their
+                         lowest atom index.
     """
     symbols = xyz['symbols']
-    coords = xyz['coords']
     n_atoms = len(symbols)
 
     dmat = xyz_to_dmat(xyz)
@@ -620,13 +673,22 @@ def _split_irc_endpoint_into_fragments(xyz: dict) -> list[dict]:
                 if neighbor not in visited:
                     stack.append(neighbor)
         fragment_indices.append(sorted(component))
+    return fragment_indices
 
-    frag_xyzs = []
-    for frag_idx in fragment_indices:
-        frag_symbols = tuple(symbols[i] for i in frag_idx)
-        frag_coords = tuple(coords[i] for i in frag_idx)
-        frag_xyzs.append(xyz_from_data(coords=frag_coords, symbols=frag_symbols))
-    return frag_xyzs
+
+def _get_irc_fragment_xyzs(xyz: dict) -> list[dict]:
+    """
+    Get the Cartesian coordinates of each connected component of an IRC endpoint geometry.
+
+    Args:
+        xyz (dict): The Cartesian coordinates of the IRC endpoint.
+
+    Returns:
+        list[dict]: The coordinates of each component, in the order of ``_get_irc_fragment_atom_indices``.
+    """
+    return [xyz_from_data(coords=tuple(xyz['coords'][i] for i in indices),
+                          symbols=tuple(xyz['symbols'][i] for i in indices))
+            for indices in _get_irc_fragment_atom_indices(xyz)]
 
 
 def _perceive_irc_fragments(xyz: dict,
@@ -645,10 +707,10 @@ def _perceive_irc_fragments(xyz: dict,
         charge (int): The net charge of the full system.
 
     Returns:
-        list[Molecule] | None: A list of perceived ``Molecule`` objects (one per fragment),
-                                  or ``None`` if perception fails for any fragment.
+        list[Molecule] | None: A list of perceived ``Molecule`` objects (one per fragment, in the order of
+                               ``_get_irc_fragment_atom_indices``), or ``None`` if perception fails for any fragment.
     """
-    frag_xyzs = _split_irc_endpoint_into_fragments(xyz)
+    frag_xyzs = _get_irc_fragment_xyzs(xyz)
     n_frags = len(frag_xyzs)
 
     if n_frags == 1:
@@ -683,49 +745,51 @@ def _perceive_irc_fragments(xyz: dict,
     return best_mols
 
 
-def _match_fragments_to_species(fragments: list[Molecule],
-                                expected_mols: list[Molecule],
-                                ) -> bool:
+def _assign_fragments_to_species(fragments: list[Molecule],
+                                 expected_mols: list[Molecule],
+                                 ) -> list[int] | None:
     """
-    Check whether a list of perceived molecular fragments matches a list of expected species
-    via graph isomorphism. Handles multi-species reactions (e.g., A + B) by finding a
-    one-to-one matching between fragments and expected species using backtracking with pruning.
+    Find a one-to-one matching between perceived molecular fragments and expected species via graph isomorphism.
+    Handles multi-species reactions (e.g., A + B) using backtracking with pruning. When several matchings exist
+    (e.g., a species occurring twice), the first one found is returned.
 
     Args:
         fragments (list[Molecule]): Perceived fragment molecules from an IRC endpoint.
         expected_mols (list[Molecule]): Expected species molecules from the reaction.
 
     Returns:
-        bool: Whether a valid one-to-one isomorphic matching exists.
+        list[int] | None: Entry ``i`` is the index in ``expected_mols`` matched to ``fragments[i]``,
+                          or ``None`` if no valid one-to-one isomorphic matching exists.
     """
     n = len(fragments)
     if n != len(expected_mols):
-        return False
+        return None
     if n == 0:
-        return True
+        return list()
     frag_formulas = sorted(frag.get_formula() for frag in fragments)
     expected_formulas = sorted(mol.get_formula() for mol in expected_mols)
     if frag_formulas != expected_formulas:
-        return False
+        return None
     if n == 1:
-        return check_isomorphism(fragments[0], expected_mols[0])
-    iso_matrix = [[check_isomorphism(fragments[i], expected_mols[j]) for j in range(n)] for i in range(n)]
-    return _has_one_to_one_matching(iso_matrix)
+        return [0] if check_isomorphism(fragments[0], expected_mols[0]) else None
+    return _find_one_to_one_matching([[check_isomorphism(fragments[i], expected_mols[j]) for j in range(n)]
+                                      for i in range(n)])
 
 
-def _has_one_to_one_matching(compatible: list[list[bool]]) -> bool:
+def _find_one_to_one_matching(compatible: list[list[bool]]) -> list[int] | None:
     """
-    Check whether a square compatibility matrix admits a one-to-one matching of rows to columns,
-    using backtracking.
+    Find a one-to-one matching of the rows of a square compatibility matrix to its columns, using backtracking.
+    The first matching found is returned.
 
     Args:
         compatible (list[list[bool]]): ``compatible[i][j]`` is whether row ``i`` may be matched to column ``j``.
 
     Returns:
-        bool: Whether every row can be matched to a distinct column.
+        list[int] | None: Entry ``i`` is the column matched to row ``i``, or ``None`` if there is no matching.
     """
     n = len(compatible)
     used = [False] * n
+    assignment = [-1] * n
 
     def _backtrack(i: int) -> bool:
         if i == n:
@@ -733,64 +797,51 @@ def _has_one_to_one_matching(compatible: list[list[bool]]) -> bool:
         for j in range(n):
             if not used[j] and compatible[i][j]:
                 used[j] = True
+                assignment[i] = j
                 if _backtrack(i + 1):
                     return True
                 used[j] = False
         return False
 
-    return _backtrack(0)
+    return assignment if _backtrack(0) else None
 
 
-def _irc_endpoint_matches_species(xyz: dict,
-                                  fragments: list[Molecule] | None,
-                                  expected_mols: list[Molecule],
-                                  ) -> bool:
+def _assign_irc_endpoint_to_species(xyz: dict,
+                                    fragments: list[Molecule] | None,
+                                    expected_mols: list[Molecule],
+                                    ) -> tuple[list[int], list[Molecule]] | None:
     """
-    Check whether an IRC endpoint corresponds to a list of expected species.
+    Match an IRC endpoint to a list of expected species.
 
-    The fragments perceived with the default spin are compared first. If they do not match,
-    the endpoint is re-perceived at the charge and multiplicity of the expected species
-    (see ``_match_irc_endpoint_at_species_spin``).
+    The fragments perceived with the default spin are matched first (``_assign_fragments_to_species``). If they do
+    not match, each fragment of the endpoint is re-perceived at the net charge, spin multiplicity and number of
+    radicals of the species it is compared with. An even-electron fragment perceived without a multiplicity is
+    assumed closed-shell, so a triplet biradical endpoint is perceived as a zwitterion that matches neither side of
+    the reaction. A fragment is paired with a species only if the structure perceived at that species' spin is
+    isomorphic to it, and the fragments are matched one-to-one with the species.
 
     Args:
         xyz (dict): The Cartesian coordinates of the IRC endpoint.
-        fragments (list[Molecule], optional): The fragments perceived from ``xyz`` with the default spin.
+        fragments (list[Molecule], optional): The fragments perceived from ``xyz`` with the default spin, in the order
+                                              of ``_get_irc_fragment_atom_indices``.
         expected_mols (list[Molecule]): The expected species molecules.
 
     Returns:
-        bool: Whether the endpoint matches the expected species.
+        tuple[list[int], list[Molecule]] | None: The index in ``expected_mols`` matched to each fragment, and the
+                                                 ``Molecule`` of each fragment that matched it, or ``None`` if
+                                                 there is no one-to-one match.
     """
-    if fragments is not None and _match_fragments_to_species(fragments, expected_mols):
-        return True
-    return _match_irc_endpoint_at_species_spin(xyz, expected_mols)
-
-
-def _match_irc_endpoint_at_species_spin(xyz: dict,
-                                        expected_mols: list[Molecule],
-                                        ) -> bool:
-    """
-    Check whether an IRC endpoint matches expected species when each of its fragments is perceived
-    at the net charge and spin multiplicity of the species it is compared with.
-
-    An even-electron fragment perceived without a multiplicity is assumed closed-shell, so a triplet
-    biradical endpoint is perceived as a zwitterion that matches neither side of the reaction.
-    A fragment is paired with a species only if the structure perceived at that species' charge and
-    multiplicity is isomorphic to it, and the fragments are matched one-to-one with the species.
-
-    Args:
-        xyz (dict): The Cartesian coordinates of the IRC endpoint.
-        expected_mols (list[Molecule]): The expected species molecules.
-
-    Returns:
-        bool: Whether a one-to-one matching of fragments to species exists.
-    """
-    frag_xyzs = _split_irc_endpoint_into_fragments(xyz)
+    if fragments is not None:
+        assignment = _assign_fragments_to_species(fragments, expected_mols)
+        if assignment is not None:
+            return assignment, fragments
+    frag_xyzs = _get_irc_fragment_xyzs(xyz)
     n = len(frag_xyzs)
     if n != len(expected_mols):
-        return False
+        return None
     if n == 0:
-        return True
-    compatible = [[False] * n for _ in range(n)]
+        return list(), list()
+    perceived = [[None] * n for _ in range(n)]
     for i, frag_xyz in enumerate(frag_xyzs):
         frag_elements = sorted(frag_xyz['symbols'])
         for j, expected in enumerate(expected_mols):
@@ -799,9 +850,57 @@ def _match_irc_endpoint_at_species_spin(xyz: dict,
             mol = perceive_molecule_from_xyz(frag_xyz,
                                              charge=expected.get_net_charge(),
                                              multiplicity=expected.multiplicity,
+                                             n_radicals=expected.get_radical_count(),
                                              n_fragments=1)
-            compatible[i][j] = mol is not None and check_isomorphism(mol, expected)
-    return _has_one_to_one_matching(compatible)
+            if mol is not None and check_isomorphism(mol, expected):
+                perceived[i][j] = mol
+    assignment = _find_one_to_one_matching([[mol is not None for mol in row] for row in perceived])
+    return (assignment, [perceived[i][j] for i, j in enumerate(assignment)]) if assignment is not None else None
+
+
+def _match_irc_endpoints_to_sides(endpoint_xyzs: dict[int, dict],
+                                  endpoint_fragments: dict[int, list[Molecule] | None],
+                                  r_mols: list[Molecule],
+                                  p_mols: list[Molecule],
+                                  ) -> tuple[tuple, tuple, dict[int, list[Molecule]]] | None:
+    """
+    Match the two IRC endpoints to the reactants and the products of a reaction, in either direction.
+
+    Both directions are tried with the fragments perceived with the default spin first, the first endpoint as the
+    reactants first. Only if neither matches are they tried again with each fragment perceived at the spin of the
+    species it is compared with (``_assign_irc_endpoint_to_species``), so the endpoint that is called the reactants
+    differs from the default-spin result only where that found no match.
+
+    Args:
+        endpoint_xyzs (dict[int, dict]): The two IRC endpoint geometries, keyed ``1`` and ``2``.
+        endpoint_fragments (dict[int, list[Molecule] | None]): The fragments perceived on each endpoint with the
+                                                               default spin, ``None`` if the perception failed.
+        r_mols (list[Molecule]): The reactant molecules.
+        p_mols (list[Molecule]): The product molecules.
+
+    Returns:
+        tuple | None: ``((reactant endpoint, assignment), (product endpoint, assignment), fragments)``, where the
+                      assignment is that of ``_assign_irc_endpoint_to_species`` and ``fragments`` holds the matched
+                      fragments of each endpoint, or ``None`` if the endpoints do not match the reaction.
+    """
+    for use_species_spin in (False, True):
+        for r_endpoint, p_endpoint in ((1, 2), (2, 1)):
+            matches = list()
+            for endpoint, mols in ((r_endpoint, r_mols), (p_endpoint, p_mols)):
+                fragments = endpoint_fragments[endpoint]
+                if use_species_spin:
+                    match = _assign_irc_endpoint_to_species(endpoint_xyzs[endpoint], fragments, mols)
+                else:
+                    assignment = _assign_fragments_to_species(fragments, mols) if fragments is not None else None
+                    match = (assignment, fragments) if assignment is not None else None
+                if match is None:
+                    break
+                matches.append(match)
+            if len(matches) == 2:
+                return ((r_endpoint, matches[0][0]),
+                        (p_endpoint, matches[1][0]),
+                        {r_endpoint: matches[0][1], p_endpoint: matches[1][1]})
+    return None
 
 
 def _check_equal_bonds_list(bonds_1: list[tuple[int, int]],

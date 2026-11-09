@@ -21,6 +21,7 @@ from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess
+from arc.species.vectors import calculate_dihedral_angle, calculate_distance
 
 
 class TestTSChecks(unittest.TestCase):
@@ -43,6 +44,15 @@ class TestTSChecks(unittest.TestCase):
                                              H       0.00269416   -1.21243086    0.82344737
                                              H      -1.25765558   -0.21664795   -1.36404732
                                              H      -2.15765070    0.31963664    0.17289584""")
+        cls.twisted_propene_xyz = str_to_xyz("""C       1.2742   -0.0048   -0.5460
+                                                 C       0.3401    0.1795    0.3949
+                                                 C      -1.0729   -0.0823    0.2016
+                                                 H       1.7940   -0.9513   -0.6574
+                                                 H       1.5392    0.7960   -1.2297
+                                                 H       0.6393    0.5486    1.3735
+                                                 H      -1.4146   -0.8333    0.9204
+                                                 H      -1.2910   -0.4498   -0.8062
+                                                 H      -1.6474    0.8350    0.3625""")
         cls.propene_xyz = str_to_xyz("""C       1.27417618   -0.00478872   -0.54600800
                                          C       0.34012322    0.17954734    0.39492878
                                          C      -1.11520059   -0.09014830    0.19580403
@@ -894,18 +904,18 @@ class TestTSChecks(unittest.TestCase):
         for frag in frags_multi:
             self.assertEqual(frag.get_net_charge(), 0)
 
-    def test_match_fragments_to_species_single(self):
-        """Test _match_fragments_to_species with a single fragment."""
+    def test_assign_fragments_to_species_single(self):
+        """Test _assign_fragments_to_species with a single fragment."""
         r_spc = ARCSpecies(label='R', smiles='O=[C]COO')
         p_spc = ARCSpecies(label='P', smiles='O=CCO[O]')
         xyz_1 = parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'))
         frags = ts._perceive_irc_fragments(xyz_1, charge=0)
         self.assertIsNotNone(frags)
-        self.assertTrue(ts._match_fragments_to_species(frags, [r_spc.mol]))
-        self.assertFalse(ts._match_fragments_to_species(frags, [p_spc.mol]))
+        self.assertEqual(ts._assign_fragments_to_species(frags, [r_spc.mol]), [0])
+        self.assertIsNone(ts._assign_fragments_to_species(frags, [p_spc.mol]))
 
-    def test_match_fragments_to_species_multi(self):
-        """Test _match_fragments_to_species with two well-separated fragments."""
+    def test_assign_fragments_to_species_multi(self):
+        """Test _assign_fragments_to_species with two well-separated fragments."""
         coords = (
             (0.0000, 0.0000, 0.1173),
             (0.0000, 0.7572, -0.4692),
@@ -926,19 +936,32 @@ class TestTSChecks(unittest.TestCase):
         nh3_mol = ARCSpecies(label='NH3', smiles='N').mol
 
         # Correct match (either order of expected species should work due to permutations)
-        self.assertTrue(ts._match_fragments_to_species(frags, [water_mol, methane_mol]))
-        self.assertTrue(ts._match_fragments_to_species(frags, [methane_mol, water_mol]))
+        self.assertIsNotNone(ts._assign_fragments_to_species(frags, [water_mol, methane_mol]))
+        self.assertIsNotNone(ts._assign_fragments_to_species(frags, [methane_mol, water_mol]))
         # Wrong species
-        self.assertFalse(ts._match_fragments_to_species(frags, [water_mol, nh3_mol]))
+        self.assertIsNone(ts._assign_fragments_to_species(frags, [water_mol, nh3_mol]))
         # Wrong count
-        self.assertFalse(ts._match_fragments_to_species(frags, [water_mol]))
-        self.assertFalse(ts._match_fragments_to_species(frags, [water_mol, methane_mol, nh3_mol]))
+        self.assertIsNone(ts._assign_fragments_to_species(frags, [water_mol]))
+        self.assertIsNone(ts._assign_fragments_to_species(frags, [water_mol, methane_mol, nh3_mol]))
 
-    def test_match_fragments_to_species_empty(self):
-        """Test _match_fragments_to_species edge cases."""
-        self.assertTrue(ts._match_fragments_to_species([], []))
+    def test_assign_fragments_to_species_empty(self):
+        """Test _assign_fragments_to_species edge cases."""
+        self.assertEqual(ts._assign_fragments_to_species([], []), [])
         water_mol = ARCSpecies(label='water', smiles='O').mol
-        self.assertFalse(ts._match_fragments_to_species([], [water_mol]))
+        self.assertIsNone(ts._assign_fragments_to_species([], [water_mol]))
+
+    def test_assign_fragments_to_species_indices(self):
+        """Test that _assign_fragments_to_species returns the expected index of each fragment."""
+        coords = ((0.0, 0.0, 0.1173), (0.0, 0.7572, -0.4692), (0.0, -0.7572, -0.4692), (10.0, 0.0, 0.0),
+                  (10.6276, 0.6276, 0.6276), (10.6276, -0.6276, -0.6276), (9.3724, 0.6276, -0.6276),
+                  (9.3724, -0.6276, 0.6276))
+        xyz = xyz_from_data(coords=coords, symbols=('O', 'H', 'H', 'C', 'H', 'H', 'H', 'H'))
+        frags = ts._perceive_irc_fragments(xyz, charge=0)
+        water_mol = ARCSpecies(label='water', smiles='O').mol
+        methane_mol = ARCSpecies(label='methane', smiles='C').mol
+        self.assertEqual(ts._assign_fragments_to_species(frags, [water_mol, methane_mol]), [0, 1])
+        self.assertEqual(ts._assign_fragments_to_species(frags, [methane_mol, water_mol]), [1, 0])
+        self.assertIsNone(ts._assign_fragments_to_species(frags, [water_mol, water_mol]))
 
     def test_check_irc_isomorphism_path(self):
         """Test that the full check_irc_species_and_rxn uses isomorphism when mol objects are available."""
@@ -991,42 +1014,46 @@ class TestTSChecks(unittest.TestCase):
             get_bonds.assert_not_called()
             self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
 
-    def test_match_irc_endpoint_at_species_spin(self):
+    def test_assign_irc_endpoint_to_species(self):
         """Test that an IRC endpoint is matched only when perceiving it at the species' spin reproduces the species."""
         triplet = ARCSpecies(label='R', smiles='[CH2]C[CH2]', multiplicity=3).mol
         propene = ARCSpecies(label='P', smiles='C=CC').mol
-        self.assertTrue(ts._match_irc_endpoint_at_species_spin(self.trimethylene_xyz, [triplet]))
-        self.assertTrue(ts._match_irc_endpoint_at_species_spin(self.propene_xyz, [propene]))
-        self.assertFalse(ts._match_irc_endpoint_at_species_spin(self.trimethylene_xyz, [propene]))
-        self.assertFalse(ts._match_irc_endpoint_at_species_spin(self.propene_xyz, [triplet]))
-        self.assertFalse(ts._match_irc_endpoint_at_species_spin(self.trimethylene_xyz, [triplet, propene]))
+        self.assertIsNotNone(ts._assign_irc_endpoint_to_species(self.trimethylene_xyz, None, [triplet]))
+        self.assertIsNotNone(ts._assign_irc_endpoint_to_species(self.propene_xyz, None, [propene]))
+        self.assertIsNone(ts._assign_irc_endpoint_to_species(self.trimethylene_xyz, None, [propene]))
+        self.assertIsNone(ts._assign_irc_endpoint_to_species(self.propene_xyz, None, [triplet]))
+        self.assertIsNone(ts._assign_irc_endpoint_to_species(self.trimethylene_xyz, None, [triplet, propene]))
 
-    def test_match_irc_endpoint_at_species_spin_wrong_multiplicity(self):
-        """Test that a species with the wrong multiplicity does not match an endpoint perceived at that multiplicity."""
-        for multiplicity in [1, 5]:
-            mol = ARCSpecies(label='R', smiles='[CH2]C[CH2]', multiplicity=3).mol
-            mol.multiplicity = multiplicity
-            self.assertFalse(ts._match_irc_endpoint_at_species_spin(self.trimethylene_xyz, [mol]))
-        self.assertFalse(ts._match_irc_endpoint_at_species_spin(
-            self.trimethylene_xyz, [ARCSpecies(label='R', smiles='[CH]C[CH]', multiplicity=5).mol]))
+    def test_assign_irc_endpoint_to_species_keeps_the_default_perception_that_matched(self):
+        """Test that fragments that already match are returned as they are, without a second perception."""
+        propene = ARCSpecies(label='P', smiles='C=CC').mol
+        frags = ts._perceive_irc_fragments(self.propene_xyz, charge=0)
+        with patch.object(ts, 'perceive_molecule_from_xyz', side_effect=AssertionError('re-perceived')) as perceive:
+            assignment, matched = ts._assign_irc_endpoint_to_species(self.propene_xyz, frags, [propene])
+        perceive.assert_not_called()
+        self.assertEqual(assignment, [0])
+        self.assertIs(matched, frags)
 
-    def test_match_irc_endpoint_at_species_spin_charged(self):
+    def test_assign_irc_endpoint_to_species_other_radical_count(self):
+        """Test that a species with a different number of unpaired electrons does not match the endpoint."""
+        quintet = ARCSpecies(label='R', smiles='[CH]C[CH]', multiplicity=5).mol
+        self.assertIsNone(ts._assign_irc_endpoint_to_species(self.trimethylene_xyz, None, [quintet]))
+
+    def test_assign_irc_endpoint_to_species_open_shell_singlet(self):
+        """Test that the radical count of the species is passed, so an open-shell singlet biradical is perceived."""
+        singlet_biradical = ARCSpecies(label='R', smiles='[CH2]C[CH2]', multiplicity=3).mol
+        singlet_biradical.multiplicity = 1
+        self.assertEqual(singlet_biradical.get_radical_count(), 2)
+        self.assertIsNotNone(ts._assign_irc_endpoint_to_species(self.trimethylene_xyz, None, [singlet_biradical]))
+
+    def test_assign_irc_endpoint_to_species_charged(self):
         """Test the spin-aware matching of a charged triplet endpoint."""
         species = ARCSpecies(label='R', smiles='[CH2][NH+]([CH3])[CH2]', multiplicity=3, charge=1)
         xyz = species.get_xyz()
-        self.assertFalse(ts._match_fragments_to_species(ts._perceive_irc_fragments(xyz, charge=1), [species.mol]))
-        self.assertTrue(ts._match_irc_endpoint_at_species_spin(xyz, [species.mol]))
+        self.assertIsNone(ts._assign_fragments_to_species(ts._perceive_irc_fragments(xyz, charge=1), [species.mol]))
+        self.assertIsNotNone(ts._assign_irc_endpoint_to_species(xyz, None, [species.mol]))
 
-    def test_check_irc_wrong_multiplicity_is_not_a_match(self):
-        """Test that endpoints that do not reproduce the species at their multiplicity are not reported as a match."""
-        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C[CH2]', multiplicity=3)],
-                          p_species=[ARCSpecies(label='P', smiles='C=CC')],
-                          multiplicity=3)
-        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
-        ts.check_irc_species_and_rxn(xyz_1=self.propene_xyz, xyz_2=self.propene_xyz, rxn=rxn)
-        self.assertIsNot(rxn.ts_species.ts_checks['IRC'], True)
-
-    def test_match_irc_endpoint_at_species_spin_two_fragments(self):
+    def test_assign_irc_endpoint_to_species_two_fragments(self):
         """Test the spin-aware matching of an endpoint made of a triplet biradical and a closed-shell molecule."""
         water = xyz_from_data(coords=((6.0, 0.0, 0.1173), (6.0, 0.7572, -0.4692), (6.0, -0.7572, -0.4692)),
                               symbols=('O', 'H', 'H'))
@@ -1034,19 +1061,109 @@ class TestTSChecks(unittest.TestCase):
                             symbols=tuple(self.trimethylene_xyz['symbols']) + water['symbols'])
         triplet = ARCSpecies(label='R', smiles='[CH2]C[CH2]', multiplicity=3).mol
         h2o = ARCSpecies(label='W', smiles='O').mol
-        self.assertFalse(ts._match_fragments_to_species(ts._perceive_irc_fragments(xyz, charge=0), [triplet, h2o]))
-        self.assertTrue(ts._match_irc_endpoint_at_species_spin(xyz, [triplet, h2o]))
-        self.assertTrue(ts._match_irc_endpoint_at_species_spin(xyz, [h2o, triplet]))
-        self.assertFalse(ts._match_irc_endpoint_at_species_spin(xyz, [triplet, triplet]))
+        self.assertIsNone(ts._assign_fragments_to_species(ts._perceive_irc_fragments(xyz, charge=0), [triplet, h2o]))
+        self.assertEqual(ts._assign_irc_endpoint_to_species(xyz, None, [triplet, h2o])[0], [0, 1])
+        self.assertEqual(ts._assign_irc_endpoint_to_species(xyz, None, [h2o, triplet])[0], [1, 0])
+        self.assertIsNone(ts._assign_irc_endpoint_to_species(xyz, None, [triplet, triplet]))
 
-    def test_irc_endpoint_matches_species_closed_shell_skips_spin_perception(self):
-        """Test that an endpoint already matched by the default perception is not re-perceived."""
+    def test_a_twisted_triplet_propene_endpoint_matches_singlet_propene(self):
+        """Test that the twisted (CH2 plane perpendicular to the C-C-C plane, C-C 1.45 A) propene geometry the IRC
+        reaches from triplet trimethylene is matched to propene by closed-shell perception, constitutionally."""
         propene = ARCSpecies(label='P', smiles='C=CC').mol
-        frags = ts._perceive_irc_fragments(self.propene_xyz, charge=0)
-        with patch.object(ts, '_match_irc_endpoint_at_species_spin',
-                          side_effect=AssertionError('re-perceived')) as spin_match:
-            self.assertTrue(ts._irc_endpoint_matches_species(self.propene_xyz, frags, [propene]))
-        spin_match.assert_not_called()
+        self.assertAlmostEqual(calculate_dihedral_angle(self.twisted_propene_xyz['coords'], [3, 0, 1, 2]) % 180, 90.0,
+                               places=0)
+        self.assertAlmostEqual(calculate_distance(self.twisted_propene_xyz['coords'], [1, 2]), 1.45, places=2)
+        frags = ts._perceive_irc_fragments(self.twisted_propene_xyz, charge=0)
+        self.assertEqual(ts._assign_fragments_to_species(frags, [propene]), [0])
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C[CH2]', multiplicity=3)],
+                          p_species=[ARCSpecies(label='P', smiles='C=CC')],
+                          multiplicity=3)
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        with patch.object(ARCReaction, 'get_bonds', side_effect=AssertionError('fallback reached')) as get_bonds:
+            ts.check_irc_species_and_rxn(xyz_1=self.trimethylene_xyz, xyz_2=self.twisted_propene_xyz, rxn=rxn)
+        get_bonds.assert_not_called()
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+
+    def test_check_irc_species_that_is_not_reproduced_is_not_a_match(self):
+        """Test that endpoints that do not reproduce the species at their spin are not reported as a match."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C[CH2]', multiplicity=3)],
+                          p_species=[ARCSpecies(label='P', smiles='C=CC')],
+                          multiplicity=3)
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts.check_irc_species_and_rxn(xyz_1=self.propene_xyz, xyz_2=self.propene_xyz, rxn=rxn)
+        self.assertIsNot(rxn.ts_species.ts_checks['IRC'], True)
+
+    def test_match_irc_endpoints_to_sides_tries_the_default_perception_in_both_directions_first(self):
+        """Test that the species spin is used only when the default perception matches in neither direction."""
+        frags = {1: [object()], 2: [object()]}
+        xyzs = {1: 'xyz_1', 2: 'xyz_2'}
+        r_mols, p_mols = ['r'], ['p']
+
+        def default_assignment(fragments, mols):
+            return [0] if (fragments is frags[2] and mols is r_mols) or (fragments is frags[1] and mols is p_mols) \
+                else None
+
+        def spin_assignment(xyz, fragments, mols):
+            return ([0], fragments) if (xyz == 'xyz_1' and mols is r_mols) or (xyz == 'xyz_2' and mols is p_mols) \
+                else None
+
+        with patch.object(ts, '_assign_fragments_to_species', side_effect=default_assignment), \
+                patch.object(ts, '_assign_irc_endpoint_to_species', side_effect=spin_assignment):
+            self.assertEqual(ts._match_irc_endpoints_to_sides(xyzs, frags, r_mols, p_mols),
+                             ((2, [0]), (1, [0]), {2: frags[2], 1: frags[1]}))
+            self.assertEqual(ts._match_irc_endpoints_to_sides(xyzs, {1: None, 2: None}, r_mols, p_mols),
+                             ((1, [0]), (2, [0]), {1: None, 2: None}))
+
+    def test_can_spins_couple(self):
+        """Test the total spins that species of given multiplicities can couple to."""
+        for multiplicities, target, expected in [([3], 3, True), ([3], 1, False), ([1], 1, True), ([1], 3, False),
+                                                 ([1, 3], 3, True), ([1, 3], 1, False), ([2, 2], 1, True),
+                                                 ([2, 2], 3, True), ([2, 2], 2, False), ([3, 3], 1, True),
+                                                 ([3, 3], 3, True), ([3, 3], 5, True), ([3, 3], 7, False),
+                                                 ([2, 2, 2], 2, True), ([2, 2, 2], 4, True), ([2, 2, 2], 1, False),
+                                                 ([2, 2, 2], 6, False), ([5, 2], 4, True), ([5, 2], 6, True),
+                                                 ([5, 2], 2, False), ([4, 2], 3, True), ([4, 2], 5, True),
+                                                 ([4, 2], 1, False), ([1, 1, 1], 1, True), ([1, 1, 1], 3, False)]:
+            with self.subTest(multiplicities=multiplicities, target=target):
+                self.assertIs(ts.can_spins_couple(multiplicities, target), expected)
+
+    def _warnings_of_the_spin_check(self, r_species, p_species, ts_multiplicity):
+        rxn = ARCReaction(r_species=r_species, p_species=p_species, multiplicity=ts_multiplicity)
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, multiplicity=ts_multiplicity)
+        reactants, products = rxn.get_reactants_and_products(return_copies=True)
+        with patch.object(ts.logger, 'warning') as warning:
+            ts._warn_if_spins_cannot_couple(rxn, reactants, products)
+        return [call.args[0] for call in warning.call_args_list]
+
+    def test_a_side_whose_spins_cannot_couple_to_the_ts_is_warned_about(self):
+        """Test the warning for triplet trimethylene <=> singlet propene on a triplet TS, on the product side only"""
+        messages = self._warnings_of_the_spin_check([ARCSpecies(label='TMM', smiles='[CH2]C[CH2]', multiplicity=3)],
+                                                    [ARCSpecies(label='C3H6', smiles='C=CC')], 3)
+        self.assertEqual(len(messages), 1)
+        self.assertIn('products', messages[0])
+        self.assertIn('C3H6: 1', messages[0])
+        self.assertIn('multiplicity 3 of TS', messages[0])
+        self.assertIn('different spin state', messages[0])
+
+    def test_sides_whose_spins_couple_to_the_ts_are_not_warned_about(self):
+        """Test that a doublet H-abstraction on a doublet TS, and a triplet isomerization, give no warning"""
+        self.assertEqual(self._warnings_of_the_spin_check(
+            [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]', multiplicity=2)],
+            [ARCSpecies(label='CH3', smiles='[CH3]', multiplicity=2), ARCSpecies(label='H2O', smiles='O')], 2), [])
+        self.assertEqual(self._warnings_of_the_spin_check(
+            [ARCSpecies(label='TMM', smiles='[CH2]C[CH2]', multiplicity=3)],
+            [ARCSpecies(label='TMM2', smiles='[CH2]C[CH2]', multiplicity=3)], 3), [])
+
+    def test_the_spin_warning_leaves_the_irc_verdict_alone(self):
+        """Test that the IRC check logs the spin warning and still reaches the same verdict"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='TMM', smiles='[CH2]C[CH2]', multiplicity=3)],
+                          p_species=[ARCSpecies(label='C3H6', smiles='C=CC')],
+                          multiplicity=3)
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, multiplicity=3)
+        with patch.object(ts.logger, 'warning') as warning:
+            ts.check_irc_species_and_rxn(xyz_1=self.trimethylene_xyz, xyz_2=self.propene_xyz, rxn=rxn)
+        self.assertTrue(any('cannot couple' in call.args[0] for call in warning.call_args_list))
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
 
     def test_check_irc_bond_list_tier_does_not_bond_a_dissociated_atom(self):
         """
@@ -1055,8 +1172,8 @@ class TestTSChecks(unittest.TestCase):
         The bond-list tier is the only tier allowed to reject a TS, so it must perceive bonds
         without assuming a single connected molecule. Otherwise a bare H in an endpoint is bonded
         to whatever atom happens to be closest, no matter how far away, and correct IRC endpoints
-        are rejected. Both reactions below reach the bond-list tier because the triplet atom is
-        not perceived as a triplet, so the isomorphism tier cannot match it.
+        are rejected. The isomorphism tier is made to find no match, and the bond-list tier is asserted to
+        have run, because a triplet atom is otherwise matched by the isomorphism tier at its own multiplicity.
         """
         for r_smiles, r_multiplicity, p_smiles, symbols, coords_r, coords_p in [
                 ('[O]', 3, '[OH]', ('O', 'H', 'H'),
@@ -1073,7 +1190,10 @@ class TestTSChecks(unittest.TestCase):
                 rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
                 xyz_1 = xyz_from_data(coords=coords_r, symbols=symbols)
                 xyz_2 = xyz_from_data(coords=coords_p, symbols=symbols)
-                ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+                with patch.object(ts, '_match_irc_endpoints_to_sides', return_value=None), \
+                        patch.object(rxn, 'get_bonds', wraps=rxn.get_bonds) as get_bonds:
+                    ts.check_irc_species_and_rxn(xyz_1=xyz_1, xyz_2=xyz_2, rxn=rxn)
+                get_bonds.assert_called_once()
                 self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
 
     def test_check_irc_identical_endpoints(self):
