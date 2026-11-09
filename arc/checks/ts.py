@@ -548,17 +548,17 @@ def check_irc_species_and_rxn(xyz_1: dict,
         charge = rxn.charge or 0
         frags_1 = _perceive_irc_fragments(xyz_1, charge=charge)
         frags_2 = _perceive_irc_fragments(xyz_2, charge=charge)
-        if frags_1 is not None and frags_2 is not None:
-            if (_match_fragments_to_species(frags_1, r_mols)
-                    and _match_fragments_to_species(frags_2, p_mols)) \
-                    or (_match_fragments_to_species(frags_1, p_mols)
-                        and _match_fragments_to_species(frags_2, r_mols)):
-                rxn.ts_species.ts_checks['IRC'] = True
-                return
-            logger.debug('IRC isomorphism check failed, falling back to bond-list comparison.')
-        else:
+        if (_irc_endpoint_matches_species(xyz_1, frags_1, r_mols)
+                and _irc_endpoint_matches_species(xyz_2, frags_2, p_mols)) \
+                or (_irc_endpoint_matches_species(xyz_1, frags_1, p_mols)
+                    and _irc_endpoint_matches_species(xyz_2, frags_2, r_mols)):
+            rxn.ts_species.ts_checks['IRC'] = True
+            return
+        if frags_1 is None or frags_2 is None:
             logger.debug('IRC molecule perception failed for one or both endpoints, '
                          'falling back to bond-list comparison.')
+        else:
+            logger.debug('IRC isomorphism check failed, falling back to bond-list comparison.')
 
     # Fallback: bond-list connectivity comparison
     try:
@@ -578,31 +578,24 @@ def check_irc_species_and_rxn(xyz_1: dict,
         rxn.ts_species.ts_checks['IRC'] = False
 
 
-def _perceive_irc_fragments(xyz: dict,
-                            charge: int = 0,
-                            ) -> list[Molecule] | None:
+def _split_irc_endpoint_into_fragments(xyz: dict) -> list[dict]:
     """
-    Perceive individual molecular fragments from an IRC endpoint geometry.
+    Split an IRC endpoint geometry into its connected components.
 
-    Detects connected components from the distance-matrix-based bond list,
-    then perceives fragments as ``Molecule`` objects. For multi-fragment systems,
-    charge distribution across fragments is handled by brute-force search over
-    charge splits that sum to the total charge, preferring minimal total absolute charge.
+    Connectivity is taken from the distance-matrix-based bond list, without assuming
+    that the endpoint is a single molecule (``n_fragments=0`` skips the heavy-atom bridging heuristic).
 
     Args:
         xyz (dict): The Cartesian coordinates of the IRC endpoint.
-        charge (int): The net charge of the full system.
 
     Returns:
-        list[Molecule] | None: A list of perceived ``Molecule`` objects (one per fragment),
-                                  or ``None`` if perception fails for any fragment.
+        list[dict]: The Cartesian coordinates of each connected component, in order of its lowest atom index.
     """
     symbols = xyz['symbols']
     coords = xyz['coords']
     n_atoms = len(symbols)
 
     dmat = xyz_to_dmat(xyz)
-    # Pass n_fragments != 1 to skip the heavy-atom bridging heuristic in get_bonds_from_dmat.
     bonds = get_bonds_from_dmat(dmat=dmat, elements=symbols, n_fragments=0)
 
     adj = {i: set() for i in range(n_atoms)}
@@ -628,12 +621,35 @@ def _perceive_irc_fragments(xyz: dict,
                     stack.append(neighbor)
         fragment_indices.append(sorted(component))
 
-    n_frags = len(fragment_indices)
     frag_xyzs = []
     for frag_idx in fragment_indices:
         frag_symbols = tuple(symbols[i] for i in frag_idx)
         frag_coords = tuple(coords[i] for i in frag_idx)
         frag_xyzs.append(xyz_from_data(coords=frag_coords, symbols=frag_symbols))
+    return frag_xyzs
+
+
+def _perceive_irc_fragments(xyz: dict,
+                            charge: int = 0,
+                            ) -> list[Molecule] | None:
+    """
+    Perceive individual molecular fragments from an IRC endpoint geometry.
+
+    Detects connected components from the distance-matrix-based bond list,
+    then perceives fragments as ``Molecule`` objects. For multi-fragment systems,
+    charge distribution across fragments is handled by brute-force search over
+    charge splits that sum to the total charge, preferring minimal total absolute charge.
+
+    Args:
+        xyz (dict): The Cartesian coordinates of the IRC endpoint.
+        charge (int): The net charge of the full system.
+
+    Returns:
+        list[Molecule] | None: A list of perceived ``Molecule`` objects (one per fragment),
+                                  or ``None`` if perception fails for any fragment.
+    """
+    frag_xyzs = _split_irc_endpoint_into_fragments(xyz)
+    n_frags = len(frag_xyzs)
 
     if n_frags == 1:
         mol = perceive_molecule_from_xyz(frag_xyzs[0], charge=charge, n_fragments=1)
@@ -694,13 +710,28 @@ def _match_fragments_to_species(fragments: list[Molecule],
     if n == 1:
         return check_isomorphism(fragments[0], expected_mols[0])
     iso_matrix = [[check_isomorphism(fragments[i], expected_mols[j]) for j in range(n)] for i in range(n)]
+    return _has_one_to_one_matching(iso_matrix)
+
+
+def _has_one_to_one_matching(compatible: list[list[bool]]) -> bool:
+    """
+    Check whether a square compatibility matrix admits a one-to-one matching of rows to columns,
+    using backtracking.
+
+    Args:
+        compatible (list[list[bool]]): ``compatible[i][j]`` is whether row ``i`` may be matched to column ``j``.
+
+    Returns:
+        bool: Whether every row can be matched to a distinct column.
+    """
+    n = len(compatible)
     used = [False] * n
 
     def _backtrack(i: int) -> bool:
         if i == n:
             return True
         for j in range(n):
-            if not used[j] and iso_matrix[i][j]:
+            if not used[j] and compatible[i][j]:
                 used[j] = True
                 if _backtrack(i + 1):
                     return True
@@ -708,6 +739,69 @@ def _match_fragments_to_species(fragments: list[Molecule],
         return False
 
     return _backtrack(0)
+
+
+def _irc_endpoint_matches_species(xyz: dict,
+                                  fragments: list[Molecule] | None,
+                                  expected_mols: list[Molecule],
+                                  ) -> bool:
+    """
+    Check whether an IRC endpoint corresponds to a list of expected species.
+
+    The fragments perceived with the default spin are compared first. If they do not match,
+    the endpoint is re-perceived at the charge and multiplicity of the expected species
+    (see ``_match_irc_endpoint_at_species_spin``).
+
+    Args:
+        xyz (dict): The Cartesian coordinates of the IRC endpoint.
+        fragments (list[Molecule], optional): The fragments perceived from ``xyz`` with the default spin.
+        expected_mols (list[Molecule]): The expected species molecules.
+
+    Returns:
+        bool: Whether the endpoint matches the expected species.
+    """
+    if fragments is not None and _match_fragments_to_species(fragments, expected_mols):
+        return True
+    return _match_irc_endpoint_at_species_spin(xyz, expected_mols)
+
+
+def _match_irc_endpoint_at_species_spin(xyz: dict,
+                                        expected_mols: list[Molecule],
+                                        ) -> bool:
+    """
+    Check whether an IRC endpoint matches expected species when each of its fragments is perceived
+    at the net charge and spin multiplicity of the species it is compared with.
+
+    An even-electron fragment perceived without a multiplicity is assumed closed-shell, so a triplet
+    biradical endpoint is perceived as a zwitterion that matches neither side of the reaction.
+    A fragment is paired with a species only if the structure perceived at that species' charge and
+    multiplicity is isomorphic to it, and the fragments are matched one-to-one with the species.
+
+    Args:
+        xyz (dict): The Cartesian coordinates of the IRC endpoint.
+        expected_mols (list[Molecule]): The expected species molecules.
+
+    Returns:
+        bool: Whether a one-to-one matching of fragments to species exists.
+    """
+    frag_xyzs = _split_irc_endpoint_into_fragments(xyz)
+    n = len(frag_xyzs)
+    if n != len(expected_mols):
+        return False
+    if n == 0:
+        return True
+    compatible = [[False] * n for _ in range(n)]
+    for i, frag_xyz in enumerate(frag_xyzs):
+        frag_elements = sorted(frag_xyz['symbols'])
+        for j, expected in enumerate(expected_mols):
+            if frag_elements != sorted(atom.element.symbol for atom in expected.atoms):
+                continue
+            mol = perceive_molecule_from_xyz(frag_xyz,
+                                             charge=expected.get_net_charge(),
+                                             multiplicity=expected.multiplicity,
+                                             n_fragments=1)
+            compatible[i][j] = mol is not None and check_isomorphism(mol, expected)
+    return _has_one_to_one_matching(compatible)
 
 
 def _check_equal_bonds_list(bonds_1: list[tuple[int, int]],
