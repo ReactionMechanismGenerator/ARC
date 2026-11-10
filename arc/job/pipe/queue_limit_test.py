@@ -64,9 +64,51 @@ class TestPbsParsing(unittest.TestCase):
         self.assertEqual(queue_limit.parse_pbs_per_user_limit(text, 'alice'), 40)
 
     def test_count_user_jobs_in_queue(self):
-        self.assertEqual(queue_limit.count_pbs_user_jobs(QSTAT_USER, 'mafat_new_q'), 3)
+        self.assertEqual(queue_limit.count_pbs_user_jobs(QSTAT_USER, 'mafat_new_q'), 2)
         self.assertEqual(queue_limit.count_pbs_user_jobs(QSTAT_USER, 'other_q'), 1)
         self.assertEqual(queue_limit.count_pbs_user_jobs(['garbage', '', 'a b c'], 'mafat_new_q'), 0)
+
+
+QSTAT_DEFAULT_TRUNCATED = """
+zeus-m.technion.ac.il:
+                                                            Req'd  Req'd   Elap
+Job ID          Username Queue    Jobname    SessID NDS TSK Memory Time  S Time
+--------------- -------- -------- ---------- ------ --- --- ------ ----- - -----
+4894486.zeus-m* calvin.p mafat_n* a1695      40407*   1  12   47gb 3600: R 09:46
+4894487.zeus-m* calvin.p alon_q   b1          40408    1  12   47gb 3600: R 09:46
+""".splitlines()
+
+QSTAT_WIDE = """
+zeus-m.technion.ac.il:
+                                                                                  Req'd  Req'd   Elap
+Job ID                  Username    Queue       Jobname          SessID  NDS   TSK Memory Time  S Time
+----------------------- ----------- ----------- ---------------- ------ ----- ----- ------ ----- - -----
+4894486.zeus-m.technion calvin.p    mafat_new_q a1695             40407     1    12   47gb 3600: R 09:46
+4894487.zeus-m.technion calvin.p    alon_q      b1               40408     1    12   47gb 3600: R 09:46
+4894500[].zeus-m.techni calvin.p    mafat_new_q pipe_ts_opt         --     1     8   16gb 3600: Q   --
+""".splitlines()
+
+
+class TestPbsUserJobCount(unittest.TestCase):
+
+    def test_default_truncated_output_still_counts_the_queue(self):
+        self.assertEqual(queue_limit.count_pbs_user_jobs(QSTAT_DEFAULT_TRUNCATED, 'mafat_new_q'), 1)
+        self.assertEqual(queue_limit.count_pbs_user_jobs(QSTAT_DEFAULT_TRUNCATED, 'alon_q'), 1)
+        self.assertEqual(queue_limit.count_pbs_user_jobs(QSTAT_DEFAULT_TRUNCATED, 'zeus_long_q'), 0)
+
+    def test_wide_output(self):
+        self.assertEqual(queue_limit.count_pbs_user_jobs(QSTAT_WIDE, 'mafat_new_q'), 2)
+        self.assertEqual(queue_limit.count_pbs_user_jobs(QSTAT_WIDE, 'alon_q'), 1)
+
+    def test_queued_array_parent_counts_once_and_started_subjobs_replace_it(self):
+        self.assertEqual(queue_limit.count_pbs_user_jobs(QSTAT_WIDE[:-1] + [QSTAT_WIDE[-1]], 'mafat_new_q'), 2)
+        started = [QSTAT_WIDE[-1]] + [QSTAT_WIDE[-1].replace('[]', f'[{i}]').replace(' Q ', ' R ') for i in range(1, 4)]
+        self.assertEqual(queue_limit.count_pbs_user_jobs(started, 'mafat_new_q'), 3)
+
+    def test_max_array_size(self):
+        self.assertEqual(queue_limit.parse_pbs_max_array_size('Server: z\n    max_array_size = 10000\n'), 10000)
+        self.assertIsNone(queue_limit.parse_pbs_max_array_size('Server: z\n'))
+        self.assertIsNone(queue_limit.parse_pbs_max_array_size('max_array_size = many'))
 
 
 class TestSlurmParsing(unittest.TestCase):
@@ -100,10 +142,31 @@ class TestDiscoverJobAllowance(unittest.TestCase):
         return '\n'.join(QSTAT_USER)
 
     def test_pbs_allowance_is_limit_minus_used(self):
-        self.assertEqual(self._discover('pbs', self._pbs_outputs), 37)
+        self.assertEqual(self._discover('pbs', self._pbs_outputs), 38)
+
+    def test_pbs_max_array_size_bounds_the_allowance(self):
+        def outputs(command):
+            if command.endswith('-Bf'):
+                return 'Server: zeus\n    max_array_size = 10\n'
+            return self._pbs_outputs(command)
+        self.assertEqual(self._discover('pbs', outputs), 10)
+
+    def test_pbs_max_array_size_alone_is_the_allowance(self):
+        def outputs(command):
+            return 'Server: zeus\n    max_array_size = 10000\n' if command.endswith('-Bf') else 'Queue: alon_q\n'
+        self.assertEqual(self._discover('pbs', outputs), 10000)
+
+    def test_pbs_uses_wide_output_for_the_user_jobs(self):
+        commands = list()
+
+        def outputs(command):
+            commands.append(command)
+            return self._pbs_outputs(command)
+        self._discover('pbs', outputs)
+        self.assertIn('/opt/pbs/bin/qstat -w -t -u alice', commands)
 
     def test_pbs_override_replaces_the_read_limit(self):
-        self.assertEqual(self._discover('pbs', self._pbs_outputs, limit_override=10), 7)
+        self.assertEqual(self._discover('pbs', self._pbs_outputs, limit_override=10), 8)
 
     def test_pbs_unparsable_limit_is_unknown(self):
         self.assertIsNone(self._discover('pbs', lambda command: 'garbage'))
