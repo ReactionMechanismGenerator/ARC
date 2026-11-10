@@ -1354,6 +1354,7 @@ class Scheduler(object):
             for rxn in job.reactions:
                 rxn.ts_species.process_completed_tsg_queue_jobs(
                     path=job.local_path_to_output_file, method=job.job_adapter)
+            self.save_restart_dict()
         elif is_log_output and job.job_status[0] == 'done' and not ess_succeeded:
             ess_status = job.job_status[1]
             warning = (f'TS guess job {job.job_name} using {job.job_adapter} failed with ESS status '
