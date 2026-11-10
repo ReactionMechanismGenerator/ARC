@@ -51,7 +51,7 @@ def _thermo_lib_has_isomorph(spc: 'ARCSpecies', species_list: list) -> bool:
     for existing in species_list:
         if existing.mol is not None \
                 and existing.multiplicity == spc.multiplicity \
-                and existing.mol.is_isomorphic(spc.mol):
+                and existing.mol.copy(deep=True).is_isomorphic(spc.mol.copy(deep=True)):
             return True
     return False
 

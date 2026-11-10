@@ -78,6 +78,19 @@ class TestProcessor(unittest.TestCase):
         self.assertIn(TS_IRC_FAILED_MARKER, content[0]['ts_validation'])
         self.assertNotIn('ts_validation', content[1])
 
+    def test_thermo_lib_has_isomorph_keeps_atom_order(self):
+        """Test that _thermo_lib_has_isomorph() does not re-sort the atoms of the compared mols"""
+        first, second = ARCSpecies(label='first', smiles='CC=O'), ARCSpecies(label='second', smiles='C=CO')
+        before = [list(spc.mol.atoms) for spc in (first, second)]
+        self.assertFalse(processor._thermo_lib_has_isomorph(second, [first]))
+        self.assertEqual([list(spc.mol.atoms) for spc in (first, second)], before)
+
+    def test_thermo_lib_has_isomorph_after_plain_isomorphism_check(self):
+        """Test that _thermo_lib_has_isomorph() works after a plain is_isomorphic() call on the same mols"""
+        first, second = ARCSpecies(label='first', smiles='CC=O'), ARCSpecies(label='second', smiles='C=CO')
+        self.assertFalse(first.mol.is_isomorphic(second.mol))
+        self.assertFalse(processor._thermo_lib_has_isomorph(second, [first]))
+
 
     @classmethod
     def tearDownClass(cls):
