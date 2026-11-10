@@ -307,8 +307,8 @@ class PipeCoordinator:
 
     def _hand_to_scheduler(self, pipe_key: str) -> None:
         """
-        Eject the PENDING tasks of a run that could not be submitted to the Scheduler as
-        individual jobs and forget the run.
+        Hand the PENDING tasks of a run whose job array could not be submitted to the Scheduler
+        as individual jobs.
         """
         pipe = self.active_pipes[pipe_key]
         attempts = self._submit_failures[pipe_key][0]
@@ -357,12 +357,12 @@ class PipeCoordinator:
             pipe = self.active_pipes[pipe_key]
             if pipe_key in self._submit_failures:
                 attempts, first_failure = self._submit_failures[pipe_key]
-                max_attempts = pipe_settings.get('max_attempts', 3)
+                max_attempts = max(1, pipe_settings.get('max_attempts', 3))
                 elapsed = time.time() - first_failure
-                if attempts >= max_attempts and elapsed >= SUBMIT_FALLBACK_DELAY:
-                    self._hand_to_scheduler(pipe_key)
+                if elapsed < attempts * SUBMIT_FALLBACK_DELAY / max_attempts:
                     continue
-                if attempts >= max_attempts or elapsed < attempts * SUBMIT_FALLBACK_DELAY / max_attempts:
+                if attempts >= max_attempts:
+                    self._hand_to_scheduler(pipe_key)
                     continue
                 if not self._submit(pipe):
                     continue

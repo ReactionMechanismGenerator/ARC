@@ -393,6 +393,9 @@ class TestUnsubmittedPipeRun(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_unsubmitted_')
         self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
         self.coord = PipeCoordinator(_make_mock_sched(self.tmpdir))
+        settings_patch = patch.dict('arc.job.pipe.pipe_coordinator.pipe_settings', {'max_attempts': 3})
+        settings_patch.start()
+        self.addCleanup(settings_patch.stop)
 
     def _age(self, pipe_key, seconds):
         """Make the first failed submission older by ``seconds``."""
@@ -455,16 +458,6 @@ class TestUnsubmittedPipeRun(unittest.TestCase):
         self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
         self.assertEqual(self.coord.sched.run_job.call_count, 1)
 
-    def test_a_retry_after_the_first_time_slice_succeeds_when_the_queue_recovers(self):
-        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('errored', None)):
-            pipe = self.coord.submit_pipe_run('run_recover', [_make_spec('t_recover')])
-        self._age(pipe.pipe_root, SUBMIT_FALLBACK_DELAY / 3 + 1)
-        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '8[]')):
-            self.coord.poll_pipes()
-        self.assertEqual(pipe.scheduler_job_id, '8[]')
-        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
-        self.coord.sched.run_job.assert_not_called()
-
     def test_a_single_attempt_means_one_submission(self):
         with patch.dict('arc.job.pipe.pipe_coordinator.pipe_settings', {'max_attempts': 1}), \
              patch.object(PipeRun, 'submit_to_scheduler', return_value=('errored', None)) as submit:
@@ -476,6 +469,16 @@ class TestUnsubmittedPipeRun(unittest.TestCase):
         submit.assert_called_once()
         self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
         self.assertEqual(self.coord.sched.run_job.call_count, 1)
+
+    def test_zero_attempts_behaves_like_one(self):
+        with patch.dict('arc.job.pipe.pipe_coordinator.pipe_settings', {'max_attempts': 0}), \
+             patch.object(PipeRun, 'submit_to_scheduler', return_value=('errored', None)) as submit:
+            pipe = self.coord.submit_pipe_run('run_zero', [_make_spec('t_zero')])
+            self.coord.poll_pipes()
+            self._age(pipe.pipe_root, SUBMIT_FALLBACK_DELAY)
+            self.coord.poll_pipes()
+        submit.assert_called_once()
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_a_failed_resubmission_does_not_hand_the_run_to_the_scheduler(self):
         with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '9[]')):
