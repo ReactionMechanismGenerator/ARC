@@ -602,6 +602,99 @@ H       0.68104300    0.74807180    0.61546062""")]
         self.assertEqual(len(confs_economic), 250)
         self.assertLess(len(confs_economic), len(confs_default))
 
+    def test_the_force_field_and_unit_of_a_generation_are_stamped_on_its_conformers(self):
+        """Test that generated conformers name the force field and backend, and the known energy unit"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        confs = conformers.generate_conformers(mol_list=[spc.mol], label='ethanol', n_confs=2, force_field='MMFF94s')
+        self.assertGreater(len(confs), 0)
+        for conf in confs:
+            self.assertEqual(conf['force_field'], 'MMFF94s (rdkit)')
+            self.assertEqual(conf['force_field_unit'], 'kcal/mol')
+
+    def test_the_silent_rdkit_uff_fallback_is_named_in_the_stamp(self):
+        """Test that energies that fell back from MMFF to UFF are not attributed to MMFF"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        with unittest.mock.patch.object(conformers.AllChem, 'MMFFGetMoleculeForceField', return_value=None):
+            confs = conformers.generate_conformers(mol_list=[spc.mol], label='ethanol', n_confs=2,
+                                                   force_field='MMFF94s')
+        self.assertGreater(len(confs), 0)
+        for conf in confs:
+            self.assertEqual(conf['force_field'], 'UFF (rdkit)')
+            self.assertEqual(conf['force_field_unit'], 'kcal/mol')
+
+    def test_describe_force_field_usage(self):
+        """Test the force field name and energy unit derived from the backends that produced energies"""
+        describe = conformers.describe_force_field_usage
+        self.assertEqual(describe({('rdkit', 'MMFF94s', 'kcal/mol')}), ('MMFF94s (rdkit)', 'kcal/mol'))
+        self.assertEqual(describe({('openbabel', 'GAFF', 'kJ/mol')}), ('GAFF (openbabel)', 'kJ/mol'))
+        self.assertEqual(describe({('openbabel', 'X', None)}), ('X (openbabel)', None))
+        self.assertEqual(describe({('rdkit', 'MMFF94s', 'kcal/mol'), ('rdkit', 'UFF', 'kcal/mol')}), (None, None))
+        self.assertEqual(describe(set()), (None, None))
+
+    def test_the_energy_unit_is_read_from_openbabel(self):
+        """Test that OpenBabel force fields are recorded in the unit OpenBabel reports for them"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        expected = {'MMFF94': 'kcal/mol', 'MMFF94s': 'kcal/mol', 'GAFF': 'kJ/mol', 'UFF': 'kJ/mol',
+                    'Ghemical': 'kJ/mol'}
+        for force_field, unit in expected.items():
+            with self.subTest(force_field=force_field):
+                usage = set()
+                token = conformers._FORCE_FIELD_USAGE.set(usage)
+                try:
+                    conformers.openbabel_force_field(label='', mol=spc.mol, num_confs=1, force_field=force_field,
+                                                     method='diverse')
+                finally:
+                    conformers._FORCE_FIELD_USAGE.reset(token)
+                self.assertEqual(conformers.describe_force_field_usage(usage),
+                                 (f'{force_field} (openbabel)', unit))
+
+    def test_the_recorded_rdkit_force_field_is_the_one_rdkit_ran(self):
+        """Test that MMFF94s is named only when RDKit ran MMFF94s, and a UFF request runs UFF"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        expected = {'MMFF94s': 'MMFF94s (rdkit)', 'MMFF94': 'MMFF94 (rdkit)', 'mmff94s': 'MMFF94 (rdkit)',
+                    'UFF': 'UFF (rdkit)'}
+        for force_field, name in expected.items():
+            with self.subTest(force_field=force_field):
+                usage = set()
+                token = conformers._FORCE_FIELD_USAGE.set(usage)
+                try:
+                    rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=1)
+                    with unittest.mock.patch.object(conformers.AllChem, 'MMFFOptimizeMolecule',
+                                                    wraps=conformers.AllChem.MMFFOptimizeMolecule) as mmff:
+                        conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field=force_field)
+                finally:
+                    conformers._FORCE_FIELD_USAGE.reset(token)
+                self.assertEqual(conformers.describe_force_field_usage(usage), (name, 'kcal/mol'))
+                self.assertEqual(mmff.called, force_field != 'UFF')
+
+    def test_an_explicit_uff_request_runs_uff_whatever_try_uff_says(self):
+        """Test that a UFF request is not silently empty when the UFF fallback for MMFF failures is disabled"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        for try_uff in (True, False):
+            with self.subTest(try_uff=try_uff):
+                usage = set()
+                token = conformers._FORCE_FIELD_USAGE.set(usage)
+                try:
+                    rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=2)
+                    xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='UFF',
+                                                                  try_uff=try_uff)
+                finally:
+                    conformers._FORCE_FIELD_USAGE.reset(token)
+                self.assertEqual(len(xyzs), 2)
+                self.assertEqual(len(energies), 2)
+                self.assertEqual(conformers.describe_force_field_usage(usage), ('UFF (rdkit)', 'kcal/mol'))
+
+    def test_try_uff_false_still_disables_the_uff_fallback_of_an_mmff_request(self):
+        """Test that only an MMFF request is gated by try_uff"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=1)
+        with unittest.mock.patch.object(conformers.AllChem, 'MMFFOptimizeMolecule', side_effect=RuntimeError('boom')), \
+                unittest.mock.patch.object(conformers.AllChem, 'UFFOptimizeMoleculeConfs') as uff:
+            xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s',
+                                                          try_uff=False)
+        uff.assert_not_called()
+        self.assertEqual((xyzs, energies), ([], []))
+
     def test_openbabel_force_field(self):
         """Test Open Babel force field"""
         xyz = """S      -0.19093478    0.57933906    0.00000000
