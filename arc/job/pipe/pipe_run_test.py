@@ -7,12 +7,16 @@ This module contains unit tests for the arc.job.pipe_run module
 
 import json
 import os
+import re
 import shutil
+import sys
 import tempfile
 import time
 import unittest
 import unittest.mock
 
+import arc.job.local as local_module
+from arc.job.ssh import SUBMISSION_CAP_WAIT_SECONDS
 from arc.job.adapters.mockter import MockAdapter
 from arc.job.pipe import pipe_run as pipe_run_module
 from arc.job.pipe.pipe_state import (TaskState, TaskStateRecord, PipeRunState, TaskSpec, get_task_attempt_dir,
@@ -329,6 +333,124 @@ class TestPipeRunEnvPreamble(unittest.TestCase):
             preamble = run._build_env_preamble()
         self.assertIn('export TMPDIR="/scratch/env_test/$WORKER_ID"', preamble)
         self.assertNotIn('..', preamble)
+
+
+class TestPipeRunQueueLimit(unittest.TestCase):
+    """Tests that a pipe array shrinks to fit the per-user job limit of the queue."""
+
+    CAP_LINE = "qsub: would exceed queue generic's per-user limit"
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_run_queue_limit_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        self.sizes_tried = list()
+        self.wait_on_cap_args = list()
+        self.sleeps = list()
+        self.free = None
+        self.allowance = None
+        for patcher in (unittest.mock.patch('arc.job.local.submit_job', side_effect=self._fake_submit_job),
+                        unittest.mock.patch.object(pipe_run_module, 'discover_job_allowance',
+                                          side_effect=lambda **kwargs: self.allowance),
+                        unittest.mock.patch.object(pipe_run_module.time, 'sleep', side_effect=self.sleeps.append),
+                        unittest.mock.patch.dict(pipe_run_module.settings['submit_command'], {'PBS': sys.executable}),
+                        unittest.mock.patch.dict(pipe_run_module.pipe_settings, {'max_queued_jobs': None})):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _fake_submit_job(self, path, cluster_soft=None, submit_filename=None, wait_on_cap=True, **kwargs):
+        """A scheduler that refuses a PBS array larger than the free slots, as Zeus does."""
+        with open(os.path.join(path, submit_filename)) as f:
+            size = int(re.search(r'#PBS -J 1-(\d+)', f.read()).group(1))
+        self.sizes_tried.append(size)
+        self.wait_on_cap_args.append(wait_on_cap)
+        free = self.free() if callable(self.free) else self.free
+        if free is not None and size > free:
+            return local_module.SUBMISSION_CAP_REACHED, None
+        return 'running', f'{1000 + len(self.sizes_tried)}[].zeus'
+
+    def _make_run(self, n_tasks=80, max_workers=100):
+        run = PipeRun(project_directory=self.tmpdir, run_id='qlimit', tasks=[_make_spec(f't_{i}') for i in range(n_tasks)],
+                      cluster_software='pbs', max_workers=max_workers)
+        run.stage()
+        return run
+
+    def test_array_larger_than_the_limit_shrinks_without_waiting(self):
+        self.free = 40
+        run = self._make_run()
+        status, job_id = run.submit_to_scheduler()
+        self.assertEqual(status, 'running')
+        self.assertEqual(self.sizes_tried, [80, 40])
+        self.assertEqual(self.wait_on_cap_args, [False, False])
+        self.assertEqual(run.array_size, 40)
+        self.assertEqual(self.sleeps, list())
+        with open(os.path.join(run.pipe_root, 'submit.sh')) as f:
+            self.assertIn('#PBS -J 1-40', f.read())
+
+    def test_array_is_not_larger_than_the_tasks(self):
+        run = self._make_run(n_tasks=7)
+        run.submit_to_scheduler()
+        self.assertEqual(self.sizes_tried, [7])
+
+    def test_partially_free_allowance_admits_a_smaller_array(self):
+        self.free = 12
+        run = self._make_run()
+        run.submit_to_scheduler()
+        self.assertEqual(self.sizes_tried, [80, 40, 20, 10])
+        self.assertEqual(self.sleeps, list())
+
+    def test_temporarily_full_queue_waits_instead_of_settling_for_one_worker(self):
+        free_slots = iter([0, 0, 0, 0, 0, 0, 0, 0, 40])
+        self.free = lambda: next(free_slots)
+        run = self._make_run()
+        status, _ = run.submit_to_scheduler()
+        self.assertEqual(status, 'running')
+        self.assertEqual(self.sizes_tried, [80, 40, 20, 10, 5, 2, 1, 80, 40])
+        self.assertEqual(self.sleeps, [SUBMISSION_CAP_WAIT_SECONDS])
+        self.assertEqual(run.array_size, 40)
+
+    def test_discovered_allowance_sizes_the_first_attempt(self):
+        self.allowance = 34
+        self.free = 40
+        run = self._make_run()
+        run.submit_to_scheduler()
+        self.assertEqual(self.sizes_tried, [34])
+
+    def test_no_allowance_left_waits_with_a_single_worker_array(self):
+        self.allowance = 0
+        free_slots = iter([0, 5])
+        self.free = lambda: next(free_slots)
+        run = self._make_run()
+        run.submit_to_scheduler()
+        self.assertEqual(self.sizes_tried, [1, 1])
+        self.assertEqual(self.sleeps, [SUBMISSION_CAP_WAIT_SECONDS])
+
+    def test_override_setting_is_passed_to_the_discovery(self):
+        run = self._make_run(n_tasks=3)
+        with unittest.mock.patch.dict(pipe_run_module.pipe_settings, {'max_queued_jobs': 25}), \
+                unittest.mock.patch.object(pipe_run_module, 'discover_job_allowance', return_value=None) as discover:
+            run.submit_to_scheduler()
+        self.assertEqual(discover.call_args.kwargs['limit_override'], 25)
+        self.assertEqual(discover.call_args.kwargs['cluster_software'], 'PBS')
+
+    def test_non_cap_failure_is_returned_without_shrinking(self):
+        run = self._make_run()
+        with unittest.mock.patch('arc.job.local.submit_job', return_value=(None, None)) as submit:
+            self.assertEqual(run.submit_to_scheduler(), (None, None))
+        self.assertEqual(submit.call_count, 1)
+
+    def test_array_size_survives_a_restart_from_disk(self):
+        self.free = 40
+        run = self._make_run()
+        run.submit_to_scheduler()
+        run._save_run_metadata()
+        self.assertEqual(PipeRun.from_dir(run.pipe_root).array_size, 40)
+
+    def test_fewer_workers_than_tasks_still_counts_every_task(self):
+        self.free = 4
+        run = self._make_run(n_tasks=10)
+        run.submit_to_scheduler()
+        self.assertEqual(run.array_size, 2)
+        self.assertEqual(run._count_task_states().get('PENDING', 0), 10)
 
 
 class TestPipeRunReconcile(unittest.TestCase):

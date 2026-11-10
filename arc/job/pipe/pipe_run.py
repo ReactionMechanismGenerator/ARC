@@ -31,6 +31,9 @@ from arc.imports import pipe_submit, settings
 from arc.level import Level, set_recorded_irc_level, set_recorded_irc_log_level, set_recorded_level
 from arc.species.species import CONFORMER_ENERGY_KIND_ELECTRONIC
 
+from arc.job.local import SUBMISSION_CAP_REACHED
+from arc.job.pipe.queue_limit import discover_job_allowance, next_array_size
+from arc.job.ssh import SUBMISSION_CAP_WAIT_SECONDS
 from arc.job.pipe.pipe_state import (
     PipeRunState,
     TaskState,
@@ -61,6 +64,10 @@ class PipeRun:
         tasks (list[TaskSpec]): Task specifications to execute.
         cluster_software (str): Cluster scheduler type.
         max_workers (int): Maximum number of concurrent array workers.
+        array_size (int, optional): The number of array workers the run was last submitted with, which is
+                                    smaller than the number of tasks when the queue's per-user job limit
+                                    forced a smaller array. Workers claim tasks until none remain, so a
+                                    smaller array still completes every task.
         max_attempts (int): Maximum retry attempts per task.
     """
 
@@ -72,12 +79,14 @@ class PipeRun:
                  max_workers: int = 100,
                  max_attempts: int = 3,
                  pipe_root: str | None = None,
+                 array_size: int | None = None,
                  ):
         self.project_directory = project_directory
         self.run_id = run_id
         self.tasks = tasks
         self.cluster_software = cluster_software
         self.max_workers = max_workers
+        self.array_size = array_size
         self.max_attempts = max_attempts
         self.pipe_root = pipe_root if pipe_root is not None \
             else os.path.join(project_directory, 'calcs', 'pipe_' + run_id)
@@ -112,6 +121,7 @@ class PipeRun:
             'status': self.status.value,
             'cluster_software': self.cluster_software,
             'max_workers': self.max_workers,
+            'array_size': self.array_size,
             'max_attempts': self.max_attempts,
             'task_family': task_family,
             'engine': engine,
@@ -157,6 +167,7 @@ class PipeRun:
             max_workers=data.get('max_workers', 100),
             max_attempts=data.get('max_attempts', 3),
             pipe_root=pipe_root,
+            array_size=data.get('array_size'),
         )
         run.status = PipeRunState(data['status'])
         run.created_at = data.get('created_at', 0)
@@ -196,6 +207,15 @@ class PipeRun:
         self.status = PipeRunState.STAGED
         self._save_run_metadata()
 
+    def _natural_array_size(self) -> int:
+        """
+        The array size the tasks call for, before any queue limit is considered.
+
+        Returns:
+            int: One worker per task, at most ``max_workers``.
+        """
+        return min(self.max_workers, len(self.tasks)) if self.tasks else self.max_workers
+
     def _submission_resources(self):
         """
         Derive resource settings from the homogeneous task list.
@@ -205,7 +225,7 @@ class PipeRun:
         """
         cpus = self.tasks[0].required_cores if self.tasks else 1
         memory_mb = self.tasks[0].required_memory_mb if self.tasks else 4096
-        array_size = min(self.max_workers, len(self.tasks)) if self.tasks else self.max_workers
+        array_size = self.array_size if self.array_size is not None else self._natural_array_size()
         if self.cluster_software == 'local':
             # Cap each worker's cores at the local CPU budget so a single worker cannot exceed it
             # (the submit script exports these as OMP/MKL/OPENBLAS_NUM_THREADS and ARC_PIPE_LOCAL_CPUS),
@@ -322,12 +342,49 @@ class PipeRun:
             return 'errored', None
         from arc.job.local import submit_job as local_submit_job
         filename = 'submit.sub' if self.cluster_software == 'htcondor' else 'submit.sh'
-        job_status, job_id = local_submit_job(
-            path=self.pipe_root,
-            cluster_soft=canonical_cs,
-            submit_filename=filename,
-        )
-        return job_status, job_id
+        size = self._initial_array_size(canonical_cs)
+        while True:
+            self.array_size = size
+            self.write_submit_script()
+            job_status, job_id = local_submit_job(
+                path=self.pipe_root,
+                cluster_soft=canonical_cs,
+                submit_filename=filename,
+                wait_on_cap=False,
+            )
+            if job_status != SUBMISSION_CAP_REACHED:
+                return job_status, job_id
+            if size > 1:
+                size = next_array_size(size)
+                logger.warning(f'Pipe run {self.run_id}: the queue refused the job array, '
+                               f'retrying with {size} workers for {len(self.tasks)} tasks.')
+                continue
+            logger.warning(f'Pipe run {self.run_id}: even a 1-worker job array was refused because of the per-user '
+                           f'job cap. Waiting {SUBMISSION_CAP_WAIT_SECONDS} s for the queue to free up.')
+            time.sleep(SUBMISSION_CAP_WAIT_SECONDS)
+            size = self._initial_array_size(canonical_cs)
+
+    def _initial_array_size(self, canonical_cs: str) -> int:
+        """
+        The array size to try first: what the tasks call for, limited by the job allowance the
+        scheduler reports for the user in the queue, if it reports one.
+
+        Args:
+            canonical_cs (str): The cluster software as spelled in ``settings['submit_command']``.
+
+        Returns:
+            int: The array size, at least 1.
+        """
+        size = self._natural_array_size()
+        queue, _ = next(iter(servers_dict.get('local', dict()).get('queues', dict()).items()), ('', None))
+        allowance = discover_job_allowance(cluster_software=canonical_cs,
+                                           queue=queue,
+                                           limit_override=pipe_settings.get('max_queued_jobs'))
+        if allowance is not None and allowance < size:
+            logger.info(f'Pipe run {self.run_id}: limiting the job array to {max(allowance, 1)} workers '
+                        f'for {len(self.tasks)} tasks, the per-user job allowance in queue "{queue}".')
+            size = max(allowance, 1)
+        return size
 
     def submit_locally(self):
         """
