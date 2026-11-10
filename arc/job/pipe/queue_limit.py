@@ -21,7 +21,7 @@ logger = get_logger()
 
 PBS_LIMIT_ENTRY = re.compile(r'\[([ugpo]):([^=\]\s]+)=(\d+)\]')
 PBS_GENERIC_USER = 'PBS_GENERIC'
-PBS_JOB_ID = re.compile(r'^\d+(\[\d*\])?\.')
+PBS_JOB_ID = re.compile(r'^(\d+)(\[\d*\])?\.')
 PBS_INACTIVE_STATES = ('F', 'X')
 
 
@@ -68,24 +68,62 @@ def parse_pbs_per_user_limit(text: str, user: str) -> int | None:
     return specific if specific is not None else generic
 
 
-def count_pbs_user_jobs(stdout: list[str], queue: str) -> int:
+def parse_pbs_max_array_size(text: str) -> int | None:
     """
-    Count the user's active jobs (queued, running, held, ...) in a queue from ``qstat -t -u <user>``.
+    Parse the largest allowed job array size (``max_array_size``) from ``qstat -Bf`` or ``qstat -Qf``.
 
     Args:
-        stdout (list[str]): The ``qstat -t -u <user>`` stdout lines.
+        text (str): The ``qstat -Bf`` or ``qstat -Qf`` output.
+
+    Returns:
+        int | None: The largest number of subjobs of an array, or ``None`` if not set.
+    """
+    match = re.search(r'^\s*max_array_size\s*=\s*(\d+)\s*$', text, re.MULTILINE)
+    return int(match.group(1)) if match else None
+
+
+def _pbs_queue_matches(listed: str, queue: str) -> bool:
+    """
+    Whether a queue column entry of ``qstat -u`` names ``queue``.
+
+    The default (narrow) output truncates a long name and marks it with ``*`` (``mafat_n*``);
+    such an entry matches every queue it is a prefix of, which can only overcount.
+    """
+    if listed.endswith('*'):
+        return queue.startswith(listed[:-1])
+    return listed == queue
+
+
+def count_pbs_user_jobs(stdout: list[str], queue: str) -> int:
+    """
+    Count the user's active jobs (queued, running, held, ...) in a queue from ``qstat -w -t -u <user>``.
+
+    Each listed subjob counts as one job. An array's parent row counts as one job only if none of
+    its subjobs is listed, as is the case for a queued array that has not started.
+
+    Args:
+        stdout (list[str]): The ``qstat -w -t -u <user>`` stdout lines (``-w`` avoids truncated names).
         queue (str): The queue name.
 
     Returns:
-        int: The number of active job rows in that queue.
+        int: The number of active jobs in that queue.
     """
     count = 0
+    parents, parents_with_subjobs = set(), set()
     for line in stdout:
         tokens = line.split()
-        if len(tokens) > 9 and PBS_JOB_ID.match(tokens[0]) and tokens[2] == queue \
-                and tokens[-2] not in PBS_INACTIVE_STATES:
+        match = PBS_JOB_ID.match(tokens[0]) if tokens else None
+        if len(tokens) < 10 or match is None or not _pbs_queue_matches(tokens[2], queue) \
+                or tokens[-2] in PBS_INACTIVE_STATES:
+            continue
+        array_index = match.group(2)
+        if array_index == '[]':
+            parents.add(match.group(1))
+        else:
             count += 1
-    return count
+            if array_index is not None:
+                parents_with_subjobs.add(match.group(1))
+    return count + len(parents - parents_with_subjobs)
 
 
 def parse_slurm_max_submit_jobs(text: str) -> int | None:
@@ -162,14 +200,17 @@ def discover_job_allowance(cluster_software: str,
         if not status_command:
             return None
         qstat = status_command.split()[0]
+        server_text = _run(f'{qstat} -Bf')
         limits = [limit_override] if limit_override else [
             parse_pbs_per_user_limit(_run(f'{qstat} -Qf {queue}'), user),
-            parse_pbs_per_user_limit(_run(f'{qstat} -Bf'), user)]
+            parse_pbs_per_user_limit(server_text, user)]
         limits = [limit for limit in limits if limit is not None]
-        if not limits:
-            return None
-        used = count_pbs_user_jobs(_run(f'{qstat} -t -u {user}').splitlines(), queue)
-        return max(min(limits) - used, 0)
+        max_array = parse_pbs_max_array_size(server_text)
+        allowances = [max_array] if max_array is not None else list()
+        if limits:
+            used = count_pbs_user_jobs(_run(f'{qstat} -w -t -u {user}').splitlines(), queue)
+            allowances.append(max(min(limits) - used, 0))
+        return min(allowances) if allowances else None
     if software == 'slurm':
         status_command = status_commands.get('Slurm')
         if not status_command:
