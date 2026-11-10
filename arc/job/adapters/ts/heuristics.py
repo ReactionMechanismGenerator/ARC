@@ -17,6 +17,7 @@ Todo:
 
 import copy
 import datetime
+import functools
 import itertools
 import json
 import math
@@ -46,7 +47,7 @@ from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies, TSGuess, SpeciesError, colliding_atoms
 from arc.species.zmat import get_parameter_from_atom_indices, remove_zmat_atom_0, up_param, xyz_to_zmat
 from arc.species.vectors import (apply_rodrigues_rotation, calculate_angle, calculate_dihedral_angle,
-                                 unit_vector)
+                                 calculate_distance, unit_vector)
 
 if TYPE_CHECKING:
     from arc.level import Level
@@ -1801,12 +1802,16 @@ def qa_ts_guesses(reaction: 'ARCReaction',
     return xyz_guesses_total, reaction_families
 
 
-def qa_sn2(reaction: 'ARCReaction') -> tuple[list[dict], list[str]]:
+def qa_sn2(reaction: 'ARCReaction',
+           family: str = 'qa_sn2',
+           ) -> tuple[list[dict], list[str]]:
     """
-    Generate TS guesses for reactions of the ARC "qa_sn2" family.
+    Generate TS guesses for reactions of the ARC "qa_sn2" family,
+    or of the "qa_ring_opening" family (a QA SN2 reaction with the Ca-N bond in a ring, with the same parameters).
 
     Args:
         reaction (ARCReaction): The reaction to process.
+        family (str, optional): The ARC family label, 'qa_sn2' or 'qa_ring_opening'.
 
     Returns:
         Tuple containing:
@@ -1814,9 +1819,9 @@ def qa_sn2(reaction: 'ARCReaction') -> tuple[list[dict], list[str]]:
             - list[str]: Reaction family label for each guess.
     """
     return qa_ts_guesses(reaction,
-                         family='qa_sn2',
+                         family=family,
                          parameters_file='qa_sn2_parameters.yml',
-                         no_products_message='No qa_sn2 family products found for this reaction.',
+                         no_products_message=f'No {family} family products found for this reaction.',
                          extract_indices=extract_sn2_reactant_and_indices,
                          build_guesses=build_sn2_site_guesses,
                          )
@@ -1991,6 +1996,9 @@ def process_sn2_chosen_d_indices(initial_xyz: dict,
            Generate the staggered Ca-Cb rotamers of the QA reactant (via get_ca_cb_staggered_rotamers),
            and retry Step 1 on each of them. Guesses from all rotamers are collected.
 
+    A ring Ca-N bond (ring-opening SN2) is stretched in Cartesian coordinates (see get_stretched_sn2_zmat),
+    and Steps 2 and 3 are skipped since they would change ring dihedrals.
+
     Args:
         initial_xyz (dict): Initial Cartesian coordinates of the QA reactant.
         xyz_indices (dict): Atom indices: Ca, N, R1, O_r, H_r, H1_w, O_w, n_qa, atom_order.
@@ -2010,8 +2018,8 @@ def process_sn2_chosen_d_indices(initial_xyz: dict,
         'e': xyz_indices['R1'],
         'd': None,
     }
-    current_zmat, zmat_indices = setup_zmat_indices(initial_xyz, infra_indices, mol=mol)
-    stretch_ab_bond(current_zmat, infra_indices, zmat_indices, sn2_parameters, 'qa_sn2')
+    ring_ca_n = is_ring_bond(mol, xyz_indices['Ca'], xyz_indices['N'])
+    current_zmat, zmat_indices = get_stretched_sn2_zmat(initial_xyz, infra_indices, sn2_parameters, mol, ring_ca_n)
 
     # Step 1: try the original (unmodified) zmat
     ts_guesses, zmats_total = process_sn2_adjustments(
@@ -2021,9 +2029,11 @@ def process_sn2_chosen_d_indices(initial_xyz: dict,
     if ts_guesses:
         return chosen_xyz_indices, ts_guesses, zmats_total
 
-    # Step 2: find backbone dihedrals involving N, Ca, and R1, then try adjusted variants
-    matches = get_matching_dihedrals(current_zmat, zmat_indices['a'], zmat_indices['b'],
-                                     zmat_indices['e'], zmat_indices['d'])
+    # Step 2: find backbone dihedrals involving N, Ca, and R1, then try adjusted variants.
+    # Skipped for a ring Ca-N bond: N, Ca, and R1 are then ring atoms, and changing a ring dihedral
+    # in the Z-matrix distorts the ring closure.
+    matches = [] if ring_ca_n else get_matching_dihedrals(current_zmat, zmat_indices['a'], zmat_indices['b'],
+                                                          zmat_indices['e'], zmat_indices['d'])
     adjustment_factors = [15, 25, 35, 45, 55]
     adjusted_zmats = []
     for indices in matches:
@@ -2051,14 +2061,15 @@ def process_sn2_chosen_d_indices(initial_xyz: dict,
             return chosen_xyz_indices, ts_guesses, zmats_total
 
     # Step 4: retry Step 1 on staggered Ca-Cb rotamers, in case a Cb substituent blocks the backside of Ca
+    # (for a ring Ca-N bond, also ring conformers placing an exocyclic substituent of a ring Cb anti to N)
     if mol is None:
         return {}, [], zmats_total
     rotamer_ts_guesses = []
     for rotamer_xyz in get_ca_cb_staggered_rotamers(xyz=initial_xyz, mol=mol, ca=xyz_indices['Ca'],
                                                     n=xyz_indices['N'], threshold=threshold,
-                                                    multiple_bond_pairs=multiple_bond_pairs):
-        rotamer_zmat, rotamer_zmat_indices = setup_zmat_indices(rotamer_xyz, infra_indices, mol=mol)
-        stretch_ab_bond(rotamer_zmat, infra_indices, rotamer_zmat_indices, sn2_parameters, 'qa_sn2')
+                                                    multiple_bond_pairs=multiple_bond_pairs,
+                                                    include_ring_cb=ring_ca_n):
+        rotamer_zmat, _ = get_stretched_sn2_zmat(rotamer_xyz, infra_indices, sn2_parameters, mol, ring_ca_n)
         ts_guesses, zmats_total = process_sn2_adjustments(
             sn2_parameters, rotamer_zmat, oh_d1, xyz_indices, zmats_total, threshold=threshold,
             multiple_bond_pairs=multiple_bond_pairs,
@@ -2070,6 +2081,121 @@ def process_sn2_chosen_d_indices(initial_xyz: dict,
     return {}, [], zmats_total
 
 
+def is_ring_bond(mol: Molecule | None, a: int, b: int) -> bool:
+    """
+    Whether atoms a and b are bonded within a ring.
+
+    Args:
+        mol (Molecule, optional): The molecule. ``None`` is treated as no ring.
+        a (int): The 0-index of the first atom.
+        b (int): The 0-index of the second atom.
+
+    Returns:
+        bool: Whether the a-b bond is in a ring.
+    """
+    if mol is None:
+        return False
+    atom_a, atom_b = mol.atoms[a], mol.atoms[b]
+    return mol.has_bond(atom_a, atom_b) and mol.is_bond_in_cycle(mol.get_bond(atom_a, atom_b))
+
+
+# In an SN2 TS the Ca substituents are roughly perpendicular to the N...Ca...O axis (Ca is planar);
+# DFT ring-opening TSs show N-Ca-X angles of about 89-104 degrees.
+SN2_TS_N_CA_X_ANGLE_RANGE = (90.0, 100.0)
+
+
+def get_stretched_sn2_zmat(xyz: dict,
+                           infra_indices: dict,
+                           sn2_parameters: dict,
+                           mol: Molecule | None,
+                           ring_ca_n: bool,
+                           ) -> tuple[dict, dict]:
+    """
+    Get the Z-matrix of a QA reactant with the Ca-N bond stretched towards the QA SN2 TS.
+
+    An open-chain Ca-N bond is stretched in the Z-matrix. A ring Ca-N bond (ring-opening SN2) is stretched in Cartesian
+    coordinates before the Z-matrix is built, moving only Ca and its hydrogen atoms along the N-Ca axis:
+    a Z-matrix has no ring-closure bond, so stretching Ca-N in it would stretch another ring bond instead.
+    Moving Ca alone compresses or stretches its other bonds, which keep their usual lengths in an SN2 TS,
+    so the stretched reactant is then relaxed with MMFF94 while the Ca-N distance is held fixed and Ca is kept
+    planar, as in an SN2 TS, by holding each N-Ca-X angle within SN2_TS_N_CA_X_ANGLE_RANGE
+    (see relax_with_fixed_distance).
+
+    Args:
+        xyz (dict): Cartesian coordinates of the QA reactant.
+        infra_indices (dict): Atom indices: 'a' = Ca, 'b' = N, 'e' = R1, 'd' = None.
+        sn2_parameters (dict): QA SN2 parameters loaded from YAML.
+        mol (Molecule, optional): The QA reactant molecule, used for the Z-matrix connectivity.
+        ring_ca_n (bool): Whether the Ca-N bond is in a ring.
+
+    Returns:
+        tuple[dict, dict]: The stretched Z-matrix and its atom indices.
+    """
+    if ring_ca_n:
+        stretch = sn2_parameters['family_parameters']['qa_sn2']['stretch']
+        xyz = stretch_xyz_bond(xyz, mol, infra_indices['b'], infra_indices['a'], stretch)
+        xyz = relax_with_fixed_distance(xyz, mol, infra_indices['b'], infra_indices['a'],
+                                        angle_range=SN2_TS_N_CA_X_ANGLE_RANGE)
+        return setup_zmat_indices(xyz, infra_indices, mol=mol)
+    zmat, zmat_indices = setup_zmat_indices(xyz, infra_indices, mol=mol)
+    stretch_ab_bond(zmat, infra_indices, zmat_indices, sn2_parameters, 'qa_sn2')
+    return zmat, zmat_indices
+
+
+def relax_with_fixed_distance(xyz: dict,
+                              mol: Molecule,
+                              a: int,
+                              b: int,
+                              angle_range: tuple[float, float] | None = None,
+                              ) -> dict:
+    """
+    Relax a geometry with the MMFF94 force field while holding the a-b distance fixed.
+
+    Used after a bond has been stretched by moving one of its atoms, so that the other bonds of that atom
+    return to their usual lengths and the surrounding atoms move out of the way.
+    If MMFF94 fails, the given geometry is returned unchanged.
+
+    Args:
+        xyz (dict): Cartesian coordinates.
+        mol (Molecule): The molecule, with atoms ordered as in ``xyz``.
+        a (int): The 0-index of the first atom.
+        b (int): The 0-index of the second atom.
+        angle_range (tuple[float, float], optional): If given, each a-b-X angle (X a neighbour of b not bonded to a)
+                                                     is held within this range, in degrees.
+
+    Returns:
+        dict: The relaxed Cartesian coordinates.
+    """
+    distance = calculate_distance(coords=xyz, atoms=[a, b], index=0)
+    try:
+        conf, rd_mol = rdkit_conf_from_mol(mol=mol, xyz=xyz)
+        mmff_properties = AllChem.MMFFGetMoleculeProperties(rd_mol)
+        if mmff_properties is None:
+            raise ValueError('MMFF94 atom typing failed')
+        force_field = AllChem.MMFFGetMoleculeForceField(rd_mol, mmff_properties, confId=conf.GetId())
+        force_field.MMFFAddDistanceConstraint(a, b, False, distance, distance, 1.0e5)
+        if angle_range is not None:
+            for neighbor in mol.atoms[b].edges.keys():
+                x = mol.atoms.index(neighbor)
+                # A neighbour also bonded to a (three-membered ring) cannot be perpendicular to the a-b axis
+                if x != a and not mol.has_bond(neighbor, mol.atoms[a]):
+                    force_field.MMFFAddAngleConstraint(a, b, x, False, angle_range[0], angle_range[1], 1.0e3)
+        force_field.Initialize()
+        not_converged = 1
+        for _ in range(10):
+            not_converged = force_field.Minimize(maxIts=1000)
+            if not not_converged:
+                break
+        if not_converged:
+            raise ValueError('MMFF94 optimization did not converge')
+        positions = force_field.Positions()
+    except Exception as e:
+        logger.debug(f'Could not relax the stretched geometry with MMFF94, keeping it as is: {e}')
+        return xyz
+    return {'symbols': xyz['symbols'], 'isotopes': xyz['isotopes'],
+            'coords': tuple(tuple(positions[3 * i: 3 * i + 3]) for i in range(len(xyz['symbols'])))}
+
+
 def get_ca_cb_staggered_rotamers(xyz: dict,
                                  mol: Molecule,
                                  ca: int,
@@ -2077,6 +2203,7 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
                                  threshold: float = 0.8,
                                  multiple_bond_pairs: set[tuple[int, int]] | None = None,
                                  tolerance: float = 5.0,
+                                 include_ring_cb: bool = False,
                                  screen_after_relax: bool = False,
                                  ) -> list[dict]:
     """
@@ -2102,6 +2229,11 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
     while every chosen N-Ca-Cb-X dihedral is constrained at 180°, keeping the atom order. If the force field
     cannot be set up or the optimization fails or does not converge, the rigid rotamer is kept.
 
+    With ``include_ring_cb``, a Cb bonded to Ca within a ring is also considered, with its exocyclic substituents
+    as X (e.g., the hydrogen of a ring CH(CH3) group). A ring Ca-Cb bond cannot be rotated rigidly, so the
+    conformer is obtained by the constrained MMFF94 relaxation alone (a ring flip, e.g., equatorial to axial).
+    Such a conformer is discarded if the relaxation fails, since without it the input conformer is unchanged.
+
     With ``screen_after_relax``, the collision screen is applied to the relaxed rotamer instead of the rigid one.
     When both Ca and Cb carry bulky groups (e.g., a tert-butyl Cb next to an NMe3 leaving group), every rigid rotamer
     can bring hydrogens of the two groups nearly on top of each other, although the relaxed rotamer is unstrained.
@@ -2114,6 +2246,7 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
         threshold (float, optional): The collision threshold passed to colliding_atoms.
         multiple_bond_pairs (set[tuple[int, int]], optional): Atom pairs bonded with an order above single.
         tolerance (float, optional): The deviation in degrees from 180° within which X is considered already anti to N.
+        include_ring_cb (bool, optional): Whether to also consider a Cb bonded to Ca within a ring.
         screen_after_relax (bool, optional): Whether to apply the collision screen after the MMFF94 relaxation.
 
     Returns:
@@ -2123,13 +2256,16 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
     cb_options = list()
     for cb_atom in sorted(ca_atom.edges.keys(), key=lambda atom: mol.atoms.index(atom)):
         cb = mol.atoms.index(cb_atom)
-        if cb == n or cb_atom.is_hydrogen() or mol.is_bond_in_cycle(mol.get_bond(ca_atom, cb_atom)):
+        ring_cb = mol.is_bond_in_cycle(mol.get_bond(ca_atom, cb_atom))
+        if cb == n or cb_atom.is_hydrogen() or (ring_cb and not include_ring_cb):
             continue
-        x_indices = sorted(mol.atoms.index(atom) for atom in cb_atom.edges.keys() if atom is not ca_atom)
+        x_indices = sorted(mol.atoms.index(atom) for atom in cb_atom.edges.keys() if atom is not ca_atom
+                           and not (ring_cb and mol.is_bond_in_cycle(mol.get_bond(cb_atom, atom))))
         x_indices = [x for x in x_indices if not is_angle_linear(calculate_angle(xyz, [ca, cb, x], index=0))]
         if not x_indices:
             continue
-        cb_side, _ = determine_top_group_indices(mol=mol, atom1=ca_atom, atom2=cb_atom, index=0)
+        # A ring Ca-Cb bond is not rotated rigidly, so it has no Cb side to rotate
+        cb_side = None if ring_cb else determine_top_group_indices(mol=mol, atom1=ca_atom, atom2=cb_atom, index=0)[0]
         options = list()
         for x in x_indices:
             rotation = (180.0 - calculate_dihedral_angle(xyz, [n, ca, cb, x], index=0)) % 360.0
@@ -2144,7 +2280,7 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
             continue
         coords = [tuple(coord) for coord in xyz['coords']]
         for cb, _, cb_side, rotation in combination:
-            if rotation != 0.0:
+            if rotation != 0.0 and cb_side is not None:
                 axis = unit_vector([coords[cb][i] - coords[ca][i] for i in range(3)])
                 apply_rodrigues_rotation(coords=coords, axis_origin=coords[ca], axis_unit=axis,
                                          angle_rad=math.radians(rotation), indices=cb_side)
@@ -2172,6 +2308,9 @@ def get_ca_cb_staggered_rotamers(xyz: dict,
             rotamer = {'symbols': xyz['symbols'], 'isotopes': xyz['isotopes'],
                        'coords': tuple(tuple(positions[3 * i: 3 * i + 3]) for i in range(len(xyz['symbols'])))}
         except Exception as e:
+            if any(cb_side is None and rotation != 0.0 for _, _, cb_side, rotation in combination):
+                logger.debug(f'Could not relax a ring Ca-Cb conformer with MMFF94, discarding it: {e}')
+                continue
             logger.debug(f'Could not relax a Ca-Cb rotamer with MMFF94, keeping the rigid rotamer: {e}')
         if screen_after_relax and colliding_atoms(rotamer, threshold=threshold,
                                                   multiple_bond_pairs=multiple_bond_pairs):
@@ -2800,6 +2939,7 @@ def check_hofmann_ts_bonds(xyz_guess: dict, atom_indices: list[int]) -> bool:
 # The QA TS-guess function of each QA family label, with a family description used in log messages.
 QA_TS_GUESS_FUNCTIONS = {
     'qa_sn2': (qa_sn2, 'QA SN2'),
+    'qa_ring_opening': (functools.partial(qa_sn2, family='qa_ring_opening'), 'QA SN2 ring opening'),
     'qa_hofmann': (qa_hofmann, 'QA Hofmann elimination'),
 }
 
