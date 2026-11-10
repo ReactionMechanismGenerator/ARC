@@ -2077,6 +2077,12 @@ class TestTsAtomMap(unittest.TestCase):
         self.assertGreater(kabsch(start, point_1), 10 * IRC_START_GEOMETRY_TOLERANCE)
         self.assertNotEqual(tuple(start['coords']), tuple(parse_irc_traj(log_file_path=log)[0]['coords']))
 
+    def test_the_start_of_an_opt_cartesian_log_is_its_z_matrix_orientation(self):
+        """Test that with opt=cartesian the start is the Z-Matrix orientation table, not the later Input orientation"""
+        log = os.path.join(ARC_TESTING_PATH, 'irc', 'opt_cartesian_zmatrix_start.out')
+        start = parse_irc_start_geometry(log_file_path=log)
+        self.assertEqual(start['coords'], ((0.0, 0.0, 0.1173), (0.0, 0.7572, -0.4692), (0.0, -0.7572, -0.4692)))
+
     def test_the_rssd_separates_a_rigid_copy_rounding_and_a_real_difference(self):
         """Test the congruence criterion on a rigid copy, 1e-6 rounding, one IRC step and a same-element swap"""
         log = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')

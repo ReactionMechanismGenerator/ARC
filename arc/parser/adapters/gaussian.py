@@ -45,11 +45,11 @@ def _find_force_constants_header(lines: list[str]) -> int | None:
 
 def _read_input_orientation_table(lines: list[str], start: int) -> dict | None:
     """
-    Read one Gaussian ``Input orientation:`` table.
+    Read one Gaussian ``Input orientation:`` or ``Z-Matrix orientation:`` table (same layout).
 
     Args:
         lines (list[str]): The log file lines.
-        start (int): The index of the ``Input orientation:`` line.
+        start (int): The index of the table's title line.
 
     Returns: dict | None
         The geometry as an ARC xyz dict, or ``None`` when the table is empty or has a malformed row.
@@ -403,15 +403,16 @@ class GaussianParser(ESSAdapter, ABC):
 
     def parse_irc_start_geometry(self) -> dict[str, tuple] | None:
         """
-        Parse the geometry an IRC job started from: the first ``Input orientation:`` table of the log, which is the
-        TS geometry in the order of the job's input, before the first point of the path is computed.
+        Parse the first geometry the job printed (the TS for an IRC log, the starting geometry for an optimization
+        log): the first ``Input orientation:`` or ``Z-Matrix orientation:`` table, in the atom order of the job's
+        input.
 
         Returns: dict[str, tuple] | None
             The Cartesian coordinates, or ``None`` when the log has no such table or the table is malformed.
         """
         lines = _get_lines_from_file(self.log_file_path)
         for idx, line in enumerate(lines):
-            if 'Input orientation:' in line:
+            if 'Input orientation:' in line or 'Z-Matrix orientation:' in line:
                 return _read_input_orientation_table(lines, idx)
         return None
 
