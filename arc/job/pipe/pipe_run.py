@@ -47,7 +47,8 @@ from arc.job.pipe.pipe_state import (
 logger = get_logger()
 
 RESUBMIT_GRACE = 120  # seconds – grace period after resubmission before flagging again
-SCHEDULER_VISIBILITY_GRACE = 60  # seconds – trust a just-submitted pipe is alive even if the scheduler snapshot doesn't yet list it
+SCHEDULER_VISIBILITY_GRACE = 60
+SCHEDULER_JOB_GONE = 'scheduler_job_gone'
 
 pipe_settings = settings['pipe_settings']
 default_job_settings = settings['default_job_settings']
@@ -423,8 +424,11 @@ class PipeRun:
         Args:
             scheduler_job_alive: Whether the scheduler (PBS/Slurm) job for this
                 pipe run is still present in the queue.  When False, any
-                CLAIMED/RUNNING tasks are immediately orphaned (the workers
-                are gone) and unreachable PENDING tasks are failed terminally.
+                CLAIMED/RUNNING tasks are still orphaned only when their lease
+                has expired, orphaned tasks are not retried, and unreachable
+                PENDING tasks are failed terminally.
+                Tasks failed this way that still had attempts left carry
+                ``failure_class=SCHEDULER_JOB_GONE``.
 
         Returns:
             dict[str, int]: Counts of tasks in each state.
@@ -452,11 +456,9 @@ class PipeRun:
             except (FileNotFoundError, ValueError, KeyError):
                 continue
             current = TaskState(state.status)
-            # Orphan detection: lease expired OR the scheduler job is gone.
             if current in (TaskState.CLAIMED, TaskState.RUNNING) \
-                    and (not scheduler_job_alive
-                         or (state.lease_expires_at is not None
-                             and now > state.lease_expires_at)):
+                    and state.lease_expires_at is not None \
+                    and now > state.lease_expires_at:
                 try:
                     update_task_state(self.pipe_root, task_id,
                                      new_status=TaskState.ORPHANED,
@@ -491,8 +493,6 @@ class PipeRun:
                 try:
                     # FAILED_ESS tasks are handled separately (ejected to Scheduler).
                     # Only FAILED_RETRYABLE and ORPHANED reach here.
-                    # Only retry if the scheduler job is alive (workers exist
-                    # to claim the retried task); otherwise fail terminally.
                     if state.attempt_index + 1 < state.max_attempts and scheduler_job_alive:
                         update_task_state(self.pipe_root, task_id,
                                           new_status=TaskState.PENDING,
@@ -506,9 +506,11 @@ class PipeRun:
                         retried_pending += 1
                     else:
                         ended = state.ended_at or now
+                        gone = not scheduler_job_alive and state.attempt_index + 1 < state.max_attempts
                         update_task_state(self.pipe_root, task_id,
                                           new_status=TaskState.FAILED_TERMINAL,
-                                          ended_at=ended)
+                                          ended_at=ended,
+                                          failure_class=SCHEDULER_JOB_GONE if gone else state.failure_class)
                         counts[current.value] -= 1
                         counts[TaskState.FAILED_TERMINAL.value] += 1
                 except (ValueError, TimeoutError) as e:
@@ -535,8 +537,6 @@ class PipeRun:
                              f'scheduler workers still starting, skipping resubmission.')
             self._needs_resubmission = False
 
-        # If the scheduler job is gone, any PENDING tasks will never be
-        # claimed.  Mark them as terminally failed so the pipe can finish.
         if not scheduler_job_alive and counts[TaskState.PENDING.value] > 0:
             for task_id in task_ids:
                 if not os.path.isdir(os.path.join(tasks_dir, task_id)):
@@ -550,7 +550,7 @@ class PipeRun:
                 try:
                     update_task_state(self.pipe_root, task_id,
                                      new_status=TaskState.FAILED_TERMINAL,
-                                     ended_at=now)
+                                     ended_at=now, failure_class=SCHEDULER_JOB_GONE)
                     counts[TaskState.PENDING.value] -= 1
                     counts[TaskState.FAILED_TERMINAL.value] += 1
                     logger.info(f'Task {task_id}: no workers remain '

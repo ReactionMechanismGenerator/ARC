@@ -21,7 +21,7 @@ from arc.level import Level
 
 from arc.job.factory import job_factory
 from arc.job.pipe.pipe_run import (
-    PipeRun, SCHEDULER_VISIBILITY_GRACE, check_ess_convergence, find_output_file,
+    PipeRun, SCHEDULER_JOB_GONE, SCHEDULER_VISIBILITY_GRACE, check_ess_convergence, find_output_file,
     ingest_completed_task,
 )
 from arc.job.pipe.pipe_state import (
@@ -287,6 +287,8 @@ class PipeCoordinator:
                 pipe.status = PipeRunState.SUBMITTED
                 pipe.submitted_at = time.time()
                 self.sched.server_job_ids.append(job_id)
+                if 'local' not in self.sched.servers:
+                    self.sched.servers.append('local')
                 self._submit_failures.pop(pipe.pipe_root, None)
                 logger.info(f'Pipe run {pipe.run_id} submitted as job {job_id}.')
                 submitted = True
@@ -358,23 +360,18 @@ class PipeCoordinator:
         ``'12345_7'`` for Slurm).  We match on the numeric prefix with both
         ``[`` and ``_`` array separators so both formats are recognised.
 
-        Returns True (optimistic) when *server_job_ids* is unavailable.
+        A job submitted less than ``SCHEDULER_VISIBILITY_GRACE`` seconds ago is
+        taken to be alive, since the queue may not list it yet.
+
+        Returns True (optimistic) when *server_job_ids* is unavailable, or when the pipe runs on a local
+        worker pool, whose PID is not a queue job ID.
         """
-        if server_job_ids is None or pipe.scheduler_job_id is None:
-            return True  # Cannot determine — assume alive.
+        if server_job_ids is None or pipe.scheduler_job_id is None or pipe.cluster_software == 'local':
+            return True
         base = pipe.scheduler_job_id.rstrip('[]')
-        if any(jid == base
-               or jid.startswith(base + '[')
-               or jid.startswith(base + '_')
-               for jid in server_job_ids):
+        if any(jid == base or jid.startswith(base + '[') or jid.startswith(base + '_') for jid in server_job_ids):
             return True
-        # Grace period: the scheduler snapshot may not yet list a just-submitted
-        # job (array jobs can take seconds to surface in qstat, and a fresh
-        # get_server_job_ids() call drops any append made by submit).
-        if pipe.submitted_at is not None \
-                and time.time() - pipe.submitted_at < SCHEDULER_VISIBILITY_GRACE:
-            return True
-        return False
+        return pipe.submitted_at is not None and time.time() - pipe.submitted_at < SCHEDULER_VISIBILITY_GRACE
 
     def poll_pipes(self, server_job_ids: Optional[List[str]] = None) -> None:
         """
@@ -484,7 +481,7 @@ class PipeCoordinator:
                                       self.sched.species_dict, self.sched.output)
                 if spec.task_family in SPECIES_LEAF_FAMILIES:
                     self._finalize_species_leaf_task(pipe, spec, state)
-            elif state.status == TaskState.FAILED_ESS.value:
+            elif state.status == TaskState.FAILED_ESS.value or state.failure_class == SCHEDULER_JOB_GONE:
                 self._eject_to_scheduler(pipe, spec, state)
                 ejected_count += 1
             elif state.status == TaskState.FAILED_TERMINAL.value:
