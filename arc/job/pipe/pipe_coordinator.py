@@ -38,6 +38,7 @@ logger = get_logger()
 pipe_settings = settings['pipe_settings']
 
 SPECIES_LEAF_FAMILIES = ('species_sp', 'species_freq')
+SUBMIT_FALLBACK_DELAY = 600
 
 
 class PipedJobView:
@@ -86,6 +87,7 @@ class PipeCoordinator:
         self.active_pipes: dict[str, PipeRun] = {}
         self._pipe_poll_failures: dict[str, int] = {}
         self._last_pipe_summary: dict[str, str] = {}
+        self._submit_failures: dict[str, tuple[int, float]] = {}
 
     def should_use_pipe(self, tasks: list[TaskSpec]) -> bool:
         """
@@ -265,23 +267,77 @@ class PipeCoordinator:
                            f'for {cluster_software}. Tasks are staged but must be submitted manually.')
             self.active_pipes[pipe.pipe_root] = pipe
             return pipe
+        self.active_pipes[pipe.pipe_root] = pipe
+        self._submit(pipe)
+        return pipe
+
+    def _submit(self, pipe: PipeRun) -> bool:
+        """
+        Submit a pipe run's job array and record the job. A failure counts towards handing
+        the run to the Scheduler only while the run has no scheduler job.
+
+        Returns:
+            bool: Whether the job was submitted.
+        """
+        submitted = False
         try:
             job_status, job_id = pipe.submit_to_scheduler()
             if job_id and job_status in ('submitted', 'running'):
                 pipe.scheduler_job_id = job_id
                 pipe.status = PipeRunState.SUBMITTED
                 pipe.submitted_at = time.time()
-                pipe._save_run_metadata()
                 self.sched.server_job_ids.append(job_id)
-                logger.info(f'Pipe run {run_id} submitted as job {job_id}.')
+                self._submit_failures.pop(pipe.pipe_root, None)
+                logger.info(f'Pipe run {pipe.run_id} submitted as job {job_id}.')
+                submitted = True
             else:
-                logger.warning(f'Pipe run {run_id}: submission returned status={job_status}. '
+                logger.warning(f'Pipe run {pipe.run_id}: submission returned status={job_status}. '
                                f'Tasks are staged at {pipe.pipe_root}.')
         except Exception as e:
-            logger.warning(f'Pipe run {run_id}: submission failed ({e}). '
+            logger.warning(f'Pipe run {pipe.run_id}: submission failed ({e}). '
                            f'Tasks are staged at {pipe.pipe_root} but not running.')
-        self.active_pipes[pipe.pipe_root] = pipe
-        return pipe
+        if submitted:
+            try:
+                pipe._save_run_metadata()
+            except Exception as e:
+                logger.warning(f'Pipe run {pipe.run_id}: submitted as job {pipe.scheduler_job_id}, '
+                               f'but its metadata could not be saved ({e}).')
+            return True
+        if pipe.scheduler_job_id is None:
+            count, first = self._submit_failures.get(pipe.pipe_root, (0, time.time()))
+            self._submit_failures[pipe.pipe_root] = (count + 1, first)
+        return False
+
+    def _hand_to_scheduler(self, pipe_key: str) -> None:
+        """
+        Hand the PENDING tasks of a run whose job array could not be submitted to the Scheduler
+        as individual jobs.
+        """
+        pipe = self.active_pipes[pipe_key]
+        attempts = self._submit_failures[pipe_key][0]
+        pending = []
+        for spec in pipe.tasks:
+            try:
+                state = read_task_state(pipe.pipe_root, spec.task_id)
+            except (FileNotFoundError, ValueError, KeyError):
+                logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: could not read state, skipping.')
+                continue
+            if state.status == TaskState.PENDING.value:
+                pending.append((spec, state))
+        logger.error(f'Pipe run {pipe.run_id}: submission failed {attempts} time(s). '
+                     f'Handing {len(pending)} task(s) to the Scheduler as individual jobs.')
+        try:
+            for spec, state in pending:
+                self._eject_to_scheduler(pipe, spec, state)
+        except Exception as e:
+            logger.error(f'Pipe run {pipe.run_id}: hand-off to the Scheduler failed: {e}')
+        finally:
+            self._forget_pipe(pipe_key)
+        try:
+            pipe.status = PipeRunState.FAILED
+            pipe._save_run_metadata()
+        except Exception as e:
+            logger.debug(f'Pipe run {pipe.run_id}: best-effort FAILED persist failed: {e}')
 
     def register_pipe_run_from_dir(self, pipe_root: str) -> PipeRun:
         """Reconstruct and register an existing pipe run from disk."""
@@ -339,6 +395,17 @@ class PipeCoordinator:
         max_consecutive_failures = 3
         for pipe_key in list(self.active_pipes.keys()):
             pipe = self.active_pipes[pipe_key]
+            if pipe_key in self._submit_failures:
+                attempts, first_failure = self._submit_failures[pipe_key]
+                max_attempts = max(1, pipe_settings.get('max_attempts', 3))
+                elapsed = time.time() - first_failure
+                if elapsed < attempts * SUBMIT_FALLBACK_DELAY / max_attempts:
+                    continue
+                if attempts >= max_attempts:
+                    self._hand_to_scheduler(pipe_key)
+                    continue
+                if not self._submit(pipe):
+                    continue
             run_id = pipe.run_id
             job_alive = self._is_scheduler_job_alive(pipe, server_job_ids)
             try:
@@ -365,20 +432,7 @@ class PipeCoordinator:
                 self._last_pipe_summary[pipe_key] = summary
             if pipe.needs_resubmission:
                 logger.info(f'Pipe run {run_id}: resubmitting to pick up retried tasks.')
-                try:
-                    job_status, job_id = pipe.submit_to_scheduler()
-                    if job_id and job_status in ('submitted', 'running'):
-                        pipe.scheduler_job_id = job_id
-                        pipe.status = PipeRunState.SUBMITTED
-                        pipe.submitted_at = time.time()
-                        pipe._needs_resubmission = False
-                        pipe._save_run_metadata()
-                        self.sched.server_job_ids.append(job_id)
-                        logger.info(f'Pipe run {run_id}: resubmitted as job {job_id}.')
-                    else:
-                        pipe._needs_resubmission = False
-                except Exception:
-                    logger.warning(f'Pipe run {run_id}: resubmission failed.', exc_info=True)
+                self._submit(pipe)
             if pipe.status in (PipeRunState.COMPLETED, PipeRunState.COMPLETED_PARTIAL):
                 self.ingest_pipe_results(pipe)
                 self._forget_pipe(pipe_key)
@@ -397,6 +451,7 @@ class PipeCoordinator:
             pipe_key: The run's key in ``active_pipes`` (its ``pipe_root``).
         """
         del self.active_pipes[pipe_key]
+        self._submit_failures.pop(pipe_key, None)
         self._pipe_poll_failures.pop(pipe_key, None)
         self._last_pipe_summary.pop(pipe_key, None)
 

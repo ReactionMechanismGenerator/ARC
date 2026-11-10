@@ -84,6 +84,13 @@ def _complete_task(pipe_root, task_id):
     update_task_state(pipe_root, task_id, new_status=TaskState.COMPLETED, ended_at=now)
 
 
+def _patch_successful_submission(test_case):
+    """Make every pipe run in ``test_case`` submit, so polling is not about a run that was never submitted."""
+    submit = patch('arc.job.pipe.pipe_run.PipeRun.submit_to_scheduler', return_value=('submitted', '4242[]'))
+    submit.start()
+    test_case.addCleanup(submit.stop)
+
+
 _pipe_patches = []
 
 
@@ -177,6 +184,7 @@ class TestPollPipes(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='pipe_poll_test_')
         self.sched = _make_scheduler(self.tmpdir)
+        _patch_successful_submission(self)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -246,6 +254,7 @@ class TestScheduleJobsLoopCondition(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='pipe_loop_test_')
         self.sched = _make_scheduler(self.tmpdir)
+        _patch_successful_submission(self)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -1019,6 +1028,7 @@ class TestNoResubmissionLifecycle(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='pipe_resub_test_')
         self.sched = _make_scheduler(self.tmpdir)
+        _patch_successful_submission(self)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -1277,6 +1287,7 @@ class TestPollPipesIntegration(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='pipe_poll_int_')
         self.sched = _make_scheduler(self.tmpdir)
+        _patch_successful_submission(self)
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
