@@ -477,10 +477,14 @@ class TestUnsubmittedPipeRun(unittest.TestCase):
             if pipe.status == PipeRunState.SUBMITTED:
                 raise OSError('disk full')
 
-        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '1[]')), \
+        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '1[]')) as submit, \
              patch.object(PipeRun, '_save_run_metadata', autospec=True, side_effect=save):
             pipe = self.coord.submit_pipe_run('run_disk', [_make_spec('t_disk')])
             self.coord.poll_pipes()
+        submit.assert_called_once()
+        self.assertEqual(pipe.scheduler_job_id, '1[]')
+        self.assertIn('1[]', self.coord.sched.server_job_ids)
+        self.assertNotIn(pipe.pipe_root, self.coord._submit_failures)
         self.assertIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_a_run_with_a_job_id_is_not_resubmitted(self):
