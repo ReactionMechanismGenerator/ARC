@@ -12,9 +12,9 @@ import shutil
 import tempfile
 import time
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
-from arc.job.pipe.pipe_coordinator import PipeCoordinator
+from arc.job.pipe.pipe_coordinator import SUBMIT_FALLBACK_DELAY, PipeCoordinator
 from arc.job.pipe.pipe_run import PipeRun, get_task_attempt_dir
 from arc.job.pipe.pipe_state import (
     PipeRunState,
@@ -394,6 +394,11 @@ class TestUnsubmittedPipeRun(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
         self.coord = PipeCoordinator(_make_mock_sched(self.tmpdir))
 
+    def _fail_and_wait(self, pipe_key):
+        """Make the first failure old enough for the fallback."""
+        count, first = self.coord._submit_failures[pipe_key]
+        self.coord._submit_failures[pipe_key] = (count, first - SUBMIT_FALLBACK_DELAY - 1)
+
     def test_resubmission_succeeds_on_a_later_poll(self):
         with patch.object(PipeRun, 'submit_to_scheduler', return_value=('errored', None)):
             pipe = self.coord.submit_pipe_run('run_late', [_make_spec('t_late')])
@@ -403,7 +408,7 @@ class TestUnsubmittedPipeRun(unittest.TestCase):
         self.assertEqual(pipe.scheduler_job_id, '555[]')
         self.assertEqual(pipe.status, PipeRunState.RECONCILING)
         self.assertIn('555[]', self.coord.sched.server_job_ids)
-        self.assertNotIn(pipe.pipe_root, self.coord._unsubmitted_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord._submit_failures)
         self.assertIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_pending_tasks_go_to_the_scheduler_after_repeated_failures(self):
@@ -411,16 +416,72 @@ class TestUnsubmittedPipeRun(unittest.TestCase):
         with patch.object(PipeRun, 'submit_to_scheduler', side_effect=RuntimeError('qsub unreachable')):
             pipe = self.coord.submit_pipe_run('run_never', specs)
             self.coord.poll_pipes()
+            self.coord.poll_pipes()
             self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+            self._fail_and_wait(pipe.pipe_root)
             with self.assertLogs('arc', level='ERROR') as logs:
                 self.coord.poll_pipes()
         self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
-        self.assertNotIn(pipe.pipe_root, self.coord._unsubmitted_pipes)
-        self.assertEqual(self.coord.sched.run_job.call_count, 2)
-        self.assertEqual([c.kwargs['conformer'] for c in self.coord.sched.run_job.call_args_list], [0, 1])
+        self.assertNotIn(pipe.pipe_root, self.coord._submit_failures)
+        calls = self.coord.sched.run_job.call_args_list
+        self.assertEqual([c.kwargs['conformer'] for c in calls], [0, 1])
+        for call in calls:
+            self.assertEqual(call.kwargs['job_type'], 'conf_opt')
+            self.assertEqual(call.kwargs['label'], 'H2O')
+            self.assertEqual(call.kwargs['level_of_theory'], {'method': 'mock', 'basis': 'mock'})
+        self.assertEqual(PipeRun.from_dir(pipe.pipe_root).status, PipeRunState.FAILED)
         self.assertIn('run_never', logs.output[0])
-        self.assertIn('qsub unreachable', logs.output[0])
+        self.assertIn('3 time(s)', logs.output[0])
         self.assertIn('individual jobs', logs.output[0])
+
+    def test_no_fallback_before_the_minimum_time_has_passed(self):
+        with patch.object(PipeRun, 'submit_to_scheduler', side_effect=RuntimeError('down')) as submit:
+            pipe = self.coord.submit_pipe_run('run_wait', [_make_spec('t_wait')])
+            for _ in range(5):
+                self.coord.poll_pipes()
+        self.assertEqual(submit.call_count, 3)
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+        self.coord.sched.run_job.assert_not_called()
+        with patch('arc.job.pipe.pipe_coordinator.time.time',
+                   return_value=time.time() + SUBMIT_FALLBACK_DELAY + 1):
+            self.coord.poll_pipes()
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
+        self.assertEqual(self.coord.sched.run_job.call_count, 1)
+
+    def test_a_single_attempt_means_one_submission(self):
+        with patch.dict('arc.job.pipe.pipe_coordinator.pipe_settings', {'max_attempts': 1}), \
+             patch.object(PipeRun, 'submit_to_scheduler', return_value=('errored', None)) as submit:
+            pipe = self.coord.submit_pipe_run('run_once', [_make_spec('t_once')])
+            self.coord.poll_pipes()
+            self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+            self._fail_and_wait(pipe.pipe_root)
+            self.coord.poll_pipes()
+        submit.assert_called_once()
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
+        self.assertEqual(self.coord.sched.run_job.call_count, 1)
+
+    def test_a_failed_resubmission_does_not_hand_the_run_to_the_scheduler(self):
+        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '9[]')):
+            pipe = self.coord.submit_pipe_run('run_resub', [_make_spec('t_resub')])
+        with patch.object(pipe, 'reconcile', return_value={TaskState.PENDING.value: 1}), \
+             patch.object(PipeRun, 'needs_resubmission', new_callable=PropertyMock, return_value=True), \
+             patch.object(PipeRun, 'submit_to_scheduler', return_value=('errored', None)):
+            for _ in range(4):
+                self.coord.poll_pipes()
+        self.assertNotIn(pipe.pipe_root, self.coord._submit_failures)
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+        self.coord.sched.run_job.assert_not_called()
+
+    def test_a_metadata_write_error_after_submission_does_not_propagate(self):
+        def save(pipe):
+            if pipe.status == PipeRunState.SUBMITTED:
+                raise OSError('disk full')
+
+        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '1[]')), \
+             patch.object(PipeRun, '_save_run_metadata', autospec=True, side_effect=save):
+            pipe = self.coord.submit_pipe_run('run_disk', [_make_spec('t_disk')])
+            self.coord.poll_pipes()
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
 
     def test_a_run_with_a_job_id_is_not_resubmitted(self):
         with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '777[]')) as submit:

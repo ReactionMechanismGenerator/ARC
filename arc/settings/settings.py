@@ -378,7 +378,7 @@ pipe_settings = {
                                # budget (the 'local' server's 'cpus') and available memory. Set an
                                # int to override; note an explicit value wins outright and can exceed
                                # the CPU budget, so total cores may pass servers['local']['cpus'].
-    'max_attempts': 3,         # Retry budget per task before terminal failure.
+    'max_attempts': 3,         # Retry budget per task before terminal failure; also the submission attempts of a pipe job array.
     'lease_duration_hrs': 1,   # Worker lease duration in hours (default 1h).
     'env_setup': {},           # Engine-specific shell setup commands, e.g.,
                                # {'gaussian': 'source /usr/local/g09/setup.sh',
