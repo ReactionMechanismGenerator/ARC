@@ -139,6 +139,26 @@ class TestLocal(unittest.TestCase):
                       if call.args[0] == local.SUBMISSION_CAP_WAIT_SECONDS]
         self.assertEqual(len(cap_sleeps), 2)
 
+    def test_submit_job_returns_the_cap_refusal_when_not_waiting(self):
+        """Test that wait_on_cap=False hands a per-user cap refusal back at once, for every scheduler"""
+        for cluster_soft, cap_line in (('pbs', "qsub: would exceed queue generic's per-user limit"),
+                                       ('slurm', 'sbatch: error: AssocMaxSubmitJobLimit')):
+            with self.subTest(cluster_soft=cluster_soft):
+                with patch('arc.job.local.execute_command', return_value=([], [cap_line])) as mock_execute, \
+                        patch('arc.job.local.time.sleep') as mock_sleep:
+                    result = local.submit_job(path='.', cluster_soft=cluster_soft, submit_cmd='sub',
+                                              submit_filename='submit.sh', wait_on_cap=False)
+                self.assertEqual(result, (local.SUBMISSION_CAP_REACHED, None))
+                self.assertEqual(mock_execute.call_count, 1)
+                mock_sleep.assert_not_called()
+
+    def test_submit_job_wait_on_cap_false_still_accepts_a_submission(self):
+        """Test that wait_on_cap=False does not change an accepted submission"""
+        with patch('arc.job.local.execute_command', return_value=(['999.zeus'], [])):
+            result = local.submit_job(path='.', cluster_soft='pbs', submit_cmd='qsub',
+                                      submit_filename='submit.sh', wait_on_cap=False)
+        self.assertEqual(result, ('running', '999'))
+
     def test_submit_job_without_cap_does_not_wait(self):
         """Test that an accepted submission neither waits for the cap nor retries"""
         result, mock_execute, mock_sleep = self._submit_with_cap('pbs', [], ['999.zeus'], n_refusals=0)
