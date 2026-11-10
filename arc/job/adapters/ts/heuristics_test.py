@@ -42,6 +42,9 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_multiple_bond_pairs,
                                             filter_ts_guesses_with_uma_sp,
                                             get_ca_cb_staggered_rotamers,
+                                            get_stretched_sn2_zmat,
+                                            SN2_TS_N_CA_X_ANGLE_RANGE,
+                                            is_ring_bond,
                                             qa_sn2,
                                             qa_hofmann,
                                             check_hofmann_ts_bonds,
@@ -53,7 +56,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
 from arc.species.species import ARCSpecies, colliding_atoms
-from arc.species.vectors import calculate_dihedral_angle, calculate_distance
+from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calculate_distance
 from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
 from arc.species.species import check_isomorphism
@@ -174,6 +177,27 @@ class TestHeuristicsAdapter(unittest.TestCase):
         H   1.63121642  -0.26133127   1.35598324
         H   2.00425486  -0.64964994  -0.35884503
         H   1.00787712  -1.77904796   0.62211151""")
+        cls.qa_pyrrolidinium_xyz = """C      -1.50297674    0.19876984   -1.17422303
+N      -0.57863163   -0.06210149    0.00514151
+C      -1.40571311   -0.51094414    1.20006613
+C       0.22405954    1.20958185    0.34852397
+C       1.65394749    0.73069811    0.50407400
+C       1.76221417   -0.36405918   -0.53442800
+C       0.46945917   -1.13515048   -0.35468412
+H      -2.18403366    1.01089899   -0.90350864
+H      -0.89336006    0.47931640   -2.03834094
+H      -2.06186181   -0.71803396   -1.38375322
+H      -2.14263833    0.26678715    1.42110884
+H      -0.73536750   -0.65411941    2.05281243
+H      -1.90358446   -1.44960144    0.93982555
+H       0.13415125    1.90568310   -0.49297806
+H      -0.18291538    1.67135766    1.25323613
+H       2.37775301    1.53445523    0.34253925
+H       1.81400925    0.32414545    1.50969160
+H       1.81467274    0.06530219   -1.54193409
+H       2.64280992   -0.99562362   -0.38714973
+H       0.54410049   -1.83288843    0.48695511
+H       0.15390565   -1.67447382   -1.25297469"""
         cls.oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O', xyz="""O   0.09218386  -1.12466927   0.00000000
         O  -0.30799026   1.48010372   0.00000000
         H   0.14642271  -2.10188764   0.00000000
@@ -1681,6 +1705,122 @@ H      -3.45360689    0.15275707   -0.76116277""")
         symbols = rxn.ts_species.ts_guesses[0].initial_xyz['symbols']
         self.assertEqual(len(symbols), 22)
         self.assertEqual(sorted(symbols[17:]), ['H', 'H', 'H', 'O', 'O'])
+
+    def test_get_stretched_sn2_zmat_ring(self):
+        """
+        Test that a ring Ca-N bond is stretched without stretching any other ring bond:
+        C[N+]1(C)CCCC1, Ca = ring carbon 3, N = 1.
+        """
+        qa = ARCSpecies(label='QA', smiles='C[N+]1(C)CCCC1', xyz=self.qa_pyrrolidinium_xyz)
+        xyz, mol = qa.get_xyz(), qa.mol
+        self.assertTrue(is_ring_bond(mol, 3, 1))
+        self.assertFalse(is_ring_bond(mol, 0, 1))
+        self.assertFalse(is_ring_bond(mol, 3, 0))  # not bonded
+        self.assertFalse(is_ring_bond(None, 3, 1))
+        sn2_parameters = load_family_parameters('qa_sn2_parameters.yml')
+        stretch = sn2_parameters['family_parameters']['qa_sn2']['stretch']
+        zmat, _ = get_stretched_sn2_zmat(xyz, {'a': 3, 'b': 1, 'e': 4, 'd': None}, sn2_parameters, mol, ring_ca_n=True)
+        stretched_xyz = zmat_to_xyz(zmat)
+        self.assertAlmostEqual(calculate_distance(stretched_xyz, [3, 1]), stretch * calculate_distance(xyz, [3, 1]),
+                               delta=0.01)
+        for bond in mol.get_all_edges():
+            i, j = mol.atoms.index(bond.atom1), mol.atoms.index(bond.atom2)
+            if {i, j} != {1, 3}:
+                self.assertAlmostEqual(calculate_distance(stretched_xyz, [i, j]), calculate_distance(xyz, [i, j]),
+                                       delta=0.05, msg=f'bond {i}-{j}')
+        # Ca is planar, as in an SN2 TS
+        for atom in mol.atoms[3].edges.keys():
+            x = mol.atoms.index(atom)
+            if x != 1:
+                self.assertGreater(calculate_angle(stretched_xyz, [1, 3, x]), SN2_TS_N_CA_X_ANGLE_RANGE[0] - 2)
+                self.assertLess(calculate_angle(stretched_xyz, [1, 3, x]), SN2_TS_N_CA_X_ANGLE_RANGE[1] + 2)
+
+    def test_get_stretched_sn2_zmat_three_membered_ring(self):
+        """
+        Test that the planar-Ca restraint is not applied to a three-membered ring neighbour of Ca,
+        which is also bonded to N: C[N+]1(C)CC1.
+        """
+        qa = ARCSpecies(label='QA', smiles='C[N+]1(C)CC1')
+        xyz, mol = qa.get_xyz(), qa.mol
+        n = [i for i, atom in enumerate(mol.atoms) if atom.is_nitrogen()][0]
+        ca, cb = [mol.atoms.index(atom) for atom in mol.atoms[n].edges.keys()
+                  if atom.is_carbon() and mol.is_bond_in_cycle(mol.get_bond(mol.atoms[n], atom))]
+        e = [mol.atoms.index(atom) for atom in mol.atoms[ca].edges.keys() if mol.atoms.index(atom) != n][0]
+        sn2_parameters = load_family_parameters('qa_sn2_parameters.yml')
+        zmat, _ = get_stretched_sn2_zmat(xyz, {'a': ca, 'b': n, 'e': e, 'd': None}, sn2_parameters, mol, ring_ca_n=True)
+        stretched_xyz = zmat_to_xyz(zmat)
+        self.assertAlmostEqual(calculate_distance(stretched_xyz, [ca, cb]), calculate_distance(xyz, [ca, cb]),
+                               delta=0.05)
+
+    def test_get_ca_cb_staggered_rotamers_ring_cb(self):
+        """
+        Test the ring flip that places the hydrogen of a ring Cb, rather than its methyl group, anti to N:
+        C[N+]1(C)CC(C)CCC1, Ca = 3, N = 1, Cb = 4 (ring CH), methyl C = 5 (equatorial, anti to N, in the input).
+        """
+        qa = ARCSpecies(label='QA', smiles='C[N+]1(C)CC(C)CCC1', xyz="""C      -2.21426964    1.05184728    0.72971984
+N      -1.12555988    0.18321876    0.08484195
+C      -1.66400846   -0.28619793   -1.26637075
+C       0.13182887    1.04614366   -0.08336859
+C       1.33541587    0.22227211   -0.55164313
+C       2.57669281    1.11100079   -0.64161905
+C       1.59290022   -0.95911632    0.38663053
+C       0.34762126   -1.81952767    0.55444655
+C      -0.85026651   -1.00104154    1.01674253
+H      -1.85165662    1.40152738    1.70095182
+H      -3.11335221    0.44123025    0.85586498
+H      -2.41463855    1.90078678    0.06922913
+H      -1.87324212    0.59615108   -1.87855906
+H      -0.92357450   -0.91722618   -1.76010272
+H      -2.58254394   -0.85454698   -1.09179562
+H       0.33610351    1.50446147    0.89255630
+H      -0.11010539    1.84188298   -0.79786826
+H       1.14249241   -0.16535536   -1.55907938
+H       2.41005079    1.94023113   -1.33729289
+H       2.83612641    1.53478584    0.33455018
+H       3.43823661    0.53916650   -1.00226414
+H       2.41161380   -1.57650561   -0.00186150
+H       1.91298389   -0.59289136    1.37067792
+H       0.54978135   -2.60562498    1.29145962
+H       0.12196481   -2.33419072   -0.38615489
+H      -0.66268372   -0.58860364    2.01555199
+H      -1.75791107   -1.61387772    1.05475665""")
+        xyz, mol = qa.get_xyz(), qa.mol
+        self.assertGreater(abs(get_angle_in_180_range(calculate_dihedral_angle(xyz, [1, 3, 4, 5], index=0))), 170)
+        self.assertEqual(get_ca_cb_staggered_rotamers(xyz=xyz, mol=mol, ca=3, n=1), [])
+        conformers = get_ca_cb_staggered_rotamers(xyz=xyz, mol=mol, ca=3, n=1, include_ring_cb=True)
+        self.assertEqual(len(conformers), 1)
+        self.assertAlmostEqual(abs(get_angle_in_180_range(calculate_dihedral_angle(conformers[0], [1, 3, 4, 17],
+                                                                                   index=0))), 180, delta=5)
+        self.assertLess(abs(get_angle_in_180_range(calculate_dihedral_angle(conformers[0], [1, 3, 4, 5], index=0))), 100)
+        for bond in mol.get_all_edges():
+            i, j = mol.atoms.index(bond.atom1), mol.atoms.index(bond.atom2)
+            self.assertAlmostEqual(calculate_distance(conformers[0], [i, j]), calculate_distance(xyz, [i, j]), delta=0.05)
+
+    def test_heuristics_for_qa_ring_opening(self):
+        """
+        Test heuristics for a QA SN2 ring opening: C[N+]1(C)CCCC1 + [OH-].O <=> CN(C)CCCCO.O.
+        """
+        qa = ARCSpecies(label='QA', smiles='C[N+]1(C)CCCC1', xyz=self.qa_pyrrolidinium_xyz)
+        rxn = ARCReaction(r_species=[qa, self.oh_d1],
+                          p_species=[ARCSpecies(label='amino_alcohol_water', smiles='CN(C)CCCCO.O')])
+        self.assertEqual(rxn.family, 'qa_ring_opening')
+        adapter = HeuristicsAdapter(job_type='tsg',
+                                    reactions=[rxn],
+                                    testing=True,
+                                    project='test',
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_qa_ring_opening'))
+        adapter.execute_incore()
+        self.assertTrue(rxn.ts_species.is_ts)
+        self.assertGreater(len(rxn.ts_species.ts_guesses), 0)
+        reactant_xyz = qa.get_xyz()
+        for tsg in rxn.ts_species.ts_guesses:
+            xyz = tsg.initial_xyz
+            self.assertEqual(len(xyz['symbols']), 26)
+            # Ca is one of the two ring carbons bonded to N, the one O_r (atom 21) attacks
+            ca = min([3, 6], key=lambda i: calculate_distance(xyz, [i, 21]))
+            self.assertAlmostEqual(calculate_distance(xyz, [ca, 1]), 1.3 * calculate_distance(reactant_xyz, [ca, 1]), 2)
+            for i, j in [(3, 4), (4, 5), (5, 6), (1, 0), (1, 2)]:  # ring C-C bonds and N-CH3 bonds stay intact
+                self.assertLess(calculate_distance(xyz, [i, j]), 1.7)
 
     def test_heuristics_for_qa_sn2_with_a_triple_bond(self):
         """
@@ -3267,7 +3407,7 @@ H      -0.30139889    0.23142254    3.12085495"""
         """
         for sub in ('heuristics', 'heuristics_1', 'heuristics_carbonyl', 'heuristics_ether', 'heuristics_nitrile',
                     'heuristics_qasn2', 'heuristics_qasn2_triple_bond', 'heuristics_sn2_print',
-                    'heuristics_qahofmann'):
+                    'heuristics_qahofmann', 'heuristics_qa_ring_opening'):
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, sub), ignore_errors=True)
 
 

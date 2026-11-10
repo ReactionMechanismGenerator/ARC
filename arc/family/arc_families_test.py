@@ -198,6 +198,58 @@ class TestQASN2ReactionFamily(unittest.TestCase):
         self.assertEqual(sorted(product_smiles), sorted(expected_product_smiles))
 
 
+class TestQARingOpeningReactionFamily(unittest.TestCase):
+    """
+    Contains unit tests for the qa_ring_opening reaction family.
+    """
+
+    def test_qa_ring_opening_reaction(self):
+        """Test if qa_ring_opening products are correctly generated, as a single ring-opened product."""
+        qa = ARCSpecies(label='QA', smiles='C[N+]1(C)CCCC1')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        amino_alcohol_water = ARCSpecies(label='amino_alcohol_water', smiles='CN(C)CCCCO.O')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[amino_alcohol_water])
+
+        products = get_reaction_family_products(rxn)
+        self.assertEqual(rxn.family, 'qa_ring_opening')
+        self.assertEqual({p['family'] for p in products}, {'qa_ring_opening'})
+        self.assertEqual(len(products[0]['products']), 1)
+        self.assertTrue(products[0]['products'][0].is_isomorphic(amino_alcohol_water.mol))
+
+    def test_qa_ring_opening_three_membered_ring(self):
+        """Test qa_ring_opening matches an aziridinium, where Ca and N share their ring neighbour."""
+        qa = ARCSpecies(label='QA', smiles='C[N+]1(C)CC1')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        amino_alcohol_water = ARCSpecies(label='amino_alcohol_water', smiles='CN(C)CCO.O')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[amino_alcohol_water])
+
+        products = get_reaction_family_products(rxn)
+        self.assertEqual(rxn.family, 'qa_ring_opening')
+        self.assertEqual({p['family'] for p in products}, {'qa_ring_opening'})
+        self.assertTrue(products[0]['products'][0].is_isomorphic(amino_alcohol_water.mol))
+
+    def test_families_are_exclusive(self):
+        """Test that an open-chain QA SN2 reaction is not a ring opening, and a ring opening is not a QA SN2 reaction."""
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='QA', smiles='C[N+](C)(C)C'), oh_d1],
+                            p_species=[ARCSpecies(label='alcohol_water', smiles='CO.O'),
+                                       ARCSpecies(label='amine', smiles='CN(C)C')])
+        self.assertEqual({p['family'] for p in get_reaction_family_products(rxn_1)}, {'qa_sn2'})
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='QA', smiles='C1CC[N+]2(CC1)CCCCC2'), oh_d1],
+                            p_species=[ARCSpecies(label='amino_alcohol_water', smiles='OCCCCCN1CCCCC1.O')])
+        self.assertEqual({p['family'] for p in get_reaction_family_products(rxn_2)}, {'qa_ring_opening'})
+
+    def test_recipe_actions(self):
+        """Test that the recipe is the QA SN2 recipe."""
+        recipes = list()
+        for family in ['qa_ring_opening', 'qa_sn2']:
+            with open(os.path.join(ARC_FAMILIES_PATH, f'{family}.py'), 'r') as f:
+                recipes.append(get_recipe_actions(f.readlines()))
+        self.assertEqual(recipes[0], recipes[1])
+
+
 class TestQAHofmannEliminationReactionFamily(unittest.TestCase):
     """
     Contains unit tests for the qa_hofmann_elimination reaction family.
