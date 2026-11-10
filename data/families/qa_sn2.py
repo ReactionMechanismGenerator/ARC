@@ -17,6 +17,9 @@ The R groups may be any neutral atom, including a heteroatom bonded to the react
 (e.g., methoxymethyl). Such substituents were not part of the QA SN2 validation set, where the
 reaction-centre substituents were hydrogen or carbon. Charged substituents are not supported.
 
+The C-N bond must not be in a ring (see non_ring_bonds below): a ring-opening SN2 is covered
+by the qa_ring_opening family.
+
 Atom labeling:
 *1 - reacting carbon adjacent to the quaternary ammonium group
 *2 - nitrogen of the quaternary ammonium leaving group
@@ -30,6 +33,9 @@ reversible = True
 reactantNum = 2
 
 productNum = 2
+
+# The C_alpha-N bond must not be in a ring: a ring-opening SN2 is covered by qa_ring_opening.
+non_ring_bonds = [('*1', '*2')]
 
 allowChargedSpecies = True
 
