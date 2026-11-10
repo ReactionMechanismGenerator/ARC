@@ -824,6 +824,7 @@ class Scheduler(object):
                             if job.local_path_to_output_file.endswith('.yml') or job.local_path_to_output_file.endswith('.log'):
                                 for rxn in job.reactions:
                                     rxn.ts_species.process_completed_tsg_queue_jobs(path=job.local_path_to_output_file)
+                                self.save_restart_dict()
                             # Just terminated a tsg job.
                             # Are there additional tsg jobs currently running for this species?
                             for spec_jobs in job_list:
