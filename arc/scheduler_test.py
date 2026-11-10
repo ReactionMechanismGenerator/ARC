@@ -4479,6 +4479,39 @@ class StubJob(object):
             raise DependencyError(f'The {self.job_adapter} python executable was not found.')
 
 
+class TestSchedulerRestartRestore(unittest.TestCase):
+    """
+    Contains unit tests for constructing a Scheduler from a restart dictionary which lists running jobs.
+    """
+
+    def test_a_restart_with_running_jobs_collects_their_servers_once(self):
+        """Test that a Scheduler restored from running jobs knows each of their servers exactly once"""
+        project_directory = tempfile.mkdtemp(prefix='arc_restart_servers_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        spc = ARCSpecies(label='C2H6', smiles='CC')
+        restart_dict = {'running_jobs': {'C2H6': [
+            {'job_name': 'opt_a101', 'job_type': 'opt', 'species_labels': ['C2H6']},
+            {'job_name': 'opt_a102', 'job_type': 'opt', 'species_labels': ['C2H6']},
+            {'job_name': 'opt_a103', 'job_type': 'opt', 'species_labels': ['C2H6']}]}}
+        restored_jobs = [MagicMock(job_id='4556701', server='server1'),
+                         MagicMock(job_id='4556702', server='server1'),
+                         MagicMock(job_id='4556703', server=None)]
+        with patch('arc.scheduler.job_factory', side_effect=restored_jobs):
+            sched = Scheduler(project='project_test_restart_servers', ess_settings={'gaussian': ['server1']},
+                              species_list=[spc], restart_dict=restart_dict, composite_method=None,
+                              conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                              opt_level=Level(repr=default_levels_of_theory['opt']),
+                              freq_level=Level(repr=default_levels_of_theory['freq']),
+                              sp_level=Level(repr=default_levels_of_theory['sp']),
+                              scan_level=Level(repr=default_levels_of_theory['scan']),
+                              ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                              project_directory=project_directory, testing=True,
+                              job_types={'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False,
+                                         'freq': False, 'sp': False, 'rotors': False})
+        self.assertEqual(sched.servers, ['server1'])
+        self.assertEqual(sched.server_job_ids, ['4556701', '4556702', '4556703'])
+
+
 class TestSpawnTsJobsAdmission(unittest.TestCase):
     """
     Contains unit tests for the TS adapter admission logic of Scheduler.spawn_ts_jobs().
