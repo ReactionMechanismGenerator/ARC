@@ -276,6 +276,7 @@ class PipeCoordinator:
         Returns:
             bool: Whether the job was submitted.
         """
+        submitted = False
         try:
             job_status, job_id = pipe.submit_to_scheduler()
             if job_id and job_status in ('submitted', 'running'):
@@ -285,16 +286,20 @@ class PipeCoordinator:
                 self.sched.server_job_ids.append(job_id)
                 self._submit_failures.pop(pipe.pipe_root, None)
                 logger.info(f'Pipe run {pipe.run_id} submitted as job {job_id}.')
-                try:
-                    pipe._save_run_metadata()
-                except OSError as e:
-                    logger.warning(f'Pipe run {pipe.run_id}: could not save the run metadata ({e}).')
-                return True
-            logger.warning(f'Pipe run {pipe.run_id}: submission returned status={job_status}. '
-                           f'Tasks are staged at {pipe.pipe_root}.')
+                submitted = True
+            else:
+                logger.warning(f'Pipe run {pipe.run_id}: submission returned status={job_status}. '
+                               f'Tasks are staged at {pipe.pipe_root}.')
         except Exception as e:
             logger.warning(f'Pipe run {pipe.run_id}: submission failed ({e}). '
                            f'Tasks are staged at {pipe.pipe_root} but not running.')
+        if submitted:
+            try:
+                pipe._save_run_metadata()
+            except Exception as e:
+                logger.warning(f'Pipe run {pipe.run_id}: submitted as job {pipe.scheduler_job_id}, '
+                               f'but its metadata could not be saved ({e}).')
+            return True
         if pipe.scheduler_job_id is None:
             count, first = self._submit_failures.get(pipe.pipe_root, (0, time.time()))
             self._submit_failures[pipe.pipe_root] = (count + 1, first)
@@ -312,6 +317,7 @@ class PipeCoordinator:
             try:
                 state = read_task_state(pipe.pipe_root, spec.task_id)
             except (FileNotFoundError, ValueError, KeyError):
+                logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: could not read state, skipping.')
                 continue
             if state.status == TaskState.PENDING.value:
                 pending.append((spec, state))
@@ -351,9 +357,12 @@ class PipeCoordinator:
             pipe = self.active_pipes[pipe_key]
             if pipe_key in self._submit_failures:
                 attempts, first_failure = self._submit_failures[pipe_key]
-                if attempts >= pipe_settings.get('max_attempts', 3):
-                    if time.time() - first_failure >= SUBMIT_FALLBACK_DELAY:
-                        self._hand_to_scheduler(pipe_key)
+                max_attempts = pipe_settings.get('max_attempts', 3)
+                elapsed = time.time() - first_failure
+                if attempts >= max_attempts and elapsed >= SUBMIT_FALLBACK_DELAY:
+                    self._hand_to_scheduler(pipe_key)
+                    continue
+                if attempts >= max_attempts or elapsed < attempts * SUBMIT_FALLBACK_DELAY / max_attempts:
                     continue
                 if not self._submit(pipe):
                     continue
