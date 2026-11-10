@@ -85,6 +85,7 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', '
                              'Korcek_step1': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'Korcek_step2': ['kinbot', 'goflow', 'rits', 'linear'],
                              'qa_hofmann': ['heuristics'],
+                             'qa_ring_opening': ['heuristics'],
                              'qa_sn2': ['heuristics'],
                              'R_Addition_COm': ['kinbot', 'goflow', 'rits', 'linear'],
                              'R_Addition_CSm': ['kinbot', 'goflow', 'rits', 'linear'],

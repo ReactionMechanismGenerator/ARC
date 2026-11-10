@@ -156,6 +156,35 @@ For neutral hydrolysis reactions, ARC performs the following general steps:
 3. Optimize the TS candidates that pass internal filtration.
 4. Validate the TS using vibrational frequency and IRC calculations.
 
+Quaternary ammonium degradation TS search
+""""""""""""""""""""""""""""""""""""""""""
+
+The ``heuristics`` adapter also generates TS guesses for the degradation of quaternary ammonium (QA) cations by
+hydroxide, in three ARC families:
+
+- ``qa_sn2`` - SN2 attack of the hydroxide at a carbon bonded to the QA nitrogen, releasing a tertiary amine.
+- ``qa_ring_opening`` - the same SN2 attack when the broken C-N bond is in a ring, giving a single amino alcohol.
+- ``qa_hofmann`` - Hofmann (E2) elimination of a beta hydrogen, giving an alkene and a tertiary amine.
+  A ring-opening Hofmann elimination (a C-N bond in a ring) is not covered by this family.
+
+Microsolvated species
+~~~~~~~~~~~~~~~~~~~~~
+
+The hydroxide is represented with one explicit water molecule, since the water is hydrogen-bonded to the attacking
+hydroxide in the TS. The water-containing species are written as single (disconnected) ARC species:
+
+- the hydroxide as ``[OH-].O`` (OH\ :sup:`-`\ ·H\ :sub:`2`\ O),
+- the SN2 and ring-opening alcohol product together with the water, e.g., ``CO.O``,
+- the Hofmann water product as a water dimer, ``O.O``.
+
+For example, the SN2 degradation of tetramethylammonium is ``C[N+](C)(C)C + [OH-].O <=> CO.O + CN(C)C``.
+The computed rate coefficient therefore refers to the QA cation reacting with OH\ :sup:`-`\ ·H\ :sub:`2`\ O,
+and the thermodynamic properties of these clusters are those of the microsolvated cluster, not of the free ions or
+molecules. For this reason, set ``compute_thermo: False`` unless the cluster thermochemistry is of interest.
+
+The TS guesses are optionally ranked by a UMA single point, keeping the best-ranked ones
+(set ``UMA_TS_GUESS_PREFILTER = True`` in ``~/.arc/settings.py``; requires the ``uma_env`` environment).
+
 Linear interpolation adapter
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
