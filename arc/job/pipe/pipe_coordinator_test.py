@@ -287,6 +287,9 @@ class TestPollPipes(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_poll_')
+        submit = patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '4242[]'))
+        submit.start()
+        self.addCleanup(submit.stop)
         self.coord = PipeCoordinator(_make_mock_sched(self.tmpdir))
 
     def tearDown(self):
@@ -381,6 +384,52 @@ class TestPollPipes(unittest.TestCase):
              patch.object(pipe, 'submit_to_scheduler', return_value=('submitted', '77777[]')):
             self.coord.poll_pipes()
         self.assertIn('77777[]', self.coord.sched.server_job_ids)
+
+
+class TestUnsubmittedPipeRun(unittest.TestCase):
+    """Tests for the retry and Scheduler fallback of a pipe run whose job array was never submitted."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_unsubmitted_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        self.coord = PipeCoordinator(_make_mock_sched(self.tmpdir))
+
+    def test_resubmission_succeeds_on_a_later_poll(self):
+        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('errored', None)):
+            pipe = self.coord.submit_pipe_run('run_late', [_make_spec('t_late')])
+        self.assertEqual(pipe.status, PipeRunState.STAGED)
+        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '555[]')):
+            self.coord.poll_pipes()
+        self.assertEqual(pipe.scheduler_job_id, '555[]')
+        self.assertEqual(pipe.status, PipeRunState.RECONCILING)
+        self.assertIn('555[]', self.coord.sched.server_job_ids)
+        self.assertNotIn(pipe.pipe_root, self.coord._unsubmitted_pipes)
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+
+    def test_pending_tasks_go_to_the_scheduler_after_repeated_failures(self):
+        specs = [_make_spec('t_a'), _make_spec('t_b', conformer_index=1)]
+        with patch.object(PipeRun, 'submit_to_scheduler', side_effect=RuntimeError('qsub unreachable')):
+            pipe = self.coord.submit_pipe_run('run_never', specs)
+            self.coord.poll_pipes()
+            self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+            with self.assertLogs('arc', level='ERROR') as logs:
+                self.coord.poll_pipes()
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
+        self.assertNotIn(pipe.pipe_root, self.coord._unsubmitted_pipes)
+        self.assertEqual(self.coord.sched.run_job.call_count, 2)
+        self.assertEqual([c.kwargs['conformer'] for c in self.coord.sched.run_job.call_args_list], [0, 1])
+        self.assertIn('run_never', logs.output[0])
+        self.assertIn('qsub unreachable', logs.output[0])
+        self.assertIn('individual jobs', logs.output[0])
+
+    def test_a_run_with_a_job_id_is_not_resubmitted(self):
+        with patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '777[]')) as submit:
+            pipe = self.coord.submit_pipe_run('run_live', [_make_spec('t_live')])
+            for _ in range(4):
+                self.coord.poll_pipes()
+        submit.assert_called_once()
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+        self.coord.sched.run_job.assert_not_called()
 
 
 class TestIngestPipeResults(unittest.TestCase):

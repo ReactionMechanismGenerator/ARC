@@ -83,6 +83,7 @@ class PipeCoordinator:
         self.active_pipes: dict[str, PipeRun] = {}
         self._pipe_poll_failures: dict[str, int] = {}
         self._last_pipe_summary: dict[str, str] = {}
+        self._unsubmitted_pipes: dict[str, tuple[int, str]] = {}
 
     def should_use_pipe(self, tasks: list[TaskSpec]) -> bool:
         """
@@ -262,23 +263,67 @@ class PipeCoordinator:
                            f'for {cluster_software}. Tasks are staged but must be submitted manually.')
             self.active_pipes[pipe.pipe_root] = pipe
             return pipe
-        try:
-            job_status, job_id = pipe.submit_to_scheduler()
-            if job_id and job_status in ('submitted', 'running'):
-                pipe.scheduler_job_id = job_id
-                pipe.status = PipeRunState.SUBMITTED
-                pipe.submitted_at = time.time()
-                pipe._save_run_metadata()
-                self.sched.server_job_ids.append(job_id)
-                logger.info(f'Pipe run {run_id} submitted as job {job_id}.')
-            else:
-                logger.warning(f'Pipe run {run_id}: submission returned status={job_status}. '
-                               f'Tasks are staged at {pipe.pipe_root}.')
-        except Exception as e:
-            logger.warning(f'Pipe run {run_id}: submission failed ({e}). '
-                           f'Tasks are staged at {pipe.pipe_root} but not running.')
+        error = self._submit_unsubmitted(pipe)
+        if error is not None:
+            self._unsubmitted_pipes[pipe.pipe_root] = (1, error)
         self.active_pipes[pipe.pipe_root] = pipe
         return pipe
+
+    def _submit_unsubmitted(self, pipe: PipeRun) -> str | None:
+        """
+        Try to submit a pipe run's job array that has no scheduler job yet.
+
+        Returns:
+            str | None: ``None`` on success, otherwise a description of the status or the
+                exception the submission ended with.
+        """
+        try:
+            job_status, job_id = pipe.submit_to_scheduler()
+        except Exception as e:
+            logger.warning(f'Pipe run {pipe.run_id}: submission failed ({e}). '
+                           f'Tasks are staged at {pipe.pipe_root} but not running.')
+            return f'raised {e}'
+        if job_id and job_status in ('submitted', 'running'):
+            pipe.scheduler_job_id = job_id
+            pipe.status = PipeRunState.SUBMITTED
+            pipe.submitted_at = time.time()
+            pipe._save_run_metadata()
+            self.sched.server_job_ids.append(job_id)
+            logger.info(f'Pipe run {pipe.run_id} submitted as job {job_id}.')
+            return None
+        logger.warning(f'Pipe run {pipe.run_id}: submission returned status={job_status}. '
+                       f'Tasks are staged at {pipe.pipe_root}.')
+        return f'status={job_status}'
+
+    def _retry_unsubmitted_pipe(self, pipe_key: str) -> bool:
+        """
+        Retry the submission of a run that never got a scheduler job. After
+        ``pipe_settings['max_attempts']`` failed attempts, hand the run's PENDING tasks to the
+        Scheduler as individual jobs and forget the run.
+
+        Returns:
+            bool: Whether the run is still waiting for a submission, so it must not be reconciled yet.
+        """
+        pipe = self.active_pipes[pipe_key]
+        attempts = self._unsubmitted_pipes[pipe_key][0]
+        error = self._submit_unsubmitted(pipe)
+        if error is None:
+            del self._unsubmitted_pipes[pipe_key]
+            return False
+        attempts += 1
+        if attempts < pipe_settings.get('max_attempts', 3):
+            self._unsubmitted_pipes[pipe_key] = (attempts, error)
+            return True
+        pending = [spec for spec in pipe.tasks
+                   if read_task_state(pipe.pipe_root, spec.task_id).status == TaskState.PENDING.value]
+        logger.error(f'Pipe run {pipe.run_id}: submission failed {attempts} times (last: {error}). '
+                     f'Handing {len(pending)} task(s) to the Scheduler as individual jobs.')
+        for spec in pending:
+            self._eject_to_scheduler(pipe, spec, read_task_state(pipe.pipe_root, spec.task_id))
+        pipe.status = PipeRunState.FAILED
+        pipe._save_run_metadata()
+        self._forget_pipe(pipe_key)
+        return True
 
     def register_pipe_run_from_dir(self, pipe_root: str) -> PipeRun:
         """Reconstruct and register an existing pipe run from disk."""
@@ -298,6 +343,8 @@ class PipeCoordinator:
         """
         max_consecutive_failures = 3
         for pipe_key in list(self.active_pipes.keys()):
+            if pipe_key in self._unsubmitted_pipes and self._retry_unsubmitted_pipe(pipe_key):
+                continue
             pipe = self.active_pipes[pipe_key]
             run_id = pipe.run_id
             try:
@@ -356,6 +403,7 @@ class PipeCoordinator:
             pipe_key: The run's key in ``active_pipes`` (its ``pipe_root``).
         """
         del self.active_pipes[pipe_key]
+        self._unsubmitted_pipes.pop(pipe_key, None)
         self._pipe_poll_failures.pop(pipe_key, None)
         self._last_pipe_summary.pop(pipe_key, None)
 
