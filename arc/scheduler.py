@@ -4045,6 +4045,9 @@ class Scheduler(object):
             # rotors_dict=None is a sentinel meaning "skip rotor scans"; preserve it.
             self.species_dict[label].rotors_dict = {}
             self.species_dict[label].number_of_rotors = 0
+        if not self.species_dict[label].keep_mol:
+            self.species_dict[label].mol = None
+            self.species_dict[label].mol_list = None
         if not self.species_dict[label].ts_guesses_exhausted and self.species_dict[label].chosen_ts is not None:
             logger.info(f'Optimizing species {label} again using a different TS guess: '
                         f'conformer {self.species_dict[label].chosen_ts}')
