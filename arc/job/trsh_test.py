@@ -10,6 +10,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import arc.job.trsh as trsh
@@ -17,6 +18,7 @@ from arc.common import ARC_TESTING_PATH, save_yaml_file
 from arc.exceptions import TrshError
 from arc.imports import settings
 from arc.parser.parser import parse_1d_scan_energies, parse_geometry, parse_normal_mode_displacement
+from arc.species.vectors import calculate_dihedral_angle
 
 supported_ess = settings["supported_ess"]
 
@@ -1069,6 +1071,26 @@ class TestTrsh(unittest.TestCase):
                           (-3.635246, -0.06902, -0.477369), (-2.971297, 0.353777, 1.121854),
                           (-2.692729, 1.430409, -0.273456), (3.12969, 0.581231, -0.659714))}
         self.assertEqual(actions, {'change conformer': xyz})
+
+        log_file = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'OOC1CCOCO1.out')
+        energies = parse_1d_scan_energies(log_file_path=log_file)[0]
+        energies[0] += 3
+        energies[-1] += 3
+        case3 = {'label': 'OOC1CCOCO1',
+                 'pivots': [3, 4],
+                 'energies': energies,
+                 'scan_res': 10.0,
+                 'used_methods': None,
+                 'log_file': log_file,
+                 'species': SimpleNamespace(is_ts=True),
+                 }
+        _, _, _, actions = trsh.scan_quality_check(**case3)
+        self.assertAlmostEqual(calculate_dihedral_angle(actions['change conformer'], [6, 3, 4, 16], index=1),
+                               279.44, places=1)
+        with patch.object(trsh, 'parse_1d_scan_coords', return_value=None):
+            invalidate, _, _, actions = trsh.scan_quality_check(**case3)
+        self.assertTrue(invalidate)
+        self.assertEqual(actions, {})
 
     def test_trsh_scan_job(self):
         """Test troubleshooting problematic 1D rotor scan"""
