@@ -270,14 +270,15 @@ class KinBotAdapter(JobAdapter):
                                                 multiplicity=rxn.multiplicity,
                                                 )
                 species_to_explore = dict()
-                if len(rxn.r_species) == 1:
-                    species_to_explore['F'] = rxn.r_species[0]
-                if len(rxn.p_species) == 1:
-                    species_to_explore['R'] = rxn.p_species[0]
+                reactants, products = rxn.get_reactants_and_products(return_copies=False)
+                if len(reactants) == 1:
+                    species_to_explore['F'] = reactants[0]
+                if len(products) == 1:
+                    species_to_explore['R'] = products[0]
 
                 if not species_to_explore:
                     logger.error(f'Cannot execute KinBot for a non-unimolecular reaction.\n'
-                                 f'Got {len(rxn.r_species)} reactants and {rxn.p_species} products in\n{rxn}.')
+                                 f'Got {len(reactants)} reactants and {len(products)} products in\n{rxn}.')
                     continue
 
                 self.write_kinbot_input_file(rxn=rxn, species_to_explore=species_to_explore)
