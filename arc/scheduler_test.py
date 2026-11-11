@@ -3927,7 +3927,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
 
     @patch('arc.scheduler.Scheduler.run_job')
     def test_run_sp_monoatomic_dlpno(self, mock_run_job):
-        """Monoatomic H falls back to HF; heavier atoms (O) keep DLPNO intact."""
+        """Monoatomic H falls back to HF; heavier atoms (O) and the two-electron H- keep DLPNO intact."""
         dlpno_level = Level(method='DLPNO-CCSD(T)-F12', basis='cc-pVTZ-F12',
                             auxiliary_basis='aug-cc-pVTZ/C', cabs='cc-pVTZ-F12-CABS',
                             software='orca')
@@ -3937,6 +3937,10 @@ H      -0.38158795    1.01273118   -0.02607927""")),
             self.sched1.job_dict[label] = {}
             self.sched1.output[label] = {'paths': {}, 'job_types': {},
                                          'errors': '', 'warnings': '', 'conformers': ''}
+        self.sched1.species_dict['H_anion'] = ARCSpecies(label='H_anion', xyz='H 0.0 0.0 0.0', charge=-1,
+                                                         multiplicity=1)
+        self.sched1.job_dict['H_anion'] = {}
+        self.sched1.output['H_anion'] = {'paths': {}, 'job_types': {}, 'errors': '', 'warnings': '', 'conformers': ''}
 
         # Single-electron atom → HF fallback, aux/cabs preserved.
         self.sched1.run_sp_job(label='H_atom', level=dlpno_level)
@@ -3952,6 +3956,25 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         o_level = mock_run_job.call_args.kwargs['level_of_theory']
         self.assertEqual(o_level.method, 'dlpno-ccsd(t)-f12')
         self.assertEqual(o_level.cabs, 'cc-pvtz-f12-cabs')
+
+        mock_run_job.reset_mock()
+        self.sched1.run_sp_job(label='H_anion', level=dlpno_level)
+        anion_level = mock_run_job.call_args.kwargs['level_of_theory']
+        self.assertEqual(anion_level.method, 'dlpno-ccsd(t)-f12')
+
+    @patch('arc.scheduler.trsh_ess_job', side_effect=KeyError('stop'))
+    def test_troubleshoot_ess_is_h_follows_electron_count(self, mock_trsh):
+        """is_h passed to trsh_ess_job is True for neutral H and False for H-."""
+        for label, charge, multiplicity, expected in [('H_n', 0, 2, True), ('H_a', -1, 1, False)]:
+            self.sched1.species_dict[label] = ARCSpecies(label=label, xyz='H 0.0 0.0 0.0', charge=charge,
+                                                         multiplicity=multiplicity)
+            job = MagicMock()
+            job.job_name, job.job_type, job.job_adapter = 'sp_a1', 'sp', 'orca'
+            job.job_status = ['done', {'status': 'errored', 'keywords': ['Memory'], 'error': 'e', 'line': ''}]
+            job.ess_trsh_methods = list()
+            with self.assertRaises(KeyError):
+                self.sched1.troubleshoot_ess(label=label, job=job, level_of_theory='dlpno-ccsd(t)/def2-svp')
+            self.assertEqual(mock_trsh.call_args.kwargs['is_h'], expected)
 
     def test_check_directed_scan_job_skips_isomorphism_for_ts(self):
         """check_directed_scan_job must not call check_xyz_isomorphism for a TS; is_isomorphic is recorded as True."""

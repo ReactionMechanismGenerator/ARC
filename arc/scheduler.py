@@ -1847,7 +1847,7 @@ class Scheduler(object):
                              job_type='sp')
                 return
         if self.species_dict[label].is_monoatomic() and 'dlpno' in level.method \
-                and self.species_dict[label].mol.atoms[0].element.symbol in ('H', 'D', 'T'):
+                and self.species_dict[label].get_number_of_electrons() == 1:
             # DLPNO needs electron pairs; fall back to HF for single-electron atoms only.
             # Heavier monoatomics (e.g. [O], [N]) run DLPNO fine in ORCA and are left alone.
             logger.info(f'Using HF/{level.basis} for {label} (single electron, no correlation).')
@@ -5277,9 +5277,8 @@ class Scheduler(object):
                            f'(attempt number {next_attempt}).')
         job.ess_trsh_methods.append('trsh_attempt')
 
-        # Determine if the species is a hydrogen atom (or its isotope).
-        is_h = self.species_dict[label].number_of_atoms == 1 and \
-            self.species_dict[label].mol.atoms[0].element.symbol in ['H', 'D', 'T']
+        # Determine if the species has a single electron.
+        is_h = self.species_dict[label].get_number_of_electrons() == 1
 
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, \
             software, job_type, fine, trsh_keyword, memory, shift, cpu_cores, couldnt_trsh = \

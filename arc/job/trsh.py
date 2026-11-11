@@ -969,7 +969,7 @@ def trsh_ess_job(label: str,
         num_heavy_atoms (int): Number of heavy atoms in a molecule.
         cpu_cores (int): The total number of cpu cores requested for a job.
         ess_trsh_methods (list): The troubleshooting methods tried for this job.
-        is_h (bool): Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.
+        is_h (bool): Whether the species has a single electron, e.g., H, D, T.
         is_monoatomic (bool): Whether the species is monoatomic (single atom).
         is_ts (bool): Whether the species is a transition state. Makes the opt-cycle remedy
                       ladder TS-aware (rely on RFO + Hessian recompute, avoid GDIIS/GEDIIS).
