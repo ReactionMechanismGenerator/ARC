@@ -49,6 +49,7 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family,
                                       ts_adapters_for_unknown_unimolecular)
+from arc.job.adapters.ts.linear_utils.postprocess import has_detached_hydrogen
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
@@ -3497,11 +3498,15 @@ class Scheduler(object):
             self.species_dict[label].ts_guesses_exhausted = True
             for tsg in self.species_dict[label].ts_guesses:
                 if tsg.success and tsg.energy is not None and tsg.opt_xyz is not None \
-                        and (e_min is None or tsg.energy < e_min) \
-                        and (tsg.imaginary_freqs is None or check_imaginary_frequencies(tsg.imaginary_freqs)) \
                         and tsg.index not in self.species_dict[label].chosen_ts_list:
-                    e_min = tsg.energy
-                    selected_i = tsg.index
+                    if has_detached_hydrogen(tsg.opt_xyz) \
+                            and (tsg.initial_xyz is None or not has_detached_hydrogen(tsg.initial_xyz)):
+                        logger.warning(f'Skipping TS guess {tsg.index} ({tsg.method}) of {label}: '
+                                       f'a hydrogen atom detached from the molecule during the guess optimization.')
+                    elif (e_min is None or tsg.energy < e_min) \
+                            and (tsg.imaginary_freqs is None or check_imaginary_frequencies(tsg.imaginary_freqs)):
+                        e_min = tsg.energy
+                        selected_i = tsg.index
             e_min = None
             if selected_i is None:
                 logger.warning(f'Could not determine a likely TS conformer for {label}')

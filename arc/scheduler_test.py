@@ -3057,6 +3057,35 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertEqual(sched.output['TS_single']['paths']['gsm'], good.log_path)
         self.assertEqual(sched.output['TS_single']['paths']['neb'], '')
 
+    def test_determine_most_likely_ts_conformer_skips_a_detached_hydrogen(self):
+        """Test that a TS guess whose optimization lost a hydrogen is skipped, unless it started detached."""
+        attached = {'symbols': ('C', 'H', 'H', 'H', 'H', 'H'),
+                    'isotopes': (12, 1, 1, 1, 1, 1),
+                    'coords': ((0.0, 0.0, 0.0), (1.2, 0.0, 0.0), (-0.4, 1.0, 0.0), (-0.4, -0.5, 0.9),
+                               (-0.4, -0.5, -0.9), (2.3, 0.0, 0.0))}
+        detached = {**attached, 'coords': attached['coords'][:-1] + ((5.0, 0.0, 0.0),)}
+        ts_spc = ARCSpecies(label='TS_detached', is_ts=True, xyz=attached, multiplicity=2, charge=0,
+                            compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=i, method='autotst', success=True, energy=energy, xyz=xyz,
+                                     execution_time='0:00:01')
+                             for i, (energy, xyz) in enumerate(((-24.6, attached), (0.0, attached), (-10.0, detached)))]
+        for tsg, opt_xyz in zip(ts_spc.ts_guesses, (detached, attached, detached)):
+            tsg.opt_xyz = opt_xyz
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_detached_h', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.determine_most_likely_ts_conformer('TS_detached')
+        self.assertEqual(ts_spc.chosen_ts, 2)
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
         """Test that switch_ts resets job_types, convergence, clears pending pipes, and cleans up IRC species
