@@ -23,7 +23,7 @@ from arc.parser.adapters.orca import OrcaParser, SPIN_SYMMETRY_BREAKING_S_SQUARE
 from arc.parser.factory import ess_factory
 from arc.species import ARCSpecies
 from arc.species.converter import str_to_xyz, xyz_to_str
-from arc.species.vectors import calculate_distance
+from arc.species.vectors import calculate_dihedral_angle, calculate_distance
 
 
 class TestParser(unittest.TestCase):
@@ -1094,11 +1094,18 @@ H      -1.69381305    0.40788834    0.90078104"""
 
         path_4 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'TS_scan.out')
         traj_4 = parser.parse_1d_scan_coords(path_4)
-        self.assertEqual(len(traj_4), 3)  # output file trimmed
+        self.assertEqual(len(traj_4), 10)
         self.assertEqual(traj_4[0]['symbols'], ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
                                                 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
                                                 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'))
         
+        path_negligible_forces = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'OOC1CCOCO1.out')
+        traj_negligible_forces = parser.parse_1d_scan_coords(path_negligible_forces)
+        self.assertEqual(len(traj_negligible_forces), len(parser.parse_1d_scan_energies(path_negligible_forces)[0]))
+        for index, dihedral in {9: 19.44, 16: 99.44}.items():
+            self.assertAlmostEqual(calculate_dihedral_angle(traj_negligible_forces[index], [6, 3, 4, 16], index=1),
+                                   dihedral, places=1)
+
         path_5 = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'orca', 'cc.txt')
         traj_5 = parser.parse_1d_scan_coords(path_5)
         self.assertEqual(len(traj_5), 45)

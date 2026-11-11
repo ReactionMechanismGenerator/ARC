@@ -878,7 +878,7 @@ class GaussianParser(ESSAdapter, ABC):
                 except (IndexError, ValueError):
                     pass
 
-            if 'Optimization completed.' in line:
+            if 'Optimization completed' in line:
                 # Find the last geometry block before this point
                 back = i
                 orientation_index = None

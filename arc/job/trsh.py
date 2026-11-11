@@ -1829,7 +1829,7 @@ def scan_quality_check(label: str,
             logger.info(message)
             min_index = int(np.argmin(energies))
             conf_xyzs = parse_1d_scan_coords(log_file)
-            if len(conf_xyzs) > min_index:
+            if conf_xyzs and len(conf_xyzs) > min_index:
                 actions = {'change conformer': conf_xyzs[min_index]}
                 return invalidate, invalidation_reason, message, actions
 
@@ -1903,8 +1903,9 @@ def scan_quality_check(label: str,
             logger.info(message)
             min_index = int(np.argmin(energies))
             conf_xyzs = parse_1d_scan_coords(log_file)
-            actions = {'change conformer': conf_xyzs[min_index]}
-            return invalidate, invalidation_reason, message, actions
+            if conf_xyzs and len(conf_xyzs) > min_index:
+                actions = {'change conformer': conf_xyzs[min_index]}
+                return invalidate, invalidation_reason, message, actions
 
     if (np.max(energies) - np.min(energies)) > maximum_barrier:
         num_wells = determine_rotor_symmetry(label=label,
