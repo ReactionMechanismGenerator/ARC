@@ -197,6 +197,12 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                job_types=cls.job_types2,
                                )
 
+    def setUp(self):
+        """Restore the 2D graph of the shared species, which switch_ts() discards."""
+        species = self.sched1.species_dict['C2H6']
+        self.addCleanup(setattr, species, 'mol', species.mol)
+        self.addCleanup(setattr, species, 'mol_list', species.mol_list)
+
     def test_conformers(self):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
         label = 'methylamine'
@@ -3249,8 +3255,18 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         sched.output[ts_label]['job_types']['freq'] = True
         sched.job_dict[ts_label] = {'opt': {}, 'freq': {}, 'sp': {}}
         sched.running_jobs[ts_label] = []
+        ts_spc.mol_from_xyz()
+        self.assertIsNotNone(ts_spc.mol)
 
         sched.switch_ts(ts_label)
+
+        self.assertIsNone(ts_spc.mol)
+        self.assertIsNone(ts_spc.mol_list)
+
+        ts_spc.keep_mol = True
+        ts_spc.mol_from_xyz()
+        sched.switch_ts(ts_label)
+        self.assertIsNotNone(ts_spc.mol)
 
         # rotors_dict should be reset so determine_rotors re-runs for the new geometry.
         self.assertEqual(sched.species_dict[ts_label].rotors_dict, {})
