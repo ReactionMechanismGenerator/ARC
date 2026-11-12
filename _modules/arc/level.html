@@ -110,6 +110,7 @@
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
 <span class="n">levels_ess</span><span class="p">,</span> <span class="n">supported_ess</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'levels_ess'</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'supported_ess'</span><span class="p">]</span>
+<span class="n">default_levels_of_theory</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'default_levels_of_theory'</span><span class="p">]</span>
 
 <span class="c1"># ``block`` args whose values are case-sensitive (filesystem paths, shell commands, queue names) and</span>
 <span class="c1"># must not be lowercased along with the rest of a level's args. Consumed by the ASE job adapter when</span>
@@ -601,6 +602,53 @@
                 <span class="k">if</span> <span class="n">ess</span> <span class="ow">in</span> <span class="n">ess_methods</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="n">ess_methods</span><span class="p">[</span><span class="n">ess</span><span class="p">]:</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">compatible_ess</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ess</span><span class="p">)</span></div>
 </div>
+
+
+
+<div class="viewcode-block" id="get_freq_level_for_composite_method">
+<a class="viewcode-back" href="../../api/level.html#arc.level.get_freq_level_for_composite_method">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_freq_level_for_composite_method</span><span class="p">(</span><span class="n">composite_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Level</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Get the frequency level of theory prescribed by a composite method.</span>
+
+<span class="sd">    Each composite protocol defines its own frequency level, and the scale factor stored for it in</span>
+<span class="sd">    ``data/freq_scale_factors.yml`` is that protocol's own ZPE scale factor times 1.014. Computing</span>
+<span class="sd">    the frequencies at some other level therefore applies a factor fitted against a different</span>
+<span class="sd">    basis, in a job that converges and terminates normally, so this mapping raises on an unknown</span>
+<span class="sd">    composite rather than falling back to an arbitrary default.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        composite_method (str | Level): The composite method.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If the prescribed frequency level for ``composite_method`` is not known.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        str: The frequency level of theory to use with this composite method.</span>
+<span class="sd">    """</span>
+    <span class="n">method</span> <span class="o">=</span> <span class="n">composite_method</span><span class="o">.</span><span class="n">method</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">composite_method</span><span class="p">,</span> <span class="n">Level</span><span class="p">)</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">composite_method</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="n">freq_levels</span> <span class="o">=</span> <span class="n">default_levels_of_theory</span><span class="p">[</span><span class="s1">'freq_for_composite'</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">freq_levels</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="c1"># A local ~/.arc/settings.py that overrides default_levels_of_theory predates this mapping</span>
+        <span class="c1"># and still carries a single level for every composite. Honor it rather than breaking the</span>
+        <span class="c1"># user's run, but say plainly what it costs: this is the mispairing the mapping exists to</span>
+        <span class="c1"># prevent, and it cannot be detected from the output of the job it corrupts.</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Your local ~/.arc/settings.py sets default_levels_of_theory["freq_for_composite"] '</span>
+                       <span class="sa">f</span><span class="s1">'to the single level </span><span class="si">{</span><span class="n">freq_levels</span><span class="si">!r}</span><span class="s1">, which predates per-composite frequency '</span>
+                       <span class="sa">f</span><span class="s1">'levels. Using it for </span><span class="si">{</span><span class="n">method</span><span class="si">!r}</span><span class="s1">.</span><span class="se">\n</span><span class="s1">If </span><span class="si">{</span><span class="n">method</span><span class="si">!r}</span><span class="s1"> does not prescribe that level, its '</span>
+                       <span class="sa">f</span><span class="s1">'frequency scale factor is being applied to frequencies from a different basis. '</span>
+                       <span class="sa">f</span><span class="s1">'Update ~/.arc/settings.py to a </span><span class="se">{{</span><span class="s1">composite: level</span><span class="se">}}</span><span class="s1"> mapping, or set `freq_level` '</span>
+                       <span class="sa">f</span><span class="s1">'explicitly in the input file.'</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">freq_levels</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">freq_levels</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Cannot determine the frequency level prescribed by the composite method '</span>
+                         <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">method</span><span class="si">!r}</span><span class="s1">: it is not in default_levels_of_theory["freq_for_composite"] '</span>
+                         <span class="sa">f</span><span class="s1">'(known: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">freq_levels</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s1">).</span><span class="se">\n</span><span class="s1">'</span>
+                         <span class="sa">f</span><span class="s1">'ARC will not guess one, since the frequency scale factor stored for a composite '</span>
+                         <span class="sa">f</span><span class="s1">'method is that protocol</span><span class="se">\'</span><span class="s1">s own ZPE scale factor and pairing it with another '</span>
+                         <span class="sa">f</span><span class="s1">'protocol</span><span class="se">\'</span><span class="s1">s frequency level fails silently.</span><span class="se">\n</span><span class="s1">'</span>
+                         <span class="sa">f</span><span class="s1">'Specify `freq_level` explicitly in the input file to proceed.'</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">freq_levels</span><span class="p">[</span><span class="n">method</span><span class="p">]</span></div>
 
 
 

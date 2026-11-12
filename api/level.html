@@ -93,6 +93,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.level.assign_frequency_scale_factor"><code class="docutils literal notranslate"><span class="pre">assign_frequency_scale_factor()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.level.get_freq_level_for_composite_method"><code class="docutils literal notranslate"><span class="pre">get_freq_level_for_composite_method()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="scale.html">arc.utils.scale</a></li>
@@ -282,6 +283,31 @@ database matching and is ignored on non-<code class="docutils literal notranslat
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>float | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.level.get_freq_level_for_composite_method">
+<span class="sig-prename descclassname"><span class="pre">arc.level.</span></span><span class="sig-name descname"><span class="pre">get_freq_level_for_composite_method</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">composite_method</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/level.html#get_freq_level_for_composite_method"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.level.get_freq_level_for_composite_method" title="Link to this definition"></a></dt>
+<dd><p>Get the frequency level of theory prescribed by a composite method.</p>
+<p>Each composite protocol defines its own frequency level, and the scale factor stored for it in
+<code class="docutils literal notranslate"><span class="pre">data/freq_scale_factors.yml</span></code> is that protocol’s own ZPE scale factor times 1.014. Computing
+the frequencies at some other level therefore applies a factor fitted against a different
+basis, in a job that converges and terminates normally, so this mapping raises on an unknown
+composite rather than falling back to an arbitrary default.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>composite_method</strong> (<em>str</em><em> | </em><a class="reference internal" href="#arc.level.Level" title="arc.level.Level"><em>Level</em></a>) – The composite method.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the prescribed frequency level for <code class="docutils literal notranslate"><span class="pre">composite_method</span></code> is not known.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The frequency level of theory to use with this composite method.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str</p>
 </dd>
 </dl>
 </dd></dl>
