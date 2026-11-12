@@ -19,7 +19,7 @@ from collections.abc import Callable
 
 import paramiko
 
-from arc.common import get_logger
+from arc.common import canonicalize_cluster_soft_value, get_canonical_cluster_soft, get_cluster_soft_key, get_logger
 from arc.exceptions import InputError, ServerError
 from arc.imports import settings
 
@@ -33,7 +33,6 @@ check_status_command, delete_command, list_available_nodes_command, servers, sub
 KNOWN_HOSTS_PATH = '~/.ssh/known_hosts'
 PLACEHOLDER_ADDRESS_SUFFIX = '.host.edu'
 PLACEHOLDER_USERNAME = '<username>'
-
 
 class UnknownHostKeyError(ServerError, paramiko.SSHException):
     """
@@ -393,7 +392,7 @@ class SSHClient(object):
             Possible statuses: `before_submission`, `running`, `errored on node xx`,
             `done`, and `errored: ...`
         """
-        cmd = check_status_command[servers[self.server]['cluster_soft']]
+        cmd = check_status_command[get_cluster_soft_key(servers[self.server]['cluster_soft'], check_status_command, 'check_status_command')]
         stdout, stderr = self._send_command_to_server(cmd)
         # Status line formats:
         # OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
@@ -402,7 +401,7 @@ class SSHClient(object):
             logger.info('\n\n')
             logger.error(f'Could not check status of job {job_id} due to {stderr}')
             return f'errored: {stderr}'
-        return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
+        return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server, cluster_soft=get_canonical_cluster_soft(self.server, servers))
 
     def delete_job(self, job_id: int | str) -> None:
         """
@@ -411,7 +410,7 @@ class SSHClient(object):
         Args:
             job_id (int | str): The job's ID.
         """
-        cmd = f"{delete_command[servers[self.server]['cluster_soft']]} {job_id}"
+        cmd = f"{delete_command[get_cluster_soft_key(servers[self.server]['cluster_soft'], delete_command, 'delete_command')]} {job_id}"
         self._send_command_to_server(cmd)
 
     def delete_jobs(self,
@@ -439,14 +438,13 @@ class SSHClient(object):
         Returns: list
             A list of job IDs.
         """
-        if servers[self.server]['cluster_soft'].lower() not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
-            raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
         running_job_ids = list()
-        cmd = check_status_command[servers[self.server]['cluster_soft']]
+        canonical_cluster_soft = get_canonical_cluster_soft(self.server, servers)
+        cmd = check_status_command[get_cluster_soft_key(servers[self.server]['cluster_soft'], check_status_command, 'check_status_command')]
         stdout = self._send_command_to_server(cmd)[0]
-        i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
-        split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
-        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        i_dict = {'slurm': 0, 'oge': 1, 'pbs': 4, 'htcondor': -1}
+        split_by_dict = {'slurm': ' ', 'oge': ' ', 'pbs': '.', 'htcondor': ' '}
+        cluster_soft = canonical_cluster_soft.lower()
         for i, status_line in enumerate(stdout):
             if i > i_dict[cluster_soft]:
                 job_id = status_line.lstrip().split(split_by_dict[cluster_soft])[0]
@@ -471,8 +469,11 @@ class SSHClient(object):
         """
         job_status = ''
         job_id = 0
-        cluster_soft = servers[self.server]['cluster_soft']
-        cmd = f'{submit_command[cluster_soft]} {submit_filenames[cluster_soft]}'
+        cluster_soft = get_canonical_cluster_soft(self.server, servers)
+        raw_cluster_soft = servers[self.server]['cluster_soft']
+        command_key = get_cluster_soft_key(raw_cluster_soft, submit_command, 'submit_command')
+        filename_key = get_cluster_soft_key(raw_cluster_soft, submit_filenames, 'submit_filenames')
+        cmd = f'{submit_command[command_key]} {submit_filenames[filename_key]}'
         stdout, stderr = self._send_command_to_server(cmd, remote_path)
         if len(stderr) > 0 or len(stdout) == 0:
             logger.warning(f'Got stderr when submitting job:\n{stderr}')
@@ -787,23 +788,24 @@ class SSHClient(object):
         Returns:
             list: lines of the node hostnames.
         """
-        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        canonical_cluster_soft = get_canonical_cluster_soft(self.server, servers)
+        cluster_soft = canonical_cluster_soft.lower()
         if cluster_soft == 'htcondor':
             return list()
-        cmd = list_available_nodes_command[servers[self.server]['cluster_soft']]
+        cmd = list_available_nodes_command[get_cluster_soft_key(servers[self.server]['cluster_soft'], list_available_nodes_command, 'list_available_nodes_command')]
         stdout = self._send_command_to_server(command=cmd)[0]
         nodes = list()
-        if cluster_soft.lower() in ['oge', 'sge']:
+        if cluster_soft == 'oge':
             # Stdout line example:
             # long1@node01.cluster           BIP   0/0/8          -NA-     lx24-amd64    aAdu
             nodes = [line.split()[0].split('@')[1]
                      for line in stdout if '0/0/8' in line]
-        elif cluster_soft.lower() == 'slurm':
+        elif cluster_soft == 'slurm':
             # Stdout line example:
             # node01 alloc 1.00 none
             nodes = [line.split()[0] for line in stdout
                      if line.split()[1] in ['mix', 'alloc', 'idle']]
-        elif cluster_soft.lower() in ['pbs', 'htcondor']:
+        elif cluster_soft == 'pbs':
             logger.warning(f'Listing available nodes is not yet implemented for {cluster_soft}.')
         return nodes
 
@@ -1124,6 +1126,7 @@ def delete_check_files_on_servers(remote_project_paths: dict) -> None:
 def check_job_status_in_stdout(job_id: int,
                                stdout: list | str,
                                server: str,
+                               cluster_soft: str | None = None,
                                ) -> str:
     """
     A helper function for checking job status.
@@ -1132,10 +1135,15 @@ def check_job_status_in_stdout(job_id: int,
         job_id (int): the job ID recognized by the server.
         stdout (list | str): The output of a queue status check.
         server (str): The server name.
+        cluster_soft (str, optional): Scheduler already resolved by the caller.
 
     Returns:
         str: The job status on the server ('running', 'done', or 'errored').
     """
+    cluster_soft = (get_canonical_cluster_soft(server, servers) if cluster_soft is None
+                    else canonicalize_cluster_soft_value(cluster_soft)).lower()
+    if cluster_soft == 'local':
+        raise ValueError(f"Server '{server}' has no queueing system; checking job status is not applicable.")
     if not isinstance(stdout, list):
         stdout = stdout.splitlines()
     for status_line in stdout:
@@ -1143,27 +1151,27 @@ def check_job_status_in_stdout(job_id: int,
             break
     else:
         return 'done'
-    if servers[server]['cluster_soft'].lower() == 'slurm':
+    if cluster_soft == 'slurm':
         status = status_line.split()[4]
         if status.lower() in ['r', 'qw', 't', 'cg', 'pd']:
             return 'running'
         elif status.lower() in ['bf', 'ca', 'f', 'nf', 'st', 'oom']:
             return 'errored'
-    elif servers[server]['cluster_soft'].lower() == 'pbs':
+    elif cluster_soft == 'pbs':
         status = status_line.split()[-2]
         if status.lower() in ['r', 'q', 'c', 'e', 'w']:
             return 'running'
         elif status.lower() in ['h', 's']:
             return 'errored'
-    elif servers[server]['cluster_soft'].lower() in ['oge', 'sge']:
+    elif cluster_soft == 'oge':
         status = status_line.split()[4]
         if status.lower() in ['r', 'qw', 't']:
             return 'running'
         elif status.lower() in ['e']:
             return 'errored'
-    elif servers[server]['cluster_soft'].lower() == 'htcondor':
+    elif cluster_soft == 'htcondor':
         return 'running'
-    raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
+    raise ValueError(f'Unknown cluster software {cluster_soft}')
 
 
 def delete_all_arc_jobs(server_list: list,

@@ -8,11 +8,13 @@ This module contains unit tests for the arc.job.pipe_run module
 import json
 import os
 import shutil
+import sys
 import tempfile
 import time
 import unittest
 from unittest import mock
 
+import arc.job.local as local_job_module
 import arc.job.pipe.pipe_run as pipe_run_module
 from arc.job.adapters.mockter import MockAdapter
 from arc.job.pipe.pipe_state import (TaskState, TaskStateRecord, PipeRunState, TaskSpec, get_task_attempt_dir,
@@ -234,10 +236,26 @@ class TestPipeRunWriteSubmitScript(unittest.TestCase):
         p2 = run.write_submit_script()
         self.assertEqual(p1, p2)
 
+    def test_scheduler_names_accept_case_whitespace_and_aliases(self) -> None:
+        """Pipe template selection accepts the same scheduler names as queued jobs."""
+        for raw, canonical in [(' Slurm ', 'slurm'), (' PBS ', 'pbs'), ('SGE', 'oge'), (' OGE ', 'oge')]:
+            with self.subTest(raw=raw):
+                run = self._make_run(raw)
+                self.assertEqual(run.cluster_software, canonical)
+                self.assertTrue(os.path.isfile(run.write_submit_script()))
+                shutil.rmtree(run.pipe_root)
+
+    def test_derived_scheduler_uses_the_shared_normalization(self) -> None:
+        """Server-derived pipe scheduler names accept whitespace and aliases."""
+        for raw, expected in [(' PBS ', 'pbs'), (' SGE ', 'sge'), ('Local', 'local')]:
+            with self.subTest(raw=raw), \
+                    mock.patch.dict(pipe_run_module.settings, {'pipe_settings': {}}), \
+                    mock.patch.object(pipe_run_module, 'servers_dict', {'test': {'cluster_soft': raw}}):
+                self.assertEqual(pipe_run_module.derive_cluster_software({'mockter': ['test']}, 'mockter'), expected)
+
     def test_unsupported_raises(self):
-        run = self._make_run('mystery')
-        with self.assertRaises(NotImplementedError):
-            run.write_submit_script()
+        with self.assertRaisesRegex(ValueError, 'mystery'):
+            self._make_run('mystery')
 
     def test_shell_script_is_executable(self):
         """Shell submit scripts (slurm/pbs/sge) have executable permissions."""
@@ -254,6 +272,60 @@ class TestPipeRunWriteSubmitScript(unittest.TestCase):
         path = run.write_submit_script()
         mode = os.stat(path).st_mode
         self.assertFalse(mode & stat.S_IXUSR, '.sub should not be executable')
+
+
+class TestPipeRunSubmitToScheduler(unittest.TestCase):
+    """Test command resolution through pipe preflight and local submission."""
+
+    def setUp(self) -> None:
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_submit_command_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+
+    def test_submit_uses_configured_command_keys(self) -> None:
+        """Overlay casing and SGE aliases reach submission and parse the job ID."""
+        cases = [(' Slurm ', 'slurm', ['Submitted batch job 123']),
+                 ('slurm', 'sLuRm', ['Submitted batch job 123']),
+                 ('slurm', 'Slurm', ['Submitted batch job 123']),
+                 (' PBS ', 'pbs', ['123.server']),
+                 (' SGE ', 'SGE', ['Your job 123 has been submitted']),
+                 ('OGE', 'OGE', ['Your job 123 has been submitted']),
+                 ('HTCondor', 'htcondor', ['Submitting job(s).', '1 job(s) submitted to cluster 123.'])]
+        for raw, key, stdout in cases:
+            with self.subTest(raw=raw, key=key):
+                run = PipeRun(project_directory=self.tmpdir, run_id='command_keys',
+                              tasks=[], cluster_software=raw)
+                command = f'{sys.executable} --test-submit'
+                commands = {key: command}
+                filename = 'submit.sub' if run.cluster_software == 'htcondor' else 'submit.sh'
+                with mock.patch.dict(pipe_run_module.settings, {'submit_command': commands}), \
+                        mock.patch.object(local_job_module, 'submit_command', commands), \
+                        mock.patch.object(local_job_module, 'execute_command', return_value=(stdout, [])) as execute:
+                    self.assertEqual(run.submit_to_scheduler(), ('running', '123'))
+                execute.assert_called_once_with(f'cd "{run.pipe_root}"; {command} {filename}')
+
+    def test_missing_command_returns_errored_without_submission(self) -> None:
+        """A missing scheduler entry reports its dictionary and executes no command."""
+        run = PipeRun(project_directory=self.tmpdir, run_id='missing_command',
+                      tasks=[], cluster_software='Slurm')
+        with mock.patch.dict(pipe_run_module.settings, {'submit_command': {}}), \
+                mock.patch.object(local_job_module, 'execute_command') as execute, \
+                self.assertLogs('arc', level='WARNING') as logs:
+            self.assertEqual(run.submit_to_scheduler(), ('errored', None))
+        self.assertIn('submit_command', logs.output[0])
+        execute.assert_not_called()
+
+    def test_unavailable_command_returns_errored_without_submission(self) -> None:
+        """A configured executable that is absent still fails preflight safely."""
+        run = PipeRun(project_directory=self.tmpdir, run_id='unavailable_command',
+                      tasks=[], cluster_software='Slurm')
+        commands = {'slurm': os.path.join(self.tmpdir, 'arc_missing_scheduler_command')}
+        with mock.patch.dict(pipe_run_module.settings, {'submit_command': commands}), \
+                mock.patch('shutil.which', return_value=None), \
+                mock.patch.object(local_job_module, 'execute_command') as execute, \
+                self.assertLogs('arc', level='WARNING') as logs:
+            self.assertEqual(run.submit_to_scheduler(), ('errored', None))
+        self.assertIn('not found', logs.output[0])
+        execute.assert_not_called()
 
 
 class TestPipeRunEnvPreamble(unittest.TestCase):

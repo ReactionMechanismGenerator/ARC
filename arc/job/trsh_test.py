@@ -1245,29 +1245,29 @@ class TestTrshJobOnServerConnections(unittest.TestCase):
         ssh.list_available_nodes.assert_called_once()
         self.assertEqual(result, ('node01', True))
 
-    def test_an_unknown_cluster_software_is_reported_rather_than_raising(self):
-        """
-        The report of an unknown cluster software was spelled ``logger.denug``, so reaching this
-        branch raised AttributeError instead of declining to troubleshoot.
-        """
-        client = patch.object(trsh, 'borrow_ssh_client')
-        borrow = client.start()
-        self.addCleanup(client.stop)
-        ssh = borrow.return_value.__enter__.return_value
-        ssh.list_available_nodes.return_value = ['node01']
-        ssh.read_remote_file.return_value = ['#!/bin/bash\n'] * 10
+    def test_an_unknown_cluster_software_is_rejected_before_any_command(self):
+        """Configured commands cannot make an unsupported scheduler parseable."""
         server = dict(trsh.servers['server1'], cluster_soft='Cobalt')
         with patch.dict(trsh.servers, {'server1': server}), \
-                patch.dict(trsh.submit_filenames, {'Cobalt': 'submit.sh'}), \
-                self.assertLogs(trsh.logger, level='DEBUG') as captured:
-            result = trsh.trsh_job_on_server(server='server1',
-                                             job_name='opt_a103',
-                                             job_id=123,
-                                             job_server_status='errored',
-                                             remote_path='/home/u/runs/job',
-                                             server_nodes=list())
-        self.assertEqual(result, (None, False))
-        self.assertIn('Unknown cluster software Cobalt', '\n'.join(captured.output))
+                patch.object(trsh, 'borrow_ssh_client') as borrow, \
+                self.assertRaisesRegex(ValueError, "server1.*Cobalt"):
+            trsh.trsh_job_on_server(server='server1', job_name='opt_a103', job_id=123,
+                                   job_server_status='errored', remote_path='/home/u/runs/job')
+        borrow.assert_not_called()
+
+
+    def test_node_change_resolves_sge_overlay_and_whitespace(self) -> None:
+        """Troubleshooting reads and uploads the filename configured for the alias."""
+        for raw, key, directive in [(' SGE ', 'SGE', '#$ -l h=node01'),
+                                    (' Slurm ', 'slurm', '#$BATCH -w, --nodelist=node01')]:
+            with self.subTest(raw=raw), \
+                    patch.dict(trsh.servers, {'server1': dict(trsh.servers['server1'], cluster_soft=raw)}), \
+                    patch.dict(trsh.submit_filenames, {key: 'custom.sh'}, clear=True):
+                _, ssh, result = self._trsh()
+                self.assertEqual(result, ('node01', True))
+                ssh.read_remote_file.assert_called_once_with(remote_file_path='/home/u/runs/job/custom.sh')
+                self.assertEqual(ssh.upload_file.call_args.kwargs['remote_file_path'], '/home/u/runs/job/custom.sh')
+                self.assertIn(directive, ssh.upload_file.call_args.kwargs['file_string'])
 
     def test_the_node_directive_is_inserted_when_the_submit_file_has_none(self):
         """

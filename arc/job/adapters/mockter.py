@@ -6,7 +6,7 @@ import datetime
 import os
 from typing import TYPE_CHECKING
 
-from arc.common import get_logger, is_xyz_linear, read_yaml_file, save_yaml_file
+from arc.common import get_cluster_soft_key, get_logger, is_xyz_linear, read_yaml_file, save_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, update_input_dict_with_args
@@ -206,7 +206,7 @@ class MockAdapter(JobAdapter):
             # we need a submit file for single or array jobs (either submitted to local or via SSH)
             self.write_submit_script()
             self.files_to_upload.append(self.get_file_property_dictionary(
-                file_name=submit_filenames[servers[self.server]['cluster_soft']]))
+                file_name=submit_filenames[get_cluster_soft_key(servers[self.server]['cluster_soft'], submit_filenames, 'submit_filenames')]))
         # 1.2. input file
         if not self.iterate_by:
             # if this is not a job array, we need the ESS input file

@@ -210,14 +210,18 @@ class TestASEAdapter(unittest.TestCase):
                 self.assertTrue(os.path.isfile(os.path.join(job.local_path, submit_filenames[cluster_soft])))
                 self.assertIn(submit_filenames[cluster_soft], [f['file_name'] for f in job.files_to_upload])
 
-    def test_submit_filename_guard_admits_only_what_the_lookup_can_serve(self):
-        """Test that a cluster_soft spelling settings does not carry falls back instead of raising"""
-        # submit_filenames is keyed by the exact settings spelling ('PBS', 'Slurm'), so a guard that
-        # accepts any casing hands the lookup a key it does not have and raises KeyError mid-construction.
-        for cluster_soft in ('slurm', 'pbs', 'SLURM', 'HTCondor', 'OGE'):
+    def test_queue_filename_and_directives_accept_normalized_spelling(self) -> None:
+        """Supported queue schedulers use the filename invoked by submission."""
+        for raw, canonical, directive in [(' slurm ', 'Slurm', '#SBATCH'), ('pbs', 'PBS', '#PBS'),
+                                           ('SLURM', 'Slurm', '#SBATCH')]:
+            with self.subTest(raw=raw):
+                _, filename, content = self.build_queue_job(raw, f'test_normalized_{canonical}_{raw.strip()}')
+                self.assertEqual(filename, submit_filenames[canonical])
+                self.assertIn(directive, content)
+        for cluster_soft in ('HTCondor', 'OGE'):
             with self.subTest(cluster_soft=cluster_soft):
-                job, submit_filename, _ = self.build_queue_job(cluster_soft, f'test_case_{cluster_soft}')
-                self.assertEqual(submit_filename, 'submit.sh')
+                _, filename, _ = self.build_queue_job(cluster_soft, f'test_case_{cluster_soft}')
+                self.assertEqual(filename, 'submit.sh')
 
     def test_write_submit_script_warns_on_a_scheduler_with_no_template(self):
         """Test that a queue job on a scheduler ase_submit has no template for says so"""
