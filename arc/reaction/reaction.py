@@ -1340,3 +1340,28 @@ def remove_dup_species(species_list: list[ARCSpecies]) -> list[ARCSpecies]:
         if species.label not in [spc.label for spc in new_species_list]:
             new_species_list.append(species)
     return new_species_list
+
+
+def check_unique_reaction_labels(reactions: list[ARCReaction]) -> None:
+    """
+    Check that no two reactions share a label.
+    Arkane identifies a reaction by its label, so a reaction sharing a label with another one
+    silently gets the other reaction's rate coefficient.
+
+    Args:
+        reactions (list[ARCReaction]): The reactions to check.
+
+    Raises:
+        InputError: If two reactions share a label.
+    """
+    seen = dict()
+    for index, rxn in enumerate(reactions):
+        if rxn.label in seen:
+            raise InputError(f"Reaction label '{rxn.label}' is not unique: it is used by the reaction at index "
+                             f"{seen[rxn.label]} and by the reaction at index {index}. Arkane identifies reactions "
+                             f"by label, so the second reaction would silently get the rate coefficient of the first.\n"
+                             f"Remove the duplicate reaction. To compute another TS for the same reaction, define a "
+                             f"copy of one participant species under a new label with the same structure, and use it "
+                             f"in the second reaction. For example, add a species 'H2O_b' with smiles 'O', and label "
+                             f"the second reaction 'CH4 + OH <=> CH3 + H2O_b'.")
+        seen[rxn.label] = index
