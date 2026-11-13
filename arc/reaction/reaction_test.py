@@ -12,8 +12,8 @@ import time
 import unittest
 import unittest.mock as mock
 
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, read_yaml_file
-from arc.exceptions import ReactionError
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, get_logger, read_yaml_file
+from arc.exceptions import InputError, ReactionError
 from arc.family.family import get_all_families, get_rmg_recommended_family_sets
 from arc.imports import settings
 from arc.main import ARC
@@ -190,6 +190,7 @@ class TestARCReaction(unittest.TestCase):
                            'family_own_reverse': True,
                            'label': 'CH4 + OH <=> CH3 + H2O',
                            'multiplicity': 2,
+                           'multiplicity_source': 'derived',
                            'p_species': [{'bond_corrections': {'C-H': 3},
                                           'cheap_conformer': 'C       0.00000000    0.00000001   -0.00000000\n'
                                                              'H       1.06690511   -0.17519582    0.05416493\n'
@@ -250,6 +251,7 @@ class TestARCReaction(unittest.TestCase):
         expected_dict_6 = {'label': 'NH2 + N2H3 <=> NH3 + H2NN[S]',
                            'family': 'Disproportionation',
                            'multiplicity': 1,
+                           'multiplicity_source': 'derived',
                            'p_species': [{'bond_corrections': {'H-N': 3},
                                           'cheap_conformer': 'N       0.00064924   -0.00099698    0.29559292\n'
                                                              'H      -0.41786606    0.84210396   -0.09477452\n'
@@ -722,6 +724,63 @@ class TestARCReaction(unittest.TestCase):
         loaded.r_species = [ARCSpecies(label='R', smiles='[CH2]C(C)CC')]
         loaded.p_species = [ARCSpecies(label='P', smiles='CC(C)[CH]C')]
         self.assertEqual(loaded.multiplicity, 2)
+
+    def test_multiplicity_source(self):
+        """Test that the reaction records whether its multiplicity was set by the user or derived by ARC"""
+        r_spc, p_spc = ARCSpecies(label='R', smiles='[CH2]C(C)CC'), ARCSpecies(label='P', smiles='CC(C)[CH]C')
+        rxn = ARCReaction(label='R <=> P', reactants=['R'], products=['P'])
+        self.assertIsNone(rxn.multiplicity_source)
+        self.assertNotIn('multiplicity_source', rxn.as_dict())
+        rxn = ARCReaction(r_species=[r_spc], p_species=[p_spc])
+        self.assertEqual(rxn.as_dict()['multiplicity_source'], 'derived')
+        rxn = ARCReaction(r_species=[r_spc], p_species=[p_spc], multiplicity=4)
+        self.assertEqual(rxn.multiplicity_source, 'user')
+        self.assertEqual(rxn.as_dict()['multiplicity_source'], 'user')
+        for source in ['user', 'derived']:
+            rxn_dict = ARCReaction(r_species=[r_spc], p_species=[p_spc]).as_dict()
+            rxn_dict['multiplicity_source'] = source
+            self.assertEqual(ARCReaction(reaction_dict=rxn_dict).multiplicity_source, source)
+        rxn_dict = {'label': 'R <=> P', 'reactants': ['R'], 'products': ['P'], 'multiplicity': 2}
+        self.assertEqual(ARCReaction(reaction_dict=rxn_dict).multiplicity_source, 'user')
+        rxn_dict['multiplicity_source'] = 'guessed'
+        with self.assertRaises(InputError):
+            ARCReaction(reaction_dict=rxn_dict)
+        rxn = ARCReaction(r_species=[r_spc], p_species=[p_spc])
+        self.assertEqual(rxn.multiplicity_source if rxn.multiplicity else None, 'derived')
+        rxn.multiplicity = 4
+        self.assertEqual(ARCReaction(reaction_dict=rxn.as_dict()).multiplicity_source, 'user')
+
+    def test_reconcile_multiplicity(self):
+        """Test reconciling a stored reaction multiplicity with the one derived from the species"""
+        r_spc, p_spc = ARCSpecies(label='R', smiles='[CH2]C(C)CC'), ARCSpecies(label='P', smiles='CC(C)[CH]C')
+        rxn = ARCReaction(label='R <=> P', reactants=['R'], products=['P'], multiplicity=1)
+        rxn.multiplicity_source = 'derived'
+        self.assertFalse(rxn.reconcile_multiplicity())
+        self.assertEqual(rxn.multiplicity, 1)
+
+        rxn.r_species, rxn.p_species = [r_spc], [p_spc]
+        with self.assertLogs(logger=get_logger(), level='WARNING') as captured:
+            self.assertTrue(rxn.reconcile_multiplicity(note='A note.'))
+        self.assertEqual(rxn.multiplicity, 2)
+        self.assertEqual(rxn.multiplicity_source, 'derived')
+        self.assertEqual(len(captured.output), 1)
+        self.assertIn('stored multiplicity 1', captured.output[0])
+        self.assertIn('derived multiplicity 2', captured.output[0])
+        self.assertIn('A note.', captured.output[0])
+        self.assertFalse(rxn.reconcile_multiplicity())
+
+        rxn = ARCReaction(r_species=[r_spc], p_species=[p_spc], multiplicity=4)
+        with self.assertLogs(logger=get_logger(), level='WARNING') as captured:
+            self.assertFalse(rxn.reconcile_multiplicity())
+        self.assertEqual(rxn.multiplicity, 4)
+        self.assertEqual(len(captured.output), 1)
+        self.assertIn('user-set multiplicity 4', captured.output[0])
+        self.assertIn('derived multiplicity 2', captured.output[0])
+
+        rxn = ARCReaction(label='R <=> P', reactants=['R'], products=['P'])
+        rxn.r_species, rxn.p_species = [r_spc], [p_spc]
+        self.assertFalse(rxn.reconcile_multiplicity())
+        self.assertEqual(rxn.multiplicity, 2)
 
     def test_check_charge_balance(self):
         """Test the Reaction check_charge_balance method and the stoichiometric reaction charge"""

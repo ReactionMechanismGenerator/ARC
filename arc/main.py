@@ -24,6 +24,7 @@ from arc.common import (VERSION,
                         initialize_job_types,
                         initialize_log,
                         log_footer,
+                        read_yaml_file,
                         save_yaml_file,
                         time_lapse,
                         )
@@ -49,6 +50,7 @@ logger = get_logger()
 default_levels_of_theory, servers, valid_chars, default_job_types, default_job_settings, global_ess_settings = \
     settings['default_levels_of_theory'], settings['servers'], settings['valid_chars'], settings['default_job_types'], \
     settings['default_job_settings'], settings['global_ess_settings']
+delete_command = settings['delete_command']
 
 
 class ARC(object):
@@ -348,12 +350,16 @@ class ARC(object):
 
         # species
         self.species = species or list()
-        converted_species, indices_to_pop = list(), list()
+        converted_species, indices_to_pop, held_back_species = list(), list(), list()
         for i, spc in enumerate(self.species):
             if isinstance(spc, dict):
                 # dict representation for ARCSpecies
                 indices_to_pop.append(i)
-                converted_species.append(ARCSpecies(species_dict=spc))
+                if spc.get('is_ts') or spc.get('irc_label'):
+                    # A TS (or IRC) species may have been computed at a stale reaction multiplicity, judge it below.
+                    held_back_species.append(spc)
+                else:
+                    converted_species.append(ARCSpecies(species_dict=spc))
             elif not isinstance(spc, ARCSpecies):
                 raise ValueError(f'A species should either be an RMG Species object, an ARCSpecies object, '
                                  f'or a dictionary representation of the later.\nGot: {type(spc)} for {spc}')
@@ -361,6 +367,39 @@ class ARC(object):
             if i in indices_to_pop:
                 self.species.pop(i)
         self.species.extend(converted_species)
+
+        # reactions
+        self.reactions = reactions or list()
+        converted_reactions, indices_to_pop, multiplicity_notes = list(), list(), list()
+        original_input = None
+        for i, rxn in enumerate(self.reactions):
+            if isinstance(rxn, dict):
+                # dict representation for ARCReaction as in a YAML input file
+                indices_to_pop.append(i)
+                note = ''
+                if self.output and rxn.get('multiplicity') is not None and rxn.get('multiplicity_source') is None:
+                    original_input = original_input or self.read_original_input_reactions()
+                    rxn, note = resolve_legacy_multiplicity_source(reaction_dict=rxn, original_input=original_input,
+                                                                   project_directory=self.project_directory)
+                converted_reactions.append(ARCReaction(reaction_dict=rxn, species_list=self.species))
+                multiplicity_notes.append(note)
+            elif not isinstance(rxn, ARCReaction):
+                raise ValueError(f'An input reaction should be an `ARCReaction` object. Got:\n{type(rxn)} for {rxn}')
+        for i in reversed(range(len(self.reactions))):  # pop from the end, so other indices won't change
+            if i in indices_to_pop:
+                self.reactions.pop(i)
+        for rxn, note in zip(converted_reactions, multiplicity_notes):
+            rxn.attach_species(self.species)  # the same species the Scheduler attaches
+            if {spc.label for spc in rxn.r_species} == set(rxn.reactants) \
+                    and {spc.label for spc in rxn.p_species} == set(rxn.products):
+                rxn.reconcile_multiplicity(note=note)
+        self.reactions.extend(converted_reactions)
+        for rxn_index, arc_rxn in enumerate(self.reactions):
+            arc_rxn.index = rxn_index
+        if self.output:
+            held_back_species = self.drop_stale_ts_species(held_back_species)
+        self.species.extend([ARCSpecies(species_dict=spc) for spc in held_back_species])
+
         for spc in self.species:
             if spc.rotors_dict is not None:
                 for rotor_num, rotor_dict in spc.rotors_dict.items():
@@ -377,23 +416,6 @@ class ARC(object):
         if self.job_types['bde']:
             self.add_hydrogen_for_bde()
         self.determine_unique_species_labels()
-
-        # reactions
-        self.reactions = reactions or list()
-        converted_reactions, indices_to_pop = list(), list()
-        for i, rxn in enumerate(self.reactions):
-            if isinstance(rxn, dict):
-                # dict representation for ARCReaction as in a YAML input file
-                indices_to_pop.append(i)
-                converted_reactions.append(ARCReaction(reaction_dict=rxn, species_list=self.species))
-            elif not isinstance(rxn, ARCReaction):
-                raise ValueError(f'An input reaction should be an `ARCReaction` object. Got:\n{type(rxn)} for {rxn}')
-        for i in reversed(range(len(self.reactions))):  # pop from the end, so other indices won't change
-            if i in indices_to_pop:
-                self.reactions.pop(i)
-        self.reactions.extend(converted_reactions)
-        for rxn_index, arc_rxn in enumerate(self.reactions):
-            arc_rxn.index = rxn_index
 
         if self.adaptive_levels is not None:
             logger.info(f'Using the following adaptive levels of theory:\n{self.adaptive_levels}')
@@ -994,6 +1016,68 @@ class ARC(object):
                     os.remove(os.path.join(root, file_))
             break
 
+    def read_original_input_reactions(self) -> tuple[str | None, list]:
+        """
+        Read the reactions of the project's original input file, used to tell user-set reaction multiplicities from
+        ones ARC derived when restarting from a legacy restart file. ARC does not record the input file path, so the
+        project directory is searched for ``input.yml`` and then ``input.yaml``. A file that holds an ``output``
+        dictionary was written by ARC from a restart dictionary and is not an original input.
+
+        Returns:
+            tuple[str | None, list]: The input file path (``None`` if none was found) and its reaction dictionaries.
+        """
+        for file_name in ['input.yml', 'input.yaml']:
+            path = os.path.join(self.project_directory, file_name)
+            if os.path.isfile(path):
+                content = read_yaml_file(path=path, project_directory=self.project_directory)
+                if isinstance(content, dict) and 'output' not in content:
+                    return path, [rxn for rxn in content.get('reactions') or list() if isinstance(rxn, dict)]
+        return None, list()
+
+    def drop_stale_ts_species(self, species_dicts: list[dict]) -> list[dict]:
+        """
+        Drop the restart file's TS species dictionaries whose multiplicity differs from that of their reaction,
+        together with the IRC species made from them, and their output and running jobs entries, so the Scheduler
+        starts each such TS afresh at the reaction multiplicity. Jobs of a dropped species that still run on a server
+        are not cancelled, they are listed in a warning with the command to cancel each.
+
+        Args:
+            species_dicts (list[dict]): The TS and IRC species dictionaries of the restart file.
+
+        Returns:
+            list[dict]: The species dictionaries to keep.
+        """
+        dropped_labels = list()
+        for rxn in self.reactions:
+            ts_dict = next((spc for spc in species_dicts if spc.get('is_ts')
+                            and (spc['label'] == rxn.ts_label
+                                 or rxn.ts_label is None and spc.get('rxn_label') == rxn.label)), None)
+            if ts_dict is None or ts_dict.get('yml_path') or ts_dict.get('multiplicity') == rxn.multiplicity:
+                continue
+            ts_label = ts_dict['label']
+            labels = [ts_label] + [spc['label'] for spc in species_dicts
+                                   if not spc.get('is_ts') and spc.get('irc_label') == ts_label]
+            orphans = list()
+            for label in labels:
+                if self.output is not None:
+                    self.output.pop(label, None)
+                for job in self.running_jobs.pop(label, None) or list():
+                    if isinstance(job, dict) and job.get('execution_type') != 'incore' \
+                            and job.get('job_id') is not None:
+                        orphans.append(get_cancel_instruction(job))
+            dropped_labels.extend(labels)
+            archived = ' (the original restart file is archived under log_and_restart_archive)' \
+                if os.path.isfile(os.path.join(self.project_directory, 'restart.yml')) else ''
+            message = (f'Reaction {rxn.label}: its TS {ts_label} was computed at multiplicity '
+                       f'{ts_dict.get("multiplicity")}, not at the reaction multiplicity {rxn.multiplicity}. '
+                       f'Discarding the species {", ".join(labels)} and every result computed for them{archived}; '
+                       f'the TS search starts afresh at multiplicity {rxn.multiplicity}.')
+            if orphans:
+                message += (f' These running jobs of {ts_label} are now orphaned, ARC does not cancel them, '
+                            f'cancel them yourself: {"; ".join(orphans)}.')
+            logger.warning(message)
+        return [spc for spc in species_dicts if spc['label'] not in dropped_labels]
+
     def determine_unique_species_labels(self):
         """
         Determine unique species labels.
@@ -1316,6 +1400,65 @@ class ARC(object):
             logger.debug(f'output dictionary successfully parsed:\n{self.output}')
         elif self.output is None:
             self.output = dict()
+
+
+def get_cancel_instruction(job_dict: dict) -> str:
+    """
+    Get the instruction to cancel a job ARC no longer tracks,
+    using ARC's delete command for the cluster software of the job's server.
+
+    Args:
+        job_dict (dict): The job dictionary as stored in the restart file.
+
+    Returns:
+        str: The instruction, e.g., ``'/usr/bin/scancel 12345' on server server2 (job freq_a1)``.
+    """
+    server, job_id = job_dict.get('server'), job_dict.get('job_id')
+    cluster_soft = servers.get(server, dict()).get('cluster_soft') if server is not None else None
+    if cluster_soft in delete_command:
+        return f"'{delete_command[cluster_soft]} {job_id}' on server {server} (job {job_dict.get('job_name')})"
+    return (f'job id {job_id} on server {server} (job {job_dict.get("job_name")}; no cancel command is known for '
+            f'its cluster software {cluster_soft!r})')
+
+
+def resolve_legacy_multiplicity_source(reaction_dict: dict,
+                                       original_input: tuple[str | None, list],
+                                       project_directory: str,
+                                       ) -> tuple[dict, str]:
+    """
+    Determine whether the multiplicity stored in a restart file's reaction dictionary was set by the user or derived
+    by ARC, for restart files written before ARC recorded this as ``multiplicity_source``.
+    The reaction's entry in the original input file decides: a multiplicity set there is the user's,
+    otherwise (or if no original input file is found) the stored value is taken as derived.
+
+    Args:
+        reaction_dict (dict): The reaction dictionary from the restart file.
+        original_input (tuple[str | None, list]): The original input file path and its reaction dictionaries.
+        project_directory (str): The project directory.
+
+    Returns:
+        tuple[dict, str]: The reaction dictionary with ``multiplicity_source`` set, and a note explaining the source.
+    """
+    if reaction_dict.get('multiplicity') is None or reaction_dict.get('multiplicity_source') is not None:
+        return reaction_dict, ''
+    reaction_dict = dict(reaction_dict)
+    path, input_reactions = original_input
+    if path is None:
+        reaction_dict['multiplicity_source'] = 'derived'
+        return reaction_dict, (f'No original input file (input.yml or input.yaml) was found in {project_directory}, '
+                               f'so the stored value is taken as derived by ARC.')
+    input_rxn = next((rxn for rxn in input_reactions
+                      if rxn.get('label') and rxn['label'] == reaction_dict.get('label')), None)
+    if input_rxn is None:
+        same_species = [rxn for rxn in input_reactions if rxn.get('reactants') and rxn.get('products')
+                        and sorted(rxn['reactants']) == sorted(reaction_dict.get('reactants') or list())
+                        and sorted(rxn['products']) == sorted(reaction_dict.get('products') or list())]
+        input_rxn = same_species[0] if len(same_species) == 1 else None
+    if input_rxn is not None and input_rxn.get('multiplicity') is not None:
+        reaction_dict['multiplicity'], reaction_dict['multiplicity_source'] = input_rxn['multiplicity'], 'user'
+        return reaction_dict, f'It is set to {input_rxn["multiplicity"]} in the original input file {path}.'
+    reaction_dict['multiplicity_source'] = 'derived'
+    return reaction_dict, f'The original input file {path} does not set it, so the stored value is taken as derived.'
 
 
 def check_rotor_scan_resolution(rotor_scan_resolution: float | None) -> float | None:

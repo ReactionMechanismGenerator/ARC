@@ -1,0 +1,967 @@
+# A legacy (pre-PR #1090) ARC restart file for the doublet reaction R <=> P ([CH2]C(C)CC <=> CC(C)[CH]C).
+# Generated at official/main d3d7c5524 (the parent of #1090), by running, with JobAdapter.execute stubbed:
+#   ARC(project='legacy_doublet_restart', species=[R, P], reactions=[{'label': 'R <=> P', 'reactants': ['R'],
+#       'products': ['P']}], ess_settings={'gaussian': ['server2', 'server3']}, ...)
+#   then Scheduler(..., testing=True, restart_dict=arc.restart_dict), which created TS0 at the pinned multiplicity.
+# ARC.__init__ wrote the reaction multiplicity before the species were attached, so it was pinned to 1 (issue #1048)
+# and TS0 inherited it. To mimic a run in progress, R and P were marked converged (final_xyz set), TS0 got a geometry
+# (final_xyz, an opt 'geo' path) and two running TS0 jobs: freq on server2 (Slurm, job id 12345) and sp on server3
+# (PBS, job id 67890). Then Scheduler.save_restart_dict() wrote this file.
+# PROJECT_DIRECTORY replaces the original project path; tests substitute their own directory.
+arkane_level_of_theory:
+  basis: cc-pvtz-f12
+  method: ccsd(t)-f12
+  method_type: wavefunction
+  software: molpro
+calc_freq_factor: false
+compute_thermo: false
+conformer_opt_level:
+  basis: def2svp
+  compatible_ess:
+  - gaussian
+  - terachem
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+ess_settings: &id002
+  gaussian:
+  - server2
+  - server3
+freq_level:
+  basis: def2tzvp
+  compatible_ess: &id001
+  - gaussian
+  - terachem
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+freq_scale_factor: 0.988
+irc_level:
+  basis: def2tzvp
+  compatible_ess:
+  - gaussian
+  - terachem
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+job_memory: 14
+job_types:
+  bde: false
+  conf_opt: false
+  conf_sp: false
+  fine: false
+  freq: true
+  irc: true
+  onedmin: false
+  opt: true
+  orbitals: false
+  rotors: false
+  sp: true
+  stability: false
+max_job_time: 120
+opt_level:
+  basis: def2tzvp
+  compatible_ess: *id001
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+output:
+  P:
+    conformers: ''
+    convergence: true
+    errors: ''
+    info: ''
+    isomorphism: ''
+    job_types:
+      bde: true
+      composite: false
+      conf_opt: false
+      conf_sp: false
+      fine: false
+      freq: true
+      irc: false
+      onedmin: false
+      opt: true
+      orbitals: false
+      rotors: true
+      sp: true
+      stability: false
+    paths:
+      composite: ''
+      freq: ''
+      geo: ''
+      geo_coarse: ''
+      sp: ''
+    restart: ''
+    warnings: ''
+  R:
+    conformers: ''
+    convergence: true
+    errors: ''
+    info: ''
+    isomorphism: ''
+    job_types:
+      bde: true
+      composite: false
+      conf_opt: false
+      conf_sp: false
+      fine: false
+      freq: true
+      irc: false
+      onedmin: false
+      opt: true
+      orbitals: false
+      rotors: true
+      sp: true
+      stability: false
+    paths:
+      composite: ''
+      freq: ''
+      geo: ''
+      geo_coarse: ''
+      sp: ''
+    restart: ''
+    warnings: ''
+  TS0:
+    conformers: ''
+    convergence: null
+    errors: ''
+    info: ''
+    isomorphism: ''
+    job_types:
+      bde: true
+      composite: false
+      conf_opt: false
+      conf_sp: false
+      fine: false
+      freq: false
+      irc: false
+      onedmin: false
+      opt: true
+      orbitals: false
+      rotors: true
+      sp: false
+      stability: false
+    paths:
+      composite: ''
+      freq: ''
+      geo: PROJECT_DIRECTORY/calcs/TSs/TS0/opt_a1/output.log
+      geo_coarse: ''
+      gsm: ''
+      irc: []
+      irc_directions: []
+      neb: ''
+      sp: ''
+    restart: ''
+    warnings: ''
+output_multi_spc:
+  null: {}
+project: legacy_doublet_restart
+reactions:
+- charge: null
+  index: 0
+  label: R <=> P
+  multiplicity: 1
+  p_species: []
+  products:
+  - P
+  r_species: []
+  reactants:
+  - R
+running_jobs:
+  P: []
+  R: []
+  TS0:
+  - args:
+      block: {}
+      keyword: {}
+      trsh: {}
+    constraints: []
+    cpu_cores: 8
+    ess_settings: *id002
+    execution_type: queue
+    job_adapter: gaussian
+    job_id: 12345
+    job_memory_gb: 14.0
+    job_name: freq_a1
+    job_num: 1
+    job_server_name: a1
+    job_status:
+    - initializing
+    - error: ''
+      keywords: []
+      line: ''
+      status: initializing
+    job_type: freq
+    level:
+      basis: def2tzvp
+      compatible_ess:
+      - gaussian
+      - terachem
+      method: wb97xd
+      method_type: dft
+      software: gaussian
+    max_job_time: 120
+    project: legacy_doublet_restart
+    project_directory: PROJECT_DIRECTORY
+    restricted_used: true
+    server: server2
+    species_labels:
+    - TS0
+    xyz: &id003
+      coords: !!python/tuple
+      - !!python/tuple
+        - -0.6245842653760934
+        - 0.875225813105349
+        - 1.2425299353870312
+      - !!python/tuple
+        - -0.44268691440124436
+        - -0.2904064332102897
+        - 0.31792273274809957
+      - !!python/tuple
+        - -1.7758956684645881
+        - -0.6221666792341991
+        - -0.35212954650044276
+      - !!python/tuple
+        - 0.6400876274026377
+        - -0.030278646254408344
+        - -0.7431669240185589
+      - !!python/tuple
+        - 2.0300025280052463
+        - 0.1608730689398613
+        - -0.14852926507235822
+      - !!python/tuple
+        - -0.9535049873441559
+        - 0.7083965394362636
+        - 2.2622614979042432
+      - !!python/tuple
+        - -0.6042900310927396
+        - 1.891164511413185
+        - 0.8636278082771236
+      - !!python/tuple
+        - -0.13912986149757697
+        - -1.1554262239783057
+        - 0.9208490060683941
+      - !!python/tuple
+        - -1.6792784010218993
+        - -1.507073642854268
+        - -0.9904872912063315
+      - !!python/tuple
+        - -2.54980841277679
+        - -0.8348454344969933
+        - 0.3940676424451475
+      - !!python/tuple
+        - -2.1291583586503275
+        - 0.20650997237179292
+        - -0.976466540082357
+      - !!python/tuple
+        - 0.6783049482450973
+        - -0.8805629907007154
+        - -1.4355892485397297
+      - !!python/tuple
+        - 0.3830421046052853
+        - 0.8522935959528732
+        - -1.3425630854738793
+      - !!python/tuple
+        - 2.7672949601684995
+        - 0.27963956195873085
+        - -0.949046984705362
+      - !!python/tuple
+        - 2.3211654139934215
+        - -0.7060387869935155
+        - 0.4531112035305584
+      - !!python/tuple
+        - 2.078439318205233
+        - 1.0526957745446266
+        - 0.48360905923838965
+      isotopes: !!python/tuple
+      - 12
+      - 12
+      - 12
+      - 12
+      - 12
+      - 1
+      - 1
+      - 1
+      - 1
+      - 1
+      - 1
+      - 1
+      - 1
+      - 1
+      - 1
+      - 1
+      symbols: !!python/tuple
+      - C
+      - C
+      - C
+      - C
+      - C
+      - H
+      - H
+      - H
+      - H
+      - H
+      - H
+      - H
+      - H
+      - H
+      - H
+      - H
+  - args:
+      block: {}
+      keyword: {}
+      trsh: {}
+    constraints: []
+    cpu_cores: 8
+    ess_settings: *id002
+    execution_type: queue
+    job_adapter: gaussian
+    job_id: 67890
+    job_memory_gb: 14.0
+    job_name: sp_a1
+    job_num: 1
+    job_server_name: a1
+    job_status:
+    - initializing
+    - error: ''
+      keywords: []
+      line: ''
+      status: initializing
+    job_type: sp
+    level:
+      basis: def2tzvp
+      compatible_ess:
+      - gaussian
+      - terachem
+      method: wb97xd
+      method_type: dft
+      software: gaussian
+    max_job_time: 120
+    project: legacy_doublet_restart
+    project_directory: PROJECT_DIRECTORY
+    restricted_used: true
+    server: server3
+    species_labels:
+    - TS0
+    xyz: *id003
+sp_level:
+  basis: cc-pvtz-f12
+  method: ccsd(t)-f12
+  method_type: wavefunction
+  software: molpro
+species:
+- bond_corrections:
+    C-C: 4
+    C-H: 11
+  cheap_conformer: |-
+    C      -0.62458427    0.87522581    1.24252994
+    C      -0.44268691   -0.29040643    0.31792273
+    C      -1.77589567   -0.62216668   -0.35212955
+    C       0.64008763   -0.03027865   -0.74316692
+    C       2.03000253    0.16087307   -0.14852927
+    H      -0.95350499    0.70839654    2.26226150
+    H      -0.60429003    1.89116451    0.86362781
+    H      -0.13912986   -1.15542622    0.92084901
+    H      -1.67927840   -1.50707364   -0.99048729
+    H      -2.54980841   -0.83484543    0.39406764
+    H      -2.12915836    0.20650997   -0.97646654
+    H       0.67830495   -0.88056299   -1.43558925
+    H       0.38304210    0.85229360   -1.34256309
+    H       2.76729496    0.27963956   -0.94904698
+    H       2.32116541   -0.70603879    0.45311120
+    H       2.07843932    1.05269577    0.48360906
+  final_xyz: |-
+    C      -0.62458427    0.87522581    1.24252994
+    C      -0.44268691   -0.29040643    0.31792273
+    C      -1.77589567   -0.62216668   -0.35212955
+    C       0.64008763   -0.03027865   -0.74316692
+    C       2.03000253    0.16087307   -0.14852927
+    H      -0.95350499    0.70839654    2.26226150
+    H      -0.60429003    1.89116451    0.86362781
+    H      -0.13912986   -1.15542622    0.92084901
+    H      -1.67927840   -1.50707364   -0.99048729
+    H      -2.54980841   -0.83484543    0.39406764
+    H      -2.12915836    0.20650997   -0.97646654
+    H       0.67830495   -0.88056299   -1.43558925
+    H       0.38304210    0.85229360   -1.34256309
+    H       2.76729496    0.27963956   -0.94904698
+    H       2.32116541   -0.70603879    0.45311120
+    H       2.07843932    1.05269577    0.48360906
+  label: R
+  long_thermo_description: 'Bond corrections: {''C-C'': 4, ''C-H'': 11}
+
+    '
+  mol:
+    atom_order:
+    - -32768
+    - -32767
+    - -32766
+    - -32765
+    - -32764
+    - -32763
+    - -32762
+    - -32761
+    - -32760
+    - -32759
+    - -32758
+    - -32757
+    - -32756
+    - -32755
+    - -32754
+    - -32753
+    atoms:
+    - atomtype: Cs
+      charge: 0
+      edges:
+        -32767: 1.0
+        -32763: 1.0
+        -32762: 1.0
+      element:
+        isotope: -1
+        number: 6
+      id: -32768
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 1
+    - atomtype: Cs
+      charge: 0
+      edges:
+        -32768: 1.0
+        -32766: 1.0
+        -32765: 1.0
+        -32761: 1.0
+      element:
+        isotope: -1
+        number: 6
+      id: -32767
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: Cs
+      charge: 0
+      edges:
+        -32767: 1.0
+        -32760: 1.0
+        -32759: 1.0
+        -32758: 1.0
+      element:
+        isotope: -1
+        number: 6
+      id: -32766
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: Cs
+      charge: 0
+      edges:
+        -32767: 1.0
+        -32764: 1.0
+        -32757: 1.0
+        -32756: 1.0
+      element:
+        isotope: -1
+        number: 6
+      id: -32765
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: Cs
+      charge: 0
+      edges:
+        -32765: 1.0
+        -32755: 1.0
+        -32754: 1.0
+        -32753: 1.0
+      element:
+        isotope: -1
+        number: 6
+      id: -32764
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32768: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32763
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32768: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32762
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32767: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32761
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32766: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32760
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32766: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32759
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32766: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32758
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32765: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32757
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32765: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32756
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32764: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32755
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32764: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32754
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32764: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32753
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    multiplicity: 2
+    props: {}
+  multiplicity: 2
+  number_of_rotors: 0
+- bond_corrections:
+    C-C: 4
+    C-H: 11
+  cheap_conformer: |-
+    C      -0.80338288    1.37628513   -0.03995029
+    C      -0.44574266   -0.09371819   -0.25017722
+    C      -1.54562976   -0.99673423    0.30702614
+    C       0.87073894   -0.41590202    0.39755823
+    C       2.14214783   -0.19006107   -0.34380431
+    H      -0.03927917    2.03354057   -0.46950847
+    H      -0.89593506    1.61951728    1.02468416
+    H      -1.75652526    1.61577854   -0.52373858
+    H      -0.36909273   -0.28457857   -1.32762044
+    H      -1.30388148   -2.05353139    0.14742231
+    H      -2.50060379   -0.79494727   -0.19020105
+    H      -1.68798579   -0.84279925    1.38279491
+    H       0.91584828   -0.56532559    1.47214231
+    H       2.07324830   -0.57096348   -1.36678694
+    H       2.38283439    0.87618378   -0.37563466
+    H       2.96324083   -0.71274423    0.15579389
+  final_xyz: |-
+    C      -0.80338288    1.37628513   -0.03995029
+    C      -0.44574266   -0.09371819   -0.25017722
+    C      -1.54562976   -0.99673423    0.30702614
+    C       0.87073894   -0.41590202    0.39755823
+    C       2.14214783   -0.19006107   -0.34380431
+    H      -0.03927917    2.03354057   -0.46950847
+    H      -0.89593506    1.61951728    1.02468416
+    H      -1.75652526    1.61577854   -0.52373858
+    H      -0.36909273   -0.28457857   -1.32762044
+    H      -1.30388148   -2.05353139    0.14742231
+    H      -2.50060379   -0.79494727   -0.19020105
+    H      -1.68798579   -0.84279925    1.38279491
+    H       0.91584828   -0.56532559    1.47214231
+    H       2.07324830   -0.57096348   -1.36678694
+    H       2.38283439    0.87618378   -0.37563466
+    H       2.96324083   -0.71274423    0.15579389
+  label: P
+  long_thermo_description: 'Bond corrections: {''C-C'': 4, ''C-H'': 11}
+
+    '
+  mol:
+    atom_order:
+    - -32752
+    - -32751
+    - -32750
+    - -32749
+    - -32748
+    - -32747
+    - -32746
+    - -32745
+    - -32744
+    - -32743
+    - -32742
+    - -32741
+    - -32740
+    - -32739
+    - -32738
+    - -32737
+    atoms:
+    - atomtype: Cs
+      charge: 0
+      edges:
+        -32751: 1.0
+        -32747: 1.0
+        -32746: 1.0
+        -32745: 1.0
+      element:
+        isotope: -1
+        number: 6
+      id: -32752
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: Cs
+      charge: 0
+      edges:
+        -32752: 1.0
+        -32750: 1.0
+        -32749: 1.0
+        -32744: 1.0
+      element:
+        isotope: -1
+        number: 6
+      id: -32751
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: Cs
+      charge: 0
+      edges:
+        -32751: 1.0
+        -32743: 1.0
+        -32742: 1.0
+        -32741: 1.0
+      element:
+        isotope: -1
+        number: 6
+      id: -32750
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: Cs
+      charge: 0
+      edges:
+        -32751: 1.0
+        -32748: 1.0
+        -32740: 1.0
+      element:
+        isotope: -1
+        number: 6
+      id: -32749
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 1
+    - atomtype: Cs
+      charge: 0
+      edges:
+        -32749: 1.0
+        -32739: 1.0
+        -32738: 1.0
+        -32737: 1.0
+      element:
+        isotope: -1
+        number: 6
+      id: -32748
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32752: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32747
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32752: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32746
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32752: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32745
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32751: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32744
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32750: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32743
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32750: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32742
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32750: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32741
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32749: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32740
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32748: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32739
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32748: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32738
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    - atomtype: H0
+      charge: 0
+      edges:
+        -32748: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -32737
+      label: ''
+      lone_pairs: 0
+      props:
+        inRing: false
+      radical_electrons: 0
+    multiplicity: 2
+    props: {}
+  multiplicity: 2
+  number_of_rotors: 0
+- bond_corrections: {}
+  final_xyz: |-
+    C      -0.62458427    0.87522581    1.24252994
+    C      -0.44268691   -0.29040643    0.31792273
+    C      -1.77589567   -0.62216668   -0.35212955
+    C       0.64008763   -0.03027865   -0.74316692
+    C       2.03000253    0.16087307   -0.14852927
+    H      -0.95350499    0.70839654    2.26226150
+    H      -0.60429003    1.89116451    0.86362781
+    H      -0.13912986   -1.15542622    0.92084901
+    H      -1.67927840   -1.50707364   -0.99048729
+    H      -2.54980841   -0.83484543    0.39406764
+    H      -2.12915836    0.20650997   -0.97646654
+    H       0.67830495   -0.88056299   -1.43558925
+    H       0.38304210    0.85229360   -1.34256309
+    H       2.76729496    0.27963956   -0.94904698
+    H       2.32116541   -0.70603879    0.45311120
+    H       2.07843932    1.05269577    0.48360906
+  is_ts: true
+  label: TS0
+  multiplicity: 1
+  number_of_rotors: 0
+  rxn_index: 0
+  rxn_label: R <=> P
+  ts_checks:
+    E0: null
+    IRC: null
+    NMD: null
+    e_elect: null
+    freq: null
+    warnings: ''
+  ts_conf_spawned: true
+  ts_number: 0
+  tsg_spawned: true
+ts_guess_level:
+  basis: def2svp
+  compatible_ess:
+  - gaussian
+  - terachem
+  method: wb97xd
+  method_type: dft
+  software: gaussian

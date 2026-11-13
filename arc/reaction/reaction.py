@@ -74,6 +74,8 @@ class ARCReaction(object):
         long_kinetic_description (str): A description for the species entry in the thermo library outputted.
         ts_xyz_guess (list): A list of TS XYZ user guesses, each in a string format.
         multiplicity (int): The reaction surface multiplicity. A trivial guess will be made unless provided.
+        multiplicity_source (str): ``'user'`` if the multiplicity was set by the user, ``'derived'`` if ARC derived it
+                                   from the species, ``None`` while it is unknown.
         charge (int): The reaction surface charge.
         index (int): An auto-generated index associating the ARCReaction object with the
                      corresponding TS :ref:`ARCSpecies <species>` object.
@@ -127,6 +129,7 @@ class ARCReaction(object):
         self._atom_map_clusters = None
         self._charge = charge
         self._multiplicity = multiplicity
+        self.multiplicity_source = 'user' if multiplicity is not None else None
         if reaction_dict is not None:
             # Reading from a dictionary
             self.from_dict(reaction_dict=reaction_dict, species_list=species_list)
@@ -242,6 +245,7 @@ class ARCReaction(object):
         if self._multiplicity is None:
             self._multiplicity = self.get_rxn_multiplicity()
             if self._multiplicity is not None:
+                self.multiplicity_source = 'derived'
                 logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
             elif len(self.r_species) and len(self.p_species):
                 logger.error(f'Could not determine multiplicity for the reaction: {self.label}')
@@ -249,8 +253,9 @@ class ARCReaction(object):
 
     @multiplicity.setter
     def multiplicity(self, value):
-        """Allow setting the reaction multiplicity"""
+        """Allow setting the reaction multiplicity, an explicitly set value is the user's"""
         self._multiplicity = value
+        self.multiplicity_source = 'user' if value is not None else None
         if value is not None and not isinstance(value, int):
                 raise InputError(f'Reaction multiplicity must be an integer, got {value} which is a {type(value)}.')
 
@@ -321,6 +326,8 @@ class ARCReaction(object):
         if self.index is not None:
             reaction_dict['index'] = self.index
         reaction_dict['multiplicity'] = self.multiplicity
+        if self.multiplicity is not None and self.multiplicity_source is not None:
+            reaction_dict['multiplicity_source'] = self.multiplicity_source
         if self.charge != 0:
             reaction_dict['charge'] = self.charge
         reaction_dict['reactants'] = self.reactants
@@ -359,6 +366,12 @@ class ARCReaction(object):
         self.index = reaction_dict['index'] if 'index' in reaction_dict else None
         self.label = reaction_dict['label'] if 'label' in reaction_dict else ''
         self.multiplicity = reaction_dict['multiplicity'] if 'multiplicity' in reaction_dict else None
+        self.multiplicity_source = reaction_dict.get('multiplicity_source')
+        if self.multiplicity_source not in [None, 'user', 'derived']:
+            raise InputError(f"The multiplicity_source of reaction {self.label} must be 'user' or 'derived', "
+                             f"got {self.multiplicity_source!r}.")
+        if self.multiplicity_source is None and self._multiplicity is not None:
+            self.multiplicity_source = 'user'
         self.charge = reaction_dict.get('charge')
         self.reactants = reaction_dict.get('reactants') or list()
         self.products = reaction_dict.get('products') or list()
@@ -521,6 +534,48 @@ class ARCReaction(object):
         if len(self.r_species):
             return sum(r.charge * self.get_species_count(species=r, well=0) for r in self.r_species)
         return None
+
+    def attach_species(self, species_list: list[ARCSpecies]):
+        """
+        Set the reactant and product species from a list of species, matched by the reactant and product labels.
+
+        Args:
+            species_list (list[ARCSpecies]): The species to match.
+        """
+        self.r_species = [spc for spc in species_list if spc.label in self.reactants]
+        self.p_species = [spc for spc in species_list if spc.label in self.products]
+
+    def reconcile_multiplicity(self, note: str = '') -> bool:
+        """
+        Compare the stored reaction multiplicity with the one derived from the attached species.
+        A derived value that disagrees is replaced and a user-set value is kept,
+        either disagreement is logged as a warning.
+
+        Args:
+            note (str, optional): A sentence to append to the warning, e.g., how the source of the value was determined.
+
+        Returns:
+            bool: Whether the stored multiplicity was replaced.
+        """
+        if not len(self.r_species) or not len(self.p_species):
+            return False
+        stored, derived = self._multiplicity, self.get_rxn_multiplicity()
+        if stored is None:
+            self._multiplicity = derived
+            self.multiplicity_source = 'derived' if derived is not None else None
+            return False
+        if stored == derived:
+            return False
+        note = f' {note}' if note else ''
+        if self.multiplicity_source == 'user':
+            logger.warning(f'Reaction {self.label}: keeping the user-set multiplicity {stored}, although the derived '
+                           f'multiplicity {derived} from its species differs.{note}')
+            return False
+        self._multiplicity, self.multiplicity_source = derived, 'derived' if derived is not None else None
+        logger.warning(f'Reaction {self.label}: the stored multiplicity {stored} differs from the derived multiplicity '
+                       f'{derived} from its species; using {derived}.{note} To keep a value instead, set it with '
+                       f'multiplicity_source: user on this reaction in the restart file.')
+        return True
 
     def get_rxn_multiplicity(self) -> int | None:
         """

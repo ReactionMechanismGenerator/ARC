@@ -13,13 +13,13 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from arc.common import ARC_PATH, get_logger
+from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
-from arc.main import ARC, process_adaptive_levels
+from arc.main import ARC, process_adaptive_levels, resolve_legacy_multiplicity_source
 from arc.scheduler import Scheduler
 from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 from arc.species.species import ARCSpecies
@@ -675,6 +675,191 @@ class TestARC(unittest.TestCase):
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
+
+
+class TestLegacyRestartMultiplicity(unittest.TestCase):
+    """
+    Restarting a project whose restart.yml was written before the reaction multiplicity fix (issue #1048).
+    The fixture pins the doublet reaction R <=> P and its TS0 (which has a geometry) to a multiplicity of 1.
+    """
+
+    fixture_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '6_legacy_doublet_rxn_multiplicity',
+                                'restart.yml')
+
+    def setUp(self):
+        """Copy the legacy restart file into a fresh project directory"""
+        self.project_directory = tempfile.mkdtemp(prefix='arc_legacy_restart_')
+        with open(self.fixture_path, 'r') as f:
+            content = f.read().replace('PROJECT_DIRECTORY', self.project_directory)
+        self.restart_path = os.path.join(self.project_directory, 'restart.yml')
+        with open(self.restart_path, 'w') as f:
+            f.write(content)
+
+    def tearDown(self):
+        """Delete the project directory"""
+        shutil.rmtree(self.project_directory, ignore_errors=True)
+
+    def write_original_input(self, multiplicity: int | None, file_name: str = 'input.yml'):
+        """
+        Write an original input file for the project.
+
+        Args:
+            multiplicity (int | None): The reaction multiplicity to set in the input file, ``None`` to not set one.
+            file_name (str, optional): The input file name.
+        """
+        rxn = {'label': 'R <=> P', 'reactants': ['R'], 'products': ['P']}
+        if multiplicity is not None:
+            rxn['multiplicity'] = multiplicity
+        save_yaml_file(path=os.path.join(self.project_directory, file_name),
+                       content={'project': 'legacy_doublet_restart',
+                                'species': [{'label': 'R', 'smiles': '[CH2]C(C)CC'},
+                                            {'label': 'P', 'smiles': 'CC(C)[CH]C'}],
+                                'reactions': [rxn]})
+
+    def load(self, extra_species: list | None = None) -> tuple[ARC, list[str]]:
+        """
+        Load the legacy restart file as ARC.py does.
+
+        Args:
+            extra_species (list, optional): Species dictionaries to add to the restart dictionary.
+
+        Returns:
+            tuple[ARC, list[str]]: The ARC object and the WARNING (or louder) lines of the project's arc.log.
+        """
+        restart_dict = read_yaml_file(path=self.restart_path, project_directory=self.project_directory)
+        restart_dict['species'].extend(extra_species or list())
+        restart_dict['project_directory'] = self.project_directory  # as ARC.py sets it from the file's location
+        arc = ARC(**restart_dict)
+        with open(os.path.join(self.project_directory, 'arc.log'), 'r') as f:
+            lines = f.read().splitlines()
+        return arc, [line for line in lines if line.startswith(('Warning: ', 'Error: ', 'Critical: '))]
+
+    def test_the_fixture_is_a_legacy_restart_file(self):
+        """Test that the fixture carries the pinned multiplicity on the reaction and on a TS with a geometry"""
+        restart_dict = read_yaml_file(path=self.restart_path, project_directory=self.project_directory)
+        self.assertEqual(restart_dict['reactions'][0]['multiplicity'], 1)
+        self.assertNotIn('multiplicity_source', restart_dict['reactions'][0])
+        ts_dict = [spc for spc in restart_dict['species'] if spc['label'] == 'TS0'][0]
+        self.assertEqual(ts_dict['multiplicity'], 1)
+        self.assertIn('final_xyz', ts_dict)
+        self.assertTrue(restart_dict['output'])
+
+    def test_a_legacy_doublet_restart_without_an_original_input_is_corrected(self):
+        """Test that a legacy doublet restart loads, takes the derived multiplicity, and says why"""
+        irc_dict = {'label': 'IRC_TS0_1', 'irc_label': 'TS0', 'multiplicity': 1, 'charge': 0, 'compute_thermo': False,
+                    'final_xyz': ARCSpecies(label='R', smiles='[CH2]C(C)CC').get_xyz()}
+        arc, warnings = self.load(extra_species=[irc_dict])
+        self.assertEqual(arc.reactions[0].multiplicity, 2)
+        self.assertEqual(arc.reactions[0].multiplicity_source, 'derived')
+        mult_lines = [line for line in warnings if 'stored multiplicity 1' in line]
+        self.assertEqual(len(mult_lines), 1)
+        self.assertIn('derived multiplicity 2', mult_lines[0])
+        self.assertIn('No original input file', mult_lines[0])
+        self.assertIn('multiplicity_source: user', mult_lines[0])
+        for label in ['TS0', 'IRC_TS0_1']:
+            self.assertNotIn(label, [spc.label for spc in arc.species])
+            self.assertNotIn(label, arc.output)
+            self.assertNotIn(label, arc.running_jobs)
+        self.assertEqual(arc.restart_dict['reactions'][0]['multiplicity'], 2)
+        self.assertEqual(arc.restart_dict['reactions'][0]['multiplicity_source'], 'derived')
+
+    def test_orphaned_server_jobs_are_listed_with_their_cancel_commands(self):
+        """Test that the WARNING gives the server, job id, and cancel command of each dropped running TS job"""
+        with patch.dict(servers, {'server2': {'cluster_soft': 'Slurm'}, 'server3': {'cluster_soft': 'PBS'}}):
+            _, warnings = self.load()
+        ts_lines = [line for line in warnings if 'TS0' in line and 'orphaned' in line]
+        self.assertEqual(len(ts_lines), 1)
+        delete_command = settings['delete_command']
+        self.assertIn(f"'{delete_command['Slurm']} 12345' on server server2", ts_lines[0])
+        self.assertIn(f"'{delete_command['PBS']} 67890' on server server3", ts_lines[0])
+        self.assertIn('ARC does not cancel them', ts_lines[0])
+
+    def test_a_multiplicity_set_in_the_original_input_is_kept(self):
+        """Test that a legacy restart keeps a multiplicity its original input file set, and warns"""
+        self.write_original_input(multiplicity=4)
+        arc, warnings = self.load()
+        self.assertEqual(arc.reactions[0].multiplicity, 4)
+        self.assertEqual(arc.reactions[0].multiplicity_source, 'user')
+        self.assertEqual(len([line for line in warnings if 'stored multiplicity 1' in line]), 0)
+        user_lines = [line for line in warnings if 'user-set multiplicity 4' in line]
+        self.assertEqual(len(user_lines), 1)
+        self.assertIn('derived multiplicity 2', user_lines[0])
+
+    def test_a_multiplicity_not_set_in_the_original_input_is_derived(self):
+        """Test that a legacy restart whose original input file sets no multiplicity takes the derived value"""
+        self.write_original_input(multiplicity=None, file_name='input.yaml')
+        arc, warnings = self.load()
+        self.assertEqual(arc.reactions[0].multiplicity, 2)
+        self.assertEqual(arc.reactions[0].multiplicity_source, 'derived')
+        mult_lines = [line for line in warnings if 'stored multiplicity 1' in line]
+        self.assertEqual(len(mult_lines), 1)
+        self.assertIn('does not set it', mult_lines[0])
+        self.assertIn('input.yaml', mult_lines[0])
+
+    def test_a_ts_given_in_an_input_file_is_never_dropped(self):
+        """Test that a TS species of an input file (not a restart file) is kept even without a matching multiplicity"""
+        arc = ARC(project='legacy_doublet_restart', project_directory=self.project_directory, calc_freq_factor=False,
+                  compute_thermo=False,
+                  species=[{'label': 'R', 'smiles': '[CH2]C(C)CC'}, {'label': 'P', 'smiles': 'CC(C)[CH]C'},
+                           {'label': 'TS0', 'is_ts': True, 'rxn_label': 'R <=> P', 'charge': 0}],
+                  reactions=[{'label': 'R <=> P', 'reactants': ['R'], 'products': ['P']}])
+        self.assertIn('TS0', [spc.label for spc in arc.species])
+        self.assertEqual(arc.reactions[0].multiplicity, 2)
+
+    def test_resolve_legacy_multiplicity_source(self):
+        """Test how the original input file decides the source of a legacy restart multiplicity"""
+        rxn_dict = {'label': 'R <=> P', 'reactants': ['R'], 'products': ['P'], 'multiplicity': 1}
+        same_dict, note = resolve_legacy_multiplicity_source(rxn_dict, (None, list()), 'proj')
+        self.assertEqual(same_dict['multiplicity_source'], 'derived')
+        self.assertNotIn('multiplicity_source', rxn_dict)
+        self.assertIn('No original input file', note)
+        sourced = dict(rxn_dict, multiplicity_source='derived')
+        self.assertIs(resolve_legacy_multiplicity_source(sourced, (None, list()), 'proj')[0], sourced)
+        inputs = [{'label': 'R <=> P_b', 'reactants': ['R'], 'products': ['P'], 'multiplicity': 3},
+                  {'label': 'R <=> P', 'reactants': ['R'], 'products': ['P'], 'multiplicity': 4}]
+        resolved, note = resolve_legacy_multiplicity_source(rxn_dict, ('input.yml', inputs), 'proj')
+        self.assertEqual((resolved['multiplicity'], resolved['multiplicity_source']), (4, 'user'))
+        self.assertIn('set to 4', note)
+        ambiguous = [{'reactants': ['R'], 'products': ['P'], 'multiplicity': 3},
+                     {'reactants': ['R'], 'products': ['P'], 'multiplicity': 4}]
+        resolved, _ = resolve_legacy_multiplicity_source(rxn_dict, ('input.yml', ambiguous), 'proj')
+        self.assertEqual((resolved['multiplicity'], resolved['multiplicity_source']), (1, 'derived'))
+        resolved, _ = resolve_legacy_multiplicity_source(rxn_dict, ('input.yml', ambiguous[:1]), 'proj')
+        self.assertEqual((resolved['multiplicity'], resolved['multiplicity_source']), (3, 'user'))
+
+    def test_an_input_file_written_from_a_restart_is_not_an_original_input(self):
+        """Test that an input.yml holding an output dictionary, even an empty one, is not the original input"""
+        self.write_original_input(multiplicity=4)
+        content = read_yaml_file(os.path.join(self.project_directory, 'input.yml'))
+        content['output'] = dict()
+        save_yaml_file(path=os.path.join(self.project_directory, 'input.yml'), content=content)
+        arc, warnings = self.load()
+        self.assertEqual(arc.reactions[0].multiplicity, 2)
+        self.assertTrue(any('No original input file' in line for line in warnings))
+
+    def test_the_reset_ts_is_rebuilt_and_searched_at_the_derived_multiplicity(self):
+        """Test that the Scheduler builds a fresh, unverified TS0 and spawns its TS search at multiplicity 2"""
+        arc, _ = self.load()
+        sched = Scheduler(project=arc.project, species_list=arc.species, rxn_list=arc.reactions,
+                          ess_settings={'gaussian': ['local']}, project_directory=self.project_directory,
+                          testing=True, restart_dict=arc.restart_dict, ts_adapters=['linear'],
+                          job_types={'conf_opt': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
+                                     'fine_grid': False})
+        ts = sched.species_dict['TS0']
+        self.assertEqual(ts.multiplicity, 2)
+        self.assertIsNone(ts.final_xyz)
+        self.assertFalse(ts.tsg_spawned)
+        self.assertFalse(any(ts.ts_checks.values()))
+        self.assertFalse(sched.output['TS0']['convergence'])
+        self.assertFalse(sched.output['TS0']['paths']['geo'])
+        self.assertEqual(sched.running_jobs.get('TS0', list()), list())
+        with patch('arc.job.adapter.JobAdapter.execute'):
+            sched.spawn_ts_jobs()
+        self.assertTrue(ts.tsg_spawned)
+        tsg_jobs = list(sched.job_dict['TS0']['tsg'].values())
+        self.assertEqual(len(tsg_jobs), 1)
+        self.assertEqual(tsg_jobs[0].multiplicity, 2)
+        self.assertEqual(tsg_jobs[0].species_label, 'TS0')
 
 
 class TestExecuteReleasesPooledConnections(unittest.TestCase):

@@ -454,12 +454,7 @@ class Scheduler(object):
             for rxn in self.rxn_list:
                 logger.info('\n\n')
                 # 1. Update the ARCReaction object and generate an ARCSpecies object for its TS.
-                rxn.r_species, rxn.p_species = list(), list()
-                for spc in self.species_list:
-                    if spc.label in rxn.reactants:
-                        rxn.r_species.append(spc)
-                    if spc.label in rxn.products:
-                        rxn.p_species.append(spc)
+                rxn.attach_species(self.species_list)
                 rxn.check_attributes()
                 rxn.check_charge_balance()
                 family_text = ''
