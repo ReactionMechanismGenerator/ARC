@@ -271,7 +271,7 @@ class JobAdapter(ABC):
         else:
             self._dispatch_execution(execution_type)
         if not self.restarted:
-            self._write_initiated_job_to_csv_file()
+            self.write_initiated_job_to_csv_file()
 
     def _open_or_borrow_ssh(self) -> ContextManager[SSHClient]:
         """Return a context manager yielding an :class:`SSHClient` for ``self.server``,
@@ -712,7 +712,7 @@ class JobAdapter(ABC):
         # 3. Set job_id.
         self.job_id = self.job_num if self.execution_type == 'incore' and self.job_id is None else self.job_id
 
-    def _write_initiated_job_to_csv_file(self):
+    def write_initiated_job_to_csv_file(self):
         """
         Write an initiated ARC job into the initiated_jobs.csv file.
         """
@@ -829,6 +829,8 @@ class JobAdapter(ABC):
         job_dict['cpu_cores'] = self.cpu_cores
         if self.dihedrals is not None:
             job_dict['dihedrals'] = self.dihedrals
+        if getattr(self, 'directed_scan_type', None) is not None:
+            job_dict['directed_scan_type'] = self.directed_scan_type
         job_dict['ess_settings'] = self.ess_settings
         if isinstance(self.ess_trsh_methods, list) and self.ess_trsh_methods:
             job_dict['ess_trsh_methods'] = self.ess_trsh_methods
@@ -847,6 +849,10 @@ class JobAdapter(ABC):
         job_dict['job_status'] = self.job_status
         job_dict['level'] = self.level.as_dict() if self.level is not None else None
         job_dict['max_job_time'] = self.max_job_time
+        if self.queue is not None:
+            job_dict['queue'] = self.queue
+        if self.attempted_queues:
+            job_dict['attempted_queues'] = list(self.attempted_queues)
         if self.reactions is not None:
             job_dict['reaction_indices'] = [reaction.index for reaction in self.reactions]
         if self.rotor_index is not None:

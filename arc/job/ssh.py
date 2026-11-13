@@ -254,17 +254,21 @@ class SSHClient(object):
     def _send_command_to_server(self,
                                 command: str | list,
                                 remote_path: str = '',
-                                ) -> tuple[list, list]:
+                                return_exit_status: bool = False,
+                                ) -> tuple[list, list] | tuple[list, list, int | None]:
         """
         A wrapper for exec_command in paramiko.SSHClient. Send commands to the server.
 
         Args:
             command (str | list): A string or an array of string commands to send.
             remote_path (str | None): The directory path at which the command will be executed.
+            return_exit_status (bool, optional): Whether to also return the command's exit status.
 
-        Returns: tuple[list, list]:
+        Returns: tuple[list, list] | tuple[list, list, int | None]:
             - A list of lines of standard output stream.
             - A list of lines of the standard error stream.
+            - The exit status, only if ``return_exit_status`` is ``True``. ``None`` if the channel did not open,
+              -1 if it closed without an exit status.
         """
         if isinstance(command, list):
             command = '; '.join(command)
@@ -286,10 +290,14 @@ class SSHClient(object):
                 _, stdout, stderr = self._ssh.exec_command(command)
             except Exception as e:
                 logger.debug(f'ssh timed-out after two trials. Got: {e}')
+                if return_exit_status:
+                    return ['', ], ['ssh timed-out after two trials', ], None
                 return ['', ], ['ssh timed-out after two trials', ]
-        stdout = stdout.readlines()
-        stderr = stderr.readlines()
-        return stdout, stderr
+        stdout_lines, stderr_lines = stdout.readlines(), stderr.readlines()
+        if return_exit_status:
+            # paramiko gives -1 if the channel closed without an exit status, e.g., the command was killed: a failure.
+            return stdout_lines, stderr_lines, stdout.channel.recv_exit_status()
+        return stdout_lines, stderr_lines
 
     @check_connections
     def upload_file(self,
@@ -421,7 +429,8 @@ class SSHClient(object):
         # Status line formats:
         # OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
         # SLURM: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
-        stdout = run_queue_query(lambda: self._send_command_to_server(cmd), server=self.server)
+        stdout = run_queue_query(lambda: self._send_command_to_server(cmd, return_exit_status=True),
+                                 server=self.server)
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
     def delete_job(self, job_id: int | str) -> None:
@@ -466,7 +475,8 @@ class SSHClient(object):
             raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
         running_job_ids = list()
         cmd = check_status_command[servers[self.server]['cluster_soft']]
-        stdout = run_queue_query(lambda: self._send_command_to_server(cmd), server=self.server)
+        stdout = run_queue_query(lambda: self._send_command_to_server(cmd, return_exit_status=True),
+                                 server=self.server)
         i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
         split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
         cluster_soft = servers[self.server]['cluster_soft'].lower()
