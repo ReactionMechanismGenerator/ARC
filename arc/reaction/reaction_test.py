@@ -662,13 +662,15 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn.n_family_candidates, 1)
 
     def test_a_family_dropped_by_the_radical_gate_is_recorded(self):
-        """The pentadienyl cyclization also matches a concerted cycloaddition, which the radical gate drops"""
+        """The pentadienyl cyclization also matches a concerted cycloaddition and an intramolecular R-H addition,
+        which the radical gate drops"""
         with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
             rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C=CC=C')],
                               p_species=[ARCSpecies(label='P', smiles='[CH2]C1C=CC1')])
             self.assertEqual(rxn.family, 'Intra_R_Add_Exocyclic')
         self.assertEqual(rxn.family_candidates, [{'family': 'Intra_R_Add_Exocyclic', 'dropped_by': None},
-                                                 {'family': 'Intra_2+2_cycloaddition_Cd', 'dropped_by': 'radical gate'}])
+                                                 {'family': 'Intra_2+2_cycloaddition_Cd', 'dropped_by': 'radical gate'},
+                                                 {'family': 'Intra_RH_Add_Endocyclic', 'dropped_by': 'radical gate'}])
         self.assertEqual(rxn.n_family_candidates, 1)
 
     def test_an_overlap_tie_is_recorded_with_the_channel_not_searched(self):
