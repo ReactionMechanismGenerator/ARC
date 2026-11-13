@@ -14,7 +14,7 @@ import time
 from arc.common import get_logger
 from arc.exceptions import SettingsError
 from arc.imports import settings
-from arc.job.ssh import SUBMISSION_CAP_WAIT_SECONDS, check_job_status_in_stdout
+from arc.job.ssh import SUBMISSION_CAP_WAIT_SECONDS, check_job_status_in_stdout, submission_cap_reached
 
 
 logger = get_logger()
@@ -223,26 +223,6 @@ def parse_running_jobs_ids(stdout: list[str],
     return running_job_ids
 
 
-def _submission_cap_reached(cluster_soft: str, stderr: list[str]) -> bool:
-    """
-    Whether the scheduler refused a submission because the per-user job cap is reached.
-
-    Args:
-        cluster_soft (str): The server cluster software.
-        stderr (list[str]): The stderr got from submitting a job.
-
-    Returns:
-        bool: Whether the stderr reports a reached per-user job cap.
-    """
-    cluster_soft = cluster_soft.lower()
-    if cluster_soft == 'slurm':
-        return any('AssocMaxSubmitJobLimit' in err_line for err_line in stderr)
-    if cluster_soft == 'pbs':
-        return any('qsub: would exceed' in err_line or 'qsub: Maximum number of jobs' in err_line
-                   for err_line in stderr)
-    return False
-
-
 def submit_job(path: str,
                cluster_soft: str | None = None,
                submit_cmd: str | None = None,
@@ -274,14 +254,14 @@ def submit_job(path: str,
     submit_filename = submit_filename or submit_filenames[cluster_soft]
     cmd = f'cd "{path}"; {submit_cmd} {submit_filename}'
     stdout, stderr = execute_command(cmd)
-    if not len(stdout) and not _submission_cap_reached(cluster_soft, stderr):
+    if not len(stdout) and not submission_cap_reached(cluster_soft, stderr):
         time.sleep(10)
         stdout, stderr = execute_command(cmd)
-    if not wait_on_cap and stderr and _submission_cap_reached(cluster_soft, stderr):
+    if not wait_on_cap and stderr and submission_cap_reached(cluster_soft, stderr):
         logger.warning(f'The scheduler refused the submission because of the per-user job cap:\n{stderr}')
         return SUBMISSION_CAP_REACHED, None
     waited = False
-    while stderr and _submission_cap_reached(cluster_soft, stderr):
+    while stderr and submission_cap_reached(cluster_soft, stderr):
         logger.warning(f'Max number of submitted jobs was reached, sleeping {SUBMISSION_CAP_WAIT_SECONDS} s '
                        f'before retrying the submission...')
         time.sleep(SUBMISSION_CAP_WAIT_SECONDS)

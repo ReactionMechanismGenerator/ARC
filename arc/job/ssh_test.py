@@ -1163,6 +1163,16 @@ class TestSubmitJobCap(unittest.TestCase):
         self.assertEqual(mock_sleep.call_count, 3)
         mock_sleep.assert_called_with(ssh.SUBMISSION_CAP_WAIT_SECONDS)
 
+    def test_pbs_cap_retries_until_accepted(self):
+        """A PBS queue over the user's cap is waited out like Slurm's, not handed back as an errored job."""
+        cap = ([], ['qsub: Maximum number of jobs already in queue for user MSG=total number of jobs in '
+                    'queue exceeds the queue limit: user user@host, queue main_q'])
+        result, mock_send, mock_sleep = self._submit('pbs', [cap, cap, (['123456.pbs-server'], [])])
+        self.assertEqual(result, ('running', '123456'))
+        self.assertEqual(mock_send.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 2)
+        mock_sleep.assert_called_with(ssh.SUBMISSION_CAP_WAIT_SECONDS)
+
     def test_slurm_accepted_submission_does_not_wait(self):
         """An accepted submission neither sleeps nor retries."""
         result, mock_send, mock_sleep = self._submit('slurm', [(['Submitted batch job 5'], [])])

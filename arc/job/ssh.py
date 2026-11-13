@@ -36,6 +36,26 @@ PLACEHOLDER_USERNAME = '<username>'
 SUBMISSION_CAP_WAIT_SECONDS = 5 * 60
 
 
+def submission_cap_reached(cluster_soft: str, stderr: list[str]) -> bool:
+    """
+    Whether the scheduler refused a submission because the per-user job cap is reached.
+
+    Args:
+        cluster_soft (str): The server cluster software.
+        stderr (list[str]): The stderr got from submitting a job.
+
+    Returns:
+        bool: Whether the stderr reports a reached per-user job cap.
+    """
+    cluster_soft = cluster_soft.lower()
+    if cluster_soft == 'slurm':
+        return any('AssocMaxSubmitJobLimit' in err_line for err_line in stderr)
+    if cluster_soft == 'pbs':
+        return any('qsub: would exceed' in err_line or 'qsub: Maximum number of jobs' in err_line
+                   for err_line in stderr)
+    return False
+
+
 class UnknownHostKeyError(ServerError, paramiko.SSHException):
     """
     Raised when a server's host key is absent from ``known_hosts`` and the server sets
@@ -458,8 +478,8 @@ class SSHClient(object):
     def submit_job(self, remote_path: str) -> tuple[str | None, str | None]:
         """
         Submit a job to the server.
-        If Slurm refuses the submission because the per-user job cap is reached
-        (``AssocMaxSubmitJobLimit``), the submission is retried every ``SUBMISSION_CAP_WAIT_SECONDS``
+        If the scheduler refuses the submission because the per-user job cap is reached
+        (see ``submission_cap_reached()``), the submission is retried every ``SUBMISSION_CAP_WAIT_SECONDS``
         until it is accepted.
 
         Args:
@@ -476,7 +496,7 @@ class SSHClient(object):
         cmd = f'{submit_command[cluster_soft]} {submit_filenames[cluster_soft]}'
         stdout, stderr = self._send_command_to_server(cmd, remote_path)
         waited = False
-        while cluster_soft.lower() == 'slurm' and any('AssocMaxSubmitJobLimit' in line for line in stderr):
+        while submission_cap_reached(cluster_soft, stderr):
             logger.warning(f'Max number of submitted jobs was reached, sleeping {SUBMISSION_CAP_WAIT_SECONDS} s '
                            f'before retrying the submission...')
             time.sleep(SUBMISSION_CAP_WAIT_SECONDS)
