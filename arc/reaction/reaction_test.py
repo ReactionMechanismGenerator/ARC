@@ -14,11 +14,11 @@ import unittest
 import unittest.mock as mock
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists, read_yaml_file
-from arc.exceptions import ReactionError
+from arc.exceptions import InputError, ReactionError
 from arc.family.family import get_all_families, get_rmg_recommended_family_sets
 from arc.imports import settings
 from arc.main import ARC
-from arc.reaction.reaction import ARCReaction, remove_dup_species
+from arc.reaction.reaction import ARCReaction, check_unique_reaction_labels, remove_dup_species
 from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
 from arc.mapping.engine import check_atom_map
@@ -1128,6 +1128,59 @@ H       1.12853146   -0.86793870    0.06973060"""
                         ARCSpecies(label='H2O', smiles='O')]
         new_species_list = remove_dup_species(species_list=species_list)
         self.assertEqual(len(new_species_list), 3)
+
+    def test_check_unique_reaction_labels_distinct(self):
+        """Test that distinct reaction labels and an empty reaction list pass the uniqueness check"""
+        check_unique_reaction_labels([])
+        r = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')]
+        p = [ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
+        rxn_1 = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=r, p_species=p)
+        rxn_2 = ARCReaction(label='CH3 + H2O <=> CH4 + OH', r_species=p, p_species=r)
+        check_unique_reaction_labels([rxn_1])
+        check_unique_reaction_labels([rxn_1, rxn_2])
+
+    def test_check_unique_reaction_labels_duplicate_user_label(self):
+        """Test that two reactions given the same label are rejected with an error naming the label"""
+        r = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')]
+        p = [ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
+        rxn_1 = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=r, p_species=p)
+        rxn_2 = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=r, p_species=p)
+        rxn_1.index, rxn_2.index = 0, 1
+        with self.assertRaises(InputError) as cm:
+            check_unique_reaction_labels([rxn_1, rxn_2])
+        message = str(cm.exception)
+        self.assertIn("'CH4 + OH <=> CH3 + H2O'", message)
+        self.assertIn('index 0', message)
+        self.assertIn('index 1', message)
+        self.assertIn('H2O_b', message)
+        with self.assertRaises(InputError) as cm:
+            check_unique_reaction_labels([rxn_1, rxn_1])
+        self.assertIn('index 0', str(cm.exception))
+        self.assertIn('index 1', str(cm.exception))
+
+    def test_check_unique_reaction_labels_duplicate_auto_label(self):
+        """Test that two unlabeled reactions colliding on the label ARC generates are rejected"""
+        r = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')]
+        p = [ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
+        rxn_1 = ARCReaction(r_species=r, p_species=p)
+        rxn_2 = ARCReaction(reactants=['CH4', 'OH'], products=['CH3', 'H2O'], r_species=r, p_species=p)
+        self.assertEqual(rxn_1.label, rxn_2.label)
+        with self.assertRaises(InputError) as cm:
+            check_unique_reaction_labels([rxn_1, rxn_2])
+        self.assertIn(rxn_1.label, str(cm.exception))
+
+    def test_check_unique_reaction_labels_remedy(self):
+        """Test that the species-copy remedy named in the error message passes the check and check_attributes"""
+        r = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')]
+        h2o_b = ARCSpecies(label='H2O_b', smiles='O')
+        p_1 = [ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
+        p_2 = [p_1[0], h2o_b]
+        rxn_1 = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=r, p_species=p_1)
+        rxn_2 = ARCReaction(label='CH4 + OH <=> CH3 + H2O_b', r_species=r, p_species=p_2)
+        check_unique_reaction_labels([rxn_1, rxn_2])
+        rxn_1.check_attributes()
+        rxn_2.check_attributes()
+        self.assertEqual(rxn_2.products, ['CH3', 'H2O_b'])
 
     def test_check_done_opt_r_n_p(self):
         """Test the check_done_opt_r_n_p() method"""

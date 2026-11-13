@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
-from arc.exceptions import DependencyError, ReactionError
+from arc.exceptions import DependencyError, InputError, ReactionError
 from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_incore_adapters,
                                       derived_instability_breaks_spin_symmetry, is_restricted,
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
@@ -4397,6 +4397,28 @@ class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
             self.assertIsNone(original.adaptive_lot_n_heavy)
             self.assertTrue(original.compute_thermo)
 
+    def test_duplicate_reaction_labels_are_rejected_before_adaptive_relabel(self):
+        """Test that duplicate reactions are refused even though the adaptive relabel would make their labels distinct"""
+        species = [ARCSpecies(label=label, smiles=smiles, thermo_at_own_level=True)
+                   for label, smiles in [('CH4', 'C'), ('OH', '[OH]'), ('CH3', '[CH3]'), ('H2O', 'O')]]
+        rxn_1 = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=species[:2], p_species=species[2:])
+        rxn_2 = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=species[:2], p_species=species[2:])
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'adaptive_duplicate_labels_delete')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        with self.assertRaises(InputError) as cm:
+            Scheduler(project='adaptive_duplicate_labels',
+                      ess_settings=self.ess_settings,
+                      species_list=species,
+                      rxn_list=[rxn_1, rxn_2],
+                      opt_level=Level(repr='b3lyp/6-31g(d,p)'),
+                      sp_level=Level(repr='b3lyp/6-311+g(d,p)'),
+                      freq_level=Level(repr='b3lyp/6-31g(d,p)'),
+                      adaptive_levels=self.adaptive_levels,
+                      project_directory=project_directory,
+                      job_types=initialize_job_types(),
+                      testing=True)
+        self.assertIn("'CH4 + OH <=> CH3 + H2O'", str(cm.exception))
+
     def test_thermo_at_own_level_default_no_copy(self):
         """Test that by default (thermo_at_own_level=False) the species itself takes the reaction-wide level, no copy"""
         r = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')]
@@ -4743,6 +4765,27 @@ class TestSchedulerReactionChargeBalance(unittest.TestCase):
         rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-')
         self.build_scheduler(rxn, species)
         self.assertEqual(rxn.charge, -1)
+
+    def test_duplicate_reaction_labels_are_rejected_by_the_scheduler(self):
+        """Test that a Scheduler built directly with two reactions sharing a label refuses them"""
+        species = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]'),
+                   ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
+        rxn_1 = ARCReaction(label='CH4 + OH <=> CH3 + H2O')
+        rxn_2 = ARCReaction(label='CH4 + OH <=> CH3 + H2O')
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        with self.assertRaises(InputError) as cm:
+            Scheduler(project='duplicate_labels',
+                      ess_settings={'gaussian': ['server1']},
+                      species_list=species,
+                      rxn_list=[rxn_1, rxn_2],
+                      opt_level=Level(repr='b3lyp/6-31g(d,p)'),
+                      sp_level=Level(repr='b3lyp/6-311+g(d,p)'),
+                      freq_level=Level(repr='b3lyp/6-31g(d,p)'),
+                      project_directory=project_directory,
+                      job_types=initialize_job_types(),
+                      testing=True)
+        self.assertIn("'CH4 + OH <=> CH3 + H2O'", str(cm.exception))
 
 
 if __name__ == '__main__':

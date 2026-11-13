@@ -35,7 +35,7 @@ from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
 from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
 from arc.output import write_output_yml
 from arc.processor import process_arc_project, resolve_neb_level
-from arc.reaction import ARCReaction
+from arc.reaction import ARCReaction, check_unique_reaction_labels
 from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
@@ -394,6 +394,7 @@ class ARC(object):
         self.reactions.extend(converted_reactions)
         for rxn_index, arc_rxn in enumerate(self.reactions):
             arc_rxn.index = rxn_index
+        check_unique_reaction_labels(self.reactions)
 
         if self.adaptive_levels is not None:
             logger.info(f'Using the following adaptive levels of theory:\n{self.adaptive_levels}')

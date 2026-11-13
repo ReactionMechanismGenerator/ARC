@@ -20,6 +20,7 @@ from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
 from arc.main import ARC, process_adaptive_levels
+from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
 from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 from arc.species.species import ARCSpecies
@@ -549,6 +550,27 @@ class TestARC(unittest.TestCase):
         arc0.species.append(spc3)
         with self.assertRaises(ValueError):
             arc0.determine_unique_species_labels()
+
+    def test_duplicate_reaction_labels_raise(self):
+        """Test that ARC rejects two reactions sharing a label at input time, and accepts distinct labels"""
+        species = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]'),
+                   ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O'),
+                   ARCSpecies(label='H2O_b', smiles='O')]
+        level = 'ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)'
+        rxn_dicts = [{'label': 'CH4 + OH <=> CH3 + H2O'}, {'label': 'CH4 + OH <=> CH3 + H2O'}]
+        with self.assertRaises(InputError) as cm:
+            ARC(project='arc_test', job_types=self.job_types1, species=species, reactions=rxn_dicts,
+                level_of_theory=level, project_directory=os.path.join(self.scratch_dir, 'arc_test'))
+        self.assertIn("'CH4 + OH <=> CH3 + H2O'", str(cm.exception))
+        rxn_objects = [ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=species[:2], p_species=species[2:4]),
+                       ARCReaction(r_species=species[:2], p_species=species[2:4])]
+        with self.assertRaises(InputError):
+            ARC(project='arc_test', job_types=self.job_types1, species=species, reactions=rxn_objects,
+                level_of_theory=level, project_directory=os.path.join(self.scratch_dir, 'arc_test'))
+        rxn_dicts = [{'label': 'CH4 + OH <=> CH3 + H2O'}, {'label': 'CH4 + OH <=> CH3 + H2O_b'}]
+        arc0 = ARC(project='arc_test', job_types=self.job_types1, species=species, reactions=rxn_dicts,
+                   level_of_theory=level, project_directory=os.path.join(self.scratch_dir, 'arc_test'))
+        self.assertEqual([rxn.label for rxn in arc0.reactions], ['CH4 + OH <=> CH3 + H2O', 'CH4 + OH <=> CH3 + H2O_b'])
 
     def test_add_hydrogen_for_bde(self):
         """Test the add_hydrogen_for_bde method"""
