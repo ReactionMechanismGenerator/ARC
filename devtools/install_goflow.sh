@@ -203,12 +203,8 @@ else
 fi
 echo "✔️  Using $COMMAND_PKG"
 
-if [[ $COMMAND_PKG == micromamba ]]; then
-    eval "$(micromamba shell hook --shell=bash)"
-else
-    BASE=$(conda info --base)
-    source "$BASE/etc/profile.d/conda.sh"
-fi
+source "$SCRIPT_DIR/shell_init.sh"
+arc_shell_init
 
 # ── clone or update goflow_lean ───────────────────────────────────────────
 if [[ -n "$GOFLOW_PATH" ]]; then
