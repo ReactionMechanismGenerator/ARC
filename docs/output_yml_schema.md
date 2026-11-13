@@ -36,6 +36,7 @@ output.yml
 ├── freq_level?
 ├── sp_level?
 ├── neb_level (omitted unless the orca_neb TS adapter was configured)
+├── ts_adapters (omitted when the run built no scheduler): {adapters, source}
 ├── arkane_level_of_theory?
 ├── freq_scale_factor?
 ├── freq_scale_factor_key?
@@ -107,7 +108,7 @@ output.yml
 │
 ├── transition_states: []
 │   └── (all species fields, plus:)
-│       ├── chosen_ts_method?, successful_ts_methods?
+│       ├── chosen_ts_method?, successful_ts_methods?, skipped_ts_methods?
 │       ├── ts_guesses: []
 │       ├── neb_log?, gsm_log?, irc_logs: [], irc_log_directions: [], irc_converged?
 │       ├── ts_checks: {E0?, e_elect?, IRC?, freq?, NMD?, warnings}
@@ -315,6 +316,7 @@ one free-form value (arbitrary ESS keywords).
 | `freq_level` | `dict?` | Frequency calculation level |
 | `sp_level` | `dict?` | Single-point energy level |
 | `neb_level` | `dict` | NEB TS search level. **Omitted** (key absent) unless the `orca_neb` TS adapter was configured for the run and `orca_neb_settings['level']` is set — it does not indicate that an NEB job actually ran |
+| `ts_adapters` | `dict` | The TS search adapters the run used (`adapters`, lowercased) and where the list came from (`source`: `repo default`, `~/.arc/settings.py`, or `input file`). **Omitted** (key absent) when the run built no scheduler. Optional in schema 1.1; it does not change `schema_version` |
 | `arkane_level_of_theory` | `dict?` | Composite level Arkane uses for energy corrections |
 | `freq_scale_factor` | `float?` | Harmonic frequency scaling factor |
 | `freq_scale_factor_key` | `str?` | The entry key in ARC's `data/freq_scale_factors.yml` that `freq_level` resolved to — e.g. `"wb97xd/def2tzvp, software: gaussian"`. This is the block the factor was read from, so a consumer can check the factor against its own copy of the file. `null` when the user supplied the factor, when `freq_level` has no entry in that file, or when the file cannot be read |
@@ -818,6 +820,7 @@ substitute.
 | `imaginary_frequencies_cm1` | `list[float]?` | All imaginary frequencies (cm-1), including any additional small ones beyond the reaction mode |
 | `chosen_ts_method` | `str?` | The TS search method that was selected |
 | `successful_ts_methods` | `list[str]?` | All TS methods that succeeded |
+| `skipped_ts_methods` | `dict[str, str]?` | TS adapters that never ran because their engine is not available, each mapped to the cause. A skip is not a failure. Null when none was skipped. A project restarted from a record written before this field keeps such adapters among its unsuccessful methods |
 | `ts_guesses` | `list[dict]` | Sanitized provenance for the chosen guess: `index`, `chosen`, `method`, and merged `method_sources` |
 | `neb_log` | `str?` | Run-relative path to the NEB log. Taken from the run's `neb` path slot, falling back to the chosen TS guess's log when that guess's method is `orca_neb` |
 | `gsm_log` | `str?` | Run-relative path to the selected GSM stringfile. Taken from the run's `gsm` path slot, falling back to the chosen TS guess's log when that guess's method is `xtb_gsm` |
