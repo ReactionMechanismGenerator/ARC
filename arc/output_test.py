@@ -13,7 +13,7 @@ import yaml
 
 from arc.common import ARC_PATH, read_yaml_file
 from arc.constants import E_h_kJmol
-from arc.exceptions import InputError
+from arc.exceptions import InputError, RecipeError
 from arc.level import Level
 from arc.common import ARC_TESTING_PATH
 from arc.output import (
@@ -54,6 +54,7 @@ from arc.output import (
     _thermo_to_dict,
     write_output_yml,
 )
+from arc.family.family import get_reaction_family
 from arc.reaction.reaction import ARCReaction
 from arc.species.species import ARCSpecies, TSGuess, ThermoData
 
@@ -1832,6 +1833,110 @@ class TestRxnToDict(unittest.TestCase):
         self.assertEqual(result['family_tie']['searched'], result['family'])
         self.assertEqual(set(result['family_tie']['families']), {'intra_H_migration', '1,2_shiftC'})
         self.assertEqual(list(result).index('family_tie'), list(result).index('kinetics') + 1)
+
+    def identity_warnings(self, rxn: ARCReaction) -> tuple[dict, list[str]]:
+        """
+        Convert a reaction for output.yml, and capture the identity reaction WARNINGs it logs.
+
+        Args:
+            rxn (ARCReaction): The reaction.
+
+        Returns:
+            tuple[dict, list[str]]: The output.yml dict of the reaction, and the identity reaction WARNINGs.
+        """
+        _ = rxn.family
+        with patch('arc.output.logger') as logger:
+            result = _rxn_to_dict(rxn)
+        warnings = [call.args[0] for call in logger.warning.call_args_list if 'identity reaction' in call.args[0]]
+        return result, warnings
+
+    def test_an_overlap_tie_identity_reaction_is_flagged_next_to_the_rate(self):
+        """The degenerate H shift of n-butyl is an identity reaction: its rate says so, and one WARNING names
+        the family searched"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        result, warnings = self.identity_warnings(rxn)
+        self.assertIs(result['identity_reaction'], True)
+        self.assertEqual(list(result).index('identity_reaction'), list(result).index('family_tie') + 1)
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn(rxn.label, warnings[0])
+        self.assertIn('do not discriminate the channel', warnings[0])
+        self.assertIn(f'The {result["family"]} family was searched', warnings[0])
+
+    def test_a_single_family_identity_reaction_is_flagged(self):
+        """Only 1,2_shiftC matches the identity reaction of n-nonyl, so there is no tie: ARC searches 1,2_shiftC,
+        and identity_reaction is the only signal that the IRC check cannot tell the channel"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCCCCCCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCCCCCCC')])
+        result, warnings = self.identity_warnings(rxn)
+        self.assertEqual(result['family'], '1,2_shiftC')
+        self.assertEqual(result['n_family_candidates'], 1)
+        self.assertIsNone(result['family_tie'])
+        self.assertIs(result['identity_reaction'], True)
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('The 1,2_shiftC family was searched', warnings[0])
+
+    def test_an_identity_reaction_with_no_family_names_none(self):
+        """The WARNING of an identity reaction with no family says so, and does not guess one"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C')],
+                          p_species=[ARCSpecies(label='P', smiles='C')])
+        result, warnings = self.identity_warnings(rxn)
+        self.assertIsNone(result['family'])
+        self.assertIs(result['identity_reaction'], True)
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('No family was found for it', warnings[0])
+        self.assertNotIn('family was searched', warnings[0])
+
+    def test_an_identity_reaction_with_an_unavailable_preset_family_says_it_was_not_searched(self):
+        """The WARNING of an identity reaction preset to an unavailable family names the cause, and does not
+        say the family was searched"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')],
+                          family='intra_H_migration')
+        rxn.unavailable_families['intra_H_migration'] = 'Malformed recipe action, line 17'
+        result, warnings = self.identity_warnings(rxn)
+        self.assertEqual(result['family'], 'intra_H_migration')
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('The intra_H_migration family is unavailable, not searched: Malformed recipe action, line 17',
+                      warnings[0])
+        self.assertNotIn('family was searched', warnings[0])
+
+    def test_a_restored_family_found_unavailable_before_the_search_exports_no_stale_tie(self):
+        """A restored tied family found unavailable on the pre-search path is exported with no saved candidates,
+        count, or tie next to the WARNING that it was not searched"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        _ = rxn.family
+        self.assertIsNotNone(rxn.family_tie)
+        reaction_dict = rxn.as_dict()
+        reaction_dict['family'] = 'intra_H_migration'
+        restored = ARCReaction(reaction_dict=reaction_dict)
+        self.assertIsNotNone(restored.family_tie)
+
+        def lookup(label, consider_arc_families=True):
+            if label == 'intra_H_migration':
+                raise RecipeError('Malformed recipe action, line 17')
+            return get_reaction_family(label=label, consider_arc_families=consider_arc_families)
+
+        with patch('arc.reaction.reaction.get_reaction_family', side_effect=lookup), \
+                patch('arc.family.family.get_reaction_family', side_effect=lookup):
+            restored.warn_if_identity_reaction(family=restored.family)
+            result, warnings = self.identity_warnings(restored)
+        self.assertEqual(result['family'], 'intra_H_migration')
+        self.assertIsNone(result['family_candidates'])
+        self.assertIsNone(result['n_family_candidates'])
+        self.assertIsNone(result['family_tie'])
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('The intra_H_migration family is unavailable, not searched: Malformed recipe action, line 17',
+                      warnings[0])
+
+    def test_a_non_identity_reaction_is_not_flagged(self):
+        """An H shift between two different species is not an identity reaction, and logs no such WARNING"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCCC')],
+                          p_species=[ARCSpecies(label='P', smiles='C[CH]CCC')])
+        result, warnings = self.identity_warnings(rxn)
+        self.assertIs(result['identity_reaction'], False)
+        self.assertEqual(warnings, list())
 
     def test_the_family_record_of_a_user_choice(self):
         """A family set by the user is the one recorded, with its source"""

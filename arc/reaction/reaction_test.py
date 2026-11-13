@@ -9,6 +9,7 @@ from itertools import permutations
 import os
 import shutil
 import time
+import tracemalloc
 import unittest
 import unittest.mock as mock
 
@@ -17,7 +18,7 @@ from arc.exceptions import ReactionError
 from arc.family.family import get_all_families, get_rmg_recommended_family_sets
 from arc.imports import settings
 from arc.main import ARC
-from arc.reaction.reaction import ARCReaction, remove_dup_species
+from arc.reaction.reaction import ARCReaction, get_stereo_geometry, remove_dup_species
 from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
 from arc.mapping.engine import check_atom_map
@@ -692,6 +693,145 @@ class TestARCReaction(unittest.TestCase):
                              p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')], family='intra_H_migration')
         self.assertEqual(pinned.family, 'intra_H_migration')
         self.assertIsNone(pinned.family_tie)
+
+    def test_is_identity_reaction(self):
+        """Reactants and products that are the same species, counted with stoichiometry, make an identity reaction"""
+        n_butyl = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                              p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        self.assertTrue(n_butyl.is_identity_reaction())
+        self.assertIsNotNone(n_butyl.family_tie)
+        n_nonyl = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCCCCCCC')],
+                              p_species=[ARCSpecies(label='P', smiles='[CH2]CCCCCCCC')])
+        self.assertTrue(n_nonyl.is_identity_reaction())
+        self.assertEqual(n_nonyl.family, '1,2_shiftC')
+        self.assertEqual(n_nonyl.n_family_candidates, 1)
+        swap = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='CH4', smiles='C')],
+                           p_species=[ARCSpecies(label='CH4_b', smiles='C'), ARCSpecies(label='CH3_b', smiles='[CH3]')])
+        self.assertTrue(swap.is_identity_reaction())
+        isomerization = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCCC')],
+                                    p_species=[ARCSpecies(label='P', smiles='C[CH]CCC')])
+        self.assertFalse(isomerization.is_identity_reaction())
+        abstraction = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                             ARCSpecies(label='OH', smiles='[OH]')],
+                                  p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                             ARCSpecies(label='H2O', smiles='O')])
+        self.assertFalse(abstraction.is_identity_reaction())
+        unknown = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                              p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        unknown.p_species[0].mol = None
+        self.assertFalse(unknown.is_identity_reaction())
+
+    def test_an_identity_reaction_requires_the_same_stereochemistry(self):
+        """Wells that differ only in stereochemistry are not the same species, and a well whose stereochemistry
+        cannot be read from a geometry is not declared the same as another"""
+        cis_xyz = """C    1.5644   -0.4769    0.1209
+                     C    0.7126    0.7144   -0.1762
+                     C   -0.6277    0.7853   -0.1960
+                     C   -1.6088   -0.3090    0.0740
+                     H    2.2055   -0.2651    0.9824
+                     H    2.2084   -0.6920   -0.7375
+                     H    0.9910   -1.3787    0.3439
+                     H    1.2676    1.6248   -0.4012
+                     H   -1.0768    1.7488   -0.4359
+                     H   -1.1406   -1.2659    0.3124
+                     H   -2.2492   -0.0294    0.9165
+                     H   -2.2463   -0.4563   -0.8034"""
+        trans_xyz = """C    1.9453    0.0776   -0.1114
+                       C    0.4915    0.0438   -0.4545
+                       C   -0.4915   -0.0438    0.4545
+                       C   -1.9453   -0.0776    0.1114
+                       H    2.4588   -0.7661   -0.5824
+                       H    2.1176    0.0228    0.9681
+                       H    2.3939    1.0043   -0.4821
+                       H    0.2468    0.0948   -1.5133
+                       H   -0.2468   -0.0948    1.5133
+                       H   -2.4588    0.7661    0.5824
+                       H   -2.3939   -1.0043    0.4821
+                       H   -2.1176   -0.0228   -0.9681"""
+        cis_to_trans = ARCReaction(r_species=[ARCSpecies(label='cis', xyz=cis_xyz)],
+                                   p_species=[ARCSpecies(label='trans', xyz=trans_xyz)])
+        self.assertTrue(cis_to_trans.r_species[0].is_isomorphic(cis_to_trans.p_species[0]))
+        self.assertFalse(cis_to_trans.is_identity_reaction())
+        same_well = ARCReaction(r_species=[ARCSpecies(label='cis', xyz=cis_xyz)],
+                                p_species=[ARCSpecies(label='cis_b', xyz=cis_xyz)])
+        self.assertTrue(same_well.is_identity_reaction())
+        no_xyz = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C/C=C\\C')],
+                             p_species=[ARCSpecies(label='P', smiles='C/C=C\\C')])
+        self.assertFalse(no_xyz.is_identity_reaction())
+
+    def test_n_butyl_from_smiles_is_flagged_at_family_selection(self):
+        """The 1,4-H shift of n-butyl, given as SMILES with no geometry, has no possible stereo element, so it is an
+        identity reaction by isomorphism alone, and the early WARNING is logged when its family is chosen"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')], family='intra_H_migration')
+        self.assertIsNone(get_stereo_geometry(rxn.r_species[0]))
+        self.assertIsNone(get_stereo_geometry(rxn.p_species[0]))
+        with self.assertLogs('arc', level='WARNING') as captured:
+            _ = rxn.product_dicts
+        warnings = [record.getMessage() for record in captured.records if 'identity reaction' in record.getMessage()]
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('The intra_H_migration family will be searched', warnings[0])
+
+    def test_a_2_eicosanol_sized_identity_check_is_bounded(self):
+        """The identity check of a well with a stereo center and many equivalent hydrogens finishes fast,
+        with bounded memory"""
+        reactant = ARCSpecies(label='R', smiles='CCCCCCCCCCCCCCCCCCC(C)O')
+        xyz = reactant.get_xyz()
+        reactant.initial_xyz = xyz
+        product = ARCSpecies(label='P', smiles='CCCCCCCCCCCCCCCCCCC(C)O', xyz=xyz)
+        rxn = ARCReaction(r_species=[reactant], p_species=[product])
+        tracemalloc.start()
+        t0 = time.time()
+        try:
+            is_identity = rxn.is_identity_reaction()
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        self.assertTrue(is_identity)
+        self.assertLess(time.time() - t0, 10)
+        self.assertLess(peak, 50 * 1024 ** 2)
+
+    def test_an_identity_reaction_is_warned_about_once_when_its_family_is_chosen(self):
+        """One WARNING per identity reaction, logged when the family is chosen, names the family searched, and is
+        not repeated by a flipped copy, a copy, or a reset of the product dicts"""
+        for smiles, expected_family in (('[CH2]CCC', None), ('[CH2]CCCCCCCC', '1,2_shiftC')):
+            rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles=smiles)],
+                              p_species=[ARCSpecies(label='P', smiles=smiles)])
+            with self.assertLogs('arc', level='DEBUG') as captured:
+                family = rxn.family
+                _ = rxn.product_dicts
+                flipped = rxn.flip_reaction()
+                _ = flipped.family, flipped.product_dicts
+                copied = rxn.copy()
+                _ = copied.family, copied.product_dicts
+                rxn.product_dicts = None
+                _ = rxn.product_dicts
+            warnings = [record.getMessage() for record in captured.records
+                        if record.levelname == 'WARNING' and 'identity reaction' in record.getMessage()]
+            self.assertEqual(len(warnings), 1, warnings)
+            self.assertIn(rxn.label, warnings[0])
+            self.assertIn('do not discriminate the channel', warnings[0])
+            self.assertIn(f'The {family} family will be searched', warnings[0])
+            if expected_family is not None:
+                self.assertEqual(family, expected_family)
+        control = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCCC')],
+                              p_species=[ARCSpecies(label='P', smiles='C[CH]CCC')])
+        with self.assertLogs('arc', level='DEBUG') as captured:
+            _ = control.family, control.product_dicts
+        self.assertFalse(any('identity reaction' in record.getMessage() for record in captured.records))
+
+    def test_the_identity_warning_of_an_unavailable_family_says_it_is_not_searched(self):
+        """The early WARNING of an identity reaction pinned to an unavailable family names the cause"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')], family='intra_H_migration')
+        rxn.unavailable_families['intra_H_migration'] = 'Malformed recipe action, line 17'
+        with mock.patch.object(rxn, 'get_reaction_family_object', return_value=None), \
+                self.assertLogs('arc', level='WARNING') as captured:
+            rxn.warn_if_identity_reaction(family='intra_H_migration')
+        self.assertEqual(len(captured.records), 1)
+        self.assertIn('The intra_H_migration family is unavailable, not searched: Malformed recipe action, line 17',
+                      captured.records[0].getMessage())
+        self.assertNotIn('will be searched', captured.records[0].getMessage())
 
     def test_a_restored_rule_choice_recomputes_its_tie(self):
         """A rule choice restored from a restart file keeps its family, and its tie is recomputed from the

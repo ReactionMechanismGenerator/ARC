@@ -2,13 +2,17 @@
 A module for representing a reaction.
 """
 
+from rdkit import Chem
+
 from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError, RecipeError
 from arc.family.family import (ReactionFamily, check_family_name, get_reaction_family, get_reaction_family_products,
                                get_undecided_family_ties)
 from arc.molecule.resonance import generate_resonance_structures_safely
+from arc.species.conformers import embed_rdkit
 from arc.species.converter import (check_xyz_dict,
                                    sort_xyz_using_indices,
+                                   to_rdkit_mol,
                                    translate_to_center_of_mass,
                                    translate_xyz,
                                    xyz_to_str,
@@ -136,6 +140,7 @@ class ARCReaction(object):
         self._family_candidates_attempted = False
         self._product_dicts = None
         self.unavailable_families: dict[str, str] = {}
+        self._identity_reaction_warned = False
         if family is not None:
             if check_family_name(family):
                 self.family = family
@@ -495,7 +500,9 @@ class ARCReaction(object):
             ARCReaction: A copy of this object instance.
         """
         reaction_dict = self.as_dict(reset_atom_ids=True)
-        return ARCReaction(reaction_dict=reaction_dict)
+        copied_rxn = ARCReaction(reaction_dict=reaction_dict)
+        copied_rxn._identity_reaction_warned = self._identity_reaction_warned
+        return copied_rxn
 
     def flip_reaction(self, report_family: bool = True):
         """
@@ -525,6 +532,7 @@ class ARCReaction(object):
         reaction_dict['label'] = self.arrow.join([label_splits[1], label_splits[0]])
         flipped_rxn = ARCReaction(reaction_dict=reaction_dict)
         flipped_rxn.set_label_reactants_products()
+        flipped_rxn._identity_reaction_warned = self._identity_reaction_warned
         return flipped_rxn
 
     def is_isomerization(self):
@@ -546,6 +554,26 @@ class ARCReaction(object):
         """
         reactants, products = self.get_reactants_and_products(return_copies=False)
         return len(reactants) == 1 or len(products) == 1
+
+    def is_identity_reaction(self) -> bool:
+        """
+        Determine whether the reactants and the products are the same species (e.g., [CH2]CCC <=> [CH2]CCC),
+        including their stereochemistry. A species whose structure is unknown is not considered the same as any other.
+
+        Returns:
+            bool: Whether this is an identity reaction.
+        """
+        reactants, products = self.get_reactants_and_products(return_copies=False)
+        if not len(reactants) or len(reactants) != len(products):
+            return False
+        unmatched = list(products)
+        for reactant in reactants:
+            index = next((i for i, product in enumerate(unmatched)
+                          if reactant.is_isomorphic(product) and have_same_stereochemistry(reactant, product)), None)
+            if index is None:
+                return False
+            del unmatched[index]
+        return True
 
     def set_label_reactants_products(self, species_list: list[ARCSpecies] | None = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
@@ -788,7 +816,28 @@ class ARCReaction(object):
             if len(families) > 1 or dropped:
                 logger.info(f'Reaction {self.label} was assigned the {family} family, '
                             f'it also matches {[f for f in families if f != family]}.{dropped}')
+        self.warn_if_identity_reaction(family=family)
         return restricted
+
+    def warn_if_identity_reaction(self, family: str):
+        """
+        Warn once, when the family is chosen or before the TS search of a preset or restored family, if this is
+        an identity reaction, since the IRC end points then do not discriminate the channel. An unavailable family
+        is named with its cause, as not searched. Copies and flipped copies of this reaction do not warn again.
+
+        Args:
+            family (str): The family to be searched.
+        """
+        if self._identity_reaction_warned or not self.is_identity_reaction():
+            return
+        self._identity_reaction_warned = True
+        if self.get_reaction_family_object(family=family) is None and family in self.unavailable_families:
+            channel = f'The {family} family is unavailable, not searched: {self.unavailable_families[family]}'
+        else:
+            channel = f'The {family} family will be searched.'
+        logger.warning(f'Reaction {self.label} is an identity reaction (its reactants and products are the same '
+                       f'species), so the IRC end points do not discriminate the channel. {channel} Set the '
+                       f'"family" attribute of this reaction to search another channel.')
 
     def get_family_own_reverse(self) -> bool:
         """
@@ -814,6 +863,7 @@ class ARCReaction(object):
 
         A family whose recipe is malformed is recorded in ``unavailable_families`` with its cause,
         so this reaction is treated as having no usable family and other reactions are unaffected.
+        If it is this reaction's family, its candidates, count, and tie are left unknown, since it was not searched.
 
         Args:
             family (str, optional): The family label. Defaults to the reaction's own family.
@@ -830,6 +880,8 @@ class ARCReaction(object):
             if family not in self.unavailable_families:
                 logger.warning(f'Reaction {self.label} cannot use the {family} family, which is unavailable: {e}')
             self.unavailable_families[family] = str(e)
+            if family == self._family:
+                self._family_candidates, self._n_family_candidates, self._family_tie = None, None, None
             return None
 
     def determine_family(self,
@@ -1476,6 +1528,82 @@ class ARCReaction(object):
                                  got: reactants: {smiles_r}
                                       products: {smiles_p}""")
         return ".".join(smiles_r)+">>"+".".join(smiles_p)
+
+
+def has_potential_stereo_element(species: ARCSpecies) -> bool:
+    """
+    Determine whether the graph of a species allows a stereo center or a stereo double bond.
+
+    Args:
+        species (ARCSpecies): The species.
+
+    Returns:
+        bool: Whether the species may have a stereo element, ``True`` if its graph cannot be read.
+    """
+    try:
+        return bool(len(Chem.FindPotentialStereo(to_rdkit_mol(species.mol))))
+    except Exception:
+        return True
+
+
+def get_stereo_geometry(species: ARCSpecies) -> dict | None:
+    """
+    Get a geometry of a species that carries its stereochemistry. The cheap conformer is embedded from a graph
+    with no stereochemistry, so its descriptors are arbitrary, and it is not used.
+
+    Args:
+        species (ARCSpecies): The species.
+
+    Returns:
+        dict | None: The optimized, initial, most stable, or first conformer geometry, ``None`` if there is none.
+    """
+    conformer = species.conformers[0] if species.conformers else None
+    return species.final_xyz or species.initial_xyz or species.most_stable_conformer or conformer
+
+
+def get_isomeric_smiles(species: ARCSpecies) -> str | None:
+    """
+    Get the canonical isomeric SMILES of a species, with the stereochemistry (R/S, E/Z) assigned from its geometry.
+
+    Args:
+        species (ARCSpecies): The species.
+
+    Returns:
+        str | None: The canonical isomeric SMILES, ``None`` if the species has no geometry that carries its
+                    stereochemistry, or if RDKit cannot build it or assign its stereochemistry.
+    """
+    xyz = get_stereo_geometry(species)
+    if xyz is None:
+        return None
+    try:
+        rd_mol = embed_rdkit(label=species.label, mol=species.mol, xyz=xyz)
+        if rd_mol is None or not rd_mol.GetNumConformers():
+            return None
+        rd_mol.UpdatePropertyCache(strict=False)
+        Chem.rdmolops.AssignStereochemistryFrom3D(rd_mol, 0)
+        return Chem.MolToSmiles(rd_mol, isomericSmiles=True)
+    except Exception:
+        return None
+
+
+def have_same_stereochemistry(species_1: ARCSpecies, species_2: ARCSpecies) -> bool:
+    """
+    Determine whether two isomorphic species are the same stereoisomer.
+    If both have a geometry that carries their stereochemistry, their canonical isomeric SMILES built from these
+    geometries must be equal, and a SMILES that RDKit cannot build makes them different. Otherwise, the stereochemistry
+    is unknown: they are the same if neither graph allows a stereo element, and are not considered the same if one does.
+
+    Args:
+        species_1 (ARCSpecies): A species.
+        species_2 (ARCSpecies): A species isomorphic with ``species_1``.
+
+    Returns:
+        bool: Whether the two species are the same stereoisomer.
+    """
+    if get_stereo_geometry(species_1) is not None and get_stereo_geometry(species_2) is not None:
+        smiles_1, smiles_2 = get_isomeric_smiles(species_1), get_isomeric_smiles(species_2)
+        return smiles_1 is not None and smiles_1 == smiles_2
+    return not has_potential_stereo_element(species_1) and not has_potential_stereo_element(species_2)
 
 
 def remove_dup_species(species_list: list[ARCSpecies]) -> list[ARCSpecies]:

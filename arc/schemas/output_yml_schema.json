@@ -2100,6 +2100,10 @@
             }
           ]
         },
+        "identity_reaction": {
+          "description": "Whether the reactants and products are the same species. The IRC end points then do not discriminate the channel, so the rate is for the channel of the reported family.",
+          "type": "boolean"
+        },
         "multiplicity": {
           "type": [
             "integer",

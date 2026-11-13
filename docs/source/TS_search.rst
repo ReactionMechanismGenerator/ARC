@@ -47,6 +47,8 @@ degenerate 1,4-H shift of n-butyl, ``[CH2]CCC <=> [CH2]CCC``, also matches ``1,2
 alkyl shift, which is not observed in alkyl radicals); to compute the H shift, set
 ``family: intra_H_migration``.
 
+**Identity reactions.** For an identity reaction, both channels connect the same wells, so the IRC check cannot tell which channel a TS belongs to. ARC marks identity reactions in output.yml. If the family ARC reports is not the channel you want, set family.
+
 **Where the rule acts.** Over the training reactions of the RMG families in ``rmg_family_set``,
 both for the default set (8,204 reactions) and for the default set extended with the families that
 ARC's atom map supports (8,278 reactions), and over a set of designed pericyclic reactions, one
