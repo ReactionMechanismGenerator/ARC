@@ -14,6 +14,7 @@ import unittest
 import arc.plotter as plotter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file, safe_copy_file
 from arc.species.converter import str_to_xyz
+from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 
 
@@ -113,6 +114,51 @@ class TestSaveThermoLibDuplicates(unittest.TestCase):
         self.assertEqual(result.returncode, 0,
                          f'RMG could not load the generated thermo library:\n{result.stdout}\n{result.stderr}')
         self.assertIn('LOADED 1', result.stdout)
+
+
+class TestSaveLibNotVerified(unittest.TestCase):
+    """
+    A not verified entry that the user opted to write carries the cause in its library comment.
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp(prefix='test_lib_not_verified_')
+        self.addCleanup(shutil.rmtree, self.tmp_dir, ignore_errors=True)
+        self.text = 'NOT VERIFIED: Rotor scan of OH still finds a conformer 3.20 kJ/mol lower.'
+
+    def test_thermo_lib_comment_states_not_verified(self):
+        """The thermo entry of a not verified species states the cause in shortDesc and longDesc."""
+        a, b = _make_oh_species('A'), ARCSpecies(label='B', smiles='O', multiplicity=1)
+        b.final_xyz = str_to_xyz("""O 0.0 0.0 0.0\nH 0.0 0.0 0.96\nH 0.93 0.0 -0.24""")
+        b.external_symmetry, b.optical_isomers = 2, 1
+        b.thermo.data = OH_NASA
+        plotter.save_thermo_lib([a, b], path=self.tmp_dir, name='nv', lib_long_desc='test',
+                                not_verified={'A': self.text})
+        with open(os.path.join(self.tmp_dir, 'thermo', 'nv.py'), 'r') as f:
+            content = f.read()
+        entry_a, entry_b = content.split('label = "A"')[1].split('entry(')[0], content.split('label = "B"')[1]
+        self.assertIn(f'shortDesc = u"""{self.text}', entry_a)
+        self.assertEqual(entry_a.count(self.text), 2)
+        self.assertNotIn('NOT VERIFIED', entry_b)
+
+    def test_kinetics_lib_comment_states_not_verified(self):
+        """The kinetics entry of a not verified reaction states the cause in the Arrhenius comment."""
+        oh, h2 = ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='H2', smiles='[H][H]')
+        h2o, h = ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='H', smiles='[H]')
+        rxn = ARCReaction(r_species=[oh, h2], p_species=[h2o, h])
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True, multiplicity=2,
+                                    xyz=str_to_xyz("""O 0.0 0.0 0.0\nH 0.0 0.0 0.97\nH 0.0 0.0 2.2\nH 0.0 0.0 3.0"""))
+        rxn.kinetics = {'A': (1.0e10, 'cm^3/(mol*s)'), 'n': 0.5, 'Ea': (10.0, 'kJ/mol')}
+        plotter.save_kinetics_lib(rxn_list=[rxn], path=self.tmp_dir, name='nv', lib_long_desc='test',
+                                  not_verified={rxn.label: self.text})
+        with open(os.path.join(self.tmp_dir, 'kinetics', 'reactions.py'), 'r') as f:
+            content = f.read()
+        self.assertIn(f'comment="{self.text}"', content)
+
+    def test_library_comment_text(self):
+        """Free text placed in a library comment loses double quotes, backslashes, and line breaks."""
+        self.assertEqual(plotter.library_comment_text('plain'), 'plain')
+        self.assertEqual(plotter.library_comment_text('scan "A"\nfailed\\here'), "scan 'A' failed/here")
 
 
 class TestPlotter(unittest.TestCase):

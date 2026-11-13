@@ -91,5 +91,122 @@ class TestProcessor(unittest.TestCase):
                 shutil.rmtree(dir_path)
 
 
+class TestNotVerifiedGate(unittest.TestCase):
+    """
+    Contains unit tests for the not-verified gate in front of the RMG libraries.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.oh = ARCSpecies(label='OH', smiles='[OH]')
+        cls.h2 = ARCSpecies(label='H2', smiles='[H][H]')
+        cls.h2o = ARCSpecies(label='H2O', smiles='O')
+        cls.h = ARCSpecies(label='H', smiles='[H]')
+        cls.rxn = ARCReaction(r_species=[cls.oh, cls.h2], p_species=[cls.h2o, cls.h])
+        cls.rxn.ts_label = 'TS0'
+        cls.cause = 'Rotor scan of torsion [1, 2, 3, 4] of OH still finds a conformer 3.20 kJ/mol lower.'
+
+    def output_dict(self, flagged: str | None = None) -> dict:
+        """
+        Make an output dictionary in which one label, if any, is not verified.
+
+        Args:
+            flagged (str, optional): The label whose conformer_verified is False.
+
+        Returns:
+            dict: The output dictionary.
+        """
+        output = {label: {'conformer_verified': True, 'conformer_verified_cause': ''}
+                  for label in ['OH', 'H2', 'H2O', 'H', 'TS0']}
+        if flagged is not None:
+            output[flagged] = {'conformer_verified': False, 'conformer_verified_cause': self.cause}
+        return output
+
+    def test_not_verified_causes(self):
+        """not_verified_causes() returns a cause only for a False conformer_verified."""
+        self.assertEqual(processor.not_verified_causes('X', dict()), list())
+        self.assertEqual(processor.not_verified_causes('OH', self.output_dict()), list())
+        self.assertEqual(processor.not_verified_causes('OH', {'OH': {'conformer_verified': None}}), list())
+        self.assertEqual(processor.not_verified_causes('OH', self.output_dict('OH')), [self.cause])
+        self.assertEqual(processor.not_verified_causes('OH', {'OH': {'conformer_verified': False}}),
+                         ['OH is not verified to be at the lowest conformer found'])
+
+    def test_gate_leaves_out_a_flagged_species_by_default(self):
+        """A not verified species is left out of the thermo library by default."""
+        kept, comments = processor.gate_not_verified_library_entries(items=[self.oh, self.h2o],
+                                                                     output_dict=self.output_dict('OH'))
+        self.assertEqual(kept, [self.h2o])
+        self.assertEqual(comments, dict())
+
+    def test_gate_includes_a_flagged_species_with_opt_in(self):
+        """With the opt-in, a not verified species is kept and its comment states the cause and gap."""
+        kept, comments = processor.gate_not_verified_library_entries(items=[self.oh, self.h2o],
+                                                                     output_dict=self.output_dict('OH'),
+                                                                     allow_not_verified=True)
+        self.assertEqual(kept, [self.oh, self.h2o])
+        self.assertEqual(list(comments.keys()), ['OH'])
+        self.assertTrue(comments['OH'].startswith('NOT VERIFIED: '))
+        self.assertIn('3.20 kJ/mol lower', comments['OH'])
+
+    def test_gate_leaves_out_a_reaction_with_a_flagged_ts(self):
+        """A reaction whose TS is not verified is left out of the kinetics library."""
+        kept, _ = processor.gate_not_verified_library_entries(items=[self.rxn], output_dict=self.output_dict('TS0'))
+        self.assertEqual(kept, list())
+        kept, _ = processor.gate_not_verified_library_entries(items=[self.rxn], output_dict=self.output_dict())
+        self.assertEqual(kept, [self.rxn])
+
+    def test_gate_leaves_out_a_reaction_with_a_flagged_product(self):
+        """A reaction whose reactant or product is not verified is left out, and kept with the opt-in."""
+        for label in ['OH', 'H']:
+            kept, _ = processor.gate_not_verified_library_entries(items=[self.rxn],
+                                                                  output_dict=self.output_dict(label))
+            self.assertEqual(kept, list())
+        kept, comments = processor.gate_not_verified_library_entries(items=[self.rxn],
+                                                                     output_dict=self.output_dict('H'),
+                                                                     allow_not_verified=True)
+        self.assertEqual(kept, [self.rxn])
+        self.assertIn('3.20 kJ/mol lower', comments[self.rxn.label])
+
+    def test_select_thermo_lib_species_prefers_the_verified_isomorph(self):
+        """A not verified species never displaces an isomorphic verified one from the thermo library."""
+        oh_1, oh_2 = ARCSpecies(label='OH_1', smiles='[OH]'), ARCSpecies(label='OH_2', smiles='[OH]')
+        for spc in [oh_1, oh_2, self.h2o]:
+            spc.thermo.data = 'NASA()'
+        output = {'OH_1': {'conformer_verified': False, 'conformer_verified_cause': self.cause},
+                  'OH_2': {'conformer_verified': True}}
+        selected, comments = processor.select_thermo_lib_species(species=[oh_1, oh_2], output_dict=output)
+        self.assertEqual(selected, [oh_2])
+        selected, comments = processor.select_thermo_lib_species(species=[oh_1, oh_2], output_dict=output,
+                                                                 allow_not_verified=True)
+        self.assertEqual(selected, [oh_2])
+        self.assertEqual(comments, dict())
+        selected, comments = processor.select_thermo_lib_species(species=[oh_1, self.h2o], output_dict=output,
+                                                                 allow_not_verified=True)
+        self.assertEqual(selected, [self.h2o, oh_1])
+        self.assertIn('OH_1', comments)
+        oh_2.include_in_thermo_lib = False
+        selected, _ = processor.select_thermo_lib_species(species=[oh_1, oh_2], output_dict=output,
+                                                          allow_not_verified=True)
+        self.assertEqual(selected, [oh_1])
+
+
+    def test_remove_gated_out_library(self):
+        """A library left from an earlier run is removed only when this run's entries were all gated out."""
+        libraries_path = os.path.join(ARC_TESTING_PATH, 'gated_out_libraries')
+        lib_path = os.path.join(libraries_path, 'thermo')
+        self.addCleanup(shutil.rmtree, libraries_path, ignore_errors=True)
+        processor.remove_gated_out_library(libraries_path=libraries_path, library='thermo', gated_out=True)
+        self.assertFalse(os.path.isdir(lib_path))
+        os.makedirs(lib_path)
+        processor.remove_gated_out_library(libraries_path=libraries_path, library='thermo', gated_out=False)
+        self.assertTrue(os.path.isdir(lib_path))
+        processor.remove_gated_out_library(libraries_path=libraries_path, library='kinetics', gated_out=True)
+        self.assertTrue(os.path.isdir(lib_path))
+        processor.remove_gated_out_library(libraries_path=libraries_path, library='thermo', gated_out=True)
+        self.assertFalse(os.path.isdir(lib_path))
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
