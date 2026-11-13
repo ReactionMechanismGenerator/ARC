@@ -37,8 +37,11 @@ from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_ME
                            species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
+from arc.species.conformers_test import (C2H5_XYZ, C2H6_XYZ, CH3_XYZ, CH4_XYZ, NC3H7OO_XYZ, QOOH_XYZ, TS0_XYZ,
+                                         TS1_XYZ)
+from arc.species.conformers import find_internal_rotors
 from arc.species.converter import str_to_xyz
-from arc.species.species import ARCSpecies, TSGuess
+from arc.species.species import REACTIVE_RING_INVALIDATION_REASON, ARCSpecies, TSGuess
 
 
 default_levels_of_theory = settings['default_levels_of_theory']
@@ -2363,6 +2366,63 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.sched1.output['C2H6']['job_types']['freq'] = True
         self.sched1.output['C2H6']['paths']['sp'] = 'some/path/out.out'
         self.assertTrue(self.sched1._does_output_dict_contain_info())
+
+    def test_spawn_post_opt_jobs_skips_reactive_ring_rotors(self):
+        """Test that no scan job is spawned for a torsion in a TS reactive ring, while a non-ring TS rotor is scanned"""
+        cases = [(ARCReaction(r_species=[ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)],
+                              p_species=[ARCSpecies(label='QOOH', smiles='[CH2]CCOO', xyz=QOOH_XYZ)]), TS0_XYZ, []),
+                 (ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=CH3_XYZ),
+                                         ARCSpecies(label='C2H6', smiles='CC', xyz=C2H6_XYZ)],
+                              p_species=[ARCSpecies(label='CH4', smiles='C', xyz=CH4_XYZ),
+                                         ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=C2H5_XYZ)]), TS1_XYZ,
+                  [[6, 4, 5, 9]])]
+        job_types = initialize_job_types({'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False,
+                                          'freq': False, 'sp': False, 'rotors': True, 'irc': False,
+                                          'orbitals': False, 'bde': False, 'lennard_jones': False})
+        for i, (rxn, ts_xyz, expected_torsions) in enumerate(cases):
+            sched = Scheduler(project=f'project_test_reactive_ring_{i}', ess_settings=self.ess_settings,
+                              species_list=rxn.r_species + rxn.p_species, rxn_list=[rxn],
+                              opt_level=Level(repr=default_levels_of_theory['opt']),
+                              scan_level=Level(repr=default_levels_of_theory['scan']),
+                              project_directory=self.project_directory, testing=True, job_types=job_types)
+            ts = sched.species_dict[rxn.ts_label]
+            self.assertIsNone(ts.mol)
+            ts.final_xyz = str_to_xyz(ts_xyz)
+            sched.job_dict[ts.label] = dict()
+            with patch.object(sched, 'run_stability_job', return_value=False), \
+                    patch.object(sched.pipe_planner, 'try_pipe_rotor_scans_1d', return_value=set()), \
+                    patch.object(sched, 'run_job') as run_job:
+                sched.spawn_post_opt_jobs(label=ts.label, job_name='opt_a1')
+            scan_torsions = [call.kwargs['torsions'] for call in run_job.call_args_list
+                             if call.kwargs.get('job_type') == 'scan']
+            self.assertEqual(scan_torsions, expected_torsions, rxn.label)
+            if not expected_torsions:
+                self.assertEqual(len(ts.rotors_dict), 3)
+                self.assertTrue(all('(code: reactive ring)' in rotor['invalidation_reason']
+                                    for rotor in ts.rotors_dict.values()))
+
+    def test_restart_rechecks_restored_ts_rotors(self):
+        """Test that the unchecked rotors of a TS restored from a restart file are checked for its reactive ring"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)],
+                          p_species=[ARCSpecies(label='QOOH', smiles='[CH2]CCOO', xyz=QOOH_XYZ)])
+        rxn.ts_label = 'TS0'
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        ts.final_xyz = str_to_xyz(TS0_XYZ)
+        for i, rotor in enumerate(find_internal_rotors(ts.mol)):  # As written by a run before the check existed.
+            ts.rotors_dict[i] = rotor
+        ts.number_of_rotors = len(ts.rotors_dict)
+        self.assertEqual(ts.number_of_rotors, 3)
+        job_types = initialize_job_types({'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False,
+                                          'freq': False, 'sp': False, 'rotors': True, 'irc': False,
+                                          'orbitals': False, 'bde': False, 'lennard_jones': False})
+        Scheduler(project='project_test_reactive_ring_restart', ess_settings=self.ess_settings,
+                  species_list=rxn.r_species + rxn.p_species + [ts], rxn_list=[rxn],
+                  opt_level=Level(repr=default_levels_of_theory['opt']),
+                  scan_level=Level(repr=default_levels_of_theory['scan']),
+                  project_directory=self.project_directory, testing=True, job_types=job_types)
+        for rotor in ts.rotors_dict.values():
+            self.assertIs(rotor['success'], False)
+            self.assertIn('(code: reactive ring)', rotor['invalidation_reason'])
 
     def test_non_rotor(self):
         """Test that a 180 degree angle on either side of a torsion is not considered as a rotor."""
@@ -4694,6 +4754,143 @@ class TestScanSoftwareStamp(unittest.TestCase):
         self.assertEqual(rotor['scan_software'], 'orca')
         self.assertEqual(rotor['scan_path'], '/fake/scan.out')
         self.assertFalse(rotor['success'])
+
+    def test_check_scan_job_keeps_a_reactive_ring_rejection(self):
+        """A good scan that finishes after the reactive-ring check rejected its rotor (e.g., restored on a restart)
+        does not make the rotor a hindered rotor again."""
+        from arc.scheduler import Scheduler
+
+        rotor = self._rotor()
+        rotor['success'], rotor['invalidation_reason'] = False, REACTIVE_RING_INVALIDATION_REASON
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+        spc.get_xyz.return_value = {'coords': (), 'symbols': ()}
+        spc.final_xyz = None
+        spc.preserve_param_in_scan = None
+        spc.is_ts = True
+
+        sched = MagicMock()
+        sched.species_dict = {'TS0': spc}
+        sched.project_directory = '/fake/project'
+        sched.trsh_ess_jobs = False
+        sched.trsh_rotors = False
+
+        job = MagicMock()
+        job.job_status = [None, {'status': 'done', 'error': None}]
+        job.rotor_index = 0
+        job.local_path_to_output_file = '/fake/scan.out'
+        job.job_adapter = 'orca'
+        job.torsions = [[0, 1, 2, 3]]
+        job.xyz = {'coords': (), 'symbols': ()}
+        job.is_ts = True
+        job.species_label = 'TS0'
+
+        with patch('arc.scheduler.parser.parse_1d_scan_energies_from_specific_angle',
+                   return_value=([0.0, 1.0, 2.0, 3.0, 2.0, 1.0, 0.0], list(range(7)))), \
+             patch('arc.scheduler.parser.parse_1d_scan_coords', return_value=list()), \
+             patch('arc.scheduler.calculate_dihedral_angle', return_value=0.0), \
+             patch('arc.scheduler.scan_quality_check', return_value=(False, '', '', dict())), \
+             patch('arc.scheduler.determine_rotor_symmetry', return_value=(1, 3.0, 0.0)), \
+             patch('arc.scheduler.plotter.plot_1d_rotor_scan'):
+            Scheduler.check_scan_job(sched, label='TS0', job=job)
+
+        self.assertIs(rotor['success'], False)
+        self.assertEqual(rotor['invalidation_reason'], REACTIVE_RING_INVALIDATION_REASON)
+
+    def test_run_scan_jobs_does_not_rescan_a_reactive_ring_rejection(self):
+        """A rejected reactive-ring rotor whose previous scan file is missing (e.g., on a restart) is not scanned again."""
+        from arc.scheduler import Scheduler
+
+        rotor = self._rotor()
+        rotor.update({'success': False, 'invalidation_reason': REACTIVE_RING_INVALIDATION_REASON,
+                      'scan_path': '/missing/scan.out', 'torsion': [[0, 1, 2, 3]], 'directed_scan_type': 'ess'})
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+        spc.multi_species = None
+        sched = MagicMock()
+        sched.job_types = {'rotors': True}
+        sched.species_dict = {'TS0': spc}
+        sched.job_dict = {'TS0': dict()}
+        sched.running_jobs = {'TS0': list()}
+        sched.pipe_planner.try_pipe_rotor_scans_1d.return_value = set()
+
+        Scheduler.run_scan_jobs(sched, label='TS0')
+
+        sched.run_job.assert_not_called()
+        sched.spawn_directed_scan_jobs.assert_not_called()
+        self.assertIs(rotor['success'], False)
+        self.assertEqual(rotor['scan_path'], '/missing/scan.out')
+
+    def test_continuous_scan_is_not_continued_for_a_reactive_ring_rejection(self):
+        """A restored continuous directed scan does not spawn its next point once its rotor is a reactive-ring rejection."""
+        from arc.scheduler import Scheduler
+
+        rotor = self._rotor()
+        rotor.update({'success': False, 'invalidation_reason': REACTIVE_RING_INVALIDATION_REASON,
+                      'directed_scan_type': 'cont_opt', 'directed_scan': dict(), 'original_dihedrals': [60.0],
+                      'cont_indices': list()})
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+        sched = MagicMock()
+        sched.species_dict = {'TS0': spc}
+        sched.job_dict = {'TS0': {'directed_scan': dict()}}
+
+        Scheduler.spawn_directed_scan_jobs(sched, label='TS0', rotor_index=0,
+                                           xyz={'symbols': ('C', 'C', 'C', 'C'), 'isotopes': (12, 12, 12, 12),
+                                                'coords': ((0.0, 0.0, 0.0), (1.5, 0.0, 0.0),
+                                                           (2.0, 1.4, 0.0), (3.5, 1.4, 0.5))})
+
+        sched.run_job.assert_not_called()
+        self.assertIs(rotor['success'], False)
+
+    def test_end_job_does_not_resubmit_a_reactive_ring_rejection_on_insufficient_memory(self):
+        """A restored scan of a rejected reactive-ring rotor that fails for memory is not resubmitted by end_job(),
+        neither as a scan nor as a directed scan, and the job still leaves running_jobs."""
+        from arc.scheduler import Scheduler
+
+        output_file = tempfile.NamedTemporaryFile(suffix='.out', delete=False)
+        output_file.close()
+        self.addCleanup(os.remove, output_file.name)
+        for job_type, directed_scan_type in [('scan', 'ess'), ('directed_scan', 'brute_force_opt')]:
+            with self.subTest(job_type=job_type):
+                rotor = self._rotor()
+                rotor.update({'success': False, 'invalidation_reason': REACTIVE_RING_INVALIDATION_REASON,
+                              'directed_scan_type': directed_scan_type})
+                spc = MagicMock()
+                spc.rotors_dict = {0: rotor}
+                sched = MagicMock()
+                sched.species_dict = {'TS0': spc}
+                sched.output = {'TS0': dict()}
+                sched.running_jobs = {'TS0': ['scan_job']}
+                sched.adaptive_levels = None
+                sched.max_job_time = 120
+                sched.memory = 14
+                sched._run_a_job = lambda job, label, rerun=False: Scheduler._run_a_job(sched, job, label, rerun)
+                sched.run_job = lambda **kwargs: Scheduler.run_job(sched, **kwargs)
+
+                job = MagicMock()
+                job.job_status = ['errored', {'status': 'errored', 'keywords': ['memory'],
+                                              'error': 'Insufficient job memory.'}]
+                job.job_type = job_type
+                job.directed_scan_type = directed_scan_type
+                job.job_adapter = 'gaussian'
+                job.job_memory_gb = 14
+                job.rotor_index = 0
+                job.torsions = [[0, 1, 2, 3]]
+                job.level = Level(method='wb97xd', basis='def2tzvp')
+                job.args = dict()
+                job.local_path_to_output_file = output_file.name
+                job.execution_type = 'incore'
+                job.job_name = 'scan_job'
+
+                with patch('arc.scheduler.job_factory') as factory:
+                    result = Scheduler.end_job(sched, job=job, label='TS0', job_name='scan_job')
+
+                factory.assert_not_called()
+                self.assertFalse(result)
+                self.assertEqual(sched.running_jobs['TS0'], list())
+                self.assertIs(rotor['success'], False)
+                self.assertEqual(rotor['invalidation_reason'], REACTIVE_RING_INVALIDATION_REASON)
 
 
 class TestSchedulerReactionChargeBalance(unittest.TestCase):
