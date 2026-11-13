@@ -29,12 +29,13 @@ from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
                            MIXED_SCF_REFERENCE_MESSAGE, SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
                            SYMMETRY_BREAKING_ADAPTERS, UNREACHABLE_REFERENCE_MESSAGE,
-                           Scheduler, SchedulerError, species_has_freq, species_has_geo, species_has_sp,
-                           species_has_sp_and_freq, tsg_method_matches_adapter)
+                           Scheduler, SchedulerError, is_same_conformer, parse_job_e_elect, species_has_freq,
+                           species_has_geo, species_has_sp, species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess
+from arc.species.vectors import calculate_dihedral_angle
 
 
 default_levels_of_theory = settings['default_levels_of_theory']
@@ -513,7 +514,8 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                                             'orbitals': False,
                                             'sp': False},
                               'paths': {'composite': '', 'freq': '', 'geo': '', 'geo_coarse': '', 'sp': ''},
-                              'restart': '', 'warnings': ''}
+                              'restart': '', 'warnings': '',
+                              'conformer_verified': None, 'conformer_verified_cause': ''}
         initialized_output_dict = {'C2H6': empty_species_dict,
                                    'CtripCO': empty_species_dict,
                                    'methylamine': empty_species_dict,
@@ -4404,6 +4406,379 @@ class TestSchedulerReactionChargeBalance(unittest.TestCase):
         rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-')
         self.build_scheduler(rxn, species)
         self.assertEqual(rxn.charge, -1)
+
+
+class TestChangeConformerReopt(unittest.TestCase):
+    """
+    Contains unit tests for the 'change conformer' rotor troubleshooting path and its conformer_verified record.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
+        cls.job_types = initialize_job_types({'conf_opt': False, 'opt': True, 'freq': True, 'sp': True,
+                                              'rotors': True, 'fine': False})
+        cls.scan = [3, 1, 2, 4]
+        cls.nc3h7_log = os.path.join(ARC_TESTING_PATH, 'opt', 'nC3H7.out')
+
+    def make_sched(self, name: str, composite: bool = False) -> Scheduler:
+        """
+        Make a Scheduler with an H2O2 species whose old geometry has a 120 deg H-O-O-H dihedral.
+
+        Args:
+            name (str): A unique name for the project and the species label.
+            composite (bool): Whether to run a composite method.
+
+        Returns:
+            Scheduler: The Scheduler object.
+        """
+        spc = ARCSpecies(label=name, smiles='OO')
+        spc.rotors_dict = {0: {'pivots': [1, 2], 'scan': self.scan, 'torsion': [2, 0, 1, 3], 'scan_path': '',
+                               'invalidation_reason': '', 'success': None, 'symmetry': None,
+                               'times_dihedral_set': 0, 'trsh_methods': [], 'trsh_counter': 0}}
+        spc.final_xyz = spc.get_xyz()
+        spc.set_dihedral(scan=self.scan, index=1, deg_abs=120.0, count=False)
+        spc.final_xyz = spc.initial_xyz
+        project_directory = os.path.join(ARC_PATH, 'Projects', f'arc_project_{name}')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        kwargs = {'composite_method': Level(repr='cbs-qb3')} if composite else dict()
+        sched = Scheduler(project=name, ess_settings=self.ess_settings, species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          project_directory=project_directory, testing=True, job_types=self.job_types, **kwargs)
+        sched.trsh_ess_jobs = True
+        sched.trsh_rotors = True
+        return sched
+
+    def new_xyz(self, sched: Scheduler, label: str, dihedral: float = 60.0) -> dict:
+        """
+        Get a copy of the species geometry with the scanned dihedral set to ``dihedral``.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The species label.
+            dihedral (float): The dihedral angle in degrees.
+
+        Returns:
+            dict: The new xyz.
+        """
+        spc = sched.species_dict[label]
+        old_initial = spc.initial_xyz
+        spc.set_dihedral(scan=self.scan, index=1, deg_abs=dihedral, count=False)
+        xyz, spc.initial_xyz = spc.initial_xyz, old_initial
+        return xyz
+
+    def scan_job(self, label: str, energy_gap: float | None = 3.2) -> tuple:
+        """
+        Make the scan job stand-in and the 'change conformer' methods that troubleshoot_scan_job receives.
+
+        Args:
+            label (str): The species label.
+            energy_gap (float, optional): The energy gap reported by the scan in kJ/mol.
+
+        Returns:
+            tuple: The job stand-in and the energy gap.
+        """
+        return SimpleNamespace(species_label=label, rotor_index=0, torsions=[[2, 0, 1, 3]], job_name='scan_a300'), \
+            energy_gap
+
+    def dihedral(self, xyz: dict) -> float:
+        """
+        The H-O-O-H dihedral of an H2O2 geometry.
+
+        Args:
+            xyz (dict): The geometry.
+
+        Returns:
+            float: The dihedral in degrees.
+        """
+        return calculate_dihedral_angle(coords=xyz, torsion=self.scan, index=1)
+
+    def change_conformer(self, sched: Scheduler, label: str, new_xyz: dict) -> None:
+        """
+        Run troubleshoot_scan_job with a 'change conformer' action, with job execution stubbed.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The species label.
+            new_xyz (dict): The lower conformer.
+        """
+        job, gap = self.scan_job(label)
+        with patch('arc.job.adapter.JobAdapter.execute'), \
+                patch('arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit'):
+            success, actions = sched.troubleshoot_scan_job(job=job, methods={'change conformer': new_xyz,
+                                                                             'energy_gap': gap})
+        self.assertTrue(success)
+        sched.species_dict[label].rotors_dict[0]['trsh_methods'].append(actions)
+
+    def test_change_conformer_reopt_starts_from_new_xyz(self):
+        """The opt job built after a 'change conformer' gets the new conformer as its input geometry."""
+        sched = self.make_sched('cc_opt')
+        new_xyz = self.new_xyz(sched, 'cc_opt')
+        self.change_conformer(sched, 'cc_opt', new_xyz)
+        opt_job = list(sched.job_dict['cc_opt']['opt'].values())[-1]
+        self.assertAlmostEqual(abs(self.dihedral(opt_job.xyz)), 60.0, delta=0.5)
+        self.assertAlmostEqual(abs(self.dihedral(sched.species_dict['cc_opt'].initial_xyz)), 60.0, delta=0.5)
+
+    def test_change_conformer_composite_starts_from_new_xyz(self):
+        """The composite job built after a 'change conformer' gets the new conformer as its input geometry."""
+        sched = self.make_sched('cc_comp', composite=True)
+        new_xyz = self.new_xyz(sched, 'cc_comp')
+        self.change_conformer(sched, 'cc_comp', new_xyz)
+        comp_job = list(sched.job_dict['cc_comp']['composite'].values())[-1]
+        self.assertAlmostEqual(abs(self.dihedral(comp_job.xyz)), 60.0, delta=0.5)
+
+    def test_change_conformer_restart_keeps_new_xyz(self):
+        """A restart after the 'change conformer' re-builds the opt job from the new conformer."""
+        sched = self.make_sched('cc_restart')
+        new_xyz = self.new_xyz(sched, 'cc_restart')
+        self.change_conformer(sched, 'cc_restart', new_xyz)
+        restored = ARCSpecies(species_dict=sched.species_dict['cc_restart'].as_dict())
+        self.assertAlmostEqual(abs(self.dihedral(restored.initial_xyz)), 60.0, delta=0.5)
+        record = restored.rotors_dict[0]['trsh_methods'][-1]
+        self.assertIsNone(record['verified'])
+        self.assertAlmostEqual(abs(self.dihedral(record['pre_xyz'])), 120.0, delta=0.5)
+        sched_2 = self.make_sched('cc_restart_2')
+        sched_2.species_dict['cc_restart_2'].initial_xyz = restored.initial_xyz
+        sched_2.species_dict['cc_restart_2'].final_xyz = restored.final_xyz
+        with patch('arc.job.adapter.JobAdapter.execute'), \
+                patch('arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit'):
+            sched_2.run_opt_job('cc_restart_2')
+        opt_job = list(sched_2.job_dict['cc_restart_2']['opt'].values())[-1]
+        self.assertAlmostEqual(abs(self.dihedral(opt_job.xyz)), 60.0, delta=0.5)
+
+    def test_change_conformer_records_pending_and_resets_flag(self):
+        """A 'change conformer' records the old geometry and the gap, and resets conformer_verified to pending."""
+        sched = self.make_sched('cc_record')
+        sched.output['cc_record']['conformer_verified'] = False
+        sched.output['cc_record']['conformer_verified_cause'] = 'old cause'
+        self.change_conformer(sched, 'cc_record', self.new_xyz(sched, 'cc_record'))
+        record = sched.species_dict['cc_record'].rotors_dict[0]['trsh_methods'][-1]
+        self.assertEqual(record['torsion'], self.scan)
+        self.assertEqual(record['energy_gap'], 3.2)
+        self.assertIsNone(record['pre_e_elect'])
+        self.assertIsNone(record['verified'])
+        self.assertIsNone(sched.output['cc_record']['conformer_verified'])
+        self.assertEqual(sched.output['cc_record']['conformer_verified_cause'], '')
+
+    def test_check_change_conformer_reopt_same_energy_and_torsion_is_error(self):
+        """A re-opt that returns the old energy and the old torsion flags the species as not verified."""
+        sched = self.make_sched('cc_same')
+        label = 'cc_same'
+        log = self.nc3h7_log
+        xyz = parser.parse_geometry(log_file_path=log)
+        torsion = [1, 2, 3, 4]
+        sched.species_dict[label].final_xyz = xyz
+        sched.species_dict[label].rotors_dict[0]['trsh_methods'] = [
+            {'change conformer': xyz, 'pre_xyz': xyz, 'pre_e_elect': parser.parse_e_elect(log_file_path=log),
+             'torsion': torsion, 'energy_gap': 3.2, 'verified': None}]
+        with self.assertLogs('arc', level='WARNING') as logs:
+            sched.check_change_conformer_reopt(label=label, job=SimpleNamespace(local_path_to_xyz=None,
+                                                                                local_path_to_output_file=log))
+        self.assertFalse(sched.output[label]['conformer_verified'])
+        cause = sched.output[label]['conformer_verified_cause']
+        self.assertIn('returned to the previous geometry', cause)
+        self.assertIn('3.20 kJ/mol lower', cause)
+        self.assertIn(cause, sched.output[label]['warnings'])
+        self.assertTrue(any('returned to the previous geometry' in line for line in logs.output))
+        self.assertFalse(sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]['verified'])
+        self.assertIsNone(sched.output[label]['convergence'])
+
+    def test_check_change_conformer_reopt_new_minimum_passes(self):
+        """A re-opt that reaches a different torsion and a different energy marks the record verified."""
+        sched = self.make_sched('cc_pass')
+        label = 'cc_pass'
+        log = self.nc3h7_log
+        xyz = parser.parse_geometry(log_file_path=log)
+        old_spc = ARCSpecies(label='nC3H7_old', smiles='[CH2]CC', xyz=xyz)
+        old_spc.determine_rotors()
+        torsion = old_spc.rotors_dict[0]['scan']
+        old_spc.final_xyz = xyz
+        old_spc.set_dihedral(scan=torsion, index=1, deg_increment=60.0, count=False)
+        sched.species_dict[label].final_xyz = xyz
+        sched.species_dict[label].rotors_dict[0]['trsh_methods'] = [
+            {'change conformer': xyz, 'pre_xyz': old_spc.initial_xyz,
+             'pre_e_elect': parser.parse_e_elect(log_file_path=log) + 3.0,
+             'torsion': torsion, 'energy_gap': 3.2, 'verified': None}]
+        sched.check_change_conformer_reopt(label=label, job=SimpleNamespace(local_path_to_xyz=None,
+                                                                            local_path_to_output_file=log))
+        self.assertTrue(sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]['verified'])
+        self.assertIsNone(sched.output[label]['conformer_verified'])
+        self.assertEqual(sched.output[label]['warnings'], '')
+
+    def test_check_change_conformer_reopt_ignores_legacy_records(self):
+        """A 'change conformer' record written before the check existed (no 'verified' key) is not re-judged."""
+        sched = self.make_sched('cc_legacy')
+        xyz = sched.species_dict['cc_legacy'].final_xyz
+        sched.species_dict['cc_legacy'].rotors_dict[0]['trsh_methods'] = [{'change conformer': xyz}]
+        sched.check_change_conformer_reopt(label='cc_legacy', job=SimpleNamespace(
+            local_path_to_xyz=None, local_path_to_output_file=self.nc3h7_log))
+        self.assertNotIn('verified', sched.species_dict['cc_legacy'].rotors_dict[0]['trsh_methods'][0])
+        self.assertIsNone(sched.output['cc_legacy']['conformer_verified'])
+
+    def test_change_conformer_at_bound_records_not_verified(self):
+        """At max_rotor_trsh, an unresolved lower conformer flags the species as not verified."""
+        sched = self.make_sched('cc_bound')
+        sched.species_dict['cc_bound'].rotors_dict[0]['trsh_counter'] = 4
+        job, gap = self.scan_job('cc_bound')
+        with self.assertLogs('arc', level='WARNING') as logs:
+            success, actions = sched.troubleshoot_scan_job(
+                job=job, methods={'change conformer': self.new_xyz(sched, 'cc_bound'), 'energy_gap': gap})
+        self.assertFalse(success)
+        self.assertFalse(sched.output['cc_bound']['conformer_verified'])
+        cause = sched.output['cc_bound']['conformer_verified_cause']
+        self.assertIn('still finds a conformer 3.20 kJ/mol lower', cause)
+        self.assertIn(cause, sched.output['cc_bound']['warnings'])
+        self.assertTrue(any('still finds a conformer' in line for line in logs.output))
+        self.assertNotIn('opt', sched.job_dict['cc_bound'])
+
+    def test_change_conformer_same_conformer_twice_records_cause(self):
+        """Proposing the same lower conformer twice flags the species with that cause."""
+        sched = self.make_sched('cc_twice')
+        new_xyz = self.new_xyz(sched, 'cc_twice')
+        sched.species_dict['cc_twice'].rotors_dict[0]['trsh_methods'] = [{'change conformer': new_xyz}]
+        job, gap = self.scan_job('cc_twice')
+        success, _ = sched.troubleshoot_scan_job(job=job, methods={'change conformer': new_xyz, 'energy_gap': gap})
+        self.assertFalse(success)
+        self.assertFalse(sched.output['cc_twice']['conformer_verified'])
+        self.assertIn('same lower conformer', sched.output['cc_twice']['conformer_verified_cause'])
+
+    def test_flag_conformer_not_verified_keeps_every_cause(self):
+        """Two unresolved causes are both kept in conformer_verified_cause, and a repeated one only once."""
+        sched = self.make_sched('cc_causes')
+        sched.flag_conformer_not_verified(label='cc_causes', cause='cause A.')
+        sched.flag_conformer_not_verified(label='cc_causes', cause='cause B.')
+        sched.flag_conformer_not_verified(label='cc_causes', cause='cause A.')
+        self.assertEqual(sched.output['cc_causes']['conformer_verified_cause'], 'cause A. cause B.')
+
+    def test_check_change_conformer_reopt_without_comparison_stays_pending(self):
+        """A re-opt that can be compared neither by energy nor by geometry is left pending, not verified."""
+        sched = self.make_sched('cc_nocomp')
+        method = {'change conformer': None, 'pre_xyz': None, 'pre_e_elect': None, 'torsion': self.scan,
+                  'energy_gap': 3.2, 'verified': None}
+        sched.species_dict['cc_nocomp'].rotors_dict[0]['trsh_methods'] = [method]
+        sched.check_change_conformer_reopt(label='cc_nocomp', job=SimpleNamespace(
+            local_path_to_xyz='/no/such/file.xyz', local_path_to_output_file=self.nc3h7_log))
+        self.assertIsNone(method['verified'])
+        self.assertAlmostEqual(parse_job_e_elect(SimpleNamespace(local_path_to_xyz=self.nc3h7_log,
+                                                                 local_path_to_output_file='/no/such/file.log')),
+                               parser.parse_e_elect(log_file_path=self.nc3h7_log))
+        self.assertIsNone(parse_job_e_elect(SimpleNamespace(local_path_to_xyz=None, local_path_to_output_file=None)))
+        self.assertIsNone(sched.output['cc_nocomp']['conformer_verified'])
+        method['pre_e_elect'] = parser.parse_e_elect(log_file_path=self.nc3h7_log)
+        sched.check_change_conformer_reopt(label='cc_nocomp', job=SimpleNamespace(
+            local_path_to_xyz=None, local_path_to_output_file=self.nc3h7_log))
+        self.assertIsNone(method['verified'])
+        self.assertIsNone(sched.output['cc_nocomp']['conformer_verified'])
+
+    def test_is_same_conformer(self):
+        """Only an unchanged dihedral together with an unchanged or unknown energy is the same conformer."""
+        self.assertFalse(is_same_conformer(d_dihedral=None, d_energy=None))
+        self.assertTrue(is_same_conformer(d_dihedral=0.5, d_energy=0.01))
+        self.assertTrue(is_same_conformer(d_dihedral=0.5, d_energy=None))
+        self.assertFalse(is_same_conformer(d_dihedral=None, d_energy=0.0))
+        self.assertFalse(is_same_conformer(d_dihedral=120.0, d_energy=0.0))
+        self.assertFalse(is_same_conformer(d_dihedral=0.5, d_energy=3.2))
+        self.assertFalse(is_same_conformer(d_dihedral=2.0, d_energy=0.0))
+        self.assertFalse(is_same_conformer(d_dihedral=0.0, d_energy=0.1))
+
+    def test_unresolved_lower_conformer_without_trsh_records_not_verified(self):
+        """A lower conformer that troubleshooting is not allowed to resolve flags the species."""
+        sched = self.make_sched('cc_notrsh')
+        sched.trsh_rotors = False
+        sched.flag_unresolved_lower_conformer(label='cc_notrsh', rotor_index=0, energy_gap=3.2,
+                                              reason='rotor troubleshooting is disabled')
+        self.assertFalse(sched.output['cc_notrsh']['conformer_verified'])
+        self.assertIn('rotor troubleshooting is disabled', sched.output['cc_notrsh']['conformer_verified_cause'])
+
+    def make_coccoo_scan(self, name: str, invalidation_reason: str = '') -> tuple:
+        """
+        Make a Scheduler with a COCCOO species and a done scan job whose log finds a conformer 4.60 kJ/mol lower.
+
+        Args:
+            name (str): A unique name for the project and the species label.
+            invalidation_reason (str): The rotor's invalidation reason before the check.
+
+        Returns:
+            tuple: The Scheduler and the scan job.
+        """
+        log = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'COCCOO.out')
+        xyz = parser.parse_1d_scan_coords(log)[0]
+        spc = ARCSpecies(label=name, smiles='COCCOO', xyz=xyz)
+        spc.final_xyz = xyz
+        spc.determine_rotors()
+        spc.rotors_dict[3]['invalidation_reason'] = invalidation_reason
+        project_directory = os.path.join(ARC_PATH, 'Projects', f'arc_project_{name}')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=name, ess_settings=self.ess_settings, species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          project_directory=project_directory, testing=True, job_types=self.job_types)
+        sched.trsh_ess_jobs, sched.trsh_rotors = True, False
+        job = job_factory(job_adapter='gaussian', project=name, ess_settings=self.ess_settings,
+                          species=[sched.species_dict[name]], xyz=xyz, job_type='scan', torsions=[[2, 1, 4, 3]],
+                          rotor_index=3, level=Level(repr=default_levels_of_theory['scan']),
+                          project_directory=project_directory, job_num=301)
+        job.job_status[1]['status'] = 'done'
+        job.local_path_to_output_file = log
+        return sched, job
+
+    def test_check_scan_job_flags_lower_conformer_without_trsh(self):
+        """check_scan_job flags a lower conformer that rotor troubleshooting is disabled for."""
+        sched, job = self.make_coccoo_scan('cc_scan_notrsh')
+        with patch('arc.plotter.plot_1d_rotor_scan'):
+            sched.check_scan_job(label='cc_scan_notrsh', job=job)
+        self.assertFalse(sched.output['cc_scan_notrsh']['conformer_verified'])
+        self.assertIn('4.60 kJ/mol lower', sched.output['cc_scan_notrsh']['conformer_verified_cause'])
+        self.assertIn('troubleshooting was not applied', sched.output['cc_scan_notrsh']['conformer_verified_cause'])
+
+    def test_check_scan_job_does_not_flag_a_pivts_rotor(self):
+        """A TS reaction-zone rotor ('pivTS') is never troubleshot, so it is not flagged as a lower conformer."""
+        sched, job = self.make_coccoo_scan('cc_scan_pivts', invalidation_reason='pivTS')
+        sched.trsh_rotors = True
+        with patch('arc.plotter.plot_1d_rotor_scan'):
+            sched.check_scan_job(label='cc_scan_pivts', job=job)
+        self.assertIsNone(sched.output['cc_scan_pivts']['conformer_verified'])
+
+    def test_set_conformer_verified(self):
+        """conformer_verified becomes True only once every rotor was scanned and checked, else stays None."""
+        sched = self.make_sched('cc_set')
+        self.assertIsNone(sched.output['cc_set']['conformer_verified'])
+        self.assertEqual(sched.output['cc_set']['conformer_verified_cause'], '')
+        rotor = sched.species_dict['cc_set'].rotors_dict[0]
+        sched.set_conformer_verified('cc_set')
+        self.assertIsNone(sched.output['cc_set']['conformer_verified'])
+        rotor['success'], rotor['scan_path'] = True, self.nc3h7_log
+        rotor['trsh_methods'] = [{'change conformer': None, 'verified': None}]
+        sched.set_conformer_verified('cc_set')
+        self.assertIsNone(sched.output['cc_set']['conformer_verified'])
+        rotor['trsh_methods'][0]['verified'] = True
+        rotor['trsh_methods'].insert(0, {'change conformer': None, 'verified': False})
+        sched.set_conformer_verified('cc_set')
+        self.assertTrue(sched.output['cc_set']['conformer_verified'])
+        sched.output['cc_set']['conformer_verified'] = False
+        sched.set_conformer_verified('cc_set')
+        self.assertFalse(sched.output['cc_set']['conformer_verified'])
+        sched.species_dict['cc_set'].rotors_dict = dict()
+        sched.output['cc_set']['conformer_verified'] = None
+        sched.set_conformer_verified('cc_set')
+        self.assertIsNone(sched.output['cc_set']['conformer_verified'])
+        sched.output['cc_set'].pop('conformer_verified')
+        sched.set_conformer_verified('cc_set')
+        self.assertIsNone(sched.output['cc_set']['conformer_verified'])
+        sched.species_dict['cc_set'].rotors_dict = {0: dict(rotor), 1: dict(rotor, success=False, scan_path='')}
+        sched.set_conformer_verified('cc_set')
+        self.assertIsNone(sched.output['cc_set']['conformer_verified'])
+        sched.species_dict['cc_set'].rotors_dict = {0: dict(rotor), 1: dict(rotor, success=False)}
+        sched.set_conformer_verified('cc_set')
+        self.assertIsNone(sched.output['cc_set']['conformer_verified'])
 
 
 if __name__ == '__main__':

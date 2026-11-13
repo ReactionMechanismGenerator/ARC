@@ -153,6 +153,52 @@ unambiguous.
 """
 
 
+def format_energy_gap(energy_gap: float | None) -> str:
+    """
+    Describe how much lower a conformer found by a rotor scan is.
+
+    Args:
+        energy_gap (float, optional): The energy gap in kJ/mol.
+
+    Returns:
+        str: A phrase such as '3.20 kJ/mol lower'.
+    """
+    return f'{energy_gap:.2f} kJ/mol lower' if energy_gap is not None else 'lower by an unknown amount'
+
+
+def is_same_conformer(d_dihedral: float | None, d_energy: float | None) -> bool:
+    """
+    Check whether a re-optimization returned to the geometry it started from before a conformer change.
+    A missing energy change counts as the same energy; a missing dihedral change never counts as the same dihedral.
+
+    Args:
+        d_dihedral (float, optional): The absolute change of the scanned dihedral angle in degrees.
+        d_energy (float, optional): The absolute change of the electronic energy in kJ/mol.
+
+    Returns:
+        bool: Whether both the dihedral angle and the energy are unchanged.
+    """
+    return d_dihedral is not None and d_dihedral < 2.0 and (d_energy is None or d_energy < 0.1)
+
+
+def parse_job_e_elect(job: JobAdapter) -> float | None:
+    """
+    Parse the electronic energy of a job, from its output file first, then from its xyz file.
+
+    Args:
+        job (JobAdapter): The job.
+
+    Returns:
+        float | None: The electronic energy in kJ/mol, ``None`` if no existing file of the job gives it.
+    """
+    for path in (job.local_path_to_output_file, job.local_path_to_xyz):
+        if path and os.path.isfile(path):
+            e_elect = parser.parse_e_elect(log_file_path=path)
+            if e_elect is not None:
+                return e_elect
+    return None
+
+
 def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> bool:
     """
     Determine whether a ``TSGuess.method`` was produced by a given TS-search adapter.
@@ -3456,6 +3502,7 @@ class Scheduler(object):
         freq_ok = False
         if job.job_status[1]['status'] == 'done':
             self.species_dict[label].final_xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+            self.check_change_conformer_reopt(label=label, job=job)
             self.output[label]['job_types']['composite'] = True
             self.output[label]['job_types']['opt'] = True
             self.output[label]['job_types']['sp'] = True
@@ -3584,6 +3631,7 @@ class Scheduler(object):
                 else:
                     self.species_dict[label].final_xyz = opt_xyz
                     self.post_opt_geo_work(label, job)
+                    self.check_change_conformer_reopt(label=label, job=job)
                 if 'optfreq' in job.job_name:
                     self.check_freq_job(label, job)
                 self.save_restart_dict()
@@ -3633,6 +3681,121 @@ class Scheduler(object):
         logger.info(f'\nOptimized geometry for {spc_label}{rxn_str} at {job.level.simple()}:\n'
                     f'{xyz_to_str(self.species_dict[spc_label].final_xyz)}\n')
         self.output[spc_label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
+
+    def get_latest_geo_job_e_elect(self, label: str) -> float | None:
+        """
+        Get the electronic energy of the latest successful opt (or composite) job of a species.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            float | None: The electronic energy in kJ/mol, ``None`` if no such job output is available.
+        """
+        job_type = 'composite' if self.composite_method else 'opt'
+        energies = [parse_job_e_elect(job) for job in self.job_dict.get(label, dict()).get(job_type, dict()).values()
+                    if job.job_status[1]['status'] == 'done']
+        energies = [e_elect for e_elect in energies if e_elect is not None]
+        return energies[-1] if energies else None
+
+    def check_change_conformer_reopt(self, label: str, job: JobAdapter) -> None:
+        """
+        Check that a re-optimization started from a lower conformer found by a rotor scan reached a new geometry.
+        The same energy and the same scanned dihedral as before the change mean the lower conformer was not
+        reached, so the species is flagged as not verified.
+        Records written before this check existed (no ``'verified'`` key) are not re-judged.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The converged opt or composite job.
+        """
+        rotors_dict = self.species_dict[label].rotors_dict or dict()
+        pending = [method for rotor in rotors_dict.values() for method in rotor.get('trsh_methods', list())
+                   if 'change conformer' in method and 'verified' in method and method['verified'] is None]
+        if not pending:
+            return
+        record = pending[-1]
+        new_xyz = self.species_dict[label].final_xyz
+        new_e_elect = parse_job_e_elect(job)
+        pre_e_elect = record.get('pre_e_elect')
+        d_dihedral = None
+        if record.get('pre_xyz') is not None and new_xyz is not None:
+            d_dihedral = abs(get_angle_in_180_range(
+                calculate_dihedral_angle(coords=new_xyz, torsion=record['torsion'], index=1)
+                - calculate_dihedral_angle(coords=record['pre_xyz'], torsion=record['torsion'], index=1)))
+        d_energy = abs(new_e_elect - pre_e_elect) if new_e_elect is not None and pre_e_elect is not None else None
+        if d_dihedral is None and (d_energy is None or d_energy < 0.1):
+            logger.warning(f'Could not compare the re-optimized geometry of {label} with the one before the '
+                           f'conformer change; its conformer stays unverified.')
+            return
+        same_conformer = is_same_conformer(d_dihedral=d_dihedral, d_energy=d_energy)
+        for method in pending:
+            method['verified'] = not same_conformer
+        if same_conformer:
+            energy_txt = f'energy change {d_energy:.2f} kJ/mol' if d_energy is not None else 'energy not compared'
+            self.flag_conformer_not_verified(
+                label=label,
+                cause=f'Re-optimization of {label} from the lower conformer found by the scan of torsion '
+                      f'{record["torsion"]} returned to the previous geometry ({energy_txt}, dihedral change '
+                      f'{d_dihedral:.1f} deg); the conformer {format_energy_gap(record.get("energy_gap"))} '
+                      f'was not reached.')
+
+    def flag_unresolved_lower_conformer(self,
+                                        label: str,
+                                        rotor_index: int,
+                                        energy_gap: float | None,
+                                        reason: str,
+                                        ) -> None:
+        """
+        Flag a species whose rotor scan found a lower conformer that ARC will not move to.
+
+        Args:
+            label (str): The species label.
+            rotor_index (int): The rotor index in the species rotors_dict.
+            energy_gap (float, optional): How much lower the conformer is in kJ/mol.
+            reason (str): Why the lower conformer is left unresolved.
+        """
+        scan = self.species_dict[label].rotors_dict[rotor_index]['scan']
+        self.flag_conformer_not_verified(
+            label=label,
+            cause=f'Rotor scan of torsion {scan} of {label} still finds a conformer {format_energy_gap(energy_gap)}, '
+                  f'and {reason}; the geometry used is not the lowest conformer found.')
+
+    def flag_conformer_not_verified(self, label: str, cause: str) -> None:
+        """
+        Mark a species as not verified to be at the lowest conformer found, and record the cause.
+
+        Args:
+            label (str): The species label.
+            cause (str): The reason.
+        """
+        logger.warning(f'\n\nSPECIES {label} IS NOT VERIFIED: {cause}\n')
+        previous_cause = self.output[label].get('conformer_verified_cause') or '' \
+            if self.output[label].get('conformer_verified') is False else ''
+        if cause not in previous_cause:
+            self.output[label]['conformer_verified_cause'] = f'{previous_cause} {cause}'.strip()
+        self.output[label]['conformer_verified'] = False
+        self.output[label]['warnings'] += f'{cause}; '
+
+    def set_conformer_verified(self, label: str) -> None:
+        """
+        Set ``conformer_verified`` to ``True`` once every rotor of the species was scanned and passed the scan check
+        (each has a scan output and ``success`` is ``True``), and no lower conformer is pending or unresolved. A ``False`` value is kept. A species without scanned rotors keeps
+        ``None``, since nothing checked that its geometry is the lowest conformer.
+
+        Args:
+            label (str): The species label.
+        """
+        if self.output[label].get('conformer_verified') is False:
+            return
+        self.output[label]['conformer_verified'] = None
+        rotors = list((self.species_dict[label].rotors_dict or dict()).values())
+        if not rotors or any(rotor['success'] is not True or not rotor.get('scan_path') for rotor in rotors):
+            return
+        if any('change conformer' in method and 'verified' in method and method['verified'] is None
+               for rotor in rotors for method in rotor.get('trsh_methods', list())):
+            return
+        self.output[label]['conformer_verified'] = True
 
     def get_chosen_tsg(self, label: str) -> TSGuess | None:
         """
@@ -4347,6 +4510,8 @@ class Scheduler(object):
                     original_xyz=self.species_dict[label].final_xyz,
                 )
 
+                if 'change conformer' in actions:
+                    actions['energy_gap'] = float(energies[0] - np.min(energies))
                 if len(list(actions.keys())) \
                         and 'pivTS' not in self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] \
                         and self.trsh_ess_jobs and self.trsh_rotors:
@@ -4365,6 +4530,11 @@ class Scheduler(object):
                     else:
                         # Record actions, only if the method is valid.
                         self.species_dict[label].rotors_dict[job.rotor_index]['trsh_methods'].append(actions)
+                elif 'change conformer' in actions \
+                        and 'pivTS' not in self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason']:
+                    self.flag_unresolved_lower_conformer(label=label, rotor_index=job.rotor_index,
+                                                         energy_gap=actions['energy_gap'],
+                                                         reason='rotor troubleshooting was not applied')
 
             if invalidate:
                 self.species_dict[label].rotors_dict[job.rotor_index]['success'] = False
@@ -4526,6 +4696,8 @@ class Scheduler(object):
             label (str): The species label.
         """
         all_converged = True
+        if label in self.output and label in self.species_dict:
+            self.set_conformer_verified(label)
         if label in self.output and not self.output[label]['convergence']:
             # A TS that failed the E0 or the IRC check should stay unconverged even if all jobs succeeded.
             if self.species_dict[label].is_ts \
@@ -4715,6 +4887,10 @@ class Scheduler(object):
                          f"{label} was troubleshooted for "
                          f"{self.species_dict[label].rotors_dict[job.rotor_index]['trsh_counter']} times, "
                          f"will not troubleshoot for the {next_with_ordinal} time.")
+            if 'change conformer' in methods:
+                self.flag_unresolved_lower_conformer(
+                    label=label, rotor_index=job.rotor_index, energy_gap=methods.get('energy_gap'),
+                    reason=f'the rotor was already troubleshot {max_rotor_trsh} times (max_rotor_trsh)')
             return trsh_success, actual_actions
         # Increase the trsh_counter.
         self.species_dict[label].rotors_dict[job.rotor_index]['trsh_counter'] += 1
@@ -4726,6 +4902,8 @@ class Scheduler(object):
             # If not succeed, we are in a situation that we find a lower conformer, but either
             # this is an incorrect conformer or we have applied this troubleshooting before, but it
             # didn't yield a good result.
+            pre_e_elect = self.get_latest_geo_job_e_elect(label)
+            pre_xyz = self.species_dict[label].final_xyz
             self.delete_all_species_jobs(label)
 
             new_xyz = methods['change conformer']
@@ -4736,6 +4914,9 @@ class Scheduler(object):
                     # Find we have used this conformer for troubleshooting. Invalid the troubleshooting.
                     logger.error(f'The change conformer method for {label} is invalid. '
                                  f'ARC will not change to the same conformer twice.')
+                    self.flag_unresolved_lower_conformer(
+                        label=label, rotor_index=job.rotor_index, energy_gap=methods.get('energy_gap'),
+                        reason='the scan proposed the same lower conformer that was already tried')
                     break
             else:
                 # If 'change conformer' is not used, check for isomorphism.
@@ -4747,6 +4928,9 @@ class Scheduler(object):
                         xyz=new_xyz)
                 if is_isomorphic:
                     self.species_dict[label].final_xyz = new_xyz
+                    self.species_dict[label].initial_xyz = new_xyz
+                    self.output[label]['conformer_verified'] = None
+                    self.output[label]['conformer_verified_cause'] = ''
                     # Remove all completed rotor calculation information.
                     for rotor in self.species_dict[label].rotors_dict.values():
                         # Don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is.
@@ -4767,7 +4951,13 @@ class Scheduler(object):
                     else:
                         self.run_composite_job(label)
                     trsh_success = True
-                    actual_actions = methods
+                    actual_actions = {'change conformer': new_xyz,
+                                      'energy_gap': methods.get('energy_gap'),
+                                      'pre_xyz': pre_xyz,
+                                      'pre_e_elect': pre_e_elect,
+                                      'torsion': torsions_to_scans(job.torsions)[0],
+                                      'verified': None,
+                                      }
                     return trsh_success, actual_actions
 
             # The conformer is wrong, or we are in a loop changing to the same conformers again.
@@ -5444,6 +5634,10 @@ class Scheduler(object):
                                 self.output[species.label][key] = None
                             else:
                                 self.output[species.label][key] = ''
+                    if 'conformer_verified' not in self.output[species.label]:
+                        self.output[species.label]['conformer_verified'] = None
+                    if 'conformer_verified_cause' not in self.output[species.label]:
+                        self.output[species.label]['conformer_verified_cause'] = ''
 
     def _does_output_dict_contain_info(self):
         """

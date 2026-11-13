@@ -1387,6 +1387,18 @@
         "is_ts": {
           "type": "boolean"
         },
+        "conformer_verified": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "conformer_verified_cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "smiles": {
           "type": [
             "string",
