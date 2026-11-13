@@ -90,6 +90,30 @@
       "description": "Omitted (key absent, never null) unless the orca_neb TS adapter was configured with a level.",
       "$ref": "#/$defs/level_dict"
     },
+    "ts_adapters": {
+      "description": "The TS search adapters the run used, lowercased, and where the list came from: ARC's repository default, the user's ~/.arc/settings.py, or the input file. An adapter in the list may still have been skipped for a reaction whose family does not admit it, or because its engine is absent (see each transition state's skipped_ts_methods). Omitted (key absent, never null) when the run built no scheduler.",
+      "type": "object",
+      "required": [
+        "adapters",
+        "source"
+      ],
+      "properties": {
+        "adapters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "enum": [
+            "repo default",
+            "~/.arc/settings.py",
+            "input file"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "arkane_level_of_theory": {
       "$ref": "#/$defs/nullable_level_dict"
     },
@@ -1764,6 +1788,17 @@
             "type": "string"
           },
           "minItems": 1
+        },
+        "skipped_ts_methods": {
+          "description": "TS adapters that did not run for this transition state because their engine is not available, each mapped to the cause. A skipped adapter never ran, so it is not a failed one. Null when none was skipped. A project restarted from a record written before this field existed keeps such adapters among its unsuccessful methods instead.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          },
+          "minProperties": 1
         },
         "neb_log": {
           "type": [

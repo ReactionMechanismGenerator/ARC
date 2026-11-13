@@ -690,6 +690,8 @@ class ARC(object):
                 arkane_level_of_theory=self.arkane_level_of_theory,
                 irc_requested=self.job_types.get('irc', True),
                 t0=self.t0,
+                ts_adapters=self.scheduler.ts_adapters,
+                ts_adapters_source=self.scheduler.ts_adapters_source,
             )
         except Exception as e:
             logger.error(f'Could not write output.yml: {e}')

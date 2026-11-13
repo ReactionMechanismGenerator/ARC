@@ -115,11 +115,11 @@ global_ess_settings = {
 # Electronic structure software ARC may access (use lowercase):
 supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase', 'pyscf']
 
-# TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-# Note: 'goflow' and 'rits' are intentionally NOT in the default — their envs
-# (goflow_env / rits_env + pretrained checkpoints) are heavyweight, so users
-# opt in explicitly via ``ts_adapters: ['goflow', ...]`` in their input.yml.
-ts_adapters = ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
+# TS methods to try when appropriate for a reaction (other than user guesses which are always allowed).
+# This is every registered adapter that ts_adapters_by_rmg_family (arc/job/adapters/common.py) can dispatch,
+# in the order of common.TS_ADAPTER_ORDER; TestAdapterTables fails if the two differ. An adapter whose engine
+# is not installed is skipped, and the run lists it once at its start with the command that installs it.
+ts_adapters = ['heuristics', 'linear', 'autotst', 'gcn', 'xtb_gsm', 'orca_neb', 'kinbot', 'goflow', 'rits']
 
 # List here job types to execute by default
 default_job_types = {'conf_opt': True,        # defaults to True if not specified

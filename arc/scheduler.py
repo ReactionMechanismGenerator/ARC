@@ -36,7 +36,8 @@ from arc.exceptions import (DependencyError,
                             SpeciesError,
                             TrshError,
                             )
-from arc.imports import settings
+import arc.settings.settings as repo_settings
+from arc.imports import local_settings_keys, settings
 from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       all_families_ts_adapters,
                                       default_incore_adapters,
@@ -44,6 +45,8 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       job_scf_reference_is_restricted,
                                       level_admits_a_broken_symmetry_reference,
                                       REFERENCE_CHANGE_AVAILABLE_KEY,
+                                      resolve_ts_adapters,
+                                      ts_adapter_install_targets,
                                       ts_adapters_by_rmg_family,
                                       ts_adapters_for_unknown_unimolecular)
 from arc.job.adapters.ts.availability import ts_adapter_unavailable_reason
@@ -408,8 +411,8 @@ class Scheduler(object):
         self.rotor_scan_resolution = rotor_scan_resolution
         self.kinetics_adapter = kinetics_adapter
         self.freq_scale_factor = freq_scale_factor
-        self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
-        self.ts_adapters = [ts_adapter.lower() for ts_adapter in self.ts_adapters]
+        self.ts_adapters, self.ts_adapters_source, self.absent_ts_adapters = list(), None, dict()
+        self.resolve_ts_adapters(ts_adapters)
         self.output = output or dict()
         self.output_multi_spc = dict()
         self.report_e_elect = report_e_elect
@@ -2706,6 +2709,40 @@ class Scheduler(object):
         if label in self.output.keys() and not self.species_dict[label].is_ts:
             self.spawn_ts_jobs()
 
+    def resolve_ts_adapters(self, ts_adapters: list[str] | None) -> None:
+        """
+        Resolve the TS adapters of this run, log them with their source, and list the absent engines once.
+
+        Args:
+            ts_adapters (list, optional): The input file's ``ts_adapters``, ``None`` if it sets none.
+        """
+        self.ts_adapters, self.ts_adapters_source, removed = resolve_ts_adapters(
+            input_ts_adapters=ts_adapters, settings_ts_adapters=default_ts_adapters,
+            local_settings_keys=local_settings_keys, repo_default=repo_settings.ts_adapters)
+        logger.info(f'TS adapters for this run (from the {self.ts_adapters_source}): {self.ts_adapters}')
+        if removed and self.ts_adapters_source != 'repo default':
+            logger.warning(f'ts_adapters from the {self.ts_adapters_source} leaves out ARC\'s default '
+                           f'adapter(s) {removed}; they will not run for any reaction.')
+        if not self.rxn_list:
+            return
+        for adapter in self.ts_adapters:
+            reason = ts_adapter_unavailable_reason(adapter, ess_settings=self.ess_settings)
+            if reason is not None:
+                self.absent_ts_adapters[adapter] = reason
+        if self.absent_ts_adapters:
+            lines = list()
+            for adapter, reason in self.absent_ts_adapters.items():
+                targets = ts_adapter_install_targets.get(adapter)
+                if targets:
+                    install = f'Install: make {targets[0]}' + ''.join(f' (or make {target})' for target in targets[1:])
+                elif adapter == 'orca_neb':
+                    install = "No make target: map 'orca' to a server that runs Orca in the ESS settings"
+                else:
+                    install = 'No make target'
+                lines.append(f'  {adapter!r}: {reason}. {install}')
+            logger.warning('TS search engines not available on this machine; ARC skips these adapters for '
+                           'every reaction:\n' + '\n'.join(lines))
+
     def spawn_ts_jobs(self):
         """
         Check if any new reaction has all of its reactants and products optimized,
@@ -2737,10 +2774,11 @@ class Scheduler(object):
                             unavailable_reason = ts_adapter_unavailable_reason(method, ess_settings=self.ess_settings)
                             if unavailable_reason is not None:
                                 unavailable[method] = unavailable_reason
-                                logger.warning(f'TS search adapter {method!r} skipped for reaction {rxn.label}: '
-                                               f'{unavailable_reason}.')
-                                if method not in rxn.ts_species.unsuccessful_methods:
-                                    rxn.ts_species.unsuccessful_methods.append(method)
+                                if self.absent_ts_adapters.get(method) != unavailable_reason:
+                                    # The run-start report did not give this cause, so the engine changed since.
+                                    logger.warning(f'TS search adapter {method!r} skipped for reaction {rxn.label}: '
+                                                   f'{unavailable_reason}.')
+                                rxn.ts_species.skipped_methods[method] = unavailable_reason
                                 continue
                             try:
                                 self.run_job(job_type='tsg',
@@ -2754,8 +2792,7 @@ class Scheduler(object):
                                 logger.error(f'The {method!r} TS search adapter is not available and '
                                              f'was skipped for reaction {rxn.label}: {e}')
                                 unavailable[method] = str(e)
-                                if method not in rxn.ts_species.unsuccessful_methods:
-                                    rxn.ts_species.unsuccessful_methods.append(method)
+                                rxn.ts_species.skipped_methods[method] = str(e)
                                 # Roll back the job run_job() registered before it raised, so a
                                 # never-run 'tsg<i>' entry isn't serialized and parsed as completed.
                                 if f'tsg{tsg_index}' in self.running_jobs.get(rxn.ts_label, list()):
@@ -2766,6 +2803,10 @@ class Scheduler(object):
                     if unavailable:
                         # run_job() saved before these skips were recorded; persist them with tsg_spawned.
                         self.save_restart_dict()
+                    if eligible_methods:
+                        running = [method for method in eligible_methods if method not in unavailable]
+                        logger.info(f'TS search for reaction {rxn.label}: running {running}'
+                                    + (f'; skipped (engine absent): {list(unavailable)}' if unavailable else ''))
                     if not tsg_index and not rxn.ts_species.ts_guesses and rxn.ts_species.yml_path is None:
                         # No adapter ran and no user guess was given, and tsg_spawned is already
                         # latched True, so warn explicitly rather than fail silently much later.
@@ -5509,6 +5550,7 @@ class Scheduler(object):
                 ts_dict['run_time'] = str(species.run_time)
                 ts_dict['successful_methods'] = species.successful_methods
                 ts_dict['unsuccessful_methods'] = species.unsuccessful_methods
+                ts_dict['skipped_methods'] = species.skipped_methods
                 ts_dict['chosen_ts'] = species.chosen_ts
                 ts_dict['chosen_ts_list'] = species.chosen_ts_list
                 ts_dict['ts_guesses_exhausted'] = species.ts_guesses_exhausted
