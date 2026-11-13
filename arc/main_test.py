@@ -20,6 +20,7 @@ from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
 from arc.main import ARC, process_adaptive_levels
+from arc.scheduler import Scheduler
 from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 from arc.species.species import ARCSpecies
 
@@ -700,6 +701,25 @@ class TestARC(unittest.TestCase):
                        level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
                        ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
                        )
+
+    def test_reaction_multiplicity_from_input_dict_reaches_ts(self):
+        """Test that a reaction whose species are named by label in an input dict gets the right TS multiplicity"""
+        project_directory = os.path.join(self.scratch_dir, 'arc_test_rxn_multiplicity')
+        input_dict = {'project': 'arc_test_rxn_multiplicity',
+                      'project_directory': project_directory,
+                      'calc_freq_factor': False,
+                      'compute_thermo': False,
+                      'species': [{'label': 'R', 'smiles': '[CH2]C(C)CC'}, {'label': 'P', 'smiles': 'CC(C)[CH]C'}],
+                      'reactions': [{'label': 'R <=> P', 'reactants': ['R'], 'products': ['P']}]}
+        arc0 = ARC(**input_dict)
+        sched = Scheduler(project=arc0.project, species_list=arc0.species, rxn_list=arc0.reactions,
+                          ess_settings={'gaussian': ['local']}, project_directory=project_directory, testing=True,
+                          job_types={'conf_opt': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
+                                     'fine_grid': False})
+        self.assertEqual(arc0.reactions[0].multiplicity, 2)
+        ts_species = [spc for spc in sched.species_list if spc.is_ts]
+        self.assertEqual(len(ts_species), 1)
+        self.assertEqual(ts_species[0].multiplicity, 2)
 
     def test_summary_reports_the_warnings_of_a_converged_species(self):
         """Test that the run summary prints the warnings of a species that converged"""
