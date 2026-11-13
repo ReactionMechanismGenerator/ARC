@@ -14,10 +14,12 @@ import time
 from arc.common import get_logger
 from arc.exceptions import SettingsError
 from arc.imports import settings
-from arc.job.ssh import check_job_status_in_stdout
+from arc.job.ssh import SUBMISSION_CAP_WAIT_SECONDS, check_job_status_in_stdout
 
 
 logger = get_logger()
+
+SUBMISSION_CAP_REACHED = 'cap_reached'
 
 servers, check_status_command, submit_command, submit_filenames, delete_command, output_filenames = \
     settings['servers'], settings['check_status_command'], settings['submit_command'], settings['submit_filenames'],\
@@ -221,24 +223,50 @@ def parse_running_jobs_ids(stdout: list[str],
     return running_job_ids
 
 
+def _submission_cap_reached(cluster_soft: str, stderr: list[str]) -> bool:
+    """
+    Whether the scheduler refused a submission because the per-user job cap is reached.
+
+    Args:
+        cluster_soft (str): The server cluster software.
+        stderr (list[str]): The stderr got from submitting a job.
+
+    Returns:
+        bool: Whether the stderr reports a reached per-user job cap.
+    """
+    cluster_soft = cluster_soft.lower()
+    if cluster_soft == 'slurm':
+        return any('AssocMaxSubmitJobLimit' in err_line for err_line in stderr)
+    if cluster_soft == 'pbs':
+        return any('qsub: would exceed' in err_line or 'qsub: Maximum number of jobs' in err_line
+                   for err_line in stderr)
+    return False
+
+
 def submit_job(path: str,
                cluster_soft: str | None = None,
                submit_cmd: str | None = None,
                submit_filename: str | None = None,
-               recursion: bool = False,
+               wait_on_cap: bool = True,
                ) -> tuple[str | None, str | None]:
     """
     Submit a job.
+    If the scheduler refuses the submission because the per-user job cap is reached,
+    the submission is retried every ``SUBMISSION_CAP_WAIT_SECONDS`` until it is accepted,
+    unless ``wait_on_cap`` is ``False``, in which case the refusal is returned immediately
+    so that the caller can resize the submission (e.g., a smaller job array).
 
     Args:
         path (str): The job's folder path, where the submit script is located (just the folder path, w/o the filename).
         cluster_soft (str, optional): The server cluster software.
         submit_cmd (str, optional): The submit command.
         submit_filename (str, optional): The submit script file name.
-        recursion (bool, optional): Whether this call is within a recursion.
+        wait_on_cap (bool, optional): Whether to wait and retry when the per-user job cap is reached.
 
     Returns:
         tuple[str | None, str | None]: job_status, job_id
+            ``job_status`` is ``SUBMISSION_CAP_REACHED`` and ``job_id`` is ``None``
+            if the cap was reached and ``wait_on_cap`` is ``False``.
     """
     cluster_soft = cluster_soft or servers['local']['cluster_soft']
     job_status, job_id = '', ''
@@ -246,36 +274,30 @@ def submit_job(path: str,
     submit_filename = submit_filename or submit_filenames[cluster_soft]
     cmd = f'cd "{path}"; {submit_cmd} {submit_filename}'
     stdout, stderr = execute_command(cmd)
-    if not len(stdout):
+    if not len(stdout) and not _submission_cap_reached(cluster_soft, stderr):
         time.sleep(10)
         stdout, stderr = execute_command(cmd)
+    if not wait_on_cap and stderr and _submission_cap_reached(cluster_soft, stderr):
+        logger.warning(f'The scheduler refused the submission because of the per-user job cap:\n{stderr}')
+        return SUBMISSION_CAP_REACHED, None
+    waited = False
+    while stderr and _submission_cap_reached(cluster_soft, stderr):
+        logger.warning(f'Max number of submitted jobs was reached, sleeping {SUBMISSION_CAP_WAIT_SECONDS} s '
+                       f'before retrying the submission...')
+        time.sleep(SUBMISSION_CAP_WAIT_SECONDS)
+        waited = True
+        stdout, stderr = execute_command(cmd)
+    if waited and len(stdout):
+        logger.info('The job was submitted after waiting for the per-user job cap to clear.')
     if stderr:
-        if cluster_soft.lower() == 'slurm' and any('AssocMaxSubmitJobLimit' in err_line for err_line in stderr):
-            logger.warning(f'Max number of submitted jobs was reached, sleeping...')
-            time.sleep(5 * 60)
-            submit_job(path=path,
-                       cluster_soft=cluster_soft,
-                       submit_cmd=submit_cmd,
-                       submit_filename=submit_filename,
-                       recursion=True,
-                       )
-        if cluster_soft.lower() == 'pbs' and  (any('qsub: would exceed' in err_line for err_line in stderr ) or any('qsub: Maximum number of jobs' in err_line for err_line in stderr)):
-            logger.warning(f'Max number of submitted jobs was reached, sleeping...')
-            time.sleep(5 * 60)
-            submit_job(path=path,
-                       cluster_soft=cluster_soft,
-                       submit_cmd=submit_cmd,
-                       submit_filename=submit_filename,
-                       recursion=True,
-                       )
-        elif cluster_soft.lower() == 'pbs' and any('qsub: Illegal attribute or resource value' in err_line for err_line in stderr):
+        if cluster_soft.lower() == 'pbs' and any('qsub: Illegal attribute or resource value' in err_line for err_line in stderr):
             raise ValueError(f'Got the following error when trying to submit job:\n{stderr}. Please check your submit script')
         elif cluster_soft.lower() == 'pbs' and (
                 any('Please do NOT submit jobs on compute nodes' in err_line for err_line in stderr)
                 or any('Jobs should be submitted on login server' in err_line for err_line in stderr)
         ):
             raise ValueError('PBS job submission attempted from a compute node. Submit jobs from the login server.')
-    if not len(stdout) or recursion:
+    if not len(stdout):
         return None, None
     if len(stderr) > 0 or len(stdout) == 0:
         logger.warning(f'Got the following error when trying to submit job:\n{stderr}.')

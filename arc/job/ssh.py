@@ -33,6 +33,7 @@ check_status_command, delete_command, list_available_nodes_command, servers, sub
 KNOWN_HOSTS_PATH = '~/.ssh/known_hosts'
 PLACEHOLDER_ADDRESS_SUFFIX = '.host.edu'
 PLACEHOLDER_USERNAME = '<username>'
+SUBMISSION_CAP_WAIT_SECONDS = 5 * 60
 
 
 class UnknownHostKeyError(ServerError, paramiko.SSHException):
@@ -454,15 +455,15 @@ class SSHClient(object):
                 running_job_ids.append(job_id)
         return running_job_ids
 
-    def submit_job(self, remote_path: str,
-                   recursion: bool = False,
-                   ) -> tuple[str | None, str | None]:
+    def submit_job(self, remote_path: str) -> tuple[str | None, str | None]:
         """
         Submit a job to the server.
+        If Slurm refuses the submission because the per-user job cap is reached
+        (``AssocMaxSubmitJobLimit``), the submission is retried every ``SUBMISSION_CAP_WAIT_SECONDS``
+        until it is accepted.
 
         Args:
             remote_path (str): The remote path contains the input file and the submission script.
-            recursion (bool, optional): Whether this call is within a recursion.
 
         Returns: tuple[str, int]
             - A string indicate the status of job submission.
@@ -474,6 +475,15 @@ class SSHClient(object):
         cluster_soft = servers[self.server]['cluster_soft']
         cmd = f'{submit_command[cluster_soft]} {submit_filenames[cluster_soft]}'
         stdout, stderr = self._send_command_to_server(cmd, remote_path)
+        waited = False
+        while cluster_soft.lower() == 'slurm' and any('AssocMaxSubmitJobLimit' in line for line in stderr):
+            logger.warning(f'Max number of submitted jobs was reached, sleeping {SUBMISSION_CAP_WAIT_SECONDS} s '
+                           f'before retrying the submission...')
+            time.sleep(SUBMISSION_CAP_WAIT_SECONDS)
+            waited = True
+            stdout, stderr = self._send_command_to_server(cmd, remote_path)
+        if waited and len(stdout):
+            logger.info('The job was submitted after waiting for the per-user job cap to clear.')
         if len(stderr) > 0 or len(stdout) == 0:
             logger.warning(f'Got stderr when submitting job:\n{stderr}')
             job_status = 'errored'
@@ -484,13 +494,7 @@ class SSHClient(object):
                 if 'Memory specification can not be satisfied' in line:
                     logger.warning('User may be requesting more memory than is available. Please check server '
                                    'settings, such as cpus and memory, in ARC/arc/settings/settings.py.')
-                if cluster_soft.lower() == 'slurm' and 'AssocMaxSubmitJobLimit' in line:
-                    logger.warning(f'Max number of submitted jobs was reached, sleeping...')
-                    time.sleep(5 * 60)
-                    self.submit_job(remote_path=remote_path, recursion=True)
-        if recursion:
-            return None, None
-        elif cluster_soft.lower() in ['oge', 'sge'] and stdout and 'submitted' in stdout[0].lower():
+        if cluster_soft.lower() in ['oge', 'sge'] and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[2]
         elif cluster_soft.lower() == 'slurm' and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[3]
