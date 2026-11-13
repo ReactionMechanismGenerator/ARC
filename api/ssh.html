@@ -513,14 +513,14 @@ the job’s remote path.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.job.ssh.SSHClient.submit_job">
-<span class="sig-name descname"><span class="pre">submit_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recursion</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.submit_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.submit_job" title="Link to this definition"></a></dt>
-<dd><p>Submit a job to the server.</p>
+<span class="sig-name descname"><span class="pre">submit_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">remote_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/ssh.html#SSHClient.submit_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.ssh.SSHClient.submit_job" title="Link to this definition"></a></dt>
+<dd><p>Submit a job to the server.
+If Slurm refuses the submission because the per-user job cap is reached
+(<code class="docutils literal notranslate"><span class="pre">AssocMaxSubmitJobLimit</span></code>), the submission is retried every <code class="docutils literal notranslate"><span class="pre">SUBMISSION_CAP_WAIT_SECONDS</span></code>
+until it is accepted.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>remote_path</strong> (<em>str</em>) – The remote path contains the input file and the submission script.</p></li>
-<li><p><strong>recursion</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether this call is within a recursion.</p></li>
-</ul>
+<dd class="field-odd"><p><strong>remote_path</strong> (<em>str</em>) – The remote path contains the input file and the submission script.</p>
 </dd>
 </dl>
 <dl class="simple">

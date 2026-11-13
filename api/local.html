@@ -294,8 +294,12 @@ else returns the last modified time of <code class="docutils literal notranslate
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.job.local.submit_job">
-<span class="sig-prename descclassname"><span class="pre">arc.job.local.</span></span><span class="sig-name descname"><span class="pre">submit_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cluster_soft</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">submit_cmd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">submit_filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recursion</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/local.html#submit_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.local.submit_job" title="Link to this definition"></a></dt>
-<dd><p>Submit a job.</p>
+<span class="sig-prename descclassname"><span class="pre">arc.job.local.</span></span><span class="sig-name descname"><span class="pre">submit_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cluster_soft</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">submit_cmd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">submit_filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wait_on_cap</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/local.html#submit_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.local.submit_job" title="Link to this definition"></a></dt>
+<dd><p>Submit a job.
+If the scheduler refuses the submission because the per-user job cap is reached,
+the submission is retried every <code class="docutils literal notranslate"><span class="pre">SUBMISSION_CAP_WAIT_SECONDS</span></code> until it is accepted,
+unless <code class="docutils literal notranslate"><span class="pre">wait_on_cap</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code>, in which case the refusal is returned immediately
+so that the caller can resize the submission (e.g., a smaller job array).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -303,11 +307,16 @@ else returns the last modified time of <code class="docutils literal notranslate
 <li><p><strong>cluster_soft</strong> (<em>str</em><em>, </em><em>optional</em>) – The server cluster software.</p></li>
 <li><p><strong>submit_cmd</strong> (<em>str</em><em>, </em><em>optional</em>) – The submit command.</p></li>
 <li><p><strong>submit_filename</strong> (<em>str</em><em>, </em><em>optional</em>) – The submit script file name.</p></li>
-<li><p><strong>recursion</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether this call is within a recursion.</p></li>
+<li><p><strong>wait_on_cap</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to wait and retry when the per-user job cap is reached.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>job_status, job_id</p>
+<dd class="field-even"><p><dl class="simple">
+<dt>job_status, job_id</dt><dd><p><code class="docutils literal notranslate"><span class="pre">job_status</span></code> is <code class="docutils literal notranslate"><span class="pre">SUBMISSION_CAP_REACHED</span></code> and <code class="docutils literal notranslate"><span class="pre">job_id</span></code> is <code class="docutils literal notranslate"><span class="pre">None</span></code>
+if the cap was reached and <code class="docutils literal notranslate"><span class="pre">wait_on_cap</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
+</dd>
+</dl>
+</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>tuple[str | None, str | None]</p>

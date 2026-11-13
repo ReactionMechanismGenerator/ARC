@@ -130,6 +130,7 @@
 <span class="n">KNOWN_HOSTS_PATH</span> <span class="o">=</span> <span class="s1">'~/.ssh/known_hosts'</span>
 <span class="n">PLACEHOLDER_ADDRESS_SUFFIX</span> <span class="o">=</span> <span class="s1">'.host.edu'</span>
 <span class="n">PLACEHOLDER_USERNAME</span> <span class="o">=</span> <span class="s1">'&lt;username&gt;'</span>
+<span class="n">SUBMISSION_CAP_WAIT_SECONDS</span> <span class="o">=</span> <span class="mi">5</span> <span class="o">*</span> <span class="mi">60</span>
 
 
 <div class="viewcode-block" id="UnknownHostKeyError">
@@ -591,15 +592,15 @@
 
 <div class="viewcode-block" id="SSHClient.submit_job">
 <a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.submit_job">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">submit_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                   <span class="n">recursion</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">submit_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Submit a job to the server.</span>
+<span class="sd">        If Slurm refuses the submission because the per-user job cap is reached</span>
+<span class="sd">        (``AssocMaxSubmitJobLimit``), the submission is retried every ``SUBMISSION_CAP_WAIT_SECONDS``</span>
+<span class="sd">        until it is accepted.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            remote_path (str): The remote path contains the input file and the submission script.</span>
-<span class="sd">            recursion (bool, optional): Whether this call is within a recursion.</span>
 
 <span class="sd">        Returns: tuple[str, int]</span>
 <span class="sd">            - A string indicate the status of job submission.</span>
@@ -611,6 +612,15 @@
         <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="p">][</span><span class="s1">'cluster_soft'</span><span class="p">]</span>
         <span class="n">cmd</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">submit_command</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">]</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">submit_filenames</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">]</span><span class="si">}</span><span class="s1">'</span>
         <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">)</span>
+        <span class="n">waited</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">while</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'slurm'</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span><span class="s1">'AssocMaxSubmitJobLimit'</span> <span class="ow">in</span> <span class="n">line</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">stderr</span><span class="p">):</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Max number of submitted jobs was reached, sleeping </span><span class="si">{</span><span class="n">SUBMISSION_CAP_WAIT_SECONDS</span><span class="si">}</span><span class="s1"> s '</span>
+                           <span class="sa">f</span><span class="s1">'before retrying the submission...'</span><span class="p">)</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">SUBMISSION_CAP_WAIT_SECONDS</span><span class="p">)</span>
+            <span class="n">waited</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">waited</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">):</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">'The job was submitted after waiting for the per-user job cap to clear.'</span><span class="p">)</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stderr</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Got stderr when submitting job:</span><span class="se">\n</span><span class="si">{</span><span class="n">stderr</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
             <span class="n">job_status</span> <span class="o">=</span> <span class="s1">'errored'</span>
@@ -621,13 +631,7 @@
                 <span class="k">if</span> <span class="s1">'Memory specification can not be satisfied'</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">'User may be requesting more memory than is available. Please check server '</span>
                                    <span class="s1">'settings, such as cpus and memory, in ARC/arc/settings/settings.py.'</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'slurm'</span> <span class="ow">and</span> <span class="s1">'AssocMaxSubmitJobLimit'</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
-                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Max number of submitted jobs was reached, sleeping...'</span><span class="p">)</span>
-                    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">5</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">submit_job</span><span class="p">(</span><span class="n">remote_path</span><span class="o">=</span><span class="n">remote_path</span><span class="p">,</span> <span class="n">recursion</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">recursion</span><span class="p">:</span>
-            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
-        <span class="k">elif</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">'oge'</span><span class="p">,</span> <span class="s1">'sge'</span><span class="p">]</span> <span class="ow">and</span> <span class="n">stdout</span> <span class="ow">and</span> <span class="s1">'submitted'</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">'oge'</span><span class="p">,</span> <span class="s1">'sge'</span><span class="p">]</span> <span class="ow">and</span> <span class="n">stdout</span> <span class="ow">and</span> <span class="s1">'submitted'</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
             <span class="n">job_id</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">2</span><span class="p">]</span>
         <span class="k">elif</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'slurm'</span> <span class="ow">and</span> <span class="n">stdout</span> <span class="ow">and</span> <span class="s1">'submitted'</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
             <span class="n">job_id</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">3</span><span class="p">]</span>
