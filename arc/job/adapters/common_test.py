@@ -12,6 +12,7 @@ import unittest
 from types import SimpleNamespace
 
 import arc.job.adapters.common as common
+import arc.job.factory as factory
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.adapters.molpro import MolproAdapter
 from arc.level import Level
@@ -719,6 +720,29 @@ class TestResolveJobServer(unittest.TestCase):
         self.assertEqual(common.resolve_job_server({'gaussian': ['zeus']}, 'gaussian',
                                                    args={'keyword': {}}),
                          'zeus')
+
+
+class TestAdapterTables(unittest.TestCase):
+    """
+    Contains unit tests tying the adapter tables in common.py to the job adapter registry.
+    """
+
+    def test_every_family_ts_adapter_is_a_registered_ts_adapter(self):
+        """Every adapter a family lists must be a registered TS adapter."""
+        registered = {enum.value: cls for enum, cls in factory._registered_job_adapters.items()}
+        self.assertTrue(common.ts_adapters_by_rmg_family)
+        for family, adapters in common.ts_adapters_by_rmg_family.items():
+            for adapter in adapters:
+                self.assertIn(adapter, registered, f'{family} lists the unregistered adapter {adapter!r}')
+                self.assertTrue(registered[adapter].__module__.startswith('arc.job.adapters.ts.'),
+                                f'{family} lists {adapter!r}, which is not a TS adapter')
+
+    def test_every_default_incore_adapter_is_registered(self):
+        """Every default incore adapter must be a registered adapter."""
+        registered = {enum.value for enum in factory._registered_job_adapters}
+        self.assertTrue(common.default_incore_adapters)
+        for adapter in common.default_incore_adapters:
+            self.assertIn(adapter, registered, f'default_incore_adapters lists the unregistered adapter {adapter!r}')
 
 
 if __name__ == '__main__':

@@ -68,7 +68,7 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', '
                              'Diels_alder_addition': ['kinbot', 'goflow', 'rits', 'linear'],
                              'Diels_alder_addition_Aromatic': ['goflow', 'rits', 'linear'],
                              'HO2_Elimination_from_PeroxyRadical': ['kinbot', 'goflow', 'rits', 'linear'],
-                             'H_Abstraction': ['heuristics', 'autotst', 'crest'],
+                             'H_Abstraction': ['heuristics', 'autotst'],
                              'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'Intra_5_membered_conjugated_C=C_C=C_addition': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'Intra_Diels_alder_monocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
@@ -116,7 +116,7 @@ ts_adapters_for_unknown_unimolecular = ['goflow', 'rits', 'linear']
 adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani', 'ase']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'crest', 'gcn', 'goflow', 'heuristics', 'kinbot', 'linear', 'openbabel',
+default_incore_adapters = ['autotst', 'gcn', 'goflow', 'heuristics', 'kinbot', 'linear', 'openbabel',
                            'psi4', 'rits', 'torchani', 'xtb', 'xtb_gsm']
 
 
