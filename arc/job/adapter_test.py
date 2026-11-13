@@ -330,7 +330,8 @@ class TestJobAdapter(unittest.TestCase):
 
     def test_determine_job_status(self):
         """Test determining the job status"""
-        self.job_5.determine_job_status()
+        with patch('arc.job.local.execute_command', return_value=([], [], 0)):  # An empty queue: the job ended.
+            self.job_5.determine_job_status()
         self.assertEqual(self.job_5.job_status[0], 'done')
         self.assertEqual(self.job_5.job_status[1]['status'], 'errored')
         self.assertEqual(self.job_5.job_status[1]['keywords'], ['ServerTimeLimit'])
@@ -354,6 +355,53 @@ class TestJobAdapter(unittest.TestCase):
         self.assertIn('short_queue', self.job_6.attempted_queues)
         self.assertIn('middle_queue', self.job_6.attempted_queues)
 
+
+class TestDirectedScanSurvivesTheRestartFile(unittest.TestCase):
+    """A job rebuilt from restart.yml keeps what its resubmission or its end reads: scan type and queue (#394)."""
+
+    def test_as_dict_round_trips_the_directed_scan_type(self):
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = GaussianAdapter(execution_type='queue', job_type='directed_scan', directed_scan_type='brute_force_opt',
+                              dihedrals=[[1, 2, 3, 4]], level=Level(method='b3lyp', basis='6-31g'),
+                              project='test', project_directory=project_directory,
+                              species=[ARCSpecies(label='spc1', smiles='CCO')], testing=True)
+        job_dict = job.as_dict()
+        self.assertEqual(job_dict['directed_scan_type'], 'brute_force_opt')
+        job_dict.pop('species_labels', None)
+        rebuilt = GaussianAdapter(species=[ARCSpecies(label='spc1', smiles='CCO')], testing=True,
+                                  **{key: value for key, value in job_dict.items()
+                                     if key in ('execution_type', 'job_type', 'directed_scan_type', 'dihedrals',
+                                                'project', 'project_directory')},
+                                  level=Level(method='b3lyp', basis='6-31g'))
+        self.assertEqual(rebuilt.directed_scan_type, 'brute_force_opt')
+
+
+    def test_as_dict_round_trips_the_queue_and_the_attempted_queues(self):
+        """A held-back retry on a longer queue resumes on that queue after a restart, with its queue history"""
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = GaussianAdapter(execution_type='queue', job_type='opt', level=Level(method='b3lyp', basis='6-31g'),
+                              project='test', project_directory=project_directory, queue='long_queue',
+                              attempted_queues=['short_queue', 'long_queue'],
+                              species=[ARCSpecies(label='spc1', smiles='CCO')], testing=True)
+        job_dict = job.as_dict()
+        rebuilt = GaussianAdapter(species=[ARCSpecies(label='spc1', smiles='CCO')], testing=True,
+                                  **{key: value for key, value in job_dict.items()
+                                     if key in ('execution_type', 'job_type', 'project', 'project_directory',
+                                                'queue', 'attempted_queues')},
+                                  level=Level(method='b3lyp', basis='6-31g'))
+        self.assertEqual(rebuilt.queue, 'long_queue')
+        self.assertEqual(rebuilt.attempted_queues, ['short_queue', 'long_queue'])
+
+    def test_as_dict_omits_an_unset_queue(self):
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = GaussianAdapter(execution_type='queue', job_type='opt', level=Level(method='b3lyp', basis='6-31g'),
+                              project='test', project_directory=project_directory,
+                              species=[ARCSpecies(label='spc1', smiles='CCO')], testing=True)
+        self.assertNotIn('queue', job.as_dict())
+        self.assertNotIn('attempted_queues', job.as_dict())
 
 class TestRotateCSV(unittest.TestCase):
     """
@@ -536,7 +584,7 @@ class _MinimalAdapter(JobAdapter):
         self.server = server
         self.execution_type = execution_type
         self.testing = False
-        self.restarted = True   # skip _write_initiated_job_to_csv_file
+        self.restarted = True   # skip write_initiated_job_to_csv_file
         self.files_to_upload = [
             {'file_name': 'input.gjf', 'source': 'path',
              'local': '/local/input.gjf', 'remote': '/remote/input.gjf', 'make_x': False},
@@ -581,7 +629,7 @@ class TestJobStatusWhenTheQueueCannotBeRead(unittest.TestCase):
     def _determine(self, adapter):
         local_servers = {'local': {'cluster_soft': 'Slurm', 'un': 'user'}}
         with patch('arc.job.adapter.servers', local_servers), patch('arc.job.local.servers', local_servers), \
-                patch('arc.job.local.execute_command', return_value=([], self.SOCKET_TIMEOUT)), \
+                patch('arc.job.local.execute_command', return_value=([], self.SOCKET_TIMEOUT, 1)), \
                 patch('time.sleep'):
             return adapter.determine_job_status()
 
@@ -631,6 +679,19 @@ class TestJobStatusWhenTheServerCannotBeReached(unittest.TestCase):
             self.assertIsInstance(adapter.last_queue_query_error, QueueQueryError)
             self.assertIsNone(adapter.last_queue_query_error.exit_status)
             self.assertIn(str(error), adapter.last_queue_query_error.output)
+
+    def test_a_job_without_an_id_is_not_polled(self):
+        """A submission that was not acknowledged reads as ended without a queue query, whether the queue answers"""
+        local_servers = {'local': {'cluster_soft': 'Slurm', 'un': 'user'}}
+        adapter = self._running_job(server='local', job_id=None)
+        error = QueueQueryError('failed 3 times', server='local', output='Socket timed out', exit_status=1)
+        with patch('arc.job.adapter.servers', local_servers), \
+                patch('arc.job.adapter.check_job_status', side_effect=error) as query, \
+                self.assertLogs('arc', level='WARNING') as logged:
+            self.assertIs(adapter.determine_job_status(), True)
+        query.assert_not_called()
+        self.assertEqual(adapter.job_status[0], 'done')
+        self.assertIn('no job ID', logged.output[0])
 
 
 class TestSSHConnectionSharing(unittest.TestCase):

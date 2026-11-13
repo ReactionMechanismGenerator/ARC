@@ -12,6 +12,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 import warnings
 from unittest.mock import MagicMock, patch
@@ -19,7 +20,7 @@ from unittest.mock import MagicMock, patch
 import paramiko
 
 import arc.job.ssh as ssh
-from arc.exceptions import ServerError
+from arc.exceptions import QueueQueryError, ServerError
 
 
 class FakeHostKey(object):
@@ -167,43 +168,183 @@ class TestQueueQueryFailure(unittest.TestCase):
         self.client = ssh.SSHClient('srv')
 
     def _replies(self, *replies):
-        """Stub the server boundary with a sequence of (stdout, stderr) replies."""
+        """Stub the server boundary with a sequence of (stdout, stderr, exit status) replies."""
         return patch.object(self.client, '_send_command_to_server', side_effect=list(replies))
 
     def test_check_job_status_does_not_read_a_socket_timeout_as_finished(self):
         """A running job must not read as done or errored because the queue did not answer."""
-        with self._replies(*[([], SOCKET_TIMEOUT)] * 3):
+        with self._replies(*[([], SOCKET_TIMEOUT, 1)] * 3):
             with self.assertRaises(ServerError):
                 self.client.check_job_status(4242)
 
     def test_check_running_jobs_ids_does_not_read_a_socket_timeout_as_no_jobs(self):
         """An unanswered queue must not report an empty job list."""
-        with self._replies(*[([], SOCKET_TIMEOUT)] * 3):
+        with self._replies(*[([], SOCKET_TIMEOUT, 1)] * 3):
             with self.assertRaises(ServerError):
                 self.client.check_running_jobs_ids()
 
     def test_an_ssh_channel_timeout_is_a_failed_query(self):
         """ARC's own reply for a channel that would not open is a failure, not an empty queue."""
-        with self._replies(*[([''], ['ssh timed-out after two trials'])] * 3):
+        with self._replies(*[([''], ['ssh timed-out after two trials'], None)] * 3):
             with self.assertRaises(ServerError):
                 self.client.check_running_jobs_ids()
 
     def test_a_missing_queue_command_on_the_server_is_a_failed_query(self):
         """A remote queue server always has a queue command, so a missing one is not an empty queue."""
-        with self._replies(*[([], ['bash: squeue: command not found\n'])] * 3):
+        with self._replies(*[([], ['bash: squeue: command not found\n'], 127)] * 3):
             with self.assertRaises(ServerError):
                 self.client.check_job_status(4242)
 
     def test_check_running_jobs_ids_retries_a_failed_query(self):
         """A query that fails once and then succeeds gives the true running list."""
-        with self._replies(([], SOCKET_TIMEOUT), (SLURM_LISTING, [])) as send:
+        with self._replies(([], SOCKET_TIMEOUT, 1), (SLURM_LISTING, [], 0)) as send:
             self.assertEqual(self.client.check_running_jobs_ids(), ['4242'])
         self.assertEqual(send.call_count, 2)
 
     def test_stderr_warnings_beside_a_real_listing_are_parsed(self):
         """A listing that came back with a warning on stderr still says the job runs."""
-        with self._replies((SLURM_LISTING, ['squeue: warning: deprecated option\n'])):
+        with self._replies((SLURM_LISTING, ['squeue: warning: deprecated option\n'], 0)):
             self.assertEqual(self.client.check_job_status(4242), 'running')
+
+
+class _FakeChannel(object):
+    """The part of a paramiko channel ARC reads: the remote command's exit status."""
+
+    def __init__(self, exit_status: int | None):
+        self.exit_status, self.closed, self.status_event = exit_status, False, threading.Event()
+        if exit_status is not None:
+            self.status_event.set()
+
+    def recv_exit_status(self) -> int:
+        self.status_event.wait()
+        return self.exit_status
+
+    def close(self):
+        self.closed = True
+
+
+class _FakeStream(object):
+    """The part of a paramiko ChannelFile ARC reads."""
+
+    def __init__(self, lines: list | None, channel: _FakeChannel):
+        self.lines, self.channel = lines, channel
+
+    def readlines(self) -> list:
+        if self.lines is None:
+            raise TimeoutError('timed out')
+        return list(self.lines)
+
+
+class _FakeParamikoClient(object):
+    """A connected paramiko client whose every status command answers with one fixed reply."""
+
+    def __init__(self, stdout: list | None, stderr: list, exit_status: int | None, raises: bool = False,
+                 silent: bool = False):
+        self.reply, self.raises, self.silent = (stdout, stderr, exit_status), raises, silent
+        self.commands, self.timeouts, self.channels = list(), list(), list()
+
+    def exec_command(self, command: str, timeout: float | None = None):
+        if command == 'ls':
+            return None, _FakeStream([], _FakeChannel(0)), _FakeStream([], _FakeChannel(0))
+        self.commands.append(command)
+        self.timeouts.append(timeout)
+        if self.raises:
+            raise paramiko.SSHException('Timeout opening channel.')
+        stdout, stderr, exit_status = self.reply
+        channel = _FakeChannel(None if self.silent else -1 if exit_status is None else exit_status)
+        self.channels.append(channel)
+        return None, _FakeStream(stdout, channel), _FakeStream(stderr, channel)
+
+
+class TestQueueQueryExitStatusOverSSH(unittest.TestCase):
+    """The SSH path returns the remote exit status, and the queue rule is judged by it."""
+
+    SERVER = {'address': 'host.example.edu', 'un': 'user', 'cluster_soft': 'Slurm'}
+
+    def setUp(self):
+        patcher = patch.object(ssh, 'servers', {'srv': dict(self.SERVER)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        sleep = patch('time.sleep')
+        self.sleep = sleep.start()
+        self.addCleanup(sleep.stop)
+        self.client = ssh.SSHClient('srv')
+
+    def _connect(self, stdout: list | None, stderr: list, exit_status: int | None, raises: bool = False,
+                 silent: bool = False):
+        self.client._ssh = _FakeParamikoClient(stdout, stderr, exit_status, raises=raises, silent=silent)
+        return self.client._ssh
+
+    def test_a_command_whose_exit_status_never_arrives_times_out_and_closes_its_channel(self):
+        fake = self._connect([], [], None, silent=True)
+        with self.assertRaises(TimeoutError):
+            self.client._send_command_to_server('cmd', return_exit_status=True, timeout=0.1)
+        self.assertTrue(fake.channels[-1].closed)
+
+    def test_a_read_that_times_out_closes_its_channel(self):
+        fake = self._connect(None, [], 0)
+        with self.assertRaises(TimeoutError):
+            self.client._send_command_to_server('cmd', return_exit_status=True, timeout=0.1)
+        self.assertTrue(fake.channels[-1].closed)
+
+    def test_a_status_query_that_never_answers_is_a_failed_query(self):
+        fake = self._connect([], [], None, silent=True)
+        with patch('arc.job.ssh.configured_queue_query_timeout', return_value=0.05):
+            with self.assertRaises(QueueQueryError):
+                self.client.check_running_jobs_ids()
+        self.assertEqual(len(fake.channels), 3)
+        self.assertTrue(all(channel.closed for channel in fake.channels))
+
+    def test_both_status_queries_pass_the_timeout_and_other_commands_do_not(self):
+        fake = self._connect(SLURM_LISTING, [], 0)
+        with patch('arc.job.ssh.configured_queue_query_timeout', return_value=42):
+            self.client.check_running_jobs_ids()
+            self.client.check_job_status(4242)
+            self.client._send_command_to_server('cmd')
+        self.assertEqual(fake.timeouts, [42, 42, None])
+
+    def test_send_command_returns_the_exit_status_when_asked(self):
+        self._connect(['out\n'], ['err\n'], 3)
+        self.assertEqual(self.client._send_command_to_server('cmd', return_exit_status=True), (['out\n'], ['err\n'], 3))
+        self.assertEqual(self.client._send_command_to_server('cmd'), (['out\n'], ['err\n']))
+
+    def test_a_channel_closed_without_an_exit_status_is_a_failure(self):
+        """paramiko reports -1, e.g., for a killed command or a dropped connection, which is not an empty queue"""
+        self._connect([], [], None)
+        self.assertEqual(self.client._send_command_to_server('cmd', return_exit_status=True), ([], [], -1))
+        with self.assertRaises(QueueQueryError):
+            self.client.check_running_jobs_ids()
+
+    def test_an_unopened_channel_gives_no_exit_status(self):
+        self._connect([], [], 0, raises=True)
+        self.assertEqual(self.client._send_command_to_server('cmd', return_exit_status=True),
+                         ([''], ['ssh timed-out after two trials'], None))
+
+    def test_an_empty_queue_with_a_banner_on_stderr_reads_as_no_jobs(self):
+        self._connect([], ['Welcome to the cluster. Maintenance on Sunday.\n'], 0)
+        self.assertEqual(self.client.check_running_jobs_ids(), list())
+        self.sleep.assert_not_called()
+
+    def test_a_listing_with_a_banner_on_stderr_says_the_job_runs(self):
+        self._connect(SLURM_LISTING, ['lmod: warning: module foo is deprecated\n'], 0)
+        self.assertEqual(self.client.check_job_status(4242), 'running')
+
+    def test_a_non_zero_exit_is_a_failure(self):
+        fake = self._connect(SLURM_LISTING, list(), 1)
+        with self.assertRaises(QueueQueryError) as cm:
+            self.client.check_running_jobs_ids()
+        self.assertEqual(cm.exception.exit_status, 1)
+        self.assertEqual(len(fake.commands), 3)
+
+    def test_exit_127_on_the_server_is_a_failure_in_any_wording(self):
+        self._connect([], ['bash: squeue: introuvable\n'], 127)
+        with self.assertRaises(QueueQueryError):
+            self.client.check_job_status(4242)
+
+    def test_an_unopened_channel_is_a_failed_query(self):
+        self._connect([], [], 0, raises=True)
+        with self.assertRaises(QueueQueryError):
+            self.client.check_running_jobs_ids()
 
 
 class TestSSHOptionalKey(unittest.TestCase):
