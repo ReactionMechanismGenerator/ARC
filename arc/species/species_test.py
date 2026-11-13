@@ -23,13 +23,17 @@ from arc.level import Level
 from arc.molecule.molecule import Molecule
 from arc.parser.parser import parse_e_elect
 from arc.plotter import save_conformers_file
+from arc.reaction import ARCReaction
+from arc.species.conformers_test import (C2H5_XYZ, C2H6_XYZ, CH3_XYZ, CH4_XYZ, NC3H7OO_XYZ, QOOH_XYZ, TS0_XYZ,
+                                         TS1_XYZ)
 from arc.species.converter import (check_isomorphism,
                                    str_to_xyz,
                                    xyz_to_str,
                                    xyz_to_x_y_z,
                                    )
 from arc.species.perceive_test import perceive_molecule_from_xyz
-from arc.species.species import (ARCSpecies,
+from arc.species.species import (REACTIVE_RING_INVALIDATION_REASON,
+                                 ARCSpecies,
                                  TSGuess,
                                  are_coords_compliant_with_graph,
                                  check_atom_balance,
@@ -460,6 +464,117 @@ class TestARCSpecies(unittest.TestCase):
         spc12.generate_conformers()
         self.assertEqual(len(spc12.conformers), 2)
         self.assertEqual(len(spc12.conformer_energies), 2)
+
+    def _ts0_rxn(self) -> ARCReaction:
+        """The nC3H7OO <=> QOOH (1,5 H-shift) reaction"""
+        return ARCReaction(r_species=[ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)],
+                           p_species=[ARCSpecies(label='QOOH', smiles='[CH2]CCOO', xyz=QOOH_XYZ)])
+
+    def assert_reactive_ring_rotors_not_scanned(self, ts: ARCSpecies):
+        """Assert that each rotor of TS0 lies in its reactive ring and is invalidated with the reactive ring cause"""
+        self.assertEqual(sorted(rotor['pivots'] for rotor in ts.rotors_dict.values()), [[1, 2], [2, 3], [3, 4]])
+        for rotor in ts.rotors_dict.values():
+            self.assertIs(rotor['success'], False, rotor['pivots'])
+            self.assertIn('Torsion lies in the TS reactive ring (code: reactive ring). ', rotor['invalidation_reason'])
+
+    def test_reactive_ring_invalidation_reason_code(self):
+        """Test that the reactive ring cause keeps the code that harmonic-fallback reports match on"""
+        self.assertIn('(code: reactive ring)', REACTIVE_RING_INVALIDATION_REASON)
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        ts.determine_rotors()
+        self.assertTrue(all(rotor['invalidation_reason'] == REACTIVE_RING_INVALIDATION_REASON
+                            for rotor in ts.rotors_dict.values()))
+
+    def test_determine_rotors_ts_reactive_ring(self):
+        """Test that the torsions of a TS reactive ring are not listed as rotors to scan"""
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        ts.determine_rotors()
+        self.assert_reactive_ring_rotors_not_scanned(ts)
+        self.assertTrue(all(rotor['ring_check'] == 'geometry (no reaction)' for rotor in ts.rotors_dict.values()))
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        ts.determine_rotors(reaction=self._ts0_rxn())
+        self.assert_reactive_ring_rotors_not_scanned(ts)
+        self.assertTrue(all(rotor['ring_check'] == 'reaction, geometry' for rotor in ts.rotors_dict.values()))
+        ts.determine_rotors()
+        self.assertEqual(ts.rotors_dict[0]['invalidation_reason'].count('reactive ring)'), 1)
+
+    def test_determine_rotors_ts_keeps_non_ring_rotor(self):
+        """Test that a TS rotor outside any ring is still listed as a rotor to scan"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=CH3_XYZ),
+                                     ARCSpecies(label='C2H6', smiles='CC', xyz=C2H6_XYZ)],
+                          p_species=[ARCSpecies(label='CH4', smiles='C', xyz=CH4_XYZ),
+                                     ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=C2H5_XYZ)])
+        for reaction in [None, rxn]:
+            ts = ARCSpecies(label='TS1', is_ts=True, xyz=TS1_XYZ)
+            ts.determine_rotors(reaction=reaction)
+            self.assertEqual([rotor['pivots'] for rotor in ts.rotors_dict.values()], [[5, 6]])
+            self.assertIsNone(ts.rotors_dict[0]['success'])
+            self.assertEqual(ts.rotors_dict[0]['invalidation_reason'], '')
+
+    def test_determine_rotors_ts_neither_source(self):
+        """Test that a TS rotor without a reaction or a TS geometry is loudly recorded as unverified, then re-judged"""
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        mol = ts.mol
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.mol = mol
+        with self.assertLogs('arc', level='WARNING') as logs:
+            ts.determine_rotors()
+        self.assertTrue(any('TS0' in line and 'reactive ring' in line for line in logs.output))
+        self.assertEqual(len(ts.rotors_dict), 3)
+        for rotor in ts.rotors_dict.values():
+            self.assertTrue(rotor['ring_check'].startswith('unverified: '))
+            self.assertIsNone(rotor['success'])
+            self.assertEqual(rotor['invalidation_reason'], '')
+        ts.final_xyz = str_to_xyz(TS0_XYZ)
+        ts.determine_rotors()
+        self.assert_reactive_ring_rotors_not_scanned(ts)
+
+    def test_determine_rotors_ts_does_not_rejudge_finished_scan(self):
+        """Test that a TS rotor whose scan already finished is not re-judged"""
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        mol = ts.mol
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.mol = mol
+        ts.determine_rotors()
+        ts.rotors_dict[0]['success'] = True
+        del ts.rotors_dict[1]['ring_check']  # A rotor restored from a restart file written before the check existed.
+        ts.final_xyz = str_to_xyz(TS0_XYZ)
+        ts.determine_rotors()
+        self.assertIs(ts.rotors_dict[0]['success'], True)
+        self.assertEqual(ts.rotors_dict[0]['invalidation_reason'], '')
+        self.assertIs(ts.rotors_dict[1]['success'], False)
+        self.assertIs(ts.rotors_dict[2]['success'], False)
+
+    def test_determine_rotors_ts_restores_stale_ring_rejection(self):
+        """Test that a TS rotor rejected only by the reactive ring check is restored once it is no longer in a ring"""
+        ts = ARCSpecies(label='TS1', is_ts=True, xyz=TS1_XYZ)
+        ts.determine_rotors()
+        rotor = ts.rotors_dict[0]
+        rotor['success'], rotor['invalidation_reason'] = False, REACTIVE_RING_INVALIDATION_REASON
+        ts.determine_rotors()
+        self.assertIsNone(rotor['success'])
+        self.assertEqual(rotor['invalidation_reason'], '')
+        rotor['success'] = False
+        rotor['invalidation_reason'] = REACTIVE_RING_INVALIDATION_REASON + 'Pivots participate in the TS reaction ' \
+                                                                           'zone (code: pivTS). '
+        ts.determine_rotors()
+        self.assertIs(rotor['success'], False)
+
+    def test_determine_rotors_ts_records_unused_reaction(self):
+        """Test that a reaction that cannot be used for the reactive ring check is logged and recorded"""
+        xyz = str_to_xyz(TS0_XYZ)
+        order = [4, 1, 2, 3, 0] + list(range(5, 12))
+        permuted = {'symbols': tuple(xyz['symbols'][i] for i in order),
+                    'isotopes': tuple(xyz['isotopes'][i] for i in order),
+                    'coords': tuple(xyz['coords'][i] for i in order)}
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=permuted)
+        with self.assertLogs('arc', level='WARNING') as logs:
+            ts.determine_rotors(reaction=self._ts0_rxn())
+        self.assertTrue(any('geometry alone' in line and 'atom order' in line for line in logs.output))
+        self.assertEqual(len(ts.rotors_dict), 3)
+        for rotor in ts.rotors_dict.values():
+            self.assertTrue(rotor['ring_check'].startswith('geometry (the TS is not in the atom order'))
+            self.assertIs(rotor['success'], False)
 
     def test_determine_rotors(self):
         """Test determination of rotors in ARCSpecies"""

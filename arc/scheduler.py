@@ -539,9 +539,11 @@ class Scheduler(object):
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
-                if self.job_types['rotors'] and not species.number_of_rotors and species.rotors_dict is not None:
-                    # if species.rotors_dict is None, it means the species is marked to not spawn rotor scans
-                    species.determine_rotors()
+                if self.job_types['rotors'] and (not species.number_of_rotors or species.is_ts) \
+                        and species.rotors_dict is not None:
+                    # if species.rotors_dict is None, it means the species is marked to not spawn rotor scans;
+                    # the rotors of a restored TS are re-checked for its reactive ring
+                    species.determine_rotors(reaction=self.rxn_dict.get(species.rxn_index))
                 if not self.job_types['opt'] and species.final_xyz is not None:
                     # opt wasn't asked for, and it's not needed, declare it as converged
                     self.output[species.label]['job_types']['opt'] = True
@@ -2660,8 +2662,7 @@ class Scheduler(object):
 
         # Spawn scan jobs.
         if self.job_types['rotors'] and self.species_dict[label].irc_label is None:
-            if not self.species_dict[label].rotors_dict:
-                self.species_dict[label].determine_rotors()
+            self.species_dict[label].determine_rotors(reaction=self.rxn_dict.get(self.species_dict[label].rxn_index))
             self.run_scan_jobs(label)
 
         # Spawn post sp actions if this is a composite job.

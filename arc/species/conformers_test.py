@@ -20,7 +20,84 @@ from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.group import GroupAtom, GroupBond, Group
 from arc.molecule.molecule import Molecule
 from arc.species.perceive import perceive_molecule_from_xyz
+from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
+
+
+# wB97X-D/def2-TZVP geometries. TS0: nC3H7OO <=> QOOH (1,5 H-shift, a 6-membered TS ring through the migrating H);
+# TS1: CH3 + C2H6 <=> CH4 + C2H5 (an H abstraction, a C-C rotor outside any ring). Atom order of the reactants.
+NC3H7OO_XYZ = """C 1.90381600 -0.70022500 0.13883600
+C 1.21054400 0.60047800 -0.24715600
+C -0.19976500 0.71445900 0.28533200
+O -1.00711400 -0.29768200 -0.36067400
+O -2.21670900 -0.32410300 0.11009200
+H 1.36776000 -1.56423100 -0.25480700
+H 2.92086100 -0.72822400 -0.25313900
+H 1.95960300 -0.80548600 1.22454600
+H 1.77067100 1.45475100 0.14144900
+H 1.18816400 0.71269400 -1.33399800
+H -0.25286400 0.53525800 1.36095200
+H -0.65118100 1.68125300 0.05758000"""
+QOOH_XYZ = """C 2.00064600 -0.73620400 0.13883500
+C 1.34337700 0.54950800 -0.20309800
+C -0.08343700 0.66837200 0.30364500
+O -0.84835000 -0.30040100 -0.38782200
+O -2.15355400 -0.29675100 0.17539200
+H 3.07421100 -0.83735800 0.06042900
+H 1.41048600 -1.61949500 0.33867900
+H 1.91376400 1.39109900 0.20393900
+H 1.33719200 0.70369400 -1.29277500
+H -0.48322100 1.66990100 0.10721700
+H -0.13374700 0.47316200 1.37891800
+H -2.66698000 0.10615000 -0.53326800"""
+TS0_XYZ = """C 1.33169900 -0.85305000 0.02353700
+C 1.13332000 0.62291300 -0.15730900
+C -0.27281400 1.04834700 0.30383500
+O -1.22610200 0.25841300 -0.36621000
+O -1.12844900 -1.03237500 0.13170500
+H 0.00738800 -1.24166800 0.00259200
+H 1.80904300 -1.39563100 -0.78626700
+H 1.63048600 -1.18517600 1.01469500
+H 1.24802500 0.90089700 -1.20523700
+H 1.86273600 1.19579200 0.42519600
+H -0.38593600 0.92971000 1.38557100
+H -0.48855700 2.07851200 0.01910900"""
+CH3_XYZ = """C 0.00000000 0.00000000 0.00000000
+H -0.00000000 1.07942400 0.00000000
+H -0.93480900 -0.53971200 0.00000000
+H 0.93480900 -0.53971200 0.00000000"""
+C2H6_XYZ = """C 0.00000000 0.00000000 0.76139500
+C -0.00000000 -0.00000000 -0.76139500
+H 0.00000000 1.01711100 1.15724100
+H 0.88084400 -0.50855600 1.15724100
+H -0.88084400 -0.50855600 1.15724100
+H 0.88084400 0.50855600 -1.15724100
+H -0.88084400 0.50855600 -1.15724100
+H -0.00000000 -1.01711100 -1.15724100"""
+CH4_XYZ = """C 0.00000000 0.00000000 0.00000000
+H 0.62869900 0.62869900 0.62869900
+H -0.62869900 -0.62869900 0.62869900
+H -0.62869900 0.62869900 -0.62869900
+H 0.62869900 -0.62869900 -0.62869900"""
+C2H5_XYZ = """C -0.69115000 0.00000000 -0.00179300
+C 0.79052600 0.00000000 -0.01858400
+H -1.10178500 0.88528600 -0.49189600
+H -1.08529900 -0.00000300 1.02496700
+H -1.10178500 -0.88528300 -0.49190000
+H 1.34630500 0.92579700 0.04054700
+H 1.34630500 -0.92579800 0.04054700"""
+TS1_XYZ = """C 1.92746300 -0.19016800 0.00000000
+H 1.99295400 -0.78208000 -0.90843600
+H 1.99296700 -0.78205300 0.90845300
+H 2.57831400 0.67924400 -0.00001800
+C -1.46834300 -0.49084500 0.00000000
+C -0.59123500 0.73401500 0.00000000
+H -1.28567800 -1.10772200 -0.88209100
+H -2.52981000 -0.22543100 -0.00000200
+H -1.28568000 -1.10772000 0.88209300
+H -0.66281800 1.34469300 -0.89878200
+H 0.65525500 0.31836200 0.00000100
+H -0.66281900 1.34469400 0.89878200"""
 
 
 class TestConformers(unittest.TestCase):
@@ -34,6 +111,14 @@ class TestConformers(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.rxn0 = ARCReaction(r_species=[ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)],
+                               p_species=[ARCSpecies(label='QOOH', smiles='[CH2]CCOO', xyz=QOOH_XYZ)])
+        cls.rxn1 = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=CH3_XYZ),
+                                          ARCSpecies(label='C2H6', smiles='CC', xyz=C2H6_XYZ)],
+                               p_species=[ARCSpecies(label='CH4', smiles='C', xyz=CH4_XYZ),
+                                          ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=C2H5_XYZ)])
+        cls.ts0 = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        cls.ts1 = ARCSpecies(label='TS1', is_ts=True, xyz=TS1_XYZ)
         xyz1 = """O      -1.48027320    0.36597456    0.41386552
 C      -0.49770656   -0.40253648   -0.26500019
 C       0.86215119    0.24734211   -0.11510338
@@ -2997,6 +3082,74 @@ Cl      2.38846685    0.24054066    0.55443324
         confs = conformers.generate_conformers(mol_list=[mol], label='spc_1')
         self.assertGreater(len(confs), 0)
 
+
+    def test_is_ring_twist(self):
+        """Test identifying a torsion whose pivot bond lies on a ring"""
+        self.assertFalse(conformers.is_ring_twist(bonds=set(), pivots=(0, 1)))
+        self.assertFalse(conformers.is_ring_twist(bonds={(0, 1), (1, 2), (2, 3)}, pivots=(1, 2)))
+        ring = {(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (0, 5), (0, 6), (6, 7)}
+        for pivots in [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0), (2, 1)]:
+            self.assertTrue(conformers.is_ring_twist(bonds=ring, pivots=pivots), pivots)
+        for pivots in [(0, 6), (6, 7), (8, 9)]:
+            self.assertFalse(conformers.is_ring_twist(bonds=ring, pivots=pivots), pivots)
+        ts0_bonds = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=self.rxn0)[0]
+        for pivots in [(0, 1), (1, 2), (2, 3)]:
+            self.assertTrue(conformers.is_ring_twist(bonds=ts0_bonds, pivots=pivots), pivots)
+        ts1_bonds = conformers.get_ts_bonds(mol=self.ts1.mol, xyz=self.ts1.get_xyz(), reaction=self.rxn1)[0]
+        self.assertFalse(conformers.is_ring_twist(bonds=ts1_bonds, pivots=(4, 5)))
+
+    def test_get_ts_bonds(self):
+        """Test building the TS graph from the reaction and from the TS geometry"""
+        mol_bonds = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=None)[0]
+        self.assertNotIn((0, 5), mol_bonds)
+        self.assertNotIn((4, 5), mol_bonds)
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=self.rxn0)
+        self.assertLessEqual({(0, 5), (4, 5)}, bonds)
+        self.assertEqual(sources, ['reaction', 'geometry'])
+        self.assertEqual(reason, '')
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=None)
+        self.assertLessEqual({(0, 5), (4, 5)}, bonds)
+        self.assertEqual(sources, ['geometry'])
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=self.rxn0)
+        self.assertLessEqual({(0, 5), (4, 5)}, bonds)
+        self.assertEqual(sources, ['reaction'])
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=None)
+        self.assertEqual(bonds, mol_bonds)
+        self.assertEqual(sources, [])
+        self.assertIn('no reaction', reason)
+        self.assertIn('no TS geometry', reason)
+        # The atom map picks an H of the other ethane C than the one abstracted in the TS1 geometry,
+        # so that formed bond is not a TS bond and must not close a false ring through the C-C rotor.
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts1.mol, xyz=self.ts1.get_xyz(), reaction=self.rxn1)
+        self.assertIn((0, 10), bonds)
+        self.assertNotIn((0, 6), bonds)
+        # A reaction whose bonds cannot be determined is skipped with the reason, it does not raise.
+        broken_rxn = ARCReaction(r_species=self.rxn0.r_species, p_species=self.rxn0.p_species)
+        broken_rxn.atom_map = [0] * 12
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=broken_rxn)
+        self.assertEqual(sources, ['geometry'])
+        self.assertIn('ValueError', reason)
+        self.assertLessEqual({(0, 5), (4, 5)}, bonds)
+        # A TS geometry not in the atom order of the reactants is not judged by the reaction's bonds.
+        xyz = self.ts0.get_xyz()
+        order = [4, 1, 2, 3, 0] + list(range(5, 12))
+        permuted = converter.xyz_from_data(coords=[xyz['coords'][i] for i in order],
+                                           symbols=[xyz['symbols'][i] for i in order])
+        permuted_mol = perceive_molecule_from_xyz(permuted)
+        bonds, sources, reason = conformers.get_ts_bonds(mol=permuted_mol, xyz=permuted, reaction=self.rxn0)
+        self.assertEqual(sources, ['geometry'])
+        self.assertIn('atom order', reason)
+        self.assertLessEqual({(4, 5), (0, 5)}, bonds)
+        # Without a TS geometry, a TS 2D graph in another atom order with the same element sequence is caught by
+        # the reactant bonds it lacks.
+        order = [0, 2, 1] + list(range(3, 12))
+        swapped = converter.xyz_from_data(coords=[xyz['coords'][i] for i in order],
+                                          symbols=[xyz['symbols'][i] for i in order])
+        self.assertEqual(swapped['symbols'], xyz['symbols'])
+        bonds, sources, reason = conformers.get_ts_bonds(mol=perceive_molecule_from_xyz(swapped), xyz=None,
+                                                         reaction=self.rxn0)
+        self.assertEqual(sources, [])
+        self.assertIn('atom order', reason)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

@@ -33,6 +33,9 @@ from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_ME
                            species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
+from arc.species.conformers_test import (C2H5_XYZ, C2H6_XYZ, CH3_XYZ, CH4_XYZ, NC3H7OO_XYZ, QOOH_XYZ, TS0_XYZ,
+                                         TS1_XYZ)
+from arc.species.conformers import find_internal_rotors
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess
 
@@ -2070,6 +2073,63 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.sched1.output['C2H6']['job_types']['freq'] = True
         self.sched1.output['C2H6']['paths']['sp'] = 'some/path/out.out'
         self.assertTrue(self.sched1._does_output_dict_contain_info())
+
+    def test_spawn_post_opt_jobs_skips_reactive_ring_rotors(self):
+        """Test that no scan job is spawned for a torsion in a TS reactive ring, while a non-ring TS rotor is scanned"""
+        cases = [(ARCReaction(r_species=[ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)],
+                              p_species=[ARCSpecies(label='QOOH', smiles='[CH2]CCOO', xyz=QOOH_XYZ)]), TS0_XYZ, []),
+                 (ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=CH3_XYZ),
+                                         ARCSpecies(label='C2H6', smiles='CC', xyz=C2H6_XYZ)],
+                              p_species=[ARCSpecies(label='CH4', smiles='C', xyz=CH4_XYZ),
+                                         ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=C2H5_XYZ)]), TS1_XYZ,
+                  [[6, 4, 5, 9]])]
+        job_types = initialize_job_types({'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False,
+                                          'freq': False, 'sp': False, 'rotors': True, 'irc': False,
+                                          'orbitals': False, 'bde': False, 'lennard_jones': False})
+        for i, (rxn, ts_xyz, expected_torsions) in enumerate(cases):
+            sched = Scheduler(project=f'project_test_reactive_ring_{i}', ess_settings=self.ess_settings,
+                              species_list=rxn.r_species + rxn.p_species, rxn_list=[rxn],
+                              opt_level=Level(repr=default_levels_of_theory['opt']),
+                              scan_level=Level(repr=default_levels_of_theory['scan']),
+                              project_directory=self.project_directory, testing=True, job_types=job_types)
+            ts = sched.species_dict[rxn.ts_label]
+            self.assertIsNone(ts.mol)
+            ts.final_xyz = str_to_xyz(ts_xyz)
+            sched.job_dict[ts.label] = dict()
+            with patch.object(sched, 'run_stability_job', return_value=False), \
+                    patch.object(sched.pipe_planner, 'try_pipe_rotor_scans_1d', return_value=set()), \
+                    patch.object(sched, 'run_job') as run_job:
+                sched.spawn_post_opt_jobs(label=ts.label, job_name='opt_a1')
+            scan_torsions = [call.kwargs['torsions'] for call in run_job.call_args_list
+                             if call.kwargs.get('job_type') == 'scan']
+            self.assertEqual(scan_torsions, expected_torsions, rxn.label)
+            if not expected_torsions:
+                self.assertEqual(len(ts.rotors_dict), 3)
+                self.assertTrue(all('(code: reactive ring)' in rotor['invalidation_reason']
+                                    for rotor in ts.rotors_dict.values()))
+
+    def test_restart_rechecks_restored_ts_rotors(self):
+        """Test that the unchecked rotors of a TS restored from a restart file are checked for its reactive ring"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)],
+                          p_species=[ARCSpecies(label='QOOH', smiles='[CH2]CCOO', xyz=QOOH_XYZ)])
+        rxn.ts_label = 'TS0'
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        ts.final_xyz = str_to_xyz(TS0_XYZ)
+        for i, rotor in enumerate(find_internal_rotors(ts.mol)):  # As written by a run before the check existed.
+            ts.rotors_dict[i] = rotor
+        ts.number_of_rotors = len(ts.rotors_dict)
+        self.assertEqual(ts.number_of_rotors, 3)
+        job_types = initialize_job_types({'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False,
+                                          'freq': False, 'sp': False, 'rotors': True, 'irc': False,
+                                          'orbitals': False, 'bde': False, 'lennard_jones': False})
+        Scheduler(project='project_test_reactive_ring_restart', ess_settings=self.ess_settings,
+                  species_list=rxn.r_species + rxn.p_species + [ts], rxn_list=[rxn],
+                  opt_level=Level(repr=default_levels_of_theory['opt']),
+                  scan_level=Level(repr=default_levels_of_theory['scan']),
+                  project_directory=self.project_directory, testing=True, job_types=job_types)
+        for rotor in ts.rotors_dict.values():
+            self.assertIs(rotor['success'], False)
+            self.assertIn('(code: reactive ring)', rotor['invalidation_reason'])
 
     def test_non_rotor(self):
         """Test that a 180 degree angle on either side of a torsion is not considered as a rotor."""
