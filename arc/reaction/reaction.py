@@ -243,7 +243,7 @@ class ARCReaction(object):
             self._multiplicity = self.get_rxn_multiplicity()
             if self._multiplicity is not None:
                 logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
-            else:
+            elif len(self.r_species) and len(self.p_species):
                 logger.error(f'Could not determine multiplicity for the reaction: {self.label}')
         return self._multiplicity
 
@@ -522,18 +522,26 @@ class ARCReaction(object):
             return sum(r.charge * self.get_species_count(species=r, well=0) for r in self.r_species)
         return None
 
-    def get_rxn_multiplicity(self):
-        """A helper function for determining the surface multiplicity"""
+    def get_rxn_multiplicity(self) -> int | None:
+        """
+        Determine the surface multiplicity from the multiplicities of the reactant and product species.
+
+        Returns:
+            int | None: The reaction multiplicity, ``None`` if it cannot be determined, e.g., if the
+                        species needed to determine it are not attached yet.
+        """
         reactants, products = self.get_reactants_and_products()
         multiplicity = None
-        ordered_r_mult_list, ordered_p_mult_list = list(), list()
-        if len(reactants):
-            if len(reactants) == 1:
-                return reactants[0].multiplicity
-            if len(products) == 1:
-                return products[0].multiplicity
-            ordered_r_mult_list = sorted([r_spc.multiplicity for r_spc in reactants])
-            ordered_p_mult_list = sorted([p_spc.multiplicity for p_spc in products])
+        if not len(reactants):
+            return None
+        if len(reactants) == 1:
+            return reactants[0].multiplicity
+        if len(products) == 1:
+            return products[0].multiplicity
+        if not len(products):
+            return None
+        ordered_r_mult_list = sorted([r_spc.multiplicity for r_spc in reactants])
+        ordered_p_mult_list = sorted([p_spc.multiplicity for p_spc in products])
 
         for list_1, list_2 in [(ordered_r_mult_list, ordered_p_mult_list),
                                (ordered_p_mult_list, ordered_r_mult_list)]:

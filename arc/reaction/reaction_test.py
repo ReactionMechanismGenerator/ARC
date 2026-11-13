@@ -690,6 +690,39 @@ class TestARCReaction(unittest.TestCase):
                             p_species=[ARCSpecies(label='NO', smiles='[N]=O'), ARCSpecies(label='NH', smiles='[NH]')])
         self.assertEqual(rxn_5.multiplicity, 4)
 
+    def test_multiplicity_species_attached_after_first_read(self):
+        """Test that reading the multiplicity before species are attached does not pin it to a singlet"""
+        rxn = ARCReaction(label='R <=> P', reactants=['R'], products=['P'])
+        self.assertIsNone(rxn.multiplicity)
+        rxn.r_species = [ARCSpecies(label='R', smiles='[CH2]C(C)CC')]
+        rxn.p_species = [ARCSpecies(label='P', smiles='CC(C)[CH]C')]
+        self.assertEqual(rxn.multiplicity, 2)
+
+    def test_multiplicity_without_species_is_none(self):
+        """Test that the multiplicity is not guessed when a side of the reaction has no species"""
+        self.assertIsNone(ARCReaction(label='A + B <=> C + D').multiplicity)
+        rxn = ARCReaction(reactants=['CH3', 'C2H5'], products=['C3H8_a', 'C3H8_b'],
+                          r_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='C2H5', smiles='C[CH2]')])
+        self.assertIsNone(rxn.get_rxn_multiplicity())
+        self.assertIsNone(rxn.multiplicity)
+        rxn = ARCReaction(label='R <=> P', reactants=['R'], products=['P'], multiplicity=3)
+        self.assertEqual(rxn.multiplicity, 3)
+        rxn = ARCReaction(reactants=['CH3', 'C2H6'], products=['CH4', 'C2H5'],
+                          r_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='C2H6', smiles='CC')],
+                          p_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='C2H5', smiles='C[CH2]')])
+        self.assertEqual(rxn.multiplicity, 2)
+
+    def test_multiplicity_survives_as_dict_round_trip(self):
+        """Test that a reaction serialized before its species are attached still derives its multiplicity"""
+        rxn = ARCReaction(label='R <=> P', reactants=['R'], products=['P'])
+        rxn_dict = rxn.as_dict()
+        self.assertIsNone(rxn_dict['multiplicity'])
+        loaded = ARCReaction(reaction_dict=rxn_dict)
+        self.assertIsNone(loaded.multiplicity)
+        loaded.r_species = [ARCSpecies(label='R', smiles='[CH2]C(C)CC')]
+        loaded.p_species = [ARCSpecies(label='P', smiles='CC(C)[CH]C')]
+        self.assertEqual(loaded.multiplicity, 2)
+
     def test_check_charge_balance(self):
         """Test the Reaction check_charge_balance method and the stoichiometric reaction charge"""
         ho = ARCSpecies(label='HO-', smiles='[OH-]', charge=-1)
