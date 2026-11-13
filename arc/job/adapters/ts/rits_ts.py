@@ -43,6 +43,7 @@ import subprocess
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from arc.common import ARC_PATH, get_logger, save_yaml_file, read_yaml_file
+from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, engine_path
@@ -282,8 +283,8 @@ class RitSAdapter(JobAdapter):
             exe_type (str, optional): Either ``'incore'`` (run locally now) or
                 ``'queue'`` (just stage the input.yml + submit script).
         """
-        if not _rits_environment_ready():
-            return
+        if not _rits_environment_ready(log=False):
+            raise DependencyError(f'RitS is not available: {engine_unavailable_reason()}.')
         rxn = self.reactions[0]
         if not rxn.is_unimolecular():
             logger.warning(f'The RitS TS search adapter requires a unimolecular reaction; skipping {rxn}.')
@@ -468,8 +469,8 @@ def engine_unavailable_reason() -> str | None:
 def _rits_environment_ready(log: bool = True) -> bool:
     """
     Check that everything RitS needs at runtime is in place. Returns ``False``
-    if anything is missing so the adapter (or a test guard) can skip cleanly
-    without raising.
+    if anything is missing so a caller (e.g. a test guard) can skip cleanly.
+    The adapter itself raises a ``DependencyError`` instead.
 
     Args:
         log (bool): When ``True`` (default), emit one warning naming every missing

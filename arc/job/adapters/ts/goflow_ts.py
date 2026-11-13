@@ -54,6 +54,7 @@ import numpy as np
 from rdkit import Chem
 
 from arc.common import ARC_PATH, get_logger, save_yaml_file, read_yaml_file
+from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, engine_path
@@ -310,8 +311,8 @@ class GoFlowAdapter(JobAdapter):
             exe_type (str, optional): Either ``'incore'`` (run locally now) or
                 ``'queue'`` (just stage the input.yml + submit script).
         """
-        if not _goflow_environment_ready():
-            return
+        if not _goflow_environment_ready(log=False):
+            raise DependencyError(f'GoFlow is not available: {engine_unavailable_reason()}.')
         self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
         timeout_s = getattr(self, 'goflow_subprocess_timeout', 600)
 
@@ -705,17 +706,20 @@ def engine_unavailable_reason() -> str | None:
     return '; '.join(missing) if missing else None
 
 
-def _goflow_environment_ready() -> bool:
+def _goflow_environment_ready(log: bool = True) -> bool:
     """
-    Verify that everything GoFlow needs at runtime is in place. Logs one warning
-    naming every missing piece and returns ``False`` so the adapter can skip
-    cleanly without raising.
+    Verify that everything GoFlow needs at runtime is in place. Returns ``False``
+    if anything is missing so a caller (e.g. a test guard) can skip cleanly.
+    The adapter itself raises a ``DependencyError`` instead.
+
+    Args:
+        log (bool): When ``True`` (default), emit one warning naming every missing piece.
 
     Returns:
         bool: Whether GoFlow can run.
     """
     reason = engine_unavailable_reason()
-    if reason is not None:
+    if reason is not None and log:
         logger.warning(f'GoFlow adapter: {reason}. Skipping GoFlow TS guesses.')
     return reason is None
 

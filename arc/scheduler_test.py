@@ -4133,6 +4133,19 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         self.assertFalse(sched.output[rxn_b.ts_label]['errors'])
         self.assertNotIn(('tsg', 'autotst'), spawned)
 
+    def test_spawn_ts_jobs_with_no_available_adapter_keeps_a_yaml_ts_converged(self):
+        """Test that a TS loaded from an Arkane YAML file stays converged when no TS search adapter is available."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+        sched, spawned = self.setup_absent_engine_scheduler(
+            rxns=[rxn], ts_adapters=['autotst'], project='arc_project_for_testing_delete_after_usage_tsg_8')
+        sched.species_dict[rxn.ts_label].yml_path = os.path.join(ARC_PATH, 'TS.yml')
+        sched.output[rxn.ts_label]['convergence'] = True
+        sched.spawn_ts_jobs()
+        self.assertTrue(sched.output[rxn.ts_label]['convergence'])
+        self.assertFalse(sched.output[rxn.ts_label]['errors'])
+        self.assertFalse(sched.species_dict[rxn.ts_label].ts_guesses_exhausted)
+
 
 class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
     """

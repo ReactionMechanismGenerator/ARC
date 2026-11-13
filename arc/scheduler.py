@@ -2763,7 +2763,7 @@ class Scheduler(object):
                                 self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).pop(tsg_index, None)
                                 continue
                             tsg_index += 1
-                    if not tsg_index and not rxn.ts_species.ts_guesses:
+                    if not tsg_index and not rxn.ts_species.ts_guesses and rxn.ts_species.yml_path is None:
                         # No adapter ran and no user guess was given, and tsg_spawned is already
                         # latched True, so warn explicitly rather than fail silently much later.
                         eligible = ts_adapters_by_rmg_family.get(rxn.family) if family_known else None

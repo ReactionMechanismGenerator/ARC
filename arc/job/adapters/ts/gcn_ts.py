@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from rdkit import Chem
 
 from arc.common import ARC_PATH, almost_equal_coords, get_logger, save_yaml_file
+from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, missing_engine_file_reason
@@ -290,10 +291,7 @@ class GCNAdapter(JobAdapter):
             exe_type (str, optional): Whether to execute 'incore' or 'queue'.
         """
         if not gcn_available():
-            reason = engine_unavailable_reason() or f'TS_GCN_PYTHON is {TS_GCN_PYTHON!r}'
-            logger.warning(f'GCN is not available: {reason} (see {self.url}). '
-                           f'Skipping GCN TS guesses for {self.reactions[0].label}.')
-            return
+            raise DependencyError(f'GCN is not available: {engine_unavailable_reason()} (see {self.url}).')
         self._log_job_execution()
         rxn = self.reactions[0]
         if not rxn.is_isomerization():
