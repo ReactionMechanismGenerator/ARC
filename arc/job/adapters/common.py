@@ -910,6 +910,42 @@ def set_job_args(args: dict | None,
     return args
 
 
+def engine_path(value: object) -> str | None:
+    """
+    Convert an engine path setting to a path string.
+
+    Args:
+        value (object): The setting's value, a ``str`` or an ``os.PathLike`` is a path.
+
+    Returns:
+        str | None: The path, or ``None`` if the value is not a path.
+    """
+    if isinstance(value, (str, os.PathLike)):
+        path = os.fspath(value)
+        return path if isinstance(path, str) else None
+    return None
+
+
+def missing_engine_file_reason(path: object, setting: str, expected: str) -> str | None:
+    """
+    Report why an engine file setting does not point at an existing file.
+
+    A missing, ``None`` or wrong-type setting is reported as missing rather than raising.
+
+    Args:
+        path (object): The value of the setting, expected to be a path string.
+        setting (str): The setting's name, e.g., ``'KINBOT_PYTHON'``.
+        expected (str): What the setting should point at, e.g., ``'the python of the kinbot_env conda env'``.
+
+    Returns:
+        str | None: ``None`` if ``path`` is an existing file, otherwise a reason naming the setting.
+    """
+    path_str = engine_path(path)
+    if path_str is not None and os.path.isfile(path_str):
+        return None
+    return f'{setting} ({path!r}) is not an existing file; expected {expected}'
+
+
 def which(command: str | list,
           return_bool: bool = True,
           raise_error: bool = False,
