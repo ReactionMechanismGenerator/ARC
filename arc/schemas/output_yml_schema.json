@@ -1029,6 +1029,44 @@
       },
       "additionalProperties": false
     },
+    "harmonic_fallback_torsion": {
+      "description": "A torsion that stays a harmonic mode because Arkane did not receive it as a hindered rotor.",
+      "type": "object",
+      "required": [
+        "pivot_atoms",
+        "atom_indices",
+        "cause",
+        "reason"
+      ],
+      "properties": {
+        "pivot_atoms": {
+          "description": "The torsion's 1-indexed rotation axis, as in rejected_torsion.",
+          "$ref": "#/$defs/one_or_multi_dimensional_indices"
+        },
+        "atom_indices": {
+          "description": "The torsion's 1-indexed dihedral, as in rejected_torsion.",
+          "$ref": "#/$defs/one_or_multi_dimensional_indices"
+        },
+        "cause": {
+          "type": "string",
+          "enum": [
+            "scan failed",
+            "scan stopped (lower conformer found)",
+            "scan not completed",
+            "TS reaction zone",
+            "ring",
+            "reactive ring",
+            "user choice"
+          ],
+          "description": "Why the torsion is not a hindered rotor."
+        },
+        "reason": {
+          "type": "string",
+          "description": "ARC's recorded invalidation reason, whitespace-normalized; empty when none was recorded."
+        }
+      },
+      "additionalProperties": false
+    },
     "rejected_torsion": {
       "description": "A rotor ARC evaluated and genuinely rejected (rotors_dict entry whose 'success' is False), carried so a consumer can tell 'no rotors' from 'rotors found and rejected, for these reasons' rather than losing the rejected rotor entirely. Pending or never-attempted rotors ('success' is None) are not carried here -- ARC has not decided their fate yet. This rotor never contributes a rotor_scans record -- rejected rotors are excluded from rotor_scans entirely -- so source_log records the raw scan-log path directly rather than referencing a rotor_scans key.",
       "type": "object",
@@ -1145,6 +1183,23 @@
           "items": {
             "$ref": "#/$defs/rejected_torsion"
           }
+        },
+        "harmonic_fallback_torsions": {
+          "type": "array",
+          "description": "Every torsion Arkane did not treat as a hindered rotor, so it stays a harmonic mode of the frequency calculation, with its cause. Includes ring torsions, which are structural rather than failures.",
+          "items": {
+            "$ref": "#/$defs/harmonic_fallback_torsion"
+          }
+        },
+        "n_harmonic_fallback_torsions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The number of harmonic_fallback_torsions entries whose cause is neither 'ring' nor 'reactive ring': torsions that could have been hindered rotors but were not."
+        },
+        "n_ring_torsions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The number of harmonic_fallback_torsions entries whose cause is 'ring' or 'reactive ring'."
         }
       },
       "additionalProperties": false

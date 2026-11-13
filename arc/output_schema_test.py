@@ -610,6 +610,13 @@ class TestOrcaRotorScanValidates(SchemaAssertionMixin, unittest.TestCase):
         """The whole document satisfies the schema."""
         self.assert_valid(self.document)
 
+    def test_all_rotors_treated_has_no_harmonic_fallback(self):
+        """A species whose every rotor was treated reports a zero harmonic-fallback count."""
+        statmech = self.document['species'][0]['statmech']
+        self.assertEqual(statmech['harmonic_fallback_torsions'], [])
+        self.assertEqual(statmech['n_harmonic_fallback_torsions'], 0)
+        self.assertEqual(statmech['n_ring_torsions'], 0)
+
     def test_relative_energies_are_relative_and_in_kj_mol(self):
         """The published curve is zeroed and in kJ/mol, not raw Hartree.
 
@@ -895,6 +902,16 @@ class TestOnlyRejectedRotorsValidate(SchemaAssertionMixin, unittest.TestCase):
         """A genuine rejection (``success is False``) with no recorded reason still carries the empty string as-is."""
         rejected = {entry['rotor_index']: entry for entry in self.species['statmech']['rejected_torsions']}
         self.assertEqual(rejected[1]['invalidation_reason'], '')
+
+    def test_harmonic_fallback_lists_failed_and_pending_rotors(self):
+        """Every rotor left harmonic is listed with its cause, and the count includes the pending one."""
+        statmech = self.species['statmech']
+        self.assertEqual([(e['pivot_atoms'], e['cause'], e['reason']) for e in statmech['harmonic_fallback_torsions']],
+                         [([2, 3], 'scan failed', 'rotor set too many (5) times'),
+                          ([3, 4], 'scan failed', ''),
+                          ([4, 5], 'scan not completed', '')])
+        self.assertEqual(statmech['n_harmonic_fallback_torsions'], 3)
+        self.assertEqual(statmech['n_ring_torsions'], 0)
 
     def test_pending_rotor_is_not_published_as_a_rejection(self):
         """``success is None`` means pending/never-attempted, not rejected -- it must not appear here."""

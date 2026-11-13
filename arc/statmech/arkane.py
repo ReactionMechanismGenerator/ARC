@@ -21,6 +21,7 @@ from arc.job.local import execute_command
 from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
 
+from arc.species.conformers import find_internal_rotors
 from arc.species.species import ThermoData
 
 if TYPE_CHECKING:
@@ -40,6 +41,20 @@ PBAC_SECTION_END = "mbac = {"
 MBAC_SECTION_START = "mbac = {"
 MBAC_SECTION_END = "freq_dict ="
 FREQ_SECTION_START = "freq_dict = {"
+
+# Causes for a torsion that is not treated as a hindered rotor, so Arkane keeps it as a harmonic mode.
+ROTOR_FALLBACK_SCAN_FAILED = 'scan failed'
+ROTOR_FALLBACK_SCAN_STOPPED = 'scan stopped (lower conformer found)'
+ROTOR_FALLBACK_SCAN_INCOMPLETE = 'scan not completed'
+ROTOR_FALLBACK_TS_REACTION_ZONE = 'TS reaction zone'
+ROTOR_FALLBACK_RING = 'ring'
+ROTOR_FALLBACK_REACTIVE_RING = 'reactive ring'
+ROTOR_FALLBACK_USER_CHOICE = 'user choice'
+RING_FALLBACK_CAUSES = (ROTOR_FALLBACK_RING, ROTOR_FALLBACK_REACTIVE_RING)
+REACTIVE_RING_CODE = '(code: reactive ring)'
+TS_REACTION_ZONE_CODE = 'pivTS'
+HARMONIC_FALLBACK_MESSAGE_PREFIX = 'Harmonic-fallback torsions (not treated as hindered rotors): '
+HARMONIC_FALLBACK_MESSAGE_SUFFIX = ' [end of harmonic-fallback torsions]; '
 
 # Tunneling method ARC uses for every reaction kinetics fit. Single source
 # of truth: the Arkane input template renders this constant, and output.yml
@@ -119,6 +134,9 @@ energy = Log('${sp_path}')
 geometry = Log('${freq_path}')
 frequencies = Log('${freq_path}')
 
+% for line in fallback_lines:
+# Harmonic fallback: ${line}
+% endfor
 %if use_hindered_rotors:
 rotors = [
 % for rotor in rotors:
@@ -477,6 +495,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             os.remove(file_path)
         rotors = [rotor for rotor in species.rotors_dict.values() if rotor['success']] if species.rotors_dict else list()
         use_rotors = not skip_rotors and bool(rotors)
+        fallback = get_harmonic_fallback_torsions(species, skip_rotors=skip_rotors)
+        if fallback and not skip_rotors:
+            logger.info(format_harmonic_fallback_message(species.label, fallback))
         content = Template(species_input_template).render(
             linear=species.is_linear,
             spin_multiplicity=species.multiplicity,
@@ -484,6 +505,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             freq_path=self.output_dict[species.label]['paths']['freq'] or self.output_dict[species.label]['paths']['sp'],
             use_hindered_rotors=use_rotors,
             rotors=rotors,
+            fallback_lines=[describe_harmonic_fallback_torsion(entry, with_scan=True) for entry in fallback],
         )
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -583,6 +605,176 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             _parse_conformer_statmech(species, output_content)
         for rxn in self.reactions:
             _parse_conformer_statmech(rxn.ts_species, output_content)
+
+
+def _classify_rotor_fallback(rotor: dict) -> str:
+    """
+    Determine why a rotor that is not passed to Arkane stays a harmonic mode.
+
+    Args:
+        rotor (dict): A ``rotors_dict`` entry whose ``success`` is falsy.
+
+    Returns:
+        str: One of the ``ROTOR_FALLBACK_*`` cause labels.
+    """
+    reason = rotor.get('invalidation_reason') or ''
+    if rotor.get('success') is None:
+        if any(isinstance(method, dict) and 'change conformer' in method for method in rotor.get('trsh_methods') or list()):
+            return ROTOR_FALLBACK_SCAN_STOPPED
+        return ROTOR_FALLBACK_SCAN_INCOMPLETE
+    if REACTIVE_RING_CODE in reason:
+        return ROTOR_FALLBACK_REACTIVE_RING
+    if TS_REACTION_ZONE_CODE in reason:
+        return ROTOR_FALLBACK_TS_REACTION_ZONE
+    return ROTOR_FALLBACK_SCAN_FAILED
+
+
+def _pick_scan_end_atom(mol: Molecule, atom, exclude: list):
+    """
+    Pick the lowest-index neighbor of ``atom`` not in ``exclude``, preferring heavy atoms, as a scan end atom.
+
+    Args:
+        mol (Molecule): The molecule.
+        atom (Atom): The pivotal atom whose neighbors are searched.
+        exclude (list[Atom]): Atoms that may not be picked.
+
+    Returns:
+        Atom | None: The picked neighbor, ``None`` if every neighbor is excluded.
+    """
+    neighbors = sorted([neighbor for neighbor in atom.edges if neighbor not in exclude],
+                       key=lambda neighbor: (neighbor.is_hydrogen(), mol.atoms.index(neighbor)))
+    return neighbors[0] if neighbors else None
+
+
+def _ring_torsions(mol: Molecule) -> list[dict]:
+    """
+    List the torsions of ``mol`` that ``find_internal_rotors()`` skips because their bond is in a ring.
+
+    Args:
+        mol (Molecule): The molecule.
+
+    Returns:
+        list[dict]: Entries with 1-indexed ``pivots`` and ``scan``.
+    """
+    torsions = list()
+    for bond in mol.get_all_edges():
+        atom1, atom2 = sorted([bond.atom1, bond.atom2], key=mol.atoms.index)
+        if atom1.is_non_hydrogen() and atom2.is_non_hydrogen() and bond.is_rotatable() \
+                and mol.is_bond_in_cycle(bond) and len(atom1.edges) > 1 and len(atom2.edges) > 1:
+            end1 = _pick_scan_end_atom(mol, atom1, exclude=[atom2])
+            end2 = _pick_scan_end_atom(mol, atom2, exclude=[atom1, end1]) or _pick_scan_end_atom(mol, atom2, exclude=[atom1])
+            pivots = [mol.atoms.index(atom1) + 1, mol.atoms.index(atom2) + 1]
+            scan = [mol.atoms.index(end1) + 1] + pivots + [mol.atoms.index(end2) + 1]
+            torsions.append({'pivots': pivots, 'scan': scan})
+    return sorted(torsions, key=lambda torsion: torsion['pivots'])
+
+
+def get_harmonic_fallback_torsions(species: 'ARCSpecies', skip_rotors: bool = False) -> list[dict]:
+    """
+    List every torsion of a species or TS that Arkane does not treat as a hindered rotor, with its cause.
+    Arkane receives only the rotors whose ``success`` is truthy; each torsion listed here stays a harmonic mode.
+    Species loaded from an Arkane YAML file and IRC endpoint species are never scanned by design, and get no entries.
+
+    Args:
+        species (ARCSpecies): The species or TS.
+        skip_rotors (bool, optional): Whether rotors are skipped for this Arkane run altogether.
+
+    Returns:
+        list[dict]: Entries with ``pivots``, ``scan``, ``cause`` (a ``ROTOR_FALLBACK_*`` label), and ``reason``
+                    (the recorded invalidation reason, ``''`` if none).
+    """
+    if getattr(species, 'yml_path', None) or (not getattr(species, 'is_ts', False) and getattr(species, 'irc_label', None)):
+        return list()
+    rotors_dict = getattr(species, 'rotors_dict', None)
+    mol = getattr(species, 'mol', None)
+    mol = mol if isinstance(mol, Molecule) else None
+    fallback = list()
+    if rotors_dict:
+        for rotor in rotors_dict.values():
+            if rotor.get('success') and not skip_rotors:
+                continue
+            cause = ROTOR_FALLBACK_USER_CHOICE if skip_rotors else _classify_rotor_fallback(rotor)
+            fallback.append({'pivots': rotor.get('pivots'), 'scan': rotor.get('scan'), 'cause': cause,
+                             'reason': ' '.join(str(rotor.get('invalidation_reason') or '').split())})
+    elif mol is not None:
+        for rotor in find_internal_rotors(mol.copy(deep=True)):
+            fallback.append({'pivots': rotor['pivots'], 'scan': rotor['scan'], 'cause': ROTOR_FALLBACK_USER_CHOICE,
+                             'reason': ''})
+    if mol is not None:
+        for torsion in _ring_torsions(mol):
+            fallback.append({'pivots': torsion['pivots'], 'scan': torsion['scan'], 'cause': ROTOR_FALLBACK_RING,
+                             'reason': ''})
+    return fallback
+
+
+def count_harmonic_fallback_torsions(fallback: list[dict]) -> tuple[int, int]:
+    """
+    Count the harmonic-fallback torsions, keeping the structural ring torsions apart.
+
+    Args:
+        fallback (list[dict]): Entries from ``get_harmonic_fallback_torsions()``.
+
+    Returns:
+        tuple[int, int]: The number of non-ring fallback torsions, and the number of ring and reactive-ring torsions.
+    """
+    n_ring = sum(1 for entry in fallback if entry['cause'] in RING_FALLBACK_CAUSES)
+    return len(fallback) - n_ring, n_ring
+
+
+def describe_harmonic_fallback_torsion(entry: dict, with_scan: bool = False) -> str:
+    """
+    Describe one harmonic-fallback torsion in a single line.
+
+    Args:
+        entry (dict): An entry from ``get_harmonic_fallback_torsions()``.
+        with_scan (bool, optional): Whether to include the four scan atoms.
+
+    Returns:
+        str: E.g., ``'pivots [1, 2]: scan failed (Could not read energies)'``.
+    """
+    scan = f', scan {entry["scan"]}' if with_scan else ''
+    reason = f' ({entry["reason"]})' if entry['reason'] else ''
+    return f'pivots {entry["pivots"]}{scan}: {entry["cause"]}{reason}'
+
+
+def format_harmonic_fallback_message(label: str, fallback: list[dict]) -> str:
+    """
+    Format the harmonic-fallback torsions of a species as one warning, delimited so it can be replaced later.
+
+    Args:
+        label (str): The species label.
+        fallback (list[dict]): Entries from ``get_harmonic_fallback_torsions()``.
+
+    Returns:
+        str: The warning.
+    """
+    body = '; '.join(describe_harmonic_fallback_torsion(entry) for entry in fallback)
+    return f'{HARMONIC_FALLBACK_MESSAGE_PREFIX}{label}: {body}{HARMONIC_FALLBACK_MESSAGE_SUFFIX}'
+
+
+def record_harmonic_fallback_warnings(output_dict: dict, species_dict: dict) -> None:
+    """
+    Write the harmonic-fallback torsions of every converged species and TS into its status ``warnings``,
+    replacing any such warning recorded earlier (e.g., before a restart), and log them.
+
+    Args:
+        output_dict (dict): The scheduler's output (status) dictionary, keyed by label.
+        species_dict (dict): ARCSpecies objects keyed by label.
+    """
+    pattern = re.compile(re.escape(HARMONIC_FALLBACK_MESSAGE_PREFIX) + '.*?'
+                         + re.escape(HARMONIC_FALLBACK_MESSAGE_SUFFIX), re.DOTALL)
+    for label, entry in output_dict.items():
+        species = species_dict.get(label)
+        if species is None or not isinstance(entry, dict):
+            continue
+        warnings = pattern.sub('', entry.get('warnings') or '')
+        if entry.get('convergence'):
+            fallback = get_harmonic_fallback_torsions(species)
+            if fallback:
+                message = format_harmonic_fallback_message(label, fallback)
+                logger.warning(message)
+                warnings += message
+        entry['warnings'] = warnings
 
 
 def run_arkane(statmech_dir: str) -> bool:

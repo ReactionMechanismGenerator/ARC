@@ -13,14 +13,22 @@ import unittest
 from unittest.mock import patch
 
 from arc.checks.common import TS_IRC_FAILED_MARKER
-from arc.common import ARC_TESTING_PATH, save_yaml_file
+from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
 from arc.exceptions import InputError
 from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
+from arc.species.conformers import find_internal_rotors
 from arc.statmech.adapter import StatmechEnum
 from arc.statmech.arkane import ArkaneAdapter
 from arc.statmech.arkane import (
+    ROTOR_FALLBACK_REACTIVE_RING,
+    ROTOR_FALLBACK_RING,
+    ROTOR_FALLBACK_SCAN_FAILED,
+    ROTOR_FALLBACK_SCAN_INCOMPLETE,
+    ROTOR_FALLBACK_SCAN_STOPPED,
+    ROTOR_FALLBACK_TS_REACTION_ZONE,
+    ROTOR_FALLBACK_USER_CHOICE,
     _all_available_years,
     _available_years_for_level,
     _extract_section,
@@ -34,10 +42,13 @@ from arc.statmech.arkane import (
     _warn_no_match,
     check_arkane_aec,
     check_arkane_bacs,
+    count_harmonic_fallback_torsions,
     get_arkane_model_chemistry,
+    get_harmonic_fallback_torsions,
     parse_e0,
     parse_reaction_kinetics,
     parse_thermo_data_block,
+    record_harmonic_fallback_warnings,
     run_arkane,
     _classify_arkane_stderr,
     _parse_conformer_statmech,
@@ -942,6 +953,291 @@ class TestSummarizeArkaneStderr(unittest.TestCase):
 
     def test_single_line_no_extra_suffix(self):
         self.assertEqual(self._summarize(['RuntimeError: boom']), 'RuntimeError: boom')
+
+
+class TestHarmonicFallbackTorsions(unittest.TestCase):
+    """
+    Contains unit tests for listing the torsions that are not treated as hindered rotors.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.tmpdir = tempfile.mkdtemp(prefix='test_Arkane_fallback_')
+        cls.ethanol_xyz = ARCSpecies(label='EtOH_xyz', smiles='CCO').get_xyz()
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        A function that is run ONCE after all unit tests in this class.
+        """
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
+
+    def _ethanol(self, label: str = 'EtOH') -> ARCSpecies:
+        """
+        Make an ethanol species with one failed rotor and one rotor stopped by a lower conformer.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            ARCSpecies: The species.
+        """
+        spc = ARCSpecies(label=label, smiles='CCO')
+        spc.determine_rotors()
+        spc.rotors_dict[0]['success'] = False
+        spc.rotors_dict[0]['invalidation_reason'] = 'Bond (1, 2) broke during the scan.'
+        spc.rotors_dict[1]['success'] = None
+        spc.rotors_dict[1]['invalidation_reason'] = 'Another conformer for EtOH exists which is 4.20 kJ/mol lower.'
+        spc.rotors_dict[1]['trsh_methods'] = [{'change conformer': self.ethanol_xyz}]
+        return spc
+
+    def _ts(self) -> ARCSpecies:
+        """
+        Make a TS whose rotors all failed: one blocked by the reaction zone, one with a failed scan.
+
+        Returns:
+            ARCSpecies: The TS species.
+        """
+        ts = ARCSpecies(label='TS_all_failed', is_ts=True, xyz=self.ethanol_xyz)
+        ts.determine_rotors()
+        ts.rotors_dict[0]['success'] = False
+        ts.rotors_dict[0]['invalidation_reason'] = 'Pivots participate in the TS reaction zone (code: pivTS). '
+        ts.rotors_dict[1]['success'] = False
+        ts.rotors_dict[1]['invalidation_reason'] = 'Could not read energies'
+        return ts
+
+    def _adapter(self, species: list[ARCSpecies], name: str) -> ArkaneAdapter:
+        """
+        Make an Arkane adapter whose output dict points every species at existing ESS logs.
+
+        Args:
+            species (list[ARCSpecies]): The species.
+            name (str): A unique subdirectory name.
+
+        Returns:
+            ArkaneAdapter: The adapter.
+        """
+        opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        freq_path = os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out')
+        output_dict = {spc.label: {'paths': {'freq': freq_path, 'sp': opt_path, 'opt': opt_path, 'composite': ''}}
+                       for spc in species}
+        return ArkaneAdapter(output_directory=os.path.join(self.tmpdir, name, 'output'),
+                             calcs_directory=os.path.join(self.tmpdir, name, 'calcs'),
+                             output_dict=output_dict, bac_type=None, species=species, sp_level=Level('gfn2'))
+
+    def _write_status(self, species: list[ARCSpecies], name: str, warnings: str = '') -> dict:
+        """
+        Record the fallback warnings into a status dict, save it as status.yml, and read it back.
+
+        Args:
+            species (list[ARCSpecies]): The species.
+            name (str): A unique file name.
+            warnings (str): Pre-existing warnings for every species.
+
+        Returns:
+            dict: The status.yml content as read back from disk.
+        """
+        output = {spc.label: {'convergence': True, 'warnings': warnings} for spc in species}
+        record_harmonic_fallback_warnings(output, {spc.label: spc for spc in species})
+        path = os.path.join(self.tmpdir, f'{name}_status.yml')
+        save_yaml_file(path=path, content=output)
+        return read_yaml_file(path)
+
+    def test_all_rotors_treated(self):
+        """Test that a species whose rotors all succeeded has no fallback torsions."""
+        spc = ARCSpecies(label='EtOH_ok', smiles='CCO')
+        spc.determine_rotors()
+        for rotor in spc.rotors_dict.values():
+            rotor['success'] = True
+        self.assertEqual(get_harmonic_fallback_torsions(spc), [])
+        self.assertEqual(get_harmonic_fallback_torsions(ARCSpecies(label='H2O', smiles='O')), [])
+
+    def test_failed_and_stopped_rotors_are_classified(self):
+        """Test that a failed and a stopped rotor are listed with their pivots, cause and reason."""
+        fallback = get_harmonic_fallback_torsions(self._ethanol())
+        self.assertEqual(fallback, [
+            {'pivots': [1, 2], 'scan': [4, 1, 2, 3], 'cause': ROTOR_FALLBACK_SCAN_FAILED,
+             'reason': 'Bond (1, 2) broke during the scan.'},
+            {'pivots': [2, 3], 'scan': [1, 2, 3, 9], 'cause': ROTOR_FALLBACK_SCAN_STOPPED,
+             'reason': 'Another conformer for EtOH exists which is 4.20 kJ/mol lower.'},
+        ])
+        self.assertEqual(ROTOR_FALLBACK_SCAN_FAILED, 'scan failed')
+        self.assertEqual(ROTOR_FALLBACK_SCAN_STOPPED, 'scan stopped (lower conformer found)')
+
+    def test_pending_rotor_is_not_completed(self):
+        """Test that a rotor still pending without a conformer change is listed as not completed."""
+        spc = ARCSpecies(label='EtOH_pending', smiles='CCO')
+        spc.determine_rotors()
+        spc.rotors_dict[0]['success'] = True
+        self.assertEqual(get_harmonic_fallback_torsions(spc),
+                         [{'pivots': [2, 3], 'scan': [1, 2, 3, 9], 'cause': ROTOR_FALLBACK_SCAN_INCOMPLETE, 'reason': ''}])
+
+    def test_ts_reaction_zone_and_failed_scan(self):
+        """Test that a TS whose rotors all failed lists each one, telling the reaction zone apart from a failed scan."""
+        causes = [(entry['pivots'], entry['cause']) for entry in get_harmonic_fallback_torsions(self._ts())]
+        self.assertEqual(causes, [([1, 2], ROTOR_FALLBACK_TS_REACTION_ZONE), ([2, 3], ROTOR_FALLBACK_SCAN_FAILED)])
+
+    def test_reactive_ring(self):
+        """Test that a TS rotor marked as lying in the reactive ring is a ring torsion, not a failed scan."""
+        ts = self._ts()
+        ts.rotors_dict[1]['invalidation_reason'] = \
+            'Could not read energies; Torsion lies in the TS reactive ring (code: reactive ring). '
+        fallback = get_harmonic_fallback_torsions(ts)
+        self.assertEqual([(e['pivots'], e['cause']) for e in fallback],
+                         [([1, 2], ROTOR_FALLBACK_TS_REACTION_ZONE), ([2, 3], ROTOR_FALLBACK_REACTIVE_RING)])
+        self.assertEqual(count_harmonic_fallback_torsions(fallback), (1, 1))
+
+    def test_user_choice(self):
+        """Test that torsions are listed as a user choice when rotor scans were turned off."""
+        for rotors_dict in [None, dict()]:
+            spc = ARCSpecies(label='EtOH_off', smiles='CCO')
+            spc.rotors_dict = rotors_dict
+            self.assertEqual([(e['pivots'], e['cause']) for e in get_harmonic_fallback_torsions(spc)],
+                             [([1, 2], ROTOR_FALLBACK_USER_CHOICE), ([2, 3], ROTOR_FALLBACK_USER_CHOICE)])
+        spc = self._ethanol()
+        self.assertEqual({e['cause'] for e in get_harmonic_fallback_torsions(spc, skip_rotors=True)},
+                         {ROTOR_FALLBACK_USER_CHOICE})
+
+    def test_ring_torsions(self):
+        """Test that every rotatable ring bond of cyclohexane is listed as a ring torsion."""
+        fallback = get_harmonic_fallback_torsions(ARCSpecies(label='cC6H12', smiles='C1CCCCC1'))
+        self.assertEqual(len(fallback), 6)
+        self.assertEqual({entry['cause'] for entry in fallback}, {ROTOR_FALLBACK_RING})
+        self.assertEqual(ROTOR_FALLBACK_REACTIVE_RING, 'reactive ring')
+        self.assertEqual(count_harmonic_fallback_torsions(fallback), (0, 6))
+
+    def test_ring_scan_has_four_distinct_atoms(self):
+        """Test that every ring torsion's dihedral names four different atoms, also in a three-membered ring."""
+        for smiles in ['C1CC1', 'C1CCCCC1', 'C1CC2CCC1C2']:
+            for entry in get_harmonic_fallback_torsions(ARCSpecies(label='ring_scan', smiles=smiles)):
+                self.assertEqual(len(set(entry['scan'])), 4, msg=f'{smiles}: {entry}')
+                self.assertEqual(entry['scan'][1:3], entry['pivots'])
+
+    def test_ring_set_matches_find_internal_rotors_complement(self):
+        """Test that the ring torsions are exactly the rotatable bonds that find_internal_rotors leaves out."""
+        for smiles in ['C1CCCCC1', 'CCO', 'CC1CCCCC1', 'C1CC2CCC1C2', 'C1=CCCCC1']:
+            spc = ARCSpecies(label='ring_drift', smiles=smiles)
+            mol = spc.mol
+            rotatable = set()
+            for bond in mol.get_all_edges():
+                atom1, atom2 = bond.atom1, bond.atom2
+                if atom1.is_non_hydrogen() and atom2.is_non_hydrogen() and bond.is_rotatable() \
+                        and len(atom1.edges) > 1 and len(atom2.edges) > 1:
+                    rotatable.add(tuple(sorted([mol.atoms.index(atom1) + 1, mol.atoms.index(atom2) + 1])))
+            rotors = {tuple(sorted(rotor['pivots'])) for rotor in find_internal_rotors(mol)}
+            spc.determine_rotors()
+            for rotor in spc.rotors_dict.values():
+                rotor['success'] = True
+            ring = {tuple(sorted(e['pivots'])) for e in get_harmonic_fallback_torsions(spc)
+                    if e['cause'] == ROTOR_FALLBACK_RING}
+            self.assertEqual(ring, rotatable - rotors, msg=smiles)
+
+    def test_yml_and_irc_species_are_not_listed(self):
+        """Test that species ARC never scans by design, from an Arkane YAML file or an IRC endpoint, are not listed."""
+        spc = ARCSpecies(label='EtOH_yml', smiles='CCO')
+        spc.yml_path = os.path.join(self.tmpdir, 'EtOH_yml.yml')
+        self.assertEqual(get_harmonic_fallback_torsions(spc), [])
+        irc_spc = ARCSpecies(label='IRC_TS0_1', xyz=self.ethanol_xyz, irc_label='TS0', compute_thermo=False)
+        self.assertEqual(get_harmonic_fallback_torsions(irc_spc), [])
+        ts = self._ts()
+        ts.irc_label = 'IRC_TS_all_failed_1 IRC_TS_all_failed_2'
+        self.assertEqual(len(get_harmonic_fallback_torsions(ts)), 2)
+
+    def test_legacy_rotor_dict(self):
+        """Test that a rotor dict from an old restart file, missing the newer keys, is classified without error."""
+        spc = ARCSpecies(label='EtOH_old', smiles='CCO')
+        spc.rotors_dict = {0: {'pivots': [1, 2], 'scan': [4, 1, 2, 3], 'success': None},
+                           1: {'pivots': [2, 3], 'scan': [1, 2, 3, 9], 'success': False,
+                               'trsh_methods': ['not a dict']}}
+        self.assertEqual([(e['cause'], e['reason']) for e in get_harmonic_fallback_torsions(spc)],
+                         [(ROTOR_FALLBACK_SCAN_INCOMPLETE, ''), (ROTOR_FALLBACK_SCAN_FAILED, '')])
+
+    def test_species_file_comments(self):
+        """Test that the Arkane species file names each fallback torsion and keeps it out of the rotors list."""
+        spc = self._ethanol(label='EtOH_file')
+        adapter = self._adapter([spc], 'file')
+        species_dir = os.path.join(self.tmpdir, 'file', 'species')
+        os.makedirs(species_dir, exist_ok=True)
+        with self.assertLogs('arc', level='INFO') as logs:
+            adapter.generate_species_file(spc, species_dir, skip_rotors=False)
+        with open(os.path.join(species_dir, 'EtOH_file.py')) as f:
+            content = f.read()
+        self.assertIn('# Harmonic fallback: pivots [1, 2], scan [4, 1, 2, 3]: scan failed '
+                      '(Bond (1, 2) broke during the scan.)', content)
+        self.assertIn('# Harmonic fallback: pivots [2, 3], scan [1, 2, 3, 9]: scan stopped (lower conformer found) '
+                      '(Another conformer for EtOH exists which is 4.20 kJ/mol lower.)', content)
+        self.assertNotIn('HinderedRotor', content)
+        self.assertTrue(any('EtOH_file' in line and 'pivots [1, 2]' in line and 'pivots [2, 3]' in line
+                            for line in logs.output))
+        with self.assertNoLogs('arc', level='INFO'):
+            adapter.generate_species_file(spc, species_dir, skip_rotors=True)
+        with open(os.path.join(species_dir, 'EtOH_file.py')) as f:
+            self.assertEqual(f.read().count(': user choice'), 2)
+
+    def test_ts_file_comments(self):
+        """Test that the Arkane TS file names each of its failed torsions."""
+        ts = self._ts()
+        adapter = self._adapter([ts], 'ts_file')
+        ts_dir = os.path.join(self.tmpdir, 'ts_file', 'TSs')
+        os.makedirs(ts_dir, exist_ok=True)
+        adapter.generate_species_file(ts, ts_dir, skip_rotors=False)
+        with open(os.path.join(ts_dir, 'TS_all_failed.py')) as f:
+            content = f.read()
+        self.assertIn('# Harmonic fallback: pivots [1, 2], scan [4, 1, 2, 3]: TS reaction zone', content)
+        self.assertIn('# Harmonic fallback: pivots [2, 3], scan [1, 2, 3, 9]: scan failed (Could not read energies)',
+                      content)
+        self.assertNotIn('HinderedRotor', content)
+
+    def test_species_file_without_fallback_has_no_comment(self):
+        """Test that a species with every rotor treated gets no fallback comment."""
+        spc = ARCSpecies(label='EtOH_clean', smiles='CCO')
+        spc.determine_rotors()
+        for rotor in spc.rotors_dict.values():
+            rotor['success'] = True
+            rotor['scan_path'] = 'scan.out'
+            rotor['symmetry'] = 1
+        adapter = self._adapter([spc], 'clean')
+        species_dir = os.path.join(self.tmpdir, 'clean', 'species')
+        os.makedirs(species_dir, exist_ok=True)
+        adapter.generate_species_file(spc, species_dir, skip_rotors=False)
+        with open(os.path.join(species_dir, 'EtOH_clean.py')) as f:
+            content = f.read()
+        self.assertNotIn('Harmonic fallback', content)
+        self.assertEqual(content.count('HinderedRotor('), 2)
+
+    def test_status_yml_warnings(self):
+        """Test that status.yml names each fallback torsion of a species and of a TS, with its cause."""
+        status = self._write_status([self._ethanol(label='EtOH_status'), self._ts()], 'mixed')
+        warnings = status['EtOH_status']['warnings']
+        self.assertIn('pivots [1, 2]: scan failed (Bond (1, 2) broke during the scan.)', warnings)
+        self.assertIn('pivots [2, 3]: scan stopped (lower conformer found)', warnings)
+        ts_warnings = status['TS_all_failed']['warnings']
+        self.assertIn('pivots [1, 2]: TS reaction zone', ts_warnings)
+        self.assertIn('pivots [2, 3]: scan failed (Could not read energies)', ts_warnings)
+
+    def test_status_yml_warnings_are_idempotent(self):
+        """Test that recording twice replaces the fallback warning and keeps unrelated warnings."""
+        spc = self._ethanol(label='EtOH_twice')
+        output = {'EtOH_twice': {'convergence': True, 'warnings': 'Warning: unrelated; '}}
+        record_harmonic_fallback_warnings(output, {'EtOH_twice': spc})
+        first = output['EtOH_twice']['warnings']
+        record_harmonic_fallback_warnings(output, {'EtOH_twice': spc})
+        self.assertEqual(output['EtOH_twice']['warnings'], first)
+        self.assertTrue(first.startswith('Warning: unrelated; '))
+        for rotor in spc.rotors_dict.values():
+            rotor['success'] = True
+        record_harmonic_fallback_warnings(output, {'EtOH_twice': spc})
+        self.assertEqual(output['EtOH_twice']['warnings'], 'Warning: unrelated; ')
+
+    def test_status_yml_skips_unconverged_and_unknown_labels(self):
+        """Test that unconverged species and labels without a species object get no fallback warning."""
+        output = {'EtOH_unconv': {'convergence': False, 'warnings': ''}, 'ghost': {'convergence': True, 'warnings': ''}}
+        record_harmonic_fallback_warnings(output, {'EtOH_unconv': self._ethanol(label='EtOH_unconv')})
+        self.assertEqual(output['EtOH_unconv']['warnings'], '')
+        self.assertEqual(output['ghost']['warnings'], '')
 
 
 if __name__ == '__main__':
