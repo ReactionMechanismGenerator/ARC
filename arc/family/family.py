@@ -509,6 +509,7 @@ def get_reaction_family_products(rxn: ARCReaction,
                                  consider_rmg_families: bool = True,
                                  consider_arc_families: bool = True,
                                  discover_own_reverse_rxns_in_reverse: bool = False,
+                                 dropped_families: dict[str, str] | None = None,
                                  ) -> list[dict]:
     """
     Determine the RMG reaction family for a given ARC reaction by generating corresponding product dicts.
@@ -539,6 +540,9 @@ def get_reaction_family_products(rxn: ARCReaction,
                                                                whenever a forward match exists, so the flag only
                                                                widens the result for a reaction that no family
                                                                matches in the forward direction.
+        dropped_families (dict[str, str], optional): If given, filled with the families that matched after the
+                                                     direction gate but were then dropped, mapped to the gate
+                                                     that dropped them (see prioritize_family_product_dicts()).
 
     Returns:
         list[dict]: The list of product dictionaries with the reaction family label, ordered and filtered
@@ -605,6 +609,7 @@ def get_reaction_family_products(rxn: ARCReaction,
     return prioritize_family_product_dicts(rxn=rxn,
                                            product_dicts=product_dicts,
                                            consider_arc_families=consider_arc_families,
+                                           dropped_families=dropped_families,
                                            )
 
 
@@ -637,9 +642,145 @@ def count_recipe_bond_changes(actions: list[list]) -> tuple[int, int]:
     return formed_or_broken, changed
 
 
+def get_recipe_center(product_dict: dict, actions: list[list]) -> frozenset[int]:
+    """
+    Get the reaction center of a family match: the reactant atoms that its family recipe acts on.
+
+    Template labels that no recipe action names (e.g., the ring-path atoms of Intra_RH_Add_Exocyclic)
+    are not part of the center. A label that the template gives to several atoms (e.g., the two '*' atoms of
+    R_Recombination) is stored with a suffix ('*', '*_2'), and all of its atoms are part of the center.
+
+    Args:
+        product_dict (dict): A family product dictionary.
+        actions (list[list]): The recipe actions of that family.
+
+    Returns:
+        frozenset[int]: The reactant atom indices the recipe acts on.
+    """
+    label_map = product_dict.get('r_label_map') or dict()
+    recipe_labels = {entry for action in actions for entry in action[1:] if isinstance(entry, str) and entry.startswith('*')}
+    return frozenset(index for label, index in label_map.items() if re.sub(r'_\d+$', '', label) in recipe_labels)
+
+
+def get_recipe_bond_changes(product_dict: dict, actions: list[list]) -> frozenset[tuple]:
+    """
+    Get the bonds a family match forms, breaks, or changes the order of, as reactant atom index pairs.
+
+    Two matches with the same bond changes describe the same reaction channel and give the same atom map.
+    An action between two atoms that share a label (e.g., ['FORM_BOND', '*', 1, '*'] of R_Recombination)
+    joins the atom stored as '*' with the one stored as '*_2'.
+
+    Args:
+        product_dict (dict): A family product dictionary.
+        actions (list[list]): The recipe actions of that family.
+
+    Returns:
+        frozenset[tuple]: Entries of (action name, frozenset of the two atom indices, order change).
+                          Empty if the label map does not cover the recipe.
+    """
+    label_map = product_dict.get('r_label_map') or dict()
+    changes = set()
+    for action in actions:
+        if action[0] in ('FORM_BOND', 'BREAK_BOND', 'CHANGE_BOND'):
+            second = f'{action[3]}_2' if action[3] == action[1] else action[3]
+            if action[1] not in label_map or second not in label_map:
+                return frozenset()
+            changes.add((action[0], frozenset((label_map[action[1]], label_map[second])),
+                         action[2] if action[0] == 'CHANGE_BOND' else None))
+    return frozenset(changes)
+
+
+def get_subsumed_families(product_dicts: list[dict],
+                          actions_by_family: dict[str, list[list]],
+                          ) -> set[str]:
+    """
+    Get the families whose match is described more fully by another family's match of the same reaction.
+
+    The reaction center of a match is the set of reactant atoms its family recipe acts on (get_recipe_center()).
+    A family is subsumed when the reaction center of one of its matches is a strict subset of the
+    reaction center of a match of another family, unless a center of that other family is in turn a
+    strict subset of a center of the first one, directly or through other families (families that contain
+    each other through different matches are tied with each other, while each may still subsume a third family). Both matches give the
+    reaction's products, so the other family describes the same change and accounts for more of the
+    atoms that take part in it, e.g., the [3,3] shift of 6_membered_central_C-C_shift subsumes the [1,3]
+    shift that 1,3_sigmatropic_rearrangement finds in a Cope rearrangement. Equal or partly overlapping
+    centers subsume nothing, and a match with an empty center is never compared.
+
+    Args:
+        product_dicts (list[dict]): The family product dictionaries of one reaction, all in one index space.
+        actions_by_family (dict[str, list[list]]): The recipe actions of every family in ``product_dicts``.
+
+    Returns:
+        set[str]: The labels of the subsumed families.
+    """
+    centers = dict()
+    for product_dict in product_dicts:
+        center = get_recipe_center(product_dict, actions_by_family[product_dict['family']])
+        if len(center):
+            centers.setdefault(product_dict['family'], list()).append(center)
+    contains = {(larger, smaller) for larger, larger_centers in centers.items()
+                for smaller, smaller_centers in centers.items() if larger != smaller
+                and any(small < large for small in smaller_centers for large in larger_centers)}
+    for middle in centers:
+        contains |= {(larger, smaller) for larger, inner in contains if inner == middle
+                     for outer, smaller in contains if outer == middle and larger != smaller}
+    return {smaller for larger, smaller in contains if (smaller, larger) not in contains}
+
+
+def get_undecided_family_ties(product_dicts: list[dict],
+                              consider_arc_families: bool = True,
+                              head: str | None = None,
+                              ) -> list[str]:
+    """
+    Get the families that tie with the first-ranked family without the most specific family rule deciding it.
+
+    ``product_dicts`` is the ranked output of prioritize_family_product_dicts(). Another family ties with the
+    first one when it is not subsumed (get_subsumed_families()) and none of its matches has the same bond
+    changes (get_recipe_bond_changes()) as a match of the first family: the two families then describe
+    different reaction channels to the same products, and only the bond-change counts or the family order
+    chose between them. A family that shares a channel with the first one is not tied by its other matches,
+    which are usually the same channel on symmetry-equivalent atoms (e.g., the two radical N atoms of NCN).
+    A family whose recipe cannot be read is reported as tied. A ``head`` family other than the first-ranked one
+    (e.g., a family kept from a restart file) ties in the same way, unless it is itself subsumed: then the rule
+    decided against it, and nothing ties with it.
+
+    Args:
+        product_dicts (list[dict]): The ranked family product dictionaries of one reaction.
+        consider_arc_families (bool, optional): Whether ARC's custom families were considered.
+        head (str, optional): The family used for the reaction. Defaults to the first-ranked family.
+
+    Returns:
+        list[str]: The tied families, in ranked order, without the head family.
+    """
+    families = list(dict.fromkeys(product_dict['family'] for product_dict in product_dicts))
+    if len(families) < 2:
+        return list()
+    try:
+        actions_by_family = {family: get_reaction_family(label=family, consider_arc_families=consider_arc_families).actions
+                             for family in families}
+    except (FileNotFoundError, KeyError, ValueError, InvalidAdjacencyListError):
+        return [family for family in families if family != (head or families[0])]
+    subsumed = get_subsumed_families(product_dicts, actions_by_family)
+    head = head or families[0]
+    if head in subsumed:
+        return list()
+    head_changes = {get_recipe_bond_changes(product_dict, actions_by_family[head])
+                    for product_dict in product_dicts if product_dict['family'] == head} - {frozenset()}
+    tied = list()
+    for family in families:
+        if family == head or family in subsumed:
+            continue
+        changes = {get_recipe_bond_changes(product_dict, actions_by_family[family])
+                   for product_dict in product_dicts if product_dict['family'] == family} - {frozenset()}
+        if not len(changes & head_changes):
+            tied.append(family)
+    return tied
+
+
 def prioritize_family_product_dicts(rxn: ARCReaction,
                                     product_dicts: list[dict],
                                     consider_arc_families: bool = True,
+                                    dropped_families: dict[str, str] | None = None,
                                     ) -> list[dict]:
     """
     Order family product dictionaries so that the first entry is the family match to use,
@@ -647,19 +788,24 @@ def prioritize_family_product_dicts(rxn: ARCReaction,
 
     An entry discovered in the reverse direction carries an atom label map in the index space of the
     flipped reaction, so all such entries are dropped whenever at least one entry was discovered in the
-    forward direction. This gate reads only ``discovered_in_reverse`` and is therefore applied even when a
-    family recipe cannot be read. If any of the reactants carries unpaired electrons, only the entries whose
-    family recipe gains or loses a radical are kept, provided that this keeps at least one entry and drops at
-    least one. The remaining entries are then ordered by the number of bonds their family recipe forms or
-    breaks, then by the number of bonds it changes the order of, then by the order in which the families
-    were considered, which is the order of ``get_all_families()``. Entries of the same family keep their
-    relative order. The radical gate and the ordering both need the family recipes, so an unreadable recipe
-    leaves the direction-gated entries in the order they were discovered in.
+    forward direction (the direction gate). This gate reads only ``discovered_in_reverse`` and is therefore
+    applied even when a family recipe cannot be read. If any of the reactants carries unpaired electrons,
+    only the entries whose family recipe gains or loses a radical are kept, provided that this keeps at least
+    one entry and drops at least one (the radical gate). The remaining entries of the families that
+    get_subsumed_families() finds to be subsumed by another family's match (by the atoms their recipes act on)
+    are placed after all other entries, so the most specific family is used. Within these two groups, entries are ordered by the number
+    of bonds their family recipe forms or breaks, then by the number of bonds it changes the order of, then by
+    the order in which the families were considered, which is the order of ``get_all_families()``. Entries of
+    the same family keep their relative order. The radical gate and the bond-change ordering need the family
+    recipes, so an unreadable recipe leaves the direction-gated entries in the order they were discovered in.
 
     Args:
         rxn (ARCReaction): The ARC reaction object.
         product_dicts (list[dict]): The family product dictionaries to order.
         consider_arc_families (bool, optional): Whether ARC's custom families were considered.
+        dropped_families (dict[str, str], optional): If given, filled with the families that passed the
+                                                     direction gate and were dropped by the radical gate,
+                                                     mapped to ``'radical gate'``.
 
     Returns:
         list[dict]: The ordered product dictionaries.
@@ -687,9 +833,14 @@ def prioritize_family_product_dicts(rxn: ARCReaction,
         radical_dicts = [product_dict for product_dict in product_dicts
                          if has_radical_recipe_action(actions_by_family[product_dict['family']])]
         if len(radical_dicts) and len(radical_dicts) < len(product_dicts):
+            if dropped_families is not None:
+                kept = {product_dict['family'] for product_dict in radical_dicts}
+                dropped_families.update({family: 'radical gate' for family in family_order if family not in kept})
             product_dicts = radical_dicts
+    subsumed = get_subsumed_families(product_dicts, actions_by_family)
     return sorted(product_dicts,
-                  key=lambda product_dict: (*count_recipe_bond_changes(actions_by_family[product_dict['family']]),
+                  key=lambda product_dict: (product_dict['family'] in subsumed,
+                                            *count_recipe_bond_changes(actions_by_family[product_dict['family']]),
                                             family_order[product_dict['family']]))
 
 

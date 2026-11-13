@@ -2845,9 +2845,14 @@ def _rxn_to_dict(rxn) -> dict:
         'reactant_labels': list(rxn.reactants),
         'product_labels': list(rxn.products),
         'family': rxn.family,
+        'family_source': rxn.family_source,
+        'family_candidates': rxn.family_candidates,
+        'n_family_candidates': rxn.n_family_candidates,
         'multiplicity': rxn.multiplicity,
         'ts_label': rxn.ts_label,
         'kinetics': kin_dict,
+        # Next to the rate on purpose: the rate is for the 'searched' channel only.
+        'family_tie': rxn.family_tie,
         'ts_adapter_failures': [dict(failure) for failure in
                                 getattr(getattr(rxn, 'ts_species', None), 'ts_adapter_failures', None) or []],
     }
