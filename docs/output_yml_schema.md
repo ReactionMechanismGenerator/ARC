@@ -101,9 +101,12 @@ output.yml
 │           ├── torsions: []
 │           │   └── symmetry_number, treatment, atom_indices, pivot_atoms,
 │           │       barrier_kj_mol?, source_scan_key?
-│           └── rejected_torsions?: []
-│               └── rotor_index, invalidation_reason, atom_indices, pivot_atoms,
-│                   dimension, source_log?
+│           ├── rejected_torsions?: []
+│           │   └── rotor_index, invalidation_reason, atom_indices, pivot_atoms,
+│           │       dimension, source_log?
+│           ├── harmonic_fallback_torsions?: []
+│           │   └── pivot_atoms, atom_indices, cause, reason
+│           └── n_harmonic_fallback_torsions?, n_ring_torsions?
 │
 ├── transition_states: []
 │   └── (all species fields, plus:)
@@ -739,6 +742,9 @@ One entry per parsed scan point, in the order the ESS reported them.
 | `harmonic_frequencies_cm1` | `list[float]?` | Harmonic frequencies (cm-1) as parsed from the ESS, **unscaled** — `freq_scale_factor` has *not* been applied, although it has been applied to `statmech.e0_kj_mol`, so recomputing ZPE from this list will not reproduce `e0_kj_mol` unless you scale first. For TSs **every** negative (imaginary) frequency is dropped, not only the reaction mode — a TS that legitimately carries additional small imaginary modes (which `check_imaginary_frequencies` permits) loses those too, so the list can be shorter than the species' true mode count. Non-TS species are not filtered at all |
 | `torsions` | `list` | Internal rotation data (see below) |
 | `rejected_torsions` | `list` | Rotors ARC evaluated and rejected (see below). **Optional in the schema** — not in `statmech`'s `required` list — unlike every other field in this table. This version of the writer always emits it (`[]` when there is nothing to report, never omitted), but a consumer reading documents from other producers, or from before this key existed, must tolerate its absence rather than assuming `[]` |
+| `harmonic_fallback_torsions` | `list` | Every torsion Arkane did **not** treat as a hindered rotor, so it stays a harmonic mode of the frequency calculation (see below). Unlike `rejected_torsions`, it also carries pending (`success is None`) rotors, ring torsions, and torsions skipped because rotor scans were turned off. Optional in the schema; always emitted by this writer |
+| `n_harmonic_fallback_torsions` | `int` | Number of `harmonic_fallback_torsions` entries whose `cause` is neither `"ring"` nor `"reactive ring"`: torsions that could have been hindered rotors and were not. `0` when every rotor was treated. Optional in the schema |
+| `n_ring_torsions` | `int` | Number of `harmonic_fallback_torsions` entries whose `cause` is `"ring"` or `"reactive ring"` (structural, not failures). Optional in the schema |
 
 **`torsions`** entries (only successful rotors):
 
@@ -751,6 +757,18 @@ One entry per parsed scan point, in the order the ESS reported them.
 | `pivot_atoms` | `list[int]?` | 2-atom rotation axis (1-indexed). For an ND rotor this is a **list of pairs**, one per dimension |
 | `barrier_kj_mol` | `float?` | Torsional barrier height (kJ/mol). `null` for an ND rotor (`dimension > 1`), whose barrier cannot be derived from a 1D scan parse |
 | `source_scan_key` | `str?` | The `rotor_scans[].key` (e.g. `"scan_rotor_3"`) this torsion was derived from. `null` when `rotor_scans` holds no record for that rotor, so the reference can never dangle |
+
+**`harmonic_fallback_torsions`** entries:
+
+| Field | Type | Description |
+|---|---|---|
+| `pivot_atoms` | `list[int]?` | 2-atom rotation axis (1-indexed), shaped as in `torsions` |
+| `atom_indices` | `list[int]?` | 4-atom dihedral (1-indexed), shaped as in `torsions`. `null` for a ring torsion whose bond has no dihedral with four distinct atoms (e.g., the O-O bond of dioxirane) |
+| `cause` | `str` | `"scan failed"` (`success is False`), `"scan stopped (lower conformer found)"` (`success is None` after a change-conformer troubleshooting), `"scan not completed"` (`success is None` otherwise), `"TS reaction zone"` (pivots in the TS reaction zone, code `pivTS`), `"reactive ring"` (torsion in the TS reactive ring), `"ring"` (bond in a ring of the 2D graph; never a rotor candidate), or `"user choice"` (rotor scans turned off) |
+| `reason` | `str` | The recorded `invalidation_reason`, whitespace-normalized; `""` when none was recorded |
+
+The same list is written as a `# Harmonic fallback:` comment into each species and TS Arkane input file, logged, and
+added to that label's `warnings` in `output/status.yml`.
 
 **`rejected_torsions`** entries (rotors ARC evaluated and rejected, i.e. `rotors_dict` entries whose `success` is `False`):
 
