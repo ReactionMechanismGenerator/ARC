@@ -4,7 +4,7 @@ A module for representing a reaction.
 
 from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError
-from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
+from arc.family.family import ReactionFamily, check_family_name, get_reaction_family_products, get_undecided_family_ties
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species.converter import (check_xyz_dict,
                                    sort_xyz_using_indices,
@@ -59,6 +59,18 @@ class ARCReaction(object):
                      (or unimolecular on either side, as appropriate).
         family (str): The RMG kinetic family, if applicable.
         family_own_reverse (bool): Whether the RMG family is its own reverse.
+        family_source (str): How the family was chosen: ``'input'`` (set by the user), ``'rule'`` (chosen by
+                             the family ranking of prioritize_family_product_dicts()), or ``'restart_legacy'``
+                             (restored from a restart file written before this record existed).
+                             ``None`` if no family is known, or if code set it with no known source.
+        family_candidates (list[dict]): Every family that matched after the direction gate, in ranked order,
+                                        as ``{'family': str, 'dropped_by': None | 'radical gate'}``.
+        n_family_candidates (int): The number of families that matched after both gates.
+        family_tie (dict): Set when the family was chosen among families that describe different reaction
+                           channels and that the most specific family rule does not order, as
+                           ``{'families': [...], 'searched': str, 'not_searched': [...]}``, also for a family
+                           restored from a legacy restart file. ``None`` otherwise, including when the user set
+                           the family.
         reactants (list[str]): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
         products (list[str]): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
         r_species (list[ARCSpecies]): A list of reactants :ref:`ARCSpecies <species>` objects.
@@ -113,10 +125,16 @@ class ARCReaction(object):
         self._family = None
         self._family_determined = False
         self._family_own_reverse = None
+        self._family_source = None
+        self._family_candidates = None
+        self._n_family_candidates = None
+        self._family_tie = None
+        self._family_candidates_attempted = False
         self._product_dicts = None
         if family is not None:
             if check_family_name(family):
                 self.family = family
+                self._family_source = 'input'
             else:
                 raise ValueError(f"Invalid family name: {family}")
         self.ts_label = ts_label
@@ -213,13 +231,20 @@ class ARCReaction(object):
     def product_dicts(self):
         """The RMG reaction family product dictionaries, all belonging to this reaction's family"""
         if self._product_dicts is None:
-            self._product_dicts = self.restrict_product_dicts_to_family(self.get_product_dicts())
+            dropped_families = dict()
+            self._product_dicts = self.restrict_product_dicts_to_family(
+                self.get_product_dicts(dropped_families=dropped_families), dropped_families=dropped_families)
         return self._product_dicts
 
     @product_dicts.setter
     def product_dicts(self, value):
-        """Allow setting family"""
+        """
+        Allow setting the product dictionaries. They may come from another family set or be restricted
+        already, so the family candidates recorded for the previous ones are cleared, and left unknown.
+        """
         self._product_dicts = value
+        self._family_candidates, self._n_family_candidates, self._family_tie = None, None, None
+        self._family_candidates_attempted = False
 
     @property
     def charge(self):
@@ -267,13 +292,16 @@ class ARCReaction(object):
         """
         Allow setting family. Product dictionaries that were already generated are restricted to the
         new family, and are discarded so that they are regenerated on demand if none of them belong
-        to it.
+        to it. The family source is cleared, callers that know it (user input, a restart file) set it.
         """
         if value is not None and not isinstance(value, str):
             raise InputError(f'Reaction family must be a string, got {value} which is a {type(value)}.')
         self._family = value
         self._family_determined = True
         self._family_own_reverse = None
+        self._family_source = None
+        self._family_tie = None
+        self._family_candidates_attempted = False
         if self._product_dicts is not None and value is not None:
             self._product_dicts = [product_dict for product_dict in self._product_dicts
                                    if product_dict['family'] == value] or None
@@ -289,6 +317,45 @@ class ARCReaction(object):
     def family_own_reverse(self, value):
         """Allow setting family_own_reverse"""
         self._family_own_reverse = bool(value)
+
+    @property
+    def family_source(self):
+        """How the RMG reaction family was chosen"""
+        if not self._family_determined:
+            _ = self.family
+        return self._family_source
+
+    @property
+    def family_candidates(self):
+        """Every RMG family that matched after the direction gate, and the gate that dropped it, if any"""
+        self.ensure_family_candidates()
+        return self._family_candidates
+
+    @property
+    def n_family_candidates(self):
+        """The number of RMG families that matched after both gates"""
+        self.ensure_family_candidates()
+        return self._n_family_candidates
+
+    @property
+    def family_tie(self):
+        """The families tied with the one used, that the most specific family rule did not decide, if any"""
+        self.ensure_family_candidates()
+        return self._family_tie
+
+    def ensure_family_candidates(self):
+        """
+        Generate the product dictionaries, which records the family candidates, unless already done
+        or already attempted since the family or the product dictionaries were last set. A family that
+        was set and that the reaction does not match leaves the candidates unknown, the error is raised
+        again wherever the product dictionaries are used.
+        """
+        if self._family_candidates is None and self._product_dicts is None and not self._family_candidates_attempted:
+            self._family_candidates_attempted = True
+            try:
+                _ = self.product_dicts
+            except ReactionError as e:
+                logger.debug(f'Could not determine the family candidates of reaction {self.label}: {e}')
 
     def __str__(self) -> str:
         """Return a string representation of the object"""
@@ -338,6 +405,12 @@ class ARCReaction(object):
         if report_family:
             if self.family is not None:
                 reaction_dict['family'] = self.family
+                reaction_dict['family_source'] = self._family_source
+                if self._family_candidates is not None:
+                    reaction_dict['family_candidates'] = self._family_candidates
+                    reaction_dict['n_family_candidates'] = self._n_family_candidates
+                if self._family_tie is not None:
+                    reaction_dict['family_tie'] = self._family_tie
             if self.family_own_reverse:
                 reaction_dict['family_own_reverse'] = self.family_own_reverse
         if self.long_kinetic_description:
@@ -364,6 +437,14 @@ class ARCReaction(object):
         self.products = reaction_dict.get('products') or list()
         if 'family' in reaction_dict and reaction_dict['family'] is not None:
             self.family = reaction_dict['family']
+            if 'family_source' in reaction_dict:
+                self._family_source = reaction_dict['family_source']
+            else:
+                # as_dict() always writes the species, a reaction written by a user normally does not.
+                self._family_source = 'restart_legacy' if 'r_species' in reaction_dict else 'input'
+            self._family_candidates = reaction_dict.get('family_candidates')
+            self._n_family_candidates = reaction_dict.get('n_family_candidates')
+            self._family_tie = reaction_dict.get('family_tie')
         if 'family_own_reverse' in reaction_dict:
             self.family_own_reverse = reaction_dict['family_own_reverse']
         self.set_label_reactants_products(species_list)
@@ -422,7 +503,8 @@ class ARCReaction(object):
             ARCReaction: A copy of this object instance with flipped reactants and products.
         """
         reaction_dict = self.as_dict(reset_atom_ids=True, report_family=report_family)
-        reset_keys = ['label', 'index', 'atom_map', 'family', 'family_own_reverse', 'long_kinetic_description']
+        reset_keys = ['label', 'index', 'atom_map', 'family', 'family_own_reverse', 'family_source',
+                      'family_candidates', 'n_family_candidates', 'family_tie', 'long_kinetic_description']
         if 'r_species' in reaction_dict.keys() and 'p_species' in reaction_dict.keys():
             reaction_dict['r_species'], reaction_dict['p_species'] = reaction_dict['p_species'], reaction_dict['r_species']
         else:
@@ -585,6 +667,7 @@ class ARCReaction(object):
                           consider_rmg_families: bool = True,
                           consider_arc_families: bool = True,
                           discover_own_reverse_rxns_in_reverse: bool = False,
+                          dropped_families: dict[str, str] | None = None,
                           ) -> list[dict]:
         """
         A helper function for getting the RMG family product_dicts using the ARC family module.
@@ -609,6 +692,8 @@ class ARCReaction(object):
             consider_rmg_families (bool, optional): Whether to consider RMG's families in addition to ARC's.
             consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
+            dropped_families (dict[str, str], optional): If given, filled with the families that matched after the
+                                                         direction gate but were dropped by a later gate.
 
         Returns:
             list[dict]: A list of dictionaries with the RMG reaction family products.
@@ -618,21 +703,27 @@ class ARCReaction(object):
                                                      consider_rmg_families=consider_rmg_families,
                                                      consider_arc_families=consider_arc_families,
                                                      discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
+                                                     dropped_families=dropped_families,
                                                      )
         return product_dicts
 
     def restrict_product_dicts_to_family(self,
                                          product_dicts: list[dict],
+                                         dropped_families: dict[str, str] | None = None,
                                          ) -> list[dict]:
         """
-        Restrict family product dictionaries to the entries of a single reaction family.
+        Restrict family product dictionaries to the entries of a single reaction family,
+        and record every family that matched and how the family was chosen.
 
         The retained family is this reaction's family if one was set, otherwise the family of the
-        first entry. Entries of any other family are dropped, so that a family recipe is only ever
-        combined with an atom label map generated by that same family.
+        first entry, which prioritize_family_product_dicts() ranked first. Entries of any other family
+        are dropped, so that a family recipe is only ever combined with an atom label map generated by
+        that same family.
 
         Args:
-            product_dicts (list[dict]): The family product dictionaries to restrict.
+            product_dicts (list[dict]): The family product dictionaries to restrict, in ranked order.
+            dropped_families (dict[str, str], optional): The families that matched after the direction gate
+                                                         but were dropped by a later gate, mapped to that gate.
 
         Raises:
             ReactionError: If this reaction's family was set and none of the entries belong to it.
@@ -640,25 +731,50 @@ class ARCReaction(object):
         Returns:
             list[dict]: The product dictionaries belonging to a single family.
         """
-        if not len(product_dicts):
-            return product_dicts
         families = list()
         for product_dict in product_dicts:
             if product_dict['family'] not in families:
                 families.append(product_dict['family'])
+        if not len(families):
+            self._family_candidates, self._n_family_candidates, self._family_tie = list(), 0, None
+            return product_dicts
         family = self._family if self._family is not None else families[0]
         restricted = [product_dict for product_dict in product_dicts if product_dict['family'] == family]
         if not len(restricted):
             raise ReactionError(f'Reaction {self.label} was assigned the {family} family, but it does not match '
                                 f'this family. The families it does match are: {families}.')
-        if len(families) > 1:
-            if self._family is None:
+        self._family_candidates = [{'family': candidate, 'dropped_by': None} for candidate in families] \
+            + [{'family': candidate, 'dropped_by': gate} for candidate, gate in (dropped_families or dict()).items()]
+        self._n_family_candidates = len(families)
+        dropped = f' The {list(dropped_families)} families also matched, and were dropped by the ' \
+                  f'{sorted(set(dropped_families.values()))}.' if dropped_families else ''
+        if self._family is None:
+            self._family_source = 'rule'
+            tied = get_undecided_family_ties(product_dicts)
+            self._family_tie = {'families': [family] + tied, 'searched': family, 'not_searched': tied} if tied else None
+            if tied:
+                logger.warning(f'Reaction {self.label} matches the {[family] + tied} families through different bond '
+                               f'changes. This is an overlap tie that the most specific family rule does not decide, '
+                               f'so {family} is used by the fewest bond changes and then the family order, and the '
+                               f'{tied} channel(s) will not be searched. Set the "family" attribute of this reaction '
+                               f'to choose the channel to search.{dropped}')
+            elif len(families) > 1:
                 logger.warning(f'Reaction {self.label} matches several reaction families: {families}. '
-                               f'Using {family}. Set the "family" attribute of this reaction '
-                               f'to choose a different one.')
+                               f'Using {family}, ranked first by the most specific family rule, then by the '
+                               f'fewest bond changes. Set the "family" attribute of this reaction to choose a '
+                               f'different one.{dropped}')
             else:
+                logger.info(f'Reaction {self.label} matches the {family} family.{dropped}')
+        else:
+            if self._family_source in ('rule', 'restart_legacy'):
+                tied = get_undecided_family_ties(product_dicts, head=family)
+                self._family_tie = {'families': [family] + tied, 'searched': family, 'not_searched': tied} if tied else None
+                if family != families[0]:
+                    logger.info(f'Reaction {self.label} keeps the {family} family that was chosen before, although '
+                                f'{families[0]} is now ranked first.')
+            if len(families) > 1 or dropped:
                 logger.info(f'Reaction {self.label} was assigned the {family} family, '
-                            f'it also matches {[f for f in families if f != family]}.')
+                            f'it also matches {[f for f in families if f != family]}.{dropped}')
         return restricted
 
     def get_family_own_reverse(self) -> bool:
