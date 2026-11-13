@@ -5,12 +5,17 @@
 This module contains unit tests of the arc.reaction.family module
 """
 
+import ast
+import logging
 import os
 import unittest
 import unittest.mock as mock
+import warnings
 
 from arc.common import is_equal_family_product_dicts
+from arc.exceptions import ReactionError, RecipeError, SpeciesError
 from arc.family.family import (ReactionFamily,
+                               REACTION_FAMILY_CACHE,
                                ARC_FAMILIES_PATH,
                                RMG_DB_PATH,
                                get_rmg_db_subpath,
@@ -42,6 +47,7 @@ from arc.family.family import (ReactionFamily,
                                read_groups_file_lines,
                                )
 from arc.imports import settings
+from arc.mapping.engine import find_all_breaking_bonds
 from arc.molecule import Group, Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.reaction.reaction import ARCReaction
@@ -897,8 +903,8 @@ H      -0.83821148   -0.26602407    0.00000000"""
                                          'Y_rad': '1 *3 R u1'})
         self.assertEqual(fam_3.actions, [['BREAK_BOND', '*1', 1, '*2'],
                                          ['FORM_BOND', '*2', 1, '*3'],
-                                         ['GAIN_RADICAL', '*1', '1'],
-                                         ['LOSE_RADICAL', '*3', '1']])
+                                         ['GAIN_RADICAL', '*1', 1],
+                                         ['LOSE_RADICAL', '*3', 1]])
 
     def test_reaction_family_cache_returns_same_instance(self):
         """Test that ReactionFamily instances are cached per (label, consider_arc_families) key."""
@@ -1126,23 +1132,137 @@ H       1.24252625    0.91583948   -0.84155142"""
             "['GAIN_RADICAL', '*1', '1'],",
             "['LOSE_RADICAL', '*3', '1'],",
             "])"]
-        actions = get_recipe_actions(recipe_lines)
+        actions = get_recipe_actions(recipe_lines, 'test_family')
         self.assertEqual(actions, [['BREAK_BOND', '*1', 1, '*2'],
                                    ['FORM_BOND', '*2', 1, '*3'],
-                                   ['GAIN_RADICAL', '*1', '1'],
-                                   ['LOSE_RADICAL', '*3', '1']])
+                                   ['GAIN_RADICAL', '*1', 1],
+                                   ['LOSE_RADICAL', '*3', 1]])
 
         fam_1 = ReactionFamily('6_membered_central_C-C_shift')
         groups_path = get_rmg_db_subpath('kinetics', 'families', fam_1.label, 'groups.py', must_exist=True)
         with open(groups_path, 'r') as f:
             groups = f.readlines()
-        actions = get_recipe_actions(groups)
+        actions = get_recipe_actions(groups, fam_1.label)
         self.assertEqual(actions, [['BREAK_BOND', '*3', 1, '*4'],
                                    ['CHANGE_BOND', '*1', -1, '*2'],
                                    ['CHANGE_BOND', '*5', -1, '*6'],
                                    ['CHANGE_BOND', '*2', 1, '*3'],
                                    ['CHANGE_BOND', '*4', 1, '*5'],
                                    ['FORM_BOND', '*1', 1, '*6']])
+
+    def test_get_recipe_actions_comma_less_last_line(self):
+        """Test that a last recipe action without a trailing comma is read as a whole action"""
+        recipe_lines = ["recipe(actions=[",
+                        "    ['LOSE_PAIR', '*1', '1'],",
+                        "    ['LOSE_PAIR', '*2', '1'],",
+                        "    ['FORM_BOND', '*1', 1, '*2'],",
+                        "    ['CHANGE_BOND', '*1', 1, '*2']",
+                        "])"]
+        self.assertEqual(get_recipe_actions(recipe_lines, 'test_family'),
+                         [['LOSE_PAIR', '*1', 1], ['LOSE_PAIR', '*2', 1],
+                          ['FORM_BOND', '*1', 1, '*2'], ['CHANGE_BOND', '*1', 1, '*2']])
+        self.assertEqual(get_recipe_actions(["recipe(actions=[['BREAK_BOND', '*1', 1, '*2']])"], 'test_family'),
+                         [['BREAK_BOND', '*1', 1, '*2']])
+        self.assertEqual(get_recipe_actions(["recipe(actions=[", "    ['BREAK_BOND', '*1', 1, '*2'],",
+                                             "    ['FORM_BOND',", "     '*1', 1, '*3']])"], 'test_family'),
+                         [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*1', 1, '*3']])
+        actions = get_recipe_actions(read_groups_file_lines('halocarbene_recombination_double'),
+                                     'halocarbene_recombination_double')
+        self.assertEqual(actions, [['LOSE_PAIR', '*1', 1], ['LOSE_PAIR', '*2', 1],
+                                   ['FORM_BOND', '*1', 1, '*2'], ['CHANGE_BOND', '*1', 1, '*2']])
+
+    def test_get_recipe_actions_finds_the_recipe_call(self):
+        """Test that only the one top-level recipe() call is read, however it is spelled"""
+        lines = ['longDesc = u"""', "recipe(actions=[])", '"""', "recipe (actions=[['BREAK_BOND', '*1', 1, '*2']]); x = 1"]
+        self.assertEqual(get_recipe_actions(lines, 'fam'), [['BREAK_BOND', '*1', 1, '*2']])
+        self.assertEqual(get_recipe_actions(["recipe([['break_bond', '*1', 1, '*2']])"], 'fam'),
+                         [['BREAK_BOND', '*1', 1, '*2']])
+        with self.assertRaises(RecipeError) as cm:
+            get_recipe_actions(["recipe(actions=[['BREAK_BOND', '*1', 1, '*2']])"] * 2, 'fam')
+        self.assertIn('2 recipe() calls', str(cm.exception))
+        for bad_call in ["recipe(actions=('BREAK_BOND', '*1', 1, '*2'))",
+                         "recipe([], actions=[['LOSE_PAIR', '*1', 1]])",
+                         "recipe(actions=[], actions=[['LOSE_PAIR', '*1', 1]])",
+                         "recipe(steps=[['LOSE_PAIR', '*1', 1]])"]:
+            with self.subTest(bad_call=bad_call):
+                with self.assertRaises(RecipeError) as cm:
+                    get_recipe_actions([bad_call], 'fam')
+                self.assertIn('line 1', str(cm.exception))
+
+    def test_get_recipe_actions_string_bond_order(self):
+        """Test that a bond-order change written as a string is read as an int change, not an absolute order"""
+        recipe_lines = ["recipe(actions=[", "    ['CHANGE_BOND', '*2', '-1', '*3'],",
+                        "    ['CHANGE_BOND', '*1', '+1', '*2'],", "])"]
+        self.assertEqual(get_recipe_actions(recipe_lines, 'test_family'),
+                         [['CHANGE_BOND', '*2', -1, '*3'], ['CHANGE_BOND', '*1', 1, '*2']])
+        family = ReactionFamily('Intra_RH_Add_Endocyclic')
+        self.assertIn(['CHANGE_BOND', '*2', -1, '*3'], family.actions)
+        products = family.generate_products(reactants=[ARCSpecies(label='butene', smiles='C=CCC')])
+        product_mols = [mol for paths in products.values() for mols, _ in paths for mol in mols]
+        self.assertTrue(len(product_mols))
+        for mol in product_mols:
+            self.assertTrue(all(bond.order > 0 for bond in mol.get_all_edges()))
+            self.assertTrue(all(atom.charge == 0 for atom in mol.atoms))
+
+    def test_get_recipe_actions_malformed(self):
+        """Test that a malformed recipe raises a RecipeError naming the family and the line"""
+        self.assertEqual(get_recipe_actions(["recipe(actions=[", "    ['GAIN_RADICAL', '*1', 1],", "])"], 'fam'),
+                         [['GAIN_RADICAL', '*1', 1]])
+        self.assertFalse(issubclass(RecipeError, (ValueError, KeyError)))
+        header = ['name = "fam"', '', 'recipe(actions=[', "    ['BREAK_BOND', '*1', 1, '*2'],"]
+        bad_lines = {"    ['CHANGE_BOND', '*1', 'S', '*2'],": 'S',
+                     "    ['CHANGE_BOND', '*1', 1.5, '*2'],": '1.5',
+                     "    ['CHANGE_BOND', '*1', True, '*2'],": 'True',
+                     "    ['CHANGE_BOND', '*1', '-x', '*2'],": '-x',
+                     "    ['MOVE_BOND', '*1', 1, '*2'],": 'MOVE_BOND',
+                     "    ['CHANGE_BOND', '*1', 1],": 'CHANGE_BOND',
+                     "    ['GAIN_RADICAL', '*1', 1, '*2'],": 'GAIN_RADICAL',
+                     "    ['BREAK_BOND', 1, 1, '*2'],": 'BREAK_BOND',
+                     "    'CHANGE_BOND',": 'CHANGE_BOND',
+                     "    [],": '[]',
+                     "    some_name,": 'some_name',
+                     }
+        for bad_line, token in bad_lines.items():
+            with self.subTest(bad_line=bad_line):
+                with self.assertRaises(RecipeError) as cm:
+                    get_recipe_actions(header + [bad_line, '])'], 'fam')
+                msg = str(cm.exception)
+                self.assertIn('fam', msg)
+                self.assertIn('line 5', msg)
+                self.assertIn(bad_line.strip(), msg)
+                self.assertIn(token, msg)
+        trailing_entries = ['', 'entry(', '    index = 1,', '    label = "X",', ')'] * 2000
+        for bad_line in ["    ['BREAK_BOND', '*1', 1 '*2'],", "    ['BREAK_BOND', '*1', 1, '*2')],"]:
+            with self.subTest(bad_line=bad_line):
+                with self.assertRaises(RecipeError) as cm:
+                    get_recipe_actions(header + [bad_line, '])'] + trailing_entries, 'fam')
+                self.assertIn('fam', str(cm.exception))
+                self.assertIn('line 5', str(cm.exception))
+                self.assertIn(bad_line.strip(), str(cm.exception))
+        with self.assertRaises(RecipeError) as cm:
+            get_recipe_actions(header, 'fam')
+        self.assertIn('fam', str(cm.exception))
+        self.assertIn('line 3', str(cm.exception))
+        with self.assertRaises(RecipeError) as cm:
+            get_recipe_actions(['name = "fam"', 'entry(label="X")'], 'fam')
+        self.assertIn('fam', str(cm.exception))
+
+    def test_all_recipes_parse_completely(self):
+        """Test that every RMG and ARC family recipe is parsed into exactly the actions the file declares"""
+        family_dir = get_rmg_db_subpath('kinetics', 'families', must_exist=True)
+        paths = {label: os.path.join(family_dir, label, 'groups.py') for label in sorted(os.listdir(family_dir))
+                 if os.path.isfile(os.path.join(family_dir, label, 'groups.py'))}
+        paths.update({os.path.splitext(f)[0]: os.path.join(ARC_FAMILIES_PATH, f)
+                      for f in sorted(os.listdir(ARC_FAMILIES_PATH)) if f.endswith('.py') and not f.startswith('_')})
+        self.assertGreater(len(paths), 100)
+        for label, path in paths.items():
+            with self.subTest(family=label):
+                with open(path, 'r') as f:
+                    lines = f.readlines()
+                expected = [[int(x) if i == 2 else x for i, x in enumerate(action)]
+                            for action in exec_recipe_actions(''.join(lines))]
+                self.assertTrue(len(expected))
+                self.assertEqual(get_recipe_actions(lines, label), expected)
 
     def test_get_entries(self):
         """Test getting entries from a family"""
@@ -2044,6 +2164,316 @@ class TestSplitEntries(unittest.TestCase):
         text = """entry(label="he said 'hi)' today")"""
         self.assertEqual(split_entries(text),
                          ["""label="he said 'hi)' today\""""])
+
+
+# (cause, a fragment of the outcome every training reaction of the family must show for that cause)
+TERMOLECULAR_CAUSE = ('termolecular training reactions; family matching supports 1 or 2 reactants', 'no match')
+CATION_CAUSE = ('ARCReaction rejects the training reactions as not charge balanced; apply_recipe lacks LOSE_CHARGE',
+                'not charge balanced')
+PROTON_ELECTRON_CAUSE = ('ARCSpecies rejects the electron/surface species multiplicity; apply_recipe lacks LOSE_CHARGE',
+                         'Impossible multiplicity')
+
+
+class TestRecipeErrorIsolation(unittest.TestCase):
+    """
+    Contains unit tests for isolating a family whose groups file has a malformed recipe.
+    """
+
+    broken_label = 'H_Abstraction'
+
+    def setUp(self):
+        """Corrupt one recipe action of the broken family"""
+        self.corrupted: dict[str, tuple[str, ...]] = dict()
+
+        def fake_read(label, consider_arc_families=True):
+            return self.corrupted.get(label) or read_groups_file_lines(label, consider_arc_families)
+
+        patcher = mock.patch('arc.family.family.read_groups_file_lines', side_effect=fake_read)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.evict)
+        self.break_family(self.broken_label)
+
+    def break_family(self, label: str):
+        """
+        Make the line-17 GAIN_RADICAL action of a family's recipe malformed, and evict the family from both caches.
+
+        Args:
+            label (str): The family label.
+        """
+        real_lines = read_groups_file_lines(label)
+        corrupted = tuple(line.replace("'1'],", "'x'],") if line.lstrip().startswith("['GAIN_RADICAL'") else line
+                          for line in real_lines)
+        self.assertNotEqual(corrupted, real_lines)
+        self.corrupted[label] = corrupted
+        self.evict()
+
+    def evict(self):
+        """Drop every cached object of the broken families"""
+        for cache in (REACTION_FAMILY_CACHE, ReactionFamily._cache):
+            for key in [key for key in cache if key[0] in self.corrupted]:
+                del cache[key]
+
+    @staticmethod
+    def errors(cm) -> list[str]:
+        """Return the ERROR messages captured by assertLogs"""
+        return [record.getMessage() for record in cm.records if record.levelno == logging.ERROR]
+
+    def test_broken_family_isolated_over_two_reactions(self):
+        """Test that a broken family is reported once and other reactions still get their family"""
+        family_set = [self.broken_label, 'intra_H_migration']
+        rxn_a = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                            p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+        rxn_b = ARCReaction(r_species=[ARCSpecies(label='CCC[O]', smiles='CCC[O]')],
+                            p_species=[ARCSpecies(label='C[CH]CO', smiles='C[CH]CO')])
+        with self.assertLogs('arc', level='DEBUG') as cm:
+            family_a = rxn_a.determine_family(rmg_family_set=family_set)[0]
+            family_b = rxn_b.determine_family(rmg_family_set=family_set)[0]
+        self.assertIsNone(family_a)
+        self.assertEqual(family_b, 'intra_H_migration')
+        self.assertIn(self.broken_label, rxn_a.unavailable_families)
+        self.assertIn('line 17', rxn_a.unavailable_families[self.broken_label])
+        errors = self.errors(cm)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn(self.broken_label, errors[0])
+        self.assertIn('line 17', errors[0])
+
+    def test_cached_failure_not_relogged(self):
+        """Test that every lookup of a broken family raises, and that it is logged once"""
+        with self.assertLogs('arc', level='DEBUG') as cm:
+            for _ in range(2):
+                with self.assertRaises(RecipeError):
+                    get_reaction_family(label=self.broken_label)
+            with self.assertRaises(RecipeError):
+                ReactionFamily(label=self.broken_label)
+        self.assertEqual(len(self.errors(cm)), 1)
+        self.assertNotIn((self.broken_label, True), ReactionFamily._cache)
+
+    def test_preset_broken_family_fails_alone(self):
+        """Test that a reaction preset to a broken family fails alone, naming the cause"""
+        rxn_c = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                            p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')],
+                            family=self.broken_label)
+        rxn_d = ARCReaction(r_species=[ARCSpecies(label='CCC[O]', smiles='CCC[O]')],
+                            p_species=[ARCSpecies(label='C[CH]CO', smiles='C[CH]CO')])
+        with self.assertLogs('arc', level='DEBUG') as cm:
+            self.assertFalse(rxn_c.family_own_reverse)
+            self.assertIsNone(rxn_c.get_number_of_atoms_in_reaction_zone())
+            self.assertEqual(rxn_c.get_expected_changing_bonds(r_label_dict={}), (None, None))
+            rxn_c.product_dicts = [{'family': self.broken_label, 'r_label_map': {'*1': 0}}]
+            self.assertIsNone(find_all_breaking_bonds(rxn_c, r_direction=True))
+            self.assertEqual(rxn_c.as_dict()['family'], self.broken_label)
+            family_d = rxn_d.determine_family(rmg_family_set=[self.broken_label, 'intra_H_migration'])[0]
+        self.assertEqual(family_d, 'intra_H_migration')
+        self.assertIn(self.broken_label, rxn_c.unavailable_families)
+        self.assertIn('line 17', rxn_c.unavailable_families[self.broken_label])
+        self.assertEqual(len(self.errors(cm)), 1, self.errors(cm))
+
+    def test_preset_broken_family_with_other_matches(self):
+        """Test that a reaction preset to a broken family keeps no product dicts when another family matches"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CCC[O]', smiles='CCC[O]')],
+                          p_species=[ARCSpecies(label='C[CH]CO', smiles='C[CH]CO')],
+                          family=self.broken_label)
+        other_match = [{'family': 'intra_H_migration', 'discovered_in_reverse': False}]
+        with self.assertLogs('arc', level='DEBUG'):
+            self.assertEqual(rxn.restrict_product_dicts_to_family(other_match), [])
+        self.assertIn(self.broken_label, rxn.unavailable_families)
+
+
+    def test_lost_family_warned_when_another_matches(self):
+        """Test that a reaction whose candidate set lost a family is warned about even when another family matches"""
+        self.break_family('intra_H_migration')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='iC4H9', smiles='[CH2]C(C)C')],
+                          p_species=[ARCSpecies(label='sC4H9', smiles='C[CH]CC')])
+        with self.assertLogs('arc', level='DEBUG') as cm:
+            family = rxn.determine_family(rmg_family_set=['intra_H_migration', '1,2_shiftC'])[0]
+        self.assertEqual(family, '1,2_shiftC')
+        self.assertIn('intra_H_migration', rxn.unavailable_families)
+        warnings_ = [record.getMessage() for record in cm.records if record.levelno == logging.WARNING]
+        self.assertTrue(any(rxn.label in w and 'intra_H_migration' in w and 'line 17' in w for w in warnings_),
+                        warnings_)
+
+
+class TestFamiliesReproduceTrainingReactions(unittest.TestCase):
+    """
+    Every RMG family under ``rmg_family_set='all'`` must reproduce at least one of its own training reactions
+    (or, for a rules-only family, its reaction in RULES_ONLY_REACTIONS) when searched alone.
+    """
+    # Families whose training reactions ARC cannot reproduce for a reason other than its recipe parser.
+    # Each one is asserted to still fail, so a fixed family cannot hide here.
+    EXCEPTIONS = {
+        'Baeyer-Villiger_step1_cat': TERMOLECULAR_CAUSE,
+        'Cation_Addition_MultipleBond': CATION_CAUSE,
+        'Cation_Addition_MultipleBond_Disprop': CATION_CAUSE,
+        'Cation_Li_Abstraction': CATION_CAUSE,
+        'Cation_NO_Ring_Opening': CATION_CAUSE,
+        'Cation_NO_Substitution': CATION_CAUSE,
+        'Cation_R_Recombination': CATION_CAUSE,
+        'Surface_Proton_Electron_Reduction_Alpha': PROTON_ELECTRON_CAUSE,
+        'Surface_Proton_Electron_Reduction_Alpha_vdW': PROTON_ELECTRON_CAUSE,
+        'Surface_Proton_Electron_Reduction_Beta_vdW': PROTON_ELECTRON_CAUSE,
+    }
+    # Rules-only families checked against one reaction that matches a node of their rules.py.
+    RULES_ONLY_REACTIONS = {
+        'Intra_RH_Add_Endocyclic': (['C=CCC'], ['C1CCC1']),  # rules node R4 H-C-C-C=C
+    }
+    # Rules-only families with no reaction to check.
+    NO_TRAINING = {'1,2_XY_interchange', '1,2_shiftS', 'Cyclic_Thioether_Formation', 'Intra_RH_Add_Exocyclic',
+                   'Intra_R_Add_ExoTetCyclic', 'Intra_Retro_Diels_alder_bicyclic', 'Korcek_step1',
+                   'Korcek_step1_cat', 'Korcek_step2', 'Surface_Proton_Electron_Reduction_Beta',
+                   'Surface_Proton_Electron_Reduction_Beta_Dissociation', 'intra_substitutionCS_cyclization',
+                   'lone_electron_pair_bond'}
+    MAX_CANDIDATES = 8
+
+    def test_recipe_fix_families_reproduce(self):
+        """Test the two families whose recipes ARC used to misread"""
+        self.assertIn('match', [match_outcome('halocarbene_recombination_double', r, p)
+                                for r, p in read_training_reactions('halocarbene_recombination_double')])
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R0', smiles='C=CCC')],
+                          p_species=[ARCSpecies(label='P0', smiles='C1CCC1')])
+        product_dicts = get_reaction_family_products(rxn, rmg_family_set=['Intra_RH_Add_Endocyclic'])
+        self.assertIn('Intra_RH_Add_Endocyclic', [pd['family'] for pd in product_dicts])
+
+    def test_families_reproduce_own_training_reactions(self):
+        """Test that every family in the 'all' set reproduces one of its own training reactions"""
+        families = get_all_families(rmg_family_set='all', consider_arc_families=False)
+        self.assertGreater(len(families), 90)
+        named = set(self.EXCEPTIONS) | set(self.RULES_ONLY_REACTIONS) | self.NO_TRAINING
+        self.assertEqual(named - set(families), set(), 'Named families that are not in the "all" set')
+        failed, untested = list(), list()
+        for family in families:
+            if family in self.RULES_ONLY_REACTIONS:
+                rs, ps = self.RULES_ONLY_REACTIONS[family]
+                candidates = [([Molecule(smiles=smi) for smi in rs], [Molecule(smiles=smi) for smi in ps])]
+            else:
+                candidates = read_training_reactions(family)[:self.MAX_CANDIDATES]
+            if not candidates:
+                if family not in self.NO_TRAINING:
+                    untested.append(family)
+                continue
+            self.assertNotIn(family, self.NO_TRAINING)
+            outcomes = [match_outcome(family, r, p) for r, p in candidates]
+            if family in self.EXCEPTIONS:
+                fragment = self.EXCEPTIONS[family][1]
+                self.assertTrue(all(fragment in outcome for outcome in outcomes),
+                                f'{family} no longer fails only for its stated cause: {outcomes}')
+            elif 'match' not in outcomes:
+                failed.append((family, outcomes))
+        self.assertEqual(untested, [], 'families with no training reactions; add a reaction or name them')
+        self.assertEqual(failed, [], 'families that reproduce none of their own training reactions')
+
+
+class StubNamespace(dict):
+    """A namespace in which every undefined name is a callable that does nothing."""
+
+    def __missing__(self, key: str):
+        """
+        Return a do-nothing callable for an undefined name.
+
+        Args:
+            key (str): The undefined name.
+
+        Returns:
+            Callable: A function that accepts anything and returns None.
+        """
+        return lambda *args, **kwargs: None
+
+
+def exec_recipe_actions(groups_text: str) -> list[list]:
+    """
+    Read a family's recipe actions the way RMG does, by executing its groups file. Independent of get_recipe_actions.
+
+    Args:
+        groups_text (str): The content of a family groups file.
+
+    Returns:
+        list[list]: The recipe actions, as written in the file.
+    """
+    captured = list()
+    namespace = StubNamespace(recipe=lambda actions, **kwargs: captured.extend(actions))
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', SyntaxWarning)
+        exec(groups_text, {'__builtins__': {}}, namespace)
+    return captured
+
+
+def read_training_reactions(family: str) -> list[tuple[list[Molecule], list[Molecule]]]:
+    """
+    Read the distinct training reactions of an RMG family, smallest reactant atom count first.
+
+    Args:
+        family (str): The family label.
+
+    Returns:
+        list[tuple[list[Molecule], list[Molecule]]]: (reactants, products) per reaction, atom labels removed.
+    """
+    path = os.path.join(get_rmg_db_subpath('kinetics', 'families', family, must_exist=True), 'training', 'reactions.py')
+    if not os.path.isfile(path):
+        return list()
+    with open(path, 'r') as f, warnings.catch_warnings():
+        warnings.simplefilter('ignore', SyntaxWarning)
+        tree = ast.parse(f.read())
+    labels = list()
+    for node in tree.body:
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) \
+                and getattr(node.value.func, 'id', '') == 'entry':
+            for kw in node.value.keywords:
+                if kw.arg == 'label' and kw.value.value not in labels:
+                    labels.append(kw.value.value)
+    if not labels:
+        return list()
+    adjlists = dict()
+    with open(os.path.join(os.path.dirname(path), 'dictionary.txt'), 'r') as f:
+        for block in f.read().strip().split('\n\n'):
+            lines = [line for line in block.strip().splitlines() if line.strip()]
+            if lines:
+                adjlists[lines[0].strip()] = '\n'.join(lines[1:])
+
+    reactions = list()
+    for label in labels:
+        arrow = next(a for a in ('<=>', '=>', '=') if a in label)
+        reactions.append(tuple([unlabeled_molecule(adjlists[name.strip()]) for name in side.split('+')]
+                               for side in label.split(arrow)))
+    return sorted(reactions, key=lambda rxn: sum(len(mol.atoms) for mol in rxn[0]))
+
+
+def unlabeled_molecule(adjlist: str) -> Molecule:
+    """
+    Build a molecule from an adjacency list and remove its atom labels.
+
+    Args:
+        adjlist (str): The adjacency list.
+
+    Returns:
+        Molecule: The molecule.
+    """
+    mol = Molecule().from_adjacency_list(adjlist)
+    for atom in mol.atoms:
+        atom.label = ''
+    return mol
+
+
+def match_outcome(family: str, reactants: list[Molecule], products: list[Molecule]) -> str:
+    """
+    Whether a family, searched alone, matches a reaction.
+
+    Args:
+        family (str): The family label.
+        reactants (list[Molecule]): The reactants.
+        products (list[Molecule]): The products.
+
+    Returns:
+        str: 'match', 'no match', or the error raised while ARC builds the reaction.
+    """
+    try:
+        rxn = ARCReaction(r_species=[ARCSpecies(label=f'R{i}', adjlist=mol.to_adjacency_list(),
+                                                multiplicity=mol.multiplicity) for i, mol in enumerate(reactants)],
+                          p_species=[ARCSpecies(label=f'P{i}', adjlist=mol.to_adjacency_list(),
+                                                multiplicity=mol.multiplicity) for i, mol in enumerate(products)])
+    except (ReactionError, SpeciesError) as e:
+        return f'{type(e).__name__}: {e}'
+    product_dicts = get_reaction_family_products(rxn, rmg_family_set=[family])
+    return 'match' if any(pd['family'] == family for pd in product_dicts) else 'no match'
 
 
 if __name__ == '__main__':

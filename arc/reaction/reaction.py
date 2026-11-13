@@ -3,8 +3,8 @@ A module for representing a reaction.
 """
 
 from arc.common import get_element_mass, get_logger
-from arc.exceptions import ReactionError, InputError
-from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
+from arc.exceptions import ReactionError, InputError, RecipeError
+from arc.family.family import ReactionFamily, get_reaction_family, get_reaction_family_products, check_family_name
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species.converter import (check_xyz_dict,
                                    sort_xyz_using_indices,
@@ -59,6 +59,9 @@ class ARCReaction(object):
                      (or unimolecular on either side, as appropriate).
         family (str): The RMG kinetic family, if applicable.
         family_own_reverse (bool): Whether the RMG family is its own reverse.
+        unavailable_families (dict[str, str]): Families that could not be used for this reaction because their
+                                               recipe is malformed, keyed by label, with the cause as the value.
+                                               Not saved in the restart file.
         reactants (list[str]): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
         products (list[str]): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
         r_species (list[ARCSpecies]): A list of reactants :ref:`ARCSpecies <species>` objects.
@@ -114,6 +117,7 @@ class ARCReaction(object):
         self._family_determined = False
         self._family_own_reverse = None
         self._product_dicts = None
+        self.unavailable_families: dict[str, str] = {}
         if family is not None:
             if check_family_name(family):
                 self.family = family
@@ -635,10 +639,12 @@ class ARCReaction(object):
             product_dicts (list[dict]): The family product dictionaries to restrict.
 
         Raises:
-            ReactionError: If this reaction's family was set and none of the entries belong to it.
+            ReactionError: If this reaction's family was set and none of the entries belong to it,
+                           unless that family is unavailable.
 
         Returns:
-            list[dict]: The product dictionaries belonging to a single family.
+            list[dict]: The product dictionaries belonging to a single family,
+                        empty if this reaction's family was set and is unavailable.
         """
         if not len(product_dicts):
             return product_dicts
@@ -649,6 +655,8 @@ class ARCReaction(object):
         family = self._family if self._family is not None else families[0]
         restricted = [product_dict for product_dict in product_dicts if product_dict['family'] == family]
         if not len(restricted):
+            if self.get_reaction_family_object(family=family) is None:
+                return restricted
             raise ReactionError(f'Reaction {self.label} was assigned the {family} family, but it does not match '
                                 f'this family. The families it does match are: {families}.')
         if len(families) > 1:
@@ -672,11 +680,36 @@ class ARCReaction(object):
         if family is None:
             return False
         try:
-            return ReactionFamily(label=family).own_reverse
+            reaction_family = self.get_reaction_family_object()
         except FileNotFoundError:
             logger.error(f'Could not find the groups file of the {family} family of reaction {self.label}, '
                          f'assuming that this family is not its own reverse.')
             return False
+        return reaction_family.own_reverse if reaction_family is not None else False
+
+    def get_reaction_family_object(self, family: str | None = None) -> ReactionFamily | None:
+        """
+        Get the ReactionFamily object of this reaction's family, or of another family.
+
+        A family whose recipe is malformed is recorded in ``unavailable_families`` with its cause,
+        so this reaction is treated as having no usable family and other reactions are unaffected.
+
+        Args:
+            family (str, optional): The family label. Defaults to the reaction's own family.
+
+        Returns:
+            ReactionFamily | None: The family object, ``None`` if there is no family or it is unavailable.
+        """
+        family = family or self.family
+        if family is None:
+            return None
+        try:
+            return get_reaction_family(label=family)
+        except RecipeError as e:
+            if family not in self.unavailable_families:
+                logger.warning(f'Reaction {self.label} cannot use the {family} family, which is unavailable: {e}')
+            self.unavailable_families[family] = str(e)
+            return None
 
     def determine_family(self,
                          rmg_family_set: list[str] | str | None = None,
@@ -961,10 +994,9 @@ class ARCReaction(object):
             tuple[list[tuple[int, int]], list[tuple[int, int]]]:
                 A list of tuples of atom indices representing breaking and forming bonds.
         """
-        family = family or self.family
-        if family is None:
+        reaction_family = self.get_reaction_family_object(family=family)
+        if reaction_family is None:
             return None, None
-        reaction_family = ReactionFamily(label=family)
         # E.g.: [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*2', 1, '*3'], ['GAIN_RADICAL', '*1', '1']]
         expected_breaking_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
                                    for action in reaction_family.actions if action[0] == 'BREAK_BOND']
@@ -979,9 +1011,9 @@ class ARCReaction(object):
         Returns:
             int: The number of atoms that participate in the reaction zone.
         """
-        if self.family is None:
+        family = self.get_reaction_family_object()
+        if family is None:
             return None
-        family = ReactionFamily(label=self.family)
         # E.g.: [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*2', 1, '*3'], ['GAIN_RADICAL', '*1', '1']
         labels = list()
         for action in family.actions:
@@ -1168,7 +1200,10 @@ class ARCReaction(object):
         r_label_map = product_dict.get('r_label_map')
         if not r_label_map:
             return None
-        actions = ReactionFamily(label=self.family).actions
+        reaction_family = self.get_reaction_family_object()
+        if reaction_family is None:
+            return None
+        actions = reaction_family.actions
         formed, broken, changed = list(), list(), list()
         for action in actions:
             kind = action[0].upper()

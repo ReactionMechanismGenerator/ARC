@@ -43,7 +43,7 @@ class TestCarbonylBasedHydrolysisReactionFamily(unittest.TestCase):
         groups_file_path = os.path.join(ARC_FAMILIES_PATH, 'carbonyl_based_hydrolysis.py')
         with open(groups_file_path, 'r') as f:
             groups_as_lines = f.readlines()
-        actions = get_recipe_actions(groups_as_lines)
+        actions = get_recipe_actions(groups_as_lines, 'carbonyl_based_hydrolysis')
         expected_actions = [
             ['BREAK_BOND', '*1', 1, '*2'],
             ['BREAK_BOND', '*3', 1, '*4'],
@@ -91,7 +91,7 @@ class TestNitrileHydrolysisReactionFamily(unittest.TestCase):
         groups_file_path = os.path.join(ARC_FAMILIES_PATH, 'nitrile_hydrolysis.py')
         with open(groups_file_path, 'r') as f:
             groups_as_lines = f.readlines()
-        actions = get_recipe_actions(groups_as_lines)
+        actions = get_recipe_actions(groups_as_lines, 'nitrile_hydrolysis')
         expected_actions =[
         ['CHANGE_BOND', '*1', -1, '*2'],
         ['BREAK_BOND', '*3', 1, '*4'],
@@ -128,7 +128,7 @@ class TestEtherHydrolysisReactionFamily(unittest.TestCase):
         groups_file_path = os.path.join(ARC_FAMILIES_PATH, 'ether_hydrolysis.py')
         with open(groups_file_path, 'r') as f:
             groups_as_lines = f.readlines()
-        actions = get_recipe_actions(groups_as_lines)
+        actions = get_recipe_actions(groups_as_lines, 'ether_hydrolysis')
         expected_actions = [
         ['BREAK_BOND', '*1', 1, '*2'],
         ['BREAK_BOND', '*3', 1, '*4'],
