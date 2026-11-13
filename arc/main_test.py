@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from arc.common import ARC_INPUT_SCHEMA_VERSION, VERSION, get_logger
@@ -772,6 +773,33 @@ class TestExecuteReleasesPooledConnections(unittest.TestCase):
                 patch('arc.main.reset_default_pool') as released:
             self.assertRaises(KeyboardInterrupt, self._arc().execute)
         released.assert_called_once()
+
+
+class TestOutputYmlNebLevel(unittest.TestCase):
+    """
+    Contains unit tests for the NEB level that output.yml records.
+    """
+
+    def test_neb_level_follows_the_scheduler_ts_adapters(self):
+        """Test that the NEB level is resolved from the run's resolved adapters when the input sets none."""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_neb_level_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        arc0 = ARC(project='arc_test_neb_level_from_scheduler', calc_freq_factor=False,
+                   project_directory=os.path.join(scratch_dir, 'arc_test_neb_level_from_scheduler'))
+        self.assertIsNone(arc0.ts_adapters)
+        scheduler = SimpleNamespace(ts_adapters=['heuristics', 'orca_neb'], ts_adapters_source='repo default',
+                                    output=dict(), species_dict=dict(), rxn_list=list(), remote_project_paths=dict())
+        neb_settings = dict(settings, orca_neb_settings={'level': 'wb97xd/def2svp'})
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch('arc.processor.settings', neb_settings), \
+                patch('arc.main.process_arc_project'), \
+                patch('arc.main.write_output_yml') as write_output_yml, \
+                patch.object(ARC, 'clean_check_files'), \
+                patch.object(ARC, 'summary', return_value=dict()):
+            arc0.execute()
+        neb_level = write_output_yml.call_args.kwargs['neb_level']
+        self.assertEqual(neb_level, Level(repr='wb97xd/def2svp'))
+        self.assertEqual(write_output_yml.call_args.kwargs['ts_adapters'], ['heuristics', 'orca_neb'])
 
 
 class TestServerMappingBorrowsItsConnection(unittest.TestCase):

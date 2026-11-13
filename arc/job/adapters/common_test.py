@@ -5,6 +5,8 @@
 This module contains unit tests of the arc.job.adapters.common module
 """
 
+import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -13,6 +15,9 @@ from types import SimpleNamespace
 
 import arc.job.adapters.common as common
 import arc.job.factory as factory
+import arc.settings.settings as repo_settings
+from arc.common import ARC_PATH
+from arc.exceptions import InputError
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.adapters.molpro import MolproAdapter
 from arc.level import Level
@@ -743,6 +748,79 @@ class TestAdapterTables(unittest.TestCase):
         self.assertTrue(common.default_incore_adapters)
         for adapter in common.default_incore_adapters:
             self.assertIn(adapter, registered, f'default_incore_adapters lists the unregistered adapter {adapter!r}')
+
+    def test_default_ts_adapters_equal_the_registered_adapters_the_map_uses(self):
+        """The repo default ts_adapters must be the registered TS adapters the family map can dispatch, less the opt-in ones."""
+        registered = [enum.value for enum in factory._registered_job_adapters]
+        used = common.ts_adapters_used_by_the_map(registered)
+        self.assertEqual(repo_settings.ts_adapters, [adapter for adapter in used if adapter not in common.opt_in_ts_adapters])
+        for adapter in common.opt_in_ts_adapters:
+            self.assertIn(adapter, used)
+
+    def test_ts_adapters_used_by_the_map(self):
+        """Test the ordered, registry-filtered union of the adapters the family map dispatches."""
+        self.assertEqual(common.ts_adapters_used_by_the_map(list()), list())
+        registered = [enum.value for enum in factory._registered_job_adapters]
+        union = common.ts_adapters_used_by_the_map(registered)
+        self.assertEqual(union[:2], ['heuristics', 'linear'])
+        self.assertEqual(len(union), len(set(union)))
+        for adapter in ['autotst', 'gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits']:
+            self.assertIn(adapter, union)
+        self.assertNotIn('crest', union)
+        for adapter in common.ts_adapters_for_unknown_unimolecular:
+            self.assertIn(adapter, union)
+        family_map = {'fam_a': ['zz_new', 'linear', 'aa_new'], 'fam_b': ['heuristics', 'unregistered']}
+        self.assertEqual(common.ts_adapters_used_by_the_map(['heuristics', 'linear', 'zz_new', 'aa_new', 'goflow', 'rits'],
+                                                            family_map=family_map),
+                         ['heuristics', 'linear', 'goflow', 'aa_new', 'rits', 'zz_new'])
+        self.assertEqual(common.ts_adapters_used_by_the_map(None, family_map=family_map),
+                         ['heuristics', 'linear', 'goflow', 'aa_new', 'rits', 'unregistered', 'zz_new'])
+
+    def test_ts_adapter_install_targets_exist_in_the_makefile(self):
+        """Every make target named for a TS engine must exist in ARC's Makefile."""
+        with open(os.path.join(ARC_PATH, 'Makefile'), 'r') as f:
+            targets = set(re.findall(r'^([\w-]+):', f.read(), flags=re.MULTILINE))
+        self.assertTrue(common.ts_adapter_install_targets)
+        for adapter, adapter_targets in common.ts_adapter_install_targets.items():
+            self.assertIn(adapter, common.ts_adapters_used_by_the_map(registered=None))
+            for target in adapter_targets:
+                self.assertIn(target, targets, f'{adapter!r} names the missing make target {target!r}')
+        self.assertNotIn('orca_neb', common.ts_adapter_install_targets)
+
+
+class TestResolveTsAdapters(unittest.TestCase):
+    """
+    Contains unit tests for resolve_ts_adapters().
+    """
+
+    default = ['heuristics', 'linear', 'autotst']
+
+    def test_repo_default(self):
+        """No input and no ~/.arc override selects the repo default."""
+        self.assertEqual(common.resolve_ts_adapters(None, self.default, frozenset(), self.default),
+                         (['heuristics', 'linear', 'autotst'], 'repo default', []))
+
+    def test_local_settings_override_that_drops_linear(self):
+        """A ~/.arc/settings.py list is named as the source, lowercased, and its omissions reported."""
+        local = ['heuristics', 'AutoTST']
+        self.assertEqual(common.resolve_ts_adapters(None, local, frozenset({'ts_adapters', 'servers'}), self.default),
+                         (['heuristics', 'autotst'], '~/.arc/settings.py', ['linear']))
+
+    def test_input_file_wins(self):
+        """An input file list wins over ~/.arc/settings.py."""
+        self.assertEqual(common.resolve_ts_adapters(['Linear'], ['heuristics'], frozenset({'ts_adapters'}), self.default),
+                         (['linear'], 'input file', ['heuristics', 'autotst']))
+        self.assertEqual(common.resolve_ts_adapters([], self.default, frozenset(), self.default),
+                         ([], 'input file', ['heuristics', 'linear', 'autotst']))
+
+    def test_wrong_type_raises(self):
+        """A ts_adapters value that is not a list of strings is refused, naming its source."""
+        for value, keys, source in [('linear', frozenset(), 'input file'),
+                                    ([1, 'linear'], frozenset(), 'input file')]:
+            with self.assertRaisesRegex(InputError, source):
+                common.resolve_ts_adapters(value, self.default, keys, self.default)
+        with self.assertRaisesRegex(InputError, r'~/\.arc/settings\.py'):
+            common.resolve_ts_adapters(None, None, frozenset({'ts_adapters'}), self.default)
 
 
 if __name__ == '__main__':

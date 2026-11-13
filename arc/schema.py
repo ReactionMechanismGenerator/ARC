@@ -201,6 +201,7 @@ class Species(BaseModel):
     rxn_label: str | None = None
     rxn_zone_atom_indices: list | None = None
     scf_references: dict | None = None
+    skipped_methods: dict[str, str] | None = None
     smiles: str | None = None
     stability_analysis_ran: Flag = False
     stability_pending_opt_job: str | None = None

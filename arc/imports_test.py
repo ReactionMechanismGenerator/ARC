@@ -2,13 +2,19 @@
 This module contains unit tests for the arc.imports module.
 """
 
+import json
 import logging
 import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from arc.imports import _report_unusable_overlay, resolve_overridden_dependents
+from arc.common import ARC_PATH
+import arc.imports as arc_imports
+from arc.imports import _report_unusable_overlay, local_settings_keys, resolve_overridden_dependents
 from arc.settings import external_paths
 
 # The finders consult these before ``repo_path``, and CI exports two of them
@@ -188,6 +194,67 @@ class TestReportUnusableOverlay(unittest.TestCase):
         self.assertEqual([record.levelno for record in records], [logging.DEBUG])
         self.assertIn('submit_scripts', records[0].getMessage())
         self.queued.assert_not_called()
+
+
+class TestLocalSettingsKeys(unittest.TestCase):
+    """
+    Contains unit tests for local_settings_keys, the names a ~/.arc/settings.py overlay set.
+    """
+
+    def read_keys_under_home(self, overlay: str | None, attribute: str = 'local_settings_keys') -> list:
+        """
+        Import arc.imports in a fresh interpreter whose HOME holds the given ~/.arc/settings.py.
+
+        Args:
+            overlay (str, optional): The overlay file content, or ``None`` for no ~/.arc/settings.py.
+            attribute (str, optional): The arc.imports attribute to read.
+
+        Returns:
+            list: The sorted values of that attribute in that interpreter.
+        """
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, ignore_errors=True)
+        if overlay is not None:
+            os.makedirs(os.path.join(home, '.arc'))
+            with open(os.path.join(home, '.arc', 'settings.py'), 'w') as f:
+                f.write(overlay)
+        env = dict(os.environ, HOME=home, PYTHONPATH=ARC_PATH)
+        result = subprocess.run([sys.executable, '-c', f'import json, arc.imports as i; print(json.dumps(sorted(i.{attribute})))'],
+                                env=env, capture_output=True, text=True, cwd=home, timeout=300)
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        return json.loads(result.stdout.strip().splitlines()[-1])
+
+    def test_no_overlay_sets_no_key(self):
+        """Without ~/.arc/settings.py no setting comes from it."""
+        self.assertIsInstance(local_settings_keys, frozenset)
+        self.assertEqual(self.read_keys_under_home(None), list())
+
+    def test_an_overlay_reports_exactly_the_names_it_set(self):
+        """An overlay that sets ts_adapters is told apart from the repo default."""
+        overlay = "ts_adapters = ['heuristics', 'AutoTST']\nmax_ess_trsh = 3\n_private = 1\n"
+        self.assertEqual(self.read_keys_under_home(overlay), ['_private', 'max_ess_trsh', 'ts_adapters'])
+
+
+    def test_a_star_import_of_the_repo_settings_sets_no_key(self):
+        """An overlay that star-imports the repo settings counts only the names whose value it changed."""
+        overlay = "from arc.settings.settings import *\nmax_ess_trsh = 3\nts_adapters = list(ts_adapters)\n"
+        self.assertEqual(self.read_keys_under_home(overlay), ['max_ess_trsh'])
+
+    def test_an_in_place_edit_of_a_star_imported_default_is_counted(self):
+        """An overlay that edits a star-imported default list in place has overridden it."""
+        overlay = "from arc.settings.settings import *\nts_adapters.remove('linear')\n"
+        self.assertEqual(self.read_keys_under_home(overlay), ['ts_adapters'])
+        self.assertIn('linear', self.read_keys_under_home(overlay, attribute='repo_default_ts_adapters'))
+
+    def test_overridden_setting_names(self):
+        """Test that a name counts as overridden only when it is new or its value differs from the default."""
+        class Unequal:
+            """A value whose comparison raises."""
+            def __eq__(self, other):
+                raise ValueError('ambiguous')
+        default = {'a': [1, 2], 'b': 'x', 'c': Unequal()}
+        local = {'a': [1, 2], 'b': 'y', 'c': default['c'], 'd': 1, 'e': Unequal()}
+        self.assertEqual(arc_imports.overridden_setting_names(local, default), frozenset({'b', 'd', 'e'}))
 
 
 if __name__ == '__main__':
