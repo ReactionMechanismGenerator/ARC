@@ -735,7 +735,7 @@ class ARC(object):
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.species:
             descriptor = 'TS' if species.is_ts else 'Species'
-            failed = '' if self.output[species.label]['convergence'] else ' (Failed!)'
+            failed = '' if self.output.get(species.label, dict()).get('convergence', False) else ' (Failed!)'
             txt += f'{descriptor} {species.label}{failed} (run time: {species.run_time})\n'
         if self.reactions:
             for rxn in self.reactions:
@@ -757,14 +757,14 @@ class ARC(object):
             if not species.is_ts:
                 spc_dict = dict()
                 spc_dict['label'] = species.label
-                spc_dict['success'] = self.output[species.label]['convergence']
+                spc_dict['success'] = self.output.get(species.label, dict()).get('convergence', False)
                 spc_dict['smiles'] = species.mol.copy(deep=True).to_smiles() if species.mol is not None else None
                 spc_dict['adj'] = species.mol.copy(deep=True).to_adjacency_list() if species.mol is not None else None
                 content['species'].append(spc_dict)
         for reaction in self.reactions:
             rxn_dict = dict()
             rxn_dict['label'] = reaction.label
-            rxn_dict['success'] = self.output[reaction.ts_species.label]['convergence']
+            rxn_dict['success'] = self.output.get(reaction.ts_species.label, dict()).get('convergence', False)
             content['reactions'].append(rxn_dict)
         save_yaml_file(path=path, content=content)
 

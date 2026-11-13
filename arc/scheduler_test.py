@@ -3203,6 +3203,46 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         # Verify rotors convergence flag preserved as True (not blanket-reset to False).
         self.assertTrue(sched.output[ts_label]['job_types']['rotors'])
 
+    def test_deleting_a_ts_irc_species_keeps_the_shared_species_list(self):
+        """Test that cleaning up a TS's IRC species edits the species list ARC shares, rather than replacing it"""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        spc = ARCSpecies(label='NH3', smiles='N', compute_thermo=False)
+        ts_spc = ARCSpecies(label='TS_shared', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0, compute_thermo=False)
+        species = [spc, ts_spc]
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_shared_list')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_shared_species_list', ess_settings=self.ess_settings,
+                          species_list=species,
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        self.assertIs(sched.species_list, species)
+        irc_spc = ARCSpecies(label='IRC_TS_shared_1', xyz=ts_xyz, compute_thermo=False, irc_label='TS_shared')
+        sched.species_list.append(irc_spc)
+        sched.species_dict[irc_spc.label] = irc_spc
+        sched.unique_species_labels.append(irc_spc.label)
+        sched.initialize_output_dict(label=irc_spc.label)
+        ts_spc.irc_label = irc_spc.label
+        sched.job_dict['TS_shared'] = dict()
+
+        sched.delete_all_species_jobs('TS_shared')
+
+        self.assertIs(sched.species_list, species)
+        self.assertEqual([s.label for s in species], ['NH3', 'TS_shared'])
+        self.assertTrue(all(s.label in sched.output for s in species))
+
+        later_spc = ARCSpecies(label='IRC_TS_shared_2', xyz=ts_xyz, compute_thermo=False, irc_label='TS_shared')
+        sched.species_list.append(later_spc)
+        self.assertIn(later_spc, species)
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_rotors_reset(self, mock_run_opt):
         """Test that switch_ts resets rotors_dict when rotors are enabled, and preserves the None sentinel."""
