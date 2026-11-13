@@ -46,6 +46,7 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family,
                                       ts_adapters_for_unknown_unimolecular)
+from arc.job.adapters.ts.availability import ts_adapter_unavailable_reason
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
@@ -2718,7 +2719,7 @@ class Scheduler(object):
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
                 else:
                     rxn.ts_species.tsg_spawned = True
-                    tsg_index, eligible_methods = 0, list()
+                    tsg_index, eligible_methods, unavailable = 0, list(), dict()
                     family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
                     for method in self.ts_adapters:
                         admit_unknown_family = (not family_known
@@ -2733,6 +2734,14 @@ class Scheduler(object):
                                             f'via ts_adapters_for_unknown_unimolecular '
                                             f'(RMG family is {rxn.family!r}).')
                             eligible_methods.append(method)
+                            unavailable_reason = ts_adapter_unavailable_reason(method, ess_settings=self.ess_settings)
+                            if unavailable_reason is not None:
+                                unavailable[method] = unavailable_reason
+                                logger.warning(f'TS search adapter {method!r} skipped for reaction {rxn.label}: '
+                                               f'{unavailable_reason}.')
+                                if method not in rxn.ts_species.unsuccessful_methods:
+                                    rxn.ts_species.unsuccessful_methods.append(method)
+                                continue
                             try:
                                 self.run_job(job_type='tsg',
                                              job_adapter=method,
@@ -2744,6 +2753,7 @@ class Scheduler(object):
                                 # record it and carry on so one missing dependency can't abort the run.
                                 logger.error(f'The {method!r} TS search adapter is not available and '
                                              f'was skipped for reaction {rxn.label}: {e}')
+                                unavailable[method] = str(e)
                                 if method not in rxn.ts_species.unsuccessful_methods:
                                     rxn.ts_species.unsuccessful_methods.append(method)
                                 # Roll back the job run_job() registered before it raised, so a
@@ -2753,13 +2763,17 @@ class Scheduler(object):
                                 self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).pop(tsg_index, None)
                                 continue
                             tsg_index += 1
-                    if not tsg_index and not rxn.ts_species.ts_guesses:
+                    if unavailable:
+                        # run_job() saved before these skips were recorded; persist them with tsg_spawned.
+                        self.save_restart_dict()
+                    if not tsg_index and not rxn.ts_species.ts_guesses and rxn.ts_species.yml_path is None:
                         # No adapter ran and no user guess was given, and tsg_spawned is already
                         # latched True, so warn explicitly rather than fail silently much later.
                         eligible = ts_adapters_by_rmg_family.get(rxn.family) if family_known else None
                         if eligible_methods:
+                            causes = '; '.join(f'{method!r}: {cause}' for method, cause in unavailable.items())
                             reason = (f'all of its eligible adapters {eligible_methods} are unavailable '
-                                      f'on this machine (see the errors above). Install one of them, or add '
+                                      f'on this machine ({causes}). Install one of them, or add '
                                       f'an eligible adapter that is installed')
                         else:
                             reason = (f'none of the configured ts_adapters {self.ts_adapters} is eligible for it. '
@@ -2769,13 +2783,30 @@ class Scheduler(object):
                                          f'and it did not qualify for {ts_adapters_for_unknown_unimolecular} '
                                          f'(is_unimolecular={rxn.is_unimolecular()}).')
                                       + ' Add an eligible adapter to ts_adapters')
-                        logger.warning(f'Not spawning any TS search job for reaction {rxn.label}: {reason} '
-                                       f'(in the input file or in ~/.arc/settings.py) to compute this TS. '
-                                       f'No TS guess will be generated and this reaction will be reported '
-                                       f'as not converged.')
+                        message = (f'Not spawning any TS search job for reaction {rxn.label}: {reason} '
+                                   f'(in the input file or in ~/.arc/settings.py) to compute this TS. '
+                                   f'No TS guess will be generated and this reaction will be reported '
+                                   f'as not converged.')
+                        logger.error(message)
+                        self.end_ts_search_without_guesses(label=rxn.ts_label, message=message)
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
+
+    def end_ts_search_without_guesses(self, label: str, message: str) -> None:
+        """
+        End the TS search of a TS species that no adapter could run for, recording why in its output.
+
+        Args:
+            label (str): The TS species label.
+            message (str): The reason, naming the reaction and its adapters.
+        """
+        if label in self.species_dict:
+            self.species_dict[label].ts_guesses_exhausted = True
+        if label in self.output:
+            self.output[label]['convergence'] = False
+            self.output[label]['errors'] = f"{self.output[label].get('errors') or ''}{message}; "
+        self.save_restart_dict()
 
     def spawn_directed_scan_jobs(self,
                                  label: str,

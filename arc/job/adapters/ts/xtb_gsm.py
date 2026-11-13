@@ -21,9 +21,10 @@ from typing import TYPE_CHECKING
 from mako.template import Template
 
 from arc.common import ARC_PATH, get_logger, safe_copy_file
+from arc.exceptions import DependencyError
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter
+from arc.job.adapters.common import _initialize_adapter, missing_engine_file_reason
 from arc.job.factory import register_job_adapter
 from arc.job.local import change_mode, execute_command
 from arc.level import Level
@@ -63,9 +64,20 @@ trap collect_gsm_evidence EXIT
 ./gsm.orca.bin
 """
 
-input_filenames, output_filenames, servers, submit_filenames, xtb_gsm_settings = \
+input_filenames, output_filenames, servers, submit_filenames, xtb_gsm_settings, XTB = \
     settings['input_filenames'], settings['output_filenames'], settings['servers'], settings['submit_filenames'], \
-    settings['xtb_gsm_settings']
+    settings['xtb_gsm_settings'], settings['XTB']
+
+
+def engine_unavailable_reason() -> str | None:
+    """
+    Report why xTB-GSM cannot run on this machine. The GSM driver ships with ARC, and it runs
+    the xtb executable of the xtb_env conda env.
+
+    Returns:
+        str | None: ``None`` if the xtb executable of xtb_env is found, otherwise the reason.
+    """
+    return missing_engine_file_reason(XTB, 'XTB', 'the xtb executable of the xtb_env conda env')
 
 input_template = """# FSM/GSM/SSM inpfileq
 
@@ -511,6 +523,9 @@ class xTBGSMAdapter(JobAdapter):
         """
         Execute a job incore.
         """
+        reason = engine_unavailable_reason()
+        if reason is not None:
+            raise DependencyError(f'xTB-GSM cannot run: {reason}.')
         self.initial_time = self.initial_time if self.initial_time else datetime.datetime.now()
         self._log_job_execution()
         execute_command([f'cd {self.local_path}'] + incore_commands['xtb_gsm'], executable='/bin/bash')

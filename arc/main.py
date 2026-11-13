@@ -30,6 +30,7 @@ from arc.common import (VERSION,
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.level import Level, assign_frequency_scale_factor, get_freq_level_for_composite_method
+from arc.job.adapters.common import ts_adapters_by_rmg_family
 from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
 from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
@@ -329,8 +330,9 @@ class ARC(object):
         self.ts_adapters = ts_adapters
         self.report_e_elect = report_e_elect
         self.skip_nmd = skip_nmd
+        mapped_ts_adapters = {adapter for adapters in ts_adapters_by_rmg_family.values() for adapter in adapters}
         for ts_adapter in self.ts_adapters or list():
-            if ts_adapter.lower() not in _registered_job_adapters.keys():
+            if ts_adapter.lower() not in _registered_job_adapters.keys() and ts_adapter.lower() not in mapped_ts_adapters:
                 raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
 
         # attributes related to level of theory specifications

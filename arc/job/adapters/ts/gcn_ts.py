@@ -14,9 +14,10 @@ from typing import TYPE_CHECKING
 from rdkit import Chem
 
 from arc.common import ARC_PATH, almost_equal_coords, get_logger, save_yaml_file
+from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter
+from arc.job.adapters.common import _initialize_adapter, missing_engine_file_reason
 from arc.job.env_run import run_in_conda_env
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
@@ -37,18 +38,27 @@ GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'g
 logger = get_logger()
 
 
+def engine_unavailable_reason() -> str | None:
+    """
+    Report why the GCN subprocess boundary is not usable: the ``ts_gcn`` environment's Python
+    interpreter (``TS_GCN_PYTHON``) or the standalone GCN script is missing.
+
+    Returns:
+        str | None: ``None`` if GCN can be executed, otherwise the reason.
+    """
+    return missing_engine_file_reason(TS_GCN_PYTHON, 'TS_GCN_PYTHON', 'the python of the ts_gcn conda env '
+                                                                      '(install it via devtools/install_gcn.sh)') \
+        or missing_engine_file_reason(GCN_SCRIPT_PATH, 'GCN_SCRIPT_PATH', 'the GCN script shipped with ARC')
+
+
 def gcn_available() -> bool:
     """
-    Determine whether the GCN subprocess boundary is usable:
-    the ``ts_gcn`` environment's Python interpreter (``TS_GCN_PYTHON``)
-    resolves to an existing executable, and the standalone GCN script exists.
+    Determine whether the GCN subprocess boundary is usable.
 
     Returns:
         bool: Whether GCN can be executed.
     """
-    return (TS_GCN_PYTHON is not None
-            and os.path.isfile(TS_GCN_PYTHON)
-            and os.path.isfile(GCN_SCRIPT_PATH))
+    return engine_unavailable_reason() is None
 
 
 class GCNAdapter(JobAdapter):
@@ -281,12 +291,7 @@ class GCNAdapter(JobAdapter):
             exe_type (str, optional): Whether to execute 'incore' or 'queue'.
         """
         if not gcn_available():
-            logger.warning(f'GCN is not available: TS_GCN_PYTHON is {TS_GCN_PYTHON}, '
-                           f'expected the python executable of the "ts_gcn" environment '
-                           f'(and {GCN_SCRIPT_PATH} must exist). '
-                           f'Install it via devtools/install_gcn.sh (see {self.url}). '
-                           f'Skipping GCN TS guesses for {self.reactions[0].label}.')
-            return
+            raise DependencyError(f'GCN is not available: {engine_unavailable_reason()} (see {self.url}).')
         self._log_job_execution()
         rxn = self.reactions[0]
         if not rxn.is_isomerization():

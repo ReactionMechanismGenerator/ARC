@@ -15,6 +15,12 @@ import tempfile
 from types import SimpleNamespace
 
 
+import arc.job.adapters.ts.autotst_ts as autotst_ts
+import arc.job.adapters.ts.gcn_ts as gcn_ts
+import arc.job.adapters.ts.goflow_ts as goflow_ts
+import arc.job.adapters.ts.kinbot_ts as kinbot_ts
+import arc.job.adapters.ts.rits_ts as rits_ts
+import arc.job.adapters.ts.xtb_gsm as xtb_gsm
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
@@ -3794,7 +3800,8 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.ess_settings = {'gaussian': ['server1']}
-        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 6)]
+        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 8)] \
+            + [f'arc_project_for_testing_delete_after_usage_tsg_save_{i}' for i in range(1, 3)]
 
     @classmethod
     def tearDownClass(cls):
@@ -3893,9 +3900,11 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
             return StubJob(job_type=job_type, job_adapter=job_adapter,
                            unavailable=job_adapter in unavailable_adapters)
 
-        patcher = patch('arc.scheduler.job_factory', new=stub_job_factory)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        # These tests drive the DependencyError backstop, so the engine check before it must pass on any host.
+        for patcher in [patch('arc.scheduler.job_factory', new=stub_job_factory),
+                        patch.object(kinbot_ts, 'KINBOT_PYTHON', __file__)]:
+            patcher.start()
+            self.addCleanup(patcher.stop)
         return sched, rxn, spawned
 
     def test_spawn_ts_jobs_warns_when_no_adapter_is_eligible(self):
@@ -3981,6 +3990,210 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                             for record in captured.records))
         self.assertEqual(sched.running_jobs.get(rxn.ts_label, list()), list())
         self.assertEqual(sched.job_dict[rxn.ts_label].get('tsg', dict()), dict())
+
+    def saved_ts_dict(self, sched: Scheduler, ts_label: str) -> dict:
+        """
+        Read the dictionary of a TS species from the restart file on disk.
+
+        Args:
+            sched (Scheduler): The Scheduler that saved the restart file.
+            ts_label (str): The TS species label.
+
+        Returns:
+            dict: The saved dictionary of the TS species.
+        """
+        content = read_yaml_file(sched.restart_path)
+        return next(spc for spc in content['species'] if spc['label'] == ts_label)
+
+    def test_a_trailing_engine_absent_skip_is_saved(self):
+        """Test that a skip recorded after the last dispatched adapter reaches the restart file."""
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=['linear', 'kinbot'],
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_save_1')
+        sched.restart_dict = dict()
+        with patch.object(kinbot_ts, 'KINBOT_PYTHON', None):
+            sched.spawn_ts_jobs()
+        self.assertEqual(spawned, [('tsg', 'linear')])
+        self.assertIn('kinbot', self.saved_ts_dict(sched, rxn.ts_label).get('unsuccessful_methods', list()))
+
+    def test_a_trailing_dependency_error_skip_is_saved(self):
+        """Test that a skip recorded by the DependencyError rollback after the last dispatched adapter is saved."""
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=['linear', 'kinbot'],
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_save_2',
+                                                         unavailable_adapters=['kinbot'])
+        sched.restart_dict = dict()
+        sched.spawn_ts_jobs()
+        self.assertEqual(spawned, [('tsg', 'linear'), ('tsg', 'kinbot')])
+        self.assertEqual(sched.running_jobs[rxn.ts_label], ['tsg0'])
+        self.assertIn('kinbot', self.saved_ts_dict(sched, rxn.ts_label).get('unsuccessful_methods', list()))
+
+
+    def setup_absent_engine_scheduler(self,
+                                      rxns: list,
+                                      ts_adapters: list,
+                                      project: str,
+                                      ) -> tuple:
+        """
+        Set up a Scheduler whose engine-backed TS adapters all have their engine absent.
+
+        Engine-free adapters ('heuristics', 'linear') get a ``StubJob``; any other adapter that reaches
+        ``job_factory()`` gets the real adapter, so a missing engine meets the adapter's real code.
+        The engine of every engine-backed adapter is made absent by pointing its executable setting to
+        ``None``, and Orca NEB has no server in the ESS settings. xTB-GSM's command runner fails the
+        test if called, since an absent engine must never be executed.
+
+        Args:
+            rxns (list): The ARCReaction objects; their wells are marked as optimized.
+            ts_adapters (list): The TS adapters to configure the Scheduler with.
+            project (str): The project name, also the project directory name.
+
+        Returns:
+            tuple: The Scheduler and the list accumulating the (job type, adapter) pairs jobs were created for.
+        """
+        species = [spc for rxn in rxns for spc in rxn.r_species + rxn.p_species]
+        for spc in species:
+            spc.final_xyz = spc.get_xyz()
+        for index, rxn in enumerate(rxns):
+            rxn.index = index  # As ARC does, so that each reaction gets its own TS label.
+        sched = Scheduler(project=project,
+                          ess_settings=self.ess_settings,
+                          species_list=species,
+                          rxn_list=rxns,
+                          project_directory=os.path.join(ARC_PATH, 'Projects', project),
+                          ts_adapters=ts_adapters,
+                          job_types=initialize_job_types(),
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          testing=True,
+                          )
+        spawned = list()
+
+        def hybrid_job_factory(job_type, job_adapter=None, **kwargs):
+            """Record the job, stub the engine-free adapters, and build the real adapter otherwise."""
+            spawned.append((job_type, job_adapter))
+            if job_adapter in ['heuristics', 'linear']:
+                return StubJob(job_type=job_type, job_adapter=job_adapter)
+            return job_factory(job_type=job_type, job_adapter=job_adapter, **kwargs)
+
+        def no_execution(*args, **kwargs):
+            """Fail if an absent engine is executed."""
+            raise AssertionError(f'An absent engine was executed: {args} {kwargs}')
+
+        patchers = [patch('arc.scheduler.job_factory', new=hybrid_job_factory),
+                    patch.object(autotst_ts, 'AUTOTST_PYTHON', None),
+                    patch.object(kinbot_ts, 'KINBOT_PYTHON', None),
+                    patch.object(gcn_ts, 'TS_GCN_PYTHON', None),
+                    patch.object(goflow_ts, 'GOFLOW_PYTHON', None),
+                    patch.object(rits_ts, 'RITS_PYTHON', None),
+                    patch.object(xtb_gsm, 'XTB', None, create=True),
+                    patch.object(xtb_gsm, 'execute_command', new=no_execution),
+                    ]
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return sched, spawned
+
+    def test_spawn_ts_jobs_drops_each_adapter_whose_engine_is_absent(self):
+        """Test that an adapter whose engine is absent is dropped with one named warning, and the others still run.
+
+        Covers every engine-backed adapter in the family map, and an adapter the map lists that has
+        no module in this ARC build (as 'crest' had). The latter is injected into the map here, so the
+        test does not depend on which unregistered names the map happens to carry.
+        """
+        unregistered = 'absent_unregistered_ts_adapter'
+        cases = [('autotst', 'AUTOTST_PYTHON', 'intra_H_migration'),
+                 ('kinbot', 'KINBOT_PYTHON', 'intra_H_migration'),
+                 ('gcn', 'TS_GCN_PYTHON', 'intra_H_migration'),
+                 ('goflow', 'GOFLOW_PYTHON', 'intra_H_migration'),
+                 ('rits', 'RITS_PYTHON', 'intra_H_migration'),
+                 ('xtb_gsm', 'XTB', 'intra_H_migration'),
+                 ('orca_neb', 'ESS settings', 'intra_H_migration'),
+                 ('autotst', 'AUTOTST_PYTHON', 'H_Abstraction'),
+                 (unregistered, 'registered', 'H_Abstraction'),
+                 ]
+        family_map = {'H_Abstraction': ts_adapters_by_rmg_family['H_Abstraction'] + [unregistered]}
+        for i, (adapter, cause, family) in enumerate(cases):
+            with self.subTest(adapter=adapter, family=family), patch.dict(ts_adapters_by_rmg_family, family_map):
+                if family == 'H_Abstraction':
+                    rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                                      p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+                    engine_free = 'heuristics'
+                else:
+                    rxn = ARCReaction(r_species=[ARCSpecies(label='CH3CH2NH', smiles='CC[NH]')],
+                                      p_species=[ARCSpecies(label='CH2CH2NH2', smiles='[CH2]CN')])
+                    engine_free = 'linear'
+                self.assertEqual(rxn.family, family)
+                self.assertIn(adapter, ts_adapters_by_rmg_family[family])
+                sched, spawned = self.setup_absent_engine_scheduler(
+                    rxns=[rxn], ts_adapters=[adapter, engine_free],
+                    project=f'arc_project_for_testing_delete_after_usage_tsg_6_{i}')
+                self.projects.append(f'arc_project_for_testing_delete_after_usage_tsg_6_{i}')
+                with self.assertLogs('arc', level='WARNING') as captured:
+                    sched.spawn_ts_jobs()
+                self.assertEqual(len(captured.records), 1, msg=[r.getMessage() for r in captured.records])
+                record = captured.records[0]
+                self.assertEqual(record.levelno, logging.WARNING)
+                for token in [repr(adapter), rxn.label, cause]:
+                    self.assertIn(token, record.getMessage())
+                self.assertNotIn(('tsg', adapter), spawned)
+                self.assertEqual(sched.running_jobs[rxn.ts_label], ['tsg0'])
+                self.assertEqual({k: v.job_adapter for k, v in sched.job_dict[rxn.ts_label]['tsg'].items()},
+                                 {0: engine_free})
+                self.assertEqual(rxn.ts_species.unsuccessful_methods, [adapter])
+                self.assertFalse(sched.output[rxn.ts_label]['errors'])
+
+    def test_spawn_ts_jobs_with_no_available_adapter_ends_only_that_reaction(self):
+        """Test that a reaction whose every eligible adapter is absent ends with a named error, while another goes on."""
+        unregistered = 'absent_unregistered_ts_adapter'
+        family_map = {'H_Abstraction': ts_adapters_by_rmg_family['H_Abstraction'] + [unregistered]}
+        with patch.dict(ts_adapters_by_rmg_family, family_map):
+            rxn_a = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                                p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+            rxn_b = ARCReaction(r_species=[ARCSpecies(label='CH3CH2NH', smiles='CC[NH]')],
+                                p_species=[ARCSpecies(label='CH2CH2NH2', smiles='[CH2]CN')])
+            sched, spawned = self.setup_absent_engine_scheduler(
+                rxns=[rxn_a, rxn_b], ts_adapters=['autotst', unregistered, 'linear'],
+                project='arc_project_for_testing_delete_after_usage_tsg_7')
+            with self.assertLogs('arc', level='WARNING') as captured:
+                sched.spawn_ts_jobs()
+        errors = [r.getMessage() for r in captured.records if r.levelno == logging.ERROR]
+        self.assertEqual(len(errors), 1, msg=errors)
+        for token in [rxn_a.label, "'autotst'", repr(unregistered), 'AUTOTST_PYTHON', 'registered']:
+            self.assertIn(token, errors[0])
+            self.assertIn(token, sched.output[rxn_a.ts_label]['errors'])
+        self.assertFalse(sched.output[rxn_a.ts_label]['convergence'])
+        self.assertTrue(sched.species_dict[rxn_a.ts_label].ts_guesses_exhausted)
+        self.assertEqual(sched.job_dict[rxn_a.ts_label].get('tsg', dict()), dict())
+        # The other reaction goes on: its only available adapter ran, and it carries no error.
+        self.assertEqual({k: v.job_adapter for k, v in sched.job_dict[rxn_b.ts_label]['tsg'].items()}, {0: 'linear'})
+        self.assertEqual(rxn_b.ts_species.unsuccessful_methods, ['autotst'])
+        self.assertFalse(sched.output[rxn_b.ts_label]['errors'])
+        self.assertNotIn(('tsg', 'autotst'), spawned)
+
+    def test_spawn_ts_jobs_with_no_available_adapter_saves_the_restart_file(self):
+        """Test that a TS search ended for lack of an available adapter is saved to the restart file."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+        sched, spawned = self.setup_absent_engine_scheduler(
+            rxns=[rxn], ts_adapters=['autotst'], project='arc_project_for_testing_delete_after_usage_tsg_13')
+        with patch.object(sched, 'save_restart_dict') as save_restart_dict:
+            sched.spawn_ts_jobs()
+        self.assertFalse(sched.output[rxn.ts_label]['convergence'])
+        self.assertTrue(sched.species_dict[rxn.ts_label].ts_guesses_exhausted)
+        self.assertEqual(spawned, list())
+        save_restart_dict.assert_called()
+
+    def test_spawn_ts_jobs_with_no_available_adapter_keeps_a_yaml_ts_converged(self):
+        """Test that a TS loaded from an Arkane YAML file stays converged when no TS search adapter is available."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+        sched, spawned = self.setup_absent_engine_scheduler(
+            rxns=[rxn], ts_adapters=['autotst'], project='arc_project_for_testing_delete_after_usage_tsg_8')
+        sched.species_dict[rxn.ts_label].yml_path = os.path.join(ARC_PATH, 'TS.yml')
+        sched.output[rxn.ts_label]['convergence'] = True
+        sched.spawn_ts_jobs()
+        self.assertTrue(sched.output[rxn.ts_label]['convergence'])
+        self.assertFalse(sched.output[rxn.ts_label]['errors'])
+        self.assertFalse(sched.species_dict[rxn.ts_label].ts_guesses_exhausted)
 
 
 class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):

@@ -16,6 +16,7 @@ from unittest.mock import patch
 from arc.common import ARC_PATH, get_logger
 from arc.exceptions import InputError
 from arc.imports import settings
+from arc.job.adapters.common import ts_adapters_by_rmg_family
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
@@ -620,6 +621,23 @@ class TestARC(unittest.TestCase):
                        level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
                        ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
                        )
+
+    def test_ts_adapter_listed_in_the_family_map_is_accepted_without_a_module(self):
+        """Test that a TS adapter the family map lists is accepted even when this build has no module for it.
+
+        Such an adapter is dropped for each reaction at TS search time with a named warning; rejecting
+        it as unknown at input time would abort the whole run instead.
+        """
+        unregistered = 'absent_unregistered_ts_adapter'
+        family_map = {'H_Abstraction': ts_adapters_by_rmg_family['H_Abstraction'] + [unregistered]}
+        with patch.dict(ts_adapters_by_rmg_family, family_map):
+            arc0 = ARC(project='arc_test',
+                       job_types=self.job_types1,
+                       species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)],
+                       level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
+                       ts_adapters=[unregistered, 'linear'],
+                       )
+        self.assertEqual(arc0.ts_adapters, [unregistered, 'linear'])
 
     def test_summary_reports_the_warnings_of_a_converged_species(self):
         """Test that the run summary prints the warnings of a species that converged"""

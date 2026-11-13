@@ -33,6 +33,7 @@ import unittest.mock as mock
 from collections import Counter
 
 from arc.common import read_yaml_file
+from arc.exceptions import DependencyError
 from arc.job.adapters.common import (all_families_ts_adapters,
                                      ts_adapters_by_rmg_family,
                                      ts_adapters_for_unknown_unimolecular,
@@ -693,7 +694,7 @@ class TestRitSGracefulSkip(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.output_dir, ignore_errors=True)
 
-    def test_missing_python_logs_and_returns(self):
+    def test_missing_python_raises_dependency_error(self):
         rxn = _build_rxn_isomerization_propyl()
         adapter = RitSAdapter(
             job_type='tsg',
@@ -706,8 +707,8 @@ class TestRitSGracefulSkip(unittest.TestCase):
         with mock.patch('arc.job.adapters.ts.rits_ts.RITS_PYTHON', None), \
              mock.patch('arc.job.adapters.ts.rits_ts.RITS_REPO_PATH', '/nonexistent/RitS'), \
              mock.patch('arc.job.adapters.ts.rits_ts.RITS_CKPT_PATH', '/nonexistent/rits.ckpt'):
-            # Should not raise
-            adapter.execute_incore()
+            with self.assertRaisesRegex(DependencyError, 'rits_env python not found'):
+                adapter.execute_incore()
         # No TS guesses should have been created
         if rxn.ts_species is not None:
             self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
@@ -764,7 +765,7 @@ class TestRitSGracefulSkip(unittest.TestCase):
         self.assertEqual(seen_timeouts, [1])
         self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
 
-    def test_missing_checkpoint_logs_and_returns(self):
+    def test_missing_checkpoint_raises_dependency_error(self):
         rxn = _build_rxn_isomerization_propyl()
         adapter = RitSAdapter(
             job_type='tsg',
@@ -774,7 +775,8 @@ class TestRitSGracefulSkip(unittest.TestCase):
             project_directory=os.path.join(self.output_dir, 'no_ckpt'),
         )
         with mock.patch('arc.job.adapters.ts.rits_ts.RITS_CKPT_PATH', '/nonexistent/ckpt'):
-            adapter.execute_incore()
+            with self.assertRaisesRegex(DependencyError, 'pretrained checkpoint not found'):
+                adapter.execute_incore()
         if rxn.ts_species is not None:
             self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
 
