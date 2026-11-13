@@ -1258,6 +1258,16 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.document['reactions'][0]['family_tie'] = {'families': ['a', 'b'], 'searched': 'a'}
         self.assert_invalid(self.document, 'not_searched')
 
+    def test_the_identity_reaction_flag_is_valid_and_optional(self):
+        """identity_reaction is a boolean, and a document without it still validates"""
+        reaction = self.document['reactions'][0]
+        reaction['identity_reaction'] = True
+        self.assert_valid(self.document)
+        del reaction['identity_reaction']
+        self.assert_valid(self.document)
+        reaction['identity_reaction'] = 'yes'
+        self.assert_invalid(self.document, 'identity_reaction')
+
 
 class TestTsAdapterFailuresValidate(SchemaAssertionMixin, unittest.TestCase):
     """A TS adapter that raised is recorded on its reaction, and a reaction without a TS species carries none."""
