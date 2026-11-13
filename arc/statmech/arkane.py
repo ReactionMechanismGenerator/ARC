@@ -23,6 +23,7 @@ from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
 
 from arc.species.conformers import find_internal_rotors
+from arc.species.optical_isomers import determine_optical_isomers, get_rotor_torsions
 from arc.species.species import ThermoData, is_reactive_ring_rejection
 
 if TYPE_CHECKING:
@@ -130,6 +131,12 @@ species_input_template = """#!/usr/bin/env python
 
 linear = ${linear}
 spinMultiplicity = ${spin_multiplicity}
+% if optical_isomers is not None:
+# opticalIsomers: ${optical_isomers_cause}
+opticalIsomers = ${optical_isomers}
+% else:
+# opticalIsomers not set by ARC (${optical_isomers_cause}); Arkane estimates it from the point group
+% endif
 
 energy = Log('${sp_path}')
 geometry = Log('${freq_path}')
@@ -468,7 +475,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                           skip_rotors: bool,
                           ) -> None:
         """
-        Generate individual species input files.
+        Generate the TS input files. A warning is logged for each reaction that mixes species loaded from an
+        Arkane YAML file, whose number of optical isomers is the one stored there, with species ARC decides it for.
 
         Args:
             statmech_dir (str): The path to the statmech directory.
@@ -476,12 +484,18 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         """
         ts_dir = os.path.join(statmech_dir, 'TSs')
         os.makedirs(ts_dir, exist_ok=True)
-        for ts in [rxn.ts_species for rxn in self.reactions]:
-            if ts.yml_path:
+        for rxn in self.reactions:
+            warn_of_yml_optical_isomers(rxn)
+            if rxn.ts_species.yml_path:
                 continue
-            self.generate_species_file(ts, ts_dir, skip_rotors)
+            self.generate_species_file(rxn.ts_species, ts_dir, skip_rotors, reaction=rxn)
 
-    def generate_species_file(self, species, species_dir: str, skip_rotors: bool) -> None:
+    def generate_species_file(self,
+                              species: 'ARCSpecies',
+                              species_dir: str,
+                              skip_rotors: bool,
+                              reaction: 'ARCReaction | None' = None,
+                              ) -> None:
         """
         Generate input file for a single species.
 
@@ -489,6 +503,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             species (ARCSpecies): The species object to generate the file for.
             species_dir (str): The directory to save the species file in.
             skip_rotors (bool): Whether to skip internal rotor consideration.
+            reaction (ARCReaction, optional): The reaction whose TS is ``species``, ``None`` for a well.
         """
         file_path = os.path.join(species_dir, f'{species.label}.py')
         species.arkane_file = file_path
@@ -499,11 +514,15 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         fallback = get_harmonic_fallback_torsions(species, skip_rotors=skip_rotors)
         if fallback and not skip_rotors:
             logger.info(format_harmonic_fallback_message(species.label, fallback))
+        optical_isomers = get_optical_isomers(species, rotors=rotors if use_rotors else list(), reaction=reaction,
+                                              fallback=fallback)
         content = Template(species_input_template).render(
             linear=species.is_linear,
             spin_multiplicity=species.multiplicity,
             sp_path=self.output_dict[species.label]['paths']['composite'] or self.output_dict[species.label]['paths']['sp'],
             freq_path=self.output_dict[species.label]['paths']['freq'] or self.output_dict[species.label]['paths']['sp'],
+            optical_isomers=optical_isomers,
+            optical_isomers_cause=species.optical_isomers_cause,
             use_hindered_rotors=use_rotors,
             rotors=rotors,
             fallback_lines=[describe_harmonic_fallback_torsion(entry, with_scan=True) for entry in fallback],
@@ -801,8 +820,36 @@ def describe_harmonic_fallback_torsion(entry: dict, with_scan: bool = False) -> 
         str: E.g., ``'pivots [1, 2]: scan failed (Could not read energies)'``.
     """
     scan = f', scan {entry["scan"]}' if with_scan else ''
+    return f'pivots {entry["pivots"]}{scan}: {describe_harmonic_fallback_cause(entry)}'
+
+
+def describe_harmonic_fallback_cause(entry: dict) -> str:
+    """
+    Describe why one harmonic-fallback torsion is not treated as a hindered rotor.
+
+    Args:
+        entry (dict): An entry from ``get_harmonic_fallback_torsions()``.
+
+    Returns:
+        str: The cause and its recorded reason, e.g., ``'scan failed (Could not read energies)'``.
+    """
     reason = f' ({entry["reason"]})' if entry['reason'] else ''
-    return f'pivots {entry["pivots"]}{scan}: {entry["cause"]}{reason}'
+    return f'{entry["cause"]}{reason}'
+
+
+def get_untreated_torsions(fallback: list[dict]) -> list[tuple[tuple[int, int, int, int], str]]:
+    """
+    Get the 0-indexed torsions of harmonic-fallback entries, each with why it is not treated as a hindered rotor.
+    Entries without a four-atom scan (e.g., the O-O bond of dioxirane) are skipped.
+
+    Args:
+        fallback (list[dict]): Entries from ``get_harmonic_fallback_torsions()``.
+
+    Returns:
+        list[tuple[tuple[int, int, int, int], str]]: The torsions, one per rotor dimension, and their causes.
+    """
+    return [(torsion, describe_harmonic_fallback_cause(entry))
+            for entry in fallback for torsion in get_rotor_torsions([entry])]
 
 
 def format_harmonic_fallback_message(label: str, fallback: list[dict]) -> str:
@@ -843,6 +890,58 @@ def record_harmonic_fallback_warnings(output_dict: dict, species_dict: dict) -> 
                 logger.warning(message)
                 warnings += message
         entry['warnings'] = warnings
+
+
+def warn_of_yml_optical_isomers(reaction: 'ARCReaction') -> None:
+    """
+    Warn when a reaction mixes species loaded from an Arkane YAML file with species whose number of optical isomers
+    ARC decides from their rotors. A YAML species keeps the number stored in its file (often Arkane's point-group
+    estimate), so the reaction path degeneracy may combine numbers decided by different rules.
+
+    Args:
+        reaction (ARCReaction): The reaction.
+    """
+    species = list(reaction.r_species) + list(reaction.p_species) + [reaction.ts_species]
+    yml_species = [spc for spc in species if spc.yml_path]
+    if yml_species and len(yml_species) < len(species):
+        logger.warning(f'Reaction {reaction.label} mixes species loaded from an Arkane YAML file, which keep the '
+                       f'number of optical isomers stored there ('
+                       f'{", ".join(f"{spc.label}: {spc.optical_isomers}" for spc in yml_species)}), with species '
+                       f'whose number ARC decides from their rotors.')
+
+
+def get_optical_isomers(species: 'ARCSpecies',
+                        rotors: list[dict],
+                        reaction: 'ARCReaction | None' = None,
+                        fallback: list[dict] | None = None,
+                        ) -> int | None:
+    """
+    Get the number of optical isomers to write into an Arkane species or TS file, and record its cause in
+    ``species.optical_isomers_cause``. A valid user-given ``species.optical_isomers`` wins. Otherwise, the number is
+    2 for a chiral structure, unless the treated rotors reach its mirror image (1). When it cannot be determined,
+    a warning is logged and ``None`` is returned, so the key is omitted and Arkane estimates it from the point group.
+
+    Args:
+        species (ARCSpecies): The well or TS.
+        rotors (list[dict]): The rotors written into the Arkane file.
+        reaction (ARCReaction, optional): The reaction whose TS is ``species``, ``None`` for a well.
+        fallback (list[dict], optional): The harmonic-fallback torsions of ``species`` (see
+                                         ``get_harmonic_fallback_torsions()``), used to name the cause.
+
+    Returns:
+        int | None: The number of optical isomers, ``None`` if it could not be determined.
+    """
+    result = determine_optical_isomers(species, rotors, reaction=reaction,
+                                       untreated=get_untreated_torsions(fallback or list()))
+    species.optical_isomers_cause = result.cause
+    if result.kind != 'user':
+        species.optical_isomers = result.value
+    if result.value is None:
+        logger.warning(f'Could not determine the number of optical isomers of {species.label} ({result.cause}). '
+                       f'Arkane will estimate it from the point group of the geometry, which ignores the rotors.')
+    else:
+        logger.info(f'Optical isomers of {species.label}: {result.value} ({result.cause})')
+    return result.value
 
 
 def run_arkane(statmech_dir: str) -> bool:
