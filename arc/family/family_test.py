@@ -33,6 +33,10 @@ from arc.family.family import (ReactionFamily,
                                get_reaction_family,
                                get_recipe_actions,
                                get_rmg_recommended_family_sets,
+                               get_recipe_bond_changes,
+                               get_recipe_center,
+                               get_subsumed_families,
+                               get_undecided_family_ties,
                                count_recipe_bond_changes,
                                has_radical_recipe_action,
                                prioritize_family_product_dicts,
@@ -1993,6 +1997,174 @@ class TestFamilyChoiceGates(unittest.TestCase):
         self.assertTrue(len(product_dicts))
         self.assertEqual({product_dict['family'] for product_dict in product_dicts}, {'H_Abstraction'})
         self.assertFalse(any(product_dict['discovered_in_reverse'] for product_dict in product_dicts))
+
+
+class TestMostSpecificFamily(unittest.TestCase):
+    """Unit tests for preferring the family whose reaction center contains another matched family's"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.maxDiff = None
+        cls.cope_rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                                   p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
+        cls.radical_rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C=CC=C')],
+                                      p_species=[ARCSpecies(label='P', smiles='[CH2]C1C=CC1')])
+
+    @staticmethod
+    def make_product_dicts(*entries) -> list[dict]:
+        """Build minimal product dicts, each entry being a (family, reaction center indices) tuple."""
+        return [{'family': family,
+                 'group_labels': ('a', 'b'),
+                 'products': list(),
+                 'r_label_map': {f'*{i + 1}': index for i, index in enumerate(center)},
+                 'p_label_map': dict(),
+                 'own_reverse': True,
+                 'discovered_in_reverse': False,
+                 } for family, center in entries]
+
+    @staticmethod
+    def every_label_acts(product_dicts: list[dict]) -> dict[str, list[list]]:
+        """A recipe for every family in product_dicts that acts on all of the labels *1 to *8."""
+        recipe = [['CHANGE_BOND', f'*{i}', 1, f'*{i + 1}'] for i in range(1, 8)]
+        return {product_dict['family']: recipe for product_dict in product_dicts}
+
+    def test_get_subsumed_families_of_no_matches(self):
+        """No matches subsume nothing"""
+        self.assertEqual(get_subsumed_families(list(), dict()), set())
+
+    def test_the_reaction_center_holds_only_the_atoms_the_recipe_acts_on(self):
+        """Template labels that no recipe action names, like a ring path, are not part of the center"""
+        actions = get_reaction_family(label='Intra_RH_Add_Exocyclic').actions
+        product_dict = self.make_product_dicts(('Intra_RH_Add_Exocyclic', (3, 5, 7, 12, 2, 1, 4)))[0]
+        self.assertEqual(get_recipe_center(product_dict, actions), frozenset({3, 5, 7, 12}))
+        self.assertEqual(get_recipe_center(self.make_product_dicts(('Intra_RH_Add_Exocyclic', ()))[0], actions), frozenset())
+
+    def test_get_recipe_bond_changes(self):
+        """The bond changes of a match are its recipe actions in reactant atom indices"""
+        actions = get_reaction_family(label='1,2_shiftC').actions
+        product_dict = self.make_product_dicts(('1,2_shiftC', (0, 1, 2)))[0]
+        self.assertEqual(get_recipe_bond_changes(product_dict, actions),
+                         frozenset({('BREAK_BOND', frozenset({0, 1}), None), ('FORM_BOND', frozenset({0, 2}), None)}))
+        self.assertEqual(get_recipe_bond_changes(self.make_product_dicts(('1,2_shiftC', (0,)))[0], actions), frozenset())
+
+    def test_a_contained_reaction_center_is_subsumed(self):
+        """The [1,3] shift's center is a strict subset of the Cope center"""
+        product_dicts = self.make_product_dicts(('1,3_sigmatropic_rearrangement', (2, 3, 5, 6)),
+                                                ('6_membered_central_C-C_shift', (0, 1, 2, 3, 5, 6)),
+                                                ('6_membered_central_C-C_shift', (6, 5, 3, 2, 1, 0)))
+        self.assertEqual(get_subsumed_families(product_dicts, self.every_label_acts(product_dicts)),
+                         {'1,3_sigmatropic_rearrangement'})
+
+    def test_overlapping_or_equal_reaction_centers_are_not_subsumed(self):
+        """Centers that overlap without nesting, or that are equal, leave the ranking to the other keys"""
+        overlapping = self.make_product_dicts(('H_Abstraction', (1, 5, 7)), ('Disproportionation', (0, 1, 2, 7)))
+        self.assertEqual(get_subsumed_families(overlapping, self.every_label_acts(overlapping)), set())
+        equal = self.make_product_dicts(('R_Addition_COm', (4, 0, 5)), ('R_Addition_MultipleBond', (4, 5, 0)))
+        self.assertEqual(get_subsumed_families(equal, self.every_label_acts(equal)), set())
+
+    def test_mutual_subsumption_and_empty_centers(self):
+        """Two families that each contain the other through different matches are tied, so neither is
+        subsumed, and an empty label map is never compared"""
+        mutual = self.make_product_dicts(('A', (0, 1)), ('B', (0, 1, 2)), ('B', (3, 4)), ('A', (3, 4, 5)))
+        self.assertEqual(get_subsumed_families(mutual, self.every_label_acts(mutual)), set())
+        empty = self.make_product_dicts(('A', ()), ('B', (0, 1, 2)))
+        self.assertEqual(get_subsumed_families(empty, self.every_label_acts(empty)), set())
+
+    def test_a_containment_cycle_of_three_families_subsumes_none_of_them(self):
+        """B contains A, C contains B, and A contains C, each through a different match, so the three are tied"""
+        cycle = self.make_product_dicts(('A', (0, 1)), ('A', (6, 7, 8)), ('B', (0, 1, 2)), ('B', (3, 4)),
+                                        ('C', (3, 4, 5)), ('C', (6, 7)))
+        self.assertEqual(get_subsumed_families(cycle, self.every_label_acts(cycle)), set())
+        chain = self.make_product_dicts(('A', (0, 1)), ('B', (0, 1, 2)), ('C', (0, 1, 2, 3)))
+        self.assertEqual(get_subsumed_families(chain, self.every_label_acts(chain)), {'A', 'B'})
+
+    def test_a_mutually_subsuming_pair_does_not_promote_an_unrelated_family(self):
+        """A family that nests with nothing does not jump ahead of two families that merely contain each other,
+        so the bond-change ordering still decides: H_Abstraction (2, 0) ranks before Disproportionation (2, 1)
+        and before 1,3_sigmatropic_rearrangement (2, 2)"""
+        product_dicts = self.make_product_dicts(('1,3_sigmatropic_rearrangement', (9, 10, 11, 12)),
+                                                ('H_Abstraction', (0, 1)), ('Disproportionation', (0, 1, 2)),
+                                                ('Disproportionation', (3, 4)), ('H_Abstraction', (3, 4, 5)))
+        prioritized = prioritize_family_product_dicts(rxn=self.cope_rxn, product_dicts=product_dicts)
+        self.assertEqual(list(dict.fromkeys(product_dict['family'] for product_dict in prioritized)),
+                         ['H_Abstraction', 'Disproportionation', '1,3_sigmatropic_rearrangement'])
+
+    def test_the_most_specific_family_ranks_first(self):
+        """A subsumed family ranks below the family that contains it, even with fewer bond-order changes,
+        and matches of one family keep their relative order"""
+        product_dicts = self.make_product_dicts(('1,3_sigmatropic_rearrangement', (2, 3, 5, 6)),
+                                                ('6_membered_central_C-C_shift', (0, 1, 2, 3, 5, 6)),
+                                                ('6_membered_central_C-C_shift', (6, 5, 3, 2, 1, 0)))
+        prioritized = prioritize_family_product_dicts(rxn=self.cope_rxn, product_dicts=product_dicts)
+        self.assertEqual([product_dict['family'] for product_dict in prioritized],
+                         ['6_membered_central_C-C_shift', '6_membered_central_C-C_shift',
+                          '1,3_sigmatropic_rearrangement'])
+        self.assertEqual(prioritized[0]['r_label_map']['*1'], 0)
+
+    def test_the_cope_rearrangement_is_assigned_the_cope_family(self):
+        """3-methyl-1,5-hexadiene <=> 1,5-heptadiene matches both families, and the [3,3] family heads the list"""
+        product_dicts = get_reaction_family_products(rxn=self.cope_rxn)
+        self.assertEqual(product_dicts[0]['family'], '6_membered_central_C-C_shift')
+        self.assertEqual({product_dict['family'] for product_dict in product_dicts},
+                         {'6_membered_central_C-C_shift', '1,3_sigmatropic_rearrangement'})
+
+    def test_a_degenerate_hydrogen_shift_is_an_undecided_overlap_tie(self):
+        """The 1,4-H shift of n-butyl gives n-butyl again, and so does a 1,2 carbon shift. The atoms the two
+        recipes act on overlap without nesting, so the most specific family rule does not decide, and the
+        two families are reported as tied"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        product_dicts = get_reaction_family_products(rxn=rxn)
+        families = list(dict.fromkeys(product_dict['family'] for product_dict in product_dicts))
+        self.assertEqual(set(families), {'intra_H_migration', '1,2_shiftC'})
+        self.assertEqual(get_undecided_family_ties(product_dicts), [families[1]])
+
+    def test_a_ring_path_does_not_make_a_family_more_specific(self):
+        """Under the 'all' set, Korcek_step1 and Intra_RH_Add_Exocyclic act on the same four atoms and make the
+        same bond changes; the latter's extra ring-path labels neither subsume Korcek_step1 nor make a tie"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='CC(OO)CC(C)=O')],
+                          p_species=[ARCSpecies(label='P', smiles='CC1CC(C)(O)OO1')])
+        product_dicts = get_reaction_family_products(rxn=rxn, rmg_family_set='all')
+        self.assertEqual(list(dict.fromkeys(product_dict['family'] for product_dict in product_dicts)),
+                         ['Korcek_step1', 'Intra_RH_Add_Exocyclic'])
+        self.assertEqual(get_undecided_family_ties(product_dicts), list())
+
+    def test_a_label_the_recipe_names_twice_counts_both_atoms(self):
+        """R_Recombination labels both radical sites '*', which ARC stores as '*' and '*_2'; its center has both
+        atoms, so the biradical recombination of CN with NCN, which acts on the same two atoms, does not subsume it"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CN', smiles='[C]#N'), ARCSpecies(label='NCN', smiles='[N]=C=[N]')],
+                          p_species=[ARCSpecies(label='NCNCN', smiles='[N]=C=NC#N')])
+        product_dicts = get_reaction_family_products(rxn=rxn, rmg_family_set=['Birad_R_Recombination', 'R_Recombination'])
+        recombination = [product_dict for product_dict in product_dicts if product_dict['family'] == 'R_Recombination']
+        actions = get_reaction_family(label='R_Recombination').actions
+        self.assertTrue(recombination)
+        for product_dict in recombination:
+            atoms = frozenset(product_dict['r_label_map'].values())
+            self.assertEqual(len(atoms), 2)
+            self.assertEqual(get_recipe_center(product_dict, actions), atoms)
+            self.assertEqual(get_recipe_bond_changes(product_dict, actions), frozenset({('FORM_BOND', atoms, None)}))
+        actions_by_family = {family: get_reaction_family(label=family).actions
+                             for family in ('R_Recombination', 'Birad_R_Recombination')}
+        self.assertEqual(get_subsumed_families(product_dicts, actions_by_family), set())
+        self.assertEqual(list(dict.fromkeys(product_dict['family'] for product_dict in product_dicts)),
+                         ['Birad_R_Recombination', 'R_Recombination'])
+        self.assertEqual(get_undecided_family_ties(product_dicts), list())
+
+    def test_the_cope_rearrangement_is_not_a_tie(self):
+        """The rule decides the Cope rearrangement, so nothing is reported as tied"""
+        self.assertEqual(get_undecided_family_ties(get_reaction_family_products(rxn=self.cope_rxn)), list())
+        self.assertEqual(get_undecided_family_ties(list()), list())
+
+    def test_the_families_dropped_by_the_radical_gate_are_reported(self):
+        """A caller-supplied dict collects the families the radical gate dropped, and nothing else"""
+        dropped = dict()
+        product_dicts = get_reaction_family_products(rxn=self.radical_rxn, rmg_family_set='all',
+                                                     dropped_families=dropped)
+        self.assertEqual({product_dict['family'] for product_dict in product_dicts}, {'Intra_R_Add_Exocyclic'})
+        self.assertEqual(dropped, {'Intra_2+2_cycloaddition_Cd': 'radical gate'})
+        dropped = dict()
+        get_reaction_family_products(rxn=self.cope_rxn, dropped_families=dropped)
+        self.assertEqual(dropped, dict())
 
 
 class TestSplitEntries(unittest.TestCase):

@@ -54,6 +54,7 @@ from arc.output import (
     _thermo_to_dict,
     write_output_yml,
 )
+from arc.reaction.reaction import ARCReaction
 from arc.species.species import ARCSpecies, TSGuess, ThermoData
 
 
@@ -1809,6 +1810,52 @@ class TestRxnToDict(unittest.TestCase):
         self.assertAlmostEqual(result['kinetics']['Ea'], 45.6)
         self.assertEqual(result['kinetics']['Ea_units'], 'kJ/mol')
         self.assertEqual(result['kinetics']['n'], 0.5)
+
+    def test_the_family_record_of_a_rule_choice(self):
+        """The record of a reaction matching two families lists both, the one used, and that a rule chose it"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['family'], '6_membered_central_C-C_shift')
+        self.assertEqual(result['family_source'], 'rule')
+        self.assertEqual(result['n_family_candidates'], 2)
+        self.assertEqual(result['family_candidates'], [{'family': '6_membered_central_C-C_shift', 'dropped_by': None},
+                                                       {'family': '1,3_sigmatropic_rearrangement', 'dropped_by': None}])
+        self.assertIsNone(result['family_tie'])
+
+    def test_the_rate_of_an_overlap_tie_carries_the_tie(self):
+        """A reaction whose family came from an undecided overlap tie says, next to its rate, which
+        channel was searched and which was not"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['family_tie']['searched'], result['family'])
+        self.assertEqual(set(result['family_tie']['families']), {'intra_H_migration', '1,2_shiftC'})
+        self.assertEqual(list(result).index('family_tie'), list(result).index('kinetics') + 1)
+
+    def test_the_family_record_of_a_user_choice(self):
+        """A family set by the user is the one recorded, with its source"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')],
+                          family='1,3_sigmatropic_rearrangement')
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['family'], '1,3_sigmatropic_rearrangement')
+        self.assertEqual(result['family_source'], 'input')
+        self.assertEqual(result['n_family_candidates'], 2)
+
+    def test_the_family_record_of_a_family_that_does_not_match(self):
+        """A pinned family that matches nothing does not stop the record from being written"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')],
+                          family='H_Abstraction')
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['family'], 'H_Abstraction')
+        self.assertEqual(result['family_source'], 'input')
+        self.assertIsNone(result['family_candidates'])
+        self.assertIsNone(result['n_family_candidates'])
+        with patch.object(ARCReaction, 'get_product_dicts', wraps=rxn.get_product_dicts) as mocked:
+            _rxn_to_dict(rxn)
+        self.assertEqual(mocked.call_count, 0)
 
 
 class TestSpcToDict(unittest.TestCase):
