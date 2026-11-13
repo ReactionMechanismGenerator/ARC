@@ -81,6 +81,11 @@ Useful Make targets include:
    make install-ob        # OpenBabel support
    make install-all       # install the full external stack
 
+``make install-rmg`` creates a separate ``rmg_env`` with the conda ``rmg`` 4.0.0
+package (which bundles RMG-database 4.0.0) on Python 3.11, apart from ``arc_env``'s
+Python 3.14. If an ``rmg_env`` on another Python or RMG version already exists, the
+installer stops and prints the command to remove it, rather than changing it in place.
+
 The RMG installer accepts flags:
 
 .. code-block:: bash
