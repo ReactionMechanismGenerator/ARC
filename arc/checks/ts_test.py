@@ -686,7 +686,9 @@ class TestTSChecks(unittest.TestCase):
         self.assertIsNone(self.rxn_2a.ts_species.rotors_dict[0]['success'])
         self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['pivots'], [2, 3])
         self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['scan'], [1, 2, 3, 9])
+        # The migrating H bridges the pivots of this 1,2 H-shift TS.
         self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['invalidation_reason'],
+                         'Torsion lies in the TS reactive ring (code: reactive ring). '
                          'Pivots participate in the TS reaction zone (code: pivTS). ')
         self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['success'], False)
 
