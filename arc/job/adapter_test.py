@@ -15,8 +15,10 @@ import shutil
 import unittest
 from unittest.mock import patch
 
+import paramiko
+
 from arc.common import ARC_TESTING_PATH
-from arc.exceptions import ServerError
+from arc.exceptions import QueueQueryError, ServerError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter, JobEnum, JobTypeEnum, JobExecutionTypeEnum
 from arc.job.adapters.gaussian import GaussianAdapter
@@ -559,6 +561,76 @@ class _MinimalAdapter(JobAdapter):
     def set_input_file_memory(self): pass
     def upload_during_execution(self): pass
     def _log_job_execution(self): pass
+
+
+class TestJobStatusWhenTheQueueCannotBeRead(unittest.TestCase):
+    """A queue status command that keeps failing leaves the job as it was, for the next cycle to check."""
+
+    SOCKET_TIMEOUT = ['squeue: error: slurm_receive_msg: Socket timed out on send/recv operation',
+                      'slurm_load_jobs error: Socket timed out on send/recv operation']
+
+    def _running_job(self):
+        adapter = _MinimalAdapter(server='local', execution_type='queue')
+        adapter.job_id = 4242
+        adapter.job_status = ['running', {'status': 'running', 'keywords': list(), 'error': '', 'line': ''}]
+        adapter.additional_job_info = None
+        adapter._check_job_ess_status = lambda: None
+        adapter._get_additional_job_info = lambda: None
+        return adapter
+
+    def _determine(self, adapter):
+        local_servers = {'local': {'cluster_soft': 'Slurm', 'un': 'user'}}
+        with patch('arc.job.adapter.servers', local_servers), patch('arc.job.local.servers', local_servers), \
+                patch('arc.job.local.execute_command', return_value=([], self.SOCKET_TIMEOUT)), \
+                patch('time.sleep'):
+            return adapter.determine_job_status()
+
+    def test_the_job_keeps_its_running_state(self):
+        adapter = self._running_job()
+        with self.assertLogs('arc', level='WARNING') as logged:
+            self._determine(adapter)
+        self.assertEqual(adapter.job_status[0], 'running')
+        self.assertEqual(adapter.job_status[1]['status'], 'running')
+        self.assertEqual(len(logged.output), 1)
+        self.assertIn('4242', logged.output[0])
+
+    def test_the_job_is_not_marked_errored_or_done(self):
+        adapter = self._running_job()
+        self._determine(adapter)
+        self.assertNotIn(adapter.job_status[0], ['done', 'errored'])
+        self.assertNotIn(adapter.job_status[1]['status'], ['done', 'errored'])
+
+    def test_the_caller_is_told_the_status_is_unknown(self):
+        adapter = self._running_job()
+        with self.assertLogs('arc', level='WARNING'):
+            self.assertIs(self._determine(adapter), False)
+
+
+class TestJobStatusWhenTheServerCannotBeReached(unittest.TestCase):
+    """A per-job status query that cannot reach its server leaves the job as it was, as a failed query does."""
+
+    def _running_job(self, server: str = 'server2', job_id: int | None = 4242):
+        adapter = _MinimalAdapter(server=server, execution_type='queue')
+        adapter.job_id, adapter.job_name, adapter.species_label = job_id, 'opt_a1', 'spc1'
+        adapter.job_status = ['running', {'status': 'running', 'keywords': list(), 'error': '', 'line': ''}]
+        adapter.additional_job_info = None
+        adapter._check_job_ess_status = lambda: None
+        adapter._get_additional_job_info = lambda: None
+        return adapter
+
+    def test_a_connect_failure_is_a_failed_query(self):
+        servers = {'server2': {'cluster_soft': 'Slurm', 'un': 'user', 'address': 'server2.example.edu'}}
+        for error in (ServerError('Could not connect to server server2'), paramiko.SSHException('No session'),
+                      OSError('Network is unreachable')):
+            adapter = self._running_job()
+            with patch('arc.job.adapter.servers', servers), \
+                    patch('arc.job.adapter.borrow_ssh_client', side_effect=error), \
+                    self.assertLogs('arc', level='WARNING'):
+                self.assertIs(adapter.determine_job_status(), False, error)
+            self.assertEqual(adapter.job_status[0], 'running')
+            self.assertIsInstance(adapter.last_queue_query_error, QueueQueryError)
+            self.assertIsNone(adapter.last_queue_query_error.exit_status)
+            self.assertIn(str(error), adapter.last_queue_query_error.output)
 
 
 class TestSSHConnectionSharing(unittest.TestCase):

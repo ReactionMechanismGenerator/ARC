@@ -14,14 +14,17 @@ import os
 import shlex
 import time
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 from collections.abc import Callable
 
 import paramiko
 
 from arc.common import get_logger
-from arc.exceptions import InputError, ServerError
+from arc.exceptions import InputError, QueueQueryError, ServerError
 from arc.imports import settings
+from arc.job.queue_status import run_queue_query
 
 
 logger = get_logger()
@@ -410,19 +413,17 @@ class SSHClient(object):
         Args:
             job_id (int): The job's ID.
 
+        Raises:
+            QueueQueryError: If the queue status command keeps failing, so the job's status is unknown.
+
         Returns: str
-            Possible statuses: `before_submission`, `running`, `errored on node xx`,
-            `done`, and `errored: ...`
+            Possible statuses: `before_submission`, `running`, `errored on node xx`, and `done`.
         """
         cmd = check_status_command[servers[self.server]['cluster_soft']]
-        stdout, stderr = self._send_command_to_server(cmd)
         # Status line formats:
         # OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
         # SLURM: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
-        if stderr:
-            logger.info('\n\n')
-            logger.error(f'Could not check status of job {job_id} due to {stderr}')
-            return f'errored: {stderr}'
+        stdout = run_queue_query(lambda: self._send_command_to_server(cmd), server=self.server)
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
     def delete_job(self, job_id: int | str) -> None:
@@ -457,6 +458,9 @@ class SSHClient(object):
         """
         Check all jobs submitted by the user on a server.
 
+        Raises:
+            QueueQueryError: If the queue status command keeps failing, so which jobs run is unknown.
+
         Returns: list
             A list of job IDs.
         """
@@ -464,7 +468,7 @@ class SSHClient(object):
             raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
         running_job_ids = list()
         cmd = check_status_command[servers[self.server]['cluster_soft']]
-        stdout = self._send_command_to_server(cmd)[0]
+        stdout = run_queue_query(lambda: self._send_command_to_server(cmd), server=self.server)
         i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
         split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
         cluster_soft = servers[self.server]['cluster_soft'].lower()
@@ -1152,6 +1156,31 @@ def delete_check_files_on_servers(remote_project_paths: dict) -> None:
                 ssh.delete_remote_check_files(remote_path=remote_project_path)
         except Exception as e:
             logger.warning(f'Could not delete the check files under {remote_project_path} on {server}.\nGot: {e}')
+
+
+@contextmanager
+def queue_query_connection(server: str) -> Iterator[None]:
+    """
+    Read a failure to reach a server during a queue status query as a failed query.
+
+    A ``ServerError`` (e.g., connecting gave up or was refused), a paramiko ``SSHException`` or an ``OSError`` raised
+    in the block becomes a ``QueueQueryError`` for ``server`` with no exit status, whose output names the original
+    error, so the caller records an outage and keeps its jobs. A ``QueueQueryError`` passes through unchanged.
+
+    Args:
+        server (str): The server name.
+
+    Raises:
+        QueueQueryError: If the block could not reach the server or its queue did not answer.
+    """
+    try:
+        yield
+    except QueueQueryError:
+        raise
+    except (ServerError, paramiko.SSHException, OSError) as e:
+        output = f'{type(e).__name__}: {e}'
+        raise QueueQueryError(f'Could not reach {server} to read its queue: {output}',
+                              server=server, output=output, exit_status=None) from e
 
 
 def check_job_status_in_stdout(job_id: int,
