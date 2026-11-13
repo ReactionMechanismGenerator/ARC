@@ -96,7 +96,7 @@ class TestRestart(unittest.TestCase):
                     spc = True
                 elif 'All jobs for species N2H3 successfully converged. Run time' in line:
                     rtm = True
-                elif '   H2O2              -135.82          239.05' in line:
+                elif any(f'   H2O2              -135.82          {s298}' in line for s298 in ('233.28', '233.29')):
                     therm = True
                 elif 'Sources of thermodynamic properties determined by RMG for the parity plots:' in line:
                     src = True

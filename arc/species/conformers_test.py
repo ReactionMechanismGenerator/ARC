@@ -19,8 +19,8 @@ from arc.exceptions import ConformerError
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.group import GroupAtom, GroupBond, Group
 from arc.molecule.molecule import Molecule
-from arc.species.perceive import perceive_molecule_from_xyz
 from arc.reaction import ARCReaction
+from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
 
 
@@ -99,6 +99,108 @@ H -0.66281800 1.34469300 -0.89878200
 H 0.65525500 0.31836200 0.00000100
 H -0.66281900 1.34469400 0.89878200"""
 
+NC3H7_XYZ = """C 1.30429200 -0.29835500 -0.03942500
+C 0.07546700 0.56971700 0.06371900
+C -1.22640800 -0.25297200 -0.04498200
+H 2.23913800 0.11010100 -0.37442700
+H 1.31059500 -1.27285500 0.41364800
+H 0.07582300 1.10364500 1.01373300
+H 0.09405500 1.32410900 -0.71596400
+H -1.27058600 -0.99783400 0.74238300
+H -2.09706700 0.38691100 0.04417700
+H -1.27206900 -0.76441600 -0.99942000"""
+PROPANOL_XYZ = """C -1.177897 0.755153 0.073556
+C -0.380966 -0.495790 -0.267304
+C 0.938463 -0.566164 0.491252
+O 0.713693 -0.693046 1.888315
+H -2.128559 0.756283 -0.469048
+H -0.631835 1.662616 -0.202593
+H -1.398645 0.798717 1.144850
+H -0.981468 -1.381838 -0.033892
+H -0.186724 -0.499976 -1.346096
+H 1.533426 -1.423648 0.161645
+H 1.527481 0.340393 0.319616
+H 0.208762 -1.511813 2.030402"""
+BUTANOL_XYZ = """C -1.793982 -0.401731 0.538808
+C -0.541508 0.115133 -0.156181
+O -0.555639 1.539696 -0.130590
+C 0.725390 -0.386639 0.540096
+C 1.993137 0.058217 -0.177408
+H -1.842751 -0.046699 1.574133
+H -2.692759 -0.028384 0.036177
+H -1.826020 -1.495455 0.539820
+H -0.543374 -0.204756 -1.204338
+H -1.358888 1.833613 -0.593181
+H 0.712741 -1.481411 0.593610
+H 0.762403 -0.004602 1.567611
+H 2.080331 1.149051 -0.194176
+H 2.005911 -0.304561 -1.210115
+H 2.875008 -0.341475 0.333285"""
+MESO_BUTANEDIOL_XYZ = """C -1.823832 -0.173344 -0.579532
+C -0.628502 0.134292 0.317332
+O -0.780757 -0.568829 1.549364
+C 0.704541 -0.252607 -0.355959
+C 1.906557 -0.008668 0.551571
+O 0.886441 0.485508 -1.566770
+H -1.772049 0.374791 -1.524822
+H -2.759117 0.095819 -0.076693
+H -1.881829 -1.245566 -0.796682
+H -0.627159 1.208207 0.539172
+H -1.644809 -0.324133 1.923323
+H 0.686825 -1.316854 -0.618253
+H 1.968672 1.045319 0.843960
+H 1.860013 -0.620375 1.457295
+H 2.836479 -0.243774 0.022445
+H 1.068527 1.410214 -1.326702"""
+RR_BUTANEDIOL_XYZ = """C -1.465591 -0.629174 0.199053
+C -0.651891 0.660118 0.246618
+O -0.432331 1.014257 1.611932
+C 0.697806 0.578333 -0.497909
+C 1.667160 -0.451480 0.075401
+O 0.490908 0.315060 -1.887332
+H -1.663305 -0.947307 -0.828397
+H -2.428123 -0.485640 0.702793
+H -0.959936 -1.440445 0.732647
+H -1.249194 1.456464 -0.214011
+H -1.304004 1.166236 2.016449
+H 1.182351 1.559552 -0.427999
+H 1.873724 -0.266631 1.133511
+H 1.283706 -1.470762 -0.037049
+H 2.615709 -0.418664 -0.472076
+H 0.343011 -0.639917 -1.994582"""
+BUTENE_XYZ = """C 1.945302 0.077601 -0.111400
+C 0.491463 0.043758 -0.454466
+C -0.491463 -0.043757 0.454466
+C -1.945302 -0.077601 0.111400
+H 2.458789 -0.766129 -0.582397
+H 2.117603 0.022761 0.968127
+H 2.393913 1.004270 -0.482107
+H 0.246793 0.094777 -1.513291
+H -0.246793 -0.094774 1.513291
+H -2.458792 0.766126 0.582400
+H -2.393910 -1.004272 0.482105
+H -2.117604 -0.022760 -0.968127"""
+
+ETHANOL_XYZ = """C 0.888123 0.170148 -0.004166
+C -0.461982 -0.515927 0.019120
+O -1.459811 0.359276 -0.486113
+H 0.873683 1.074016 0.613714
+H 1.671031 -0.497154 0.366828
+H 1.143232 0.484125 -1.021639
+H -0.735379 -0.809951 1.037005
+H -0.446407 -1.412959 -0.606688
+H -1.472491 1.148426 0.081939"""
+TS_ETHANOL_OH_XYZ = """C 0.888123 0.170148 -0.004166
+C -0.461982 -0.515927 0.019120
+O -1.459811 0.359276 -0.486113
+H 0.873683 1.074016 0.613714
+H 1.671031 -0.497154 0.366828
+H 1.143232 0.484125 -1.021639
+H -0.786798 -0.865250 1.228445
+H -0.446407 -1.412959 -0.606688
+H -1.472491 1.148426 0.081939
+O -1.099122 -1.201137 2.391258
+H -1.588516 -0.478191 2.814037"""
 
 class TestConformers(unittest.TestCase):
     """
@@ -3150,6 +3252,79 @@ Cl      2.38846685    0.24054066    0.55443324
                                                          reaction=self.rxn0)
         self.assertEqual(sources, [])
         self.assertIn('atom order', reason)
+class TestGraphStereocenters(unittest.TestCase):
+    """
+    Contains unit tests for perceiving the stereocenters of a well's 2D graph (ARC issue #413).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.nc3h7oo = ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)
+        cls.qooh = ARCSpecies(label='QOOH_1_5', smiles='[CH2]CCOO', xyz=QOOH_XYZ)
+        cls.c2h6 = ARCSpecies(label='C2H6', smiles='CC', xyz=C2H6_XYZ)
+        cls.ch4 = ARCSpecies(label='CH4', smiles='C', xyz=CH4_XYZ)
+        cls.nc3h7 = ARCSpecies(label='nC3H7', smiles='[CH2]CC', xyz=NC3H7_XYZ)
+        cls.propanol = ARCSpecies(label='propanol', smiles='CCCO', xyz=PROPANOL_XYZ)
+        cls.butanol = ARCSpecies(label='2-butanol', smiles='CC(O)CC', xyz=BUTANOL_XYZ)
+        cls.meso_butanediol = ARCSpecies(label='meso', smiles='CC(O)C(C)O', xyz=MESO_BUTANEDIOL_XYZ)
+        cls.rr_butanediol = ARCSpecies(label='RR', smiles='CC(O)C(C)O', xyz=RR_BUTANEDIOL_XYZ)
+        cls.butene = ARCSpecies(label='2-butene', smiles='C/C=C/C', xyz=BUTENE_XYZ)
+
+    @staticmethod
+    def chiral(spc: ARCSpecies, xyz: dict | None = None) -> bool | None:
+        """Get whether the graph of a well is chiral, discarding the stereocenters and the reason"""
+        return conformers.get_graph_stereocenters(label=spc.label, mol=spc.mol, xyz=xyz or spc.get_xyz())[0]
+
+    def test_trivial(self):
+        """Test that methane is not chiral"""
+        self.assertFalse(self.chiral(self.ch4))
+
+    def test_achiral_graph_chiral_geometry(self):
+        """Test that a C1 conformer of an achiral molecule, and its mirror image, have no stereocenter (ARC #413)"""
+        for spc in [self.propanol, self.nc3h7, self.nc3h7oo, self.qooh]:
+            self.assertFalse(self.chiral(spc), spc.label)
+            self.assertFalse(self.chiral(spc, xyz=conformers.mirror_xyz(spc.get_xyz())), spc.label)
+
+    def test_stereocenter(self):
+        """Test that a species with a real stereocenter is chiral, as is its mirror image, and the center is named"""
+        chiral, centers, _ = conformers.get_graph_stereocenters(self.butanol.label, self.butanol.mol,
+                                                                self.butanol.get_xyz())
+        self.assertTrue(chiral)
+        self.assertEqual([self.butanol.mol.atoms[i].element.symbol for i in centers], ['C'])
+        self.assertTrue(self.chiral(self.butanol, xyz=conformers.mirror_xyz(self.butanol.get_xyz())))
+        self.assertTrue(self.chiral(self.rr_butanediol))
+
+    def test_meso_and_double_bond(self):
+        """Test that a meso compound and an E/Z-only species are not chiral"""
+        self.assertFalse(self.chiral(self.meso_butanediol))
+        self.assertFalse(self.chiral(self.butene))
+
+    def test_isotopes(self):
+        """Test that ethanol is achiral, while ethanol with one CH2 hydrogen replaced by deuterium is chiral"""
+        ethanol = ARCSpecies(label='ethanol', smiles='CCO', xyz=ETHANOL_XYZ)
+        xyz = ethanol.get_xyz()
+        self.assertFalse(self.chiral(ethanol))
+        isotopes = list(xyz['isotopes'])
+        isotopes[6] = 2
+        xyz_d = converter.xyz_from_data(coords=xyz['coords'], symbols=xyz['symbols'], isotopes=isotopes)
+        self.assertTrue(self.chiral(ethanol, xyz=xyz_d))
+
+    def test_undecidable(self):
+        """Test that a missing graph or geometry, or a mismatch between them, gives None with a reason"""
+        chiral, _, reason = conformers.get_graph_stereocenters(label='x', mol=None, xyz=self.ch4.get_xyz())
+        self.assertIsNone(chiral)
+        self.assertIn('graph', reason)
+        chiral, _, reason = conformers.get_graph_stereocenters(label='x', mol=self.ch4.mol, xyz=None)
+        self.assertIsNone(chiral)
+        self.assertIn('geometry', reason)
+        chiral, _, reason = conformers.get_graph_stereocenters(label='x', mol=self.ch4.mol, xyz=self.c2h6.get_xyz())
+        self.assertIsNone(chiral)
+        self.assertIn('order', reason)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

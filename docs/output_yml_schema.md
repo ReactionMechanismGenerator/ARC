@@ -95,7 +95,7 @@ output.yml
 │       │   ├── nasa_low?: {tmin_k, tmax_k, coeffs}
 │       │   └── nasa_high?: {tmin_k, tmax_k, coeffs}
 │       └── statmech?
-│           ├── e0_kj_mol?, spin_multiplicity, optical_isomers
+│           ├── e0_kj_mol?, spin_multiplicity, optical_isomers, optical_isomers_cause?
 │           ├── is_linear, external_symmetry, point_group?
 │           ├── rigid_rotor_kind, harmonic_frequencies_cm1?
 │           ├── torsions: []
@@ -141,7 +141,7 @@ TS entries share all species fields but add IRC/NEB/method fields and always hav
 
 | Field | Type | Description |
 |---|---|---|
-| `schema_version` | `str` | Output contract version. `1.1` adds the optional `parser_evidence` descriptor, renames the thermo block's `cp_data` to `thermo_points` (widened from Cp-only to Cp/H/S/G per temperature; there is no `cp_data` alias), renames the AEC `parameter_table` to `reference_atom_energies`, adds `imaginary_frequencies_cm1`, the per-correction `matched_arkane_key` and `freq_scale_factor_key`, adds `ess_software` so each `ess_versions` banner can be paired with the program that actually produced it, adds `arkane_version`, read together with `arkane_git_commit` from one install so the run carries an Arkane software identity even where there is no git repository to report a commit from, adds `freq_hessian_method`, whose three tokens are TCKDB's `HessianMethod` vocabulary and record the provenance of the frequency method ARC requested, adds the optional `statmech.rejected_torsions`, adds the TS-only `ts_checks`, adds `kinetics.T0_k` and the constraints' `target_value_units`, adds the thermo block's `standard_state_pressure_pa`, which names the standard state its entropy, free energy and NASA fit belong to, and adds the `rotor_scans` block, whose samples carry `angle_degrees` — the **absolute** dihedral measured on each sample's own geometry, never a displacement — and whose `requested_step_size` is signed, so a reversed scan records its direction instead of losing the whole requested grid. Emitted from a single constant shared with the evidence sidecar's `output_schema_version`, so the two cannot drift |
+| `schema_version` | `str` | Output contract version. `1.1` adds the optional `parser_evidence` descriptor, renames the thermo block's `cp_data` to `thermo_points` (widened from Cp-only to Cp/H/S/G per temperature; there is no `cp_data` alias), renames the AEC `parameter_table` to `reference_atom_energies`, adds `imaginary_frequencies_cm1`, the per-correction `matched_arkane_key` and `freq_scale_factor_key`, adds `ess_software` so each `ess_versions` banner can be paired with the program that actually produced it, adds `arkane_version`, read together with `arkane_git_commit` from one install so the run carries an Arkane software identity even where there is no git repository to report a commit from, adds `freq_hessian_method`, whose three tokens are TCKDB's `HessianMethod` vocabulary and record the provenance of the frequency method ARC requested, adds the optional `statmech.rejected_torsions` and `statmech.optical_isomers_cause`, adds the TS-only `ts_checks`, adds `kinetics.T0_k` and the constraints' `target_value_units`, adds the thermo block's `standard_state_pressure_pa`, which names the standard state its entropy, free energy and NASA fit belong to, and adds the `rotor_scans` block, whose samples carry `angle_degrees` — the **absolute** dihedral measured on each sample's own geometry, never a displacement — and whose `requested_step_size` is signed, so a reversed scan records its direction instead of losing the whole requested grid. Emitted from a single constant shared with the evidence sidecar's `output_schema_version`, so the two cannot drift |
 | `project` | `str` | ARC project name |
 | `arc_version` | `str` | ARC version string |
 | `arc_git_commit` | `str?` | ARC repo HEAD commit hash |
@@ -735,6 +735,7 @@ One entry per parsed scan point, in the order the ESS reported them.
 | `e0_kj_mol` | `float?` | Ground-state energy (kJ/mol) |
 | `spin_multiplicity` | `int?` | Spin multiplicity |
 | `optical_isomers` | `int?` | Number of optical isomers |
+| `optical_isomers_cause` | `str?` | Optional. Why ARC wrote `optical_isomers` into the Arkane file (ARC issue #413): `n = 2` for a chiral optimised geometry, unless the treated rotors reach its mirror image (`1`). The rule is exact only within the independent 1D-rotor model. Each cause states D, the largest signed-torsion deviation (degrees) from the aligned mirror image, e.g. `mirror well reached by the C2-C3 rotor (D = 8.7 deg)` or `C2-C3 torsion harmonic (scan failed: ...), mirror well counted by n (D = 131.4 deg)`. `not determined: <reason>` when ARC omitted the key and Arkane estimated it from the point group. `null` when no Arkane file was generated |
 | `is_linear` | `bool?` | Whether the molecule is linear |
 | `external_symmetry` | `int?` | External symmetry number |
 | `point_group` | `str?` | Point group (e.g. `C2v`) |

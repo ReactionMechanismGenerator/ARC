@@ -507,10 +507,19 @@ class TestStatmechToDict(unittest.TestCase):
         spc.e0 = 100.5
         spc.multiplicity = 1
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 2
         spc.freqs = freqs
         spc.rotors_dict = None
         return spc
+
+    def test_optical_isomers_cause(self):
+        """Test that the optical-isomer cause ARC wrote into the Arkane file reaches output.yml verbatim"""
+        spc = self._make_spc(freqs=[100.0])
+        self.assertIsNone(_statmech_to_dict(spc, '/tmp/project')['optical_isomers_cause'])
+        spc.optical_isomers_cause = 'mirror well reached by the C2-C3 rotor (D = 8.7 deg)'
+        self.assertEqual(_statmech_to_dict(spc, '/tmp/project')['optical_isomers_cause'],
+                         'mirror well reached by the C2-C3 rotor (D = 8.7 deg)')
 
     def test_nonlinear_species(self):
         spc = self._make_spc(freqs=[100.0, 200.0, 300.0])
@@ -1676,6 +1685,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e0 = -95.0
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1500.0, 100.0]
         spc.rotors_dict = None
@@ -1706,6 +1716,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e0 = -95.0
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1500.0, 100.0]
         spc.rotors_dict = None
@@ -1735,6 +1746,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e_elect = None
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1000.0, 100.0]
         spc.rotors_dict = None
@@ -1776,6 +1788,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e_elect = None
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1000.0, 100.0]
         spc.rotors_dict = None
@@ -1904,6 +1917,7 @@ class TestSpcToDict(unittest.TestCase):
         spc.e0 = -105136.6      # kJ/mol (e_elect + ZPE in kJ/mol)
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 12
         spc.freqs = [1300.0, 1500.0, 3000.0, 3100.0]
         spc.rotors_dict = None
@@ -2389,6 +2403,7 @@ class TestWriteOutputYml(unittest.TestCase):
         spc.e0 = -105136.6
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 12
         spc.freqs = [1300.0, 1500.0, 3000.0]
         spc.rotors_dict = None

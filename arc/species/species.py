@@ -61,6 +61,9 @@ logger = get_logger()
 
 valid_chars, minimum_barrier = settings['valid_chars'], settings['minimum_barrier']
 
+# The optical_isomers_cause of a value the user gave (see arc.species.optical_isomers).
+USER_OPTICAL_ISOMERS_CAUSE = 'given by the user'
+
 REACTIVE_RING_INVALIDATION_REASON = 'Torsion lies in the TS reactive ring (code: reactive ring). '
 
 
@@ -313,6 +316,7 @@ class ARCSpecies(object):
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
         external_symmetry (int): The external symmetry of the species (not including rotor symmetries).
         optical_isomers (int): Whether (=2) or not (=1) the species has chiral center/s.
+        optical_isomers_cause (str): Why ARC wrote its number of optical isomers into the Arkane file, if it did.
         transport_data (TransportData): A placeholder for updating transport properties after Lennard-Jones
                                         calculation (using OneDMin).
         force_field (str): The force field to be used for conformer screening. The default is MMFF94s.
@@ -417,6 +421,7 @@ class ARCSpecies(object):
         self.irc_label = irc_label
         self.active = active
         self.optical_isomers = optical_isomers
+        self.optical_isomers_cause = None
         self.charge = charge
         self.run_time = process_run_time(run_time)
         self.checkfile = checkfile
@@ -713,6 +718,16 @@ class ARCSpecies(object):
         """Allow setting the is_linear property"""
         self._is_linear = value
 
+    def has_user_optical_isomers(self) -> bool:
+        """
+        Check whether the stored optical_isomers value came from the user rather than from an ARC decision.
+
+        Returns:
+            bool: Whether the value is set and has no ARC cause other than ``USER_OPTICAL_ISOMERS_CAUSE``.
+        """
+        return self.optical_isomers is not None \
+            and getattr(self, 'optical_isomers_cause', None) in (None, USER_OPTICAL_ISOMERS_CAUSE)
+
     def copy(self):
         """
         Get a copy of this object instance.
@@ -783,7 +798,7 @@ class ARCSpecies(object):
             species_dict['adjlist'] = '\n'.join(line.strip() for line in self.adjlist.splitlines() if line.strip())
         if self.irc_label is not None:
             species_dict['irc_label'] = self.irc_label
-        if self.optical_isomers is not None:
+        if self.has_user_optical_isomers():  # ARC's own value is re-decided from the rotors each run.
             species_dict['optical_isomers'] = self.optical_isomers
         if self.neg_freqs_trshed:
             species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed.tolist() \

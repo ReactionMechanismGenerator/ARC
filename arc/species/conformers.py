@@ -2388,11 +2388,9 @@ def determine_chirality(conformers, label, mol, force=False):
             # don't override data
             continue
         new_xyz = replace_n_with_c_in_xyz(label, mol, conformer['xyz'], chiral_nitrogen_centers, elements_to_insert)
-        rd_mol = embed_rdkit(label, new_mol, xyz=new_xyz)
-        if rd_mol is None or not rd_mol.GetNumConformers():
+        rd_mol = get_stereo_rd_mol(label, new_mol, new_xyz)
+        if rd_mol is None:
             continue
-        rd_mol.UpdatePropertyCache(strict=False)
-        Chem.rdmolops.AssignStereochemistryFrom3D(rd_mol, 0)
         for i, rd_atom in enumerate(rd_mol.GetAtoms()):
             rd_atom_props_dict = rd_atom.GetPropsAsDict()
             if '_CIPCode' in list(rd_atom_props_dict.keys()):
@@ -2408,6 +2406,94 @@ def determine_chirality(conformers, label, mol, force=False):
                 rd_atoms = [rd_bond.GetBeginAtomIdx(), rd_bond.GetEndAtomIdx()]  # indices of atoms bonded by this bond
                 conformer['chirality'][tuple(rd_atom for rd_atom in rd_atoms)] = stereo[-1]
     return conformers
+
+
+def get_stereo_rd_mol(label: str,
+                      mol: Molecule,
+                      xyz: dict,
+                      use_isotopes: bool = False,
+                      ) -> Chem.rdchem.Mol | None:
+    """
+    Embed a molecule in RDKit at the given coordinates and assign its stereochemistry (CIP codes, E/Z) from them.
+
+    Args:
+        label (str): The species label.
+        mol (Molecule): The molecule, with chiral nitrogen centers already replaced by carbon atoms.
+        xyz (dict): The coordinates, in the atom order of ``mol``.
+        use_isotopes (bool, optional): Whether to label the atoms with the isotopes of ``xyz`` (e.g., D vs. H).
+
+    Returns:
+        Chem.rdchem.Mol | None: The RDKit molecule with stereochemistry assigned, ``None`` if it could not be embedded.
+    """
+    rd_mol = embed_rdkit(label, mol, xyz=xyz)
+    if rd_mol is None or not rd_mol.GetNumConformers():
+        return None
+    if use_isotopes and xyz.get('isotopes') and len(xyz['isotopes']) == rd_mol.GetNumAtoms():
+        for rd_atom, isotope in zip(rd_mol.GetAtoms(), xyz['isotopes']):
+            rd_atom.SetIsotope(int(isotope))
+    rd_mol.UpdatePropertyCache(strict=False)
+    Chem.rdmolops.AssignStereochemistryFrom3D(rd_mol, 0)
+    return rd_mol
+
+
+def mirror_xyz(xyz: dict) -> dict:
+    """
+    Get the mirror image of a geometry, reflected through the yz plane.
+
+    Args:
+        xyz (dict): The coordinates.
+
+    Returns:
+        dict: The mirrored coordinates.
+    """
+    return converter.xyz_from_data(coords=[(-x, y, z) for x, y, z in xyz['coords']],
+                                   symbols=xyz['symbols'], isotopes=xyz.get('isotopes'))
+
+
+def get_graph_stereocenters(label: str,
+                            mol: Molecule | None,
+                            xyz: dict | None,
+                            ) -> tuple[bool | None, list[int], str]:
+    """
+    Determine whether the 2D graph of a well is chiral, and which atoms are its stereocenters.
+    The configuration of each stereocenter is read from ``xyz``, and the graph is chiral if its stereo-perceived
+    graph differs from that of its mirror image. Conformational chirality of a single geometry (e.g., a gauche
+    conformer of 1-propanol) does not count, since only graph stereocenters carry a configuration. Meso species
+    and species whose only stereo elements are E/Z double bonds are not chiral.
+
+    Args:
+        label (str): The species label.
+        mol (Molecule | None): The 2D graph.
+        xyz (dict | None): The coordinates, in the atom order of ``mol``.
+
+    Returns:
+        tuple[bool | None, list[int], str]:
+            Whether the graph is chiral (``None`` if it could not be determined);
+            the 0-indexed stereocenters with a CIP label, if chiral;
+            and the reason it could not be determined (an empty string otherwise).
+    """
+    if mol is None:
+        return None, list(), 'no 2D graph'
+    if xyz is None:
+        return None, list(), 'no geometry'
+    symbols = [atom.element.symbol for atom in mol.atoms]
+    if symbols != list(xyz['symbols']):
+        return None, list(), 'the atom order of the 2D graph and the geometry differ'
+    chiral_nitrogen_centers = identify_chiral_nitrogen_centers(mol)
+    new_mol, elements_to_insert = replace_n_with_c_in_mol(mol, chiral_nitrogen_centers)
+    stereo_smiles, centers = list(), list()
+    for coords in [xyz, mirror_xyz(xyz)]:
+        new_xyz = replace_n_with_c_in_xyz(label, mol, coords, chiral_nitrogen_centers, elements_to_insert)
+        rd_mol = get_stereo_rd_mol(label, new_mol, new_xyz, use_isotopes=True)
+        if rd_mol is None:
+            return None, list(), 'RDKit could not embed the species to perceive its stereochemistry'
+        stereo_smiles.append(Chem.MolToSmiles(rd_mol))
+        if not centers:
+            centers = [i for i, rd_atom in enumerate(rd_mol.GetAtoms())
+                       if i < len(symbols) and rd_atom.HasProp('_CIPCode')]
+    if stereo_smiles[0] == stereo_smiles[1]:
+        return False, list(), ''
+    return True, centers, ''
 
 
 def identify_chiral_nitrogen_centers(mol):
