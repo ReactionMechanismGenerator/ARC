@@ -561,6 +561,49 @@ class _MinimalAdapter(JobAdapter):
     def _log_job_execution(self): pass
 
 
+class TestJobStatusWhenTheQueueCannotBeRead(unittest.TestCase):
+    """A queue status command that keeps failing leaves the job as it was, for the next cycle to check."""
+
+    SOCKET_TIMEOUT = ['squeue: error: slurm_receive_msg: Socket timed out on send/recv operation',
+                      'slurm_load_jobs error: Socket timed out on send/recv operation']
+
+    def _running_job(self):
+        adapter = _MinimalAdapter(server='local', execution_type='queue')
+        adapter.job_id = 4242
+        adapter.job_status = ['running', {'status': 'running', 'keywords': list(), 'error': '', 'line': ''}]
+        adapter.additional_job_info = None
+        adapter._check_job_ess_status = lambda: None
+        adapter._get_additional_job_info = lambda: None
+        return adapter
+
+    def _determine(self, adapter):
+        local_servers = {'local': {'cluster_soft': 'Slurm', 'un': 'user'}}
+        with patch('arc.job.adapter.servers', local_servers), patch('arc.job.local.servers', local_servers), \
+                patch('arc.job.local.execute_command', return_value=([], self.SOCKET_TIMEOUT)), \
+                patch('time.sleep'):
+            return adapter.determine_job_status()
+
+    def test_the_job_keeps_its_running_state(self):
+        adapter = self._running_job()
+        with self.assertLogs('arc', level='WARNING') as logged:
+            self._determine(adapter)
+        self.assertEqual(adapter.job_status[0], 'running')
+        self.assertEqual(adapter.job_status[1]['status'], 'running')
+        self.assertEqual(len(logged.output), 1)
+        self.assertIn('4242', logged.output[0])
+
+    def test_the_job_is_not_marked_errored_or_done(self):
+        adapter = self._running_job()
+        self._determine(adapter)
+        self.assertNotIn(adapter.job_status[0], ['done', 'errored'])
+        self.assertNotIn(adapter.job_status[1]['status'], ['done', 'errored'])
+
+    def test_the_caller_is_told_the_status_is_unknown(self):
+        adapter = self._running_job()
+        with self.assertLogs('arc', level='WARNING'):
+            self.assertIs(self._determine(adapter), False)
+
+
 class TestSSHConnectionSharing(unittest.TestCase):
     """``execute()`` shares one SSHClient per remote-queue job, and the
     pool reuses it across jobs."""

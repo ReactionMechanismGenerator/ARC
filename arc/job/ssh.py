@@ -22,6 +22,7 @@ import paramiko
 from arc.common import get_logger
 from arc.exceptions import InputError, ServerError
 from arc.imports import settings
+from arc.job.queue_status import run_queue_query
 
 
 logger = get_logger()
@@ -410,19 +411,17 @@ class SSHClient(object):
         Args:
             job_id (int): The job's ID.
 
+        Raises:
+            QueueQueryError: If the queue status command keeps failing, so the job's status is unknown.
+
         Returns: str
-            Possible statuses: `before_submission`, `running`, `errored on node xx`,
-            `done`, and `errored: ...`
+            Possible statuses: `before_submission`, `running`, `errored on node xx`, and `done`.
         """
         cmd = check_status_command[servers[self.server]['cluster_soft']]
-        stdout, stderr = self._send_command_to_server(cmd)
         # Status line formats:
         # OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
         # SLURM: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
-        if stderr:
-            logger.info('\n\n')
-            logger.error(f'Could not check status of job {job_id} due to {stderr}')
-            return f'errored: {stderr}'
+        stdout = run_queue_query(lambda: self._send_command_to_server(cmd), server=self.server)
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
     def delete_job(self, job_id: int | str) -> None:
@@ -457,6 +456,9 @@ class SSHClient(object):
         """
         Check all jobs submitted by the user on a server.
 
+        Raises:
+            QueueQueryError: If the queue status command keeps failing, so which jobs run is unknown.
+
         Returns: list
             A list of job IDs.
         """
@@ -464,7 +466,7 @@ class SSHClient(object):
             raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
         running_job_ids = list()
         cmd = check_status_command[servers[self.server]['cluster_soft']]
-        stdout = self._send_command_to_server(cmd)[0]
+        stdout = run_queue_query(lambda: self._send_command_to_server(cmd), server=self.server)
         i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
         split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
         cluster_soft = servers[self.server]['cluster_soft'].lower()

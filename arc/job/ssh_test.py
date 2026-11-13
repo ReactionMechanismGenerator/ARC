@@ -146,6 +146,66 @@ class TestSSHConnectHardening(unittest.TestCase):
         self.assertEqual(fake.connect.call_count, 2)
 
 
+SOCKET_TIMEOUT = ['squeue: error: slurm_receive_msg: Socket timed out on send/recv operation\n',
+                  'slurm_load_jobs error: Socket timed out on send/recv operation\n']
+SLURM_LISTING = ['             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)\n',
+                 '              4242     short      a42     user  R       0:01      1 node01\n']
+
+
+class TestQueueQueryFailure(unittest.TestCase):
+    """A queue status command that fails on the server is not an empty queue."""
+
+    SERVER = {'address': 'host.example.edu', 'un': 'user', 'cluster_soft': 'Slurm'}
+
+    def setUp(self):
+        patcher = patch.object(ssh, 'servers', {'srv': dict(self.SERVER)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        sleep = patch('time.sleep')
+        self.sleep = sleep.start()
+        self.addCleanup(sleep.stop)
+        self.client = ssh.SSHClient('srv')
+
+    def _replies(self, *replies):
+        """Stub the server boundary with a sequence of (stdout, stderr) replies."""
+        return patch.object(self.client, '_send_command_to_server', side_effect=list(replies))
+
+    def test_check_job_status_does_not_read_a_socket_timeout_as_finished(self):
+        """A running job must not read as done or errored because the queue did not answer."""
+        with self._replies(*[([], SOCKET_TIMEOUT)] * 3):
+            with self.assertRaises(ServerError):
+                self.client.check_job_status(4242)
+
+    def test_check_running_jobs_ids_does_not_read_a_socket_timeout_as_no_jobs(self):
+        """An unanswered queue must not report an empty job list."""
+        with self._replies(*[([], SOCKET_TIMEOUT)] * 3):
+            with self.assertRaises(ServerError):
+                self.client.check_running_jobs_ids()
+
+    def test_an_ssh_channel_timeout_is_a_failed_query(self):
+        """ARC's own reply for a channel that would not open is a failure, not an empty queue."""
+        with self._replies(*[([''], ['ssh timed-out after two trials'])] * 3):
+            with self.assertRaises(ServerError):
+                self.client.check_running_jobs_ids()
+
+    def test_a_missing_queue_command_on_the_server_is_a_failed_query(self):
+        """A remote queue server always has a queue command, so a missing one is not an empty queue."""
+        with self._replies(*[([], ['bash: squeue: command not found\n'])] * 3):
+            with self.assertRaises(ServerError):
+                self.client.check_job_status(4242)
+
+    def test_check_running_jobs_ids_retries_a_failed_query(self):
+        """A query that fails once and then succeeds gives the true running list."""
+        with self._replies(([], SOCKET_TIMEOUT), (SLURM_LISTING, [])) as send:
+            self.assertEqual(self.client.check_running_jobs_ids(), ['4242'])
+        self.assertEqual(send.call_count, 2)
+
+    def test_stderr_warnings_beside_a_real_listing_are_parsed(self):
+        """A listing that came back with a warning on stderr still says the job runs."""
+        with self._replies((SLURM_LISTING, ['squeue: warning: deprecated option\n'])):
+            self.assertEqual(self.client.check_job_status(4242), 'running')
+
+
 class TestSSHOptionalKey(unittest.TestCase):
     """``servers[...]['key']`` is optional, for ssh-agent and default-key-path authentication."""
 

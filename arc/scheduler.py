@@ -33,6 +33,7 @@ from arc.common import (extremum_list,
                         )
 from arc.exceptions import (DependencyError,
                             InputError,
+                            QueueQueryError,
                             SchedulerError,
                             SpeciesError,
                             TrshError,
@@ -132,6 +133,8 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
                                 'reference followed by MRCI or CASPT2) is what this species calls for; '
 
 MAX_S_SQUARED_DEVIATION = 0.1
+
+QUEUE_QUERY_COOLDOWN = 60  # Seconds a server whose queue query failed is not queried again.
 
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
@@ -393,6 +396,7 @@ class Scheduler(object):
         self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
         self.job_dict = dict()
         self.server_job_ids = list()
+        self.queue_query_failures = dict()
         self.completed_incore_jobs = list()
         self.running_jobs = dict()
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
@@ -951,6 +955,10 @@ class Scheduler(object):
                         job = self.job_dict[label]['directed_scan'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                            if not successful_server_termination and job_name in self.running_jobs.get(label, list()):
+                                # Its status is unknown and it is still tracked: keep its count and its files.
+                                self.timer = False
+                                break
                             if successful_server_termination:
                                 self.check_directed_scan_job(label=label, job=job)
                                 if 'cont' in job.directed_scan_type and job.job_status[1]['status'] == 'done':
@@ -1365,7 +1373,8 @@ class Scheduler(object):
         """
         if job.job_status[0] != 'done' or job.job_status[1]['status'] != 'done':
             try:
-                job.determine_job_status()  # Also downloads the output file.
+                if not job.determine_job_status():  # Also downloads the output file.
+                    return False  # The queue could not be read, the job stays running for the next poll.
             except IOError:
                 if job.job_type not in ['orbitals', 'stability']:
                     logger.warning(f'Tried to determine status of job {job.job_name}, '
@@ -4667,17 +4676,34 @@ class Scheduler(object):
         """
         Check job status on a specific server or on all active servers, get a list of relevant running job IDs.
 
+        A server whose queue cannot be read reports the queue jobs ARC tracks there as still running, so none of
+        them is ended on a failed query, and it is not queried again for ``QUEUE_QUERY_COOLDOWN`` seconds.
+
         Args:
             specific_server (str, optional): The server to check. If ``None``, check all active servers.
         """
         self.server_job_ids = list()
         for server in self.servers:
             if specific_server is None or server == specific_server:
-                if server != 'local':
-                    with borrow_ssh_client(server) as ssh:
-                        self.server_job_ids.extend(ssh.check_running_jobs_ids())
-                else:
-                    self.server_job_ids.extend(check_running_jobs_ids())
+                failed_at = self.queue_query_failures.get(server)
+                if failed_at is not None and time.monotonic() - failed_at < QUEUE_QUERY_COOLDOWN:
+                    logger.debug(f'The queue on {server} failed to answer recently, keeping its tracked jobs running.')
+                    self.server_job_ids.extend(tracked_queue_job_ids(self.job_dict, self.running_jobs, server))
+                    continue
+                try:
+                    if server != 'local':
+                        with borrow_ssh_client(server) as ssh:
+                            server_job_ids = ssh.check_running_jobs_ids()
+                    else:
+                        server_job_ids = check_running_jobs_ids()
+                except QueueQueryError as e:
+                    logger.warning(f'Could not read the job queue on {server}, keeping the jobs ARC tracks there '
+                                   f'as running and checking again in {QUEUE_QUERY_COOLDOWN} s. Got: {e}')
+                    self.queue_query_failures[server] = time.monotonic()
+                    self.server_job_ids.extend(tracked_queue_job_ids(self.job_dict, self.running_jobs, server))
+                    continue
+                self.queue_query_failures.pop(server, None)
+                self.server_job_ids.extend(server_job_ids)
 
     def get_completed_incore_jobs(self):
         """
@@ -5618,6 +5644,9 @@ class Scheduler(object):
         """
         Check if the number of running jobs on the server is not above the set server limit.
 
+        While the server's queue cannot be read the count is unknown, as it holds only the jobs ARC tracks there,
+        so ARC waits for the queue to answer before submitting more.
+
         Args:
             server (str): The server name.
         """
@@ -5625,11 +5654,39 @@ class Scheduler(object):
             continue_lopping = True
             while continue_lopping:
                 self.get_server_job_ids(specific_server=server)
-                if len(self.server_job_ids) >= servers_dict[server]['max_simultaneous_jobs']:
+                if server in self.queue_query_failures \
+                        or len(self.server_job_ids) >= servers_dict[server]['max_simultaneous_jobs']:
                     time.sleep(90)
                 else:
                     continue_lopping = False
             self.get_server_job_ids()
+
+
+def tracked_queue_job_ids(job_dict: dict,
+                          running_jobs: dict,
+                          server: str,
+                          ) -> list:
+    """
+    Get the IDs of the queue jobs ARC tracks as running on a server.
+
+    Args:
+        job_dict (dict): The scheduler's job objects, keyed by label, then job type, then job name or index.
+        running_jobs (dict): The names of the running jobs, keyed by label.
+        server (str): The server name.
+
+    Returns:
+        list: The job IDs. Incore jobs and jobs without an ID are left out.
+    """
+    job_ids = list()
+    for label, job_names in running_jobs.items():
+        for jobs in job_dict.get(label, dict()).values():
+            if not isinstance(jobs, dict):
+                continue
+            for job in jobs.values():
+                if getattr(job, 'job_name', None) in job_names and job.server == server \
+                        and job.execution_type != 'incore' and job.job_id is not None:
+                    job_ids.append(job.job_id)
+    return job_ids
 
 
 def species_has_freq(species_output_dict: dict,

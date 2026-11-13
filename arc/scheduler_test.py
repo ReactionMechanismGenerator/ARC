@@ -7,6 +7,7 @@ This module contains unit tests for the arc.scheduler module
 
 import logging
 import tempfile
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 import os
@@ -27,6 +28,7 @@ from arc.job.factory import job_factory
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_run import build_rotor_scan_1d_tasks
 from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_state
+from arc.job.ssh import SSHClient
 from arc.level import Level, get_freq_level_for_composite_method
 from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
@@ -4521,7 +4523,8 @@ class TestGetServerJobIds(unittest.TestCase):
     @staticmethod
     def _sched(servers):
         """A stand-in carrying only what get_server_job_ids() reads."""
-        return SimpleNamespace(servers=servers, server_job_ids=None)
+        return SimpleNamespace(servers=servers, server_job_ids=None, job_dict=dict(), running_jobs=dict(),
+                               queue_query_failures=dict())
 
     def test_a_remote_server_is_polled_through_a_pooled_client(self):
         """Opening a connection per poll is what the pool exists to stop."""
@@ -4566,6 +4569,220 @@ class TestGetServerJobIds(unittest.TestCase):
             borrow.return_value.__enter__.return_value = MagicMock()
             Scheduler.get_server_job_ids(sched, specific_server='atlas')
         borrow.assert_called_once_with('atlas')
+
+
+class TestGetServerJobIdsWhenTheQueueCannotBeRead(unittest.TestCase):
+    """A queue that does not answer keeps every tracked job running instead of ending them all (#394)."""
+
+    SOCKET_TIMEOUT = ['squeue: error: slurm_receive_msg: Socket timed out on send/recv operation\n',
+                      'slurm_load_jobs error: Socket timed out on send/recv operation\n']
+    SLURM_LISTING = ['             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)\n',
+                     '                21     short      a21     user  R       0:01      1 node01\n']
+    SERVERS = {'zeus': {'address': 'zeus.example.edu', 'un': 'user', 'cluster_soft': 'Slurm'},
+               'atlas': {'address': 'atlas.example.edu', 'un': 'user', 'cluster_soft': 'Slurm'}}
+
+    def setUp(self):
+        servers = patch('arc.job.ssh.servers', self.SERVERS)
+        servers.start()
+        self.addCleanup(servers.stop)
+        sleep = patch('time.sleep')
+        self.sleep = sleep.start()
+        self.addCleanup(sleep.stop)
+        self.client = SSHClient('zeus')
+
+    @staticmethod
+    def _job(job_name, job_id, server='zeus', execution_type='queue'):
+        return SimpleNamespace(job_name=job_name, job_id=job_id, server=server, execution_type=execution_type)
+
+    def _sched(self):
+        """A stand-in tracking queue jobs on two servers, an incore job, and a job that already ended."""
+        job_dict = {'spc': {'opt': {'opt_a11': self._job('opt_a11', 11),
+                                    'opt_a14': self._job('opt_a14', 14)},
+                            'sp': {'sp_a12': self._job('sp_a12', 12, execution_type='incore')},
+                            'freq': {'freq_a13': self._job('freq_a13', 13, server='atlas')},
+                            'conf_opt': {0: self._job('conf_opt_0', 15)}}}
+        running_jobs = {'spc': ['opt_a11', 'sp_a12', 'freq_a13', 'conf_opt_0']}
+        return SimpleNamespace(servers=['zeus'], server_job_ids=None, job_dict=job_dict, running_jobs=running_jobs,
+                               queue_query_failures=dict())
+
+    def _poll(self, sched, *replies):
+        """Run one get_server_job_ids() with the zeus server boundary answering ``replies``."""
+        with patch('arc.scheduler.borrow_ssh_client') as borrow, \
+                patch.object(self.client, '_send_command_to_server', side_effect=list(replies)) as send:
+            borrow.return_value.__enter__.return_value = self.client
+            Scheduler.get_server_job_ids(sched)
+        return send
+
+    def test_a_failed_poll_keeps_the_tracked_jobs_running(self):
+        sched = self._sched()
+        with self.assertLogs('arc', level='WARNING') as logged:
+            self._poll(sched, *[([], self.SOCKET_TIMEOUT)] * 3)
+        self.assertEqual(sorted(sched.server_job_ids), [11, 15])
+        self.assertEqual(len(logged.output), 1)
+        self.assertIn('zeus', logged.output[0])
+
+    def test_a_good_poll_reads_the_queue(self):
+        sched = self._sched()
+        self._poll(sched, (self.SLURM_LISTING, []))
+        self.assertEqual(sched.server_job_ids, ['21'])
+
+    def test_polls_inside_the_cooldown_do_not_query_the_server_again(self):
+        sched = self._sched()
+        with self.assertLogs('arc', level='WARNING'):
+            first = self._poll(sched, *[([], self.SOCKET_TIMEOUT)] * 3)
+        with self.assertNoLogs('arc', level='WARNING'):
+            second = self._poll(sched)
+        self.assertEqual(first.call_count, 3)
+        self.assertEqual(second.call_count, 0)
+        self.assertEqual(self.sleep.call_count, 2)
+        self.assertEqual(sorted(sched.server_job_ids), [11, 15])
+
+    def test_the_first_good_poll_after_the_cooldown_clears_it(self):
+        sched = self._sched()
+        with self.assertLogs('arc', level='WARNING'):
+            self._poll(sched, *[([], self.SOCKET_TIMEOUT)] * 3)
+        sched.queue_query_failures['zeus'] = time.monotonic() - 3600
+        self._poll(sched, (self.SLURM_LISTING, []))
+        self.assertEqual(sched.server_job_ids, ['21'])
+        self.assertNotIn('zeus', sched.queue_query_failures)
+
+    def test_the_cooldown_of_one_server_does_not_hold_another(self):
+        sched = self._sched()
+        sched.queue_query_failures['atlas'] = time.monotonic()
+        self._poll(sched, (self.SLURM_LISTING, []))
+        self.assertEqual(sched.server_job_ids, ['21'])
+
+
+class TestJobLimitWhenTheQueueCannotBeRead(unittest.TestCase):
+    """The tracked-jobs fallback undercounts the user's queue, so it must not open the job limit."""
+
+    def test_submission_waits_until_the_queue_answers(self):
+        sched = SimpleNamespace(queue_query_failures=dict(), server_job_ids=list())
+        polls = list()
+
+        def get_server_job_ids(specific_server=None):
+            polls.append(specific_server)
+            if len(polls) == 1:
+                sched.queue_query_failures['zeus'] = time.monotonic()
+                sched.server_job_ids = ['11']
+            else:
+                sched.queue_query_failures.pop('zeus', None)
+                sched.server_job_ids = ['11', '12']
+        sched.get_server_job_ids = get_server_job_ids
+        with patch.dict('arc.scheduler.servers_dict', {'zeus': {'max_simultaneous_jobs': 10}}), \
+                patch('time.sleep') as sleep:
+            Scheduler.check_max_simultaneous_jobs_limit(sched, 'zeus')
+        self.assertEqual(polls[:2], ['zeus', 'zeus'])
+        self.assertEqual(sleep.call_count, 1)
+
+    def test_an_answered_queue_under_the_limit_does_not_wait(self):
+        sched = SimpleNamespace(queue_query_failures=dict(), server_job_ids=list())
+        sched.get_server_job_ids = lambda specific_server=None: None
+        with patch.dict('arc.scheduler.servers_dict', {'zeus': {'max_simultaneous_jobs': 10}}), \
+                patch('time.sleep') as sleep:
+            Scheduler.check_max_simultaneous_jobs_limit(sched, 'zeus')
+        sleep.assert_not_called()
+
+
+class TestEndJobWhenTheQueueCannotBeRead(unittest.TestCase):
+
+    def test_the_job_stays_running_and_is_not_rerun(self):
+        sched = MagicMock()
+        sched.running_jobs = {'spc': ['opt_a11']}
+        job = MagicMock()
+        job.job_status = ['running', {'status': 'running'}]
+        job.job_type = 'opt'
+        job.execution_type = 'queue'
+        job.local_path_to_output_file = '/no/such/output.out'
+        job.determine_job_status.return_value = False
+        with patch('time.sleep'):
+            result = Scheduler.end_job(sched, job=job, label='spc', job_name='opt_a11')
+        self.assertFalse(result)
+        sched._run_a_job.assert_not_called()
+        self.assertEqual(sched.running_jobs, {'spc': ['opt_a11']})
+        self.assertEqual(job.job_status, ['running', {'status': 'running'}])
+
+
+class _StopLoop(Exception):
+    """Ends a test's pass through the scheduler's main loop."""
+
+
+class TestTrackedWorkInTheMainLoop(unittest.TestCase):
+    """A job whose status is unknown is not treated as finished (#394)."""
+
+    JOB_TYPES = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False, 'freq': True, 'sp': True,
+                 'rotors': False, 'orbitals': False, 'lennard_jones': False, 'irc': False, 'bde': False}
+
+    def setUp(self):
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        self.label = 'methylamine'
+        self.sched = Scheduler(project='tracked_work', ess_settings={'gaussian': ['server1']},
+                               species_list=[ARCSpecies(label=self.label, smiles='CN')],
+                               composite_method=None,
+                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                               opt_level=Level(repr=default_levels_of_theory['opt']),
+                               freq_level=Level(repr=default_levels_of_theory['freq']),
+                               sp_level=Level(repr=default_levels_of_theory['sp']),
+                               scan_level=Level(repr=default_levels_of_theory['scan']),
+                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                               project_directory=project_directory, testing=True,
+                               job_types=dict(self.JOB_TYPES), restart_dict=dict(),
+                               orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+        for name in ('run_conformer_jobs', 'spawn_ts_jobs', 'get_completed_incore_jobs',
+                     'generate_final_ts_guess_report', 'determine_most_stable_conformer', 'run_opt_job',
+                     'process_directed_scans', 'parse_conformer'):
+            patcher = patch.object(self.sched, name, return_value=False)
+            setattr(self, name, patcher.start())
+            self.addCleanup(patcher.stop)
+        patcher = patch.object(self.sched, 'get_server_job_ids',
+                               side_effect=lambda specific_server=None: setattr(self.sched, 'server_job_ids', list()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _job(self, job_type: str, job_id: int, **kwargs) -> MagicMock:
+        job = MagicMock(job_type=job_type, job_id=job_id, server='server1', execution_type='queue', **kwargs)
+        job.as_dict.return_value = {'job_type': job_type, 'job_id': job_id}
+        return job
+
+    def _directed_scan(self) -> tuple[MagicMock, str]:
+        local_path = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, local_path, ignore_errors=True)
+        job = self._job('directed_scan', 51, job_name='directed_scan_a51', directed_scan_type='brute_force_sp',
+                        rotor_index=0, pivots=[1, 2], local_path=local_path)
+        self.sched.species_dict[self.label].rotors_dict = {0: {'number_of_running_jobs': 1, 'pivots': [1, 2]}}
+        self.sched.job_dict[self.label]['directed_scan'] = {job.job_name: job}
+        self.sched.running_jobs[self.label] = [job.job_name]
+        return job, local_path
+
+    def test_a_directed_scan_of_unknown_status_keeps_its_count_and_its_files(self):
+        job, local_path = self._directed_scan()
+        calls = list()
+
+        def end_job(job, label, job_name):
+            calls.append(job_name)
+            if len(calls) > 1:
+                raise _StopLoop(job_name)
+            return False  # The per-job query failed: the job stays in running_jobs.
+        with patch.object(self.sched, 'end_job', side_effect=end_job), self.assertRaises(_StopLoop):
+            self.sched.schedule_jobs()
+        self.assertEqual(self.sched.species_dict[self.label].rotors_dict[0]['number_of_running_jobs'], 1)
+        self.assertTrue(os.path.isdir(local_path))
+        self.assertEqual(self.sched.running_jobs[self.label], [job.job_name])
+        self.process_directed_scans.assert_not_called()
+
+    def test_a_directed_scan_that_failed_for_good_is_still_counted_and_cleaned(self):
+        job, local_path = self._directed_scan()
+
+        def end_job(job, label, job_name):
+            self.sched.running_jobs[label].remove(job_name)
+            return False  # A terminal failure: end_job() already stopped tracking it.
+        with patch.object(self.sched, 'end_job', side_effect=end_job), \
+                patch.object(self.sched, 'check_all_done'):
+            self.sched.schedule_jobs()
+        self.assertEqual(self.sched.species_dict[self.label].rotors_dict[0]['number_of_running_jobs'], 0)
+        self.assertFalse(os.path.isdir(local_path))
+        self.process_directed_scans.assert_called_once()
 
 
 class TestTsGuessPathProvenance(unittest.TestCase):

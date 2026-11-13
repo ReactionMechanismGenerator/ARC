@@ -143,6 +143,13 @@ class ServerError(Exception):
     pass
 
 
+class QueueQueryError(ServerError):
+    """
+    An exception raised when a server's queue status command keeps failing, so which jobs run there is unknown.
+    """
+    pass
+
+
 class SettingsError(Exception):
     """
     An exception raised when dealing with settings.

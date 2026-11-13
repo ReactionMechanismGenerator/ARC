@@ -25,7 +25,7 @@ import numpy as np
 
 from arc.checks.common import get_conformer_job_name
 from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans, convert_to_hours
-from arc.exceptions import JobError
+from arc.exceptions import JobError, QueueQueryError
 from arc.imports import local_arc_path, settings, submit_scripts
 from arc.job.local import (change_mode,
                            check_job_status,
@@ -905,14 +905,24 @@ class JobAdapter(ABC):
             logger.debug('deleting job locally...')
             delete_job(job_id=self.job_id)
 
-    def determine_job_status(self):
+    def determine_job_status(self) -> bool:
         """
         Determine the Job's status. Updates self.job_status.
+
+        When the server's queue cannot be read, the job keeps the status it had, so the next poll checks it again.
+
+        Returns:
+            bool: ``False`` if the queue could not be read and the status is unknown, ``True`` otherwise.
         """
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         if self.job_status[0] == 'errored':
-            return
-        self.job_status[0] = self._check_job_server_status() if self.execution_type != 'incore' else 'done'
+            return True
+        try:
+            self.job_status[0] = self._check_job_server_status() if self.execution_type != 'incore' else 'done'
+        except QueueQueryError as e:
+            logger.warning(f'Could not read the status of job {self.job_name} ({self.job_id}) on {self.server}, '
+                           f'keeping it as {self.job_status[0]} until the next check. Got: {e}')
+            return False
         if self.job_status[0] == 'done':
             try:
                 self._check_job_ess_status()  # Populates self.job_status[1], and downloads the output file.
@@ -952,6 +962,7 @@ class JobAdapter(ABC):
                         break
         elif self.job_status[0] == 'running':
             self.job_status[1]['status'] = 'running'
+        return True
 
     def _get_additional_job_info(self):
         """
