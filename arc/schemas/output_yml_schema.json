@@ -1100,6 +1100,13 @@
             "null"
           ]
         },
+        "optical_isomers_cause": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why ARC wrote optical_isomers into the Arkane file (ARC issue #413), e.g. 'mirror well reached by the C2-C3 rotor (D = 8.7 deg)'; 'not determined: <reason>' when ARC left it to Arkane's point-group estimate. Optional: absent from output.yml files written before this field existed, null when no Arkane file was generated."
+        },
         "is_linear": {
           "type": [
             "boolean",

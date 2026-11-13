@@ -21,6 +21,7 @@ from arc.job.local import execute_command
 from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
 
+from arc.species.optical_isomers import determine_optical_isomers
 from arc.species.species import ThermoData
 
 if TYPE_CHECKING:
@@ -114,6 +115,12 @@ species_input_template = """#!/usr/bin/env python
 
 linear = ${linear}
 spinMultiplicity = ${spin_multiplicity}
+% if optical_isomers is not None:
+# opticalIsomers: ${optical_isomers_cause}
+opticalIsomers = ${optical_isomers}
+% else:
+# opticalIsomers not set by ARC (${optical_isomers_cause}); Arkane estimates it from the point group
+% endif
 
 energy = Log('${sp_path}')
 geometry = Log('${freq_path}')
@@ -457,12 +464,17 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         """
         ts_dir = os.path.join(statmech_dir, 'TSs')
         os.makedirs(ts_dir, exist_ok=True)
-        for ts in [rxn.ts_species for rxn in self.reactions]:
-            if ts.yml_path:
+        for rxn in self.reactions:
+            if rxn.ts_species.yml_path:
                 continue
-            self.generate_species_file(ts, ts_dir, skip_rotors)
+            self.generate_species_file(rxn.ts_species, ts_dir, skip_rotors, reaction=rxn)
 
-    def generate_species_file(self, species, species_dir: str, skip_rotors: bool) -> None:
+    def generate_species_file(self,
+                              species: 'ARCSpecies',
+                              species_dir: str,
+                              skip_rotors: bool,
+                              reaction: 'ARCReaction | None' = None,
+                              ) -> None:
         """
         Generate input file for a single species.
 
@@ -470,6 +482,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             species (ARCSpecies): The species object to generate the file for.
             species_dir (str): The directory to save the species file in.
             skip_rotors (bool): Whether to skip internal rotor consideration.
+            reaction (ARCReaction, optional): The reaction whose TS is ``species``, ``None`` for a well.
         """
         file_path = os.path.join(species_dir, f'{species.label}.py')
         species.arkane_file = file_path
@@ -477,11 +490,14 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             os.remove(file_path)
         rotors = [rotor for rotor in species.rotors_dict.values() if rotor['success']] if species.rotors_dict else list()
         use_rotors = not skip_rotors and bool(rotors)
+        optical_isomers = get_optical_isomers(species, rotors=rotors if use_rotors else list(), reaction=reaction)
         content = Template(species_input_template).render(
             linear=species.is_linear,
             spin_multiplicity=species.multiplicity,
             sp_path=self.output_dict[species.label]['paths']['composite'] or self.output_dict[species.label]['paths']['sp'],
             freq_path=self.output_dict[species.label]['paths']['freq'] or self.output_dict[species.label]['paths']['sp'],
+            optical_isomers=optical_isomers,
+            optical_isomers_cause=species.optical_isomers_cause,
             use_hindered_rotors=use_rotors,
             rotors=rotors,
         )
@@ -583,6 +599,38 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             _parse_conformer_statmech(species, output_content)
         for rxn in self.reactions:
             _parse_conformer_statmech(rxn.ts_species, output_content)
+
+
+def get_optical_isomers(species: 'ARCSpecies',
+                        rotors: list[dict],
+                        reaction: 'ARCReaction | None' = None,
+                        ) -> int | None:
+    """
+    Get the number of optical isomers to write into an Arkane species or TS file, and record its cause in
+    ``species.optical_isomers_cause``. A valid user-given ``species.optical_isomers`` wins. Otherwise, the number is
+    2 for a chiral structure, unless the treated rotors reach its mirror image (1). When it cannot be determined,
+    a warning is logged and ``None`` is returned, so the key is omitted and Arkane estimates it from the point group.
+
+    Args:
+        species (ARCSpecies): The well or TS.
+        rotors (list[dict]): The rotors written into the Arkane file.
+        reaction (ARCReaction, optional): The reaction whose TS is ``species``, ``None`` for a well.
+
+    Returns:
+        int | None: The number of optical isomers, ``None`` if it could not be determined.
+    """
+    result = determine_optical_isomers(species, rotors, reaction=reaction)
+    species.optical_isomers_cause = result.cause
+    if result.kind != 'user':
+        # Record ARC's decision, so a value parsed from an earlier Arkane run never outlives it.
+        species.optical_isomers = result.value
+    if result.value is None:
+        logger.warning(f'Could not determine the number of optical isomers of {species.label} ({result.cause}). '
+                       f'Arkane will estimate it from the point group of the geometry, which ignores the rotors '
+                       f'(ARC issue #413).')
+    else:
+        logger.info(f'Optical isomers of {species.label}: {result.value} ({result.cause})')
+    return result.value
 
 
 def run_arkane(statmech_dir: str) -> bool:

@@ -138,6 +138,7 @@ def make_rich_species() -> ARCSpecies:
     spc.e0 = -105136.6
     spc.freqs = [1300.0, 1500.0, 3000.0]
     spc.optical_isomers = 1
+    spc.optical_isomers_cause = None
     spc.external_symmetry = 1
     spc._is_linear = False
     spc.conformers = [spc.get_xyz(), spc.get_xyz()]
@@ -178,6 +179,7 @@ def make_directed_rotor_species() -> ARCSpecies:
     spc.e0 = -105136.6
     spc.freqs = [1300.0, 1500.0, 3000.0]
     spc.optical_isomers = 1
+    spc.optical_isomers_cause = None
     spc.external_symmetry = 1
     spc._is_linear = False
     spc.rotors_dict = {
@@ -200,6 +202,7 @@ def make_transition_state() -> ARCSpecies:
     ts.e0 = -104900.0
     ts.freqs = [-1235.4, -18.2, 1300.0, 1500.0]
     ts.optical_isomers = 1
+    ts.optical_isomers_cause = None
     ts.external_symmetry = 1
     ts._is_linear = False
     ts.chosen_ts = 0
@@ -588,6 +591,7 @@ class TestOrcaRotorScanValidates(SchemaAssertionMixin, unittest.TestCase):
         spc.e0 = -539300.0
         spc.freqs = [640.0, 1265.0, 3590.0]
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc._is_linear = False
         spc.rotors_dict = {
@@ -861,6 +865,7 @@ class TestOnlyRejectedRotorsValidate(SchemaAssertionMixin, unittest.TestCase):
         spc.e0 = -105136.6
         spc.freqs = [1300.0, 1500.0]
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc._is_linear = False
         spc.rotors_dict = {

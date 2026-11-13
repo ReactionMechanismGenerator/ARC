@@ -16,8 +16,10 @@ from arc.checks.common import TS_IRC_FAILED_MARKER
 from arc.common import ARC_TESTING_PATH, save_yaml_file
 from arc.exceptions import InputError
 from arc.level import Level
+from arc.parser.parser import parse_geometry
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
+from arc.species.conformers_test import NC3H7OO_XYZ, QOOH_XYZ, TS0_XYZ
 from arc.statmech.adapter import StatmechEnum
 from arc.statmech.arkane import ArkaneAdapter
 from arc.statmech.arkane import (
@@ -942,6 +944,191 @@ class TestSummarizeArkaneStderr(unittest.TestCase):
 
     def test_single_line_no_extra_suffix(self):
         self.assertEqual(self._summarize(['RuntimeError: boom']), 'RuntimeError: boom')
+
+
+class TestArkaneOpticalIsomers(unittest.TestCase):
+    """
+    Contains unit tests for writing the number of optical isomers, and its cause, into Arkane species and TS files
+    (ARC issue #413).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.tmpdir = tempfile.mkdtemp(prefix='test_Arkane_optical_isomers_')
+        cls.freq_path = os.path.join(ARC_TESTING_PATH, 'freq', 'nC3H7.out')
+        cls.sp_path = os.path.join(ARC_TESTING_PATH, 'opt', 'nC3H7.out')
+        cls.paths = {'paths': {'freq': cls.freq_path, 'sp': cls.sp_path, 'opt': cls.sp_path, 'composite': ''}}
+        h2o2_dir = os.path.join(ARC_TESTING_PATH, 'restart', '1_restart_thermo', 'calcs')
+        cls.h2o2_freq = os.path.join(h2o2_dir, 'freq_a19031.out')
+        cls.h2o2_paths = {'paths': {'freq': cls.h2o2_freq, 'sp': os.path.join(h2o2_dir, 'sp_a19032.out'),
+                                    'opt': cls.h2o2_freq, 'composite': ''}}
+        cls.h2o2_scan = os.path.join(h2o2_dir, 'scan_a19034.out')
+
+    def make_nc3h7(self, rotor_success: bool | None = None, **kwargs) -> ARCSpecies:
+        """
+        Make an n-propyl species with the C1 geometry of its frequency log, whose CH2 radical top is twisted 25 deg
+        out of the mirror plane (Arkane's point group guess is 2), optionally with that C1-C2 rotor.
+        """
+        spc = ARCSpecies(label='nC3H7', smiles='[CH2]CC', xyz=parse_geometry(self.freq_path), **kwargs)
+        if rotor_success is not None:
+            spc.rotors_dict = {0: {'pivots': [1, 2], 'torsion': [3, 0, 1, 2], 'scan': [4, 1, 2, 3], 'top': [1, 4, 5],
+                                   'success': rotor_success, 'symmetry': 2, 'scan_path': self.freq_path,
+                                   'invalidation_reason': '' if rotor_success else 'scan has a barrier larger than 40',
+                                   'dimensions': 1}}
+        return spc
+
+    def make_h2o2(self, rotor: bool) -> ARCSpecies:
+        """Make H2O2 (C2: Arkane's point group guess is 2), optionally with its converged O-O rotor scan"""
+        spc = ARCSpecies(label='H2O2', smiles='OO', xyz=parse_geometry(self.h2o2_freq))
+        if rotor:
+            spc.rotors_dict = {0: {'pivots': [1, 2], 'torsion': [2, 0, 1, 3], 'scan': [3, 1, 2, 4], 'top': [1, 3],
+                                   'success': True, 'symmetry': 1, 'scan_path': self.h2o2_scan,
+                                   'invalidation_reason': '', 'dimensions': 1}}
+        return spc
+
+    def generate(self, species: ARCSpecies, reactions: list | None = None, ts: bool = False,
+                 skip_rotors: bool = True) -> str:
+        """Generate the Arkane species (or TS) file for ``species`` and return its content"""
+        statmech_dir = tempfile.mkdtemp(dir=self.tmpdir)
+        adapter = ArkaneAdapter(output_directory=statmech_dir, calcs_directory=statmech_dir,
+                                output_dict={species.label: self.paths}, bac_type=None, sp_level=Level('gfn2'),
+                                species=[species], reactions=reactions)
+        if ts:
+            adapter.generate_ts_files(statmech_dir=statmech_dir, skip_rotors=skip_rotors)
+            path = os.path.join(statmech_dir, 'TSs', f'{species.label}.py')
+        else:
+            adapter.generate_species_files(statmech_dir=statmech_dir, skip_rotors=skip_rotors)
+            path = os.path.join(statmech_dir, 'species', f'{species.label}.py')
+        with open(path, 'r') as f:
+            return f.read()
+
+    @staticmethod
+    def arkane_local_context(content: str) -> dict:
+        """Execute a species file the way Arkane's StatMechJob.load() does, and return the resulting local context"""
+        local_context = {'__builtins__': None, 'True': True, 'False': False, 'Log': lambda path: path,
+                         'HinderedRotor': lambda **kwargs: kwargs}
+        exec(content, {'__builtins__': None}, local_context)
+        return local_context
+
+    def test_species_file_rotor_decides(self):
+        """
+        Test that a chiral C1 geometry gets opticalIsomers = 1 when its treated rotor reaches the mirror image, and 2
+        when the rotor is skipped or its scan failed, with the cause on a comment line above the key.
+        """
+        with_rotor = self.generate(self.make_nc3h7(rotor_success=True), skip_rotors=False)
+        self.assertEqual(self.arkane_local_context(with_rotor)['opticalIsomers'], 1)
+        self.assertRegex(with_rotor, r'# opticalIsomers: mirror well reached by the C1-C2 rotor \(D = \d+\.\d deg\)\n'
+                                     r'opticalIsomers = 1\n')
+        for spc, skip in [(self.make_nc3h7(rotor_success=True), True), (self.make_nc3h7(rotor_success=False), False)]:
+            content = self.generate(spc, skip_rotors=skip)
+            self.assertEqual(self.arkane_local_context(content)['opticalIsomers'], 2)
+            self.assertIn('C1-C2 torsion harmonic', content)
+
+    def test_species_file_keeps_a_user_value(self):
+        """Test that a user-given optical_isomers value is written even if it disagrees with ARC, with a warning"""
+        with self.assertLogs('arc', level='WARNING') as cm:
+            content = self.generate(self.make_nc3h7(rotor_success=True, optical_isomers=2), skip_rotors=False)
+        self.assertEqual(self.arkane_local_context(content)['opticalIsomers'], 2)
+        self.assertIn('# opticalIsomers: given by the user', content)
+        self.assertTrue(any('nC3H7' in line and 'optical' in line for line in cm.output))
+
+    def test_parsed_value_is_not_taken_for_a_user_value(self):
+        """
+        Test that the Arkane value parsed back into species.optical_isomers after one statmech run (e.g., kinetics)
+        is not taken for a user value by the next one (e.g., thermo), which re-decides it.
+        """
+        spc = self.make_nc3h7(rotor_success=True)
+        self.generate(spc, skip_rotors=False)
+        spc.optical_isomers = 1  # what _parse_conformer_statmech() stores
+        content = self.generate(spc, skip_rotors=True)
+        self.assertEqual(self.arkane_local_context(content)['opticalIsomers'], 2)
+
+    def test_a_new_decision_replaces_the_stored_value(self):
+        """Test that each decision is stored with its cause, so a rerun that skips the rotors stores 2, not a stale 1"""
+        spc = self.make_nc3h7(rotor_success=True)
+        self.generate(spc, skip_rotors=False)
+        self.assertEqual(spc.optical_isomers, 1)
+        self.generate(spc, skip_rotors=True)
+        self.assertEqual(spc.optical_isomers, 2)
+        self.assertIn('rotor not used in the Arkane file', spc.optical_isomers_cause)
+
+    def test_a_copy_does_not_freeze_a_decided_value(self):
+        """
+        Test that a copied or restored species re-decides ARC's own value (as_dict() keeps only a user value), so a
+        count decided without the rotor (2) does not override the next decision with it (1).
+        """
+        spc = self.make_nc3h7(rotor_success=True)
+        self.generate(spc, skip_rotors=True)
+        self.assertEqual(spc.optical_isomers, 2)
+        self.assertNotIn('optical_isomers', spc.as_dict())
+        content = self.generate(spc.copy(), skip_rotors=False)
+        self.assertEqual(self.arkane_local_context(content)['opticalIsomers'], 1)
+        user = self.make_nc3h7(rotor_success=True, optical_isomers=2)
+        self.generate(user, skip_rotors=False)
+        self.assertEqual(user.copy().optical_isomers, 2)
+
+    def test_species_file_fallback_is_loud(self):
+        """Test that when ARC cannot decide, it omits the key, warns, and says so in the file"""
+        spc = self.make_nc3h7()
+        spc.mol = None
+        with self.assertLogs('arc', level='WARNING') as cm:
+            content = self.generate(spc)
+        self.assertNotIn('opticalIsomers', self.arkane_local_context(content))
+        self.assertIn('# opticalIsomers not set by ARC (not determined: no 2D graph); Arkane estimates it from the '
+                      'point group', content)
+        self.assertTrue(any('nC3H7' in line and '#413' in line for line in cm.output))
+
+    def test_ts_file_has_optical_isomers(self):
+        """Test that the TS file of the nC3H7OO <=> QOOH 1,5 H-shift gets opticalIsomers = 2 (reactive ring twist)"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)],
+                          p_species=[ARCSpecies(label='QOOH_1_5', smiles='[CH2]CCOO', xyz=QOOH_XYZ)])
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        content = self.generate(rxn.ts_species, reactions=[rxn], ts=True)
+        self.assertEqual(self.arkane_local_context(content)['opticalIsomers'], 2)
+        self.assertIn('# opticalIsomers: ring twist about', content)
+
+    def test_cause_reaches_all_three_sinks(self):
+        """
+        Drift test: the log and the Arkane file comment carry the identical cause string that species.optical_isomers_cause
+        holds; arc/output_test.py::TestStatmechToDict ties that attribute to output.yml.
+        """
+        spc = self.make_nc3h7(rotor_success=True)
+        with self.assertLogs('arc', level='INFO') as cm:
+            content = self.generate(spc, skip_rotors=False)
+        cause = spc.optical_isomers_cause
+        self.assertTrue(cause.startswith('mirror well reached by'))
+        self.assertIn(f'# opticalIsomers: {cause}\n', content)
+        self.assertTrue(any(f'Optical isomers of nC3H7: 1 ({cause})' in line for line in cm.output))
+
+    def test_arkane_reads_the_optical_isomers(self):
+        """
+        Test that Arkane itself uses the written value: H2O2 (C2, chiral) gets optical_isomers = 1 in Arkane's
+        output.py when its converged O-O rotor is treated, and 2 when the rotors are skipped.
+        """
+        for rotor, skip_rotors, expected in [(True, False, 1), (False, True, 2)]:
+            spc = self.make_h2o2(rotor=rotor)
+            spc.e_elect = 150.1
+            calcs_dir = os.path.join(self.tmpdir, f'calcs_arkane_{expected}')
+            adapter = ArkaneAdapter(output_directory=os.path.join(self.tmpdir, f'output_arkane_{expected}'),
+                                    calcs_directory=calcs_dir, output_dict={'H2O2': self.h2o2_paths}, bac_type=None,
+                                    species=[spc], sp_level=Level('gfn2'))
+            adapter.compute_thermo(skip_rotors=skip_rotors)
+            output_path = os.path.join(calcs_dir, 'statmech', 'thermo', 'output.py')
+            self.assertTrue(os.path.isfile(output_path), f'Arkane did not generate {output_path}')
+            with open(output_path, 'r') as f:
+                output = f.read()
+            self.assertIsNotNone(re.search(rf'optical_isomers = {expected},', output), output)
+            self.assertEqual(spc.optical_isomers, expected)
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        A function that is run ONCE after all unit tests in this class.
+        """
+        shutil.rmtree(cls.tmpdir, ignore_errors=True)
 
 
 if __name__ == '__main__':
