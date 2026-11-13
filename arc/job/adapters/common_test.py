@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.job.adapters.common module
 """
 
+import logging
 import shutil
 import tempfile
 import unittest
@@ -574,6 +575,29 @@ H      0.00000000   -0.76336400   -0.47261500"""
         args['keyword']['dft_grid'] = 'defgrid2'
         self.assertNotIn('dft_grid', level.args['keyword'])
         self.assertEqual(level.args['keyword'], {'opt': 'opt=(verytight)'})
+
+    def test_set_job_args_no_spurious_warning_when_level_has_args(self):
+        """Regression: the previous "ARC ignores user-specified options" warning
+        fired on every first-run job whose level carried args, because
+        ``run_job`` had already merged ``level.args`` into ``args`` before
+        calling — nothing was actually being ignored. The warning should now
+        be silent on a normal first-run path."""
+        merged_args = {'keyword': {'core': 'core,0,0,0,0,0,0,0,0;'}, 'block': {}}
+        level_with_args = Level(method='ccsd(t)', basis='cc-pCVTZ',
+                                args=merged_args)
+        with self.assertNoLogs(logger='arc', level=logging.WARNING):
+            result = common.set_job_args(args=merged_args,
+                                         level=level_with_args, job_name='j_first_run')
+        # Args content is preserved (not dropped).
+        self.assertEqual(result['keyword'], {'core': 'core,0,0,0,0,0,0,0,0;'})
+        self.assertEqual(result['trsh'], {})  # bucket added by guarantee
+
+    def test_set_job_args_args_none_preserves_level_args(self):
+        """When the caller passes None, fall back to level.args (legacy convenience)."""
+        level = Level(method='ccsd(t)', basis='cc-pVTZ',
+                      args={'keyword': {'general': 'foo'}, 'block': {}})
+        result = common.set_job_args(args=None, level=level, job_name='j1')
+        self.assertEqual(result['keyword'], {'general': 'foo'})
 
     def test_which(self):
         """Test the which() function"""

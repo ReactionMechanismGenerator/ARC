@@ -1287,6 +1287,15 @@ H      -1.69381305    0.40788834    0.90078104"""
         e_elect = parser.parse_e_elect(path)
         self.assertAlmostEqual(e_elect, 50)
 
+        # A method routed to Molpro's MRCC plugin reports `Total <METHOD> energy [au]:`, and the
+        # route emits an {hf;...} block first - so a parser that misses the MRCC line falls through
+        # to `!RHF STATE 1.1 Energy` and silently returns the reference energy as the correlated
+        # total. This fixture carries both lines, so the wrong one is detectable.
+        path = os.path.join(ARC_TESTING_PATH, 'sp', 'mrcc_ccsdtq_via_molpro.out')
+        e_elect = parser.parse_e_elect(path)
+        self.assertAlmostEqual(e_elect, -75.123456789012 * E_h_kJmol)        # the CCSDT(Q) total
+        self.assertNotAlmostEqual(e_elect, -75.012345678901 * E_h_kJmol)     # not the RHF reference
+
     def test_parse_zpe(self):
         """Test the parse_zpe() function for parsing zero point energies"""
         path1 = os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')

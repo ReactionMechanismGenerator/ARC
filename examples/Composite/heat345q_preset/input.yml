@@ -1,0 +1,15 @@
+# Form 1 — preset by name. The smallest possible composite input.
+#
+# Requires the CFOUR (NCC module) or Molpro adapters to run the post-(T)
+# corrections in HEAT-345Q (δ[CCSDT], δ[CCSDT(Q)]). For small species
+# (H2, OH, small diatomics) this is feasible; for anything larger, use
+# explicit_fpa/input.yml as a starting point.
+project: composite_heat345q_preset
+
+sp_composite: HEAT-345Q
+
+species:
+  - label: H2
+    smiles: '[H][H]'
+  - label: O
+    smiles: '[O]'
