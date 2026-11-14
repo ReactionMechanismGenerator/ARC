@@ -11,6 +11,7 @@ import os
 import numpy as np
 from scipy.spatial.transform import Rotation
 import unittest
+from unittest.mock import patch
 
 from ase import Atoms
 from rdkit import Chem
@@ -5389,6 +5390,78 @@ H      -1.88123946   -2.00923795    0.23313156"""
         for file_path in file_paths:
             if os.path.isfile(file_path):
                 os.remove(file_path)
+
+
+class TestCollinearDihedralReference(unittest.TestCase):
+    """
+    Contains unit tests for placing an atom whose dihedral reference atoms are collinear,
+    as in the nitrile hydrolysis TS guesses, where substituent-C#N is linear.
+    """
+
+    hcn = {'symbols': ('C', 'N', 'H'), 'isotopes': (12, 14, 1),
+           'coords': ((0.0, 0.0, -0.58105841), (0.0, 0.0, 0.61738665), (0.0, 0.0, -1.65962341))}
+    ch3cn = {'symbols': ('C', 'C', 'N', 'H', 'H', 'H'), 'isotopes': (12, 12, 14, 1, 1, 1),
+             'coords': ((0.0, 0.0, -1.3102), (0.0, 0.0, 0.1498), (0.0, 0.0, 1.3562),
+                        (1.028, 0.0, -1.6752), (-0.514, 0.89027, -1.6752), (-0.514, -0.89027, -1.6752))}
+
+    def test_a_non_collinear_reference_is_kept(self):
+        """A reference that defines a plane is returned unchanged, with no substitute point."""
+        indices, substitute = converter.resolve_dihedral_reference(coords=self.ch3cn['coords'], d_indices=[3, 0, 1])
+        self.assertEqual(indices, [3, 0, 1])
+        self.assertIsNone(substitute)
+
+    def test_a_collinear_reference_takes_the_nearest_off_axis_atom(self):
+        """The first reference atom is replaced by the off-axis atom nearest to it, the lowest index on a tie."""
+        indices, substitute = converter.resolve_dihedral_reference(coords=self.ch3cn['coords'], d_indices=[0, 2, 1])
+        self.assertEqual(indices, [3, 2, 1])  # H3, H4 and H5 are equally near C0.
+        self.assertIsNone(substitute)
+        coords = [list(c) for c in self.ch3cn['coords']]
+        coords[5][2] += 0.05  # H5 is now the nearest off-axis atom to C0.
+        indices, _ = converter.resolve_dihedral_reference(coords=coords, d_indices=[0, 2, 1])
+        self.assertEqual(indices, [5, 2, 1])
+
+    def test_a_linear_molecule_takes_a_fixed_perpendicular(self):
+        """With no off-axis atom, the substitute is a fixed point perpendicular to the axis at M."""
+        indices, substitute = converter.resolve_dihedral_reference(coords=self.hcn['coords'], d_indices=[2, 1, 0])
+        self.assertEqual(indices, [2, 1, 0])
+        self.assertIsNotNone(substitute)
+        m, n = np.array(self.hcn['coords'][1]), np.array(self.hcn['coords'][0])
+        offset = np.array(substitute) - m
+        self.assertAlmostEqual(float(np.linalg.norm(offset)), 1.0, places=8)
+        self.assertAlmostEqual(float(np.dot(offset, n - m)), 0.0, places=8)
+        self.assertEqual(substitute, converter.resolve_dihedral_reference(self.hcn['coords'], [2, 1, 0])[1])
+
+    def test_an_atom_is_placed_on_a_linear_molecule(self):
+        """HCN: the O of the nitrile hydrolysis TS guess is placed at the requested distance and angle."""
+        xyz = converter.add_atom_to_xyz_using_internal_coords(xyz=self.hcn, element='O', r_index=0, a_indices=[1, 0],
+                                                              d_indices=[2, 1, 0], r_value=1.8, a_value=97,
+                                                              d_value=174)
+        self.assertEqual(xyz['symbols'], ('C', 'N', 'H', 'O'))
+        self.assertAlmostEqual(calculate_param(coords=xyz['coords'], atoms=[0, 3]), 1.8, places=4)
+        self.assertAlmostEqual(calculate_param(coords=xyz['coords'], atoms=[1, 0, 3]), 97, places=3)
+
+    def test_an_atom_is_placed_against_the_chosen_off_axis_atom(self):
+        """CH3CN: the dihedral is defined against the chosen H, so it equals the requested value."""
+        for d_value in (174, -174):
+            xyz = converter.add_atom_to_xyz_using_internal_coords(xyz=self.ch3cn, element='O', r_index=1,
+                                                                  a_indices=[2, 1], d_indices=[0, 2, 1], r_value=1.8,
+                                                                  a_value=97, d_value=d_value)
+            self.assertAlmostEqual(calculate_param(coords=xyz['coords'], atoms=[1, 6]), 1.8, places=4)
+            self.assertAlmostEqual(calculate_param(coords=xyz['coords'], atoms=[2, 1, 6]), 97, places=3)
+            self.assertAlmostEqual(calculate_param(coords=xyz['coords'], atoms=[3, 2, 1, 6]), d_value % 360, places=3)
+
+    def test_no_candidate_raises_a_clear_value_error(self):
+        """When no optimizer gives a candidate, the error says so instead of a bare KeyError."""
+        xyz = {'symbols': ('C', 'N', 'H'), 'isotopes': (12, 14, 1),
+               'coords': ((0.0, 0.0, 0.0), (1.2, 0.0, 0.0), (-1.0, 0.3, 0.0))}
+        with patch('arc.species.converter._add_atom_to_xyz_using_internal_coords',
+                   side_effect=ValueError('Failed to find a solution')):
+            with self.assertRaises(ValueError) as cm:
+                converter.add_atom_to_xyz_using_internal_coords(xyz=xyz, element='O', r_index=0, a_indices=[1, 2],
+                                                                d_indices=[2, 1, 0], r_value=1.8, a_value=97,
+                                                                d_value=174)
+        self.assertIn('no optimizer produced a candidate', str(cm.exception))
+        self.assertNotIsInstance(cm.exception, KeyError)
 
 
 if __name__ == '__main__':

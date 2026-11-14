@@ -274,6 +274,8 @@ class ARCSpecies(object):
         ts_guesses (list): A list of TSGuess objects for each of the specified methods.
         successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.
         unsuccessful_methods (list): Methods used to generate a TS guess that were unsuccessfully.
+        ts_adapter_failures (list[dict]): TS adapters that raised an exception for this TS, each recorded
+                                          by its ``adapter``, ``exception_type`` and one-line ``message``.
         chosen_ts (int): The TSGuess index corresponding to the chosen TS conformer used for optimization.
         chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
@@ -449,6 +451,7 @@ class ARCSpecies(object):
             self.rxn_index = rxn_index
             self.successful_methods = list()
             self.unsuccessful_methods = list()
+            self.ts_adapter_failures = list()
             self.chosen_ts_method = None
             self.chosen_ts_list = list()
             self.compute_thermo = compute_thermo if compute_thermo is not None else not self.is_ts
@@ -795,6 +798,8 @@ class ARCSpecies(object):
                 species_dict['successful_methods'] = self.successful_methods
             if len(self.unsuccessful_methods):
                 species_dict['unsuccessful_methods'] = self.unsuccessful_methods
+            if len(self.ts_adapter_failures):
+                species_dict['ts_adapter_failures'] = self.ts_adapter_failures
             if self.chosen_ts_method is not None:
                 species_dict['chosen_ts_method'] = self.chosen_ts_method
             if self.chosen_ts is not None:
@@ -952,6 +957,7 @@ class ARCSpecies(object):
                 if 'successful_methods' in species_dict else list()
             self.unsuccessful_methods = species_dict['unsuccessful_methods'] \
                 if 'unsuccessful_methods' in species_dict else list()
+            self.ts_adapter_failures = species_dict.get('ts_adapter_failures', list())
             self.chosen_ts_method = species_dict['chosen_ts_method'] if 'chosen_ts_method' in species_dict else None
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
             self.rxn_zone_atom_indices = species_dict['rxn_zone_atom_indices'] \

@@ -805,6 +805,10 @@ class ARC(object):
                 if 'errors' in output and output['errors']:
                     logger.info(f'  and errors: {output["errors"]}')
                 logger.info('\n')
+        failure_lines = ts_adapter_failure_lines(self.reactions)
+        if failure_lines:
+            logger.error('TS search adapters raised an exception (tracebacks are logged above):\n  '
+                         + '\n  '.join(failure_lines) + '\n')
         return status_dict
 
     def determine_ess_settings(self, diagnostics=False):
@@ -1347,6 +1351,24 @@ def check_rotor_scan_resolution(rotor_scan_resolution: float | None) -> float | 
                          f'number of steps. Got: {rotor_scan_resolution}, which leaves a remainder of '
                          f'{divmod(360, rotor_scan_resolution)[1]}.')
     return rotor_scan_resolution
+
+
+def ts_adapter_failure_lines(reactions: list) -> list[str]:
+    """
+    List every TS search adapter exception the Scheduler caught, one line per failure, for the run summary.
+
+    Args:
+        reactions (list): The ARCReaction objects of the run.
+
+    Returns:
+        list[str]: Lines naming the reaction, the adapter, the exception type and its message.
+    """
+    lines = list()
+    for rxn in reactions:
+        for failure in getattr(getattr(rxn, 'ts_species', None), 'ts_adapter_failures', None) or []:
+            lines.append(f"{rxn.label}: TS adapter {failure['adapter']!r} raised "
+                         f"{failure['exception_type']}: {failure['message']}")
+    return lines
 
 
 def process_adaptive_levels(adaptive_levels: list | None) -> dict | None:

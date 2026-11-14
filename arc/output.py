@@ -2847,6 +2847,8 @@ def _rxn_to_dict(rxn) -> dict:
         'multiplicity': rxn.multiplicity,
         'ts_label': rxn.ts_label,
         'kinetics': kin_dict,
+        'ts_adapter_failures': [dict(failure) for failure in
+                                getattr(getattr(rxn, 'ts_species', None), 'ts_adapter_failures', None) or []],
     }
     long_kin_desc = getattr(rxn, 'long_kinetic_description', None)
     if long_kin_desc:

@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from arc.common import ARC_PATH, get_logger
@@ -19,7 +20,7 @@ from arc.imports import settings
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
-from arc.main import ARC, process_adaptive_levels
+from arc.main import ARC, process_adaptive_levels, ts_adapter_failure_lines
 from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 from arc.species.species import ARCSpecies
 
@@ -895,6 +896,25 @@ class TestCheckFileCleanup(unittest.TestCase):
                 arc_logger.removeHandler(handler)
         shutil.rmtree(self.remote_root, ignore_errors=True)
         shutil.rmtree(os.path.dirname(self.project_directory), ignore_errors=True)
+
+
+class TestTsAdapterFailureLines(unittest.TestCase):
+    """The run summary lists every TS adapter failure the Scheduler caught."""
+
+    def test_one_line_per_failure(self):
+        """Each caught failure gives one line naming the reaction, the adapter, and the exception."""
+        rxn_1 = SimpleNamespace(label='HCN + H2O <=> HN_CHOH', ts_species=SimpleNamespace(ts_adapter_failures=[
+            {'adapter': 'heuristics', 'exception_type': 'KeyError', 'message': 'None'},
+            {'adapter': 'kinbot', 'exception_type': 'ValueError', 'message': 'bad'}]))
+        rxn_2 = SimpleNamespace(label='OH + CH4 <=> H2O + CH3', ts_species=SimpleNamespace(ts_adapter_failures=[]))
+        rxn_3 = SimpleNamespace(label='A <=> B', ts_species=None)
+        self.assertEqual(ts_adapter_failure_lines([rxn_1, rxn_2, rxn_3]),
+                         ["HCN + H2O <=> HN_CHOH: TS adapter 'heuristics' raised KeyError: None",
+                          "HCN + H2O <=> HN_CHOH: TS adapter 'kinbot' raised ValueError: bad"])
+
+    def test_no_failures_give_no_lines(self):
+        """A run with no caught failure adds nothing to the summary."""
+        self.assertEqual(ts_adapter_failure_lines([]), [])
 
 
 if __name__ == '__main__':

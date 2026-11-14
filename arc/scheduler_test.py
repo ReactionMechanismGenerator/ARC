@@ -34,7 +34,7 @@ from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_ME
                            MIXED_SCF_REFERENCE_MESSAGE, SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
                            SYMMETRY_BREAKING_ADAPTERS, UNREACHABLE_REFERENCE_MESSAGE,
                            Scheduler, SchedulerError, species_has_freq, species_has_geo, species_has_sp,
-                           species_has_sp_and_freq, tsg_method_matches_adapter)
+                           species_has_sp_and_freq, tsg_method_matches_adapter, exception_summary_line)
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
@@ -4102,12 +4102,23 @@ class StubJob(object):
     AutoTST adapters do when their backend is not installed.
     """
 
-    def __init__(self, job_type: str, job_adapter: str | None, unavailable: bool = False):
+    def __init__(self,
+                 job_type: str,
+                 job_adapter: str | None,
+                 unavailable: bool = False,
+                 raises: BaseException | None = None,
+                 submitted_job_id: int | None = None,
+                 partial_guess: tuple | None = None,
+                 ):
         self.job_type = job_type
         self.job_adapter = job_adapter
         self.unavailable = unavailable
+        self.raises = raises
         self.job_name = f'{job_type}_{job_adapter}'
         self.job_id = None
+        self.submitted_job_id = submitted_job_id
+        self.partial_guess = partial_guess
+        self.execution_type = 'incore' if submitted_job_id is None else 'queue'
         self.server = None
 
     def as_dict(self) -> dict:
@@ -4115,9 +4126,16 @@ class StubJob(object):
         return {'job_type': self.job_type, 'job_adapter': self.job_adapter}
 
     def execute(self) -> None:
-        """Execute the job, raising if its external backend is not installed."""
+        """Execute the job, raising if its external backend is not installed or if it was told to raise."""
         if self.unavailable:
             raise DependencyError(f'The {self.job_adapter} python executable was not found.')
+        if self.submitted_job_id is not None:
+            self.job_id = self.submitted_job_id  # The job reached the queue before raising.
+        if self.partial_guess is not None:
+            ts_species, guess = self.partial_guess
+            ts_species.ts_guesses.append(guess)  # The adapter saved a guess before raising.
+        if self.raises is not None:
+            raise self.raises
 
 
 class TestSpawnTsJobsAdmission(unittest.TestCase):
@@ -4130,7 +4148,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.ess_settings = {'gaussian': ['server1']}
-        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 6)]
+        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 13)]
 
     @classmethod
     def tearDownClass(cls):
@@ -4318,6 +4336,178 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         self.assertEqual(sched.running_jobs.get(rxn.ts_label, list()), list())
         self.assertEqual(sched.job_dict[rxn.ts_label].get('tsg', dict()), dict())
 
+    def setup_two_reaction_scheduler(self,
+                                     project: str,
+                                     raising: dict,
+                                     submitted: dict | None = None,
+                                     partial_guesses: dict | None = None,
+                                     ts_adapters: list | None = None,
+                                     ) -> tuple:
+        """
+        Set up a Scheduler holding two 1,2_Insertion_CO reactions with optimized wells, whose TS adapter
+        jobs raise the exceptions given in ``raising``.
+
+        Args:
+            project (str): The project name, also the project directory name.
+            raising (dict): Keys are (adapter, reactant label) pairs, values are the exception that adapter's
+                            job raises from ``execute()`` for the reaction of that reactant.
+            submitted (dict, optional): Keys are (adapter, reactant label) pairs, values are the queue job ID
+                                        that adapter's job got before it raised.
+            partial_guesses (dict, optional): Keys are (adapter, reactant label) pairs, values are a TSGuess that
+                                              adapter's job saves on its reaction's TS species before it raises.
+            ts_adapters (list, optional): The TS adapters, ['kinbot', 'linear'] by default.
+
+        Returns:
+            tuple: The Scheduler, the HOCHO reaction, the CH3CHO reaction, and the list accumulating the
+                   (job type, adapter, reactant label) triples jobs were created for.
+        """
+        hocho, ch3cho = ARCSpecies(label='HOCHO', smiles='OC=O'), ARCSpecies(label='CH3CHO', smiles='CC=O')
+        h2o, ch4, co = (ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CH4', smiles='C'),
+                        ARCSpecies(label='CO', smiles='[C-]#[O+]'))
+        species = [hocho, ch3cho, h2o, ch4, co]
+        for spc in species:
+            spc.final_xyz = spc.get_xyz()  # Marks the well as optimized, gating spawn_ts_jobs().
+        rxn_1 = ARCReaction(r_species=[hocho], p_species=[h2o, co])
+        rxn_2 = ARCReaction(r_species=[ch3cho], p_species=[ch4, co])
+        rxn_1.index, rxn_2.index = 0, 1  # ARC assigns these; they make the two TS labels distinct.
+        self.assertEqual(rxn_1.family, '1,2_Insertion_CO')
+        self.assertEqual(rxn_2.family, '1,2_Insertion_CO')
+        sched = Scheduler(project=project,
+                          ess_settings=self.ess_settings,
+                          species_list=species,
+                          rxn_list=[rxn_1, rxn_2],
+                          project_directory=os.path.join(ARC_PATH, 'Projects', project),
+                          ts_adapters=ts_adapters or ['kinbot', 'linear'],
+                          job_types=initialize_job_types(),
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          testing=True,
+                          )
+        spawned = list()
+
+        def stub_job_factory(job_type, job_adapter=None, reactions=None, **kwargs):
+            """Record the job being created and hand back a StubJob that raises as instructed."""
+            reactant = reactions[0].r_species[0].label if reactions else None
+            spawned.append((job_type, job_adapter, reactant))
+            guess = (partial_guesses or dict()).get((job_adapter, reactant))
+            return StubJob(job_type=job_type, job_adapter=job_adapter, raises=raising.get((job_adapter, reactant)),
+                           submitted_job_id=(submitted or dict()).get((job_adapter, reactant)),
+                           partial_guess=(reactions[0].ts_species, guess) if guess is not None else None)
+
+        patcher = patch('arc.scheduler.job_factory', new=stub_job_factory)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return sched, rxn_1, rxn_2, spawned
+
+    def test_spawn_ts_jobs_isolates_an_adapter_exception_to_its_reaction(self):
+        """Test that an adapter raising for one reaction costs that adapter for that reaction, not the run.
+
+        Regression test for a real pilot failure: the heuristics adapter raised ``KeyError: None`` deep in
+        its nitrile hydrolysis geometry builder for HCN + H2O. Nothing caught it, so the whole ARC process
+        died for every reaction in the project, and a restart repeated it.
+        """
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_6',
+            raising={('kinbot', 'HOCHO'): KeyError(None)})
+        with self.assertLogs('arc', level='ERROR') as captured:
+            sched.spawn_ts_jobs()  # Must not raise.
+
+        self.assertEqual([(adapter, reactant) for job_type, adapter, reactant in spawned if job_type == 'tsg'],
+                         [('kinbot', 'HOCHO'), ('linear', 'HOCHO'), ('kinbot', 'CH3CHO'), ('linear', 'CH3CHO')])
+        # The other reaction's TS guess stage is untouched.
+        self.assertEqual(rxn_2.ts_species.ts_adapter_failures, list())
+        self.assertEqual(rxn_2.ts_species.unsuccessful_methods, list())
+        self.assertEqual(sched.running_jobs[rxn_2.ts_label], ['tsg0', 'tsg1'])
+        self.assertEqual([job.job_adapter for job in sched.job_dict[rxn_2.ts_label]['tsg'].values()],
+                         ['kinbot', 'linear'])
+        # The failing reaction recorded the failure, rolled the job back, and went on with 'linear'.
+        failure = {'adapter': 'kinbot', 'exception_type': 'KeyError', 'message': 'None'}
+        self.assertEqual(rxn_1.ts_species.ts_adapter_failures, [failure])
+        self.assertEqual(rxn_1.ts_species.unsuccessful_methods, ['kinbot'])
+        self.assertEqual(sched.running_jobs[rxn_1.ts_label], ['tsg0'])
+        self.assertEqual(sched.job_dict[rxn_1.ts_label]['tsg'][0].job_adapter, 'linear')
+        # The ERROR record names the reaction and the adapter, and carries the traceback.
+        errors = [record.getMessage() for record in captured.records if record.levelno == logging.ERROR]
+        self.assertTrue(any(rxn_1.label in message and "'kinbot'" in message and 'Traceback' in message
+                            and 'KeyError' in message for message in errors), errors)
+
+    def test_spawn_ts_jobs_keeps_tracking_a_submitted_job_that_raised(self):
+        """Test that a queue job that was submitted before its adapter raised is recorded but stays tracked."""
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_10',
+            raising={('kinbot', 'HOCHO'): RuntimeError('lost the connection after submitting')},
+            submitted={('kinbot', 'HOCHO'): 4321})
+        with self.assertLogs('arc', level='ERROR') as captured:
+            sched.spawn_ts_jobs()
+        self.assertTrue(any('its submitted job stays tracked' in record.getMessage() for record in captured.records))
+        self.assertEqual(rxn_1.ts_species.ts_adapter_failures,
+                         [{'adapter': 'kinbot', 'exception_type': 'RuntimeError',
+                           'message': 'lost the connection after submitting'}])
+        self.assertEqual(rxn_1.ts_species.unsuccessful_methods, list())
+        self.assertEqual(sched.running_jobs[rxn_1.ts_label], ['tsg0', 'tsg1'])
+        self.assertEqual(sched.job_dict[rxn_1.ts_label]['tsg'][0].job_id, 4321)
+        self.assertEqual(sched.job_dict[rxn_1.ts_label]['tsg'][1].job_adapter, 'linear')
+
+    def test_spawn_ts_jobs_starts_conformers_for_guesses_an_adapter_saved_before_raising(self):
+        """Test that guesses saved by an adapter that then raised are still tried when no tracked job remains.
+
+        Rolling the failed job back removes the one job whose completion would have started the TS conformer
+        jobs, so without this the saved guesses would never be tried.
+        """
+        guess = TSGuess(method='kinbot', xyz=ARCSpecies(label='HOCHO', smiles='OC=O').get_xyz(), index=0)
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_11',
+            raising={('kinbot', 'HOCHO'): RuntimeError('the reverse run failed')},
+            partial_guesses={('kinbot', 'HOCHO'): guess},
+            ts_adapters=['kinbot'])
+        with patch.object(sched, 'run_conformer_jobs') as run_conformer_jobs, self.assertLogs('arc', level='ERROR'):
+            sched.spawn_ts_jobs()
+        self.assertEqual(rxn_1.ts_species.ts_guesses, [guess])
+        self.assertEqual(sched.running_jobs.get(rxn_1.ts_label, list()), list())
+        self.assertEqual([c for c in run_conformer_jobs.call_args_list if c.kwargs == {'labels': [rxn_1.ts_label]}],
+                         [unittest.mock.call(labels=[rxn_1.ts_label])])
+
+    def test_spawn_ts_jobs_lets_keyboard_interrupt_and_system_exit_propagate(self):
+        """Test that the adapter exception boundary never swallows KeyboardInterrupt or SystemExit."""
+        for i, exception in ((7, KeyboardInterrupt()), (8, SystemExit(1))):
+            with self.subTest(exception=type(exception).__name__):
+                sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+                    project=f'arc_project_for_testing_delete_after_usage_tsg_{i}',
+                    raising={('kinbot', 'HOCHO'): exception})
+                with self.assertRaises(type(exception)):
+                    sched.spawn_ts_jobs()
+                self.assertEqual(rxn_1.ts_species.ts_adapter_failures, list())
+
+    def test_spawn_ts_jobs_reports_when_every_adapter_raised(self):
+        """Test that a reaction whose every adapter raised ends through the no-guess path and leaves no state."""
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_9',
+            raising={('kinbot', 'HOCHO'): ValueError('first line\nsecond line'),
+                     ('linear', 'HOCHO'): RuntimeError()})
+        with self.assertLogs('arc', level='WARNING') as captured:
+            sched.spawn_ts_jobs()
+        self.assertEqual(rxn_1.ts_species.ts_adapter_failures,
+                         [{'adapter': 'kinbot', 'exception_type': 'ValueError', 'message': 'first line'},
+                          {'adapter': 'linear', 'exception_type': 'RuntimeError', 'message': 'RuntimeError'}])
+        self.assertEqual(sched.running_jobs.get(rxn_1.ts_label, list()), list())
+        self.assertEqual(sched.job_dict[rxn_1.ts_label].get('tsg', dict()), dict())
+        self.assertTrue(any('Not spawning any TS search job' in record.getMessage()
+                            and "['kinbot', 'linear'] raised an exception" in record.getMessage()
+                            for record in captured.records))
+        self.assertEqual(sched.running_jobs[rxn_2.ts_label], ['tsg0', 'tsg1'])
+
+
+class TestExceptionSummaryLine(unittest.TestCase):
+    """Contains unit tests for exception_summary_line()."""
+
+    def test_exception_summary_line(self):
+        """The summary is the first non-empty message line, the type name for an empty message, and is capped."""
+        self.assertEqual(exception_summary_line(KeyError(None)), 'None')
+        self.assertEqual(exception_summary_line(ValueError('\n  first  \nsecond')), 'first')
+        self.assertEqual(exception_summary_line(RuntimeError()), 'RuntimeError')
+        line = exception_summary_line(ValueError('x' * 500), max_length=20)
+        self.assertEqual(line, 'x' * 17 + '...')
+        self.assertEqual(len(line), 20)
 
 class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
     """
