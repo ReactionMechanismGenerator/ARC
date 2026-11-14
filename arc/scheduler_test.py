@@ -1773,6 +1773,67 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                                     job=self._reference_job('opt', True))
         self.assertEqual(species.scf_references, {'sp': 'restricted'})
 
+    def _restore_sp_state_after_test(self, label):
+        """Restore the sp-related fields of a shared species and its output record after the test."""
+        species = self.sched1.species_dict[label]
+        output = self.sched1.output[label]
+        for attribute in ('t1', 'e_elect', 'active', 'sp_level'):
+            owner = self.sched1 if attribute == 'sp_level' else species
+            self.addCleanup(setattr, owner, attribute, getattr(owner, attribute))
+        self.addCleanup(output.__setitem__, 'info', output['info'])
+        for container, key in ((output['paths'], 'sp'), (output['paths'], 'sp_sol'), (output['paths'], 'sp_no_sol'),
+                               (output['job_types'], 'sp')):
+            if key in container:
+                self.addCleanup(container.__setitem__, key, container[key])
+            else:
+                self.addCleanup(container.pop, key, None)
+
+    def test_post_sp_actions_t1_follows_the_recorded_sp_path(self):
+        """Test that t1 is re-derived for the recorded sp path and not left stale or taken from a scheme job"""
+        label = 'C2H6'
+        species = self._reset_reference_records(label)
+        self._restore_sp_state_after_test(label)
+        sp_path = os.path.join(ARC_TESTING_PATH, 'sp', 'TS_x118_sp_CCSD(T).out')
+        ccsd_level = Level(method='ccsd(t)', basis='cc-pVTZ', software='molpro')
+        other_path = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
+        self.sched1.sp_level = ccsd_level
+        self.sched1.output[label]['job_types']['sp'] = False
+        with patch.object(self.sched1, 'check_spin_contamination'):
+            self.sched1.post_sp_actions(label=label, sp_path=sp_path, level=ccsd_level)
+            self.assertAlmostEqual(species.t1, 0.04469461, places=7)
+            self.sched1.sp_level = Level(method='wb97xd', basis='def2-TZVP')
+            self.sched1.output[label]['job_types']['sp'] = False
+            self.sched1.post_sp_actions(label=label, sp_path=other_path, level=self.sched1.sp_level)
+        self.assertIsNone(species.t1)
+
+    def test_post_sp_actions_solvation_scheme_jobs_do_not_overwrite_the_recorded_sp(self):
+        """Test that t1, e_elect and the T1 report come only from the job whose sp path is kept"""
+        label = 'C2H6'
+        species = self._reset_reference_records(label)
+        self._restore_sp_state_after_test(label)
+        ccsd_path = os.path.join(ARC_TESTING_PATH, 'sp', 'TS_x118_sp_CCSD(T).out')
+        dft_path = os.path.join(ARC_TESTING_PATH, 'sp', 'formaldehyde_sp_terachem_output.out')
+        scheme_level = Level(method='wb97xd', basis='def2-TZVP')
+        self.sched1.sp_level = Level(method='ccsd(t)', basis='cc-pVTZ', software='molpro',
+                                     solvation_scheme_level=scheme_level)
+        self.sched1.output[label]['job_types']['sp'] = False
+        self.sched1.output[label]['info'] = ''
+        with patch.object(self.sched1, 'run_sp_job'), \
+                patch.object(self.sched1, 'check_spin_contamination'), \
+                patch.object(self.sched1, 'check_rxn_e0_by_spc'):
+            self.sched1.post_sp_actions(label=label, sp_path=ccsd_path, level=self.sched1.sp_level)
+            expected_e_elect = species.e_elect
+            sol_level = Level(method='wb97xd', basis='def2-TZVP', solvation_method='smd', solvent='water')
+            self.sched1.post_sp_actions(label=label, sp_path=dft_path, level=sol_level)
+            self.sched1.post_sp_actions(label=label, sp_path=dft_path, level=scheme_level)
+        self.assertAlmostEqual(species.t1, 0.04469461, places=7)
+        self.assertAlmostEqual(species.e_elect, expected_e_elect, places=3)
+        self.assertAlmostEqual(species.e_elect, parser.parse_e_elect(ccsd_path), places=3)
+        self.assertEqual(self.sched1.output[label]['paths']['sp'], ccsd_path)
+        self.assertEqual(self.sched1.output[label]['paths']['sp_sol'], dft_path)
+        self.assertEqual(self.sched1.output[label]['paths']['sp_no_sol'], dft_path)
+        self.assertEqual(self.sched1.output[label]['info'].count('T1 ='), 1)
+
     def test_post_sp_actions_records_nothing_where_no_job_is_named(self):
         """Test that a caller with no job to name, a restored species among them, records nothing"""
         label = 'C2H6'
