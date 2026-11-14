@@ -29,6 +29,7 @@ from arc.job.pipe.pipe_run import build_rotor_scan_1d_tasks
 from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_state
 from arc.level import Level, get_freq_level_for_composite_method
 from arc.plotter import save_conformers_file
+from arc.processor import not_verified_causes
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
                            MIXED_SCF_REFERENCE_MESSAGE, SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
                            SYMMETRY_BREAKING_ADAPTERS, UNREACHABLE_REFERENCE_MESSAGE,
@@ -4951,6 +4952,36 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertTrue(sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]['verified'])
         self.assertIsNone(sched.output[label]['conformer_verified'])
         self.assertEqual(sched.output[label]['warnings'], '')
+
+    def test_check_change_conformer_reopt_energy_up_is_not_verified(self):
+        """
+        A re-opt that keeps the scanned dihedral but ends at a higher energy than before the conformer change
+        did not reach the lower conformer, so its record must not be verified and the species must not pass
+        the RMG library gate. The change is recorded with the re-opt geometry as its baseline (dihedral change
+        0) and a baseline energy 3 kJ/mol below the re-opt energy; ``is_same_conformer`` is spied on to show
+        the judge is reached with these inputs.
+        """
+        sched = self.make_sched('cc_up')
+        label = 'cc_up'
+        log = self.nc3h7_log
+        xyz = parser.parse_geometry(log_file_path=log)
+        old_spc = ARCSpecies(label='nC3H7_old', smiles='[CH2]CC', xyz=xyz)
+        old_spc.determine_rotors()
+        torsion = old_spc.rotors_dict[0]['scan']
+        sched.species_dict[label].final_xyz = xyz
+        sched.species_dict[label].rotors_dict[0]['trsh_methods'] = [
+            {'change conformer': xyz, 'pre_xyz': xyz,
+             'pre_e_elect': parser.parse_e_elect(log_file_path=log) - 3.0,
+             'torsion': torsion, 'energy_gap': 3.2, 'verified': None}]
+        with patch('arc.scheduler.is_same_conformer', wraps=is_same_conformer) as spy:
+            sched.check_change_conformer_reopt(label=label, job=SimpleNamespace(
+                job_type='opt', local_path_to_xyz=None, local_path_to_output_file=log))
+        spy.assert_called_once()
+        self.assertLess(spy.call_args.kwargs['d_dihedral'], 2.0)
+        self.assertAlmostEqual(spy.call_args.kwargs['d_energy'], 3.0, places=3)
+        sched.record_pending_conformer_changes()
+        self.assertIsNot(sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]['verified'], True)
+        self.assertTrue(not_verified_causes(label, sched.output))
 
     def test_check_change_conformer_reopt_ignores_legacy_records(self):
         """A 'change conformer' record written before the check existed (no 'verified' key) is not re-judged."""
