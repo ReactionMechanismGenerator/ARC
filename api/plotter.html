@@ -76,6 +76,7 @@
 <li class="toctree-l2"><a class="reference internal" href="trsh.html">arc.job.trsh</a></li>
 <li class="toctree-l2"><a class="reference internal" href="parser.html">arc.parser</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">arc.plotter</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#arc.plotter.NO_TS_ROTORS_NOTE"><code class="docutils literal notranslate"><span class="pre">NO_TS_ROTORS_NOTE</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.plotter.augment_arkane_yml_file_with_mol_repr"><code class="docutils literal notranslate"><span class="pre">augment_arkane_yml_file_with_mol_repr()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.plotter.auto_label"><code class="docutils literal notranslate"><span class="pre">auto_label()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.plotter.check_xyz_species_for_drawing"><code class="docutils literal notranslate"><span class="pre">check_xyz_species_for_drawing()</span></code></a></li>
@@ -108,6 +109,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.plotter.save_transport_lib"><code class="docutils literal notranslate"><span class="pre">save_transport_lib()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.plotter.show_sticks"><code class="docutils literal notranslate"><span class="pre">show_sticks()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.plotter.text_plotter"><code class="docutils literal notranslate"><span class="pre">text_plotter()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.plotter.ts_has_treated_rotors"><code class="docutils literal notranslate"><span class="pre">ts_has_treated_rotors()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="processor.html">arc.processor</a></li>
@@ -155,6 +157,13 @@
   <section id="module-arc.plotter">
 <span id="arc-plotter"></span><span id="plotter"></span><h1>arc.plotter<a class="headerlink" href="#module-arc.plotter" title="Link to this heading"></a></h1>
 <p>A module for plotting and saving output files such as RMG libraries.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="arc.plotter.NO_TS_ROTORS_NOTE">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">NO_TS_ROTORS_NOTE</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'No</span> <span class="pre">rotors</span> <span class="pre">considered</span> <span class="pre">for</span> <span class="pre">this</span> <span class="pre">TS.'</span></span><a class="headerlink" href="#arc.plotter.NO_TS_ROTORS_NOTE" title="Link to this definition"></a></dt>
+<dd><p>Appended to a TS’s <code class="docutils literal notranslate"><span class="pre">long_thermo_description</span></code> when no rotor of it was treated as a hindered
+rotor. Named because it is both written and stripped: see <code class="docutils literal notranslate"><span class="pre">save_kinetics_lib</span></code>.</p>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.plotter.augment_arkane_yml_file_with_mol_repr">
 <span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">augment_arkane_yml_file_with_mol_repr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_directory</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#augment_arkane_yml_file_with_mol_repr"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.augment_arkane_yml_file_with_mol_repr" title="Link to this definition"></a></dt>
@@ -774,6 +783,28 @@ Either <code class="docutils literal notranslate"><span class="pre">xyz</span></
 <span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">text_plotter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_positions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">txt_width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">txt_height</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#text_plotter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.text_plotter" title="Link to this definition"></a></dt>
 <dd><p>Annotate a plot and add an arrow.
 Source: <a class="reference external" href="https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations">stackoverflow</a>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.ts_has_treated_rotors">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">ts_has_treated_rotors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ts_species</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#ts_has_treated_rotors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.ts_has_treated_rotors" title="Link to this definition"></a></dt>
+<dd><p>Whether any of a TS’s torsions was actually treated as a rotor in the statmech stage.</p>
+<p>Mirrors the filter the statmech adapter applies (<code class="docutils literal notranslate"><span class="pre">arc/statmech/arkane.py</span></code>, which keeps only
+rotors whose <code class="docutils literal notranslate"><span class="pre">success</span></code> is truthy), so the library’s description matches the model it was
+generated from. Both <code class="docutils literal notranslate"><span class="pre">False</span></code> (the scan ran and was rejected) and <code class="docutils literal notranslate"><span class="pre">None</span></code> (the scan never
+completed) mean untreated, and are indistinguishable downstream.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ts_species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a>) – The TS species to inspect.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>True when at least one rotor was treated, False when the TS entered as a pure
+rigid-rotor harmonic oscillator.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>

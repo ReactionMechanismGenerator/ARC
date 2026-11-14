@@ -1046,6 +1046,34 @@
 
 
 
+<span class="c1">#: Appended to a TS's ``long_thermo_description`` when no rotor of it was treated as a hindered</span>
+<span class="c1">#: rotor. Named because it is both written and stripped: see ``save_kinetics_lib``.</span>
+<span class="n">NO_TS_ROTORS_NOTE</span> <span class="o">=</span> <span class="s1">'No rotors considered for this TS.'</span>
+
+
+<div class="viewcode-block" id="ts_has_treated_rotors">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.ts_has_treated_rotors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">ts_has_treated_rotors</span><span class="p">(</span><span class="n">ts_species</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Whether any of a TS's torsions was actually treated as a rotor in the statmech stage.</span>
+
+<span class="sd">    Mirrors the filter the statmech adapter applies (``arc/statmech/arkane.py``, which keeps only</span>
+<span class="sd">    rotors whose ``success`` is truthy), so the library's description matches the model it was</span>
+<span class="sd">    generated from. Both ``False`` (the scan ran and was rejected) and ``None`` (the scan never</span>
+<span class="sd">    completed) mean untreated, and are indistinguishable downstream.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        ts_species (ARCSpecies): The TS species to inspect.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: True when at least one rotor was treated, False when the TS entered as a pure</span>
+<span class="sd">        rigid-rotor harmonic oscillator.</span>
+<span class="sd">    """</span>
+    <span class="n">rotors_dict</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">ts_species</span><span class="p">,</span> <span class="s1">'rotors_dict'</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">rotor</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'success'</span><span class="p">)</span> <span class="k">for</span> <span class="n">rotor</span> <span class="ow">in</span> <span class="n">rotors_dict</span><span class="o">.</span><span class="n">values</span><span class="p">())</span></div>
+
+
+
 <div class="viewcode-block" id="save_kinetics_lib">
 <a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_kinetics_lib">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">save_kinetics_lib</span><span class="p">(</span><span class="n">rxn_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
@@ -1087,8 +1115,18 @@
                            <span class="sa">f</span><span class="s1">'kinetics library.'</span><span class="p">)</span>
             <span class="k">continue</span>
         <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">make_ts_report</span><span class="p">()</span>
-        <span class="k">if</span> <span class="s1">'rotors'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">long_thermo_description</span><span class="p">:</span>
-            <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">long_thermo_description</span> <span class="o">+=</span> <span class="s1">'</span><span class="se">\n</span><span class="s1">No rotors considered for this TS.'</span>
+        <span class="c1"># Decide this from the rotor data, not from whether the word "rotors" happens to occur in a</span>
+        <span class="c1"># free-text description. That substring test reported "No rotors considered for this TS"</span>
+        <span class="c1"># for a TS that Arkane had in fact modelled WITH a hindered rotor, so the shipped library</span>
+        <span class="c1"># asserted the opposite of the model it was generated from.</span>
+        <span class="c1"># The note is derived state, recomputed on every save, so any copy left by an earlier save is</span>
+        <span class="c1"># removed before deciding again. ``long_thermo_description`` is a persisted species attribute</span>
+        <span class="c1"># (it survives into restart.yml), so appending unconditionally would both stack the sentence up</span>
+        <span class="c1"># once per export and keep asserting "no rotors" after a rotor had since been treated.</span>
+        <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">long_thermo_description</span> <span class="o">=</span> <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">long_thermo_description</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s1">'</span><span class="se">\n</span><span class="si">{</span><span class="n">NO_TS_ROTORS_NOTE</span><span class="si">}</span><span class="s1">'</span><span class="p">,</span> <span class="s1">''</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">NO_TS_ROTORS_NOTE</span><span class="p">,</span> <span class="s1">''</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ts_has_treated_rotors</span><span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="p">):</span>
+            <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">long_thermo_description</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">'</span><span class="se">\n</span><span class="si">{</span><span class="n">NO_TS_ROTORS_NOTE</span><span class="si">}</span><span class="s1">'</span>
         <span class="n">long_desc</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">ts_report</span><span class="si">}</span><span class="se">\n\n</span><span class="s1">'</span> \
                     <span class="sa">f</span><span class="s1">'TS external symmetry: </span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">external_symmetry</span><span class="si">}</span><span class="s1">, '</span> \
                     <span class="sa">f</span><span class="s1">'TS optical isomers: </span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">optical_isomers</span><span class="si">}</span><span class="se">\n\n</span><span class="s1">'</span> \

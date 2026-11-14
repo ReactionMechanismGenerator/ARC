@@ -361,7 +361,10 @@ linear adapter is complementary to heuristics.</p>
 package to generate TS guesses from RMG reaction templates. AutoTST performs
 systematic conformer searches of the TS using distance-geometry embedding and
 RDKit force-field optimization, guided by the reaction family template distances.</p>
-<p>Runs as a subprocess. Requires the <code class="docutils literal notranslate"><span class="pre">autotst</span></code> conda environment.</p>
+<p>Runs as a subprocess. Requires the <code class="docutils literal notranslate"><span class="pre">autotst</span></code> conda environment. <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install-autotst</span></code>
+registers the AutoTST clone in that environment through an <code class="docutils literal notranslate"><span class="pre">autotst.pth</span></code> file in its
+<code class="docutils literal notranslate"><span class="pre">site-packages</span></code> (ARC runs the subprocess without the caller’s <code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code>, so a
+<code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code> entry in <code class="docutils literal notranslate"><span class="pre">~/.bashrc</span></code> is not used).</p>
 </section>
 <section id="kinbot-kinbot">
 <h3>KinBot (<code class="docutils literal notranslate"><span class="pre">'kinbot'</span></code>)<a class="headerlink" href="#kinbot-kinbot" title="Link to this heading"></a></h3>

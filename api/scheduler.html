@@ -165,6 +165,8 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.release_held_stability_work"><code class="docutils literal notranslate"><span class="pre">Scheduler.release_held_stability_work()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.report_running_jobs_snapshot"><code class="docutils literal notranslate"><span class="pre">Scheduler.report_running_jobs_snapshot()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.restore_running_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.restore_running_jobs()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.rotor_scan_owed_to_a_pipe_run"><code class="docutils literal notranslate"><span class="pre">Scheduler.rotor_scan_owed_to_a_pipe_run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.rotor_scans_pending_on_restart"><code class="docutils literal notranslate"><span class="pre">Scheduler.rotor_scans_pending_on_restart()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_composite_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_composite_job()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_conformer_jobs"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_conformer_jobs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.run_freq_job"><code class="docutils literal notranslate"><span class="pre">Scheduler.run_freq_job()</span></code></a></li>
@@ -1841,6 +1843,52 @@ Important for the restart feature so long jobs won’t run twice.</p>
 from the species’ state as it is now. The reference the queued job actually ran with is
 therefore restored onto the rebuilt adapter from the restart file, so that a job which was
 submitted before a stability verdict was adopted still reports the reference it declared.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.rotor_scan_owed_to_a_pipe_run">
+<span class="sig-name descname"><span class="pre">rotor_scan_owed_to_a_pipe_run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rotor_index</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.rotor_scan_owed_to_a_pipe_run"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.rotor_scan_owed_to_a_pipe_run" title="Link to this definition"></a></dt>
+<dd><p>Whether a pipe worker from a previous session currently holds this rotor’s scan under a live lease.</p>
+<p>Pipe runs are not reloaded on restart, so this reads the rotor’s task state from the pipe run’s
+staging directory. Only a CLAIMED or RUNNING task whose lease has not expired counts. A pending,
+orphaned, terminal, or unreadable task does not, since no session will ingest its results.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a>) – The species being restarted.</p></li>
+<li><p><strong>rotor_index</strong> (<em>int</em>) – The rotor’s index in <code class="docutils literal notranslate"><span class="pre">species.rotors_dict</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Whether a live pipe worker holds this rotor’s scan.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.rotor_scans_pending_on_restart">
+<span class="sig-name descname"><span class="pre">rotor_scans_pending_on_restart</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_failed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.rotor_scans_pending_on_restart"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.rotor_scans_pending_on_restart" title="Link to this definition"></a></dt>
+<dd><p>Whether the restart loop still owes <code class="docutils literal notranslate"><span class="pre">species</span></code> a rotor scan spawn.</p>
+<p>A rotor is owed if it was never scanned (no result and no scan_path, e.g., added to restart.yml by hand)
+and no pipe worker currently holds it, or, if <code class="docutils literal notranslate"><span class="pre">include_failed</span></code>, if its scan failed without an
+invalidation reason. IRC endpoint species (non-TS species with an <code class="docutils literal notranslate"><span class="pre">irc_label</span></code>) are never owed a scan.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a>) – The species being restarted.</p></li>
+<li><p><strong>include_failed</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether a failed, non-invalidated rotor counts as owed.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Whether <code class="docutils literal notranslate"><span class="pre">run_scan_jobs()</span></code> should be called for this species.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
