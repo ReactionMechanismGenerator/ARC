@@ -44,6 +44,8 @@ from arc.job.pipe.pipe_state import (
 logger = get_logger()
 
 RESUBMIT_GRACE = 120  # seconds – grace period after resubmission before flagging again
+SCHEDULER_VISIBILITY_GRACE = 60
+SCHEDULER_JOB_GONE = 'scheduler_job_gone'
 
 pipe_settings = settings['pipe_settings']
 default_job_settings = settings['default_job_settings']
@@ -411,10 +413,19 @@ class PipeRun:
         logger.info(f'Launched a local pipe worker pool for {self.run_id} (pid {process.pid}).')
         return 'running', str(process.pid)
 
-    def reconcile(self) -> dict[str, int]:
+    def reconcile(self, scheduler_job_alive: bool = True) -> dict[str, int]:
         """
         Poll all tasks, detect orphans, schedule retries, and check for completion.
         Does not regress an already-terminal run status.
+
+        Args:
+            scheduler_job_alive: Whether the scheduler (PBS/Slurm) job for this
+                pipe run is still present in the queue.  When False, any
+                CLAIMED/RUNNING tasks are still orphaned only when their lease
+                has expired, orphaned tasks are not retried, and unreachable
+                PENDING tasks are failed terminally.
+                Tasks failed this way that still had attempts left carry
+                ``failure_class=SCHEDULER_JOB_GONE``.
 
         Returns:
             dict[str, int]: Counts of tasks in each state.
@@ -479,7 +490,7 @@ class PipeRun:
                 try:
                     # FAILED_ESS tasks are handled separately (ejected to Scheduler).
                     # Only FAILED_RETRYABLE and ORPHANED reach here.
-                    if state.attempt_index + 1 < state.max_attempts:
+                    if state.attempt_index + 1 < state.max_attempts and scheduler_job_alive:
                         update_task_state(self.pipe_root, task_id,
                                           new_status=TaskState.PENDING,
                                           attempt_index=state.attempt_index + 1,
@@ -492,9 +503,11 @@ class PipeRun:
                         retried_pending += 1
                     else:
                         ended = state.ended_at or now
+                        gone = not scheduler_job_alive and state.attempt_index + 1 < state.max_attempts
                         update_task_state(self.pipe_root, task_id,
                                           new_status=TaskState.FAILED_TERMINAL,
-                                          ended_at=ended)
+                                          ended_at=ended,
+                                          failure_class=SCHEDULER_JOB_GONE if gone else state.failure_class)
                         counts[current.value] -= 1
                         counts[TaskState.FAILED_TERMINAL.value] += 1
                 except (ValueError, TimeoutError) as e:
@@ -520,6 +533,28 @@ class PipeRun:
                              f'waiting, but {fresh_pending} fresh tasks still pending — '
                              f'scheduler workers still starting, skipping resubmission.')
             self._needs_resubmission = False
+
+        if not scheduler_job_alive and counts[TaskState.PENDING.value] > 0:
+            for task_id in task_ids:
+                if not os.path.isdir(os.path.join(tasks_dir, task_id)):
+                    continue
+                try:
+                    state = read_task_state(self.pipe_root, task_id)
+                except (FileNotFoundError, ValueError, KeyError):
+                    continue
+                if TaskState(state.status) != TaskState.PENDING:
+                    continue
+                try:
+                    update_task_state(self.pipe_root, task_id,
+                                     new_status=TaskState.FAILED_TERMINAL,
+                                     ended_at=now, failure_class=SCHEDULER_JOB_GONE)
+                    counts[TaskState.PENDING.value] -= 1
+                    counts[TaskState.FAILED_TERMINAL.value] += 1
+                    logger.info(f'Task {task_id}: no workers remain '
+                                f'(scheduler job gone). Marked FAILED_TERMINAL.')
+                except (ValueError, TimeoutError) as e:
+                    logger.warning(f'Task {task_id}: failed to mark stranded pending task '
+                                   f'during reconciliation: {e}')
 
         terminal = (counts[TaskState.COMPLETED.value]
                     + counts[TaskState.FAILED_ESS.value]

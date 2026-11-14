@@ -21,7 +21,7 @@ from arc.job.ssh import SUBMISSION_CAP_WAIT_SECONDS
 from arc.job.adapters.mockter import MockAdapter
 from arc.job.pipe.pipe_state import (TaskState, TaskStateRecord, PipeRunState, TaskSpec, get_task_attempt_dir,
                                      read_task_state, update_task_state)
-from arc.job.pipe.pipe_run import (PipeRun, build_rotor_scan_1d_tasks, local_cpu_budget,
+from arc.job.pipe.pipe_run import (PipeRun, SCHEDULER_JOB_GONE, build_rotor_scan_1d_tasks, local_cpu_budget,
                                    local_worker_limit, worker_cpu_cores)
 import arc.parser.parser as parser
 from arc.common import ARC_TESTING_PATH
@@ -539,6 +539,48 @@ class TestPipeRunReconcile(unittest.TestCase):
         run.reconcile()
         state = read_task_state(run.pipe_root, 't1')
         self.assertEqual(state.status, 'FAILED_TERMINAL')
+        self.assertEqual(run.status, PipeRunState.COMPLETED_PARTIAL)
+
+    def _run_task(self, run, task_id, lease_offset):
+        now = time.time()
+        update_task_state(run.pipe_root, task_id, new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now - 100,
+                          lease_expires_at=now + lease_offset)
+        update_task_state(run.pipe_root, task_id, new_status=TaskState.RUNNING, started_at=now)
+
+    def test_scheduler_job_gone_waits_for_the_lease_of_running_task(self):
+        """A RUNNING task with a valid lease is not orphaned when the scheduler job is reported gone."""
+        run = PipeRun(project_directory=self.tmpdir, run_id='gone_lease',
+                      tasks=[_make_spec('t0')], cluster_software='pbs', max_attempts=1)
+        run.stage()
+        self._run_task(run, 't0', 86400)
+        counts = run.reconcile(scheduler_job_alive=False)
+        self.assertEqual(counts[TaskState.RUNNING.value], 1)
+
+    def test_scheduler_job_gone_fails_running_task_after_its_lease(self):
+        """When the scheduler job is gone, a RUNNING task whose lease expired is not retried."""
+        run = PipeRun(project_directory=self.tmpdir, run_id='gone',
+                      tasks=[_make_spec('t0'), _make_spec('t1')], cluster_software='pbs', max_attempts=1)
+        run.stage()
+        self._complete_task(run.pipe_root, 't0')
+        self._run_task(run, 't1', -10)
+        counts = run.reconcile(scheduler_job_alive=False)
+        self.assertEqual(counts[TaskState.RUNNING.value], 0)
+        state = read_task_state(run.pipe_root, 't1')
+        self.assertEqual(state.status, 'FAILED_TERMINAL')
+        self.assertIsNone(state.failure_class)
+        self.assertEqual(run.status, PipeRunState.COMPLETED_PARTIAL)
+
+    def test_scheduler_job_gone_marks_tasks_with_attempts_left(self):
+        """Tasks that lost their scheduler job with attempts left, running or never run, are marked for hand-off."""
+        run = PipeRun(project_directory=self.tmpdir, run_id='gone_marked',
+                      tasks=[_make_spec('t0'), _make_spec('t1')], cluster_software='pbs', max_attempts=3)
+        run.stage()
+        self._run_task(run, 't0', -10)
+        run.reconcile(scheduler_job_alive=False)
+        for task_id in ('t0', 't1'):
+            state = read_task_state(run.pipe_root, task_id)
+            self.assertEqual((state.status, state.failure_class), ('FAILED_TERMINAL', SCHEDULER_JOB_GONE))
         self.assertEqual(run.status, PipeRunState.COMPLETED_PARTIAL)
 
 

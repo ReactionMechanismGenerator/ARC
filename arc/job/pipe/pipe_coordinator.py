@@ -19,8 +19,8 @@ from arc.job.adapters.common import resolve_job_server
 from arc.level import Level
 
 from arc.job.pipe.pipe_run import (
-    PipeRun, check_ess_convergence, find_output_file, get_task_attempt_dir,
-    ingest_completed_task,
+    PipeRun, SCHEDULER_JOB_GONE, SCHEDULER_VISIBILITY_GRACE, check_ess_convergence, find_output_file,
+    get_task_attempt_dir, ingest_completed_task,
 )
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
@@ -86,6 +86,7 @@ class PipeCoordinator:
         self._last_pipe_summary: dict[str, str] = {}
         self._submit_failures: dict[str, tuple[int, float]] = {}
         self._handed_tasks: dict[str, set[str]] = {}
+        self._gone_hand_off_passes: dict[str, int] = {}
 
     def should_use_pipe(self, tasks: list[TaskSpec]) -> bool:
         """
@@ -285,6 +286,8 @@ class PipeCoordinator:
                 pipe.status = PipeRunState.SUBMITTED
                 pipe.submitted_at = time.time()
                 self.sched.server_job_ids.append(job_id)
+                if 'local' not in self.sched.servers:
+                    self.sched.servers.append('local')
                 self._submit_failures.pop(pipe.pipe_root, None)
                 logger.info(f'Pipe run {pipe.run_id} submitted as job {job_id}.')
                 submitted = True
@@ -351,13 +354,85 @@ class PipeCoordinator:
         except Exception as e:
             logger.debug(f'Pipe run {pipe.run_id}: best-effort FAILED persist failed: {e}')
 
+    def _hand_gone_tasks(self, pipe_key: str) -> bool:
+        """
+        Hand the tasks of a terminal run that lost their scheduler job
+        (``failure_class=SCHEDULER_JOB_GONE``) to the Scheduler as individual jobs. A task the
+        Scheduler took is recorded in ``_handed_tasks`` and never handed again. A task it did not
+        take is offered again on the next poll, up to ``3 * max_attempts`` passes, after which it
+        is left FAILED_TERMINAL.
+
+        Args:
+            pipe_key: The run's key in ``active_pipes`` (its ``pipe_root``).
+
+        Returns:
+            bool: Whether the run has no task left to hand over and can be ingested.
+        """
+        pipe = self.active_pipes[pipe_key]
+        handed = self._handed_tasks.setdefault(pipe_key, set())
+        left = []
+        for spec in pipe.tasks:
+            if spec.task_id in handed:
+                continue
+            try:
+                state = read_task_state(pipe.pipe_root, spec.task_id)
+            except (FileNotFoundError, ValueError, KeyError):
+                logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: could not read state, skipping.')
+                continue
+            if state.status != TaskState.FAILED_TERMINAL.value or state.failure_class != SCHEDULER_JOB_GONE:
+                continue
+            try:
+                if self._eject_to_scheduler(pipe, spec, state):
+                    handed.add(spec.task_id)
+                    continue
+            except Exception as e:
+                logger.error(f'Pipe run {pipe.run_id}, task {spec.task_id}: hand-off to the Scheduler failed: {e}')
+            left.append(spec.task_id)
+        if not left:
+            return True
+        passes = self._gone_hand_off_passes.get(pipe_key, 0) + 1
+        if passes < 3 * max(1, pipe_settings.get('max_attempts', 3)):
+            self._gone_hand_off_passes[pipe_key] = passes
+            logger.warning(f'Pipe run {pipe.run_id}: the Scheduler did not take {len(left)} task(s) '
+                           f'whose scheduler job is gone. Offering them again on the next poll.')
+            return False
+        logger.error(f'Pipe run {pipe.run_id}: the Scheduler did not take task(s) {", ".join(left)} '
+                     f'after {passes} passes. Leaving them FAILED_TERMINAL.')
+        return True
+
     def register_pipe_run_from_dir(self, pipe_root: str) -> PipeRun:
         """Reconstruct and register an existing pipe run from disk."""
         pipe = PipeRun.from_dir(pipe_root)
         self.active_pipes[pipe.pipe_root] = pipe
         return pipe
 
-    def poll_pipes(self) -> None:
+    @staticmethod
+    def _is_scheduler_job_alive(pipe: PipeRun,
+                                server_job_ids: list[str] | None,
+                                ) -> bool:
+        """
+        Check whether a pipe run's scheduler job is still in the cluster queue.
+
+        For PBS/Slurm array jobs the stored ``scheduler_job_id`` is the base
+        ID (e.g. ``'4018898[]'`` for PBS, ``'12345'`` for Slurm), while the
+        queue lists individual elements (``'4018898[0]'`` for PBS,
+        ``'12345_7'`` for Slurm).  We match on the numeric prefix with both
+        ``[`` and ``_`` array separators so both formats are recognised.
+
+        A job submitted less than ``SCHEDULER_VISIBILITY_GRACE`` seconds ago is
+        taken to be alive, since the queue may not list it yet.
+
+        Returns True (optimistic) when *server_job_ids* is unavailable, or when the pipe runs on a local
+        worker pool, whose PID is not a queue job ID.
+        """
+        if server_job_ids is None or pipe.scheduler_job_id is None or pipe.cluster_software == 'local':
+            return True
+        base = pipe.scheduler_job_id.rstrip('[]')
+        if any(jid == base or jid.startswith(base + '[') or jid.startswith(base + '_') for jid in server_job_ids):
+            return True
+        return pipe.submitted_at is not None and time.time() - pipe.submitted_at < SCHEDULER_VISIBILITY_GRACE
+
+    def poll_pipes(self, server_job_ids: list[str] | None = None) -> None:
         """
         Reconcile all active pipe runs.
 
@@ -366,6 +441,12 @@ class PipeCoordinator:
 
         Tolerates up to 3 consecutive reconciliation failures per run before
         marking it as FAILED and removing it.
+
+        Args:
+            server_job_ids: Job IDs currently present in the cluster queue
+                (from ``check_running_jobs_ids``).  Used to detect when a
+                pipe's scheduler job has left the queue so that orphaned
+                tasks can be cleaned up immediately.
         """
         max_consecutive_failures = 3
         for pipe_key in list(self.active_pipes.keys()):
@@ -382,8 +463,9 @@ class PipeCoordinator:
                 if not self._submit(pipe):
                     continue
             run_id = pipe.run_id
+            job_alive = self._is_scheduler_job_alive(pipe, server_job_ids)
             try:
-                counts = pipe.reconcile()
+                counts = pipe.reconcile(scheduler_job_alive=job_alive)
             except Exception:
                 n_failures = self._pipe_poll_failures.get(pipe_key, 0) + 1
                 self._pipe_poll_failures[pipe_key] = n_failures
@@ -407,6 +489,9 @@ class PipeCoordinator:
             if pipe.needs_resubmission:
                 logger.info(f'Pipe run {run_id}: resubmitting to pick up retried tasks.')
                 self._submit(pipe)
+            if pipe.status in (PipeRunState.COMPLETED, PipeRunState.COMPLETED_PARTIAL, PipeRunState.FAILED) \
+                    and not self._hand_gone_tasks(pipe_key):
+                continue
             if pipe.status in (PipeRunState.COMPLETED, PipeRunState.COMPLETED_PARTIAL):
                 self.ingest_pipe_results(pipe)
                 self._forget_pipe(pipe_key)
@@ -427,6 +512,7 @@ class PipeCoordinator:
         del self.active_pipes[pipe_key]
         self._submit_failures.pop(pipe_key, None)
         self._handed_tasks.pop(pipe_key, None)
+        self._gone_hand_off_passes.pop(pipe_key, None)
         self._pipe_poll_failures.pop(pipe_key, None)
         self._last_pipe_summary.pop(pipe_key, None)
 
@@ -445,6 +531,7 @@ class PipeCoordinator:
         """
         # Write a task summary mapping tasks to workers and outcomes.
         self._write_task_summary(pipe)
+        handed = self._handed_tasks.get(pipe.pipe_root, set())
         ejected_count = 0
         for spec in pipe.tasks:
             try:
@@ -458,6 +545,8 @@ class PipeCoordinator:
                                       self.sched.species_dict, self.sched.output)
                 if spec.task_family in SPECIES_LEAF_FAMILIES:
                     self._finalize_species_leaf_task(pipe, spec, state)
+            elif spec.task_id in handed:
+                ejected_count += 1
             elif state.status == TaskState.FAILED_ESS.value:
                 self._eject_to_scheduler(pipe, spec, state)
                 ejected_count += 1
