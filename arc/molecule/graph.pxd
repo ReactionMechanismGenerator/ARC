@@ -46,8 +46,6 @@ cdef class Graph(object):
 
     cdef public list vertices
     
-    cdef public list ordered_vertices
-
     cpdef Vertex add_vertex(self, Vertex vertex)
 
     cpdef Edge add_edge(self, Edge edge)
@@ -78,10 +76,8 @@ cdef class Graph(object):
 
     cpdef reset_connectivity_values(self)
 
-    cpdef sort_vertices(self, bint save_order=?)
+    cpdef sort_vertices(self)
     
-    cpdef restore_vertex_order(self)
-
     cpdef bint is_isomorphic(self, Graph other, dict initial_map=?, bint generate_initial_map=?, bint save_order=?, bint strict=?) except -2
 
     cpdef list find_isomorphism(self, Graph other, dict initial_map=?, bint save_order=?, bint strict=?)
