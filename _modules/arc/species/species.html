@@ -1012,7 +1012,10 @@
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.from_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">species_dict</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""</span>
-<span class="sd">        A helper function for loading this object from a dictionary in a YAML file for restarting ARC</span>
+<span class="sd">        A helper function for loading this object from a dictionary in a YAML file for restarting ARC.</span>
+
+<span class="sd">        The 2D graph is taken from the dictionary as-is whenever it was serialized by ``as_dict()``</span>
+<span class="sd">        (see ``dict_repr_is_authoritative()``), and is otherwise perceived from the coordinates.</span>
 <span class="sd">        """</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'label'</span><span class="p">]</span>
@@ -1118,9 +1121,9 @@
                 <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="o">=</span> <span class="n">rmg_mol_from_inchi</span><span class="p">(</span><span class="n">inchi</span><span class="p">)</span>
             <span class="k">elif</span> <span class="n">smiles</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="o">=</span> <span class="n">Molecule</span><span class="p">(</span><span class="n">smiles</span><span class="o">=</span><span class="n">smiles</span><span class="p">)</span>
-        <span class="c1"># Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.</span>
-        <span class="c1"># It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">final_xyz</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">most_stable_conformer</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">conformers</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">dict_repr_is_authoritative</span><span class="p">(</span><span class="n">species_dict</span><span class="p">,</span> <span class="n">mol</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="p">)</span> \
+                <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">final_xyz</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">most_stable_conformer</span>
+                     <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">conformers</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">mol_from_xyz</span><span class="p">(</span><span class="n">get_cheap</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">if</span> <span class="s1">'bond_corrections'</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_ts</span><span class="p">:</span>
@@ -3776,6 +3779,33 @@
         <span class="n">molecules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Molecule</span><span class="p">(</span><span class="n">atoms</span><span class="o">=</span><span class="p">[</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="n">frag_indices</span><span class="p">]))</span>
         <span class="n">fragments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">frag_indices</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">molecules</span><span class="p">,</span> <span class="n">fragments</span></div>
+
+
+
+<div class="viewcode-block" id="dict_repr_is_authoritative">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.dict_repr_is_authoritative">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">dict_repr_is_authoritative</span><span class="p">(</span><span class="n">species_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+                               <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Check whether the 2D graph of a species dictionary supersedes a graph perceived from the coordinates.</span>
+
+<span class="sd">    It does when the dictionary carries a ``rmg_mol_to_dict_repr()`` mapping under the 'mol' key,</span>
+<span class="sd">    which is written by ``ARCSpecies.as_dict()`` and stores the connectivity, the bond orders,</span>
+<span class="sd">    the formal charges, the radical counts and the atom order of an existing object instance.</span>
+<span class="sd">    It does not for a structure given as SMILES, InChI, or an adjacency list (including an</span>
+<span class="sd">    adjacency list stored under the 'mol' key). It also does not when the atom IDs of ``mol``</span>
+<span class="sd">    are not unique, which is how a mapping that ``rmg_mol_from_dict_repr()`` could not decode</span>
+<span class="sd">    into a molecule presents itself.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        species_dict (dict): The dictionary representation of an ARCSpecies object instance.</span>
+<span class="sd">        mol (Molecule, optional): The graph read from ``species_dict``, if any.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: Whether the dictionary's 2D graph supersedes a graph perceived from the coordinates.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">species_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'mol'</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">mol</span><span class="o">.</span><span class="n">atom_ids_valid</span><span class="p">()</span></div>
 
 
 

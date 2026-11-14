@@ -216,6 +216,19 @@ see the API reference pages for <a class="reference internal" href="api/main.htm
 <li><p><code class="docutils literal notranslate"><span class="pre">mol</span></code> - RMG Molecule object when using the Python API.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">species_dict</span></code> - dictionary representation used in restarts/API workflows.</p></li>
 </ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When a species is given as a dictionary (a <code class="docutils literal notranslate"><span class="pre">species_dict</span></code>, or a mapping in the <code class="docutils literal notranslate"><span class="pre">species</span></code> list of the
+input file) whose <code class="docutils literal notranslate"><span class="pre">mol</span></code> key holds a serialized graph - the nested mapping of atoms, edges and
+<code class="docutils literal notranslate"><span class="pre">atom_order</span></code> that ARC writes to <code class="docutils literal notranslate"><span class="pre">restart.yml</span></code>, not an adjacency list string - that graph is used as
+given and is not re-perceived from the coordinates. This keeps a restarted or copied species identical to
+the one that was saved, since perception may return a different resonance structure or connectivity for
+the same coordinates.</p>
+<p>Copying a <code class="docutils literal notranslate"><span class="pre">mol</span></code> block out of a restart file and into an input file therefore carries its bond orders,
+formal charges and atom order into the new run, including into rotor identification, bond corrections and
+atom mapping, and coordinates that disagree with it are no longer rejected at load time. Give <code class="docutils literal notranslate"><span class="pre">smiles</span></code>,
+<code class="docutils literal notranslate"><span class="pre">inchi</span></code> or <code class="docutils literal notranslate"><span class="pre">adjlist</span></code> instead to have the graph perceived from the coordinates.</p>
+</div>
 <p>Charge, spin, and TS metadata:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">charge</span></code> - integer charge.</p></li>
@@ -248,7 +261,8 @@ see the API reference pages for <a class="reference internal" href="api/main.htm
 <li><p><code class="docutils literal notranslate"><span class="pre">external_symmetry</span></code> - external symmetry number.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">optical_isomers</span></code> - number of optical isomers.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">multi_species</span></code> - multi-species label.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">keep_mol</span></code> - preserve the molecule object.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">keep_mol</span></code> - preserve the molecule object, i.e., keep the given 2D graph instead of the one perceived from
+the coordinates. Not needed for a serialized <code class="docutils literal notranslate"><span class="pre">mol</span></code> graph, which is kept regardless (see the note above).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">project_directory</span></code> - species-specific project directory metadata.</p></li>
 </ul>
 </section>

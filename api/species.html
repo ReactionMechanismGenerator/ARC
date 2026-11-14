@@ -236,6 +236,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.determine_occ"><code class="docutils literal notranslate"><span class="pre">determine_occ()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.determine_rotor_symmetry"><code class="docutils literal notranslate"><span class="pre">determine_rotor_symmetry()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.determine_rotor_type"><code class="docutils literal notranslate"><span class="pre">determine_rotor_type()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.species.dict_repr_is_authoritative"><code class="docutils literal notranslate"><span class="pre">dict_repr_is_authoritative()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.enumerate_bonds"><code class="docutils literal notranslate"><span class="pre">enumerate_bonds()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.process_run_time"><code class="docutils literal notranslate"><span class="pre">process_run_time()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.species.species.rmg_mol_from_dict_repr"><code class="docutils literal notranslate"><span class="pre">rmg_mol_from_dict_repr()</span></code></a></li>
@@ -1479,7 +1480,9 @@ in <code class="docutils literal notranslate"><span class="pre">self.rotors_dict
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.species.species.ARCSpecies.from_dict">
 <span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_dict</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.from_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.from_dict" title="Link to this definition"></a></dt>
-<dd><p>A helper function for loading this object from a dictionary in a YAML file for restarting ARC</p>
+<dd><p>A helper function for loading this object from a dictionary in a YAML file for restarting ARC.</p>
+<p>The 2D graph is taken from the dictionary as-is whenever it was serialized by <code class="docutils literal notranslate"><span class="pre">as_dict()</span></code>
+(see <code class="docutils literal notranslate"><span class="pre">dict_repr_is_authoritative()</span></code>), and is otherwise perceived from the coordinates.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -2558,6 +2561,33 @@ int (optional): The number of peaks, only returned if <code class="docutils lite
 <span class="sig-prename descclassname"><span class="pre">arc.species.species.</span></span><span class="sig-name descname"><span class="pre">determine_rotor_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rotor_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#determine_rotor_type"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.determine_rotor_type" title="Link to this definition"></a></dt>
 <dd><p>Determine whether this rotor should be treated as a HinderedRotor of a FreeRotor
 according to its maximum peak.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.species.dict_repr_is_authoritative">
+<span class="sig-prename descclassname"><span class="pre">arc.species.species.</span></span><span class="sig-name descname"><span class="pre">dict_repr_is_authoritative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#dict_repr_is_authoritative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.dict_repr_is_authoritative" title="Link to this definition"></a></dt>
+<dd><p>Check whether the 2D graph of a species dictionary supersedes a graph perceived from the coordinates.</p>
+<p>It does when the dictionary carries a <code class="docutils literal notranslate"><span class="pre">rmg_mol_to_dict_repr()</span></code> mapping under the ‘mol’ key,
+which is written by <code class="docutils literal notranslate"><span class="pre">ARCSpecies.as_dict()</span></code> and stores the connectivity, the bond orders,
+the formal charges, the radical counts and the atom order of an existing object instance.
+It does not for a structure given as SMILES, InChI, or an adjacency list (including an
+adjacency list stored under the ‘mol’ key). It also does not when the atom IDs of <code class="docutils literal notranslate"><span class="pre">mol</span></code>
+are not unique, which is how a mapping that <code class="docutils literal notranslate"><span class="pre">rmg_mol_from_dict_repr()</span></code> could not decode
+into a molecule presents itself.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species_dict</strong> (<em>dict</em>) – The dictionary representation of an ARCSpecies object instance.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em><em>, </em><em>optional</em>) – The graph read from <code class="docutils literal notranslate"><span class="pre">species_dict</span></code>, if any.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Whether the dictionary’s 2D graph supersedes a graph perceived from the coordinates.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
