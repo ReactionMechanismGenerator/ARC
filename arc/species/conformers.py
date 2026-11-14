@@ -53,7 +53,7 @@ from arc.common import (convert_list_index_0_to_1,
                         get_single_bond_length,
                         get_logger,
                         )
-from arc.exceptions import ConformerError, InputError
+from arc.exceptions import ConformerError, InputError, ReactionError
 from arc.molecule.converter import to_ob_mol
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
@@ -64,6 +64,11 @@ from arc.species.perceive import perceive_molecule_from_xyz
 
 
 logger = get_logger()
+
+# Distance / single bond length ratios for TS graphs: atom pairs up to the partial ratio are bonded in a TS geometry,
+# and reactant bonds the reaction does not break (or bonds it forms) beyond the stretched ratio are absent from it.
+TS_PARTIAL_BOND_RATIO = 1.3
+TS_STRETCHED_BOND_RATIO = 1.6
 
 # The number of conformers to generate per range of heavy atoms in the molecule
 # (will be increased if there are chiral centers)
@@ -1763,6 +1768,117 @@ def find_internal_rotors(mol):
     return rotors
 
 
+def get_ts_bonds(mol: Molecule | None,
+                 xyz: dict | None = None,
+                 reaction: 'ARCReaction | None' = None,
+                 ) -> tuple[set[tuple[int, int]], list[str], str]:
+    """
+    Get the bonds of a TS graph: the bonds of the TS 2D graph plus the bonds the reaction forms and breaks.
+    A TS 2D graph perceived from coordinates lacks the partial (forming and breaking) bonds, so a reactive ring
+    (e.g., the 6-membered ring of a 1,5 H-shift) looks like a chain. Two sources add the reactive bonds, in order:
+    the reaction (its atom map, or its RMG family recipe), trusted only if the TS is in the atom order of the
+    reactants (same element sequence, and every reactant bond the reaction does not break is present in the TS
+    geometry, or in the TS 2D graph if there is no geometry), and the TS geometry (atom pairs much closer than a van
+    der Waals contact).
+
+    Args:
+        mol (Molecule | None): The TS 2D graph.
+        xyz (dict | None, optional): The TS coordinates, in the atom order of ``mol``.
+        reaction (ARCReaction | None, optional): The reaction of the TS.
+
+    Returns:
+        tuple[set[tuple[int, int]], list[str], str]:
+            The TS bonds, each a sorted tuple of 0-indexed atom indices;
+            the sources of reactive bonds that were used ('reaction', 'geometry'), empty if neither was;
+            and why a source was not used (an empty string if both were).
+    """
+    reasons = list()
+    if mol is None and xyz is None:
+        return set(), list(), 'no TS 2D graph and no TS geometry'
+    bonds = set()
+    if mol is not None:
+        index = {atom: i for i, atom in enumerate(mol.atoms)}
+        bonds = {tuple(sorted((index[atom_1], index[atom_2]))) for atom_1 in mol.atoms for atom_2 in atom_1.edges}
+        if xyz is not None and [atom.element.symbol for atom in mol.atoms] != list(xyz['symbols']):
+            reasons.append('the TS geometry is not in the atom order of the TS 2D graph')
+            xyz = None
+    symbols = list(xyz['symbols']) if xyz is not None else [atom.element.symbol for atom in mol.atoms]
+
+    def distance_ratio(i: int, j: int) -> float:
+        """The distance between two TS atoms relative to their single bond length"""
+        distance = sum((xyz['coords'][i][k] - xyz['coords'][j][k]) ** 2 for k in range(3)) ** 0.5
+        return distance / get_single_bond_length(symbols[i], symbols[j])
+
+    sources = list()
+    if reaction is None:
+        reasons.append('no reaction')
+    else:
+        reactants = reaction.get_reactants_and_products(return_copies=False)[0]
+        if any(spc.mol is None for spc in reactants):
+            reasons.append('a reactant has no 2D graph')
+        elif [atom.element.symbol for spc in reactants for atom in spc.mol.atoms] != symbols:
+            reasons.append('the TS is not in the atom order of the reactants')
+        else:
+            try:
+                formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
+            except (ReactionError, AttributeError, IndexError, KeyError, TypeError, ValueError) as e:
+                formed_bonds, broken_bonds = None, None
+                reasons.append(f'the reaction bonds could not be determined ({type(e).__name__}: {e})')
+            if formed_bonds is not None:
+                r_bonds = {tuple(sorted(bond)) for bond in reaction.get_bonds(r_bonds_only=True)[0]}
+                broken_bonds = {tuple(sorted(bond)) for bond in broken_bonds}
+                mol_bonds = set(bonds)
+                stretched_bonds = sorted(bond for bond in r_bonds - broken_bonds
+                                         if (distance_ratio(*bond) > TS_STRETCHED_BOND_RATIO if xyz is not None
+                                             else bond not in mol_bonds))
+                if stretched_bonds:
+                    reasons.append(f'the TS is not in the atom order of the reactants (reactant bonds '
+                                   f'{stretched_bonds} that the reaction does not break are absent from the TS)')
+                else:
+                    bonds |= r_bonds
+                    bonds |= {tuple(sorted(bond)) for bond in formed_bonds
+                              if xyz is None or distance_ratio(*bond) <= TS_STRETCHED_BOND_RATIO}
+                    sources.append('reaction')
+    if xyz is None:
+        reasons.append('no TS geometry')
+    else:
+        bonds |= {(i, j) for i in range(len(symbols)) for j in range(i + 1, len(symbols))
+                  if distance_ratio(i, j) <= TS_PARTIAL_BOND_RATIO}
+        sources.append('geometry')
+    return bonds, sources, '; '.join(reasons)
+
+
+def is_ring_twist(bonds: set[tuple[int, int]],
+                  pivots: tuple[int, int] | list[int],
+                  ) -> bool:
+    """
+    Determine whether a torsion is a ring twist that no rotor can cover, i.e., whether its pivot bond lies on a ring.
+    Pass the bonds of a TS graph (see ``get_ts_bonds``) to account for a reactive ring.
+
+    Args:
+        bonds (set[tuple[int, int]]): The bonds of the graph, each a tuple of 0-indexed atom indices.
+        pivots (tuple[int, int] | list[int]): The 0-indexed atom indices of the torsion pivots.
+
+    Returns:
+        bool: Whether the pivot bond lies on a ring of the graph.
+    """
+    start, end = pivots
+    neighbors = dict()
+    for i, j in bonds:
+        if {i, j} != {start, end}:
+            neighbors.setdefault(i, set()).add(j)
+            neighbors.setdefault(j, set()).add(i)
+    visited, stack = {start}, [start]
+    while stack:
+        for neighbor in neighbors.get(stack.pop(), set()):
+            if neighbor == end:
+                return True
+            if neighbor not in visited:
+                visited.add(neighbor)
+                stack.append(neighbor)
+    return False
+
+
 def determine_smallest_atom_index_in_scan(atom1: Atom,
                                           atom2: Atom,
                                           mol: Molecule,
@@ -2272,11 +2388,9 @@ def determine_chirality(conformers, label, mol, force=False):
             # don't override data
             continue
         new_xyz = replace_n_with_c_in_xyz(label, mol, conformer['xyz'], chiral_nitrogen_centers, elements_to_insert)
-        rd_mol = embed_rdkit(label, new_mol, xyz=new_xyz)
-        if rd_mol is None or not rd_mol.GetNumConformers():
+        rd_mol = get_stereo_rd_mol(label, new_mol, new_xyz)
+        if rd_mol is None:
             continue
-        rd_mol.UpdatePropertyCache(strict=False)
-        Chem.rdmolops.AssignStereochemistryFrom3D(rd_mol, 0)
         for i, rd_atom in enumerate(rd_mol.GetAtoms()):
             rd_atom_props_dict = rd_atom.GetPropsAsDict()
             if '_CIPCode' in list(rd_atom_props_dict.keys()):
@@ -2292,6 +2406,94 @@ def determine_chirality(conformers, label, mol, force=False):
                 rd_atoms = [rd_bond.GetBeginAtomIdx(), rd_bond.GetEndAtomIdx()]  # indices of atoms bonded by this bond
                 conformer['chirality'][tuple(rd_atom for rd_atom in rd_atoms)] = stereo[-1]
     return conformers
+
+
+def get_stereo_rd_mol(label: str,
+                      mol: Molecule,
+                      xyz: dict,
+                      use_isotopes: bool = False,
+                      ) -> Chem.rdchem.Mol | None:
+    """
+    Embed a molecule in RDKit at the given coordinates and assign its stereochemistry (CIP codes, E/Z) from them.
+
+    Args:
+        label (str): The species label.
+        mol (Molecule): The molecule, with chiral nitrogen centers already replaced by carbon atoms.
+        xyz (dict): The coordinates, in the atom order of ``mol``.
+        use_isotopes (bool, optional): Whether to label the atoms with the isotopes of ``xyz`` (e.g., D vs. H).
+
+    Returns:
+        Chem.rdchem.Mol | None: The RDKit molecule with stereochemistry assigned, ``None`` if it could not be embedded.
+    """
+    rd_mol = embed_rdkit(label, mol, xyz=xyz)
+    if rd_mol is None or not rd_mol.GetNumConformers():
+        return None
+    if use_isotopes and xyz.get('isotopes') and len(xyz['isotopes']) == rd_mol.GetNumAtoms():
+        for rd_atom, isotope in zip(rd_mol.GetAtoms(), xyz['isotopes']):
+            rd_atom.SetIsotope(int(isotope))
+    rd_mol.UpdatePropertyCache(strict=False)
+    Chem.rdmolops.AssignStereochemistryFrom3D(rd_mol, 0)
+    return rd_mol
+
+
+def mirror_xyz(xyz: dict) -> dict:
+    """
+    Get the mirror image of a geometry, reflected through the yz plane.
+
+    Args:
+        xyz (dict): The coordinates.
+
+    Returns:
+        dict: The mirrored coordinates.
+    """
+    return converter.xyz_from_data(coords=[(-x, y, z) for x, y, z in xyz['coords']],
+                                   symbols=xyz['symbols'], isotopes=xyz.get('isotopes'))
+
+
+def get_graph_stereocenters(label: str,
+                            mol: Molecule | None,
+                            xyz: dict | None,
+                            ) -> tuple[bool | None, list[int], str]:
+    """
+    Determine whether the 2D graph of a well is chiral, and which atoms are its stereocenters.
+    The configuration of each stereocenter is read from ``xyz``, and the graph is chiral if its stereo-perceived
+    graph differs from that of its mirror image. Conformational chirality of a single geometry (e.g., a gauche
+    conformer of 1-propanol) does not count, since only graph stereocenters carry a configuration. Meso species
+    and species whose only stereo elements are E/Z double bonds are not chiral.
+
+    Args:
+        label (str): The species label.
+        mol (Molecule | None): The 2D graph.
+        xyz (dict | None): The coordinates, in the atom order of ``mol``.
+
+    Returns:
+        tuple[bool | None, list[int], str]:
+            Whether the graph is chiral (``None`` if it could not be determined);
+            the 0-indexed stereocenters with a CIP label, if chiral;
+            and the reason it could not be determined (an empty string otherwise).
+    """
+    if mol is None:
+        return None, list(), 'no 2D graph'
+    if xyz is None:
+        return None, list(), 'no geometry'
+    symbols = [atom.element.symbol for atom in mol.atoms]
+    if symbols != list(xyz['symbols']):
+        return None, list(), 'the atom order of the 2D graph and the geometry differ'
+    chiral_nitrogen_centers = identify_chiral_nitrogen_centers(mol)
+    new_mol, elements_to_insert = replace_n_with_c_in_mol(mol, chiral_nitrogen_centers)
+    stereo_smiles, centers = list(), list()
+    for coords in [xyz, mirror_xyz(xyz)]:
+        new_xyz = replace_n_with_c_in_xyz(label, mol, coords, chiral_nitrogen_centers, elements_to_insert)
+        rd_mol = get_stereo_rd_mol(label, new_mol, new_xyz, use_isotopes=True)
+        if rd_mol is None:
+            return None, list(), 'RDKit could not embed the species to perceive its stereochemistry'
+        stereo_smiles.append(Chem.MolToSmiles(rd_mol))
+        if not centers:
+            centers = [i for i, rd_atom in enumerate(rd_mol.GetAtoms())
+                       if i < len(symbols) and rd_atom.HasProp('_CIPCode')]
+    if stereo_smiles[0] == stereo_smiles[1]:
+        return False, list(), ''
+    return True, centers, ''
 
 
 def identify_chiral_nitrogen_centers(mol):

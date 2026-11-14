@@ -364,7 +364,7 @@ def invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction: ARCReaction,
                        f'reaction coordinate, if there is one, is treated as an ordinary hindered rotor.')
         return
     if not reaction.ts_species.rotors_dict:
-        reaction.ts_species.determine_rotors()
+        reaction.ts_species.determine_rotors(reaction=reaction)
     rxn_zone_atom_indices_1 = convert_list_index_0_to_1(rxn_zone_atom_indices)
     for key, rotor in reaction.ts_species.rotors_dict.items():
         if rotor['pivots'][0] in rxn_zone_atom_indices_1 and rotor['pivots'][1] in rxn_zone_atom_indices_1:

@@ -61,6 +61,25 @@ logger = get_logger()
 
 valid_chars, minimum_barrier = settings['valid_chars'], settings['minimum_barrier']
 
+# The optical_isomers_cause of a value the user gave (see arc.species.optical_isomers).
+USER_OPTICAL_ISOMERS_CAUSE = 'given by the user'
+
+REACTIVE_RING_INVALIDATION_REASON = 'Torsion lies in the TS reactive ring (code: reactive ring). '
+
+
+def is_reactive_ring_rejection(rotor: dict) -> bool:
+    """
+    Determine whether a rotor was rejected because its torsion lies in the reactive ring of its TS,
+    so no scan of it may be submitted, continued, or used.
+
+    Args:
+        rotor (dict): A ``rotors_dict`` entry.
+
+    Returns:
+        bool: Whether the rotor carries the reactive-ring rejection.
+    """
+    return rotor.get('success') is False and REACTIVE_RING_INVALIDATION_REASON in (rotor.get('invalidation_reason') or '')
+
 
 class ARCSpecies(object):
     """
@@ -87,6 +106,8 @@ class ARCSpecies(object):
                               'directed_scan_type': ``str``,
                               'directed_scan': ``dict``,  # keys: tuples of dihedrals as strings,
                                                           # values: dicts of energy, xyz, is_isomorphic, trsh
+                              'ring_check': ``str``,  # TSs only: the sources of the reactive ring check,
+                                                      # or 'unverified: <reason>'
                              }
                           1: {}, ...
                          }
@@ -295,6 +316,7 @@ class ARCSpecies(object):
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
         external_symmetry (int): The external symmetry of the species (not including rotor symmetries).
         optical_isomers (int): Whether (=2) or not (=1) the species has chiral center/s.
+        optical_isomers_cause (str): Why ARC wrote its number of optical isomers into the Arkane file, if it did.
         transport_data (TransportData): A placeholder for updating transport properties after Lennard-Jones
                                         calculation (using OneDMin).
         force_field (str): The force field to be used for conformer screening. The default is MMFF94s.
@@ -399,6 +421,7 @@ class ARCSpecies(object):
         self.irc_label = irc_label
         self.active = active
         self.optical_isomers = optical_isomers
+        self.optical_isomers_cause = None
         self.charge = charge
         self.run_time = process_run_time(run_time)
         self.checkfile = checkfile
@@ -695,6 +718,16 @@ class ARCSpecies(object):
         """Allow setting the is_linear property"""
         self._is_linear = value
 
+    def has_user_optical_isomers(self) -> bool:
+        """
+        Check whether the stored optical_isomers value came from the user rather than from an ARC decision.
+
+        Returns:
+            bool: Whether the value is set and has no ARC cause other than ``USER_OPTICAL_ISOMERS_CAUSE``.
+        """
+        return self.optical_isomers is not None \
+            and getattr(self, 'optical_isomers_cause', None) in (None, USER_OPTICAL_ISOMERS_CAUSE)
+
     def copy(self):
         """
         Get a copy of this object instance.
@@ -765,7 +798,7 @@ class ARCSpecies(object):
             species_dict['adjlist'] = '\n'.join(line.strip() for line in self.adjlist.splitlines() if line.strip())
         if self.irc_label is not None:
             species_dict['irc_label'] = self.irc_label
-        if self.optical_isomers is not None:
+        if self.has_user_optical_isomers():  # ARC's own value is re-decided from the rotors each run.
             species_dict['optical_isomers'] = self.optical_isomers
         if self.neg_freqs_trshed:
             species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed.tolist() \
@@ -1337,15 +1370,26 @@ class ARCSpecies(object):
             xyz = xyz_to_str(xyz)
         return xyz
 
-    def determine_rotors(self, verbose: bool = False) -> None:
+    def determine_rotors(self,
+                         verbose: bool = False,
+                         reaction: 'ARCReaction | None' = None,
+                         ) -> None:
         """
         Determine possible unique rotors in the species to be treated as hindered rotors,
         taking into account all localized structures.
         The resulting rotors are saved in a ``{'pivots': [1, 3], 'top': [3, 7], 'scan': [2, 1, 3, 7]}`` format
         in ``self.rotors_dict``. Also updates ``self.number_of_rotors``.
+        For a TS, rotors in the reactive ring are invalidated (see ``check_reactive_ring_rotors``),
+        also when the rotors dictionary already exists.
+
+        Args:
+            verbose (bool, optional): Whether to log the rotors found.
+            reaction (ARCReaction, optional): The reaction of a TS, used to find its reactive ring.
         """
         if self.rotors_dict != {}:
             # This species was marked to skip rotor scans (when ``rotors_dict`` is ``None``), or a rotors dictionary already exist.
+            if self.rotors_dict is not None:
+                self.check_reactive_ring_rotors(reaction=reaction)
             return
         mol_list = self.mol_list or [self.mol]
         if mol_list is None or not len(mol_list) or all([mol is None for mol in mol_list]):
@@ -1372,6 +1416,58 @@ class ARCSpecies(object):
                 logger.info(f'Pivot list(s) for {self.label}: '
                             f'{[self.rotors_dict[i]["pivots"] for i in range(self.number_of_rotors)]}\n')
         self.initialize_directed_rotors()
+        self.check_reactive_ring_rotors(reaction=reaction)
+
+    def check_reactive_ring_rotors(self, reaction: 'ARCReaction | None' = None) -> None:
+        """
+        Invalidate the rotors of a TS whose pivot bond lies in a ring of the TS graph, e.g., the reactive ring of an
+        intra-molecular H migration, which the TS 2D graph lacks. Scanning such a torsion breaks the ring.
+        Rotors that were not scanned yet are judged, and so are rotors that only this check invalidated (judged on an
+        earlier geometry, e.g. a TS guess), which are restored if their torsion is no longer in a ring.
+        Rotors with a finished scan are not judged. The sources used are recorded in each rotor's ``ring_check``.
+        If neither the reaction nor the TS geometry is available, the rotors are kept, marked as unverified,
+        and judged on the next call.
+
+        Args:
+            reaction (ARCReaction, optional): The reaction of the TS.
+        """
+        if not self.is_ts or not self.rotors_dict:
+            return
+        rotors = [rotor for rotor in self.rotors_dict.values()
+                  if rotor.get('success') is None
+                  or (rotor.get('success') is False and not rotor.get('scan_path')
+                      and rotor.get('invalidation_reason') == REACTIVE_RING_INVALIDATION_REASON)]
+        if not rotors:
+            return
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.mol, xyz=self.get_xyz(generate=False),
+                                                         reaction=reaction)
+        if not sources:
+            unjudged_rotors = [rotor for rotor in rotors if rotor.get('success') is None]
+            if unjudged_rotors:
+                logger.warning(f'Could not check whether {len(unjudged_rotors)} rotor(s) of TS {self.label} lie in '
+                               f'its reactive ring ({reason}). They are kept as rotors, marked unverified, and will '
+                               f'be checked again once a reaction or a TS geometry is available.')
+            for rotor in unjudged_rotors:
+                rotor['ring_check'] = f'unverified: {reason}'
+            return
+        if reaction is not None and 'reaction' not in sources:
+            logger.warning(f'The reactive ring of TS {self.label} was found from its geometry alone, '
+                           f'since its reaction could not be used: {reason}')
+        for rotor in rotors:
+            rotor['ring_check'] = ', '.join(sources) + (f' ({reason})' if reason else '')
+            pivots_list = rotor['pivots'] if isinstance(rotor['pivots'][0], list) else [rotor['pivots']]
+            if any(conformers.is_ring_twist(bonds=bonds, pivots=(pivots[0] - 1, pivots[1] - 1))
+                   for pivots in pivots_list):
+                rotor['success'] = False
+                invalidation_reason = rotor.get('invalidation_reason') or ''
+                if REACTIVE_RING_INVALIDATION_REASON not in invalidation_reason:
+                    rotor['invalidation_reason'] = invalidation_reason + REACTIVE_RING_INVALIDATION_REASON
+                logger.info(f"Not considering rotor with pivots {rotor['pivots']} in TS {self.label}: "
+                            f"its torsion lies in the reactive ring.")
+            elif rotor.get('success') is False:
+                rotor['success'], rotor['invalidation_reason'] = None, ''
+                logger.info(f"Considering rotor with pivots {rotor['pivots']} in TS {self.label} again: "
+                            f"its torsion is no longer in a ring.")
 
     def initialize_directed_rotors(self):
         """

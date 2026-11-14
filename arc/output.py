@@ -57,7 +57,8 @@ from arc.statmech.arkane import (
     AEC_SECTION_START, AEC_SECTION_END,
     MBAC_SECTION_START, MBAC_SECTION_END,
     PBAC_SECTION_START, PBAC_SECTION_END,
-    find_best_across_files, get_qm_corrections_files,
+    count_harmonic_fallback_torsions, find_best_across_files, get_harmonic_fallback_torsions,
+    get_qm_corrections_files,
 )
 from arc.parser_evidence import (
     EVIDENCE_FILENAME,
@@ -2109,10 +2110,13 @@ def _statmech_to_dict(spc,
         # Exclude the imaginary mode (most negative frequency)
         freqs = [f for f in freqs if f >= 0]
 
+    fallback = get_harmonic_fallback_torsions(spc)
+    n_fallback, n_ring = count_harmonic_fallback_torsions(fallback)
     return {
         'e0_kj_mol': spc.e0,
         'spin_multiplicity': spc.multiplicity,
         'optical_isomers': spc.optical_isomers,
+        'optical_isomers_cause': getattr(spc, 'optical_isomers_cause', None),
         'is_linear': is_linear,
         'external_symmetry': spc.external_symmetry,
         'point_group': point_group,
@@ -2120,6 +2124,10 @@ def _statmech_to_dict(spc,
         'harmonic_frequencies_cm1': [float(f) for f in freqs] if freqs is not None else None,
         'torsions': _get_torsions(spc, project_directory, scan_keys=scan_keys),
         'rejected_torsions': _get_rejected_torsions(spc, project_directory),
+        'harmonic_fallback_torsions': [{'pivot_atoms': entry['pivots'], 'atom_indices': entry['scan'],
+                                        'cause': entry['cause'], 'reason': entry['reason']} for entry in fallback],
+        'n_harmonic_fallback_torsions': n_fallback,
+        'n_ring_torsions': n_ring,
     }
 
 

@@ -95,15 +95,18 @@ output.yml
 │       │   ├── nasa_low?: {tmin_k, tmax_k, coeffs}
 │       │   └── nasa_high?: {tmin_k, tmax_k, coeffs}
 │       └── statmech?
-│           ├── e0_kj_mol?, spin_multiplicity, optical_isomers
+│           ├── e0_kj_mol?, spin_multiplicity, optical_isomers, optical_isomers_cause?
 │           ├── is_linear, external_symmetry, point_group?
 │           ├── rigid_rotor_kind, harmonic_frequencies_cm1?
 │           ├── torsions: []
 │           │   └── symmetry_number, treatment, atom_indices, pivot_atoms,
 │           │       barrier_kj_mol?, source_scan_key?
-│           └── rejected_torsions?: []
-│               └── rotor_index, invalidation_reason, atom_indices, pivot_atoms,
-│                   dimension, source_log?
+│           ├── rejected_torsions?: []
+│           │   └── rotor_index, invalidation_reason, atom_indices, pivot_atoms,
+│           │       dimension, source_log?
+│           ├── harmonic_fallback_torsions?: []
+│           │   └── pivot_atoms, atom_indices, cause, reason
+│           └── n_harmonic_fallback_torsions?, n_ring_torsions?
 │
 ├── transition_states: []
 │   └── (all species fields, plus:)
@@ -138,7 +141,7 @@ TS entries share all species fields but add IRC/NEB/method fields and always hav
 
 | Field | Type | Description |
 |---|---|---|
-| `schema_version` | `str` | Output contract version. `1.1` adds the optional `parser_evidence` descriptor, renames the thermo block's `cp_data` to `thermo_points` (widened from Cp-only to Cp/H/S/G per temperature; there is no `cp_data` alias), renames the AEC `parameter_table` to `reference_atom_energies`, adds `imaginary_frequencies_cm1`, the per-correction `matched_arkane_key` and `freq_scale_factor_key`, adds `ess_software` so each `ess_versions` banner can be paired with the program that actually produced it, adds `arkane_version`, read together with `arkane_git_commit` from one install so the run carries an Arkane software identity even where there is no git repository to report a commit from, adds `freq_hessian_method`, whose three tokens are TCKDB's `HessianMethod` vocabulary and record the provenance of the frequency method ARC requested, adds the optional `statmech.rejected_torsions`, adds the TS-only `ts_checks`, adds `kinetics.T0_k` and the constraints' `target_value_units`, adds the thermo block's `standard_state_pressure_pa`, which names the standard state its entropy, free energy and NASA fit belong to, and adds the `rotor_scans` block, whose samples carry `angle_degrees` — the **absolute** dihedral measured on each sample's own geometry, never a displacement — and whose `requested_step_size` is signed, so a reversed scan records its direction instead of losing the whole requested grid. Emitted from a single constant shared with the evidence sidecar's `output_schema_version`, so the two cannot drift |
+| `schema_version` | `str` | Output contract version. `1.1` adds the optional `parser_evidence` descriptor, renames the thermo block's `cp_data` to `thermo_points` (widened from Cp-only to Cp/H/S/G per temperature; there is no `cp_data` alias), renames the AEC `parameter_table` to `reference_atom_energies`, adds `imaginary_frequencies_cm1`, the per-correction `matched_arkane_key` and `freq_scale_factor_key`, adds `ess_software` so each `ess_versions` banner can be paired with the program that actually produced it, adds `arkane_version`, read together with `arkane_git_commit` from one install so the run carries an Arkane software identity even where there is no git repository to report a commit from, adds `freq_hessian_method`, whose three tokens are TCKDB's `HessianMethod` vocabulary and record the provenance of the frequency method ARC requested, adds the optional `statmech.rejected_torsions` and `statmech.optical_isomers_cause`, adds the TS-only `ts_checks`, adds `kinetics.T0_k` and the constraints' `target_value_units`, adds the thermo block's `standard_state_pressure_pa`, which names the standard state its entropy, free energy and NASA fit belong to, and adds the `rotor_scans` block, whose samples carry `angle_degrees` — the **absolute** dihedral measured on each sample's own geometry, never a displacement — and whose `requested_step_size` is signed, so a reversed scan records its direction instead of losing the whole requested grid. Emitted from a single constant shared with the evidence sidecar's `output_schema_version`, so the two cannot drift |
 | `project` | `str` | ARC project name |
 | `arc_version` | `str` | ARC version string |
 | `arc_git_commit` | `str?` | ARC repo HEAD commit hash |
@@ -732,6 +735,7 @@ One entry per parsed scan point, in the order the ESS reported them.
 | `e0_kj_mol` | `float?` | Ground-state energy (kJ/mol) |
 | `spin_multiplicity` | `int?` | Spin multiplicity |
 | `optical_isomers` | `int?` | Number of optical isomers |
+| `optical_isomers_cause` | `str?` | Optional. Why ARC wrote `optical_isomers` into the Arkane file (ARC issue #413): `n = 2` for a chiral optimised geometry, unless the treated rotors reach its mirror image (`1`). The rule is exact only within the independent 1D-rotor model. Each cause states D, the largest signed-torsion deviation (degrees) from the aligned mirror image, e.g. `mirror well reached by the C2-C3 rotor (D = 8.7 deg)` or `C2-C3 torsion harmonic (scan failed: ...), mirror well counted by n (D = 131.4 deg)`. `not determined: <reason>` when ARC omitted the key and Arkane estimated it from the point group. `null` when no Arkane file was generated |
 | `is_linear` | `bool?` | Whether the molecule is linear |
 | `external_symmetry` | `int?` | External symmetry number |
 | `point_group` | `str?` | Point group (e.g. `C2v`) |
@@ -739,6 +743,9 @@ One entry per parsed scan point, in the order the ESS reported them.
 | `harmonic_frequencies_cm1` | `list[float]?` | Harmonic frequencies (cm-1) as parsed from the ESS, **unscaled** — `freq_scale_factor` has *not* been applied, although it has been applied to `statmech.e0_kj_mol`, so recomputing ZPE from this list will not reproduce `e0_kj_mol` unless you scale first. For TSs **every** negative (imaginary) frequency is dropped, not only the reaction mode — a TS that legitimately carries additional small imaginary modes (which `check_imaginary_frequencies` permits) loses those too, so the list can be shorter than the species' true mode count. Non-TS species are not filtered at all |
 | `torsions` | `list` | Internal rotation data (see below) |
 | `rejected_torsions` | `list` | Rotors ARC evaluated and rejected (see below). **Optional in the schema** — not in `statmech`'s `required` list — unlike every other field in this table. This version of the writer always emits it (`[]` when there is nothing to report, never omitted), but a consumer reading documents from other producers, or from before this key existed, must tolerate its absence rather than assuming `[]` |
+| `harmonic_fallback_torsions` | `list` | Every torsion Arkane did **not** treat as a hindered rotor, so it stays a harmonic mode of the frequency calculation (see below). Unlike `rejected_torsions`, it also carries pending (`success is None`) rotors, ring torsions, and torsions skipped because rotor scans were turned off. Optional in the schema; always emitted by this writer |
+| `n_harmonic_fallback_torsions` | `int` | Number of `harmonic_fallback_torsions` entries whose `cause` is neither `"ring"` nor `"reactive ring"`: torsions that could have been hindered rotors and were not. `0` when every rotor was treated. Optional in the schema |
+| `n_ring_torsions` | `int` | Number of `harmonic_fallback_torsions` entries whose `cause` is `"ring"` or `"reactive ring"` (structural, not failures). Optional in the schema |
 
 **`torsions`** entries (only successful rotors):
 
@@ -751,6 +758,18 @@ One entry per parsed scan point, in the order the ESS reported them.
 | `pivot_atoms` | `list[int]?` | 2-atom rotation axis (1-indexed). For an ND rotor this is a **list of pairs**, one per dimension |
 | `barrier_kj_mol` | `float?` | Torsional barrier height (kJ/mol). `null` for an ND rotor (`dimension > 1`), whose barrier cannot be derived from a 1D scan parse |
 | `source_scan_key` | `str?` | The `rotor_scans[].key` (e.g. `"scan_rotor_3"`) this torsion was derived from. `null` when `rotor_scans` holds no record for that rotor, so the reference can never dangle |
+
+**`harmonic_fallback_torsions`** entries:
+
+| Field | Type | Description |
+|---|---|---|
+| `pivot_atoms` | `list[int]?` | 2-atom rotation axis (1-indexed), shaped as in `torsions` |
+| `atom_indices` | `list[int]?` | 4-atom dihedral (1-indexed), shaped as in `torsions`. `null` for a ring torsion whose bond has no dihedral with four distinct atoms (e.g., the O-O bond of dioxirane) |
+| `cause` | `str` | `"scan failed"` (`success is False`), `"scan stopped (lower conformer found)"` (`success is None` after a change-conformer troubleshooting), `"scan not completed"` (`success is None` otherwise), `"TS reaction zone"` (pivots in the TS reaction zone, code `pivTS`), `"reactive ring"` (torsion in the TS reactive ring), `"ring"` (bond in a ring of the 2D graph; never a rotor candidate), or `"user choice"` (rotor scans turned off) |
+| `reason` | `str` | The recorded `invalidation_reason`, whitespace-normalized; `""` when none was recorded |
+
+The same list is written as a `# Harmonic fallback:` comment into each species and TS Arkane input file, logged, and
+added to that label's `warnings` in `output/status.yml`.
 
 **`rejected_torsions`** entries (rotors ARC evaluated and rejected, i.e. `rotors_dict` entries whose `success` is `False`):
 

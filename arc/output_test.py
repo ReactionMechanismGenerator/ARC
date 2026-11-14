@@ -507,10 +507,19 @@ class TestStatmechToDict(unittest.TestCase):
         spc.e0 = 100.5
         spc.multiplicity = 1
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 2
         spc.freqs = freqs
         spc.rotors_dict = None
         return spc
+
+    def test_optical_isomers_cause(self):
+        """Test that the optical-isomer cause ARC wrote into the Arkane file reaches output.yml verbatim"""
+        spc = self._make_spc(freqs=[100.0])
+        self.assertIsNone(_statmech_to_dict(spc, '/tmp/project')['optical_isomers_cause'])
+        spc.optical_isomers_cause = 'mirror well reached by the C2-C3 rotor (D = 8.7 deg)'
+        self.assertEqual(_statmech_to_dict(spc, '/tmp/project')['optical_isomers_cause'],
+                         'mirror well reached by the C2-C3 rotor (D = 8.7 deg)')
 
     def test_nonlinear_species(self):
         spc = self._make_spc(freqs=[100.0, 200.0, 300.0])
@@ -567,6 +576,68 @@ class TestStatmechToDict(unittest.TestCase):
         self.assertEqual(result['rejected_torsions'][0]['rotor_index'], 1)
         self.assertEqual(result['rejected_torsions'][0]['invalidation_reason'],
                          'rotor set too many (5) times')
+
+
+class TestHarmonicFallbackInStatmech(unittest.TestCase):
+    """Tests for the harmonic-fallback torsions in the statmech section of output.yml."""
+
+    def _species(self, is_ts: bool = False) -> ARCSpecies:
+        """
+        Make an ethanol species, or a TS with ethanol's geometry, with its rotors determined.
+
+        Args:
+            is_ts (bool): Whether to make a TS.
+
+        Returns:
+            ARCSpecies: The species.
+        """
+        xyz = ARCSpecies(label='EtOH_xyz', smiles='CCO').get_xyz()
+        spc = ARCSpecies(label='TS0', is_ts=True, xyz=xyz) if is_ts else ARCSpecies(label='EtOH', smiles='CCO')
+        spc.determine_rotors()
+        spc.freqs = [-1500.0, 300.0] if is_ts else [300.0]
+        return spc
+
+    def test_all_rotors_treated(self):
+        spc = self._species()
+        for rotor in spc.rotors_dict.values():
+            rotor['success'] = True
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertEqual(result['harmonic_fallback_torsions'], [])
+        self.assertEqual(result['n_harmonic_fallback_torsions'], 0)
+        self.assertEqual(result['n_ring_torsions'], 0)
+
+    def test_failed_and_stopped_rotors(self):
+        spc = self._species()
+        spc.rotors_dict[0]['success'] = False
+        spc.rotors_dict[0]['invalidation_reason'] = 'Bond (1, 2) broke during the scan.'
+        spc.rotors_dict[1]['trsh_methods'] = [{'change conformer': spc.get_xyz()}]
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertEqual(result['harmonic_fallback_torsions'], [
+            {'pivot_atoms': [1, 2], 'atom_indices': [4, 1, 2, 3], 'cause': 'scan failed',
+             'reason': 'Bond (1, 2) broke during the scan.'},
+            {'pivot_atoms': [2, 3], 'atom_indices': [1, 2, 3, 9], 'cause': 'scan stopped (lower conformer found)',
+             'reason': ''},
+        ])
+        self.assertEqual(result['n_harmonic_fallback_torsions'], 2)
+        self.assertEqual(result['n_ring_torsions'], 0)
+
+    def test_ts_with_all_rotors_failed(self):
+        ts = self._species(is_ts=True)
+        for rotor in ts.rotors_dict.values():
+            rotor['success'] = False
+            rotor['invalidation_reason'] = 'Pivots participate in the TS reaction zone (code: pivTS). '
+        result = _statmech_to_dict(ts, '/tmp/project')
+        self.assertEqual([(e['pivot_atoms'], e['cause']) for e in result['harmonic_fallback_torsions']],
+                         [([1, 2], 'TS reaction zone'), ([2, 3], 'TS reaction zone')])
+        self.assertEqual(result['n_harmonic_fallback_torsions'], 2)
+
+    def test_ring_torsions_counted_apart(self):
+        spc = ARCSpecies(label='cC6H12', smiles='C1CCCCC1')
+        spc.freqs = [300.0]
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertEqual(len(result['harmonic_fallback_torsions']), 6)
+        self.assertEqual(result['n_harmonic_fallback_torsions'], 0)
+        self.assertEqual(result['n_ring_torsions'], 6)
 
 
 class TestGetTorsions(unittest.TestCase):
@@ -1614,6 +1685,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e0 = -95.0
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1500.0, 100.0]
         spc.rotors_dict = None
@@ -1644,6 +1716,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e0 = -95.0
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1500.0, 100.0]
         spc.rotors_dict = None
@@ -1673,6 +1746,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e_elect = None
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1000.0, 100.0]
         spc.rotors_dict = None
@@ -1714,6 +1788,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e_elect = None
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1000.0, 100.0]
         spc.rotors_dict = None
@@ -1842,6 +1917,7 @@ class TestSpcToDict(unittest.TestCase):
         spc.e0 = -105136.6      # kJ/mol (e_elect + ZPE in kJ/mol)
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 12
         spc.freqs = [1300.0, 1500.0, 3000.0, 3100.0]
         spc.rotors_dict = None
@@ -2327,6 +2403,7 @@ class TestWriteOutputYml(unittest.TestCase):
         spc.e0 = -105136.6
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 12
         spc.freqs = [1300.0, 1500.0, 3000.0]
         spc.rotors_dict = None

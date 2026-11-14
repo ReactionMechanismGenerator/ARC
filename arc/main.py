@@ -40,7 +40,7 @@ from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
-from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs
+from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs, record_harmonic_fallback_warnings
 from arc.utils.scale import determine_scaling_factors
 
 
@@ -633,6 +633,7 @@ class ARC(object):
                                    )
 
         self.output = self.scheduler.output
+        record_harmonic_fallback_warnings(self.output, self.scheduler.species_dict)
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.output)
 
         self.clean_check_files(remote_project_paths=self.scheduler.remote_project_paths)

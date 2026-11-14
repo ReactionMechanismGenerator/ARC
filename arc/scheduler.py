@@ -65,6 +65,7 @@ from arc.species.species import (ARCSpecies,
                                  are_coords_compliant_with_graph,
                                  check_label,
                                  determine_rotor_symmetry,
+                                 is_reactive_ring_rejection,
                                  TSGuess)
 from arc.species.converter import (check_isomorphism,
                                    compare_confs,
@@ -545,9 +546,11 @@ class Scheduler(object):
                 # Evaluated before determine_rotors(), which adds never-scanned rotors to any species whose
                 # restored number_of_rotors is 0; asking afterwards would re-scan every converged species.
                 restored_rotor_scans_owed = self.rotor_scans_pending_on_restart(species, include_failed=False)
-                if self.job_types['rotors'] and not species.number_of_rotors and species.rotors_dict is not None:
-                    # if species.rotors_dict is None, it means the species is marked to not spawn rotor scans
-                    species.determine_rotors()
+                if self.job_types['rotors'] and (not species.number_of_rotors or species.is_ts) \
+                        and species.rotors_dict is not None:
+                    # if species.rotors_dict is None, it means the species is marked to not spawn rotor scans;
+                    # the rotors of a restored TS are re-checked for its reactive ring
+                    species.determine_rotors(reaction=self.rxn_dict.get(species.rxn_index))
                 if not self.job_types['opt'] and species.final_xyz is not None:
                     # opt wasn't asked for, and it's not needed, declare it as converged
                     self.output[species.label]['job_types']['opt'] = True
@@ -1171,6 +1174,13 @@ class Scheduler(object):
             tsg (int, optional): TSGuess number if optimizing TS guesses.
             xyz (dict | list[dict], optional): The 3D coordinates for the species.
         """
+        if job_type in ['scan', 'directed_scan'] and isinstance(label, str) and rotor_index is not None:
+            rotor = (self.species_dict[label].rotors_dict or dict()).get(rotor_index)
+            if rotor is not None and is_reactive_ring_rejection(rotor):
+                # Every scan submission and retry passes here, e.g., an insufficient-memory rerun from end_job().
+                logger.info(f"Not submitting a {job_type} job for rotor {rotor.get('pivots')} of {label}: "
+                            f"its torsion lies in the reactive ring of the TS.")
+                return
         max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
         species = None
@@ -1826,6 +1836,9 @@ class Scheduler(object):
         if self.job_types['rotors'] and isinstance(self.species_dict[label].rotors_dict, dict):
             ess_rotor_indices = []  # Collected for potential pipe batching below.
             for i, rotor in self.species_dict[label].rotors_dict.items():
+                if is_reactive_ring_rejection(rotor):
+                    # Never re-scanned, also not when a previous scan's file is missing.
+                    continue
                 if rotor['scan_path'] and os.path.isfile(rotor['scan_path']):
                     continue
                 # Since this function is relevant for in multiple cases, all cases are listed for debugging
@@ -2734,8 +2747,7 @@ class Scheduler(object):
 
         # Spawn scan jobs.
         if self.job_types['rotors'] and self.species_dict[label].irc_label is None:
-            if not self.species_dict[label].rotors_dict:
-                self.species_dict[label].determine_rotors()
+            self.species_dict[label].determine_rotors(reaction=self.rxn_dict.get(self.species_dict[label].rxn_index))
             self.run_scan_jobs(label)
 
         # Spawn post sp actions if this is a composite job.
@@ -2873,6 +2885,12 @@ class Scheduler(object):
                         or if ``xyz`` wasn't given for a cont_opt job.
             SchedulerError: If the rotor scan resolution as defined in settings.py is illegal.
         """
+        if is_reactive_ring_rejection(self.species_dict[label].rotors_dict[rotor_index]):
+            # E.g., a continuous scan restored from a restart, whose rotor the reactive-ring check then rejected.
+            logger.info(f"Not spawning directed scan jobs for rotor "
+                        f"{self.species_dict[label].rotors_dict[rotor_index]['pivots']} of {label}: "
+                        f"its torsion lies in the reactive ring of the TS.")
+            return
         increment = rotor_scan_resolution
         if divmod(360, increment)[1]:
             raise SchedulerError(f'The directed scan got an illegal scan resolution of {increment}')
@@ -4369,6 +4387,12 @@ class Scheduler(object):
             label (str): The species label.
             job (JobAdapter): The rotor scan job object.
         """
+        rotor = self.species_dict[label].rotors_dict.get(job.rotor_index)
+        if rotor is not None and is_reactive_ring_rejection(rotor):
+            # E.g., a scan restored from a restart that was running when the reactive-ring check rejected its rotor.
+            logger.info(f"Not using the scan of rotor {rotor.get('pivots')} of {label}: "
+                        f"its torsion lies in the reactive ring of the TS.")
+            return None
         # An 'Internal coordinate error' cannot be handled by troubleshooting, so we don't even try.
         # It is usually related to bond or angle changes which mess up the internal coordinates during the scan.
         invalidate, actions, energies, angles = False, list(), list(), list()

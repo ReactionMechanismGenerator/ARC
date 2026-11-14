@@ -19,9 +19,188 @@ from arc.exceptions import ConformerError
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.group import GroupAtom, GroupBond, Group
 from arc.molecule.molecule import Molecule
+from arc.reaction import ARCReaction
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
 
+
+# wB97X-D/def2-TZVP geometries. TS0: nC3H7OO <=> QOOH (1,5 H-shift, a 6-membered TS ring through the migrating H);
+# TS1: CH3 + C2H6 <=> CH4 + C2H5 (an H abstraction, a C-C rotor outside any ring). Atom order of the reactants.
+NC3H7OO_XYZ = """C 1.90381600 -0.70022500 0.13883600
+C 1.21054400 0.60047800 -0.24715600
+C -0.19976500 0.71445900 0.28533200
+O -1.00711400 -0.29768200 -0.36067400
+O -2.21670900 -0.32410300 0.11009200
+H 1.36776000 -1.56423100 -0.25480700
+H 2.92086100 -0.72822400 -0.25313900
+H 1.95960300 -0.80548600 1.22454600
+H 1.77067100 1.45475100 0.14144900
+H 1.18816400 0.71269400 -1.33399800
+H -0.25286400 0.53525800 1.36095200
+H -0.65118100 1.68125300 0.05758000"""
+QOOH_XYZ = """C 2.00064600 -0.73620400 0.13883500
+C 1.34337700 0.54950800 -0.20309800
+C -0.08343700 0.66837200 0.30364500
+O -0.84835000 -0.30040100 -0.38782200
+O -2.15355400 -0.29675100 0.17539200
+H 3.07421100 -0.83735800 0.06042900
+H 1.41048600 -1.61949500 0.33867900
+H 1.91376400 1.39109900 0.20393900
+H 1.33719200 0.70369400 -1.29277500
+H -0.48322100 1.66990100 0.10721700
+H -0.13374700 0.47316200 1.37891800
+H -2.66698000 0.10615000 -0.53326800"""
+TS0_XYZ = """C 1.33169900 -0.85305000 0.02353700
+C 1.13332000 0.62291300 -0.15730900
+C -0.27281400 1.04834700 0.30383500
+O -1.22610200 0.25841300 -0.36621000
+O -1.12844900 -1.03237500 0.13170500
+H 0.00738800 -1.24166800 0.00259200
+H 1.80904300 -1.39563100 -0.78626700
+H 1.63048600 -1.18517600 1.01469500
+H 1.24802500 0.90089700 -1.20523700
+H 1.86273600 1.19579200 0.42519600
+H -0.38593600 0.92971000 1.38557100
+H -0.48855700 2.07851200 0.01910900"""
+CH3_XYZ = """C 0.00000000 0.00000000 0.00000000
+H -0.00000000 1.07942400 0.00000000
+H -0.93480900 -0.53971200 0.00000000
+H 0.93480900 -0.53971200 0.00000000"""
+C2H6_XYZ = """C 0.00000000 0.00000000 0.76139500
+C -0.00000000 -0.00000000 -0.76139500
+H 0.00000000 1.01711100 1.15724100
+H 0.88084400 -0.50855600 1.15724100
+H -0.88084400 -0.50855600 1.15724100
+H 0.88084400 0.50855600 -1.15724100
+H -0.88084400 0.50855600 -1.15724100
+H -0.00000000 -1.01711100 -1.15724100"""
+CH4_XYZ = """C 0.00000000 0.00000000 0.00000000
+H 0.62869900 0.62869900 0.62869900
+H -0.62869900 -0.62869900 0.62869900
+H -0.62869900 0.62869900 -0.62869900
+H 0.62869900 -0.62869900 -0.62869900"""
+C2H5_XYZ = """C -0.69115000 0.00000000 -0.00179300
+C 0.79052600 0.00000000 -0.01858400
+H -1.10178500 0.88528600 -0.49189600
+H -1.08529900 -0.00000300 1.02496700
+H -1.10178500 -0.88528300 -0.49190000
+H 1.34630500 0.92579700 0.04054700
+H 1.34630500 -0.92579800 0.04054700"""
+TS1_XYZ = """C 1.92746300 -0.19016800 0.00000000
+H 1.99295400 -0.78208000 -0.90843600
+H 1.99296700 -0.78205300 0.90845300
+H 2.57831400 0.67924400 -0.00001800
+C -1.46834300 -0.49084500 0.00000000
+C -0.59123500 0.73401500 0.00000000
+H -1.28567800 -1.10772200 -0.88209100
+H -2.52981000 -0.22543100 -0.00000200
+H -1.28568000 -1.10772000 0.88209300
+H -0.66281800 1.34469300 -0.89878200
+H 0.65525500 0.31836200 0.00000100
+H -0.66281900 1.34469400 0.89878200"""
+
+NC3H7_XYZ = """C 1.30429200 -0.29835500 -0.03942500
+C 0.07546700 0.56971700 0.06371900
+C -1.22640800 -0.25297200 -0.04498200
+H 2.23913800 0.11010100 -0.37442700
+H 1.31059500 -1.27285500 0.41364800
+H 0.07582300 1.10364500 1.01373300
+H 0.09405500 1.32410900 -0.71596400
+H -1.27058600 -0.99783400 0.74238300
+H -2.09706700 0.38691100 0.04417700
+H -1.27206900 -0.76441600 -0.99942000"""
+PROPANOL_XYZ = """C -1.177897 0.755153 0.073556
+C -0.380966 -0.495790 -0.267304
+C 0.938463 -0.566164 0.491252
+O 0.713693 -0.693046 1.888315
+H -2.128559 0.756283 -0.469048
+H -0.631835 1.662616 -0.202593
+H -1.398645 0.798717 1.144850
+H -0.981468 -1.381838 -0.033892
+H -0.186724 -0.499976 -1.346096
+H 1.533426 -1.423648 0.161645
+H 1.527481 0.340393 0.319616
+H 0.208762 -1.511813 2.030402"""
+BUTANOL_XYZ = """C -1.793982 -0.401731 0.538808
+C -0.541508 0.115133 -0.156181
+O -0.555639 1.539696 -0.130590
+C 0.725390 -0.386639 0.540096
+C 1.993137 0.058217 -0.177408
+H -1.842751 -0.046699 1.574133
+H -2.692759 -0.028384 0.036177
+H -1.826020 -1.495455 0.539820
+H -0.543374 -0.204756 -1.204338
+H -1.358888 1.833613 -0.593181
+H 0.712741 -1.481411 0.593610
+H 0.762403 -0.004602 1.567611
+H 2.080331 1.149051 -0.194176
+H 2.005911 -0.304561 -1.210115
+H 2.875008 -0.341475 0.333285"""
+MESO_BUTANEDIOL_XYZ = """C -1.823832 -0.173344 -0.579532
+C -0.628502 0.134292 0.317332
+O -0.780757 -0.568829 1.549364
+C 0.704541 -0.252607 -0.355959
+C 1.906557 -0.008668 0.551571
+O 0.886441 0.485508 -1.566770
+H -1.772049 0.374791 -1.524822
+H -2.759117 0.095819 -0.076693
+H -1.881829 -1.245566 -0.796682
+H -0.627159 1.208207 0.539172
+H -1.644809 -0.324133 1.923323
+H 0.686825 -1.316854 -0.618253
+H 1.968672 1.045319 0.843960
+H 1.860013 -0.620375 1.457295
+H 2.836479 -0.243774 0.022445
+H 1.068527 1.410214 -1.326702"""
+RR_BUTANEDIOL_XYZ = """C -1.465591 -0.629174 0.199053
+C -0.651891 0.660118 0.246618
+O -0.432331 1.014257 1.611932
+C 0.697806 0.578333 -0.497909
+C 1.667160 -0.451480 0.075401
+O 0.490908 0.315060 -1.887332
+H -1.663305 -0.947307 -0.828397
+H -2.428123 -0.485640 0.702793
+H -0.959936 -1.440445 0.732647
+H -1.249194 1.456464 -0.214011
+H -1.304004 1.166236 2.016449
+H 1.182351 1.559552 -0.427999
+H 1.873724 -0.266631 1.133511
+H 1.283706 -1.470762 -0.037049
+H 2.615709 -0.418664 -0.472076
+H 0.343011 -0.639917 -1.994582"""
+BUTENE_XYZ = """C 1.945302 0.077601 -0.111400
+C 0.491463 0.043758 -0.454466
+C -0.491463 -0.043757 0.454466
+C -1.945302 -0.077601 0.111400
+H 2.458789 -0.766129 -0.582397
+H 2.117603 0.022761 0.968127
+H 2.393913 1.004270 -0.482107
+H 0.246793 0.094777 -1.513291
+H -0.246793 -0.094774 1.513291
+H -2.458792 0.766126 0.582400
+H -2.393910 -1.004272 0.482105
+H -2.117604 -0.022760 -0.968127"""
+
+ETHANOL_XYZ = """C 0.888123 0.170148 -0.004166
+C -0.461982 -0.515927 0.019120
+O -1.459811 0.359276 -0.486113
+H 0.873683 1.074016 0.613714
+H 1.671031 -0.497154 0.366828
+H 1.143232 0.484125 -1.021639
+H -0.735379 -0.809951 1.037005
+H -0.446407 -1.412959 -0.606688
+H -1.472491 1.148426 0.081939"""
+TS_ETHANOL_OH_XYZ = """C 0.888123 0.170148 -0.004166
+C -0.461982 -0.515927 0.019120
+O -1.459811 0.359276 -0.486113
+H 0.873683 1.074016 0.613714
+H 1.671031 -0.497154 0.366828
+H 1.143232 0.484125 -1.021639
+H -0.786798 -0.865250 1.228445
+H -0.446407 -1.412959 -0.606688
+H -1.472491 1.148426 0.081939
+O -1.099122 -1.201137 2.391258
+H -1.588516 -0.478191 2.814037"""
 
 class TestConformers(unittest.TestCase):
     """
@@ -34,6 +213,14 @@ class TestConformers(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.rxn0 = ARCReaction(r_species=[ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)],
+                               p_species=[ARCSpecies(label='QOOH', smiles='[CH2]CCOO', xyz=QOOH_XYZ)])
+        cls.rxn1 = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=CH3_XYZ),
+                                          ARCSpecies(label='C2H6', smiles='CC', xyz=C2H6_XYZ)],
+                               p_species=[ARCSpecies(label='CH4', smiles='C', xyz=CH4_XYZ),
+                                          ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=C2H5_XYZ)])
+        cls.ts0 = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        cls.ts1 = ARCSpecies(label='TS1', is_ts=True, xyz=TS1_XYZ)
         xyz1 = """O      -1.48027320    0.36597456    0.41386552
 C      -0.49770656   -0.40253648   -0.26500019
 C       0.86215119    0.24734211   -0.11510338
@@ -2996,6 +3183,147 @@ Cl      2.38846685    0.24054066    0.55443324
         mol = Molecule(smiles=smiles)
         confs = conformers.generate_conformers(mol_list=[mol], label='spc_1')
         self.assertGreater(len(confs), 0)
+
+
+    def test_is_ring_twist(self):
+        """Test identifying a torsion whose pivot bond lies on a ring"""
+        self.assertFalse(conformers.is_ring_twist(bonds=set(), pivots=(0, 1)))
+        self.assertFalse(conformers.is_ring_twist(bonds={(0, 1), (1, 2), (2, 3)}, pivots=(1, 2)))
+        ring = {(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (0, 5), (0, 6), (6, 7)}
+        for pivots in [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0), (2, 1)]:
+            self.assertTrue(conformers.is_ring_twist(bonds=ring, pivots=pivots), pivots)
+        for pivots in [(0, 6), (6, 7), (8, 9)]:
+            self.assertFalse(conformers.is_ring_twist(bonds=ring, pivots=pivots), pivots)
+        ts0_bonds = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=self.rxn0)[0]
+        for pivots in [(0, 1), (1, 2), (2, 3)]:
+            self.assertTrue(conformers.is_ring_twist(bonds=ts0_bonds, pivots=pivots), pivots)
+        ts1_bonds = conformers.get_ts_bonds(mol=self.ts1.mol, xyz=self.ts1.get_xyz(), reaction=self.rxn1)[0]
+        self.assertFalse(conformers.is_ring_twist(bonds=ts1_bonds, pivots=(4, 5)))
+
+    def test_get_ts_bonds(self):
+        """Test building the TS graph from the reaction and from the TS geometry"""
+        mol_bonds = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=None)[0]
+        self.assertNotIn((0, 5), mol_bonds)
+        self.assertNotIn((4, 5), mol_bonds)
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=self.rxn0)
+        self.assertLessEqual({(0, 5), (4, 5)}, bonds)
+        self.assertEqual(sources, ['reaction', 'geometry'])
+        self.assertEqual(reason, '')
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=None)
+        self.assertLessEqual({(0, 5), (4, 5)}, bonds)
+        self.assertEqual(sources, ['geometry'])
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=self.rxn0)
+        self.assertLessEqual({(0, 5), (4, 5)}, bonds)
+        self.assertEqual(sources, ['reaction'])
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=None)
+        self.assertEqual(bonds, mol_bonds)
+        self.assertEqual(sources, [])
+        self.assertIn('no reaction', reason)
+        self.assertIn('no TS geometry', reason)
+        # The atom map picks an H of the other ethane C than the one abstracted in the TS1 geometry,
+        # so that formed bond is not a TS bond and must not close a false ring through the C-C rotor.
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts1.mol, xyz=self.ts1.get_xyz(), reaction=self.rxn1)
+        self.assertIn((0, 10), bonds)
+        self.assertNotIn((0, 6), bonds)
+        # A reaction whose bonds cannot be determined is skipped with the reason, it does not raise.
+        broken_rxn = ARCReaction(r_species=self.rxn0.r_species, p_species=self.rxn0.p_species)
+        broken_rxn.atom_map = [0] * 12
+        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=broken_rxn)
+        self.assertEqual(sources, ['geometry'])
+        self.assertIn('ValueError', reason)
+        self.assertLessEqual({(0, 5), (4, 5)}, bonds)
+        # A TS geometry not in the atom order of the reactants is not judged by the reaction's bonds.
+        xyz = self.ts0.get_xyz()
+        order = [4, 1, 2, 3, 0] + list(range(5, 12))
+        permuted = converter.xyz_from_data(coords=[xyz['coords'][i] for i in order],
+                                           symbols=[xyz['symbols'][i] for i in order])
+        permuted_mol = perceive_molecule_from_xyz(permuted)
+        bonds, sources, reason = conformers.get_ts_bonds(mol=permuted_mol, xyz=permuted, reaction=self.rxn0)
+        self.assertEqual(sources, ['geometry'])
+        self.assertIn('atom order', reason)
+        self.assertLessEqual({(4, 5), (0, 5)}, bonds)
+        # Without a TS geometry, a TS 2D graph in another atom order with the same element sequence is caught by
+        # the reactant bonds it lacks.
+        order = [0, 2, 1] + list(range(3, 12))
+        swapped = converter.xyz_from_data(coords=[xyz['coords'][i] for i in order],
+                                          symbols=[xyz['symbols'][i] for i in order])
+        self.assertEqual(swapped['symbols'], xyz['symbols'])
+        bonds, sources, reason = conformers.get_ts_bonds(mol=perceive_molecule_from_xyz(swapped), xyz=None,
+                                                         reaction=self.rxn0)
+        self.assertEqual(sources, [])
+        self.assertIn('atom order', reason)
+class TestGraphStereocenters(unittest.TestCase):
+    """
+    Contains unit tests for perceiving the stereocenters of a well's 2D graph (ARC issue #413).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+        cls.nc3h7oo = ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)
+        cls.qooh = ARCSpecies(label='QOOH_1_5', smiles='[CH2]CCOO', xyz=QOOH_XYZ)
+        cls.c2h6 = ARCSpecies(label='C2H6', smiles='CC', xyz=C2H6_XYZ)
+        cls.ch4 = ARCSpecies(label='CH4', smiles='C', xyz=CH4_XYZ)
+        cls.nc3h7 = ARCSpecies(label='nC3H7', smiles='[CH2]CC', xyz=NC3H7_XYZ)
+        cls.propanol = ARCSpecies(label='propanol', smiles='CCCO', xyz=PROPANOL_XYZ)
+        cls.butanol = ARCSpecies(label='2-butanol', smiles='CC(O)CC', xyz=BUTANOL_XYZ)
+        cls.meso_butanediol = ARCSpecies(label='meso', smiles='CC(O)C(C)O', xyz=MESO_BUTANEDIOL_XYZ)
+        cls.rr_butanediol = ARCSpecies(label='RR', smiles='CC(O)C(C)O', xyz=RR_BUTANEDIOL_XYZ)
+        cls.butene = ARCSpecies(label='2-butene', smiles='C/C=C/C', xyz=BUTENE_XYZ)
+
+    @staticmethod
+    def chiral(spc: ARCSpecies, xyz: dict | None = None) -> bool | None:
+        """Get whether the graph of a well is chiral, discarding the stereocenters and the reason"""
+        return conformers.get_graph_stereocenters(label=spc.label, mol=spc.mol, xyz=xyz or spc.get_xyz())[0]
+
+    def test_trivial(self):
+        """Test that methane is not chiral"""
+        self.assertFalse(self.chiral(self.ch4))
+
+    def test_achiral_graph_chiral_geometry(self):
+        """Test that a C1 conformer of an achiral molecule, and its mirror image, have no stereocenter (ARC #413)"""
+        for spc in [self.propanol, self.nc3h7, self.nc3h7oo, self.qooh]:
+            self.assertFalse(self.chiral(spc), spc.label)
+            self.assertFalse(self.chiral(spc, xyz=conformers.mirror_xyz(spc.get_xyz())), spc.label)
+
+    def test_stereocenter(self):
+        """Test that a species with a real stereocenter is chiral, as is its mirror image, and the center is named"""
+        chiral, centers, _ = conformers.get_graph_stereocenters(self.butanol.label, self.butanol.mol,
+                                                                self.butanol.get_xyz())
+        self.assertTrue(chiral)
+        self.assertEqual([self.butanol.mol.atoms[i].element.symbol for i in centers], ['C'])
+        self.assertTrue(self.chiral(self.butanol, xyz=conformers.mirror_xyz(self.butanol.get_xyz())))
+        self.assertTrue(self.chiral(self.rr_butanediol))
+
+    def test_meso_and_double_bond(self):
+        """Test that a meso compound and an E/Z-only species are not chiral"""
+        self.assertFalse(self.chiral(self.meso_butanediol))
+        self.assertFalse(self.chiral(self.butene))
+
+    def test_isotopes(self):
+        """Test that ethanol is achiral, while ethanol with one CH2 hydrogen replaced by deuterium is chiral"""
+        ethanol = ARCSpecies(label='ethanol', smiles='CCO', xyz=ETHANOL_XYZ)
+        xyz = ethanol.get_xyz()
+        self.assertFalse(self.chiral(ethanol))
+        isotopes = list(xyz['isotopes'])
+        isotopes[6] = 2
+        xyz_d = converter.xyz_from_data(coords=xyz['coords'], symbols=xyz['symbols'], isotopes=isotopes)
+        self.assertTrue(self.chiral(ethanol, xyz=xyz_d))
+
+    def test_undecidable(self):
+        """Test that a missing graph or geometry, or a mismatch between them, gives None with a reason"""
+        chiral, _, reason = conformers.get_graph_stereocenters(label='x', mol=None, xyz=self.ch4.get_xyz())
+        self.assertIsNone(chiral)
+        self.assertIn('graph', reason)
+        chiral, _, reason = conformers.get_graph_stereocenters(label='x', mol=self.ch4.mol, xyz=None)
+        self.assertIsNone(chiral)
+        self.assertIn('geometry', reason)
+        chiral, _, reason = conformers.get_graph_stereocenters(label='x', mol=self.ch4.mol, xyz=self.c2h6.get_xyz())
+        self.assertIsNone(chiral)
+        self.assertIn('order', reason)
 
 
 if __name__ == '__main__':
