@@ -344,6 +344,8 @@ one-based-index, calculation-DAG, or payload nesting conversion.
 | `multiplicity` | `int?` | Spin multiplicity |
 | `converged` | `bool` | Whether all requested jobs converged |
 | `is_ts` | `false` | Always `false` for species |
+| `conformer_verified` | `bool?` | `true` once every rotor was scanned and checked and no lower conformer is pending or unresolved; `false` when a rotor scan found a lower conformer ARC could not reach (re-optimization returned to the previous geometry, or troubleshooting was exhausted or not applied); `null` when nothing checked it (e.g., no scanned rotors). A `false` entry is left out of the RMG libraries unless `allow_not_verified_in_libraries` is set |
+| `conformer_verified_cause` | `str?` | Why `conformer_verified` is `false`, including the energy gap; `null` otherwise |
 | `smiles` | `str?` | SMILES string |
 | `inchi` | `str?` | InChI identifier |
 | `inchi_key` | `str?` | InChI key |

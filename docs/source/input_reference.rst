@@ -75,6 +75,8 @@ Job selection and resources:
 * ``trsh_ess_jobs`` - troubleshoot failed ESS jobs. Default: ``true``.
 * ``trsh_rotors`` - troubleshoot failed rotor scans. Default: ``true``.
 * ``skip_nmd`` - skip normal-mode-displacement checks.
+* ``allow_not_verified_in_libraries`` - write not verified species and reactions (``conformer_verified: false``
+  in ``output.yml``) to the RMG libraries, with the cause in their comment. Default ``False``: they are left out.
 * ``report_e_elect`` - report electronic energy.
 
 Software and statmech:

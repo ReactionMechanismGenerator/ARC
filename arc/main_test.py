@@ -258,6 +258,16 @@ class TestARC(unittest.TestCase):
                    rotor_scan_resolution=20.0)
         self.assertEqual(arc0.rotor_scan_resolution, 20.0)
 
+    def test_allow_not_verified_in_libraries_must_be_a_bool(self):
+        """A false-like string (e.g. YAML ``no``, loaded as the string 'no') is refused, not read as consent."""
+        for value in ('no', 'false', 'off', 1):
+            with self.assertRaises(InputError):
+                ARC(project='arc_test_not_verified_str', allow_not_verified_in_libraries=value,
+                    project_directory=os.path.join(self.scratch_dir, 'arc_test_not_verified_str'))
+        self.assertTrue(ARC(project='arc_test_not_verified_true',
+                            project_directory=os.path.join(self.scratch_dir, 'arc_test_not_verified_true'),
+                            allow_not_verified_in_libraries=True).allow_not_verified_in_libraries)
+
     def test_check_project_name(self):
         """Test project name invalidity"""
         with self.assertRaises(InputError):
