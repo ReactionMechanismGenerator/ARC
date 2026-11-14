@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.scheduler module
 """
 
+import copy
 import logging
 import tempfile
 import unittest
@@ -28,6 +29,7 @@ from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_run import build_rotor_scan_1d_tasks
 from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_state
 from arc.level import Level, get_freq_level_for_composite_method
+from arc.output import write_output_yml
 from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
                            MIXED_SCF_REFERENCE_MESSAGE, SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
@@ -1424,6 +1426,167 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertIsNone(species.stability_pending_opt_job)
         self.assertEqual(species.derived_stability_verdict['verdict'], 'external_instability')
         self.assertTrue(adopted_reference_is_unrestricted(species))
+
+    def _irc_scheduler(self, irc_file_name='rxn_1_irc_1.out', multiplicity=2):
+        """
+        Build a testing Scheduler holding a TS and one regular species, plus a forward IRC job of that TS.
+
+        Args:
+            irc_file_name (str, optional): The IRC output in arc/testing/irc whose geometry the TS takes.
+            multiplicity (int, optional): The TS multiplicity, matching that IRC output.
+
+        Returns:
+            tuple: The scheduler, the TS label, and the IRC job.
+        """
+        ts_xyz = parser.parse_geometry(log_file_path=os.path.join(ARC_TESTING_PATH, 'irc', irc_file_name))
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=ts_xyz, multiplicity=multiplicity, charge=0)
+        sched = Scheduler(project='project_test_irc', ess_settings=self.ess_settings,
+                          species_list=[ts, self.spc1], composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=self.project_directory, testing=True,
+                          job_types=self.job_types1, orbitals_level=default_levels_of_theory['orbitals'],
+                          adaptive_levels=None)
+        job = job_factory(job_adapter='gaussian', project='project_test_irc', ess_settings=self.ess_settings,
+                          species=[ts], xyz=ts_xyz, job_type='irc', irc_direction='forward',
+                          level=Level(repr={'method': 'wb97xd', 'basis': 'def2svp'}),
+                          project_directory=self.project_directory, job_num=1587)
+        return sched, ts.label, job
+
+    @staticmethod
+    def _write_irc_output(job, content=''):
+        """
+        Write the output file an IRC job left behind.
+
+        Args:
+            job (JobAdapter): The IRC job.
+            content (str, optional): The file content; empty by default, as a node fault leaves it.
+        """
+        os.makedirs(os.path.dirname(job.local_path_to_output_file), exist_ok=True)
+        with open(job.local_path_to_output_file, 'w') as f:
+            f.write(content)
+
+    @staticmethod
+    def _irc_state(sched, label):
+        """
+        Snapshot the state a failed IRC must not change.
+
+        Args:
+            sched (Scheduler): The scheduler.
+            label (str): The TS label.
+
+        Returns:
+            dict: Deep copies of the relevant state.
+        """
+        return copy.deepcopy({'irc_paths': sched.output[label]['paths']['irc'],
+                              'irc_directions': sched.output[label]['paths'].get('irc_directions', list()),
+                              'irc_label': sched.species_dict[label].irc_label,
+                              'unique_species_labels': sched.unique_species_labels,
+                              'species_labels': sorted(sched.species_dict.keys()),
+                              'other_output': sched.output['methylamine']})
+
+    def _assert_failed_irc_left_no_trace(self, sched, label, job, before):
+        """
+        Assert that a failed IRC was recorded as an error and changed nothing else.
+
+        Args:
+            sched (Scheduler): The scheduler.
+            label (str): The TS label.
+            job (JobAdapter): The failed IRC job.
+            before (dict): Deep copies of the state taken before the IRC was handled.
+        """
+        self.assertEqual(sched.output[label]['paths']['irc'], before['irc_paths'])
+        self.assertEqual(sched.output[label]['paths'].get('irc_directions', list()), before['irc_directions'])
+        self.assertFalse(sched.output[label]['job_types'].get('irc'))
+        self.assertEqual(sched.species_dict[label].irc_label, before['irc_label'])
+        self.assertEqual(sched.unique_species_labels, before['unique_species_labels'])
+        self.assertEqual(sorted(sched.species_dict.keys()), before['species_labels'])
+        self.assertIsNone(sched.species_dict[label].ts_checks['IRC'])
+        self.assertIn(job.job_name, sched.output[label]['errors'])
+        self.assertIn('NoOutput', sched.output[label]['errors'])
+        self.assertEqual(sched.output['methylamine'], before['other_output'])
+
+    def test_an_irc_with_an_empty_output_is_recorded_as_failed_and_spawns_nothing(self):
+        """Test that an IRC whose output is empty, has no geometry, or is cut mid-geometry is a failed IRC"""
+        with open(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'), 'r') as f:
+            lines = f.readlines()
+        orientation_line = next(i for i, line in enumerate(lines) if 'orientation:' in line)
+        cut_mid_geometry = ''.join(lines[:orientation_line + 8])
+        for content in ['', ' Entering Gaussian System, Link 0=g16\n Initial command:\n', cut_mid_geometry]:
+            sched, label, job = self._irc_scheduler()
+            self._write_irc_output(job, content=content)
+            job.job_status = ['done', {'status': 'errored', 'keywords': ['NoOutput'],
+                                       'error': 'Log file could not be read', 'line': ''}]
+            before = self._irc_state(sched, label)
+            with patch.object(sched, 'run_job') as run_job:
+                sched.spawn_post_irc_jobs(label=label, job=job)
+            self.assertFalse(run_job.called)
+            self._assert_failed_irc_left_no_trace(sched, label, job, before)
+
+    def test_a_failed_irc_writes_its_cause_to_the_ts_entry_of_output_yml(self):
+        """Test that the cause of a failed IRC reaches the TS's ts_checks warnings in output.yml"""
+        sched, label, job = self._irc_scheduler()
+        self._write_irc_output(job)
+        job.job_status = ['done', {'status': 'errored', 'keywords': ['NoOutput'],
+                                   'error': 'Log file could not be read', 'line': ''}]
+        with patch.object(sched, 'run_job'):
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        self.assertIn(job.job_name, sched.species_dict[label].ts_checks['warnings'])
+        write_output_yml(project='project_test_irc', project_directory=self.project_directory,
+                         species_dict=sched.species_dict, reactions=list(), output_dict=sched.output,
+                         compute_thermo=False)
+        document = read_yaml_file(os.path.join(self.project_directory, 'output', 'output.yml'))
+        ts_entry = next(ts for ts in document['transition_states'] if ts['label'] == label)
+        self.assertIsNone(ts_entry['ts_checks']['IRC'])
+        self.assertFalse(ts_entry['irc_converged'])
+        self.assertEqual(ts_entry['irc_logs'], list())
+        self.assertIn(job.job_name, ts_entry['ts_checks']['warnings'])
+        self.assertIn('Log file could not be read', ts_entry['ts_checks']['warnings'])
+
+    def test_an_irc_with_a_parsable_output_spawns_its_species_and_opt(self):
+        """Test that a converged IRC, and an errored IRC that still holds a geometry, spawn as before"""
+        for file_name, multiplicity in [('rxn_1_irc_1.out', 2), ('irc_failed.out', 1)]:
+            sched, label, job = self._irc_scheduler(irc_file_name=file_name, multiplicity=multiplicity)
+            with open(os.path.join(ARC_TESTING_PATH, 'irc', file_name), 'r') as f:
+                self._write_irc_output(job, content=f.read())
+            expected_xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+            with patch.object(sched, 'run_job') as run_job:
+                sched.spawn_post_irc_jobs(label=label, job=job)
+            self.assertEqual(sched.output[label]['paths']['irc'], [job.local_path_to_output_file])
+            self.assertEqual(sched.output[label]['paths']['irc_directions'], ['forward'])
+            self.assertEqual(sched.species_dict[label].irc_label, 'IRC_TS0_1')
+            irc_spc = sched.species_dict['IRC_TS0_1']
+            self.assertEqual(irc_spc.irc_label, label)
+            self.assertTrue(almost_equal_coords_lists(irc_spc.get_xyz(), expected_xyz))
+            run_job.assert_called_once()
+            self.assertEqual(run_job.call_args.kwargs['label'], 'IRC_TS0_1')
+            self.assertEqual(run_job.call_args.kwargs['job_type'], 'opt')
+            self.assertEqual(sched.output[label]['errors'], '')
+
+    def test_a_restored_irc_job_with_an_empty_output_does_not_crash(self):
+        """Test that an IRC job restored from a restart file and found with an empty output does not crash"""
+        sched, label, job = self._irc_scheduler()
+        sched.output[label]['paths']['irc'] = [os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out')]
+        sched.output[label]['paths']['irc_directions'] = ['reverse']
+        sched.restart_dict = {'running_jobs': {label: [job.as_dict()]}}
+        sched.running_jobs, sched.job_dict = dict(), dict()
+        sched.restore_running_jobs()
+        restored_job = sched.job_dict[label]['irc'][job.job_name]
+        self.assertEqual(restored_job.irc_direction, 'forward')
+        self._write_irc_output(restored_job)
+        restored_job.job_status = ['done', {'status': 'errored', 'keywords': ['NoOutput'],
+                                            'error': 'Log file could not be read', 'line': ''}]
+        before = self._irc_state(sched, label)
+        with patch.object(sched, 'run_job') as run_job, \
+                patch('arc.scheduler.plotter.save_irc_traj_animation') as save_irc_traj_animation:
+            sched.spawn_post_irc_jobs(label=label, job=restored_job)
+        self.assertFalse(run_job.called)
+        self.assertFalse(save_irc_traj_animation.called)
+        self._assert_failed_irc_left_no_trace(sched, label, restored_job, before)
 
     def test_post_opt_jobs_proceed_where_no_stability_analysis_is_spawned(self):
         """Test that a species the analysis does not admit enqueues its freq and sp as usual"""
