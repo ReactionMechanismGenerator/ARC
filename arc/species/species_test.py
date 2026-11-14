@@ -3880,5 +3880,46 @@ class TestTSGuess(unittest.TestCase):
         self.assertFalse(self.tsg2.almost_equal_tsgs(self.tsg3))
 
 
+class TestSkippedMethods(unittest.TestCase):
+    """
+    Contains unit tests for the skipped_methods record of a TS species.
+    """
+
+    def test_a_new_ts_has_no_skipped_methods(self):
+        """A new TS species starts with an empty skipped_methods record."""
+        self.assertEqual(ARCSpecies(label='TS0', is_ts=True).skipped_methods, dict())
+        self.assertNotIn('skipped_methods', ARCSpecies(label='TS0', is_ts=True).as_dict())
+
+    def test_skipped_methods_round_trip(self):
+        """skipped_methods survives as_dict() and from_dict(), apart from unsuccessful_methods."""
+        ts = ARCSpecies(label='TS1', is_ts=True)
+        ts.skipped_methods = {'autotst': 'AUTOTST_PYTHON is not set', 'kinbot': 'KINBOT_PYTHON is not set'}
+        ts.unsuccessful_methods = ['gcn']
+        species_dict = ts.as_dict()
+        self.assertEqual(species_dict['skipped_methods'], ts.skipped_methods)
+        restored = ARCSpecies(species_dict=species_dict)
+        self.assertEqual(restored.skipped_methods, ts.skipped_methods)
+        self.assertEqual(restored.unsuccessful_methods, ['gcn'])
+
+    def test_an_old_record_with_a_skip_in_unsuccessful_methods_loads_unchanged(self):
+        """A record written before skipped_methods existed is not re-judged on restart."""
+        species_dict = ARCSpecies(label='TS2', is_ts=True).as_dict()
+        species_dict['unsuccessful_methods'] = ['autotst']
+        restored = ARCSpecies(species_dict=species_dict)
+        self.assertEqual(restored.unsuccessful_methods, ['autotst'])
+        self.assertEqual(restored.skipped_methods, dict())
+
+    def test_ts_report_lists_skipped_methods_apart(self):
+        """The TS report names skipped adapters and their causes under their own heading."""
+        ts = ARCSpecies(label='TS3', is_ts=True)
+        ts.chosen_ts_method = 'linear'
+        ts.successful_methods = ['linear']
+        ts.skipped_methods = {'autotst': 'AUTOTST_PYTHON is not set'}
+        ts.make_ts_report()
+        self.assertIn('skipped because their engine is not available', ts.ts_report)
+        self.assertIn('autotst (AUTOTST_PYTHON is not set)', ts.ts_report)
+        self.assertNotIn('unsuccessfully', ts.ts_report)
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

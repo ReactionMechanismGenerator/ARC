@@ -105,6 +105,8 @@ local_arc_path = os.path.join(home, '.arc')
 
 local_arc_settings_path = os.path.join(local_arc_path, 'settings.py')
 settings = {key: val for key, val in vars(arc_settings).items() if '__' not in key}
+# The setting names ~/.arc/settings.py set, so a caller can tell a user override from ARC's default.
+local_settings_keys = frozenset()
 if os.path.isfile(local_arc_settings_path):
     local_settings = dict()
     if local_arc_path not in sys.path:
@@ -116,6 +118,7 @@ if os.path.isfile(local_arc_settings_path):
     if local_settings:
         local_settings_dict = {key: val for key, val in vars(local_settings).items() if '__' not in key}
         settings.update(local_settings_dict)
+        local_settings_keys = frozenset(local_settings_dict)
         resolve_overridden_dependents(settings, local_settings_dict)
         # Set global_ess_settings to None if using a local settings file (ARC's defaults are dummies)
         settings['global_ess_settings'] = local_settings_dict['global_ess_settings'] \

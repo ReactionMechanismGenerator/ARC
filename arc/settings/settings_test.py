@@ -27,20 +27,14 @@ class TestExternalAdapterSettingsExposed(unittest.TestCase):
             self.assertTrue(hasattr(settings_mod, name), f"settings module missing attribute {name}")
 
     def test_default_ts_adapters_list(self):
-        """The default ``ts_adapters`` list must match main's default exactly."""
-        self.assertEqual(settings_mod.ts_adapters, ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb'])
+        """The default ``ts_adapters`` list is every registered adapter the family map dispatches."""
+        self.assertEqual(settings_mod.ts_adapters, ['heuristics', 'linear', 'autotst', 'gcn', 'xtb_gsm', 'orca_neb',
+                                                    'kinbot', 'goflow', 'rits'])
 
-    def test_ts_adapters_does_not_include_goflow_by_default(self):
-        """GoFlow's env (goflow_env + pretrained ckpt) is heavyweight, so it must
-        stay opt-in. Users enable it via ``ts_adapters: ['goflow', ...]`` in
-        their input.yml."""
-        self.assertNotIn('goflow', [a.lower() for a in settings_mod.ts_adapters])
-
-    def test_ts_adapters_does_not_include_rits_by_default(self):
-        """RitS's env (rits_env + pretrained ckpt) is heavyweight, so it must
-        stay opt-in. Users enable it via ``ts_adapters: ['rits', ...]`` in
-        their input.yml."""
-        self.assertNotIn('rits', [a.lower() for a in settings_mod.ts_adapters])
+    def test_ts_adapters_include_goflow_and_rits_by_default(self):
+        """GoFlow and RitS are in the family map, so a default run tries them; an absent engine is skipped."""
+        self.assertIn('goflow', settings_mod.ts_adapters)
+        self.assertIn('rits', settings_mod.ts_adapters)
 
 
 if __name__ == '__main__':

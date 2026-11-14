@@ -12,7 +12,7 @@ from arc.common import almost_equal_coords, ARC_PATH, get_logger, read_yaml_file
 from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter
+from arc.job.adapters.common import _initialize_adapter, missing_engine_file_reason
 from arc.job.env_run import run_in_conda_env
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
@@ -27,6 +27,16 @@ AUTOTST_PYTHON = settings['AUTOTST_PYTHON']
 
 
 logger = get_logger()
+
+
+def engine_unavailable_reason() -> str | None:
+    """
+    Report why AutoTST cannot run on this machine.
+
+    Returns:
+        str | None: ``None`` if the tst_env python is found, otherwise the reason.
+    """
+    return missing_engine_file_reason(AUTOTST_PYTHON, 'AUTOTST_PYTHON', 'the python of the tst_env conda env')
 
 
 class AutoTSTAdapter(JobAdapter):
@@ -215,10 +225,10 @@ class AutoTSTAdapter(JobAdapter):
         The reverse-direction reaction label repeats each species by the number of times it
         participates in its well, so a well with a repeated species stays atom-balanced.
         """
-        if not AUTOTST_PYTHON or not os.path.isfile(AUTOTST_PYTHON):
-            raise DependencyError('AutoTST python executable was not found. '
-                                    'Make sure the tst_env exists and AUTOTST_PYTHON is configured. '
-                                    f'See {self.url} for more information, or use the Makefile provided with ARC.')
+        reason = engine_unavailable_reason()
+        if reason is not None:
+            raise DependencyError(f'AutoTST python executable was not found: {reason}. '
+                                  f'See {self.url} for more information, or use the Makefile provided with ARC.')
         self._log_job_execution()
         self.initial_time = self.initial_time if self.initial_time else datetime.datetime.now()
 

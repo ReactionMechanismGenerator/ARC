@@ -32,7 +32,7 @@ from arc.common import (
 from arc.constants import E_h_kJmol
 from arc.exceptions import InputError
 from arc.imports import settings
-from arc.job.adapters.common import open_shell_character_source
+from arc.job.adapters.common import open_shell_character_source, TS_ADAPTERS_SOURCES
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
 from arc.parser.adapters.gaussian import parse_gaussian_constraints
@@ -128,6 +128,8 @@ def write_output_yml(
     arkane_level_of_theory=None,
     irc_requested: bool = True,
     t0: float | None = None,
+    ts_adapters: list[str] | None = None,
+    ts_adapters_source: str | None = None,
 ) -> None:
     """
     Write the consolidated output.yml to <project_directory>/output/output.yml.
@@ -155,6 +157,12 @@ def write_output_yml(
             Recorded only when it differs from sp_level.
         irc_requested (bool): Whether IRC jobs were requested for this run.
         t0 (float, optional): The epoch timestamp when the ARC run started.
+        ts_adapters (list, optional): The TS adapters the run used. Not recorded when ``None``.
+        ts_adapters_source (str, optional): Where ``ts_adapters`` came from: 'repo default',
+            '~/.arc/settings.py', or 'input file'. Required with ``ts_adapters``.
+
+    Raises:
+        InputError: If ``ts_adapters`` is given without a known source.
     """
     doc: dict[str, Any] = {}
 
@@ -179,6 +187,10 @@ def write_output_yml(
     doc['sp_level'] = _level_to_dict(sp_level)
     if neb_level is not None:
         doc['neb_level'] = _level_to_dict(neb_level)
+    if ts_adapters is not None:
+        if ts_adapters_source not in TS_ADAPTERS_SOURCES:
+            raise InputError(f'ts_adapters_source must be one of {TS_ADAPTERS_SOURCES}, got {ts_adapters_source!r}.')
+        doc['ts_adapters'] = {'adapters': list(ts_adapters), 'source': ts_adapters_source}
     doc['arkane_level_of_theory'] = _level_to_dict(arkane_level_of_theory)
     doc['freq_scale_factor'] = freq_scale_factor
     freq_scale_factor_key, freq_scale_factor_source = (
@@ -1926,6 +1938,8 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     if spc.is_ts:
         d['chosen_ts_method'] = getattr(spc, 'chosen_ts_method', None)
         d['successful_ts_methods'] = getattr(spc, 'successful_methods', None) or None
+        skipped = getattr(spc, 'skipped_methods', None)
+        d['skipped_ts_methods'] = dict(skipped) if isinstance(skipped, dict) and skipped else None
         d['neb_log'] = _make_rel_path(paths.get('neb') or None, project_directory)
         d['gsm_log'] = _make_rel_path(paths.get('gsm') or None, project_directory)
 

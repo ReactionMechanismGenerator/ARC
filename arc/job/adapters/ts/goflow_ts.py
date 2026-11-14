@@ -54,9 +54,10 @@ import numpy as np
 from rdkit import Chem
 
 from arc.common import ARC_PATH, get_logger, save_yaml_file, read_yaml_file
+from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter
+from arc.job.adapters.common import _initialize_adapter, engine_path
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import str_to_xyz, to_rdkit_mol, xyz_to_dmat, xyz_to_str
@@ -310,8 +311,8 @@ class GoFlowAdapter(JobAdapter):
             exe_type (str, optional): Either ``'incore'`` (run locally now) or
                 ``'queue'`` (just stage the input.yml + submit script).
         """
-        if not _goflow_environment_ready():
-            return
+        if not _goflow_environment_ready(log=False):
+            raise DependencyError(f'GoFlow is not available: {engine_unavailable_reason()}.')
         self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
         timeout_s = getattr(self, 'goflow_subprocess_timeout', 600)
 
@@ -664,36 +665,63 @@ def _within_goflow_supported_domain(rxn: 'ARCReaction') -> Tuple[bool, str]:
     return True, ''
 
 
-def _goflow_environment_ready() -> bool:
+def _is_file_of_min_size(path: object, min_size: int) -> bool:
     """
-    Verify that everything GoFlow needs at runtime is in place. Logs a clear
-    one-line warning per missing piece and returns ``False`` so the adapter
-    can skip cleanly without raising.
+    Check whether ``path`` is an existing file of at least ``min_size`` bytes.
+
+    Args:
+        path (object): The path, a value that is not a path is never a file.
+        min_size (int): The minimal file size in bytes.
+
+    Returns:
+        bool: Whether the file exists and is large enough.
+    """
+    path = engine_path(path)
+    try:
+        return path is not None and os.path.isfile(path) and os.path.getsize(path) >= min_size
+    except OSError:
+        return False
+
+
+def engine_unavailable_reason() -> str | None:
+    """
+    Report what GoFlow is missing at runtime, every missing piece in one sentence.
 
     Note: ``torch.load``-level checkpoint validation is deferred to
     ``goflow_script.py`` (which runs in goflow_env where torch is available).
+
+    Returns:
+        str | None: ``None`` if GoFlow can run, otherwise the reason.
     """
-    ok = True
-    if not GOFLOW_PYTHON or not os.path.isfile(GOFLOW_PYTHON):
-        logger.warning('GoFlow adapter: goflow_env python not found '
-                       '(set GOFLOW_PYTHON or run `make install-goflow`). Skipping GoFlow TS guesses.')
-        ok = False
-    if not GOFLOW_REPO_PATH or not os.path.isdir(GOFLOW_REPO_PATH):
-        logger.warning('GoFlow adapter: goflow_lean source checkout not found '
-                       '(set ARC_GOFLOW_REPO or run `make install-goflow`). Skipping GoFlow TS guesses.')
-        ok = False
-    if not GOFLOW_CKPT_PATH or not os.path.isfile(GOFLOW_CKPT_PATH) \
-            or os.path.getsize(GOFLOW_CKPT_PATH) < _GOFLOW_CKPT_MIN_SIZE:
-        logger.warning('GoFlow adapter: pretrained checkpoint not found or too small '
-                       '(the in-repo file may be a 45-byte LFS pointer; set ARC_GOFLOW_CKPT to a real ckpt). '
-                       'Skipping GoFlow TS guesses.')
-        ok = False
-    if not GOFLOW_FEAT_DICT_PATH or not os.path.isfile(GOFLOW_FEAT_DICT_PATH) \
-            or os.path.getsize(GOFLOW_FEAT_DICT_PATH) < _GOFLOW_FEAT_DICT_MIN_SIZE:
-        logger.warning('GoFlow adapter: atom-feature dictionary not found or too small '
-                       '(set ARC_GOFLOW_FEAT_DICT to a real pickle). Skipping GoFlow TS guesses.')
-        ok = False
-    return ok
+    missing = list()
+    if engine_path(GOFLOW_PYTHON) is None or not os.path.isfile(engine_path(GOFLOW_PYTHON)):
+        missing.append('goflow_env python not found (set GOFLOW_PYTHON or run `make install-goflow`)')
+    if engine_path(GOFLOW_REPO_PATH) is None or not os.path.isdir(engine_path(GOFLOW_REPO_PATH)):
+        missing.append('goflow_lean source checkout not found (set ARC_GOFLOW_REPO or run `make install-goflow`)')
+    if not _is_file_of_min_size(GOFLOW_CKPT_PATH, _GOFLOW_CKPT_MIN_SIZE):
+        missing.append('pretrained checkpoint not found or too small (the in-repo file may be a 45-byte LFS '
+                       'pointer; set ARC_GOFLOW_CKPT to a real ckpt)')
+    if not _is_file_of_min_size(GOFLOW_FEAT_DICT_PATH, _GOFLOW_FEAT_DICT_MIN_SIZE):
+        missing.append('atom-feature dictionary not found or too small (set ARC_GOFLOW_FEAT_DICT to a real pickle)')
+    return '; '.join(missing) if missing else None
+
+
+def _goflow_environment_ready(log: bool = True) -> bool:
+    """
+    Verify that everything GoFlow needs at runtime is in place. Returns ``False``
+    if anything is missing so a caller (e.g. a test guard) can skip cleanly.
+    The adapter itself raises a ``DependencyError`` instead.
+
+    Args:
+        log (bool): When ``True`` (default), emit one warning naming every missing piece.
+
+    Returns:
+        bool: Whether GoFlow can run.
+    """
+    reason = engine_unavailable_reason()
+    if reason is not None and log:
+        logger.warning(f'GoFlow adapter: {reason}. Skipping GoFlow TS guesses.')
+    return reason is None
 
 
 register_job_adapter('goflow', GoFlowAdapter)

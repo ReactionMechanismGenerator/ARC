@@ -27,6 +27,7 @@ from jsonschema.validators import validator_for
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file
 from arc.constants import E_h_kJmol
+from arc.exceptions import InputError
 from arc.level import Level
 from arc.output import ArkaneProvenance, EnergyCorrections, write_output_yml
 from arc.reaction.reaction import ARCReaction
@@ -205,6 +206,7 @@ def make_transition_state() -> ARCSpecies:
     ts.chosen_ts = 0
     ts.chosen_ts_method = 'xtb_gsm'
     ts.successful_methods = ['xtb_gsm']
+    ts.skipped_methods = {'kinbot': 'KINBOT_PYTHON is not set'}
     guess = TSGuess(method='xtb_gsm', xyz=ts.get_xyz())
     guess.index = 0
     guess.method_sources = ['xtb_gsm']
@@ -513,11 +515,21 @@ class TestRichDocumentValidates(SchemaAssertionMixin, unittest.TestCase):
             freq_scale_factor=0.975,
             bac_type='p',
             t0=1700000000.0,
+            ts_adapters=['heuristics', 'linear', 'xtb_gsm'],
+            ts_adapters_source='~/.arc/settings.py',
         )
 
     def test_document_validates(self):
         """The whole document satisfies the schema."""
         self.assert_valid(self.document)
+
+    def test_the_run_records_its_ts_adapters_and_skipped_methods(self):
+        """The run-level ts_adapters record and the TS's skipped adapters reach the document."""
+        self.assertEqual(self.document['ts_adapters'],
+                         {'adapters': ['heuristics', 'linear', 'xtb_gsm'], 'source': '~/.arc/settings.py'})
+        ts = self.document['transition_states'][0]
+        self.assertEqual(ts['skipped_ts_methods'], {'kinbot': 'KINBOT_PYTHON is not set'})
+        self.assertEqual(ts['successful_ts_methods'], ['xtb_gsm'])
 
     def test_the_rich_shapes_are_actually_present(self):
         """Guard the guard: a document missing these would validate vacuously."""
@@ -723,9 +735,19 @@ class TestSparseDocumentValidates(SchemaAssertionMixin, unittest.TestCase):
         """A run with no levels, no reactions, and no results still validates."""
         self.assert_valid(self.document)
 
+    def test_ts_adapters_without_a_known_source_is_refused(self):
+        """The writer never emits a ts_adapters record the schema would reject."""
+        for source in (None, 'somewhere'):
+            with self.subTest(source=source), self.assertRaisesRegex(InputError, 'ts_adapters_source'):
+                build_output_document(project_directory=self.tmp_dir,
+                                      species_dict={'Ar': ARCSpecies(label='Ar', smiles='[Ar]')},
+                                      output_dict={'Ar': {'convergence': True, 'paths': {}, 'job_types': {}}},
+                                      ts_adapters=['linear'], ts_adapters_source=source)
+
     def test_omitted_and_null_fields_are_as_the_contract_states(self):
-        """``neb_level`` is absent; the per-species result fields are null."""
+        """``neb_level`` and ``ts_adapters`` are absent; the per-species result fields are null."""
         self.assertNotIn('neb_level', self.document)
+        self.assertNotIn('ts_adapters', self.document)
         self.assertIsNone(self.document['opt_level'])
         by_label = {entry['label']: entry for entry in self.document['species']}
         self.assertIsNone(by_label['failed']['statmech'])
@@ -1013,6 +1035,16 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
     def test_baseline_document_is_valid(self):
         """Every negative case below is only meaningful if the baseline passes."""
         self.assert_valid(self.document)
+
+    def test_an_unknown_ts_adapters_source_is_rejected(self):
+        """The ts_adapters source vocabulary is closed, so a consumer can tell a user override from the default."""
+        self.document['ts_adapters'] = {'adapters': ['linear'], 'source': 'somewhere'}
+        self.assert_invalid(self.document, 'somewhere')
+
+    def test_a_skipped_ts_method_without_a_cause_is_rejected(self):
+        """A skipped adapter always names why it was skipped."""
+        self.ts['skipped_ts_methods'] = {'kinbot': None}
+        self.assert_invalid(self.document, 'kinbot')
 
     def test_zero_based_scan_index_is_rejected(self):
         """``index_base`` is pinned to 1: a 0 would silently shift every atom."""

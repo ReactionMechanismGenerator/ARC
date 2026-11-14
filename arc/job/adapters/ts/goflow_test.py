@@ -35,6 +35,7 @@ from unittest import mock
 from rdkit import Chem
 
 from arc.common import read_yaml_file, save_yaml_file
+from arc.exceptions import DependencyError
 from arc.job.adapter import JobEnum
 from arc.job.adapters.common import (all_families_ts_adapters,
                                      default_incore_adapters,
@@ -592,15 +593,15 @@ class TestExecuteIncoreWithMockedSubprocess(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def test_skips_cleanly_when_environment_not_ready(self):
+    def test_raises_dependency_error_when_environment_not_ready(self):
         adapter = GoFlowAdapter(project='goflow_test',
                                 project_directory=self.tmpdir,
                                 job_type='tsg',
                                 reactions=[self.rxn],
                                 testing=False)
-        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts._goflow_environment_ready', return_value=False):
-            # Should not raise.
-            adapter.execute_incore()
+        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts.GOFLOW_PYTHON', None):
+            with self.assertRaisesRegex(DependencyError, 'goflow_env python not found'):
+                adapter.execute_incore()
         # No TSGuesses should have been added.
         if self.rxn.ts_species is not None:
             self.assertEqual(len(self.rxn.ts_species.ts_guesses), 0)

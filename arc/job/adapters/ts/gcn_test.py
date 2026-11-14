@@ -14,6 +14,7 @@ import unittest
 from unittest.mock import patch
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file
+from arc.exceptions import DependencyError
 import arc.job.adapters.ts.gcn_ts as ts_gcn
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
@@ -198,12 +199,13 @@ class TestGCNAdapter(unittest.TestCase):
         self.assertTrue(all(tsg.success for tsg in rxn.ts_species.ts_guesses))
 
     def test_execute_incore_gcn_unavailable(self):
-        """Test that execution degrades gracefully (no crash, no subprocess) when the ts_gcn env is missing."""
+        """Test that execution raises a DependencyError naming the cause, with no subprocess, when the ts_gcn env is missing."""
         rxn = self.get_reaction()
         adapter = self.get_adapter(rxn)
         with patch.object(ts_gcn, 'TS_GCN_PYTHON', None), \
                 patch.object(ts_gcn, 'run_in_conda_env') as mock_run:
-            adapter.execute_incore()
+            with self.assertRaisesRegex(DependencyError, 'TS_GCN_PYTHON'):
+                adapter.execute_incore()
         mock_run.assert_not_called()
         self.assertTrue(rxn.ts_species is None or len(rxn.ts_species.ts_guesses) == 0)
 
