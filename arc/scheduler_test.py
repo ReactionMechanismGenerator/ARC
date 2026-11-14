@@ -18,7 +18,8 @@ from types import SimpleNamespace
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
+from arc.common import (ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file,
+                        save_yaml_file)
 from arc.exceptions import DependencyError, ReactionError
 from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_incore_adapters,
                                       derived_instability_breaks_spin_symmetry, is_restricted,
@@ -3720,6 +3721,24 @@ H      -0.38158795    1.01273118   -0.02607927""")),
             sched.schedule_jobs()
         mock_check_all_done.assert_called_once_with(irc_label)
         self.assertEqual(sched.running_jobs, dict())
+
+    @patch('arc.scheduler.Scheduler.run_conformer_jobs')
+    def test_completed_tsg_job_is_in_restart_file(self, mock_run_conformer_jobs):
+        """Test that a TS guess recorded from a completed tsg job is saved to restart.yml."""
+        ts_label = 'TS_tsg_restart'
+        sched = self.make_irc_scheduler(ts_label=ts_label,
+                                        project_directory_name='arc_project_for_testing_delete_after_usage_tsg_restart')
+        ts_spc = sched.species_dict[ts_label]
+        tsg_path = os.path.join(sched.project_directory, 'tsg_output.yml')
+        save_yaml_file(path=tsg_path, content=[TSGuess(method='orca_neb', success=True, xyz=ts_spc.get_xyz()).as_dict()])
+        job = MagicMock(job_id='tsg_job', local_path_to_output_file=tsg_path, reactions=[SimpleNamespace(ts_species=ts_spc)])
+        sched.job_dict[ts_label]['tsg'] = {0: job}
+        sched.running_jobs[ts_label] = ['tsg0']
+        sched.save_restart, sched.restart_dict = True, dict()
+        with patch.object(sched, 'end_job', side_effect=lambda job, label, job_name: sched.running_jobs.pop(label)):
+            sched.schedule_jobs()
+        ts = next(spc for spc in read_yaml_file(sched.restart_path)['species'] if spc['label'] == ts_label)
+        self.assertIn('orca_neb', [s for tsg in ts['ts_guesses'] for s in tsg.get('method_sources') or []])
 
     @patch('arc.scheduler.Scheduler.run_job')
     def test_run_sp_monoatomic_dlpno(self, mock_run_job):
