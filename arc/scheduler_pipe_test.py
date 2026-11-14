@@ -18,6 +18,7 @@ from arc.job.pipe.pipe_state import (
     TaskState,
     TaskSpec,
     get_task_attempt_dir,
+    initialize_task,
     read_task_state,
     update_task_state,
 )
@@ -1682,6 +1683,36 @@ class TestSwitchTsCancelsStalePipeTasks(unittest.TestCase):
         pipe = sched.pipe_coordinator.submit_pipe_run('run_switch', [task])
         Scheduler.switch_ts(sched, 'tsx')
         self.assertEqual(read_task_state(pipe.pipe_root, 'tsx_scan_r0').status, 'CANCELLED')
+
+
+class TestRotorScanOwedIgnoresStaleTsTasks(unittest.TestCase):
+    """A restarted TS does not treat a pipe task of an abandoned guess as owing it a rotor scan."""
+
+    def _owed(self, stamp):
+        project = tempfile.mkdtemp(prefix='rotor_owed_')
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        sched = MagicMock()
+        sched.project_directory = project
+        species = MagicMock(is_ts=True, chosen_ts=1)
+        species.label = 'tsx'
+        pipe_root = os.path.join(project, 'calcs', 'TSs', 'tsx', 'pipe_rotor_scan_1d_run')
+        task = _make_task_spec('tsx_scan_r0', task_family='rotor_scan_1d', species_label='tsx')
+        task.ingestion_metadata = {'rotor_index': 0, **stamp}
+        initialize_task(pipe_root, task)
+        now = time.time()
+        update_task_state(pipe_root, 'tsx_scan_r0', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now, lease_expires_at=now + 3600)
+        update_task_state(pipe_root, 'tsx_scan_r0', new_status=TaskState.RUNNING, started_at=now)
+        return Scheduler.rotor_scan_owed_to_a_pipe_run(sched, species, 0)
+
+    def test_task_of_a_previous_guess_does_not_block_the_scan(self):
+        self.assertFalse(self._owed({'ts_guess': 0}))
+
+    def test_task_of_the_current_guess_blocks_the_scan(self):
+        self.assertTrue(self._owed({'ts_guess': 1}))
+
+    def test_unstamped_task_blocks_the_scan(self):
+        self.assertTrue(self._owed({}))
 
 
 if __name__ == '__main__':

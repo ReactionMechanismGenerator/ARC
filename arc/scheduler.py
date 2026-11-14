@@ -56,8 +56,8 @@ from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
 from arc.job.ssh import reset_queue_query_history
-from arc.job.pipe.pipe_run import rotor_scan_1d_task_id
-from arc.job.pipe.pipe_state import ROTOR_SCAN_1D_TASK_FAMILY, TaskState, read_task_state
+from arc.job.pipe.pipe_run import is_stale_ts_task, rotor_scan_1d_task_id
+from arc.job.pipe.pipe_state import ROTOR_SCAN_1D_TASK_FAMILY, TaskState, read_task_spec, read_task_state
 from arc.job.ssh_pool import borrow_ssh_client
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
@@ -746,6 +746,7 @@ class Scheduler(object):
         Pipe runs are not reloaded on restart, so this reads the rotor's task state from the pipe run's
         staging directory. Only a CLAIMED or RUNNING task whose lease has not expired counts. A pending,
         orphaned, terminal, or unreadable task does not, since no session will ingest its results.
+        A task stamped with a TS guess other than the species' current one does not either.
 
         Args:
             species (ARCSpecies): The species being restarted.
@@ -763,8 +764,11 @@ class Scheduler(object):
             pipe_root = os.path.dirname(os.path.dirname(task_dir))
             try:
                 state = read_task_state(pipe_root, task_id)
+                spec = read_task_spec(pipe_root, task_id)
             except (OSError, ValueError, KeyError) as e:
-                logger.warning(f'Could not read the state of pipe task {task_id} under {pipe_root}: {e}')
+                logger.warning(f'Could not read pipe task {task_id} under {pipe_root}: {e}')
+                continue
+            if is_stale_ts_task(spec, {species.label: species}):
                 continue
             if state.status in (TaskState.CLAIMED.value, TaskState.RUNNING.value) \
                     and state.lease_expires_at is not None and state.lease_expires_at > now:
