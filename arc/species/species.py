@@ -2527,6 +2527,8 @@ class TSGuess(object):
         method_index (int, optional): A subindex, used for cases where a single method generates several guesses.
                                       Counts separately for each direction, 'F' and 'R'.
         method_direction (str, optional): The reaction direction used for generating the guess ('F' or 'R').
+        atom_map (list[int], optional): The reactants-to-products atom map this guess was generated for,
+                                        if it was generated for a specific one.
         constraints (dict, optional): Any constraints to be used when first optimizing this guess
                                       (i.e., keeping bond lengths of the reactive site constant).
         family (str, optional): The RMG family that corresponds to the reaction, if applicable.
@@ -2548,6 +2550,10 @@ class TSGuess(object):
         method_index (int): A subindex, used for cases where a single method generates several guesses.
                             Counts separately for each direction, 'F' and 'R'.
         method_direction (str): The reaction direction used for generating the guess ('F' or 'R').
+        atom_map (list[int]): The reactants-to-products atom map this guess was generated for, if it was
+                              generated for a specific one. A method index alone does not identify the
+                              correspondence a caller asked for, and a failed guess has no coordinates
+                              to recover it from.
         family (str): The RMG family that corresponds to the reaction, if applicable.
         arc_reaction (ARCReaction): An ARC Reaction object.
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
@@ -2571,6 +2577,7 @@ class TSGuess(object):
                  method: str | None = None,
                  method_index: int | None = None,
                  method_direction: str | None = None,
+                 atom_map: list[int] | None = None,
                  constraints: dict[list[int], int] | None = None,
                  t0: datetime.datetime | None = None,
                  execution_time: str | datetime.timedelta | None = None,
@@ -2595,6 +2602,7 @@ class TSGuess(object):
             self.method_sources = self._normalize_method_sources([self.method])
             self.method_index = method_index
             self.method_direction = method_direction
+            self.atom_map = list(atom_map) if atom_map is not None else None
             self.constraints = constraints
             self.t0 = t0
             self.execution_time = execution_time if execution_time is not None else execution_time
@@ -2687,6 +2695,8 @@ class TSGuess(object):
         ts_dict['method_index'] = self.method_index
         if self.method_direction is not None:
             ts_dict['method_direction'] = self.method_direction
+        if self.atom_map is not None:
+            ts_dict['atom_map'] = list(self.atom_map)
         if self.execution_time is not None:
             ts_dict['execution_time'] = str(self.execution_time) if isinstance(self.execution_time, datetime.timedelta) \
                 else self.execution_time
@@ -2742,6 +2752,7 @@ class TSGuess(object):
             self.method_sources = self._normalize_method_sources([self.method])
         self.method_index = ts_dict['method_index'] if 'method_index' in ts_dict else None
         self.method_direction = ts_dict['method_direction'] if 'method_direction' in ts_dict else None
+        self.atom_map = list(ts_dict['atom_map']) if ts_dict.get('atom_map') is not None else None
         self.imaginary_freqs = ts_dict['imaginary_freqs'] if 'imaginary_freqs' in ts_dict else None
         self.conformer_index = ts_dict['conformer_index'] if 'conformer_index' in ts_dict else None
         self.successful_irc = ts_dict['successful_irc'] if 'successful_irc' in ts_dict else None
