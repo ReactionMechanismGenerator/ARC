@@ -260,6 +260,7 @@ def clean_migrating_h(xyz: dict,
                       donor: int,
                       acceptor: int,
                       h_idx: int,
+                      ref_pos: np.ndarray | None = None,
                       ) -> dict:
     """
     Re-place a migrating H at the triangulated TS position between ``donor`` and ``acceptor``.
@@ -270,11 +271,20 @@ def clean_migrating_h(xyz: dict,
     the new H position depends only on (donor_pos, acceptor_pos,
     sbl(D,H), sbl(A,H)), not on the H's own current location.
 
+    The donor-H and acceptor-H distances fix the H to a circle around the
+    donor-acceptor axis; ``ref_pos`` selects the point on that circle, which
+    is the side ``ref_pos`` itself lies on. It defaults to the H's current
+    position, which keeps the H on the side it already occupies. A caller
+    that knows where the H belongs -- a ring closure, where the H must sit
+    opposite the rest of the ring -- passes that point instead.
+
     Args:
         xyz: TS guess XYZ dict.
         donor: Donor heavy-atom index.
         acceptor: Acceptor heavy-atom index.
         h_idx: Migrating H atom index.
+        ref_pos: Point selecting the side of the donor-acceptor axis the H is
+            placed on. Defaults to the H's current position.
 
     Returns:
         A new XYZ dict with the migrating H re-placed.
@@ -296,7 +306,8 @@ def clean_migrating_h(xyz: dict,
     d_AH = float(sbl_ah) + PAULING_DELTA
 
     ideal = two_sphere_intersection(
-        coords[donor], d_DH, coords[acceptor], d_AH, coords[h_idx])
+        coords[donor], d_DH, coords[acceptor], d_AH,
+        coords[h_idx] if ref_pos is None else np.asarray(ref_pos, dtype=float))
     if ideal is None:
         return xyz
     coords[h_idx] = ideal
