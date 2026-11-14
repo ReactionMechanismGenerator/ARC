@@ -22,8 +22,30 @@ This module contains three tiers of functionality:
     ``postprocess_h_migration``, ``postprocess_generic``, or private
     handlers (``_postprocess_group_shift``, ``_postprocess_cc_shift``)
     based on the ``FAMILY_POSTPROCESSORS`` registry.
+
+**Reactive-core distance model**:
+    Every reactive-bond target across ``linear_utils`` is an equilibrium
+    single-bond length from ``arc.common.get_single_bond_length`` plus one of
+    two elongations.
+
+    ``PAULING_DELTA``
+        The general reactive-bond elongation, used for every bond that is not
+        a hydrogen bridging a donor and an acceptor.  Under Pauling's relation
+        ``r(n) = r_e - 0.6 * log10(n)`` it corresponds to a bond order near
+        0.20.
+
+    ``H_BRIDGE_DELTA``
+        The elongation for a hydrogen transferring between a donor and an
+        acceptor, as in ``fix_forming_bond_distances`` and
+        ``local_geometry.clean_migrating_h``.  It is the same relation at the
+        half-formed ``H_BRIDGE_BOND_ORDER``, evaluated with
+        ``H_BRIDGE_BOND_ORDER_COEFFICIENT``.
+
+    Individual builders may add a further family-specific stretch on top of
+    either target.
 """
 
+import math
 from typing import TYPE_CHECKING
 from collections.abc import Callable, Sequence
 
@@ -31,7 +53,9 @@ import numpy as np
 
 from arc.common import get_logger, get_single_bond_length
 from arc.job.adapters.ts.linear_utils.geom_utils import (
+    bond_path_length,
     dihedral_deg,
+    mol_to_adjacency,
     rotate_atoms,
     two_sphere_intersection,
     xyz_with_coords,
@@ -58,18 +82,64 @@ FamilyValidator = Callable[
 FAMILY_POSTPROCESSORS: dict[str, FamilyPostprocessor] = {}
 FAMILY_VALIDATORS: dict[str, FamilyValidator] = {}
 
-_EQ_BOND_TO_H: dict[str, float] = {
-    'C': get_single_bond_length('C', 'H'),
-    'N': get_single_bond_length('N', 'H'),
-    'O': get_single_bond_length('O', 'H'),
-    'S': get_single_bond_length('S', 'H'),
-    'P': get_single_bond_length('P', 'H'),
-    'Si': get_single_bond_length('Si', 'H'),
-}
 _EQ_BOND_TO_H_DEFAULT: float = 1.09
 
-# At a symmetric TS (bond order n = 0.5), Pauling's equation gives d_TS = d0 - 0.6 * ln(n) = d0 + 0.6 * ln(2) ≈ d0 + 0.42 Å.
 PAULING_DELTA: float = 0.42
+
+H_BRIDGE_BOND_ORDER_COEFFICIENT: float = 0.825
+H_BRIDGE_BOND_ORDER: float = 0.5
+H_BRIDGE_DELTA: float = -H_BRIDGE_BOND_ORDER_COEFFICIENT * math.log10(H_BRIDGE_BOND_ORDER)
+H_BRIDGE_STRAINED_DONOR_ACCEPTOR_PATH: int = 2
+H_BRIDGE_MIN_OVERREACH: float = 0.0035
+
+
+def h_bridge_target_distances(donor_symbol: str,
+                              acceptor_symbol: str,
+                              donor_acceptor_distance: float,
+                              donor_acceptor_path: int | None = None,
+                              ) -> tuple[float, float]:
+    """
+    Return the donor-H and acceptor-H target distances for a bridging hydrogen.
+
+    Each target is the element's equilibrium X-H single bond length from
+    ``get_single_bond_length`` plus ``H_BRIDGE_DELTA``, or plus the wider
+    ``PAULING_DELTA`` when ``donor_acceptor_path`` equals
+    ``H_BRIDGE_STRAINED_DONOR_ACCEPTOR_PATH``.
+
+    Both targets are then scaled by a common factor if together they would not
+    span ``donor_acceptor_distance`` plus ``H_BRIDGE_MIN_OVERREACH``, and each
+    is capped at its element's length plus ``PAULING_DELTA``.  Scaling keeps
+    their ratio.  Past the cap the two targets no longer span the separation
+    and the caller places the hydrogen on the donor-acceptor axis.
+
+    An element absent from the single-bond-length table receives
+    ``get_single_bond_length``'s own 1.75 Angstrom fallback as its equilibrium
+    X-H length; no real X-H bond is that long.
+
+    Args:
+        donor_symbol (str): Element symbol of the atom the H starts on.
+        acceptor_symbol (str): Element symbol of the atom the H moves to.
+        donor_acceptor_distance (float): Current donor-acceptor separation, in
+            Angstrom.
+        donor_acceptor_path (int | None): Number of bonds between the donor and
+            the acceptor in the reactant, or ``None`` when they lie in separate
+            fragments or the caller cannot supply it.
+
+    Returns:
+        tuple[float, float]: The donor-H and acceptor-H target distances, in
+            Angstrom.
+    """
+    sbl_dh = float(get_single_bond_length(donor_symbol, 'H'))
+    sbl_ah = float(get_single_bond_length(acceptor_symbol, 'H'))
+    delta = PAULING_DELTA if donor_acceptor_path == H_BRIDGE_STRAINED_DONOR_ACCEPTOR_PATH else H_BRIDGE_DELTA
+    d_dh, d_ah = sbl_dh + delta, sbl_ah + delta
+    gap = float(donor_acceptor_distance)
+    reach = d_dh + d_ah
+    if reach < gap + H_BRIDGE_MIN_OVERREACH:
+        scale = (gap + H_BRIDGE_MIN_OVERREACH) / reach
+        d_dh = min(d_dh * scale, sbl_dh + PAULING_DELTA)
+        d_ah = min(d_ah * scale, sbl_ah + PAULING_DELTA)
+    return d_dh, d_ah
 
 
 def _min_distance_to_heavy_backbone(pos: np.ndarray,
@@ -394,8 +464,8 @@ def has_misdirected_migrating_h(xyz: dict,
 
     For Intra_RH_Add and similar reactions where a hydrogen migrates onto
     an acceptor X, the migrating H must be approaching X in the TS guess.
-    A reasonable TS has ``d(H-X) ≈ sbl(H-X) + 0.42 Å`` (the symmetric Pauling
-    estimate, ~1.4 Å for O-H and ~1.5 Å for C-H).  When the actual H-X
+    A reasonable TS has ``d(H-X) ≈ sbl(H-X) + PAULING_DELTA`` (~1.38 Å for
+    O-H and ~1.51 Å for C-H).  When the actual H-X
     distance in the guess exceeds ``max_factor`` × that target, the H is
     pointing **away** from the acceptor — geometrically invalid for any
     sane TS, regardless of how reasonable the rest of the geometry looks.
@@ -412,8 +482,8 @@ def has_misdirected_migrating_h(xyz: dict,
         forming_bonds (list[tuple[int, int]]): Forming-bond ``(i, j)``
             pairs in the same atom indexing as ``xyz``.
         max_factor (float): Multiplier on the Pauling target above which
-            the H is treated as misdirected.  Default 2.0 → ~2.78 Å for
-            O-H and ~2.98 Å for C-H.
+            the H is treated as misdirected.  Default 2.0 → ~2.76 Å for
+            O-H and ~3.02 Å for C-H.
 
     Returns:
         bool: ``True`` when at least one forming H-X bond exceeds
@@ -746,21 +816,19 @@ def fix_forming_bond_distances(xyz: dict,
 
     For each forming bond that involves hydrogen the function identifies the
     *donor* (heavy atom bonded to H in the reactant) and the *acceptor* (the
-    other atom in the forming bond).  Target distances are computed with the
-    Pauling bond-order equation at n = 0.5:
-
-        d_TS(X–H) = d0(X–H) + 0.42 Å
+    other atom in the forming bond), and takes their target distances from
+    :func:`h_bridge_target_distances`.
 
     The hydrogen is placed at the intersection of the two spheres centerd on
-    the donor and acceptor with the respective target radii.  Among the
-    resulting circle of solutions the point closest to the *current* H
-    position is chosen, preserving the approach direction from the
-    interpolation.  This produces a chemically reasonable (non-collinear)
-    D–H–A transfer geometry.
+    the donor and acceptor with those radii.  Two mirrored solutions are
+    tried and the one with the greater clearance to the rest of the heavy
+    backbone is kept, then pushed away from any heavy atom that is neither
+    reactive nor bonded to the reactive core, and finally discarded if it
+    still lies within 1.2 Angstrom of a heavy atom outside the core.
 
-    When the donor–acceptor distance is too large for the spheres to overlap
-    the function falls back to collinear placement at d_DH from the donor
-    along the D→A vector.
+    When the targets are capped short of the donor-acceptor separation the
+    two spheres do not meet and the hydrogen is placed on the D->A axis at
+    d_DH from the donor.
 
     Args:
         xyz: TS guess XYZ coordinate dictionary.
@@ -771,6 +839,7 @@ def fix_forming_bond_distances(xyz: dict,
         A new XYZ dictionary with migrating H atoms repositioned.
     """
     atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    adj = mol_to_adjacency(mol)
     symbols = xyz['symbols']
     coords = list(xyz['coords'])
 
@@ -790,14 +859,12 @@ def fix_forming_bond_distances(xyz: dict,
         if donor_idx is None:
             continue
 
-        donor_sym = symbols[donor_idx]
-        acceptor_sym = symbols[acceptor_atom]
-        d_DH = _EQ_BOND_TO_H.get(donor_sym, _EQ_BOND_TO_H_DEFAULT) + PAULING_DELTA
-        d_AH = _EQ_BOND_TO_H.get(acceptor_sym, _EQ_BOND_TO_H_DEFAULT) + PAULING_DELTA
-
         d_pos = np.array(coords[donor_idx], dtype=float)
         a_pos = np.array(coords[acceptor_atom], dtype=float)
         h_pos = np.array(coords[h_atom], dtype=float)
+        d_DH, d_AH = h_bridge_target_distances(
+            symbols[donor_idx], symbols[acceptor_atom], float(np.linalg.norm(a_pos - d_pos)),
+            bond_path_length(adj, donor_idx, acceptor_atom))
 
         # Try both intersection points (h_pos picks one side; mirroring h_pos
         # through the donor picks the opposite side); keep the one with greater
@@ -812,8 +879,11 @@ def fix_forming_bond_distances(xyz: dict,
         clearance_minus = _min_distance_to_heavy_backbone(cand_minus, coords, symbols, exclude)
         new_h_pos = cand_plus if clearance_plus >= clearance_minus else cand_minus
 
+        core_bonded = set(exclude)
+        for core_idx in (donor_idx, acceptor_atom):
+            core_bonded.update(atom_to_idx[nbr] for nbr in mol.atoms[core_idx].bonds.keys())
         for k_idx, sym_k in enumerate(symbols):
-            if k_idx in (h_atom, donor_idx, acceptor_atom) or sym_k == 'H':
+            if k_idx in core_bonded or sym_k == 'H':
                 continue
             b_pos = np.array(coords[k_idx], dtype=float)
             bh_vec = new_h_pos - b_pos
@@ -825,7 +895,7 @@ def fix_forming_bond_distances(xyz: dict,
 
         clash = False
         for k, sym_k in enumerate(symbols):
-            if k == h_atom or k == donor_idx or sym_k == 'H':
+            if k in exclude or sym_k == 'H':
                 continue
             if np.linalg.norm(np.array(coords[k], dtype=float) - new_h_pos) < 1.2:
                 clash = True

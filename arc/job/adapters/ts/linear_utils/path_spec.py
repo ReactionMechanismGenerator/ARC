@@ -462,6 +462,11 @@ def get_ts_target_distance(bond: tuple[int, int],
     so the scorer/validator and the builder cannot drift apart on
     calibrated families.
 
+    The migrating-H builders in ``postprocess`` and ``local_geometry`` seed a
+    bridging hydrogen from ``H_BRIDGE_DELTA`` instead. This function has no way
+    to tell a bridging hydrogen from any other X–H bond, so on those bonds its
+    target is wider than what those builders produce.
+
     Args:
         bond: ``(i, j)`` atom-index pair (used to look up symbols).
         role: One of ``'breaking'``, ``'forming'``, ``'changed'``, or
@@ -489,12 +494,7 @@ def get_ts_target_distance(bond: tuple[int, int],
     sym_j = symbols[j]
     sbl = get_single_bond_length(sym_i, sym_j) or 1.5
 
-    if role == 'breaking':
-        # Mirror adjust_reactive_bond_distances: target = sbl + Pauling delta,
-        # plus any family-specific builder calibration.
-        return float(sbl + PAULING_DELTA + insertion_ring_extra_stretch(family))
-
-    if role == 'forming':
+    if role in ('breaking', 'forming'):
         return float(sbl + PAULING_DELTA + insertion_ring_extra_stretch(family))
 
     if role == 'changed':

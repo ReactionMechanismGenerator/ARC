@@ -65,12 +65,14 @@ import numpy as np
 
 from arc.common import get_logger, get_single_bond_length
 from arc.job.adapters.ts.linear_utils.geom_utils import (
+    bond_path_length,
+    mol_to_adjacency,
     h_neighbors_of,
     heavy_neighbors_of,
     two_sphere_intersection,
     xyz_with_coords,
 )
-from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA
+from arc.job.adapters.ts.linear_utils.postprocess import h_bridge_target_distances
 
 if TYPE_CHECKING:
     from arc.molecule import Molecule
@@ -260,6 +262,7 @@ def clean_migrating_h(xyz: dict,
                       donor: int,
                       acceptor: int,
                       h_idx: int,
+                      mol: 'Molecule | None' = None,
                       ) -> dict:
     """
     Re-place a migrating H at the triangulated TS position between ``donor`` and ``acceptor``.
@@ -275,6 +278,9 @@ def clean_migrating_h(xyz: dict,
         donor: Donor heavy-atom index.
         acceptor: Acceptor heavy-atom index.
         h_idx: Migrating H atom index.
+        mol: Reactant molecule, used to measure how many bonds separate the
+            donor from the acceptor. When ``None`` the targets are chosen from
+            the donor-acceptor distance alone.
 
     Returns:
         A new XYZ dict with the migrating H re-placed.
@@ -288,12 +294,10 @@ def clean_migrating_h(xyz: dict,
     if donor >= len(coords) or acceptor >= len(coords):
         return xyz
 
-    sbl_dh = get_single_bond_length(symbols[donor], 'H')
-    sbl_ah = get_single_bond_length(symbols[acceptor], 'H')
-    if sbl_dh is None or sbl_ah is None:
-        return xyz
-    d_DH = float(sbl_dh) + PAULING_DELTA
-    d_AH = float(sbl_ah) + PAULING_DELTA
+    path = None if mol is None else bond_path_length(mol_to_adjacency(mol), donor, acceptor)
+    d_DH, d_AH = h_bridge_target_distances(
+        symbols[donor], symbols[acceptor],
+        float(np.linalg.norm(coords[acceptor] - coords[donor])), path)
 
     ideal = two_sphere_intersection(
         coords[donor], d_DH, coords[acceptor], d_AH, coords[h_idx])
@@ -1076,7 +1080,7 @@ def apply_reactive_center_cleanup(xyz: dict,
         migrating_h_indices.add(h_idx)
         cleanup_centers.add(donor)
         cleanup_centers.add(acceptor)
-        xyz = clean_migrating_h(xyz, donor, acceptor, h_idx)
+        xyz = clean_migrating_h(xyz, donor, acceptor, h_idx, mol=mol)
         # Exempt migrating H so triangulation is not undone.
         xyz = orient_h_away_from_axis(
             xyz, mol, donor, acceptor, exclude_h={h_idx})

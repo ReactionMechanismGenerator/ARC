@@ -15,13 +15,15 @@ from arc.job.adapters.ts.linear_utils.geom_utils import (
     atom_index_map,
     bfs_path,
     canonical_bond,
+    bond_path_length,
     mol_to_adjacency,
     two_sphere_intersection,
     xyz_with_coords,
 )
 from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
 from arc.job.adapters.ts.linear_utils.path_spec import ReactionPathSpec, insertion_ring_extra_stretch, validate_addition_guess
-from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA, has_detached_hydrogen, has_too_many_fragments
+from arc.job.adapters.ts.linear_utils.postprocess import (PAULING_DELTA, h_bridge_target_distances,
+                                                          has_detached_hydrogen, has_too_many_fragments)
 from arc.species.species import ARCSpecies, colliding_atoms
 
 if TYPE_CHECKING:
@@ -1141,6 +1143,7 @@ def migrate_verified_atoms(ts_xyz: dict,
     coords = np.array(ts_xyz['coords'], dtype=float)
     ts_coords = coords.copy()
     atom_to_idx = atom_index_map(uni_mol)
+    uni_adj = mol_to_adjacency(uni_mol)
     core_heavy = [idx for idx in core if symbols[idx] != 'H']
 
     # Acceptor may live in any product fragment, not only ``core`` (e.g.
@@ -1179,8 +1182,14 @@ def migrate_verified_atoms(ts_xyz: dict,
             dists = np.linalg.norm(core_coords - ts_coords[h_idx], axis=1)
             acceptor = core_heavy[int(dists.argmin())]
 
-        d_DH = get_single_bond_length(symbols[donor], symbols[h_idx]) + PAULING_DELTA
-        d_AH = get_single_bond_length(symbols[acceptor], symbols[h_idx]) + PAULING_DELTA
+        if symbols[h_idx] == 'H':
+            d_DH, d_AH = h_bridge_target_distances(
+                symbols[donor], symbols[acceptor],
+                float(np.linalg.norm(ts_coords[acceptor] - ts_coords[donor])),
+                bond_path_length(uni_adj, donor, acceptor))
+        else:
+            d_DH = get_single_bond_length(symbols[donor], symbols[h_idx]) + PAULING_DELTA
+            d_AH = get_single_bond_length(symbols[acceptor], symbols[h_idx]) + PAULING_DELTA
 
         ideal = two_sphere_intersection(
             ts_coords[donor], d_DH, ts_coords[acceptor], d_AH, ts_coords[h_idx])
@@ -1341,8 +1350,10 @@ def migrate_h_between_fragments(ts_xyz: dict,
             # same axis point.
             d_pos = ts_coords[donor_heavy]
             h_pos = ts_coords[h_idx]
-            d_DH = get_single_bond_length(symbols[donor_heavy], 'H') + PAULING_DELTA
-            d_AH = get_single_bond_length(symbols[nearest_heavy], 'H') + PAULING_DELTA
+            d_DH, d_AH = h_bridge_target_distances(
+                symbols[donor_heavy], symbols[nearest_heavy],
+                float(np.linalg.norm(ts_coords[nearest_heavy] - d_pos)),
+                bond_path_length(adj, donor_heavy, nearest_heavy))
             cand_plus = two_sphere_intersection(
                 d_pos, d_DH, ts_coords[nearest_heavy], d_AH, h_pos)
             cand_minus = two_sphere_intersection(

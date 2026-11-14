@@ -25,7 +25,7 @@ from arc.job.adapters.ts.linear_utils.local_geometry import (
     repair_internal_reactive_ch2,
     restore_terminal_h_symmetry,
 )
-from arc.job.adapters.ts.linear_utils.postprocess import PAULING_DELTA
+from arc.job.adapters.ts.linear_utils.postprocess import H_BRIDGE_DELTA
 
 
 class TestRegularizeTerminalHGeometry(unittest.TestCase):
@@ -194,8 +194,31 @@ class TestCleanMigratingH(unittest.TestCase):
         h_pos = np.array(out['coords'][2])
         d_dh = float(np.linalg.norm(h_pos - np.array(out['coords'][0])))
         sbl_ch = get_single_bond_length('C', 'H')
-        # The triangulation places H at distance d_DH = sbl + PAULING_DELTA from donor.
-        self.assertAlmostEqual(d_dh, sbl_ch + PAULING_DELTA, places=4)
+        # The triangulation places H at distance d_DH = sbl + H_BRIDGE_DELTA from donor.
+        self.assertAlmostEqual(d_dh, sbl_ch + H_BRIDGE_DELTA, places=4)
+
+
+    def test_h_targets_stretch_to_reach_a_wide_donor_acceptor_gap(self):
+        """
+        A gap the bridge targets cannot span stretches both of them, keeping their ratio.
+
+        C-H 1.3383 plus N-H 1.2884 reaches only 2.6267 A, so a 2.90 A C...N gap scales
+        both up until they span it; neither may exceed its element's general elongation
+        of 1.51 and 1.46 A.
+        """
+        xyz = {'symbols': ('C', 'N', 'H'), 'isotopes': (12, 14, 1),
+               'coords': ((0.0, 0.0, 0.0), (2.90, 0.0, 0.0), (1.0, 0.5, 0.0))}
+        out = clean_migrating_h(xyz, donor=0, acceptor=1, h_idx=2)
+        coords = np.asarray(out['coords'], dtype=float)
+        d_ch = float(np.linalg.norm(coords[2] - coords[0]))
+        d_nh = float(np.linalg.norm(coords[2] - coords[1]))
+        self.assertGreater(d_ch, get_single_bond_length('C', 'H') + H_BRIDGE_DELTA)
+        self.assertLessEqual(d_ch, get_single_bond_length('C', 'H') + 0.42 + 1e-12)
+        self.assertLessEqual(d_nh, get_single_bond_length('N', 'H') + 0.42 + 1e-12)
+        self.assertGreater(d_ch + d_nh, 2.90)
+        self.assertAlmostEqual(d_ch / d_nh,
+                               (get_single_bond_length('C', 'H') + H_BRIDGE_DELTA)
+                               / (get_single_bond_length('N', 'H') + H_BRIDGE_DELTA), places=6)
 
 
 class TestRestoreTerminalHSymmetry(unittest.TestCase):
@@ -500,15 +523,18 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
         """Given a (donor, acceptor, h_idx) record where the H is sitting
         at its donor-side bond length, the orchestrator triangulates it
         to the symmetric Pauling TS position between donor and acceptor."""
-        # Use methylamine (CH3-NH2) — atom 0 is C (donor), atom 1 is N
-        # (acceptor), pick one of C's H atoms as the migrating H.  Then
-        # override the geometry to make the H sit on the C-N axis at
-        # a normal C-H bond length (1.10 Å).
-        sp = ARCSpecies(label='MA', smiles='CN')
+        # Use propylamine, whose terminal C is three bonds from N, so the
+        # transfer is not ring-strained.  Override the geometry to make the
+        # migrating H sit on the C-N axis at a normal C-H bond length.
+        sp = ARCSpecies(label='PA', smiles='CCCN')
         symbols = sp.get_xyz()['symbols']
-        c_idx = next(i for i, s in enumerate(symbols) if s == 'C')
-        n_idx = next(i for i, s in enumerate(symbols) if s == 'N')
         atom_to_idx = {a: i for i, a in enumerate(sp.mol.atoms)}
+        n_idx = next(i for i, s in enumerate(symbols) if s == 'N')
+        n_nbr_c = next(atom_to_idx[nbr] for nbr in sp.mol.atoms[n_idx].bonds.keys() if nbr.element.symbol == 'C')
+        mid_c = next(atom_to_idx[nbr] for nbr in sp.mol.atoms[n_nbr_c].bonds.keys()
+                     if nbr.element.symbol == 'C' and atom_to_idx[nbr] != n_nbr_c)
+        c_idx = next(atom_to_idx[nbr] for nbr in sp.mol.atoms[mid_c].bonds.keys()
+                     if nbr.element.symbol == 'C' and atom_to_idx[nbr] != n_nbr_c)
         h_on_c = next(atom_to_idx[nbr] for nbr in sp.mol.atoms[c_idx].bonds.keys() if nbr.element.symbol == 'H')
         # Build a synthetic geometry that lays C, N, and the chosen H
         # in a straight line: C at origin, N at +x = 3.0, the H at
@@ -531,8 +557,8 @@ class TestApplyReactiveCenterCleanup(unittest.TestCase):
         d_nh = float(np.linalg.norm(coords_out[h_on_c] - coords_out[n_idx]))
         sbl_ch = float(get_single_bond_length('C', 'H'))
         sbl_nh = float(get_single_bond_length('N', 'H'))
-        self.assertAlmostEqual(d_ch, sbl_ch + PAULING_DELTA, places=3)
-        self.assertAlmostEqual(d_nh, sbl_nh + PAULING_DELTA, places=3)
+        self.assertAlmostEqual(d_ch, sbl_ch + H_BRIDGE_DELTA, places=3)
+        self.assertAlmostEqual(d_nh, sbl_nh + H_BRIDGE_DELTA, places=3)
 
     def test_orchestrator_does_not_rotate_already_symmetric_ch3(self):
         """
