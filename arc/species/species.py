@@ -3064,6 +3064,13 @@ def determine_occ(xyz, charge):
 #: never ran.
 SYMMETRY_SECOND_CRITERION_MIN_BARRIER = 2.0  # kJ/mol
 
+#: A local peak or valley of a scan counts toward the rotor symmetry only if its topographic prominence is at least this
+#: fraction of the scan's energy range. A relaxed scan can leave ripples far smaller than its barriers, e.g., where a
+#: neighboring radical center flips its pyramidalization at the bottom of a methyl well; counted as peaks, a ripple a few
+#: J/mol high at the bottom of a well and a real barrier at the top fail the first criterion together, and a threefold
+#: methyl rotor comes out with a symmetry number of 1.
+SYMMETRY_MIN_PROMINENCE_FRACTION = 0.1
+
 
 def determine_rotor_symmetry(label: str,
                              pivots: list[int] | str,
@@ -3079,6 +3086,9 @@ def determine_rotor_symmetry(label: str,
     worst peak resolution (and the same is checked for valleys).
     A second criterion for a symmetric rotor is that the highest and lowest peaks must be within 10% of
     the highest peak value. This is only applied if the highest peak is above 2 kJ/mol.
+    Only peaks and valleys whose topographic prominence (on the cyclic scan) is at least
+    ``SYMMETRY_MIN_PROMINENCE_FRACTION`` of the scan's energy range are counted, so ripples of a relaxed scan
+    do not count as peaks or valleys.
 
     Args:
         label (str): The species label (used for error messages).
@@ -3122,26 +3132,32 @@ def determine_rotor_symmetry(label: str,
         # Sometimes the opt level and scan levels mismatch, causing the minimum to be close to 0 degrees, but not at 0.
         if e < min_e:
             min_e = e
-    peaks, valleys = list(), list()  # the peaks and valleys of the scan
-    worst_peak_resolution, worst_valley_resolution = 0, 0
+    peak_indices, valley_indices = list(), list()  # the local peaks and valleys of the scan
+    neighbors = dict()
     for i, e in enumerate(energies):
-        # Identify peaks and valleys and determine the worst resolutions in the scan.
+        # Identify peaks and valleys.
         ip1 = cyclic_index_i_plus_1(i, len(energies))  # i Plus 1
         im1 = cyclic_index_i_minus_1(i)  # i Minus 1
         if i == 0 and energies[im1] == e:
             # If the first and last scan points have same energy, change im1
             im1 -= 1
             logger.debug(f'im1: {im1}, ip1: {ip1}, em1: {energies[im1]}, e: {e}, ep1: {energies[ip1]}')
+        neighbors[i] = (energies[im1], energies[ip1])
         if e > energies[im1] and e > energies[ip1]:
-            # this is a local peak
-            if any([diff > worst_peak_resolution for diff in [e - energies[im1], e - energies[ip1]]]):
-                worst_peak_resolution = max(e - energies[im1], e - energies[ip1])
-            peaks.append(e)
+            peak_indices.append(i)
         elif e < energies[im1] and e < energies[ip1]:
-            # this is a local valley
-            if any([diff > worst_valley_resolution for diff in [energies[im1] - e, energies[ip1] - e]]):
-                worst_valley_resolution = max(energies[im1] - e, energies[ip1] - e)
-            valleys.append(e)
+            valley_indices.append(i)
+    # Keep only the prominent peaks and valleys, and determine the worst resolutions among them.
+    min_prominence = SYMMETRY_MIN_PROMINENCE_FRACTION * (max_e - min_e)
+    peak_indices = [i for i in peak_indices if cyclic_prominence(energies, i) >= min_prominence]
+    negated = [-e for e in energies]
+    valley_indices = [i for i in valley_indices if cyclic_prominence(negated, i) >= min_prominence]
+    peaks = [energies[i] for i in peak_indices]  # the peaks and valleys of the scan
+    valleys = [energies[i] for i in valley_indices]
+    worst_peak_resolution = max([max(energies[i] - neighbors[i][0], energies[i] - neighbors[i][1])
+                                 for i in peak_indices], default=0)
+    worst_valley_resolution = max([max(neighbors[i][0] - energies[i], neighbors[i][1] - energies[i])
+                                   for i in valley_indices], default=0)
     # The number of peaks and valley must always be the same (what goes up must come down), if it isn't then there's
     # something seriously wrong with the scan
     if len(peaks) != len(valleys):
@@ -3185,6 +3201,34 @@ def determine_rotor_symmetry(label: str,
         return symmetry, max_e, len(peaks)
     else:
         return symmetry, max_e, None
+
+
+def cyclic_prominence(values: list | np.ndarray,
+                      index: int,
+                      ) -> float:
+    """
+    The topographic prominence of the local maximum at ``index`` of a cyclic list of values: how far one must descend
+    from it, in the better of the two directions, before climbing to a higher value. For the highest value (or one of
+    several equally high), it is its height above the lowest value. Pass the negated values for a local minimum.
+
+    Args:
+        values (list, np.ndarray): The values, e.g., the energies of a rotor scan, as a cyclic sequence.
+        index (int): The index of a local maximum in ``values``.
+
+    Returns:
+        float: The prominence.
+    """
+    length, top = len(values), values[index]
+    bases = list()
+    for step in (-1, 1):
+        lowest, j = top, index
+        for _ in range(length - 1):
+            j = (j + step) % length
+            if values[j] > top:
+                break
+            lowest = min(lowest, values[j])
+        bases.append(lowest)
+    return top - max(bases)
 
 
 def cyclic_index_i_plus_1(i: int,

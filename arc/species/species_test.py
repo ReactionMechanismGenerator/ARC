@@ -38,6 +38,7 @@ from arc.species.species import (ARCSpecies,
                                  colliding_atoms,
                                  cyclic_index_i_minus_1,
                                  cyclic_index_i_plus_1,
+                                 cyclic_prominence,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
                                  process_run_time,
@@ -1692,6 +1693,40 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                                                       energies=shallow, log=False)
         self.assertEqual(symmetry, 2)
         self.assertAlmostEqual(max_e, 1.2)
+
+    def test_rotor_symmetry_ignores_ripples(self):
+        """Test that ripples of a relaxed scan far smaller than its barriers do not count as peaks.
+
+        The methyl rotor of i-C3H7 (UMA-S 1.2, 8 degree relaxed scan): three barriers of 2.34-2.36 kJ/mol, but the
+        radical center flips its pyramidalization near the bottom of a well, leaving a ripple of about 0.01 kJ/mol
+        there. Counted as a peak, the ripple (at about 0.02 kJ/mol) and the real barriers failed the first criterion
+        together, and the rotor got a symmetry number of 1.
+        """
+        energies = [0.0, 0.0091, 0.0254, 0.2148, 0.5867, 1.0864, 1.622, 2.0822, 2.3443, 2.3071, 1.9866, 1.4955,
+                    0.9394, 0.4531, 0.127, 0.0024, 0.0126, 0.0199, 0.2117, 0.6037, 1.1275, 1.6747, 2.1268, 2.3571,
+                    2.2821, 1.9367, 1.4453, 0.9044, 0.4427, 0.1324, 0.0048, 0.0154, 0.0086, 0.1605, 0.5215, 1.0384,
+                    1.6028, 2.0876, 2.3499, 2.2906, 1.937, 1.42, 0.8538, 0.3799, 0.0884, 0.0]
+        symmetry, max_e, num_wells = determine_rotor_symmetry(label='iC3H7', pivots=[1, 2], energies=energies,
+                                                              return_num_wells=True, log=False)
+        self.assertEqual(symmetry, 3)
+        self.assertAlmostEqual(max_e, 2.3571)
+        self.assertEqual(num_wells, 3)
+
+        # A real asymmetry is still seen: the same scan with one barrier raised by 0.5 kJ/mol.
+        asymmetric = list(energies)
+        asymmetric[23] += 0.5
+        symmetry, _, _ = determine_rotor_symmetry(label='iC3H7', pivots=[1, 2], energies=asymmetric, log=False)
+        self.assertEqual(symmetry, 1)
+
+    def test_cyclic_prominence(self):
+        """Test the topographic prominence of the local maxima of a cyclic sequence."""
+        values = [0.0, 5.0, 1.0, 1.2, 1.0, 10.0, 2.0, 4.0]
+        self.assertAlmostEqual(cyclic_prominence(values, 5), 10.0)  # the highest value: down to the lowest
+        self.assertAlmostEqual(cyclic_prominence(values, 1), 4.0)  # to 10 over the valley at 1.0
+        self.assertAlmostEqual(cyclic_prominence(values, 3), 0.2)  # a ripple
+        self.assertAlmostEqual(cyclic_prominence(values, 7), 2.0)  # across the end of the sequence, to 5 over 0.0
+        self.assertAlmostEqual(cyclic_prominence([-v for v in values], 0), 10.0)  # the lowest value, as a minimum
+        self.assertAlmostEqual(cyclic_prominence([1.0, 3.0, 1.0, 3.0], 1), 2.0)  # equally high peaks
 
     def test_cyclic_index_i_minus_1(self):
         """Test that the cyclic predecessor is correct at the start of a scan.
