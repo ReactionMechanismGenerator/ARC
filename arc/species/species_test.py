@@ -3885,5 +3885,25 @@ class TestTSGuess(unittest.TestCase):
         self.assertFalse(self.tsg2.almost_equal_tsgs(self.tsg3))
 
 
+class TestTsAdapterFailuresPersistence(unittest.TestCase):
+    """The TS adapter failures a TS species records survive a restart."""
+
+    def test_ts_adapter_failures_round_trip(self):
+        """as_dict() writes the records only when there are any, and from_dict() restores them."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        self.assertEqual(ts.ts_adapter_failures, list())
+        self.assertNotIn('ts_adapter_failures', ts.as_dict())
+        failure = {'adapter': 'heuristics', 'exception_type': 'KeyError', 'message': 'None'}
+        ts.ts_adapter_failures.append(failure)
+        restored = ARCSpecies(species_dict=ts.as_dict())
+        self.assertEqual(restored.ts_adapter_failures, [failure])
+
+    def test_ts_adapter_failures_default_for_an_old_restart_file(self):
+        """A restart dictionary written before the field existed restores an empty list."""
+        species_dict = ARCSpecies(label='TS0', is_ts=True).as_dict()
+        species_dict.pop('ts_adapter_failures', None)
+        self.assertEqual(ARCSpecies(species_dict=species_dict).ts_adapter_failures, list())
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
