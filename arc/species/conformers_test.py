@@ -5,8 +5,14 @@
 This module contains unit tests of the arc.species.conformers module
 """
 
+import json
+import os
+import subprocess
+import sys
 import unittest
 import unittest.mock
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdMolTransforms as rdMT
@@ -14,13 +20,51 @@ from rdkit.Chem import rdMolTransforms as rdMT
 import arc.species.conformers as conformers
 import arc.species.converter as converter
 import arc.species.vectors as vectors
-from arc.common import almost_equal_coords_lists
+from arc.common import ARC_PATH, almost_equal_coords_lists
 from arc.exceptions import ConformerError
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.group import GroupAtom, GroupBond, Group
 from arc.molecule.molecule import Molecule
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
+
+
+PERCEPTION_FINGERPRINT_CHILD = """
+import json
+import sys
+
+import arc.species.perceive as perceive
+from arc.species.conformers import embed_rdkit
+
+
+def fingerprint(mol):
+    index = {atom: i for i, atom in enumerate(mol.atoms)}
+    bonds = sorted((min(index[b.atom1], index[b.atom2]), max(index[b.atom1], index[b.atom2]), b.order)
+                   for b in mol.get_all_edges())
+    atoms = [(a.charge, a.radical_electrons, a.lone_pairs) for a in mol.atoms]
+    return [bonds, atoms]
+
+
+captured = []
+original = perceive.generate_lewis_structure
+
+
+def capture(*args, **kwargs):
+    lewis = original(*args, **kwargs)
+    captured.append(None if lewis is None else fingerprint(lewis))
+    return lewis
+
+
+perceive.generate_lewis_structure = capture
+xyz = json.load(sys.stdin)
+xyz = {'symbols': tuple(xyz['symbols']), 'isotopes': tuple(xyz['isotopes']),
+       'coords': tuple(tuple(c) for c in xyz['coords'])}
+mol = perceive.perceive_molecule_from_xyz(xyz, charge=0, multiplicity=1, n_radicals=0, n_fragments=1)
+rd_mol = None if mol is None else embed_rdkit(label='CJ', mol=mol, num_confs=1)
+print(json.dumps({'lewis': captured,
+                  'final': None if mol is None else fingerprint(mol),
+                  'embedded': rd_mol is not None and rd_mol.GetNumConformers() > 0}))
+"""
 
 
 class TestConformers(unittest.TestCase):
@@ -691,6 +735,57 @@ H       0.68104300    0.74807180    0.61546062""")]
                 conformers.rdkit_force_field(label='CJ', rd_mol=rd_mol)
         self.assertEqual(optimize.call_count, num_confs)
         self.assertIn('no MMFF parameters', '\n'.join(captured.output))
+
+    def test_perception_is_independent_of_the_process(self):
+        """
+        Test that perceiving the same xyz gives the same molecule in every fresh process.
+
+        Graph.get_all_edges() used to return edges in hash order, which changes per process. The A* in
+        perceive.generate_lewis_structure breaks ties among equal Kekule structures by that order, so this
+        xyz gave 7 different Lewis structures in 20 fresh processes, and about 2 in 100 ended in a
+        zwitterion that RDKit cannot embed. The most common Lewis structure occurred in about 40% of
+        processes, so 10 processes agreeing by chance has a probability of about 1e-4.
+        """
+        n_processes = 10
+        stdin = json.dumps(self.cj_xyz)
+
+        def perceive_in_a_fresh_process(seed):
+            env = dict(os.environ, PYTHONHASHSEED=str(seed),
+                       PYTHONPATH=os.pathsep.join(filter(None, [ARC_PATH, os.environ.get('PYTHONPATH')])))
+            args = [sys.executable, '-c', PERCEPTION_FINGERPRINT_CHILD]
+            try:
+                return subprocess.run(args, input=stdin, env=env, capture_output=True, text=True, timeout=600)
+            except subprocess.TimeoutExpired as e:
+                stdout, stderr = (s.decode(errors='replace') if isinstance(s, bytes) else s or ''
+                                  for s in (e.stdout, e.stderr))
+                return subprocess.CompletedProcess(args, returncode=-1, stdout=stdout,
+                                                   stderr=f'timed out after {e.timeout} s\n{stderr}')
+
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            runs = list(pool.map(perceive_in_a_fresh_process, range(1, n_processes + 1)))
+        results = list()
+        for seed, run in enumerate(runs, start=1):
+            report = (f'PYTHONHASHSEED={seed} returned {run.returncode}\n'
+                      f'stdout:\n{run.stdout[-2000:]}\nstderr:\n{run.stderr[-3000:]}')
+            self.assertEqual(run.returncode, 0, report)
+            try:
+                results.append(json.loads(run.stdout.strip().splitlines()[-1]))
+            except (IndexError, json.JSONDecodeError):
+                self.fail(f'no JSON result line\n{report}')
+
+        for seed, result in enumerate(results, start=1):
+            self.assertEqual(len(result['lewis']), 1,
+                             f'PYTHONHASHSEED={seed}: generate_lewis_structure was called '
+                             f'{len(result["lewis"])} times, expected once')
+            self.assertIsNotNone(result['lewis'][0], f'PYTHONHASHSEED={seed}: no Lewis structure')
+        lewis = Counter(json.dumps(result['lewis'][0]) for result in results)
+        self.assertEqual(len(lewis), 1, f'{len(lewis)} distinct Lewis structures in {n_processes} processes, '
+                                        f'occurrences: {sorted(lewis.values(), reverse=True)}')
+        final = Counter(json.dumps(result['final']) for result in results)
+        self.assertEqual(len(final), 1, f'{len(final)} distinct perceived molecules in {n_processes} processes')
+        self.assertTrue(all(result['embedded'] for result in results),
+                        f'embedding failed for PYTHONHASHSEED in '
+                        f'{[seed for seed, result in enumerate(results, start=1) if not result["embedded"]]}')
 
     def test_read_rdkit_embedded_conformers(self):
         """Test reading coordinates from embedded RDKit conformers"""
