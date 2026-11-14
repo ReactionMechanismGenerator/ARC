@@ -218,18 +218,53 @@ cdef class Graph(object):
 
     cpdef list get_all_edges(self):
         """
-        Returns a list of all edges in the graph.
+        Returns a list of all edges in the graph, each edge appearing once,
+        ordered by the graph's vertex order and, within a vertex, by the order
+        in which its edges were added. The order does not depend on the hash
+        values of the edges, so it is identical in every process.
         """
-        cdef set edge_set
+        cdef list edges
+        cdef set seen
         cdef Vertex vertex
         cdef Edge edge
 
-        edge_set = set()
+        edges = []
+        seen = set()
         for vertex in self.vertices:
             for edge in vertex.edges.values():
-                edge_set.add(edge)
+                if id(edge) not in seen:
+                    seen.add(id(edge))
+                    edges.append(edge)
 
-        return list(edge_set)
+        return edges
+
+    cpdef list order_vertex_set(self, set vertex_set):
+        """
+        Returns the vertices of `vertex_set` as a list, ordered by their position
+        in the graph's vertex list. The order does not depend on the hash values
+        of the vertices, so it is identical in every process.
+
+        Every vertex of `vertex_set` must be a vertex of this graph; a vertex that
+        is not raises a ValueError.
+        """
+        cdef list ordered
+        cdef set identities, found
+        cdef Vertex vertex
+
+        identities = {id(vertex) for vertex in vertex_set}
+
+        ordered = []
+        found = set()
+        for vertex in self.vertices:
+            if id(vertex) in identities and id(vertex) not in found:
+                found.add(id(vertex))
+                ordered.append(vertex)
+
+        if len(found) < len(identities):
+            raise ValueError(f'Attempted to order {len(identities)} vertices of which '
+                             f'{len(identities) - len(found)} are not in the graph.')
+
+        return ordered
 
     cpdef dict get_edges(self, Vertex vertex):
         """
@@ -615,9 +650,12 @@ cdef class Graph(object):
     cpdef list get_polycycles(self):
         """
         Return a list of cycles that are polycyclic.
-        In other words, merge the cycles which are fused or spirocyclic into 
-        a single polycyclic cycle, and return only those cycles. 
+        In other words, merge the cycles which are fused or spirocyclic into
+        a single polycyclic cycle, and return only those cycles.
         Cycles which are not polycyclic are not returned.
+
+        The vertices of each returned cycle are ordered by their position in the
+        graph's vertex list, so the order is identical in every process.
         """
         cdef list polycyclic_vertices, continuous_cycles, sssr
         cdef set polycyclic_cycle
@@ -652,7 +690,7 @@ cdef class Graph(object):
                         polycyclic_cycle.update(cycle)
 
             # convert each set to a list
-            continuous_cycles = [list(cycle) for cycle in continuous_cycles]
+            continuous_cycles = [self.order_vertex_set(cycle) for cycle in continuous_cycles]
             return continuous_cycles
 
     cpdef list get_monocycles(self):
@@ -690,7 +728,10 @@ cdef class Graph(object):
         """
         Get all disjoint monocyclic and polycyclic cycle clusters in the molecule.
         Takes the RC and recursively merges all cycles which share vertices.
-        
+
+        The vertices of each returned cycle are ordered by their position in the
+        graph's vertex list, so the order is identical in every process.
+
         Returns: monocyclic_cycles, polycyclic_cycles
         """
         cdef list rc, cycle_list, cycle_sets, monocyclic_cycles, polycyclic_cycles
@@ -708,8 +749,8 @@ cdef class Graph(object):
         monocyclic_cycles, polycyclic_cycles = self._merge_cycles(cycle_sets)
 
         # Convert cycles back to lists
-        monocyclic_cycles = [list(cycle_set) for cycle_set in monocyclic_cycles]
-        polycyclic_cycles = [list(cycle_set) for cycle_set in polycyclic_cycles]
+        monocyclic_cycles = [self.order_vertex_set(cycle_set) for cycle_set in monocyclic_cycles]
+        polycyclic_cycles = [self.order_vertex_set(cycle_set) for cycle_set in polycyclic_cycles]
 
         return monocyclic_cycles, polycyclic_cycles
 
@@ -779,7 +820,10 @@ cdef class Graph(object):
     cpdef list get_all_cycles_of_size(self, int size):
         """
         Return a list of the all non-duplicate rings with length 'size'. The
-        algorithm implements was adapted from a description by Fan, Panaye,
+        vertices of each ring are ordered by their position in the graph's vertex
+        list, so the order is identical in every process.
+
+        The algorithm implements was adapted from a description by Fan, Panaye,
         Doucet, and Barbu (doi: 10.1021/ci00015a002)
 
         B. T. Fan, A. Panaye, J. P. Doucet, and A. Barbu. "Ring Perception: A
@@ -884,7 +928,7 @@ cdef class Graph(object):
                 cycle_set_list.append(set1)
 
         #transform back to list of lists:
-        cycle_set_list = [list(set1) for set1 in cycle_set_list]
+        cycle_set_list = [self.order_vertex_set(set1) for set1 in cycle_set_list]
 
         return cycle_set_list
 
