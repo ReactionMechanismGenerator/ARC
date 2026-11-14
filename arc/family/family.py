@@ -904,7 +904,7 @@ def check_product_isomorphism(products: list[Molecule],
             if isomorphic[i]:
                 break
             for mol_a in prod_a:
-                if any(mol_b.is_isomorphic(mol_a) for mol_b in prod_b):
+                if any(mol_b.is_isomorphic(mol_a, save_order=True) for mol_b in prod_b):
                     isomorphic[i] = True
                     break
     if all(isomorphic):
