@@ -706,6 +706,27 @@ H      -0.83821148   -0.26602407    0.00000000"""
                      ARCSpecies(label="P2", smiles="N[NH]", is_ts=False, multiplicity=2, charge=0)]
         self.assertTrue(check_product_isomorphism(products, p_species))
 
+    def test_check_product_isomorphism_keeps_species_atom_order(self):
+        """check_product_isomorphism keeps the atom order of the species' mol and of its mol_list."""
+        xyz = """H 0.0 0.0 0.0
+O 0.96 0.0 0.0
+C 1.4 1.35 0.0
+H 1.0 1.85 0.89
+H 1.0 1.85 -0.89
+C 2.9 1.35 0.0
+H 3.3 0.35 0.0
+H 3.3 1.85 0.89
+H 3.3 1.85 -0.89"""
+        for own_mol_in_list in (False, True):
+            spc = ARCSpecies(label='EtOH', xyz=xyz)
+            if own_mol_in_list:
+                spc.mol_list = [spc.mol]
+            mol_order = list(spc.mol.atoms)
+            list_orders = [list(mol.atoms) for mol in spc.mol_list]
+            self.assertTrue(check_product_isomorphism([Molecule(smiles='CCO')], [spc]))
+            self.assertEqual(spc.mol.atoms, mol_order, msg=f'own_mol_in_list={own_mol_in_list}')
+            self.assertEqual([mol.atoms for mol in spc.mol_list], list_orders, msg=f'own_mol_in_list={own_mol_in_list}')
+
     def test_get_all_families(self):
         """Test getting all families from RMG and/or ARC"""
         families = get_all_families(consider_arc_families=False)
