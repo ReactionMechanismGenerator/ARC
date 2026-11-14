@@ -1,0 +1,214 @@
+name: Docker Release Image
+
+# Builds the ARC image from pinned inputs (dockerfiles/release_pins.env), smoke-tests it, checks the
+# commits baked into it, and on a release tag pushes that same tested image to
+# ghcr.io/reactionmechanismgenerator/arc:<version>. On a pull request that touches its inputs it runs
+# the same build and checks with no login and no push, so a release tag never meets an untested build.
+# The Docker Hub image (docker_build.yml) is separate and unaffected.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+.[0-9]+"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/docker_release.yml"
+      - ".github/scripts/**"
+      - "dockerfiles/**"
+      - "Dockerfile"
+      - ".dockerignore"
+
+permissions:
+  contents: read
+
+env:
+  BUILDKIT_PROGRESS: plain
+  IMAGE: ghcr.io/reactionmechanismgenerator/arc
+
+jobs:
+  # Resolved in its own job so that the release job's concurrency group can use the version.
+  inputs:
+    # A fork's PR branch is not on this repository, so the in-image ARC clone could not find it.
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      base_image: ${{ steps.inputs.outputs.base_image }}
+      rmg_py_ref: ${{ steps.inputs.outputs.rmg_py_ref }}
+      rmg_py_sha: ${{ steps.inputs.outputs.rmg_py_sha }}
+      rmg_database_ref: ${{ steps.inputs.outputs.rmg_database_ref }}
+      rmg_database_sha: ${{ steps.inputs.outputs.rmg_database_sha }}
+      arc_ref: ${{ steps.inputs.outputs.arc_ref }}
+      arc_sha: ${{ steps.inputs.outputs.arc_sha }}
+      version: ${{ steps.inputs.outputs.version }}
+    steps:
+      # The PR head, not the merge commit, so the Dockerfile, pins and VERSION come from the same
+      # commit that the image clones as ARC. On a tag this is the tag's commit.
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Test the input checks
+        run: bash .github/scripts/test_release_inputs.sh
+
+      - name: Resolve inputs
+        id: inputs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          TAG_SHA: ${{ github.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          bash .github/scripts/release_inputs.sh
+          {
+            echo '### Release image inputs'
+            echo '```'
+            cat "$GITHUB_OUTPUT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    needs: inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      packages: write
+    # Tag pushes queue per version, so `v2.0.0` and `2.0.0` cannot both pass the overwrite check
+    # before either pushes, and a queued release of another version is never displaced by a third.
+    # Pull requests queue per ref.
+    concurrency:
+      group: docker-release-${{ github.event_name == 'push' && format('v{0}', needs.inputs.outputs.version) || github.ref }}
+      cancel-in-progress: false
+    steps:
+      # Pinned to a commit (main as of 2026-11-04): this job can write packages.
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@cf1e78c50ca91e757bab3edc229027eebfc07871
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
+      # The runner has ~15 GiB of RAM and no swap, and the rmg_env solve has run out of memory there.
+      - name: Add swap
+        run: |
+          sudo fallocate -l 8G /swapfile-release
+          sudo chmod 600 /swapfile-release
+          sudo mkswap /swapfile-release
+          sudo swapon /swapfile-release
+          free -h
+
+      # The PR head, not the merge commit, so the Dockerfile, pins and VERSION come from the same
+      # commit that the image clones as ARC. On a tag this is the tag's commit.
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4.1.0
+
+      # No build cache: the PR proof is a full fresh build, as the tag build will be.
+      - name: Build image
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          no-cache: true
+          tags: arc:release-candidate
+          build-args: |
+            BASE_IMAGE=${{ needs.inputs.outputs.base_image }}
+            RMG_PY_BRANCH=${{ needs.inputs.outputs.rmg_py_ref }}
+            RMG_PY_SHA=${{ needs.inputs.outputs.rmg_py_sha }}
+            RMG_DATABASE_BRANCH=${{ needs.inputs.outputs.rmg_database_ref }}
+            RMG_DATABASE_SHA=${{ needs.inputs.outputs.rmg_database_sha }}
+            ARC_BRANCH=${{ needs.inputs.outputs.arc_ref }}
+            ARC_SHA=${{ needs.inputs.outputs.arc_sha }}
+            ARC_COMMIT=${{ needs.inputs.outputs.arc_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/ReactionMechanismGenerator/ARC
+            org.opencontainers.image.version=${{ needs.inputs.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.inputs.outputs.arc_sha }}
+
+      - name: Run Smoke Tests
+        run: |
+          docker run --rm arc:release-candidate bash -lc \
+            "cd /home/mambauser/Code/ARC && micromamba run -n arc_env pytest dockerfiles/docker_tests/test_docker_smoke.py -m smoke -q"
+
+      - name: Check baked commits and labels
+        env:
+          WANT_ARC: ${{ needs.inputs.outputs.arc_sha }}
+          WANT_RMG_PY: ${{ needs.inputs.outputs.rmg_py_sha }}
+          WANT_RMG_DATABASE: ${{ needs.inputs.outputs.rmg_database_sha }}
+          WANT_VERSION: ${{ needs.inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          versions=$(docker run --rm --entrypoint cat arc:release-candidate /home/mambauser/Code/image_versions.env)
+          { echo '### image_versions.env'; echo '```'; echo "$versions"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          bad=0
+          check() {
+            if [ "$2" = "$3" ]; then echo "ok   $1=$2"; else echo "::error::$1 is '$2', expected '$3'"; bad=1; fi
+          }
+          get() { printf '%s\n' "$versions" | sed -n "s/^$1=//p"; }
+          check ARC_COMMIT "$(get ARC_COMMIT)" "$WANT_ARC"
+          check RMG_PY_COMMIT "$(get RMG_PY_COMMIT)" "$WANT_RMG_PY"
+          check RMG_DATABASE_COMMIT "$(get RMG_DATABASE_COMMIT)" "$WANT_RMG_DATABASE"
+          label() { docker inspect --format "{{ index .Config.Labels \"$1\" }}" arc:release-candidate; }
+          check source-label "$(label org.opencontainers.image.source)" "https://github.com/ReactionMechanismGenerator/ARC"
+          check version-label "$(label org.opencontainers.image.version)" "$WANT_VERSION"
+          check revision-label "$(label org.opencontainers.image.revision)" "$WANT_ARC"
+          exit "$bad"
+
+      # ----- Release tag only: publish the image tested above -----
+      - name: Login to GHCR
+        if: ${{ github.event_name == 'push' }}
+        uses: docker/login-action@v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        if: ${{ github.event_name == 'push' }}
+        env:
+          VERSION: ${{ needs.inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Push only when the registry says the tag is absent. Before the first push the package does
+          # not exist, and GHCR may answer that with "denied" rather than "manifest unknown". A denied
+          # answer is asked twice, 30 s apart, so a passing auth blip is not taken for absence; a
+          # token that still cannot read the tag cannot overwrite it either. Any other error (network,
+          # outage) stops the job, so a transient failure cannot become an overwrite.
+          inspect() { docker manifest inspect "$IMAGE:$VERSION" 2>&1; }
+          if out=$(inspect); then
+            echo "::error::$IMAGE:$VERSION already exists; a release image is never overwritten"
+            exit 1
+          fi
+          echo "$out"
+          if grep -qiE 'denied|unauthorized' <<< "$out"; then
+            sleep 30
+            if out=$(inspect); then
+              echo "::error::$IMAGE:$VERSION already exists; a release image is never overwritten"
+              exit 1
+            fi
+            echo "$out"
+          fi
+          if ! grep -qiE 'no such manifest|manifest unknown|not found|denied|unauthorized' <<< "$out"; then
+            echo "::error::cannot tell whether $IMAGE:$VERSION exists; not pushing"
+            exit 1
+          fi
+          docker tag arc:release-candidate "$IMAGE:$VERSION"
+          docker push "$IMAGE:$VERSION"
+          echo "Pushed $IMAGE:$VERSION" >> "$GITHUB_STEP_SUMMARY"
