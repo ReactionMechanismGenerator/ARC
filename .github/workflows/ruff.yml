@@ -1,0 +1,52 @@
+name: Ruff
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+# Cancel in-flight runs of the same PR/branch when a new commit is pushed.
+concurrency:
+  group: ruff-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: ruff check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ARC
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      # Use the official astral-sh/ruff-action — it pins ruff and runs both
+      # `ruff check` and `ruff format --check` against the configuration in
+      # pyproject.toml. Pinning the action ref keeps the runner reproducible.
+      #
+      # NOTE on `continue-on-error: true`:
+      # The ARC codebase predates ruff and currently has ~300 lint findings
+      # against the configured rule set. We land ruff in non-blocking mode
+      # first so the team can see the report on every PR without the gate
+      # being red. To make ruff a hard gate (recommended once the residual
+      # findings are cleaned up), remove `continue-on-error: true` from
+      # both steps below.
+      - name: Run ruff check
+        uses: astral-sh/ruff-action@v3
+        continue-on-error: true
+        with:
+          args: 'check arc/'
+
+      - name: Run ruff format --check
+        uses: astral-sh/ruff-action@v3
+        continue-on-error: true
+        with:
+          args: 'format --check arc/'
