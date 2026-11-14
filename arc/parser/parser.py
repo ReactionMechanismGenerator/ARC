@@ -10,7 +10,7 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-from arc.common import get_angle_in_180_range, get_logger
+from arc.common import get_angle_in_180_range, get_logger, read_yaml_file
 from arc.exceptions import InputError, ParserError
 from arc.parser.factory import ess_factory
 from arc.species.converter import str_to_xyz
@@ -19,6 +19,9 @@ if TYPE_CHECKING:
     from arc.species.species import ARCSpecies
 
 logger = get_logger()
+
+# Keys that identify a YAML output written by ARC (e.g., by ASE jobs), as read by the YAML parser adapter.
+ARC_YAML_OUTPUT_KEYS = ('freqs', 'frequencies', 'sp', 'energy', 'opt_xyz', 'xyz', 'hessian', 'zpe')
 
 
 def determine_ess(log_file_path: str,
@@ -65,6 +68,8 @@ def determine_ess(log_file_path: str,
             line = f.readline().lower()
     if ess_name is None and os.path.splitext(log_file_path)[-1] in ['.xyz', '.dat', '.geometry']:
         ess_name = 'terachem'
+    if ess_name is None and is_arc_yaml_output(log_file_path):
+        ess_name = 'yaml'
     if ess_name is None:
         if raise_error:
             raise InputError(f'The ESS that generated the file at {log_file_path} could not be identified.')
@@ -72,6 +77,25 @@ def determine_ess(log_file_path: str,
             logger.warning(f'The ESS that generated the file at {log_file_path} could not be identified.')
             return None
     return ess_name
+
+
+def is_arc_yaml_output(log_file_path: str) -> bool:
+    """
+    Whether a file is a YAML output that ARC writes for an ESS without a log of its own, such as the
+    ``output.yml`` of an ASE job. ARC copies such a file to ``geometry/freq.out``, so its extension
+    does not tell it apart from an ESS log.
+
+    Args:
+        log_file_path (str): The disk location of the output file of interest.
+
+    Returns: bool
+        Whether the file holds a YAML mapping with any of the keys ARC's YAML outputs store.
+    """
+    try:
+        content = read_yaml_file(log_file_path)
+    except Exception:
+        return False
+    return isinstance(content, dict) and any(key in content for key in ARC_YAML_OUTPUT_KEYS)
 
 
 def parse_xyz_from_file(log_file_path: str) -> dict[str, tuple] | None:

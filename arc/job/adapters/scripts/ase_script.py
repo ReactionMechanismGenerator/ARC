@@ -476,7 +476,8 @@ def numpy_vibrational_analysis(masses: np.ndarray, hessian: np.ndarray, is_linea
         hessian: (3*n_atoms, 3*n_atoms) array in eV/A^2.
         
     Returns:
-        dict: Containing freqs, modes, force_constants, reduced_masses.
+        dict: Containing freqs (cm^-1), modes, force_constants, reduced_masses, and the hessian in Hartree/A^2,
+              the units of TorchANI's Hessian, so that output.yml holds one unit whatever the calculator.
     """
     # 1. Mass-weighted Hessian
     # inv_sqrt_mass: (3*n_atoms,)
@@ -557,7 +558,7 @@ def numpy_vibrational_analysis(masses: np.ndarray, hessian: np.ndarray, is_linea
         'modes': md_normalized[final_indices].reshape(len(final_indices), -1, 3).tolist(),
         'force_constants': [fconstants[i].tolist() for i in final_indices],
         'reduced_masses': [rmasses[i].tolist() for i in final_indices],
-        'hessian': hessian.tolist()
+        'hessian': (hessian * e / E_h).tolist(),  # eV/A^2 to Hartree/A^2
     }
 
 

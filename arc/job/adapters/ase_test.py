@@ -414,6 +414,8 @@ class TestASEAdapter(unittest.TestCase):
         self.assertEqual(len(results['freqs']), 4)
         for i, val in enumerate(freqs[5:]):
             self.assertAlmostEqual(results['freqs'][i], val, delta=1e-3)
+        # The Hessian is returned in Hartree/A^2, the units of TorchANI's: ORCA's Hartree/Bohr^2 divided by Bohr^2.
+        np.testing.assert_allclose(results['hessian'], hessian / 0.529177210903 ** 2, rtol=1e-6)
 
     def test_write_input_file_scan(self):
         """Test that a scan job writes torsions and scan resolution into the input file"""
