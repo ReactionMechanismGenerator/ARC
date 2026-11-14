@@ -8,6 +8,10 @@ repository. Install ARC on every machine that will execute ARC itself. Electroni
 structure software can be local to that machine or available on remote servers
 that ARC reaches over SSH.
 
+Conda itself comes from `Miniforge <https://conda-forge.org/download/>`_ or
+`Miniconda <https://www.anaconda.com/docs/getting-started/miniconda/install>`_.
+Install one of them first if ``conda`` is not already available.
+
 ARC currently targets Python 3.14 through ``environment.yml`` and
 ``pyproject.toml``. Linux and macOS are the supported practical targets. Windows
 is not expected to be smooth unless used through a Linux-like environment.
