@@ -61,6 +61,7 @@ from arc.job.trsh import (scan_quality_check,
                           trsh_scan_job,
                           )
 from arc.level import Level
+from arc.reaction import check_unique_reaction_labels
 from arc.species.species import (ARCSpecies,
                                  are_coords_compliant_with_graph,
                                  check_label,
@@ -451,8 +452,10 @@ class Scheduler(object):
         self.save_restart = False
 
         if len(self.rxn_list):
+            check_unique_reaction_labels(self.rxn_list)
             if self.adaptive_levels is not None:
                 self._apply_adaptive_reaction_levels()
+                check_unique_reaction_labels(self.rxn_list)
             rxn_info_path = self.make_reaction_labels_info_file()
             for rxn in self.rxn_list:
                 logger.info('\n\n')
@@ -5222,7 +5225,7 @@ class Scheduler(object):
                     if irc_label in self.output:
                         del self.output[irc_label]
                     if irc_label in self.species_dict:
-                        self.species_list = [spc for spc in self.species_list if spc.label != irc_label]
+                        self.species_list[:] = [spc for spc in self.species_list if spc.label != irc_label]
                         del self.species_dict[irc_label]
                     if irc_label in self.unique_species_labels:
                         self.unique_species_labels.remove(irc_label)

@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
-from arc.exceptions import DependencyError, ReactionError
+from arc.exceptions import DependencyError, InputError, ReactionError
 from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_incore_adapters,
                                       derived_instability_breaks_spin_symmetry, is_restricted,
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
@@ -3203,6 +3203,46 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         # Verify rotors convergence flag preserved as True (not blanket-reset to False).
         self.assertTrue(sched.output[ts_label]['job_types']['rotors'])
 
+    def test_deleting_a_ts_irc_species_keeps_the_shared_species_list(self):
+        """Test that cleaning up a TS's IRC species edits the species list ARC shares, rather than replacing it"""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        spc = ARCSpecies(label='NH3', smiles='N', compute_thermo=False)
+        ts_spc = ARCSpecies(label='TS_shared', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0, compute_thermo=False)
+        species = [spc, ts_spc]
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_shared_list')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_shared_species_list', ess_settings=self.ess_settings,
+                          species_list=species,
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        self.assertIs(sched.species_list, species)
+        irc_spc = ARCSpecies(label='IRC_TS_shared_1', xyz=ts_xyz, compute_thermo=False, irc_label='TS_shared')
+        sched.species_list.append(irc_spc)
+        sched.species_dict[irc_spc.label] = irc_spc
+        sched.unique_species_labels.append(irc_spc.label)
+        sched.initialize_output_dict(label=irc_spc.label)
+        ts_spc.irc_label = irc_spc.label
+        sched.job_dict['TS_shared'] = dict()
+
+        sched.delete_all_species_jobs('TS_shared')
+
+        self.assertIs(sched.species_list, species)
+        self.assertEqual([s.label for s in species], ['NH3', 'TS_shared'])
+        self.assertTrue(all(s.label in sched.output for s in species))
+
+        later_spc = ARCSpecies(label='IRC_TS_shared_2', xyz=ts_xyz, compute_thermo=False, irc_label='TS_shared')
+        sched.species_list.append(later_spc)
+        self.assertIn(later_spc, species)
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_rotors_reset(self, mock_run_opt):
         """Test that switch_ts resets rotors_dict when rotors are enabled, and preserves the None sentinel."""
@@ -4397,6 +4437,28 @@ class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
             self.assertIsNone(original.adaptive_lot_n_heavy)
             self.assertTrue(original.compute_thermo)
 
+    def test_duplicate_reaction_labels_are_rejected_before_adaptive_relabel(self):
+        """Test that duplicate reactions are refused even though the adaptive relabel would make their labels distinct"""
+        species = [ARCSpecies(label=label, smiles=smiles, thermo_at_own_level=True)
+                   for label, smiles in [('CH4', 'C'), ('OH', '[OH]'), ('CH3', '[CH3]'), ('H2O', 'O')]]
+        rxn_1 = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=species[:2], p_species=species[2:])
+        rxn_2 = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=species[:2], p_species=species[2:])
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'adaptive_duplicate_labels_delete')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        with self.assertRaises(InputError) as cm:
+            Scheduler(project='adaptive_duplicate_labels',
+                      ess_settings=self.ess_settings,
+                      species_list=species,
+                      rxn_list=[rxn_1, rxn_2],
+                      opt_level=Level(repr='b3lyp/6-31g(d,p)'),
+                      sp_level=Level(repr='b3lyp/6-311+g(d,p)'),
+                      freq_level=Level(repr='b3lyp/6-31g(d,p)'),
+                      adaptive_levels=self.adaptive_levels,
+                      project_directory=project_directory,
+                      job_types=initialize_job_types(),
+                      testing=True)
+        self.assertIn("'CH4 + OH <=> CH3 + H2O'", str(cm.exception))
+
     def test_thermo_at_own_level_default_no_copy(self):
         """Test that by default (thermo_at_own_level=False) the species itself takes the reaction-wide level, no copy"""
         r = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')]
@@ -4743,6 +4805,27 @@ class TestSchedulerReactionChargeBalance(unittest.TestCase):
         rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-')
         self.build_scheduler(rxn, species)
         self.assertEqual(rxn.charge, -1)
+
+    def test_duplicate_reaction_labels_are_rejected_by_the_scheduler(self):
+        """Test that a Scheduler built directly with two reactions sharing a label refuses them"""
+        species = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]'),
+                   ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
+        rxn_1 = ARCReaction(label='CH4 + OH <=> CH3 + H2O')
+        rxn_2 = ARCReaction(label='CH4 + OH <=> CH3 + H2O')
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        with self.assertRaises(InputError) as cm:
+            Scheduler(project='duplicate_labels',
+                      ess_settings={'gaussian': ['server1']},
+                      species_list=species,
+                      rxn_list=[rxn_1, rxn_2],
+                      opt_level=Level(repr='b3lyp/6-31g(d,p)'),
+                      sp_level=Level(repr='b3lyp/6-311+g(d,p)'),
+                      freq_level=Level(repr='b3lyp/6-31g(d,p)'),
+                      project_directory=project_directory,
+                      job_types=initialize_job_types(),
+                      testing=True)
+        self.assertIn("'CH4 + OH <=> CH3 + H2O'", str(cm.exception))
 
 
 if __name__ == '__main__':

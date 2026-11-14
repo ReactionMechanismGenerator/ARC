@@ -13,13 +13,15 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from arc.common import get_logger
+from arc.common import get_logger, read_yaml_file
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
 from arc.main import ARC, process_adaptive_levels
+from arc.reaction import ARCReaction
+from arc.scheduler import Scheduler
 from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 from arc.species.species import ARCSpecies
 
@@ -549,6 +551,27 @@ class TestARC(unittest.TestCase):
         with self.assertRaises(ValueError):
             arc0.determine_unique_species_labels()
 
+    def test_duplicate_reaction_labels_raise(self):
+        """Test that ARC rejects two reactions sharing a label at input time, and accepts distinct labels"""
+        species = [ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]'),
+                   ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O'),
+                   ARCSpecies(label='H2O_b', smiles='O')]
+        level = 'ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)'
+        rxn_dicts = [{'label': 'CH4 + OH <=> CH3 + H2O'}, {'label': 'CH4 + OH <=> CH3 + H2O'}]
+        with self.assertRaises(InputError) as cm:
+            ARC(project='arc_test', job_types=self.job_types1, species=species, reactions=rxn_dicts,
+                level_of_theory=level, project_directory=os.path.join(self.scratch_dir, 'arc_test'))
+        self.assertIn("'CH4 + OH <=> CH3 + H2O'", str(cm.exception))
+        rxn_objects = [ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=species[:2], p_species=species[2:4]),
+                       ARCReaction(r_species=species[:2], p_species=species[2:4])]
+        with self.assertRaises(InputError):
+            ARC(project='arc_test', job_types=self.job_types1, species=species, reactions=rxn_objects,
+                level_of_theory=level, project_directory=os.path.join(self.scratch_dir, 'arc_test'))
+        rxn_dicts = [{'label': 'CH4 + OH <=> CH3 + H2O'}, {'label': 'CH4 + OH <=> CH3 + H2O_b'}]
+        arc0 = ARC(project='arc_test', job_types=self.job_types1, species=species, reactions=rxn_dicts,
+                   level_of_theory=level, project_directory=os.path.join(self.scratch_dir, 'arc_test'))
+        self.assertEqual([rxn.label for rxn in arc0.reactions], ['CH4 + OH <=> CH3 + H2O', 'CH4 + OH <=> CH3 + H2O_b'])
+
     def test_add_hydrogen_for_bde(self):
         """Test the add_hydrogen_for_bde method"""
         spc0 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)
@@ -700,6 +723,25 @@ class TestARC(unittest.TestCase):
                        level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
                        ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
                        )
+
+    def test_reaction_multiplicity_from_input_dict_reaches_ts(self):
+        """Test that a reaction whose species are named by label in an input dict gets the right TS multiplicity"""
+        project_directory = os.path.join(self.scratch_dir, 'arc_test_rxn_multiplicity')
+        input_dict = {'project': 'arc_test_rxn_multiplicity',
+                      'project_directory': project_directory,
+                      'calc_freq_factor': False,
+                      'compute_thermo': False,
+                      'species': [{'label': 'R', 'smiles': '[CH2]C(C)CC'}, {'label': 'P', 'smiles': 'CC(C)[CH]C'}],
+                      'reactions': [{'label': 'R <=> P', 'reactants': ['R'], 'products': ['P']}]}
+        arc0 = ARC(**input_dict)
+        sched = Scheduler(project=arc0.project, species_list=arc0.species, rxn_list=arc0.reactions,
+                          ess_settings={'gaussian': ['local']}, project_directory=project_directory, testing=True,
+                          job_types={'conf_opt': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
+                                     'fine_grid': False})
+        self.assertEqual(arc0.reactions[0].multiplicity, 2)
+        ts_species = [spc for spc in sched.species_list if spc.is_ts]
+        self.assertEqual(len(ts_species), 1)
+        self.assertEqual(ts_species[0].multiplicity, 2)
 
     def test_summary_reports_the_warnings_of_a_converged_species(self):
         """Test that the run summary prints the warnings of a species that converged"""
@@ -964,6 +1006,124 @@ class TestCheckFileCleanup(unittest.TestCase):
                 handler.close()
                 arc_logger.removeHandler(handler)
         shutil.rmtree(self.remote_root, ignore_errors=True)
+        shutil.rmtree(os.path.dirname(self.project_directory), ignore_errors=True)
+
+
+class ReachedProcessing(Exception):
+    """Raised by a stand-in for process_arc_project() to stop a run once processing is reached."""
+
+    def __init__(self, species_dict: dict):
+        super().__init__('process_arc_project() was reached')
+        self.species_dict = species_dict
+
+
+def stop_at_processing(**kwargs) -> None:
+    """
+    Stand in for process_arc_project(), and stop the run there.
+
+    Args:
+        kwargs: The arguments ARC passes to process_arc_project().
+    """
+    raise ReachedProcessing(species_dict=kwargs['species_dict'])
+
+
+class TestProjectInfoAfterAFailedIrcCheck(unittest.TestCase):
+    """
+    Contains unit tests for saving the project info file, and reaching processing,
+    after a failed IRC check deleted the IRC endpoint species of a TS.
+    """
+
+    TS_XYZ = """N       0.91779059    0.51946178    0.00000000
+                H       1.81402049    1.03819414    0.00000000
+                H       0.00000000    0.00000000    0.00000000
+                H       0.91779059    1.22790192    0.72426890"""
+
+    def setUp(self):
+        """
+        A method that is run before each unit test.
+        """
+        self.project = 'arc_irc_check_project_info_test'
+        self.project_directory = os.path.join(tempfile.mkdtemp(), self.project)
+
+    def make_arc(self) -> ARC:
+        """
+        Create an ARC object with one species and one TS.
+
+        Returns: ARC
+            The ARC object.
+        """
+        return ARC(project=self.project,
+                   project_directory=self.project_directory,
+                   species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False),
+                            ARCSpecies(label='TS1', is_ts=True, xyz=self.TS_XYZ, multiplicity=1, charge=0,
+                                       compute_thermo=False)],
+                   level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
+                   ess_settings={'gaussian': ['local'], 'molpro': ['local']},
+                   )
+
+    def run_a_failed_irc_check(self, **kwargs) -> Scheduler:
+        """
+        Build a real Scheduler from the arguments ARC passes, then spawn an IRC endpoint species for TS1
+        and delete it again, as a failed IRC check does.
+
+        Args:
+            kwargs: The arguments ARC passes to the Scheduler.
+
+        Returns: Scheduler
+            The Scheduler after the failed IRC check.
+        """
+        sched = Scheduler(**kwargs, testing=True)
+        for label in ['spc1', 'TS1']:
+            sched.output[label]['convergence'] = True
+        irc_spc = ARCSpecies(label='IRC_TS1_1', xyz=self.TS_XYZ, compute_thermo=False, irc_label='TS1')
+        sched.species_list.append(irc_spc)
+        sched.species_dict[irc_spc.label] = irc_spc
+        sched.initialize_output_dict(label=irc_spc.label)
+        sched.species_dict['TS1'].irc_label = irc_spc.label
+        sched.job_dict['TS1'] = dict()
+        sched.delete_all_species_jobs('TS1')
+        return sched
+
+    def test_save_project_info_file_reports_a_species_without_output_as_failed(self):
+        """Test that a species or TS without an output entry is reported as failed, rather than raising"""
+        arc0 = self.make_arc()
+        arc0.output = {'TS1': {'convergence': True}}
+        rxn = ARCReaction(r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
+                          p_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C')])
+        rxn.ts_species = ARCSpecies(label='TS0', is_ts=True, xyz=self.TS_XYZ, multiplicity=1, charge=0)
+        arc0.reactions = [rxn]
+        arc0.save_project_info_file()
+        with open(os.path.join(self.project_directory, f'{self.project}.info'), 'r') as f:
+            txt = f.read()
+        self.assertIn('Species spc1 (Failed!)', txt)
+        self.assertIn('TS TS1 (run time', txt)
+        info = read_yaml_file(os.path.join(self.project_directory, f'{self.project}_info.yml'))
+        self.assertEqual(info['species'][0]['label'], 'spc1')
+        self.assertIs(info['species'][0]['success'], False)
+        self.assertIs(info['reactions'][0]['success'], False)
+
+    def test_a_failed_irc_check_still_reaches_processing(self):
+        """Test that a run whose IRC check failed writes its project info and reaches processing (issue #1067)"""
+        arc0 = self.make_arc()
+        with patch('arc.main.Scheduler', side_effect=self.run_a_failed_irc_check), \
+                patch('arc.main.process_arc_project', side_effect=stop_at_processing):
+            with self.assertRaises(ReachedProcessing) as reached:
+                arc0.execute()
+        self.assertEqual(sorted(reached.exception.species_dict.keys()), ['TS1', 'spc1'])
+        self.assertEqual([spc.label for spc in arc0.species], ['spc1', 'TS1'])
+        info = read_yaml_file(os.path.join(self.project_directory, f'{self.project}_info.yml'))
+        self.assertEqual([spc['label'] for spc in info['species']], ['spc1'])
+
+    def tearDown(self):
+        """
+        A method that is run after each unit test.
+        Detach ARC's log file handler before removing the directory it writes into.
+        """
+        arc_logger = get_logger()
+        for handler in arc_logger.handlers[:]:
+            if isinstance(handler, logging.FileHandler):
+                handler.close()
+                arc_logger.removeHandler(handler)
         shutil.rmtree(os.path.dirname(self.project_directory), ignore_errors=True)
 
 

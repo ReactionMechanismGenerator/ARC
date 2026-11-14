@@ -35,7 +35,7 @@ from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
 from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
 from arc.output import write_output_yml
 from arc.processor import process_arc_project, resolve_neb_level
-from arc.reaction import ARCReaction
+from arc.reaction import ARCReaction, check_unique_reaction_labels
 from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
@@ -394,6 +394,7 @@ class ARC(object):
         self.reactions.extend(converted_reactions)
         for rxn_index, arc_rxn in enumerate(self.reactions):
             arc_rxn.index = rxn_index
+        check_unique_reaction_labels(self.reactions)
 
         if self.adaptive_levels is not None:
             logger.info(f'Using the following adaptive levels of theory:\n{self.adaptive_levels}')
@@ -734,7 +735,7 @@ class ARC(object):
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.species:
             descriptor = 'TS' if species.is_ts else 'Species'
-            failed = '' if self.output[species.label]['convergence'] else ' (Failed!)'
+            failed = '' if self.output.get(species.label, dict()).get('convergence', False) else ' (Failed!)'
             txt += f'{descriptor} {species.label}{failed} (run time: {species.run_time})\n'
         if self.reactions:
             for rxn in self.reactions:
@@ -756,14 +757,14 @@ class ARC(object):
             if not species.is_ts:
                 spc_dict = dict()
                 spc_dict['label'] = species.label
-                spc_dict['success'] = self.output[species.label]['convergence']
+                spc_dict['success'] = self.output.get(species.label, dict()).get('convergence', False)
                 spc_dict['smiles'] = species.mol.copy(deep=True).to_smiles() if species.mol is not None else None
                 spc_dict['adj'] = species.mol.copy(deep=True).to_adjacency_list() if species.mol is not None else None
                 content['species'].append(spc_dict)
         for reaction in self.reactions:
             rxn_dict = dict()
             rxn_dict['label'] = reaction.label
-            rxn_dict['success'] = self.output[reaction.ts_species.label]['convergence']
+            rxn_dict['success'] = self.output.get(reaction.ts_species.label, dict()).get('convergence', False)
             content['reactions'].append(rxn_dict)
         save_yaml_file(path=path, content=content)
 
