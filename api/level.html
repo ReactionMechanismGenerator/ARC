@@ -89,11 +89,13 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.level.Level.get_args"><code class="docutils literal notranslate"><span class="pre">Level.get_args()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.level.Level.lower"><code class="docutils literal notranslate"><span class="pre">Level.lower()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.level.Level.simple"><code class="docutils literal notranslate"><span class="pre">Level.simple()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.level.Level.string_representation"><code class="docutils literal notranslate"><span class="pre">Level.string_representation()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.level.Level.warn_if_year_set"><code class="docutils literal notranslate"><span class="pre">Level.warn_if_year_set()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.level.assign_frequency_scale_factor"><code class="docutils literal notranslate"><span class="pre">assign_frequency_scale_factor()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.level.get_freq_level_for_composite_method"><code class="docutils literal notranslate"><span class="pre">get_freq_level_for_composite_method()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.level.get_freq_scale_factor_key"><code class="docutils literal notranslate"><span class="pre">get_freq_scale_factor_key()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="scale.html">arc.utils.scale</a></li>
@@ -257,6 +259,24 @@ Populates the .software attribute.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.level.Level.string_representation">
+<span class="sig-name descname"><span class="pre">string_representation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">include_args</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/level.html#Level.string_representation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.level.Level.string_representation" title="Link to this definition"></a></dt>
+<dd><p>Return a humane-readable string representation of the object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>include_args</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to include the software-specific <code class="docutils literal notranslate"><span class="pre">args</span></code>.
+Keyword args are listed in sorted key order, block args in the given order.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The level of theory string representation.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.level.Level.warn_if_year_set">
 <span class="sig-name descname"><span class="pre">warn_if_year_set</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">attr_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/level.html#Level.warn_if_year_set"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.level.Level.warn_if_year_set" title="Link to this definition"></a></dt>
 <dd><p>Warn if <code class="docutils literal notranslate"><span class="pre">year</span></code> is set on this Level. The <code class="docutils literal notranslate"><span class="pre">year</span></code> attribute only affects Arkane
@@ -308,6 +328,24 @@ composite rather than falling back to an arbitrary default.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.level.get_freq_scale_factor_key">
+<span class="sig-prename descclassname"><span class="pre">arc.level.</span></span><span class="sig-name descname"><span class="pre">get_freq_scale_factor_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">level</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/level.html#get_freq_scale_factor_key"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.level.get_freq_scale_factor_key" title="Link to this definition"></a></dt>
+<dd><p>Get the key under which a level of theory is stored in <code class="docutils literal notranslate"><span class="pre">data/freq_scale_factors.yml</span></code>.
+The key is the level of theory string representation without the software-specific <code class="docutils literal notranslate"><span class="pre">args</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>level</strong> (<em>str</em><em> | </em><em>dict</em><em> | </em><a class="reference internal" href="#arc.level.Level" title="arc.level.Level"><em>Level</em></a>) – The level of theory.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The frequency scale factor database key.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
 </dd>
 </dl>
 </dd></dl>

@@ -206,7 +206,8 @@ Should be <code class="docutils literal notranslate"><span class="pre">True</spa
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.utils.scale.rename_level">
 <span class="sig-prename descclassname"><span class="pre">arc.utils.scale.</span></span><span class="sig-name descname"><span class="pre">rename_level</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">level</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/utils/scale.html#rename_level"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.utils.scale.rename_level" title="Link to this definition"></a></dt>
-<dd><p>Rename the level of theory so it can be used for folder names.</p>
+<dd><p>Rename the level of theory so it can be used for folder names.
+A name longer than <code class="docutils literal notranslate"><span class="pre">MAX_RENAMED_LEVEL_LENGTH</span></code> is truncated and suffixed with a hash of the full level string.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>level</strong> (<em>str</em>) – The level of theory to be renamed.</p>
