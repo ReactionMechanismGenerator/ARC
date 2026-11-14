@@ -7,6 +7,7 @@ Standardizes interaction with various calculators.
 """
 
 import argparse
+import datetime
 import json
 import math
 import os
@@ -21,6 +22,7 @@ import yaml
 import numpy as np
 
 from ase import Atoms
+from ase.calculators.calculator import Calculator, all_changes
 from ase.constraints import FixInternals
 from ase.data import covalent_radii
 from ase.neighborlist import build_neighbor_list, natural_cutoffs
@@ -942,6 +944,198 @@ def read_trajectory(path: str) -> list:
         return list()
 
 
+class ImageCalculator(Calculator):
+    """
+    A per-image calculator that evaluates one shared calculator.
+
+    ASE's AutoNEB builds its NEB objects without ``allow_shared_calculator``, so every image needs a calculator object
+    of its own, but loading a model per image would multiply the memory and start-up time. Each image gets one of
+    these instead: it evaluates the shared calculator on a copy of its image and counts the calls.
+    """
+    implemented_properties = ['energy', 'forces']
+
+    def __init__(self, shared, counter: dict, **kwargs):
+        super().__init__(**kwargs)
+        self.shared, self.counter = shared, counter
+
+    def calculate(self, atoms=None, properties=('energy',), system_changes=all_changes):
+        super().calculate(atoms, properties, system_changes)
+        image = self.atoms.copy()
+        image.info.update(self.atoms.info)
+        image.calc = self.shared
+        self.results = {'energy': image.get_potential_energy(), 'forces': image.get_forces()}
+        self.counter['force_calls'] = self.counter.get('force_calls', 0) + 1
+
+
+def xyz_of(atoms: Atoms, xyz: dict) -> dict:
+    """The ARC xyz dict of ``atoms``, with the symbols and isotopes of ``xyz``."""
+    return {'coords': tuple(map(tuple, atoms.get_positions().tolist())),
+            'symbols': tuple(xyz['symbols']),
+            'isotopes': tuple(xyz.get('isotopes') or [None] * len(xyz['symbols']))}
+
+
+def run_band(atoms: Atoms, xyz: dict, product_xyz: dict, settings: dict, job_dir: str,
+             keep_bonds: list | None = None) -> dict:
+    """
+    One nudged elastic band from ``xyz`` (the reactant) to ``product_xyz``, with ASE's NEB, DyNEB or AutoNEB on the
+    calculator of ``atoms`` (whose positions are not used; its ``info`` carries the charge and spin).
+
+    The endpoints stay fixed and must list the same atoms in the same order (ARC writes them atom-mapped, with a
+    bimolecular side placed as its fragments sit in the unimolecular side). The interior images start from an
+    image-dependent pair potential (IDPP) interpolation. NEB and DyNEB relax the band first without a climbing image
+    (to ``neb_fmax_pre``), then with one (to ``neb_fmax``). AutoNEB starts from the endpoints and adds images where the
+    band needs them, up to ``neb_images``. The highest interior image is the TS guess, which ARC then optimizes to a
+    saddle point and checks by IRC like any other guess.
+
+    Settings (optional): ``neb_method`` ('neb', 'dyneb' or 'autoneb'; default 'neb'), ``neb_images`` (interior images;
+    default 10), ``neb_fmax`` (default 0.05 eV/A), ``neb_fmax_pre`` (default 0.1 eV/A), ``neb_steps`` (per stage;
+    default 500), ``neb_k`` (spring constant; default 0.1 eV/A^2), ``neb_tangent`` (ASE's ``method``; default
+    'improvedtangent', and 'eb' for AutoNEB).
+
+    Returns:
+        dict: ``ts_guesses`` (the highest image as an ARC TSGuess dict), ``neb_energies`` (kJ/mol relative to the
+              reactant), ``neb_path`` (the final images), ``neb_highest_image``, ``neb_converged``,
+              ``neb_force_calls``, ``opt_xyz`` (the highest image), and ``warnings`` or ``error``.
+    """
+    from ase.mep import NEB, DyNEB
+    from ase.optimize import FIRE
+
+    if not product_xyz or tuple(product_xyz['symbols']) != tuple(xyz['symbols']):
+        return {'error': 'A NEB job needs a product_xyz with the same atoms in the same order as its xyz.'}
+    method = str(settings.get('neb_method', 'neb')).lower()
+    n_images = int(settings.get('neb_images', 10))
+    fmax, fmax_pre = float(settings.get('neb_fmax', 0.05)), float(settings.get('neb_fmax_pre', 0.1))
+    steps, k = int(settings.get('neb_steps', 500)), float(settings.get('neb_k', 0.1))
+    shared, counter = atoms.calc, dict()
+
+    def attach(images):
+        for image in images:
+            image.info.update(atoms.info)  # charge and spin, which UMA, MACE-OMol and Orb-OMol read from atoms.info
+            image.calc = ImageCalculator(shared, counter)
+
+    reactant = Atoms(symbols=xyz['symbols'], positions=xyz['coords'])
+    product = Atoms(symbols=product_xyz['symbols'], positions=product_xyz['coords'])
+    attach([reactant, product])
+    warnings, t0 = list(), time.time()
+    if keep_bonds:
+        # A product endpoint built from the reactant (ARC moves a migrating H onto its acceptor) is not a minimum and
+        # can lie above the TS. Relax it, and keep the result only if every moved H is still on its acceptor.
+        from ase.build import minimize_rotation_and_translation
+        relaxed = product.copy()
+        attach([relaxed])
+        BFGS(relaxed, logfile=os.path.join(job_dir, 'relax_product.log')).run(fmax=0.05, steps=300)
+        if all(relaxed.get_distance(h, a) < 1.25 for h, a in keep_bonds):
+            minimize_rotation_and_translation(reactant, relaxed)
+            product = relaxed
+        else:
+            warnings.append('Relaxing the built product endpoint moved a hydrogen off its acceptor; kept it unrelaxed.')
+    if method == 'autoneb':
+        try:
+            from ase.io import write
+            from ase.mep.autoneb import AutoNEB
+            prefix = os.path.join(job_dir, 'neb')
+            for index, image in enumerate((reactant, product)):
+                image.get_forces()  # AutoNEB reads the endpoints back from their files and needs their energies there
+                write(f'{prefix}{index:03d}.traj', image)
+            autoneb = AutoNEB(attach, prefix=prefix, n_simul=1, n_max=n_images + 2, fmax=fmax, maxsteps=steps, k=k,
+                              climb=True, method=settings.get('neb_tangent', 'eb'), parallel=False,
+                              # Aligning the images would move the product endpoint, whose energy AutoNEB keeps
+                              # from its file; ARC writes the endpoints already aligned.
+                              remove_rotation_and_translation=False, interpolate_method='idpp',
+                              iter_folder=os.path.join(job_dir, 'AutoNEB_iter'))
+            autoneb.run()
+            images, converged = autoneb.all_images, True
+        except AssertionError as exc:
+            # E.g. "climb_safe should be true at this point": AutoNEB's highest image ended next to an endpoint.
+            warnings.append(f'AutoNEB stopped ({exc}); the band was relaxed again as a NEB.')
+            method = 'neb'
+        except Exception as exc:
+            return {'error': f'NEB failed: {type(exc).__name__}: {exc}'}
+    if method != 'autoneb':
+        try:
+            neb_kwargs = dict(k=k, method=settings.get('neb_tangent', 'improvedtangent'),
+                              remove_rotation_and_translation=True)
+            images = [reactant] + [reactant.copy() for _ in range(n_images)] + [product]
+            attach(images[1:-1])
+            NEB(images, **neb_kwargs).interpolate(method='idpp')
+            band = DyNEB(images, fmax=fmax, dynamic_relaxation=True, **neb_kwargs) if method == 'dyneb' \
+                else NEB(images, **neb_kwargs)
+            log = os.path.join(job_dir, 'neb.log')
+            FIRE(band, logfile=log).run(fmax=fmax_pre, steps=steps)
+            band.climb = True
+            converged = FIRE(band, logfile=log).run(fmax=fmax, steps=steps)
+            if not converged:
+                warnings.append(f'The NEB did not converge to fmax {fmax} eV/A in {steps} climbing-image steps; '
+                                f'its highest image is still reported as a TS guess.')
+        except Exception as exc:
+            return {'error': f'NEB failed: {type(exc).__name__}: {exc}'}
+
+    energies = [image.get_potential_energy() for image in images]
+    energies = [to_kJmol(energy - energies[0]) for energy in energies]
+    highest = 1 + int(np.argmax(energies[1:-1]))
+    if energies[highest] <= max(energies[0], energies[-1]):
+        warnings.append('The NEB path has no interior maximum above both endpoints (a barrierless or monotonic path); '
+                        'its highest interior image is still reported.')
+    guess = {'method': 'ase_neb', 'success': True, 'energy': energies[highest],
+             'initial_xyz': xyz_of(images[highest], xyz),
+             'execution_time': str(datetime.timedelta(seconds=round(time.time() - t0)))}
+    out = {'ts_guesses': [guess],
+           'neb_energies': energies,
+           'neb_path': [xyz_of(image, xyz) for image in images],
+           'neb_highest_image': highest,
+           'neb_converged': bool(converged),
+           'neb_force_calls': counter.get('force_calls', 0),
+           'opt_xyz': xyz_of(images[highest], xyz)}
+    if warnings:
+        out['warnings'] = warnings
+    return out
+
+
+def run_neb(atoms: Atoms, input_dict: dict, settings: dict, job_dir: str) -> dict:
+    """
+    Nudged elastic bands for a 'neb' job: one per entry of ``bands`` (each an ``xyz`` and a ``product_xyz``, e.g. from
+    different atom maps of the reaction, and optionally ``keep_bonds``: the (H, acceptor) pairs of a product endpoint
+    built from the reactant, which is then relaxed first), or one between the job's ``xyz`` and ``product_xyz``.
+    See run_band().
+
+    Each band's highest interior image is a TS guess (``method_index`` = the band's index), and ARC optimizes and checks
+    every guess, so a band that crosses the wrong saddle only costs its own guess. Each band keeps its files in
+    ``band_<i>``. The top-level ``neb_*`` keys and ``opt_xyz`` are those of the band with the lowest highest image.
+
+    Returns:
+        dict: ``ts_guesses``, ``neb_bands`` (a summary per band), ``neb_energies``, ``neb_path``, ``neb_highest_image``,
+              ``neb_converged``, ``neb_force_calls`` (all bands), ``opt_xyz``, and ``warnings`` or ``error``.
+    """
+    bands = input_dict.get('bands') or [{'xyz': input_dict['xyz'], 'product_xyz': input_dict.get('product_xyz')}]
+    results, warnings = list(), list()
+    for index, band in enumerate(bands):
+        band_dir = os.path.join(job_dir, f'band_{index}')
+        os.makedirs(band_dir, exist_ok=True)
+        result = run_band(atoms, band['xyz'], band.get('product_xyz'), settings, band_dir,
+                          keep_bonds=band.get('keep_bonds'))
+        results.append(result)
+        if 'error' in result:
+            warnings.append(f"Band {index}: {result['error']}")
+        warnings.extend(f'Band {index}: {w}' for w in result.get('warnings', list()))
+    done = [(i, r) for i, r in enumerate(results) if 'error' not in r]
+    if not done:
+        return {'error': '; '.join(warnings) or 'No NEB band ran.'}
+    for index, result in done:
+        result['ts_guesses'][0]['method_index'] = index
+    best_index, best = min(done, key=lambda item: item[1]['neb_energies'][item[1]['neb_highest_image']])
+    out = {'ts_guesses': [r['ts_guesses'][0] for _, r in done],
+           'neb_bands': [{'band': i, 'energies': r.get('neb_energies'), 'highest_image': r.get('neb_highest_image'),
+                          'converged': r.get('neb_converged'), 'force_calls': r.get('neb_force_calls'),
+                          'error': r.get('error')} for i, r in enumerate(results)],
+           'neb_best_band': best_index,
+           'neb_force_calls': sum(r.get('neb_force_calls', 0) for _, r in done)}
+    for key in ('neb_energies', 'neb_path', 'neb_highest_image', 'neb_converged', 'opt_xyz'):
+        out[key] = best[key]
+    if warnings:
+        out['warnings'] = warnings
+    return out
+
+
 def resolve_input_path(yml_path: str) -> str:
     """
     Resolve the path of a job's input.yml, given it or its directory.
@@ -1078,6 +1272,10 @@ def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None 
                  'symbols': xyz['symbols'],
                  'isotopes': xyz.get('isotopes') or tuple([None] * len(xyz['symbols']))}
                 for image in images]
+
+    if job_type == 'neb':
+        # A TS guess from a nudged elastic band between the job's xyz and its product_xyz (see run_neb()).
+        output.update(run_neb(atoms, input_dict, settings, job_dir))
 
     if job_type in ['freq', 'optfreq']:
         try:

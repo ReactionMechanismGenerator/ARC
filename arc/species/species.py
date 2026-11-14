@@ -1881,6 +1881,9 @@ class ARCSpecies(object):
         elif path.endswith('.yml') or path.endswith('.yaml'):
             yml_path = path
             tsg_list = read_yaml_file(yml_path)
+            if isinstance(tsg_list, dict):
+                # An ASE job's output.yml (e.g., 'ase_neb') carries its guesses under 'ts_guesses'.
+                tsg_list = tsg_list.get('ts_guesses')
             if not isinstance(tsg_list, list) or not all(isinstance(tsg, dict) for tsg in tsg_list):
                 return None
             tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]

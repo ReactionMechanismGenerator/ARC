@@ -517,8 +517,11 @@ def get_near_attack_xyz(xyz: dict,
         if t_axis_norm < 1e-8:
             continue
         t_axis = t_axis_raw / t_axis_norm
-        t_group = {nbr for nbr in adj[pivot_a] if nbr != pivot_b}
-        if h_atom not in t_group:
+        # Everything on the donor's side of the donor-backbone bond turns with the H, so that a heavy substituent of
+        # the donor keeps its own atoms (rotating only the donor's neighbors left e.g. a methyl's H atoms behind).
+        # A ring bond cannot be turned about.
+        t_group = downstream(adj, pivot_b, pivot_a) - {pivot_a}
+        if h_atom not in t_group or pivot_b in t_group or acceptor in t_group:
             continue
         best_dist = float(np.linalg.norm(coords[h_atom] - coords[acceptor]))
         best_delta = 0.0

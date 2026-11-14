@@ -24,6 +24,7 @@ from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
 from arc.job.adapters.ase_adapter import ASEAdapter, active_worker_tickets, servers, submit_filenames
 from arc.parser.parser import parse_1d_scan_coords, parse_1d_scan_energies
 from arc.species.species import ARCSpecies
+from arc.job.adapters.scripts import ase_script
 from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  claim_ticket,
                                                  get_ticket_status,
@@ -985,6 +986,48 @@ class TestASEWorker(unittest.TestCase):
         self.assertFalse(job.is_worker_ticket())
         job.job_id = f'{job.job_name}_0123456789ab'
         self.assertTrue(job.is_worker_ticket())
+
+    def test_run_neb(self):
+        """A 'neb' job returns the highest interior image of the band as an ARC TS guess (EMT; NEB, DyNEB, AutoNEB)."""
+        xyz = {'symbols': ('H', 'C', 'N'), 'isotopes': (1, 12, 14),
+               'coords': ((-1.07, 0.0, 0.0), (0.0, 0.0, 0.0), (1.16, 0.0, 0.0))}
+        product_xyz = {'symbols': ('H', 'C', 'N'), 'isotopes': (1, 12, 14),
+                       'coords': ((2.15, 0.3, 0.0), (0.0, 0.0, 0.0), (1.17, 0.0, 0.0))}
+        for method in ('neb', 'dyneb', 'autoneb'):  # EMT's path trips AutoNEB, which then falls back to a NEB
+            job_dir = tempfile.mkdtemp(prefix=f'test_run_neb_{method}_')
+            self.addCleanup(shutil.rmtree, job_dir, ignore_errors=True)
+            input_dict = {'job_type': 'neb', 'xyz': xyz, 'product_xyz': product_xyz, 'charge': 0, 'multiplicity': 1,
+                          'settings': {'calculator': 'emt', 'neb_method': method, 'neb_images': 3, 'neb_steps': 20}}
+            input_path = os.path.join(job_dir, 'input.yml')
+            ase_script.save_yaml_file(input_path, input_dict)
+            output = ase_script.run_job(input_path, input_dict=input_dict)
+            self.assertNotIn('error', output)
+            self.assertEqual(len(output['neb_energies']), 5)
+            self.assertEqual(output['neb_energies'][0], 0.0)
+            self.assertIn(output['neb_highest_image'], (1, 2, 3))
+            guess = output['ts_guesses'][0]
+            self.assertEqual(guess['method'], 'ase_neb')
+            self.assertEqual(tuple(guess['initial_xyz']['symbols']), xyz['symbols'])
+            self.assertEqual(output['opt_xyz']['coords'], guess['initial_xyz']['coords'])
+            self.assertGreater(output['neb_force_calls'], 0)
+        # Two bands give two guesses, each with its band's index.
+        job_dir = tempfile.mkdtemp(prefix='test_run_neb_bands_')
+        self.addCleanup(shutil.rmtree, job_dir, ignore_errors=True)
+        flipped = {'symbols': xyz['symbols'], 'isotopes': xyz['isotopes'],
+                   'coords': ((-2.15, 0.3, 0.0), (0.0, 0.0, 0.0), (1.17, 0.0, 0.0))}
+        two = dict(input_dict, settings=dict(input_dict['settings'], neb_method='neb'),
+                   bands=[{'xyz': xyz, 'product_xyz': product_xyz}, {'xyz': xyz, 'product_xyz': flipped}])
+        output = ase_script.run_job(os.path.join(job_dir, 'input.yml'), input_dict=two)
+        self.assertEqual(sorted(g['method_index'] for g in output['ts_guesses']), [0, 1])
+        self.assertEqual(len(output['neb_bands']), 2)
+        self.assertIn(output['neb_best_band'], (0, 1))
+        self.assertTrue(os.path.isfile(os.path.join(job_dir, 'band_1', 'neb.log')))
+        # Mismatched endpoints are refused.
+        bad = dict(input_dict, product_xyz={'symbols': ('H', 'N', 'C'), 'coords': product_xyz['coords']})
+        job_dir = tempfile.mkdtemp(prefix='test_run_neb_bad_')
+        self.addCleanup(shutil.rmtree, job_dir, ignore_errors=True)
+        output = ase_script.run_job(os.path.join(job_dir, 'input.yml'), input_dict=bad)
+        self.assertIn('error', output)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
