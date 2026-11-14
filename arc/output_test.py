@@ -197,6 +197,18 @@ class TestResolveFreqScaleFactorEntry(unittest.TestCase):
         with patch('arc.output.read_yaml_file', return_value=['not', 'a', 'mapping']):
             self.assertEqual(_resolve_freq_scale_factor_entry('fake/level'), (None, None))
 
+    def test_known_level_with_args_returns_its_key_and_citation(self):
+        """A level carrying args resolves to the same key and citation as the same level without args."""
+        for args in ({'keyword': {'general': 'IOp(99/33=1)'}},
+                     {'block': {'general': '%scf MaxIter 500 end'}},
+                     {'keyword': {'general': 'IOp(99/33=1)'}, 'block': {'general': '%scf MaxIter 500 end'}}):
+            with self.subTest(args=args):
+                level = Level(method='wb97xd', basis='def2tzvp', software='gaussian', args=args)
+                key, source = _resolve_freq_scale_factor_entry(level)
+                self.assertEqual(key, 'wb97xd/def2tzvp, software: gaussian')
+                self.assertIsNotNone(source)
+                self.assertIn('10.1021/ct100326h', source)
+
 
 class TestParseThermoDataBlock(unittest.TestCase):
     """Tests for parse_thermo_data_block in arkane.py."""
