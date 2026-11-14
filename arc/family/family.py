@@ -1453,17 +1453,58 @@ def isomorphic_products(rxn: ARCReaction,
     return check_product_isomorphism(products, p_species)
 
 
-def check_family_name(family: str
+def check_family_name(family: str,
+                      rmg_family_set: list[str] | str | None = None,
                       ) -> bool:
     """
     Check whether the family name is defined.
 
     Args:
         family (str): The family name.
+        rmg_family_set (list[str] | str, optional): The RMG family set to look the family up in.
+                                                    ``None`` (the default) means ``settings['rmg_family_set']``,
+                                                    read on every call. Pass ``'all'`` to ask whether the family
+                                                    is available at all rather than whether it is configured.
 
     Returns:
         bool: Whether the family is defined.
     """
-    if not isinstance(family, str) and family is not None:
+    if family is None:
+        return True
+    if not isinstance(family, str):
         raise TypeError("Family name must be a string or None.")
-    return family in get_all_families() or family is None
+    return family in get_all_families(rmg_family_set=rmg_family_set)
+
+
+def is_family_available(family: str) -> bool:
+    """
+    Check whether a reaction family can be loaded by label, whether or not the configured family set
+    lists it. A family is available when ``get_all_families('all')`` reaches it, or when the
+    configured ``settings['rmg_family_set']`` does. The second term is what keeps a surface family
+    available, since ``'all'`` skips the surface family sets and directories.
+
+    Args:
+        family (str): The family name.
+
+    Returns:
+        bool: Whether the family can be loaded by label.
+    """
+    return check_family_name(family, rmg_family_set='all') or check_family_name(family)
+
+
+def get_families_from_product_dicts(product_dicts: list[dict]) -> list[str]:
+    """
+    List the reaction families represented in a list of family product dictionaries,
+    without repetitions and in the order in which they first appear.
+
+    Args:
+        product_dicts (list[dict]): The family product dictionaries to read.
+
+    Returns:
+        list[str]: The family labels.
+    """
+    families = list()
+    for product_dict in product_dicts:
+        if product_dict['family'] not in families:
+            families.append(product_dict['family'])
+    return families
