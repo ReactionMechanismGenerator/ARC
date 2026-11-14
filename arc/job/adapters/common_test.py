@@ -5,6 +5,8 @@
 This module contains unit tests of the arc.job.adapters.common module
 """
 
+import glob
+import os
 import shutil
 import tempfile
 import unittest
@@ -184,6 +186,123 @@ H      0.00000000   -0.76336400   -0.47261500"""
         job.species[0].derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True}
         self.assertEqual(job.level.method_type, 'composite')
         self.assertTrue(common.is_species_restricted(job))
+
+    def test_a_bi_rad_singlet_composite_job_is_unrestricted(self):
+        """Test that a declared bi-rad singlet (multiplicity 1, number_of_radicals 2) is run
+        unrestricted even for a composite method, whose reference-agnostic early return would
+        otherwise make it restricted (the u prefix, e.g. uCBS-QB3/uG4, must still be specified)"""
+        for method in ['cbs-qb3', 'g4']:
+            job = self._singlet_job(method=method, number_of_radicals=2)
+            self.assertEqual(job.level.method_type, 'composite')
+            self.assertFalse(common.is_species_restricted(job),
+                             msg=f'a bi-rad singlet at {method} was not run unrestricted')
+
+    def test_a_bi_rad_singlet_stays_restricted_for_a_prefix_free_method_type(self):
+        """Test that a declared bi-rad singlet does NOT become unrestricted for a method type ARC
+        writes without an r/u prefix: a force field has no electronic wavefunction and a
+        semiempirical method is emitted bare, so a prefix would compose input no ESS accepts
+        (e.g. 'uuff', 'uamber')"""
+        for method in ['uff', 'dreiding', 'amber', 'pm6', 'am1']:
+            job = self._singlet_job(method=method, number_of_radicals=2)
+            self.assertIn(job.level.method_type, common.PREFIX_FREE_METHOD_TYPES,
+                          msg=f'{method} was not typed as a prefix-free method type')
+            self.assertTrue(common.is_species_restricted(job),
+                            msg=f'a bi-rad singlet at {method} was made unrestricted, which would '
+                                f'compose a u prefix onto a method that accepts none')
+
+    def test_a_bi_rad_singlet_force_field_job_writes_no_u_prefix_in_the_route_section(self):
+        """End-to-end: a bi-rad singlet UFF job's generated Gaussian input must say 'uff', not 'uuff'"""
+        species = ARCSpecies(label='spc1', xyz=self.WATER_XYZ, multiplicity=1, number_of_radicals=2)
+        project_directory = tempfile.mkdtemp(prefix='arc_test_common_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = GaussianAdapter(execution_type='incore',
+                              job_type='opt',
+                              level=Level(method='uff'),
+                              project='test',
+                              project_directory=project_directory,
+                              species=[species],
+                              testing=True,
+                              )
+        job.write_input_file()
+        input_files = glob.glob(os.path.join(project_directory, '**', 'input.gjf'), recursive=True)
+        self.assertEqual(len(input_files), 1)
+        with open(input_files[0], 'r') as f:
+            content = f.read()
+        self.assertNotIn('uuff', content)
+        self.assertIn('uff', content)
+
+    def test_a_closed_shell_singlet_composite_job_stays_restricted(self):
+        """Test that an ordinary closed-shell singlet composite job is unaffected by the fix"""
+        job = self._singlet_job(method='cbs-qb3', number_of_radicals=None)
+        self.assertEqual(job.level.method_type, 'composite')
+        self.assertTrue(common.is_species_restricted(job))
+
+    def test_a_composite_job_above_singlet_multiplicity_is_unchanged(self):
+        """Test that a composite job at multiplicity > 1 keeps returning restricted, as it did
+        before the fix: the method itself is expected to go unrestricted automatically. The radical
+        count is swept because that is the only argument the fix reads: a composite job carrying no
+        radical count never reached the new branch, so asserting only that case would prove nothing
+        about the multiplicities the fix does see"""
+        for method in ['cbs-qb3', 'g4']:
+            for multiplicity in [3, 5]:
+                for number_of_radicals in [None, 2, 3]:
+                    job = self._singlet_job(method=method, multiplicity=multiplicity,
+                                            number_of_radicals=number_of_radicals)
+                    self.assertEqual(job.level.method_type, 'composite')
+                    self.assertTrue(common.is_species_restricted(job),
+                                    msg=f'{method} at multiplicity {multiplicity} with '
+                                        f'number_of_radicals {number_of_radicals} was made unrestricted, '
+                                        f'which writes u{method} where the bare method is expected')
+
+    def test_a_composite_triplet_carrying_radicals_writes_no_u_prefix_in_the_route_section(self):
+        """End-to-end: a composite job at multiplicity > 1 writes the bare method even when a
+        radical count is declared, letting the composite method pick its own treatment"""
+        species = ARCSpecies(label='spc1', xyz=self.WATER_XYZ, multiplicity=3, number_of_radicals=2)
+        project_directory = tempfile.mkdtemp(prefix='arc_test_common_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = GaussianAdapter(execution_type='incore', job_type='opt', level=Level(method='cbs-qb3'),
+                              project='test', project_directory=project_directory,
+                              species=[species], testing=True)
+        job.write_input_file()
+        input_files = glob.glob(os.path.join(project_directory, '**', 'input.gjf'), recursive=True)
+        self.assertEqual(len(input_files), 1)
+        with open(input_files[0], 'r') as f:
+            content = f.read()
+        self.assertNotIn('ucbs-qb3', content.lower())
+        self.assertIn('cbs-qb3', content.lower())
+
+    def test_a_non_composite_job_carrying_radicals_is_unrestricted_at_every_multiplicity(self):
+        """Test that confining the radical-count override to composite singlets leaves the
+        reference-bearing method types alone: those are unrestricted above singlet multiplicity
+        through the multiplicity check further down, so the answer is the same either way"""
+        for method in ['wb97xd', 'ccsd(t)']:
+            for multiplicity in [1, 3]:
+                job = self._singlet_job(method=method, multiplicity=multiplicity, number_of_radicals=2)
+                self.assertNotIn(job.level.method_type, common.REFERENCE_AGNOSTIC_METHOD_TYPES)
+                self.assertFalse(common.is_species_restricted(job),
+                                 msg=f'{method} at multiplicity {multiplicity} with 2 radicals was '
+                                     f'made restricted')
+
+    def test_a_bi_rad_singlet_composite_job_writes_the_u_prefix_in_the_route_section(self):
+        """End-to-end: a bi-rad singlet composite job's generated Gaussian input carries the u prefix"""
+        species = ARCSpecies(label='O2_a1Dg', xyz=['O 0 0 0', 'O 0 0 1.2'], multiplicity=1, number_of_radicals=2)
+        project_directory = tempfile.mkdtemp(prefix='arc_test_common_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job = GaussianAdapter(execution_type='incore',
+                              job_type='composite',
+                              level=Level(method='g4'),
+                              project='test',
+                              project_directory=project_directory,
+                              species=[species],
+                              testing=True,
+                              )
+        job.write_input_file()
+        input_files = glob.glob(os.path.join(project_directory, '**', 'input.gjf'), recursive=True)
+        self.assertEqual(len(input_files), 1)
+        with open(input_files[0], 'r') as f:
+            content = f.read()
+        self.assertIn('ug4', content)
+        self.assertNotIn(' g4', content)
 
     def test_a_correlated_single_point_is_not_flipped_by_an_adopted_verdict(self):
         """Test that an adopted verdict decides no reference for a correlated wavefunction level"""
