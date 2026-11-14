@@ -173,8 +173,10 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
     Returns:
         list: The sorted 0-indexed atoms of the rotating group.
     """
+    # skin=0: ASE adds the skin to every atom's cutoff, so its default 0.3 A would bond heavy atoms up to 2.42 A
+    # apart (mult 1.2), e.g. the two carbons of C-O-C (2.33 A) or C and the far O of C-O-O, closing fake rings.
     nl = build_neighbor_list(atoms, natural_cutoffs(atoms, mult=mult),
-                             self_interaction=False, bothways=True)
+                             self_interaction=False, bothways=True, skin=0.0)
     adj = {i: set(nl.get_neighbors(i)[0]) for i in range(len(atoms))}
     if pivot_2 not in adj[pivot_1]:
         numbers = atoms.get_atomic_numbers()
@@ -196,6 +198,45 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
         raise ValueError(f'The pivot bond {pivot_1}-{pivot_2} is part of a ring; '
                          f'a 1D rotor scan is ill-defined.')
     return sorted(int(x) for x in seen)
+
+
+def well_defined_torsion(atoms: Atoms, torsion: list, max_angle: float = 165.0, mult: float = 1.2) -> list:
+    """
+    The scanned dihedral, with an end atom moved outward if it is collinear with the pivot bond.
+
+    A dihedral is undefined when three of its atoms are collinear, and ASE's FixInternals then fails to converge.
+    ARC can still define a torsion that way, e.g. H-O-C#C for an OH rotor of HOC#COH, where O-C#C is 175 degrees.
+    The rotation is about the same pivot bond, so the next atom along the chain that leaves the axis (here the far
+    H) measures the same torsion, and it lies on the same side of the pivot bond as the atom it replaces.
+
+    Args:
+        atoms (Atoms): The molecule.
+        torsion (list): The 0-indexed four atoms (i, j, k, l); j-k is the pivot bond.
+        max_angle (float, optional): The largest i-j-k or j-k-l angle (degrees) taken as well defined.
+        mult (float, optional): The natural-cutoff multiplier defining the bond graph, as in rotor_top().
+
+    Raises:
+        ValueError: If one side of the pivot bond is linear to its end, so that no torsion exists about it.
+
+    Returns:
+        list: The 0-indexed four atoms of a well-defined dihedral about the same pivot bond.
+    """
+    i, j, k, l = torsion
+    nl = build_neighbor_list(atoms, natural_cutoffs(atoms, mult=mult), self_interaction=False, bothways=True, skin=0.0)
+
+    def outward(end: int, pivot: int, other_pivot: int) -> int:
+        """The nearest atom beyond ``end`` (away from the pivot bond) off the pivot axis."""
+        seen, frontier = {end, pivot, other_pivot}, [end]
+        while frontier:
+            for atom in frontier:
+                if atoms.get_angle(other_pivot, pivot, atom) <= max_angle:
+                    return atom
+            frontier = [nb for atom in frontier for nb in nl.get_neighbors(atom)[0] if nb not in seen]
+            seen.update(frontier)
+        raise ValueError(f'The atoms beyond pivot {pivot} are collinear with the pivot bond {j}-{k}, '
+                         f'so no torsion about it is defined.')
+
+    return [int(outward(i, j, k)), j, k, int(outward(l, k, j))]
 
 
 def _scan_walk(atoms: Atoms, torsion: list, step_deg: float, nsteps: int, top: list,
@@ -331,6 +372,7 @@ def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: i
     if abs(nsteps * step_deg - 360.0) > 1e-6:
         raise ValueError(f'A relaxed torsion scan must span a full revolution, but nsteps={nsteps} '
                          f'increments of step_deg={step_deg} span {nsteps * step_deg} degrees.')
+    torsion = well_defined_torsion(atoms, torsion)
     i, j, k, l = torsion
     if top is None:
         top = rotor_top(atoms, j, k)
@@ -612,6 +654,17 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict):
     return numpy_vibrational_analysis(masses, hessian, is_linear=is_lin)
 
 
+def read_trajectory(path: str) -> list:
+    """
+    The images of an ASE trajectory, or an empty list if it does not exist or cannot be read.
+    """
+    from ase.io import read
+    try:
+        return read(path, index=':') if os.path.isfile(path) else list()
+    except Exception:
+        return list()
+
+
 def main():
     """
     Main execution logic.
@@ -703,22 +756,35 @@ def main():
     if job_type == 'irc':
         from sella import IRC
         from ase.io import read
-        fmax = float(settings.get('fmax', 0.001))
+        # Sella converges each IRC step to min(fmax, 0.01) eV/A. At the opt default of 0.001, an MLIP's force noise
+        # kept the inner loop from converging, on the first step off UMA's CH4 + OH saddle and in the CH4 + H wells.
+        # The endpoints only seed ARC's IRC species, which ARC optimizes anyway, so the path need not end tighter.
+        fmax = float(settings.get('irc_fmax', 0.01))
         steps = int(settings.get('steps', 1000))
         direction = input_dict.get('irc_direction', 'forward')
         traj_path = os.path.join(os.path.dirname(input_path), 'irc.traj')
         try:
+            # keep_going: an inner loop that still fails only warns, rather than ending the path there.
             irc = IRC(atoms, logfile=os.path.join(os.path.dirname(input_path), 'irc.log'),
-                      trajectory=traj_path)
+                      trajectory=traj_path, keep_going=True)
             irc.run(fmax=fmax, steps=steps, direction=direction)
-            images = read(traj_path, index=':')
+        except Exception as exc:
+            # The path walked so far still leads from the TS toward its well, so keep it and only warn.
+            n_points = len(read_trajectory(traj_path))
+            if n_points > 1:
+                output.setdefault('warnings', list()).append(
+                    f'IRC stopped after {n_points} points: {type(exc).__name__}: {exc}')
+            else:
+                output['error'] = f'IRC failed: {type(exc).__name__}: {exc}'
+        images = read_trajectory(traj_path)
+        if len(images) > 1:
+            # ARC builds the IRC species from the job's final geometry, so that is the end of the path, not the TS.
+            save_current_geometry(output, images[-1], xyz)
             output['irc_traj'] = [
                 {'coords': tuple(map(tuple, image.get_positions().tolist())),
                  'symbols': xyz['symbols'],
                  'isotopes': xyz.get('isotopes') or tuple([None] * len(xyz['symbols']))}
                 for image in images]
-        except Exception as exc:
-            output['error'] = f"IRC failed: {exc}"
 
     if job_type in ['freq', 'optfreq']:
         try:

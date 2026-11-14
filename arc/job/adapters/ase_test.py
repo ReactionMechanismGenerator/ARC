@@ -8,6 +8,8 @@ These tests verify IO and logic without executing the external ASE script in CI.
 
 import os
 import shutil
+import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 import numpy as np
@@ -27,7 +29,8 @@ from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  rotor_top,
                                                  run_torsion_scan,
                                                  scan_convergence_warning,
-                                                 to_kJmol)
+                                                 to_kJmol,
+                                                 well_defined_torsion)
 
 ETHANE_XYZ = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
               'isotopes': (12, 12, 1, 1, 1, 1, 1, 1),
@@ -277,6 +280,20 @@ class TestASEAdapter(unittest.TestCase):
                                         config=job.determine_submit_config(),
                                         cluster_soft='htcondor')
 
+    def test_set_files_puts_the_script_in_a_local_queue_job_directory(self):
+        """A queue job on this machine is not uploaded, so its directory needs the ASE script its submit script runs"""
+        with tempfile.TemporaryDirectory() as tmp:
+            job = ASEAdapter(execution_type='queue',
+                             job_type='sp',
+                             project='test_local_queue',
+                             project_directory=os.path.join(tmp, 'project'),
+                             species=[ARCSpecies(label='ethane', xyz=ETHANE_XYZ)],
+                             args={'keyword': {'calculator': 'emt'}},
+                             server='local',
+                             testing=True)
+            self.assertTrue(os.path.isfile(os.path.join(job.local_path, 'ase_script.py')))
+            self.assertTrue(os.path.isfile(os.path.join(job.local_path, 'input.yml')))
+
     def test_set_files_does_not_write_for_an_incore_job(self):
         """Test that an incore job writes no submit script (it writes its input when it executes)"""
         # Assert against the directory set_files() actually wrote to, not the scratch directory
@@ -458,6 +475,69 @@ class TestASEAdapter(unittest.TestCase):
         # Pulled far enough apart, they are no longer a bond at all.
         with self.assertRaises(ValueError):
             rotor_top(ts_like, 0, 1, pivot_mult=1.0)
+
+    def test_rotor_top_does_not_bond_geminal_heavy_atoms(self):
+        """In dimethyl ether the carbons are 2.33 A apart, which ASE's default neighbor-list skin would bond"""
+        dme = Atoms('COCHHHHHH', positions=[(1.1650, -0.0001, -0.2066), (0.0, 0.0, 0.5714), (-1.1650, 0.0001, -0.2066),
+                                            (2.0267, 0.0006, 0.4591), (1.2136, -0.8955, -0.8458),
+                                            (1.2129, 0.8944, -0.8471), (-2.0267, -0.0006, 0.4591),
+                                            (-1.2136, 0.8955, -0.8458), (-1.2129, -0.8944, -0.8471)])
+        self.assertAlmostEqual(dme.get_distance(0, 2), 2.33, places=2)
+        self.assertEqual(rotor_top(dme, 1, 0), [0, 3, 4, 5])
+
+    def test_well_defined_torsion(self):
+        """A dihedral end atom collinear with the pivot bond is replaced by the next atom off the axis"""
+        # HO-C#C-OH with a linear O-C#C-O chain: the OH rotor's dihedral H-O-C#C is undefined.
+        hoccoh = Atoms('OCCOHH', positions=[(0.0, 0.0, 0.0), (1.3, 0.0, 0.0), (2.5, 0.0, 0.0), (3.8, 0.0, 0.0),
+                                            (-0.3, 0.92, 0.0), (4.1, 0.0, 0.92)])
+        self.assertEqual(well_defined_torsion(hoccoh, [4, 0, 1, 2]), [4, 0, 1, 5])
+        self.assertEqual(well_defined_torsion(hoccoh, [5, 3, 2, 1]), [5, 3, 2, 4])
+        # An ordinary dihedral is kept as is.
+        ethane = Atoms('CCHHHHHH', positions=[(0.0, 0.0, 0.765), (0.0, 0.0, -0.765), (1.018, 0.0, 1.164),
+                                              (-0.509, 0.882, 1.164), (-0.509, -0.882, 1.164),
+                                              (-1.018, 0.0, -1.164), (0.509, -0.882, -1.164),
+                                              (0.509, 0.882, -1.164)])
+        self.assertEqual(well_defined_torsion(ethane, [2, 0, 1, 5]), [2, 0, 1, 5])
+        # An acyl group linear to its terminal O has no torsion about the C-C bond.
+        acyl = Atoms('COCOH', positions=[(0.0, 0.0, 0.0), (-0.7, 1.0, 0.0), (1.5, 0.0, 0.0), (2.65, 0.0, 0.0),
+                                         (-0.6, -0.9, 0.0)])
+        with self.assertRaises(ValueError):
+            well_defined_torsion(acyl, [1, 0, 2, 3])
+
+    def test_an_irc_job_ends_at_the_end_of_its_path(self):
+        """An IRC job's final geometry is the last point of its path, from which ARC builds the IRC species"""
+        from ase.io.trajectory import Trajectory
+        from arc.job.adapters.scripts import ase_script
+        calls = dict()
+
+        class FakeIRC:
+            def __init__(self, atoms, logfile=None, trajectory=None, **kwargs):
+                self.atoms, self.trajectory = atoms, trajectory
+                calls['kwargs'] = kwargs
+
+            def run(self, fmax, steps, direction):
+                calls['fmax'] = fmax
+                with Trajectory(self.trajectory, 'w') as traj:
+                    for shift in (0.0, 0.1, 0.2):
+                        image = Atoms(self.atoms.get_chemical_symbols(), positions=self.atoms.get_positions())
+                        image.positions[0, 0] += shift
+                        traj.write(image)
+
+        fake_sella = type(sys)('sella')
+        fake_sella.IRC = FakeIRC
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, 'input.yml')
+            save_yaml_file(input_path, {'job_type': 'irc', 'xyz': ETHANE_XYZ, 'charge': 0, 'multiplicity': 1,
+                                        'settings': {'calculator': 'emt'}})
+            with patch.dict(sys.modules, {'sella': fake_sella}), \
+                    patch.object(sys, 'argv', ['ase_script.py', '--yml_path', input_path]):
+                ase_script.main()
+            output = read_yaml_file(os.path.join(tmp, 'output.yml'))
+        self.assertEqual(len(output['irc_traj']), 3)
+        self.assertAlmostEqual(output['opt_xyz']['coords'][0][0], ETHANE_XYZ['coords'][0][0] + 0.2)
+        self.assertEqual(output['opt_xyz'], output['irc_traj'][-1])
+        self.assertEqual(calls['fmax'], 0.01)  # an MLIP's force noise defeats the opt default of 0.001
+        self.assertTrue(calls['kwargs']['keep_going'])
 
     def test_relaxed_torsion_scan(self):
         """Test a full 1D relaxed torsional scan on the machinery (EMT keeps it hermetic)"""
