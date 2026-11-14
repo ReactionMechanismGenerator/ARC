@@ -6,6 +6,8 @@ This module contains unit tests for the arc.job.adapters.ase module.
 These tests verify IO and logic without executing the external ASE script in CI.
 """
 
+import contextlib
+import io
 import os
 import shutil
 import unittest
@@ -39,6 +41,10 @@ ETHANE_XYZ = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
                          (0.880844, 0.508556, -1.157241),
                          (-0.880844, 0.508556, -1.157241),
                          (0.0, -1.017111, -1.157241))}
+
+#: Ethane's real bond graph as 0-indexed pairs: the C-C bond plus three C-H per carbon. Atoms 2-4
+#: hang off carbon 0 and atoms 5-7 off carbon 1, matching ETHANE_XYZ's order.
+ETHANE_BONDS = [[0, 1], [0, 2], [0, 3], [0, 4], [1, 5], [1, 6], [1, 7]]
 
 
 class TestASEAdapter(unittest.TestCase):
@@ -434,6 +440,30 @@ class TestASEAdapter(unittest.TestCase):
         self.assertEqual(data['job_type'], 'scan')
         self.assertEqual(data['torsions'], [[2, 0, 1, 5]])
         self.assertEqual(data['scan_res'], 8.0)
+        # The script cannot import ARC or RMG-Py, so the real bond graph has to travel in the input
+        # file; without it the script infers connectivity from the geometry and cannot tell a
+        # stretched bond from a close contact. Ethane: the C-C bond plus three C-H per carbon.
+        self.assertEqual([sorted(bond) for bond in data['bonds']], ETHANE_BONDS)
+
+    def test_determine_bonds_declines_a_graph_that_does_not_match_the_geometry(self):
+        """A bond graph whose atom count disagrees with the xyz must be withheld, not sent.
+
+        Its indices would address different atoms than the geometry does, so the script would
+        rotate the wrong group -- strictly worse than inferring connectivity from the geometry.
+        """
+        job = ASEAdapter(execution_type='incore',
+                         job_type='scan',
+                         project='test_bonds',
+                         project_directory=os.path.join(self.project_directory, 'bond_mismatch'),
+                         species=[ARCSpecies(label='ethane', xyz=ETHANE_XYZ)],
+                         torsions=[[2, 0, 1, 5]],
+                         args={'keyword': {'calculator': 'uma', 'model': 'uma-s-1p2'}},
+                         testing=True)
+        self.assertEqual([sorted(bond) for bond in job.determine_bonds()], ETHANE_BONDS)
+        job.species[0].mol.atoms = job.species[0].mol.atoms[:-1]
+        self.assertIsNone(job.determine_bonds())
+        job.species[0].mol = None
+        self.assertIsNone(job.determine_bonds())
 
     def test_rotor_top(self):
         """Test resolving the rotating group across a pivot bond"""
@@ -458,6 +488,101 @@ class TestASEAdapter(unittest.TestCase):
         # Pulled far enough apart, they are no longer a bond at all.
         with self.assertRaises(ValueError):
             rotor_top(ts_like, 0, 1, pivot_mult=1.0)
+
+    def test_rotor_top_does_not_invent_a_ring_from_1_3_neighbours(self):
+        """A branched centre must not fuse its own substituents into a ring.
+
+        1,1-dimethylhydrazine at its UMA geometry: three heavy atoms hang off the central N, and
+        their mutual 1-3 distances are 2.33-2.38 A against covalent-radii sums of 1.47-1.52. ASE's
+        default 0.3 A per-atom `skin` adds 0.6 A to the pair cutoff on top of `mult`, which was
+        just enough to call every one of those pairs a bond -- fusing C-N-C into a triangle and
+        rejecting EVERY rotor in the molecule as "part of a ring". Ethane above cannot catch this;
+        it has no branched centre and so no 1-3 heavy-atom pair at all.
+        """
+        dimethylhydrazine = Atoms(symbols=('C', 'N', 'C', 'N', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                  positions=((-1.118847, -0.669646, -0.028393),
+                                             (-0.009246, 0.167280, -0.447017),
+                                             (1.247329, -0.422511, -0.022045),
+                                             (-0.142324, 1.426467, 0.275443),
+                                             (-1.185280, -0.789891, 1.055869),
+                                             (-2.055637, -0.216790, -0.352617),
+                                             (-1.038689, -1.652379, -0.494636),
+                                             (1.377564, -1.399658, -0.494636),
+                                             (2.086537, 0.213596, -0.334188),
+                                             (1.293624, -0.549481, 1.069229),
+                                             (0.602477, 2.019935, -0.081734),
+                                             (-0.994088, 1.851965, -0.082191)))
+        # the C-N pivot: the rotating top is that methyl, and nothing else
+        self.assertEqual(rotor_top(dimethylhydrazine, 1, 0), [0, 4, 5, 6])
+        # and the N-N pivot, the one the whole probe exists to scan
+        self.assertEqual(rotor_top(dimethylhydrazine, 1, 3), [3, 10, 11])
+
+    def test_rotor_top_keeps_an_atom_whose_only_bond_is_stretched(self):
+        """A stretched NON-pivot bond must not silently drop its atom from the top.
+
+        `skin=0.0` makes the pair test literally `d < mult * sum_r`, which is the point of this
+        change -- but it also means a bond stretched past that cutoff is simply absent, and an atom
+        whose only bond is the stretched one leaves the graph altogether. Measured beforehand on
+        this geometry: `rotor_top(0, 1)` returned `[1, 6, 7]`, so for the torsion `[2, 0, 1, 5]`
+        the rotation left atom 5 standing still while the rest of its own methyl turned. The C-H
+        cutoff here is 1.2 * 1.07 = 1.284 A, so the loss starts at 1.29 A -- well inside the range
+        a TS or a distorted scan point reaches, which is the case `pivot_mult` exists for.
+
+        The fix is the real bond graph, not a geometric guess: given `bonds`, the stretch is
+        irrelevant because the bond is simply known.
+        """
+        atoms = Atoms(symbols=ETHANE_XYZ['symbols'], positions=ETHANE_XYZ['coords'])
+        axis = atoms.positions[5] - atoms.positions[1]
+        atoms.positions[5] = atoms.positions[1] + axis / np.linalg.norm(axis) * 1.40
+        self.assertEqual(rotor_top(atoms, 0, 1, bonds=ETHANE_BONDS), [1, 5, 6, 7])
+        # Without the graph the atom is still lost - deliberately, since distance alone cannot tell
+        # a stretched bond from a separate fragment - but it is reported rather than dropped mutely.
+        with contextlib.redirect_stdout(io.StringIO()) as captured:
+            self.assertEqual(rotor_top(atoms, 0, 1), [1, 6, 7])
+        self.assertIn('[5]', captured.getvalue())
+
+    def test_rotor_top_does_not_bridge_separate_fragments(self):
+        """Two molecules that merely sit close must not be fused into one rotating top.
+
+        ARC scans rotors on multi-fragment geometries (a van der Waals complex, a bimolecular TS),
+        where the second fragment is legitimately connected to neither pivot. An earlier revision of
+        this function repaired connectivity by joining the nearest cross-fragment pair under
+        `pivot_mult` until one component remained, which silently rotated the other molecule along
+        with the top -- and raised when it could not reach it.
+
+        Two details are what make this bite, and the negative control caught both when they were
+        wrong:
+
+        - The 3.6 A offset sits INSIDE the window where that repair fires. The closest
+          cross-fragment pair is H-H at 1.37 x the covalent-radii sum: above `mult` (1.2, so the
+          two are separate components to begin with) and below `pivot_mult` (1.8, so a
+          distance-based repair would bridge them). At the 5.0 A first written here the ratio is
+          2.3, past the allowance, so nothing bridged and the test passed either way.
+        - The offset is NEGATIVE, putting the second fragment on the `pivot_2` side. Shifted the
+          other way it approaches `pivot_1` instead, so a bridged fragment joins the FIXED side and
+          never shows up in the returned top -- passing even with the repair restored.
+        """
+        coords = list(ETHANE_XYZ['coords'])
+        shifted = [(x, y, z - 3.6) for x, y, z in ETHANE_XYZ['coords']]
+        atoms = Atoms(symbols=ETHANE_XYZ['symbols'] * 2, positions=coords + shifted)
+        for bonds in (None, ETHANE_BONDS):
+            with contextlib.redirect_stdout(io.StringIO()):
+                top = rotor_top(atoms, 0, 1, bonds=bonds)
+            self.assertEqual(top, [1, 5, 6, 7], msg=f'bonds={bonds is not None}')
+
+    def test_rotor_top_trusts_the_bond_graph_over_the_geometry(self):
+        """A close non-bonded contact must not become a bond when the real graph says otherwise.
+
+        Atom 2 is a hydrogen on the fixed-side carbon, dragged to within C-H bonding distance of the
+        rotating-side carbon. Geometrically that closes a 0-2-1 triangle, so the pivot bond reads as
+        part of a ring and the scan is rejected outright -- a real rotor refused over a contact that
+        is not a bond. The bond graph resolves the same geometry correctly.
+        """
+        atoms = Atoms(symbols=ETHANE_XYZ['symbols'], positions=ETHANE_XYZ['coords'])
+        atoms.positions[2] = atoms.positions[1] + (0.0, 0.0, 1.05)
+        self.assertEqual(rotor_top(atoms, 0, 1, bonds=ETHANE_BONDS), [1, 5, 6, 7])
+        with self.assertRaises(ValueError):
+            rotor_top(atoms, 0, 1)  # the geometric reading, for contrast
 
     def test_relaxed_torsion_scan(self):
         """Test a full 1D relaxed torsional scan on the machinery (EMT keeps it hermetic)"""
