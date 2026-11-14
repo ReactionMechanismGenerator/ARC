@@ -4216,6 +4216,7 @@ class Scheduler(object):
         self.carry_stability_verdict_across_ts_switch(label=label)
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
+        self.pipe_coordinator.cancel_stale_ts_tasks(label)
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
             os.remove(freq_path)

@@ -21,8 +21,8 @@ from arc.job.adapters.mockter import MockAdapter
 from arc.job.pipe import pipe_run as pipe_run_module
 from arc.job.pipe.pipe_state import (TaskState, TaskStateRecord, PipeRunState, TaskSpec, get_task_attempt_dir,
                                      read_task_state, update_task_state)
-from arc.job.pipe.pipe_run import (PipeRun, SCHEDULER_JOB_GONE, build_rotor_scan_1d_tasks, local_cpu_budget,
-                                   local_worker_limit, worker_cpu_cores)
+from arc.job.pipe.pipe_run import (PipeRun, SCHEDULER_JOB_GONE, build_rotor_scan_1d_tasks, build_species_leaf_task,
+                                   is_stale_ts_task, local_cpu_budget, local_worker_limit, worker_cpu_cores)
 import arc.parser.parser as parser
 from arc.common import ARC_TESTING_PATH
 from arc.level import Level
@@ -1147,6 +1147,51 @@ class TestBuildRotorScan1dTasks(unittest.TestCase):
     def test_scan_res_omitted_when_none(self):
         tasks = build_rotor_scan_1d_tasks(self.spc, 'propane', [0], self.level_dict, 'ase', 4096)
         self.assertNotIn('scan_res', tasks[0].input_payload)
+
+
+class TestTsGuessStamp(unittest.TestCase):
+    """The TS guess a task was created for is stamped into its metadata and compared on ingestion."""
+
+    def setUp(self):
+        self.spc = ARCSpecies(label='propane', smiles='CCC')
+        self.spc.rotors_dict = {0: {'torsion': [3, 0, 1, 2], 'pivots': [1, 2]}}
+        self.level_dict = {'method': 'mock'}
+
+    def test_ts_tasks_carry_the_chosen_guess(self):
+        self.spc.is_ts, self.spc.chosen_ts = True, 4
+        scan = build_rotor_scan_1d_tasks(self.spc, 'propane', [0], self.level_dict, 'ase', 4096)[0]
+        freq = build_species_leaf_task(self.spc, 'propane', 'species_freq', self.level_dict, 'ase', 4096)
+        irc = build_species_leaf_task(self.spc, 'propane', 'irc', self.level_dict, 'ase', 4096,
+                                      extra_ingestion={'irc_direction': 'forward'})
+        self.assertEqual(scan.ingestion_metadata, {'rotor_index': 0, 'ts_guess': 4})
+        self.assertEqual(freq.ingestion_metadata, {'ts_guess': 4})
+        self.assertEqual(irc.ingestion_metadata, {'irc_direction': 'forward', 'ts_guess': 4})
+
+    def test_stamp_survives_serialization(self):
+        self.spc.is_ts, self.spc.chosen_ts = True, 4
+        scan = build_rotor_scan_1d_tasks(self.spc, 'propane', [0], self.level_dict, 'ase', 4096)[0]
+        self.assertEqual(TaskSpec.from_dict(scan.as_dict()).ingestion_metadata['ts_guess'], 4)
+
+    def test_non_ts_species_is_not_stamped(self):
+        scan = build_rotor_scan_1d_tasks(self.spc, 'propane', [0], self.level_dict, 'ase', 4096)[0]
+        self.assertEqual(scan.ingestion_metadata, {'rotor_index': 0})
+
+    def test_staleness_follows_chosen_ts(self):
+        self.spc.is_ts, self.spc.chosen_ts = True, 4
+        scan = build_rotor_scan_1d_tasks(self.spc, 'propane', [0], self.level_dict, 'ase', 4096)[0]
+        self.assertFalse(is_stale_ts_task(scan, {'propane': self.spc}))
+        self.spc.chosen_ts = 5
+        self.assertTrue(is_stale_ts_task(scan, {'propane': self.spc}))
+        self.spc.chosen_ts = None
+        self.assertTrue(is_stale_ts_task(scan, {'propane': self.spc}))
+
+    def test_task_without_a_stamp_is_never_stale(self):
+        self.spc.is_ts, self.spc.chosen_ts = True, 5
+        scan = build_rotor_scan_1d_tasks(self.spc, 'propane', [0], self.level_dict, 'ase', 4096)[0]
+        scan.ingestion_metadata.pop('ts_guess')
+        self.assertFalse(is_stale_ts_task(scan, {'propane': self.spc}))
+        scan.ingestion_metadata['ts_guess'] = 4
+        self.assertFalse(is_stale_ts_task(scan, {}))
 
 
 if __name__ == '__main__':
