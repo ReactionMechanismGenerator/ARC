@@ -20,7 +20,7 @@ from arc.level import Level
 
 from arc.job.pipe.pipe_run import (
     PipeRun, check_ess_convergence, find_output_file, get_task_attempt_dir,
-    ingest_completed_task,
+    ingest_completed_task, is_stale_ts_task,
 )
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE, PipeRunState, TaskState, TaskSpec,
@@ -319,7 +319,7 @@ class PipeCoordinator:
         handed = self._handed_tasks.setdefault(pipe_key, set())
         pending = []
         for spec in pipe.tasks:
-            if spec.task_id in handed:
+            if spec.task_id in handed or is_stale_ts_task(spec, self.sched.species_dict):
                 continue
             try:
                 state = read_task_state(pipe.pipe_root, spec.task_id)
@@ -416,6 +416,49 @@ class PipeCoordinator:
                 self.ingest_pipe_results(pipe)
                 self._forget_pipe(pipe_key)
 
+    def cancel_stale_ts_tasks(self, label: str) -> None:
+        """
+        Stop the tasks of a TS that were created for a guess it no longer uses.
+
+        Called after the TS' ``chosen_ts`` changed. In every active run, each task of ``label``
+        stamped with another guess is moved out of the schedulable states: PENDING, CLAIMED and
+        RUNNING become CANCELLED, FAILED_RETRYABLE and ORPHANED become FAILED_TERMINAL so they are
+        not retried. COMPLETED, FAILED_ESS, FAILED_TERMINAL and CANCELLED tasks are left as they
+        are. Tasks of other owners in the same run are not touched. The job of a RUNNING task is not
+        killed and runs to completion. A worker that finishes a cancelled task still writes its
+        ``result.json`` and outputs, but finds it no longer owns the task and writes no task state.
+        If a task's state keeps changing under the update, three attempts are made and a warning
+        is logged.
+
+        Args:
+            label (str): The TS label.
+        """
+        cancel_to = {TaskState.PENDING: TaskState.CANCELLED, TaskState.CLAIMED: TaskState.CANCELLED,
+                     TaskState.RUNNING: TaskState.CANCELLED, TaskState.FAILED_RETRYABLE: TaskState.FAILED_TERMINAL,
+                     TaskState.ORPHANED: TaskState.FAILED_TERMINAL}
+        for pipe in self.active_pipes.values():
+            for spec in pipe.tasks:
+                if spec.owner_key != label or not is_stale_ts_task(spec, self.sched.species_dict):
+                    continue
+                for attempt in range(3):
+                    try:
+                        target = cancel_to.get(TaskState(read_task_state(pipe.pipe_root, spec.task_id).status))
+                        if target is None:
+                            break
+                        update_task_state(pipe.pipe_root, spec.task_id, target, ended_at=time.time())
+                        logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: {target.value}, '
+                                    f'created for an abandoned TS guess of {label}.')
+                        break
+                    except (FileNotFoundError, KeyError):
+                        break
+                    except (ValueError, TimeoutError) as e:
+                        if attempt == 2:
+                            logger.warning(f'Pipe run {pipe.run_id}, task {spec.task_id}: could not cancel the '
+                                           f'task of an abandoned TS guess of {label}: {e}')
+                        else:
+                            logger.debug(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                                         f'state changed while cancelling, re-reading: {e}')
+
     def _forget_pipe(self, pipe_key: str) -> None:
         """
         Remove a pipe run from the registry together with its poll-failure count and its last
@@ -447,6 +490,10 @@ class PipeCoordinator:
         self._write_task_summary(pipe)
         ejected_count = 0
         for spec in pipe.tasks:
+            if is_stale_ts_task(spec, self.sched.species_dict):
+                logger.info(f'Pipe run {pipe.run_id}, task {spec.task_id}: '
+                            f'created for an abandoned TS guess of {spec.owner_key}, not ingested.')
+                continue
             try:
                 state = read_task_state(pipe.pipe_root, spec.task_id)
             except (FileNotFoundError, ValueError, KeyError):

@@ -866,5 +866,151 @@ class TestNextIndexedDir(unittest.TestCase):
         self.assertTrue(result.endswith('pipe_opt_1'))
 
 
+def _drive(pipe_root, task_id, final):
+    """Move a PENDING task to ``final`` through the allowed transitions."""
+    now = time.time()
+    if final == TaskState.PENDING:
+        return
+    if final == TaskState.CANCELLED:
+        update_task_state(pipe_root, task_id, new_status=final, ended_at=now)
+        return
+    update_task_state(pipe_root, task_id, new_status=TaskState.CLAIMED, claimed_by='w', claim_token='tok',
+                      claimed_at=now, lease_expires_at=now + 300)
+    if final == TaskState.CLAIMED:
+        return
+    update_task_state(pipe_root, task_id, new_status=TaskState.RUNNING, started_at=now)
+    if final == TaskState.RUNNING:
+        return
+    extra = {'ended_at': now} if final in (TaskState.COMPLETED, TaskState.FAILED_TERMINAL) else {}
+    update_task_state(pipe_root, task_id, new_status=final, **extra)
+
+
+class TestStaleTsTasks(unittest.TestCase):
+    """
+    A TS guess switch must not let tasks created for the abandoned guess be ingested into the
+    species, ejected to the Scheduler or retried, whatever state they are in, while the tasks of
+    other owners in the same run are unaffected.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_stale_ts_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        self.sched = _make_mock_sched(self.tmpdir)
+        self.ts = MagicMock(chosen_ts=0)
+        self.sched.species_dict['tsx'] = self.ts
+        self.coord = PipeCoordinator(self.sched)
+
+    def _scan(self, task_id, label='tsx', stamp=0):
+        spec = _make_spec(task_id, task_family='rotor_scan_1d', species_label=label)
+        spec.ingestion_metadata = {'rotor_index': 0}
+        if stamp is not None:
+            spec.ingestion_metadata['ts_guess'] = stamp
+        return spec
+
+    def _run(self, states):
+        """A run with one stamped tsx task per entry of ``states`` and an unstamped H2O task."""
+        tasks = [self._scan(f'ts_{s.value}', label='tsx') for s in states]
+        tasks.append(self._scan('other_owner', label='H2O', stamp=None))
+        pipe = self.coord.submit_pipe_run('run_stale', tasks)
+        for s in states:
+            _drive(pipe.pipe_root, f'ts_{s.value}', s)
+        return pipe
+
+    def test_stale_completed_and_failed_ess_tasks_are_neither_ingested_nor_ejected(self):
+        pipe = self._run([TaskState.COMPLETED, TaskState.FAILED_ESS])
+        _complete_task(pipe.pipe_root, 'other_owner')
+        self.ts.chosen_ts = 1
+        with patch('arc.job.pipe.pipe_coordinator.ingest_completed_task') as ingest, \
+                patch.object(self.coord, '_eject_to_scheduler') as eject:
+            self.coord.ingest_pipe_results(pipe)
+        self.assertEqual([c.args[2].task_id for c in ingest.call_args_list], ['other_owner'])
+        eject.assert_not_called()
+
+    def test_current_guess_tasks_are_still_ingested_and_ejected(self):
+        pipe = self._run([TaskState.COMPLETED, TaskState.FAILED_ESS])
+        with patch('arc.job.pipe.pipe_coordinator.ingest_completed_task') as ingest, \
+                patch.object(self.coord, '_eject_to_scheduler') as eject:
+            self.coord.ingest_pipe_results(pipe)
+        self.assertEqual(ingest.call_count, 1)
+        self.assertEqual(eject.call_count, 1)
+
+    def test_unstamped_task_is_ingested_after_a_switch(self):
+        pipe = self.coord.submit_pipe_run('run_unstamped', [self._scan('legacy', stamp=None)])
+        _complete_task(pipe.pipe_root, 'legacy')
+        self.ts.chosen_ts = 1
+        with patch('arc.job.pipe.pipe_coordinator.ingest_completed_task') as ingest:
+            self.coord.ingest_pipe_results(pipe)
+        ingest.assert_called_once()
+
+    def test_cancel_handles_every_task_state(self):
+        states = [TaskState.PENDING, TaskState.CLAIMED, TaskState.RUNNING, TaskState.FAILED_RETRYABLE,
+                  TaskState.ORPHANED, TaskState.COMPLETED, TaskState.FAILED_ESS, TaskState.FAILED_TERMINAL]
+        pipe = self._run(states)
+        self.ts.chosen_ts = 1
+        self.coord.cancel_stale_ts_tasks('tsx')
+        got = {s: read_task_state(pipe.pipe_root, f'ts_{s.value}').status for s in states}
+        self.assertEqual(got, {TaskState.PENDING: 'CANCELLED', TaskState.CLAIMED: 'CANCELLED',
+                               TaskState.RUNNING: 'CANCELLED', TaskState.FAILED_RETRYABLE: 'FAILED_TERMINAL',
+                               TaskState.ORPHANED: 'FAILED_TERMINAL', TaskState.COMPLETED: 'COMPLETED',
+                               TaskState.FAILED_ESS: 'FAILED_ESS', TaskState.FAILED_TERMINAL: 'FAILED_TERMINAL'})
+        self.assertEqual(read_task_state(pipe.pipe_root, 'other_owner').status, 'PENDING')
+
+    def test_cancel_leaves_current_guess_tasks_alone(self):
+        pipe = self._run([TaskState.PENDING, TaskState.RUNNING])
+        self.coord.cancel_stale_ts_tasks('tsx')
+        self.assertEqual(read_task_state(pipe.pipe_root, 'ts_PENDING').status, 'PENDING')
+        self.assertEqual(read_task_state(pipe.pipe_root, 'ts_RUNNING').status, 'RUNNING')
+
+    def test_a_cancelled_run_is_not_resubmitted_and_is_forgotten(self):
+        tasks = [self._scan(f'scan{i}') for i in range(2)]
+        pipe = self.coord.submit_pipe_run('run_cancelled', tasks)
+        self.coord._submit_failures.pop(pipe.pipe_root, None)
+        _drive(pipe.pipe_root, 'scan0', TaskState.FAILED_RETRYABLE)
+        _drive(pipe.pipe_root, 'scan1', TaskState.RUNNING)
+        self.ts.chosen_ts = 1
+        self.coord.cancel_stale_ts_tasks('tsx')
+        pipe.reconcile()
+        self.assertEqual(pipe.status, PipeRunState.COMPLETED_PARTIAL)
+        self.assertFalse(pipe.needs_resubmission)
+        with patch.object(self.coord, '_eject_to_scheduler') as eject:
+            self.coord.poll_pipes()
+        eject.assert_not_called()
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
+
+    def test_cancel_retries_when_the_state_changes_underneath(self):
+        pipe = self._run([TaskState.PENDING])
+        self.ts.chosen_ts = 1
+        real_update = update_task_state
+        calls = []
+
+        def flaky(*args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                raise ValueError('state changed')
+            return real_update(*args, **kwargs)
+
+        with patch('arc.job.pipe.pipe_coordinator.update_task_state', side_effect=flaky):
+            self.coord.cancel_stale_ts_tasks('tsx')
+        self.assertEqual(read_task_state(pipe.pipe_root, 'ts_PENDING').status, 'CANCELLED')
+        self.assertEqual(len(calls), 2)
+
+    def test_cancel_warns_when_it_gives_up(self):
+        pipe = self._run([TaskState.PENDING])
+        self.ts.chosen_ts = 1
+        with patch('arc.job.pipe.pipe_coordinator.update_task_state', side_effect=ValueError('busy')), \
+                self.assertLogs('arc', level='WARNING') as logs:
+            self.coord.cancel_stale_ts_tasks('tsx')
+        self.assertIn('ts_PENDING', ''.join(logs.output))
+        self.assertEqual(read_task_state(pipe.pipe_root, 'ts_PENDING').status, 'PENDING')
+
+    def test_stale_pending_task_is_not_handed_to_the_scheduler(self):
+        pipe = self._run([TaskState.PENDING])
+        self.ts.chosen_ts = 1
+        self.coord._submit_failures[pipe.pipe_root] = (3, time.time())
+        with patch.object(self.coord, '_eject_to_scheduler', return_value=True) as eject:
+            self.coord._hand_to_scheduler(pipe.pipe_root)
+        self.assertEqual([c.args[1].task_id for c in eject.call_args_list], ['other_owner'])
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

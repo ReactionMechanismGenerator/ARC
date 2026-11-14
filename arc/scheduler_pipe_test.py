@@ -18,8 +18,11 @@ from arc.job.pipe.pipe_state import (
     TaskState,
     TaskSpec,
     get_task_attempt_dir,
+    initialize_task,
+    read_task_state,
     update_task_state,
 )
+from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_run import PipeRun
 from arc.level import Level
 from arc.scheduler import Scheduler
@@ -1655,6 +1658,58 @@ class TestPipeRoutingIntegration(unittest.TestCase):
         with patch.object(self.sched, 'deduce_job_adapter', return_value='mockter'):
             result = self.sched.pipe_planner.try_pipe_ts_opt('H2O', xyzs, level)
         self.assertEqual(result, set())  # Empty — not piped.
+
+
+class TestSwitchTsCancelsStalePipeTasks(unittest.TestCase):
+    """switch_ts stops the pipe tasks that were created for the TS guess it abandons."""
+
+    def test_switch_ts_cancels_the_tasks_of_the_abandoned_guess(self):
+        sched = MagicMock()
+        sched.project_directory = tempfile.mkdtemp(prefix='switch_ts_pipe_')
+        self.addCleanup(shutil.rmtree, sched.project_directory, ignore_errors=True)
+        sched.ess_settings = {'mockter': ['local']}
+        sched.server_job_ids = list()
+        sched.job_types = {'rotors': False}
+        ts = MagicMock(ts_guesses_exhausted=True, chosen_ts=0)
+        sched.species_dict = {'tsx': ts}
+        sched.determine_most_likely_ts_conformer.side_effect = lambda label: setattr(ts, 'chosen_ts', 1)
+        _patch_successful_submission(self)
+        sched.pipe_coordinator = PipeCoordinator(sched)
+        task = _make_task_spec('tsx_scan_r0', task_family='rotor_scan_1d', species_label='tsx')
+        task.ingestion_metadata = {'rotor_index': 0, 'ts_guess': 0}
+        pipe = sched.pipe_coordinator.submit_pipe_run('run_switch', [task])
+        Scheduler.switch_ts(sched, 'tsx')
+        self.assertEqual(read_task_state(pipe.pipe_root, 'tsx_scan_r0').status, 'CANCELLED')
+
+
+class TestRotorScanOwedIgnoresStaleTsTasks(unittest.TestCase):
+    """A restarted TS does not treat a pipe task of an abandoned guess as owing it a rotor scan."""
+
+    def _owed(self, stamp):
+        project = tempfile.mkdtemp(prefix='rotor_owed_')
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        sched = MagicMock()
+        sched.project_directory = project
+        species = MagicMock(is_ts=True, chosen_ts=1)
+        species.label = 'tsx'
+        pipe_root = os.path.join(project, 'calcs', 'TSs', 'tsx', 'pipe_rotor_scan_1d_run')
+        task = _make_task_spec('tsx_scan_r0', task_family='rotor_scan_1d', species_label='tsx')
+        task.ingestion_metadata = {'rotor_index': 0, **stamp}
+        initialize_task(pipe_root, task)
+        now = time.time()
+        update_task_state(pipe_root, 'tsx_scan_r0', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now, lease_expires_at=now + 3600)
+        update_task_state(pipe_root, 'tsx_scan_r0', new_status=TaskState.RUNNING, started_at=now)
+        return Scheduler.rotor_scan_owed_to_a_pipe_run(sched, species, 0)
+
+    def test_task_of_a_previous_guess_does_not_block_the_scan(self):
+        self.assertFalse(self._owed({'ts_guess': 0}))
+
+    def test_task_of_the_current_guess_blocks_the_scan(self):
+        self.assertTrue(self._owed({'ts_guess': 1}))
+
+    def test_unstamped_task_blocks_the_scan(self):
+        self.assertTrue(self._owed({}))
 
 
 if __name__ == '__main__':

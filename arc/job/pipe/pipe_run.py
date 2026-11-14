@@ -45,6 +45,7 @@ from arc.job.pipe.pipe_state import (
 logger = get_logger()
 
 RESUBMIT_GRACE = 120  # seconds – grace period after resubmission before flagging again
+TS_GUESS_KEY = 'ts_guess'
 
 pipe_settings = settings['pipe_settings']
 default_job_settings = settings['default_job_settings']
@@ -629,6 +630,44 @@ def check_ess_convergence(pipe_run_id: str, spec: TaskSpec, output_file: str, la
     return True
 
 
+def ts_guess_stamp(species) -> dict:
+    """
+    The ``ingestion_metadata`` entry that ties a task to the TS guess its species is currently
+    using.
+
+    Args:
+        species (ARCSpecies): The species the task is built for.
+
+    Returns:
+        dict: ``{'ts_guess': <chosen_ts>}`` for a TS with a chosen guess, otherwise ``{}``.
+    """
+    if getattr(species, 'is_ts', False) and getattr(species, 'chosen_ts', None) is not None:
+        return {TS_GUESS_KEY: species.chosen_ts}
+    return {}
+
+
+def is_stale_ts_task(spec: TaskSpec, species_dict: dict) -> bool:
+    """
+    Whether a task was created for a TS guess other than the one its species uses now.
+
+    A task without a ``ts_guess`` stamp, or whose species is unknown, is never stale.
+
+    Args:
+        spec (TaskSpec): The task.
+        species_dict (dict): The Scheduler's species, keyed by label.
+
+    Returns:
+        bool: ``True`` if the stamped guess differs from the species' current ``chosen_ts``.
+    """
+    meta = spec.ingestion_metadata or {}
+    if TS_GUESS_KEY not in meta:
+        return False
+    species = species_dict.get(spec.owner_key)
+    if species is None:
+        return False
+    return meta[TS_GUESS_KEY] != species.chosen_ts
+
+
 def ingest_completed_task(pipe_run_id: str, pipe_root: str, spec: TaskSpec,
                           state: 'TaskStateRecord', species_dict: dict,
                           output: dict) -> None:
@@ -1030,7 +1069,7 @@ def build_species_leaf_task(species, label: str, task_family: str,
                             extra_ingestion: dict | None = None) -> TaskSpec:
     """Build a single TaskSpec for a species-side leaf job (sp, freq, irc)."""
     cores = default_job_settings.get('job_cpu_cores', 8)
-    meta = extra_ingestion or {}
+    meta = {**ts_guess_stamp(species), **(extra_ingestion or {})}
     return TaskSpec(
         task_id=f'{label}_{task_family}',
         task_family=task_family,
@@ -1158,6 +1197,6 @@ def build_rotor_scan_1d_tasks(species, label: str, rotor_indices: list[int],
             required_cores=cores,
             required_memory_mb=memory_mb,
             input_payload=input_payload,
-            ingestion_metadata={'rotor_index': ri},
+            ingestion_metadata={'rotor_index': ri, **ts_guess_stamp(species)},
         ))
     return tasks
