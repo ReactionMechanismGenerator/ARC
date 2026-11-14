@@ -10,6 +10,7 @@ import glob
 import itertools
 import os
 import pprint
+import re
 import shutil
 import time
 
@@ -116,6 +117,10 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
 
 WRONG_FREQ_MESSAGE = 'wrong number of negative frequencies; '
 
+# Written to output[label]['conformers'] (which restart.yml keeps) for each conformer isomorphism troubleshooting level,
+# so that a restart does not repeat a level that was already tried.
+CONFORMER_ISOMORPHISM_TRSH_NOTE = 'Troubleshooting conformer isomorphism at {level}; '
+
 MIXED_SCF_REFERENCE_MESSAGE = 'the electronic energy and the ZPE were computed with different SCF references; '
 SCF_REFERENCE_JOB_TYPES = {'sp': 'sp', 'freq': 'freq', 'optfreq': 'freq'}
 
@@ -179,6 +184,23 @@ def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> b
         return text.lower().replace('-', '').replace('_', '')
 
     return normalize(job_adapter) in normalize(method)
+
+
+def get_conformer_isomorphism_trsh_history(conformers_note: str | None) -> list[str]:
+    """
+    Recover the conformer isomorphism troubleshooting levels already tried for a species from its
+    ``output[label]['conformers']`` entry, in the ``ess_trsh_methods`` form ``trsh_conformer_isomorphism`` reads.
+
+    Args:
+        conformers_note (str, optional): The species' ``output[label]['conformers']`` entry.
+
+    Returns:
+        list[str]: The tried levels, each as ``'conformer <level>'``, in the order they were tried.
+    """
+    if not isinstance(conformers_note, str):
+        return list()
+    prefix, suffix = CONFORMER_ISOMORPHISM_TRSH_NOTE.split('{level}')
+    return [f'conformer {level}' for level in re.findall(f'{re.escape(prefix)}(.+?){re.escape(suffix)}', conformers_note)]
 
 
 class Scheduler(object):
@@ -806,8 +828,10 @@ class Scheduler(object):
         self.release_held_stability_work()
         for species in self.species_dict.values():
             if species.initial_xyz is None and species.final_xyz is None and species.conformers \
-                    and any([e is not None for e in species.conformer_energies]):
+                    and any([e is not None for e in species.conformer_energies]) \
+                    and not self.has_running_conformer_jobs(species.label):
                 # The species has no xyz, but has conformers and at least one of the conformers has energy.
+                # A species with conformer jobs still running is decided by the main loop once they all terminate.
                 self.determine_most_stable_conformer(species.label)
                 if species.initial_xyz is not None:
                     if self.composite_method:
@@ -1499,6 +1523,18 @@ class Scheduler(object):
                      xyz=job.xyz,
                      )
 
+    def has_running_conformer_jobs(self, label: str) -> bool:
+        """
+        Check whether a species has a conformer job (conf_opt or conf_sp) listed as running.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: ``True`` if a conformer job of the species is running.
+        """
+        return any(is_conformer_job(job_name) for job_name in self.running_jobs.get(label, []))
+
     def run_conformer_jobs(self, labels: list[str] | None = None):
         """
         Select the most stable conformer for each species using molecular dynamics (force fields) and subsequently
@@ -1512,6 +1548,9 @@ class Scheduler(object):
         labels_to_consider = labels if labels is not None else [spc.label for spc in self.species_list]
         log_info_printed = False
         for label in labels_to_consider:
+            if not self.species_dict[label].is_ts and self.has_running_conformer_jobs(label):
+                # Conformer jobs restored on restart are still running; the main loop decides once they terminate.
+                continue
             if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
@@ -5135,10 +5174,22 @@ class Scheduler(object):
         if not num_of_conformers:
             raise SchedulerError('The troubleshoot_conformer_isomorphism() method got zero conformers.')
 
-        # use the first conformer of a species to determine applicable troubleshooting method
-        job = self.job_dict[label]['conf_opt'][0]
+        # A restart restores only the conformer jobs that were still running, so conformer 0 may have no job.
+        conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
+        tried_levels = get_conformer_isomorphism_trsh_history(self.output[label]['conformers'])
+        if conf_opt_jobs:
+            reference_job = conf_opt_jobs[min(conf_opt_jobs)]
+            job_adapter, ess_trsh_methods = reference_job.job_adapter, reference_job.ess_trsh_methods
+            ess_trsh_methods.extend(level for level in tried_levels if level not in ess_trsh_methods)
+        else:
+            job_adapter = self.deduce_job_adapter(level=Level(repr=self.conformer_opt_level), job_type='conf_opt')
+            ess_trsh_methods = tried_levels
+            if not ess_trsh_methods:
+                logger.warning(f'Could not recover the conformer isomorphism troubleshooting history of species '
+                               f'{label} (no conformer job of it is tracked). Starting from the first '
+                               f'troubleshooting level.')
 
-        level_of_theory = trsh_conformer_isomorphism(software=job.job_adapter, ess_trsh_methods=job.ess_trsh_methods)
+        level_of_theory = trsh_conformer_isomorphism(software=job_adapter, ess_trsh_methods=ess_trsh_methods)
 
         if level_of_theory is None:
             logger.error(f'ARC has attempted all built-in conformer isomorphism troubleshoot methods for species '
@@ -5148,7 +5199,8 @@ class Scheduler(object):
             self.output[label]['conformers'] += 'Error: No conformer was found to be isomorphic with the 2D ' \
                                                 'graph representation!; '
         else:
-            logger.info(f'Troubleshooting conformer job in {job.job_adapter} using {level_of_theory} for species {label}')
+            logger.info(f'Troubleshooting conformer job in {job_adapter} using {level_of_theory} for species {label}')
+            self.output[label]['conformers'] += CONFORMER_ISOMORPHISM_TRSH_NOTE.format(level=level_of_theory)
 
             # rerun conformer job at higher level for all conformers
             for conformer in range(0, num_of_conformers):
@@ -5157,16 +5209,18 @@ class Scheduler(object):
                 # initial xyz before troubleshooting
                 xyz = self.species_dict[label].conformers_before_opt[conformer]
 
-                job = self.job_dict[label]['conf_opt'][conformer]
-                if 'conf_opt: ' + level_of_theory not in job.ess_trsh_methods:
-                    job.ess_trsh_methods.append('conf_opt: ' + level_of_theory)
+                job = conf_opt_jobs.get(conformer)
+                conformer_job_adapter = job.job_adapter if job is not None else job_adapter
+                conformer_trsh_methods = job.ess_trsh_methods if job is not None else list(ess_trsh_methods)
+                if 'conf_opt: ' + level_of_theory not in conformer_trsh_methods:
+                    conformer_trsh_methods.append('conf_opt: ' + level_of_theory)
 
                 self.run_job(label=label,
                              xyz=xyz,
                              level_of_theory=level_of_theory,
-                             job_adapter=job.job_adapter,
+                             job_adapter=conformer_job_adapter,
                              job_type='conf_opt',
-                             ess_trsh_methods=job.ess_trsh_methods,
+                             ess_trsh_methods=conformer_trsh_methods,
                              conformer=conformer,
                              )
 
