@@ -13,6 +13,56 @@ list in the ARC input file. ARC tries each adapter in order and collects all
 resulting TS guesses for downstream optimization and validation (energy, frequency,
 and IRC).
 
+How ARC chooses the reaction family
+-----------------------------------
+
+The reaction family decides which TS adapters run and which atom map they use, so when several
+families of ``rmg_family_set`` match a reaction, ARC chooses one in four steps. First, the direction
+gate: if any family matches in the forward direction, the families that match only in reverse are
+dropped. Second, the radical gate: if a reactant has unpaired electrons, the families whose recipe
+neither gains nor loses a radical are dropped, provided that at least one family is kept and at least
+one is dropped. Third, the most specific family rule: the reaction center of a match is the set of
+reactant atoms that the family recipe acts on (template labels that no recipe step names, such as a
+ring path, do not count), and when the center of one family's match strictly contains the center of
+another family's match, the larger family describes more of the same change and is ranked above the
+smaller one. Fourth, the families that remain are ranked by the fewest bonds their recipe forms or
+breaks, then by the fewest bonds whose order it changes, then by their order in the family set; this
+is all that orders families with equal centers. ARC logs every matched family and the one it uses,
+and ``output.yml`` lists, for each reaction, ``family_candidates`` (each with the gate that dropped
+it, if any), ``n_family_candidates`` (the number left after both gates), and ``family_source``
+(``rule``, ``input``, or ``restart_legacy``). To use a different family, set ``family`` for the
+reaction in the input file; a family set by the user always wins.
+
+**Overlap ties.** Two families can give the same products through different bond changes, with
+centers that overlap without one containing the other. These are two reaction channels, and the
+most specific family rule does not choose between them; the fourth step does, by bond-change counts
+and family order, which carries no chemistry. ARC then warns that the reaction is an overlap tie,
+searches only the first family's channel, and writes ``family_tie`` next to the rate in
+``output.yml``: the families matched, the one searched, and the ones not searched. The computed rate
+is for the searched channel only. For an identity reaction both TSs connect the same wells, so the
+IRC check passes for either channel. To search a specific channel, set ``family`` for the reaction in
+the input file. For a degenerate H shift in an alkyl radical that ``1,2_shiftC`` also matches, ARC
+searches ``1,2_shiftC`` unless the input sets ``family: intra_H_migration``. For example, the
+degenerate 1,4-H shift of n-butyl, ``[CH2]CCC <=> [CH2]CCC``, also matches ``1,2_shiftC`` (a 1,2
+alkyl shift, which is not observed in alkyl radicals); to compute the H shift, set
+``family: intra_H_migration``.
+
+**Identity reactions.** For an identity reaction, both channels connect the same wells, so the IRC check cannot tell which channel a TS belongs to. ARC marks identity reactions in output.yml. If the family ARC reports is not the channel you want, set family.
+
+**Where the rule acts.** Over the training reactions of the RMG families in ``rmg_family_set``,
+both for the default set (8,204 reactions) and for the default set extended with the families that
+ARC's atom map supports (8,278 reactions), and over a set of designed pericyclic reactions, one
+family pair nests:
+
+- ``6_membered_central_C-C_shift`` over ``1,3_sigmatropic_rearrangement``, in Cope-type reactions
+  such as ``C=CCC(C)C=C <=> CC=CCCC=C``: the suprafacial [3,3] shift through a chair TS is thermally
+  allowed, while the suprafacial [1,3] carbon shift to the same product is forbidden.
+
+The overlap ties found are ``intra_H_migration`` and ``intra_halogen_migration``, each with
+``1,2_shiftC`` (in degenerate and some cyclic radicals), and ``Intra_R_Add_Endocyclic`` with
+``Intra_R_Add_Exocyclic``. A pair of families that never matched the same reaction in this survey
+may still nest, or tie, for other reactions.
+
 ARC-native methods
 ------------------
 

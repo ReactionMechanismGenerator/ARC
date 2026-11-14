@@ -2792,6 +2792,8 @@ class Scheduler(object):
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
                 else:
                     rxn.ts_species.tsg_spawned = True
+                    if rxn.family is not None:
+                        rxn.warn_if_identity_reaction(family=rxn.family)
                     tsg_index, eligible_methods = 0, list()
                     family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
                     for method in self.ts_adapters:

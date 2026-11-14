@@ -10,6 +10,7 @@ import os
 import shutil
 import tempfile
 import time
+import tracemalloc
 import unittest
 import unittest.mock as mock
 
@@ -18,7 +19,7 @@ from arc.exceptions import ReactionError
 from arc.family.family import get_all_families, get_rmg_recommended_family_sets
 from arc.imports import settings
 from arc.main import ARC
-from arc.reaction.reaction import ARCReaction, remove_dup_species
+from arc.reaction.reaction import ARCReaction, get_stereo_geometry, remove_dup_species
 from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
 from arc.mapping.engine import check_atom_map
@@ -188,7 +189,10 @@ class TestARCReaction(unittest.TestCase):
         rxn_dict_1 = self.rxn1.as_dict()
         # mol.atoms are not tested since all id's (including connectivity) changes depending on how the test is run.
         expected_dict_1 = {'family': 'H_Abstraction',
+                           'family_candidates': [{'family': 'H_Abstraction', 'dropped_by': None}],
                            'family_own_reverse': True,
+                           'family_source': 'rule',
+                           'n_family_candidates': 1,
                            'label': 'CH4 + OH <=> CH3 + H2O',
                            'multiplicity': 2,
                            'p_species': [{'bond_corrections': {'C-H': 3},
@@ -250,6 +254,9 @@ class TestARCReaction(unittest.TestCase):
         # The ``long_thermo_description`` attribute isn't deterministic (order could change)
         expected_dict_6 = {'label': 'NH2 + N2H3 <=> NH3 + H2NN[S]',
                            'family': 'Disproportionation',
+                           'family_candidates': [{'family': 'Disproportionation', 'dropped_by': None}],
+                           'family_source': 'rule',
+                           'n_family_candidates': 1,
                            'multiplicity': 1,
                            'p_species': [{'bond_corrections': {'H-N': 3},
                                           'cheap_conformer': 'N       0.00064924   -0.00099698    0.29559292\n'
@@ -628,6 +635,338 @@ class TestARCReaction(unittest.TestCase):
                           family='intra_H_migration')
         with self.assertRaises(ReactionError):
             _ = rxn.product_dicts
+
+    def test_the_cope_rearrangement_records_both_families_and_the_rule_choice(self):
+        """3-methyl-1,5-hexadiene <=> 1,5-heptadiene matches the [1,3] and the [3,3] shift families;
+        the [3,3] one is used, and its atom label map breaks C2-C3 and bonds C0 to C6"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
+        with self.assertLogs('arc', level='WARNING') as captured:
+            self.assertEqual(rxn.family, '6_membered_central_C-C_shift')
+        self.assertIn("['6_membered_central_C-C_shift', '1,3_sigmatropic_rearrangement']", '\n'.join(captured.output))
+        self.assertIn('Using 6_membered_central_C-C_shift', '\n'.join(captured.output))
+        self.assertEqual(rxn.family_source, 'rule')
+        self.assertEqual(rxn.family_candidates, [{'family': '6_membered_central_C-C_shift', 'dropped_by': None},
+                                                 {'family': '1,3_sigmatropic_rearrangement', 'dropped_by': None}])
+        self.assertEqual(rxn.n_family_candidates, 2)
+        breaking_bonds, forming_bonds = rxn.get_expected_changing_bonds(
+            r_label_dict=rxn.product_dicts[0]['r_label_map'])
+        self.assertEqual([tuple(sorted(bond)) for bond in breaking_bonds], [(2, 3)])
+        self.assertEqual([tuple(sorted(bond)) for bond in forming_bonds], [(0, 6)])
+
+    def test_a_single_family_reaction_records_one_candidate(self):
+        """A reaction that matches one family keeps it, and the record lists only that family"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        self.assertEqual(rxn.family_source, 'rule')
+        self.assertEqual(rxn.family_candidates, [{'family': 'H_Abstraction', 'dropped_by': None}])
+        self.assertEqual(rxn.n_family_candidates, 1)
+
+    def test_a_family_dropped_by_the_radical_gate_is_recorded(self):
+        """The pentadienyl cyclization also matches a concerted cycloaddition and an intramolecular R-H addition,
+        which the radical gate drops"""
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]C=CC=C')],
+                              p_species=[ARCSpecies(label='P', smiles='[CH2]C1C=CC1')])
+            self.assertEqual(rxn.family, 'Intra_R_Add_Exocyclic')
+        self.assertEqual(rxn.family_candidates, [{'family': 'Intra_R_Add_Exocyclic', 'dropped_by': None},
+                                                 {'family': 'Intra_2+2_cycloaddition_Cd', 'dropped_by': 'radical gate'},
+                                                 {'family': 'Intra_RH_Add_Endocyclic', 'dropped_by': 'radical gate'}])
+        self.assertEqual(rxn.n_family_candidates, 1)
+
+    def test_an_overlap_tie_is_recorded_with_the_channel_not_searched(self):
+        """The degenerate 1,4-H shift of n-butyl also matches a 1,2 carbon shift that the most specific family
+        rule cannot order against it. Both families are recorded, the tie is warned about, and the record names
+        the channel that was searched and the one that was not"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        with self.assertLogs('arc', level='WARNING') as captured:
+            family = rxn.family
+        self.assertIn('overlap tie', '\n'.join(captured.output))
+        self.assertEqual({candidate['family'] for candidate in rxn.family_candidates}, {'intra_H_migration', '1,2_shiftC'})
+        self.assertEqual(rxn.n_family_candidates, 2)
+        self.assertEqual(rxn.family_source, 'rule')
+        other = ({'intra_H_migration', '1,2_shiftC'} - {family}).pop()
+        self.assertEqual(rxn.family_tie, {'families': [family, other], 'searched': family, 'not_searched': [other]})
+        self.assertEqual(ARCReaction(reaction_dict=rxn.as_dict()).family_tie, rxn.family_tie)
+        pinned = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                             p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')], family='intra_H_migration')
+        self.assertEqual(pinned.family, 'intra_H_migration')
+        self.assertIsNone(pinned.family_tie)
+
+    def test_is_identity_reaction(self):
+        """Reactants and products that are the same species, counted with stoichiometry, make an identity reaction"""
+        n_butyl = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                              p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        self.assertTrue(n_butyl.is_identity_reaction())
+        self.assertIsNotNone(n_butyl.family_tie)
+        n_nonyl = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCCCCCCC')],
+                              p_species=[ARCSpecies(label='P', smiles='[CH2]CCCCCCCC')])
+        self.assertTrue(n_nonyl.is_identity_reaction())
+        self.assertEqual(n_nonyl.family, '1,2_shiftC')
+        self.assertEqual(n_nonyl.n_family_candidates, 1)
+        swap = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='CH4', smiles='C')],
+                           p_species=[ARCSpecies(label='CH4_b', smiles='C'), ARCSpecies(label='CH3_b', smiles='[CH3]')])
+        self.assertTrue(swap.is_identity_reaction())
+        isomerization = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCCC')],
+                                    p_species=[ARCSpecies(label='P', smiles='C[CH]CCC')])
+        self.assertFalse(isomerization.is_identity_reaction())
+        abstraction = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                             ARCSpecies(label='OH', smiles='[OH]')],
+                                  p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                             ARCSpecies(label='H2O', smiles='O')])
+        self.assertFalse(abstraction.is_identity_reaction())
+        unknown = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                              p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        unknown.p_species[0].mol = None
+        self.assertFalse(unknown.is_identity_reaction())
+
+    def test_an_identity_reaction_requires_the_same_stereochemistry(self):
+        """Wells that differ only in stereochemistry are not the same species, and a well whose stereochemistry
+        cannot be read from a geometry is not declared the same as another"""
+        cis_xyz = """C    1.5644   -0.4769    0.1209
+                     C    0.7126    0.7144   -0.1762
+                     C   -0.6277    0.7853   -0.1960
+                     C   -1.6088   -0.3090    0.0740
+                     H    2.2055   -0.2651    0.9824
+                     H    2.2084   -0.6920   -0.7375
+                     H    0.9910   -1.3787    0.3439
+                     H    1.2676    1.6248   -0.4012
+                     H   -1.0768    1.7488   -0.4359
+                     H   -1.1406   -1.2659    0.3124
+                     H   -2.2492   -0.0294    0.9165
+                     H   -2.2463   -0.4563   -0.8034"""
+        trans_xyz = """C    1.9453    0.0776   -0.1114
+                       C    0.4915    0.0438   -0.4545
+                       C   -0.4915   -0.0438    0.4545
+                       C   -1.9453   -0.0776    0.1114
+                       H    2.4588   -0.7661   -0.5824
+                       H    2.1176    0.0228    0.9681
+                       H    2.3939    1.0043   -0.4821
+                       H    0.2468    0.0948   -1.5133
+                       H   -0.2468   -0.0948    1.5133
+                       H   -2.4588    0.7661    0.5824
+                       H   -2.3939   -1.0043    0.4821
+                       H   -2.1176   -0.0228   -0.9681"""
+        cis_to_trans = ARCReaction(r_species=[ARCSpecies(label='cis', xyz=cis_xyz)],
+                                   p_species=[ARCSpecies(label='trans', xyz=trans_xyz)])
+        self.assertTrue(cis_to_trans.r_species[0].is_isomorphic(cis_to_trans.p_species[0]))
+        self.assertFalse(cis_to_trans.is_identity_reaction())
+        same_well = ARCReaction(r_species=[ARCSpecies(label='cis', xyz=cis_xyz)],
+                                p_species=[ARCSpecies(label='cis_b', xyz=cis_xyz)])
+        self.assertTrue(same_well.is_identity_reaction())
+        no_xyz = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C/C=C\\C')],
+                             p_species=[ARCSpecies(label='P', smiles='C/C=C\\C')])
+        self.assertFalse(no_xyz.is_identity_reaction())
+
+    def test_n_butyl_from_smiles_is_flagged_at_family_selection(self):
+        """The 1,4-H shift of n-butyl, given as SMILES with no geometry, has no possible stereo element, so it is an
+        identity reaction by isomorphism alone, and the early WARNING is logged when its family is chosen"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')], family='intra_H_migration')
+        self.assertIsNone(get_stereo_geometry(rxn.r_species[0]))
+        self.assertIsNone(get_stereo_geometry(rxn.p_species[0]))
+        with self.assertLogs('arc', level='WARNING') as captured:
+            _ = rxn.product_dicts
+        warnings = [record.getMessage() for record in captured.records if 'identity reaction' in record.getMessage()]
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('The intra_H_migration family will be searched', warnings[0])
+
+    def test_a_2_eicosanol_sized_identity_check_is_bounded(self):
+        """The identity check of a well with a stereo center and many equivalent hydrogens finishes fast,
+        with bounded memory"""
+        reactant = ARCSpecies(label='R', smiles='CCCCCCCCCCCCCCCCCCC(C)O')
+        xyz = reactant.get_xyz()
+        reactant.initial_xyz = xyz
+        product = ARCSpecies(label='P', smiles='CCCCCCCCCCCCCCCCCCC(C)O', xyz=xyz)
+        rxn = ARCReaction(r_species=[reactant], p_species=[product])
+        tracemalloc.start()
+        t0 = time.time()
+        try:
+            is_identity = rxn.is_identity_reaction()
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        self.assertTrue(is_identity)
+        self.assertLess(time.time() - t0, 10)
+        self.assertLess(peak, 50 * 1024 ** 2)
+
+    def test_an_identity_reaction_is_warned_about_once_when_its_family_is_chosen(self):
+        """One WARNING per identity reaction, logged when the family is chosen, names the family searched, and is
+        not repeated by a flipped copy, a copy, or a reset of the product dicts"""
+        for smiles, expected_family in (('[CH2]CCC', None), ('[CH2]CCCCCCCC', '1,2_shiftC')):
+            rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles=smiles)],
+                              p_species=[ARCSpecies(label='P', smiles=smiles)])
+            with self.assertLogs('arc', level='DEBUG') as captured:
+                family = rxn.family
+                _ = rxn.product_dicts
+                flipped = rxn.flip_reaction()
+                _ = flipped.family, flipped.product_dicts
+                copied = rxn.copy()
+                _ = copied.family, copied.product_dicts
+                rxn.product_dicts = None
+                _ = rxn.product_dicts
+            warnings = [record.getMessage() for record in captured.records
+                        if record.levelname == 'WARNING' and 'identity reaction' in record.getMessage()]
+            self.assertEqual(len(warnings), 1, warnings)
+            self.assertIn(rxn.label, warnings[0])
+            self.assertIn('do not discriminate the channel', warnings[0])
+            self.assertIn(f'The {family} family will be searched', warnings[0])
+            if expected_family is not None:
+                self.assertEqual(family, expected_family)
+        control = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCCC')],
+                              p_species=[ARCSpecies(label='P', smiles='C[CH]CCC')])
+        with self.assertLogs('arc', level='DEBUG') as captured:
+            _ = control.family, control.product_dicts
+        self.assertFalse(any('identity reaction' in record.getMessage() for record in captured.records))
+
+    def test_the_identity_warning_of_an_unavailable_family_says_it_is_not_searched(self):
+        """The early WARNING of an identity reaction pinned to an unavailable family names the cause"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')], family='intra_H_migration')
+        rxn.unavailable_families['intra_H_migration'] = 'Malformed recipe action, line 17'
+        with mock.patch.object(rxn, 'get_reaction_family_object', return_value=None), \
+                self.assertLogs('arc', level='WARNING') as captured:
+            rxn.warn_if_identity_reaction(family='intra_H_migration')
+        self.assertEqual(len(captured.records), 1)
+        self.assertIn('The intra_H_migration family is unavailable, not searched: Malformed recipe action, line 17',
+                      captured.records[0].getMessage())
+        self.assertNotIn('will be searched', captured.records[0].getMessage())
+
+    def test_a_restored_rule_choice_recomputes_its_tie(self):
+        """A rule choice restored from a restart file keeps its family, and its tie is recomputed from the
+        families that match now: dropped when the other channel no longer matches, restored when it does"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        family, tie = rxn.family, rxn.family_tie
+        self.assertIsNotNone(tie)
+        with mock.patch.dict(settings, {'rmg_family_set': [family]}):
+            narrowed = ARCReaction(reaction_dict=rxn.as_dict())
+            self.assertEqual(len(narrowed.product_dicts), len(rxn.product_dicts))
+        self.assertEqual(narrowed.family, family)
+        self.assertEqual(narrowed.n_family_candidates, 1)
+        self.assertIsNone(narrowed.family_tie)
+        untied_dict = rxn.as_dict()
+        untied_dict['family_tie'] = None
+        restored = ARCReaction(reaction_dict=untied_dict)
+        _ = restored.product_dicts
+        self.assertEqual(restored.family_source, 'rule')
+        self.assertEqual(restored.family_tie, tie)
+        with mock.patch.dict(settings, {'rmg_family_set': ['H_Abstraction']}):
+            unmatched = ARCReaction(reaction_dict=rxn.as_dict())
+            self.assertEqual(unmatched.product_dicts, list())
+        self.assertEqual(unmatched.n_family_candidates, 0)
+        self.assertIsNone(unmatched.family_tie)
+
+    def test_a_restored_rule_choice_the_rule_now_ranks_lower_is_not_a_tie(self):
+        """A restart file whose rule choice was the [1,3] shift, made before the Cope family was in the set, keeps
+        it; the Cope family that the rule now ranks first is not reported as an undecided tie"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
+        _ = rxn.family
+        reaction_dict = rxn.as_dict()
+        reaction_dict.update({'family': '1,3_sigmatropic_rearrangement', 'family_tie': None})
+        restored = ARCReaction(reaction_dict=reaction_dict)
+        _ = restored.product_dicts
+        self.assertEqual(restored.family, '1,3_sigmatropic_rearrangement')
+        self.assertEqual(restored.family_source, 'rule')
+        self.assertEqual(restored.n_family_candidates, 2)
+        self.assertIsNone(restored.family_tie)
+
+    def test_a_restored_rule_choice_behind_only_by_family_order_keeps_its_tie(self):
+        """When the restored rule choice is not ranked first only because of the family order, the two families
+        are still an overlap tie, now with the other one not searched"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        first = rxn.family
+        other = rxn.family_tie['not_searched'][0]
+        reaction_dict = rxn.as_dict()
+        reaction_dict.update({'family': other, 'family_tie': None})
+        restored = ARCReaction(reaction_dict=reaction_dict)
+        _ = restored.product_dicts
+        self.assertEqual(restored.family, other)
+        self.assertEqual(restored.family_tie, {'families': [other, first], 'searched': other, 'not_searched': [first]})
+
+    def test_a_legacy_restart_family_from_an_overlap_tie_gets_the_caveat(self):
+        """A restart file from before the record existed may hold a family that the old ranking took from an
+        overlap tie, so the caveat is recomputed for it; a family set in the input is the user's choice of channel"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        family, tie = rxn.family, rxn.family_tie
+        legacy_dict = {key: val for key, val in rxn.as_dict().items()
+                       if key not in ('family_source', 'family_candidates', 'n_family_candidates', 'family_tie')}
+        legacy = ARCReaction(reaction_dict=legacy_dict)
+        _ = legacy.product_dicts
+        self.assertEqual(legacy.family_source, 'restart_legacy')
+        self.assertEqual(legacy.family, family)
+        self.assertEqual(legacy.family_tie, tie)
+        pinned = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                             p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')], family=family)
+        _ = pinned.product_dicts
+        self.assertIsNone(pinned.family_tie)
+
+    def test_the_korcek_step1_family_keeps_its_place_against_a_ring_path_family(self):
+        """Intra_RH_Add_Exocyclic labels more atoms than Korcek_step1, but only on a ring path its recipe
+        does not act on, so it is not more specific, and the two make the same bond changes"""
+        with mock.patch.dict(settings, {'rmg_family_set': 'all'}):
+            rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='CC(OO)CC(C)=O')],
+                              p_species=[ARCSpecies(label='P', smiles='CC1CC(C)(O)OO1')])
+            self.assertEqual(rxn.family, 'Korcek_step1')
+        self.assertEqual(rxn.n_family_candidates, 2)
+        self.assertIsNone(rxn.family_tie)
+
+    def test_a_user_family_wins_and_is_recorded_as_input(self):
+        """A family set by the user is kept over the rule's choice, and the record says so"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')],
+                          family='1,3_sigmatropic_rearrangement')
+        self.assertEqual(rxn.family, '1,3_sigmatropic_rearrangement')
+        self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts}, {'1,3_sigmatropic_rearrangement'})
+        self.assertEqual(rxn.family_source, 'input')
+        self.assertEqual([candidate['family'] for candidate in rxn.family_candidates],
+                         ['6_membered_central_C-C_shift', '1,3_sigmatropic_rearrangement'])
+        from_input = ARCReaction(reaction_dict={'label': 'R <=> P', 'family': '1,3_sigmatropic_rearrangement'},
+                                 species_list=rxn.r_species + rxn.p_species)
+        self.assertEqual(from_input.family_source, 'input')
+
+    def test_the_family_record_survives_a_restart(self):
+        """as_dict() and from_dict() keep the family source and candidates, and a restart dict
+        written before the record existed is marked as legacy rather than as user input"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
+        _ = rxn.family
+        reaction_dict = rxn.as_dict()
+        self.assertEqual(reaction_dict['family_source'], 'rule')
+        restored = ARCReaction(reaction_dict=reaction_dict)
+        self.assertEqual(restored.family, '6_membered_central_C-C_shift')
+        self.assertEqual(restored.family_source, 'rule')
+        self.assertEqual(restored.family_candidates, rxn.family_candidates)
+        self.assertEqual(restored.n_family_candidates, 2)
+        legacy_dict = {key: val for key, val in reaction_dict.items()
+                       if key not in ('family_source', 'family_candidates', 'n_family_candidates')}
+        legacy_dict['family'] = '1,3_sigmatropic_rearrangement'
+        legacy = ARCReaction(reaction_dict=legacy_dict)
+        self.assertEqual(legacy.family, '1,3_sigmatropic_rearrangement')
+        self.assertEqual(legacy.family_source, 'restart_legacy')
+
+    def test_replacing_the_product_dicts_clears_the_family_candidates(self):
+        """Product dicts set from elsewhere leave the candidate record unknown rather than stale"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
+        self.assertEqual(rxn.n_family_candidates, 2)
+        rxn.product_dicts = rxn.product_dicts[:1]
+        self.assertIsNone(rxn.family_candidates)
+        self.assertIsNone(rxn.n_family_candidates)
+
+    def test_setting_a_family_in_code_clears_its_source(self):
+        """A family assigned after the rule chose one has no known source"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
+        self.assertEqual(rxn.family_source, 'rule')
+        rxn.family = '1,3_sigmatropic_rearrangement'
+        self.assertIsNone(rxn.family_source)
+        self.assertEqual({product_dict['family'] for product_dict in rxn.product_dicts}, {'1,3_sigmatropic_rearrangement'})
 
     def test_family_own_reverse_is_derived_from_a_pinned_family(self):
         """Test that pinning a family also determines whether that family is its own reverse"""

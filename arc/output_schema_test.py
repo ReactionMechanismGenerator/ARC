@@ -1238,6 +1238,36 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.assertEqual(len(self.species['conformers']),
                          len(self.species['conformer_energies']))
 
+    def test_the_family_record_of_an_overlap_tie_is_valid(self):
+        """A rule choice from two tied families, with the caveat next to the rate, satisfies the schema"""
+        reaction = self.document['reactions'][0]
+        reaction.update({'family': '1,2_shiftC', 'family_source': 'rule', 'n_family_candidates': 2,
+                         'family_candidates': [{'family': '1,2_shiftC', 'dropped_by': None},
+                                               {'family': 'intra_H_migration', 'dropped_by': None}],
+                         'family_tie': {'families': ['1,2_shiftC', 'intra_H_migration'], 'searched': '1,2_shiftC',
+                                        'not_searched': ['intra_H_migration']}})
+        self.assert_valid(self.document)
+
+    def test_an_unknown_family_source_is_rejected(self):
+        """family_source has three values"""
+        self.document['reactions'][0]['family_source'] = 'guess'
+        self.assert_invalid(self.document, 'family_source')
+
+    def test_a_family_tie_without_the_families_not_searched_is_rejected(self):
+        """The caveat must name the channels whose rate was not computed"""
+        self.document['reactions'][0]['family_tie'] = {'families': ['a', 'b'], 'searched': 'a'}
+        self.assert_invalid(self.document, 'not_searched')
+
+    def test_the_identity_reaction_flag_is_valid_and_optional(self):
+        """identity_reaction is a boolean, and a document without it still validates"""
+        reaction = self.document['reactions'][0]
+        reaction['identity_reaction'] = True
+        self.assert_valid(self.document)
+        del reaction['identity_reaction']
+        self.assert_valid(self.document)
+        reaction['identity_reaction'] = 'yes'
+        self.assert_invalid(self.document, 'identity_reaction')
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

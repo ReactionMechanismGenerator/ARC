@@ -4133,7 +4133,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.ess_settings = {'gaussian': ['server1']}
-        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 6)]
+        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 8)]
 
     @classmethod
     def tearDownClass(cls):
@@ -4186,6 +4186,9 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                               ts_adapters: list,
                               project: str,
                               unavailable_adapters: list | None = None,
+                              r_species: list | None = None,
+                              p_species: list | None = None,
+                              family: str | None = None,
                               ) -> tuple:
         """
         Set up a Scheduler holding HOCHO <=> H2O + CO (family 1,2_Insertion_CO) with optimized wells.
@@ -4201,18 +4204,23 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
             ts_adapters (list): The TS adapters to configure the Scheduler with.
             project (str): The project name, also the project directory name.
             unavailable_adapters (list, optional): Adapters whose job raises ``DependencyError``.
+            r_species (list, optional): Reactants to use instead of HOCHO, the family is then not checked.
+            p_species (list, optional): Products to use instead of H2O + CO.
+            family (str, optional): The family to preset on the reaction.
 
         Returns:
             tuple: The Scheduler, its ARCReaction, and the list accumulating the
                    (job type, adapter) pairs jobs were created for.
         """
         unavailable_adapters = unavailable_adapters or list()
-        r_species = [ARCSpecies(label='HOCHO', smiles='OC=O')]
-        p_species = [ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')]
+        hocho = r_species is None
+        r_species = r_species or [ARCSpecies(label='HOCHO', smiles='OC=O')]
+        p_species = p_species or [ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')]
         for spc in r_species + p_species:
             spc.final_xyz = spc.get_xyz()  # Marks the well as optimized, gating spawn_ts_jobs().
-        rxn = ARCReaction(r_species=r_species, p_species=p_species)
-        self.assertEqual(rxn.family, '1,2_Insertion_CO')
+        rxn = ARCReaction(r_species=r_species, p_species=p_species, family=family)
+        if hocho:
+            self.assertEqual(rxn.family, '1,2_Insertion_CO')
         sched = Scheduler(project=project,
                           ess_settings=self.ess_settings,
                           species_list=r_species + p_species,
@@ -4261,6 +4269,25 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         self.assertTrue(any('Not spawning any TS search job' in record.getMessage()
                             and rxn.family in record.getMessage() for record in captured.records))
         self.assertTrue(rxn.ts_species.tsg_spawned)  # Latched, hence the single chance to report this.
+
+    def test_spawn_ts_jobs_warns_about_a_pinned_identity_reaction_before_the_search(self):
+        """Test that an identity reaction pinned to a family is warned about before its first TS search job,
+        when no adapter reads its product dicts"""
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=['kinbot'],
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_7',
+                                                         r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                                                         p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')],
+                                                         family='intra_H_migration')
+        with patch('arc.reaction.reaction.logger') as reaction_logger:
+            reaction_logger.warning.side_effect = lambda message: spawned.append(('warning', message))
+            sched.spawn_ts_jobs()
+        events = [(kind, detail) for kind, detail in spawned if kind in ('warning', 'tsg')]
+        identity = [i for i, (kind, detail) in enumerate(events) if kind == 'warning' and 'identity reaction' in detail]
+        tsg = [i for i, (kind, detail) in enumerate(events) if kind == 'tsg']
+        self.assertEqual(len(identity), 1, events)
+        self.assertIn('The intra_H_migration family will be searched', events[identity[0]][1])
+        self.assertTrue(len(tsg), events)
+        self.assertLess(identity[0], tsg[0])
 
     def test_spawn_ts_jobs_warns_when_ts_adapters_is_empty(self):
         """Test that an empty ts_adapters list warns instead of raising."""
@@ -4320,6 +4347,18 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                             for record in captured.records))
         self.assertEqual(sched.running_jobs.get(rxn.ts_label, list()), list())
         self.assertEqual(sched.job_dict[rxn.ts_label].get('tsg', dict()), dict())
+
+    def test_spawn_ts_jobs_runs_the_cope_adapters_for_a_cope_rearrangement(self):
+        """Test that 3-methyl-1,5-hexadiene <=> 1,5-heptadiene, which also matches the [1,3] shift family,
+        gets the TS adapters of the [3,3] shift family it is assigned"""
+        configured = ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear']
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=configured,
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_6',
+                                                         r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                                                         p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
+        self.assertEqual(rxn.family, '6_membered_central_C-C_shift')
+        sched.spawn_ts_jobs()
+        self.assertEqual([adapter for job_type, adapter in spawned if job_type == 'tsg'], configured)
 
 
 class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):

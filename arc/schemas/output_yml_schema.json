@@ -2024,6 +2024,86 @@
             "null"
           ]
         },
+        "family_source": {
+          "description": "How the family was chosen: 'rule' (ARC ranked the matched families), 'input' (set by the user), or 'restart_legacy' (kept from a restart file written before this key existed).",
+          "enum": [
+            "rule",
+            "input",
+            "restart_legacy",
+            null
+          ]
+        },
+        "family_candidates": {
+          "description": "Every family that matched after the direction gate, with the gate that dropped it, if any.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "required": [
+              "family",
+              "dropped_by"
+            ],
+            "properties": {
+              "family": {
+                "type": "string"
+              },
+              "dropped_by": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "n_family_candidates": {
+          "description": "The number of matched families left after the direction and radical gates.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "family_tie": {
+          "description": "Set when the chosen family came from an overlap tie the most specific family rule does not decide: the rate is for the searched channel only.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "families",
+                "searched",
+                "not_searched"
+              ],
+              "properties": {
+                "families": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "searched": {
+                  "type": "string"
+                },
+                "not_searched": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "identity_reaction": {
+          "description": "Whether the reactants and products are the same species. The IRC end points then do not discriminate the channel, so the rate is for the channel of the reported family.",
+          "type": "boolean"
+        },
         "multiplicity": {
           "type": [
             "integer",
