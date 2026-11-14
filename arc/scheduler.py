@@ -24,6 +24,7 @@ from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
                         get_number_with_ordinal_indicator,
+                        get_single_bond_length,
                         is_angle_linear,
                         read_yaml_file,
                         safe_copy_file,
@@ -76,7 +77,7 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_to_str,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz
-from arc.species.vectors import get_angle, calculate_dihedral_angle
+from arc.species.vectors import calculate_dihedral_angle, calculate_distance, get_angle
 
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
@@ -1862,6 +1863,10 @@ class Scheduler(object):
             label (str): The species label.
         """
         if self.job_types['rotors'] and isinstance(self.species_dict[label].rotors_dict, dict):
+            if self.species_dict[label].is_ts:
+                # A TS's ASE scans build each rotating group with the TS's partial bonds, which distances miss.
+                self.species_dict[label].scan_partial_bonds = self.species_dict[label].preserve_param_in_scan \
+                    or self.get_ts_reactive_bonds(label)
             ess_rotor_indices = []  # Collected for potential pipe batching below.
             for i, rotor in self.species_dict[label].rotors_dict.items():
                 if rotor['scan_path'] and os.path.isfile(rotor['scan_path']):
@@ -4458,6 +4463,9 @@ class Scheduler(object):
                 # quality check of the points it did reach would overwrite that verdict, turning it into a success.
                 trajectory = parser.parse_1d_scan_coords(log_file_path=job.local_path_to_output_file) \
                     if self.species_dict[label].is_ts else None
+                preserve_params = self.species_dict[label].preserve_param_in_scan
+                if preserve_params is None and self.species_dict[label].is_ts:
+                    preserve_params = self.get_ts_reactive_bonds(label)
                 invalidate, invalidation_reason, message, actions = scan_quality_check(
                     label=label,
                     pivots=self.species_dict[label].rotors_dict[job.rotor_index]['pivots'],
@@ -4465,7 +4473,7 @@ class Scheduler(object):
                     used_methods=self.species_dict[label].rotors_dict[job.rotor_index]['trsh_methods'],
                     log_file=job.local_path_to_output_file,
                     species=self.species_dict[label],
-                    preserve_params=self.species_dict[label].preserve_param_in_scan,
+                    preserve_params=preserve_params,
                     trajectory=trajectory,
                     original_xyz=self.species_dict[label].final_xyz,
                 )
@@ -4530,6 +4538,81 @@ class Scheduler(object):
                                        )
 
         self.save_restart_dict()
+
+    def get_ts_reactive_bonds(self,
+                              label: str,
+                              max_bond_ratio: float = 2.2,
+                              max_relabelings: int = 20000,
+                              ) -> list[list[int]] | None:
+        """
+        The bonds a TS's reaction forms and breaks, which the TS's rotor scans must preserve. A scan that stretches
+        or shortens one of them has left the saddle (e.g., a minimizing scan slides toward the reactant or product),
+        and its energies are then not a torsional potential of the TS.
+
+        The atom map names one atom among symmetry-equivalent ones, which need not be the one the TS uses: e.g.,
+        another H of C2H6 than the one an OH abstraction TS transfers (3.5 A from the O), or, in i-C3H7 -> C3H6 + H,
+        an H of the other methyl group than the one leaving. The reactant atoms are therefore relabeled by the
+        symmetry of the reactants' graphs (their automorphisms) that best fits the TS geometry: the one that makes
+        the bonds the reaction leaves unchanged the shortest, relative to single bonds. Only then are the reactive
+        bonds mapped onto the TS. A pair still longer than ``max_bond_ratio`` times its single-bond length is left
+        out as no partial bond of this TS. The loosest TS bonds, such as the C...H of H + C2H4 (about 1.9 A, 1.7 times
+        a C-H bond), stay in.
+
+        Args:
+            label (str): The TS label.
+            max_bond_ratio (float, optional): The longest TS distance of a reactive bond, relative to its
+                                              single-bond length.
+            max_relabelings (int, optional): The most symmetry relabelings to try; with more, the atom map is used as
+                                             it is.
+
+        Returns:
+            list[list[int]] | None: The bonds as 1-indexed atom pairs of the TS (whose atoms are ordered as the
+                                    reactants'), or ``None`` if they are unknown.
+        """
+        rxn = self.rxn_dict.get(self.species_dict[label].rxn_index)
+        if rxn is None:
+            return None
+        try:
+            r_bonds, p_bonds = rxn.get_bonds()
+            r_bonds, p_bonds = {tuple(bond) for bond in r_bonds}, {tuple(bond) for bond in p_bonds}
+            bonds, unchanged_bonds = sorted(r_bonds ^ p_bonds), sorted(r_bonds & p_bonds)
+        except Exception as e:
+            try:
+                formed_bonds, broken_bonds = rxn.get_formed_and_broken_bonds()
+            except Exception as e:
+                logger.warning(f'Could not determine the reactive bonds of {label} ({type(e).__name__}: {e}), so its '
+                               f'rotor scans are not checked for breaking the TS.')
+                return None
+            bonds, unchanged_bonds = [tuple(bond) for bond in list(formed_bonds) + list(broken_bonds)], list()
+        xyz = self.species_dict[label].final_xyz
+        if xyz is None:
+            return [[i + 1, j + 1] for i, j in bonds] or None
+        coords = np.array(xyz['coords'], dtype=float)
+        distances = np.linalg.norm(coords[:, None, :] - coords[None, :, :], axis=-1)
+        single_bonds = {bond: get_single_bond_length(xyz['symbols'][bond[0]], xyz['symbols'][bond[1]])
+                        for bond in bonds + unchanged_bonds}
+        if unchanged_bonds:
+            relabelings, offset = list(), 0
+            for reactant in rxn.get_reactants_and_products(return_copies=True)[0]:
+                mol, copy = reactant.mol, reactant.mol.copy(deep=True)
+                maps = mol.find_isomorphism(copy, save_order=True) or [dict(zip(mol.atoms, copy.atoms))]
+                relabelings.append([[offset + copy.atoms.index(mapping[atom]) for atom in mol.atoms]
+                                    for mapping in maps])
+                offset += len(mol.atoms)
+            if offset == len(coords) and np.prod([len(r) for r in relabelings], dtype=float) <= max_relabelings:
+                best, best_cost = None, np.inf
+                for parts in itertools.product(*relabelings):
+                    relabel = [atom for part in parts for atom in part]
+                    cost = sum(distances[relabel[i], relabel[j]] / single_bonds[(i, j)] for i, j in unchanged_bonds)
+                    if cost < best_cost - 1e-9:
+                        best, best_cost = relabel, cost
+                bonds = [(best[i], best[j]) for i, j in bonds]
+        partial_bonds = list()
+        for i, j in bonds:
+            single_bond = get_single_bond_length(xyz['symbols'][i], xyz['symbols'][j])
+            if distances[i, j] <= max_bond_ratio * single_bond:
+                partial_bonds.append(sorted([i + 1, j + 1]))
+        return sorted(partial_bonds) or None
 
     def check_directed_scan(self, label, pivots, scan, energies):
         """
@@ -4847,6 +4930,17 @@ class Scheduler(object):
 
         # A lower conformation was found.
         if 'change conformer' in methods:
+            if self.species_dict[label].is_ts and any(
+                    'change conformer' in used_trsh_method
+                    and compare_confs(methods['change conformer'], used_trsh_method['change conformer'])
+                    for used_trsh_method in used_trsh_methods):
+                # The TS was already re-optimized from this point and came back to a saddle whose scan leads here
+                # again: the torsion leaves the saddle point when scanned (e.g., it is part of a cyclic TS), so it is
+                # not a rotor of this TS. Keep the TS; the caller invalidates this rotor, which becomes a vibration.
+                logger.warning(f'Rotor {self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} of TS '
+                               f'{label} leads again to a point the TS was already re-optimized from. Treating this '
+                               f'torsion as a vibration.')
+                return trsh_success, actual_actions
             # We will delete all of the jobs no matter we can successfully change to the conformer.
             # If success, we have to cancel jobs to avoid conflicts
             # If not succeed, we are in a situation that we find a lower conformer, but either
@@ -5149,6 +5243,17 @@ class Scheduler(object):
                          cpu_cores=cpu_cores,
                          shift=shift,
                          )
+        elif job.job_type in ('scan', 'directed_scan') and job.rotor_index is not None \
+                and job.rotor_index in self.species_dict[label].rotors_dict:
+            # A rotor scan that cannot be troubleshot costs only that rotor, which is then treated as a vibration.
+            # Switching a TS's guess here would discard a TS that already passed its frequency and IRC checks
+            # (e.g., an ASE scan, which has no troubleshooting methods, of a torsion at an MLIP TS).
+            rotor = self.species_dict[label].rotors_dict[job.rotor_index]
+            rotor['success'] = False
+            rotor['invalidation_reason'] = (rotor.get('invalidation_reason') or '') + \
+                'The scan job failed and could not be troubleshot; '
+            logger.warning(f'Could not troubleshoot the scan of rotor {job.rotor_index} of {label}; '
+                           f'treating that torsion as a vibration.')
         elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted \
                 and conformer is None:
             # Only switch TS guess when a full optimization fails, not when a single

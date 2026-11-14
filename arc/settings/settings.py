@@ -371,6 +371,10 @@ max_ess_trsh = 25       # maximum number of times to troubleshoot the same ESS j
 # or torsion angle during a rotor scan. For a TS, only 'bond' and 'torsion' are considered.
 preserve_params_in_scan = {
     'bond': 0.1,  # Default: 10% of the original bond length
+    # A TS's forming and breaking bonds, which a saddle-preserving scan lets the saddle shift along: scans that stayed
+    # on the saddle changed them by up to 17% (Gaussian and Sella, e.g. the TS of HO2 + CH2O), ones that slid off by
+    # 24% or more.
+    'ts_bond': 0.2,
     'angle': 10,  # Default: 10 degrees
     'dihedral': 30,  # Default: 30 degrees
 }

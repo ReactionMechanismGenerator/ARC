@@ -6,6 +6,8 @@ This module contains unit tests for the arc.job.adapters.ase module.
 These tests verify IO and logic without executing the external ASE script in CI.
 """
 
+import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 import os
 import shutil
 import subprocess
@@ -17,7 +19,9 @@ from unittest.mock import patch
 import numpy as np
 
 from ase import Atoms
+from ase.calculators.calculator import Calculator, all_changes
 from ase.calculators.emt import EMT
+from ase.optimize import BFGS, FIRE, LBFGS
 from ase.vibrations import Vibrations
 
 from arc.common import ARC_TESTING_PATH, read_yaml_file, save_yaml_file
@@ -25,19 +29,25 @@ from arc.job.adapters.ase_adapter import ASEAdapter, active_worker_tickets, serv
 from arc.parser.parser import parse_1d_scan_coords, parse_1d_scan_energies
 from arc.species.species import ARCSpecies
 from arc.job.adapters.scripts import ase_script
-from arc.job.adapters.scripts.ase_script import (apply_constraints,
+from arc.job.adapters.scripts.ase_script import (BatchedEvaluator,
+                                                 _scan_walk,
+                                                 apply_constraints,
+                                                 batch_evaluation_function,
                                                  claim_ticket,
                                                  get_ticket_status,
                                                  is_linear,
+                                                 is_transient_gpu_error,
                                                  live_workers,
                                                  merge_scan_branches,
                                                  numpy_vibrational_analysis,
                                                  relaxed_torsion_scan,
                                                  rotor_top,
                                                  run_job,
+                                                 run_scan_group,
                                                  run_torsion_scan,
                                                  run_vibrational_analysis,
                                                  scan_convergence_warning,
+                                                 scan_group_key,
                                                  sella_hessian_function,
                                                  serve,
                                                  spool_dirs,
@@ -63,6 +73,73 @@ def spring_hessian(positions: np.ndarray, springs: list) -> np.ndarray:
         for a, b, sign in ((i, i, 1), (j, j, 1), (i, j, -1), (j, i, -1)):
             hessian[3 * a:3 * a + 3, 3 * b:3 * b + 3] += sign * block
     return hessian
+
+
+class BondBarrierEMT(Calculator):
+    """
+    EMT plus a Gaussian barrier, height ``a`` (eV) and width ``s`` (A), centered at ``r0`` along one atom pair's
+    distance: a toy TS whose reactive bond stretch is the unstable mode.
+    """
+    implemented_properties = ['energy', 'free_energy', 'forces']
+
+    def __init__(self, pair: tuple, r0: float, a: float = 20.0, s: float = 0.3):
+        super().__init__()
+        self.pair, self.r0, self.a, self.s, self.emt = pair, r0, a, s, EMT()
+
+    def calculate(self, atoms=None, properties=('energy',), system_changes=all_changes):
+        super().calculate(atoms, properties, system_changes)
+        bare = Atoms(numbers=self.atoms.numbers, positions=self.atoms.positions)
+        bare.calc = self.emt
+        energy, forces = bare.get_potential_energy(), bare.get_forces().copy()
+        i, j = self.pair
+        bond = bare.positions[i] - bare.positions[j]
+        r = np.linalg.norm(bond)
+        barrier = self.a * np.exp(-(r - self.r0) ** 2 / (2 * self.s ** 2))
+        energy += barrier
+        forces[i] += barrier * (r - self.r0) / self.s ** 2 * bond / r
+        forces[j] -= barrier * (r - self.r0) / self.s ** 2 * bond / r
+        self.results = {'energy': energy, 'free_energy': energy, 'forces': forces}
+
+
+class SpringNetwork(Calculator):
+    """Harmonic springs between all atom pairs closer than ``cutoff`` (A): rigid, but free to rotate about bonds."""
+    implemented_properties = ['energy', 'free_energy', 'forces']
+
+    def __init__(self, atoms: Atoms, cutoff: float = 2.4, k: float = 10.0):
+        super().__init__()
+        distances = atoms.get_all_distances()
+        self.springs = [(i, j, distances[i, j]) for i in range(len(atoms)) for j in range(i + 1, len(atoms))
+                        if distances[i, j] < cutoff]
+        self.k = k
+
+    def calculate(self, atoms=None, properties=('energy',), system_changes=all_changes):
+        super().calculate(atoms, properties, system_changes)
+        positions, energy, forces = self.atoms.positions, 0.0, np.zeros((len(self.atoms), 3))
+        for i, j, r0 in self.springs:
+            bond = positions[i] - positions[j]
+            r = np.linalg.norm(bond)
+            energy += 0.5 * self.k * (r - r0) ** 2
+            forces[i] -= self.k * (r - r0) * bond / r
+            forces[j] += self.k * (r - r0) * bond / r
+        self.results = {'energy': energy, 'free_energy': energy, 'forces': forces}
+
+
+def finite_difference_hessian(calc: Calculator, delta: float = 1e-3):
+    """A Hessian function (eV/A^2) for Sella that differentiates the forces of ``calc`` by central differences."""
+    def hessian(structure: Atoms) -> np.ndarray:
+        work = Atoms(numbers=structure.numbers, positions=structure.positions)
+        work.calc = calc
+        positions, n_coords = work.positions.copy(), 3 * len(work)
+        result = np.zeros((n_coords, n_coords))
+        for coordinate in range(n_coords):
+            for sign in (1, -1):
+                displaced = positions.copy()
+                displaced.flat[coordinate] += sign * delta
+                work.positions = displaced
+                result[coordinate] -= sign * work.get_forces().ravel() / (2 * delta)
+        return 0.5 * (result + result.T)
+    return hessian
+
 
 ETHANE_XYZ = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
               'isotopes': (12, 12, 1, 1, 1, 1, 1, 1),
@@ -661,6 +738,192 @@ class TestASEAdapter(unittest.TestCase):
         with self.assertRaises(ValueError):
             relaxed_torsion_scan(atoms, [2, 0, 1, 5], step_deg=0.0, nsteps=45)
 
+    def test_a_scan_batches_its_two_walks(self):
+        """The two walks of a scan reach the calculator together, with the result of walking them one by one"""
+        atoms = Atoms(symbols=ETHANE_XYZ['symbols'], positions=ETHANE_XYZ['coords'])
+        atoms.calc = EMT()
+        batch_sizes, evaluate = list(), batch_evaluation_function(EMT())
+
+        def recording_evaluate(structures: list) -> list:
+            batch_sizes.append(len(structures))
+            return evaluate(structures)
+
+        result = relaxed_torsion_scan(atoms, [2, 0, 1, 5], step_deg=8.0, nsteps=45, fmax=0.05, steps=100,
+                                      evaluator=BatchedEvaluator(recording_evaluate))
+        top = rotor_top(atoms, 0, 1)
+        e_f = _scan_walk(atoms, [2, 0, 1, 5], 8.0, 45, top, 0.05, 100, +1, LBFGS)[0]
+        e_b = _scan_walk(atoms, [2, 0, 1, 5], 8.0, 45, top, 0.05, 100, -1, LBFGS)[0]
+        np.testing.assert_allclose(result['energies'][:-1], merge_scan_branches(e_f, e_b, 45)[0], rtol=0, atol=1e-10)
+        self.assertEqual(max(batch_sizes), 2)
+        self.assertGreater(batch_sizes.count(2), len(batch_sizes) / 2)
+        self.assertFalse(result['saddle'])
+
+    def test_a_scan_rotates_the_given_group(self):
+        """A scan turns ARC's rotating group, which in a TS reaches across a partial bond that distances miss"""
+        from ase.build import molecule
+        atoms = molecule('C3H8')
+        distances = atoms.get_all_distances()
+        carbons = [atom.index for atom in atoms if atom.symbol == 'C']
+        center = next(c for c in carbons if sum(distances[c, o] < 1.7 for o in carbons if o != c) == 2)
+        end_a, end_c = [c for c in carbons if c != center]
+
+        def hydrogens(carbon: int) -> list:
+            return [h for h in range(len(atoms)) if atoms[h].symbol == 'H' and distances[carbon, h] < 1.2]
+
+        # Stretch one C-C bond to a TS-like 2.3 A, as the breaking bond of n-C4H9 -> C2H4 + C2H5.
+        group_c = [end_c] + hydrogens(end_c)
+        atoms.positions[group_c] += 0.8 * (atoms.positions[end_c] - atoms.positions[center]) / distances[center, end_c]
+        torsion, top = [hydrogens(end_a)[0], end_a, center, end_c], sorted([center] + hydrogens(center) + group_c)
+        self.assertNotIn(end_c, rotor_top(atoms, end_a, center))  # the group rebuilt from distances stops short
+        turned = dict()
+        for given in (None, top):
+            atoms.calc = SpringNetwork(atoms)
+            result = run_torsion_scan(atoms, {'torsions': [torsion], 'scan_res': 30.0, **({'top': given} if given else {})},
+                                      settings={'fmax': 0.01, 'steps': 200})
+            dihedrals = [Atoms(atoms.get_chemical_symbols(), positions=xyz['coords']).get_dihedral(*torsion)
+                         for xyz in result['scan_coords']]
+            turned[given is not None] = np.round((np.array(dihedrals) - dihedrals[0]) % 360) % 360
+        np.testing.assert_array_equal(turned[False], np.zeros(13))  # without the group, nothing turns
+        np.testing.assert_array_equal(turned[True], [30.0 * n % 360 for n in range(13)])
+        # The stretched bond given as a partial bond (as ARC gives a TS's) joins the group too, and wins over top.
+        atoms.calc = SpringNetwork(atoms)
+        result = run_torsion_scan(atoms, {'torsions': [torsion], 'scan_res': 30.0, 'partial_bonds': [[center, end_c]],
+                                          'top': [end_a]}, settings={'fmax': 0.01, 'steps': 200})
+        self.assertEqual(result['top'], top)
+        # A group on the first pivot's side (where ARC puts some) stands for its complement.
+        atoms.calc = SpringNetwork(atoms)
+        result = run_torsion_scan(atoms, {'torsions': [torsion], 'scan_res': 30.0, 'top': [end_a] + hydrogens(end_a)},
+                                  settings={'fmax': 0.01, 'steps': 200})
+        self.assertEqual(result['top'], top)
+
+    def test_a_batch_that_runs_out_of_gpu_memory_is_halved(self):
+        """Walks waiting together are evaluated in smaller batches if their batch runs out of GPU memory"""
+        sizes = list()
+
+        def small_gpu(structures: list) -> list:
+            sizes.append(len(structures))
+            if len(structures) > 3:
+                raise RuntimeError('CUDA out of memory. Tried to allocate 286.00 MiB.')
+            return [(float(len(structure)), np.zeros((len(structure), 3))) for structure in structures]
+
+        evaluator = BatchedEvaluator(small_gpu)
+        evaluator.join(6)
+
+        def walk(n_atoms: int) -> float:
+            try:
+                structure = Atoms('H' * n_atoms, positions=[(float(i), 0.0, 0.0) for i in range(n_atoms)])
+                return evaluator.request('forces', structure)[0]
+            finally:
+                evaluator.leave()
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            energies = list(pool.map(walk, range(1, 7)))
+        self.assertEqual(sorted(energies), [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        self.assertEqual(energies, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])  # each walk gets its own structure's result
+        self.assertEqual(sizes, [6, 3, 3])
+        self.assertEqual(evaluator.max_batch, 3)
+
+    def test_a_batch_that_hits_a_transient_cublas_error_is_retried(self):
+        """A batch that fails with a transient cuBLAS error is evaluated again, whole, and its walks get their results"""
+        sizes = list()
+
+        def flaky_gpu(structures: list) -> list:
+            sizes.append(len(structures))
+            if len(sizes) == 1:
+                raise RuntimeError('CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgetrfBatched('
+                                   'handle, n, dA_array, ldda, ipiv_array, info_array, batchsize)`')
+            return [(float(len(structure)), np.zeros((len(structure), 3))) for structure in structures]
+
+        evaluator = BatchedEvaluator(flaky_gpu)
+        evaluator.join(4)
+
+        def walk(n_atoms: int) -> float:
+            try:
+                structure = Atoms('H' * n_atoms, positions=[(float(i), 0.0, 0.0) for i in range(n_atoms)])
+                return evaluator.request('forces', structure)[0]
+            finally:
+                evaluator.leave()
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            energies = list(pool.map(walk, range(1, 5)))
+        self.assertEqual(energies, [1.0, 2.0, 3.0, 4.0])
+        self.assertEqual(sizes, [4, 4])  # the same batch again, not halved
+        self.assertEqual(evaluator.n_retries, 1)
+        self.assertEqual(evaluator.max_batch, 256)
+
+    def test_a_persistent_cublas_error_reaches_the_walks(self):
+        """A cuBLAS error that repeats on every retry is passed to the waiting walks, as other errors are"""
+        calls = list()
+
+        def broken_gpu(structures: list) -> list:
+            calls.append(len(structures))
+            raise RuntimeError('CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemm( handle )`')
+
+        evaluator = BatchedEvaluator(broken_gpu, max_retries=2)
+        evaluator.join(2)
+
+        def walk(n_atoms: int) -> str:
+            try:
+                evaluator.request('forces', Atoms('H' * n_atoms, positions=[(float(i), 0.0, 0.0)
+                                                                             for i in range(n_atoms)]))
+            except RuntimeError as exc:
+                return str(exc)
+            finally:
+                evaluator.leave()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            errors = list(pool.map(walk, range(1, 3)))
+        self.assertTrue(all('CUBLAS_STATUS_EXECUTION_FAILED' in e for e in errors))
+        self.assertEqual(calls, [2, 2, 2])  # the first call and two retries
+        self.assertEqual(evaluator.n_retries, 2)
+
+    def test_a_hessian_that_hits_a_transient_cublas_error_is_retried(self):
+        """A Hessian request is retried after a transient cuBLAS error; other errors are passed on at once"""
+        attempts = list()
+
+        def flaky_hessian(structure: Atoms) -> np.ndarray:
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise RuntimeError('CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemm( handle )`')
+            return np.eye(3 * len(structure))
+
+        evaluator = BatchedEvaluator(lambda structures: [], hessian=flaky_hessian)
+        evaluator.join(1)
+        try:
+            hessian = evaluator.request('hessian', Atoms('H2', positions=[(0, 0, 0), (0, 0, 0.74)]))
+        finally:
+            evaluator.leave()
+        np.testing.assert_array_equal(hessian, np.eye(6))
+        self.assertEqual(len(attempts), 2)
+        self.assertTrue(is_transient_gpu_error(RuntimeError('CUBLAS_STATUS_INTERNAL_ERROR')))
+        self.assertFalse(is_transient_gpu_error(RuntimeError('CUBLAS_STATUS_ALLOC_FAILED')))  # out of memory
+        self.assertFalse(is_transient_gpu_error(ValueError('Unknown element Xx')))
+
+    @unittest.skipUnless(importlib.util.find_spec('sella'), 'Sella is not installed')
+    def test_a_ts_scan_stays_on_the_saddle(self):
+        """A TS's walks search each point for a saddle point; minimizing each point instead slides off the saddle"""
+        from sella import Sella
+        atoms = Atoms(symbols=ETHANE_XYZ['symbols'], positions=ETHANE_XYZ['coords'])
+        atoms.calc = EMT()
+        BFGS(atoms, logfile=None).run(fmax=0.01)
+        r0 = atoms.get_distance(0, 2)
+        atoms.calc = BondBarrierEMT(pair=(0, 2), r0=r0)
+        hessian_function = finite_difference_hessian(BondBarrierEMT(pair=(0, 2), r0=r0))  # as UMA's exact Hessian
+        Sella(atoms, order=1, logfile=None, hessian_function=hessian_function).run(fmax=0.001)
+        r_ts = atoms.get_distance(0, 2)
+        # Rotating the far methyl hardly pushes this toy's C-H bond, so start the scans slightly off the saddle.
+        atoms.positions[2] += 0.01 * (atoms.positions[2] - atoms.positions[0]) / r_ts
+        drift = dict()
+        for saddle in (False, True):
+            # FIRE, since ASE's LBFGS can climb back up to a saddle this sharply curved.
+            result = relaxed_torsion_scan(atoms, [3, 0, 1, 5], step_deg=20.0, nsteps=18, fmax=0.002, steps=300,
+                                          optimizer=FIRE, saddle=saddle, hessian_function=hessian_function)
+            drift[saddle] = max(abs(np.linalg.norm(np.subtract(xyz[0], xyz[2])) - r_ts)
+                                for xyz in result['scan_coords'])
+            self.assertEqual(result['saddle'], saddle)
+        self.assertLess(drift[True], 0.01)
+        self.assertGreater(drift[False], 0.5)
+
     def test_run_torsion_scan_output_is_parseable(self):
         """Test that run_torsion_scan output is readable by ARC's YAML scan parser, in kJ/mol"""
         atoms = Atoms(symbols=ETHANE_XYZ['symbols'], positions=ETHANE_XYZ['coords'])
@@ -771,6 +1034,13 @@ class TestASEAdapter(unittest.TestCase):
         data = read_yaml_file(os.path.join(scan_dir, 'input.yml'))
         self.assertEqual(data['torsions'], expected)
         self.assertIsNotNone(data['torsions'][0])
+        # The rotating group from the species graph goes along, 0-indexed.
+        self.assertEqual(data['top'], [atom - 1 for atom in spc.rotors_dict[0]['top']])
+        self.assertNotIn('partial_bonds', data)
+        # So do the partial bonds the Scheduler sets on a TS (here pretending ethane is one), 0-indexed.
+        spc.scan_partial_bonds = [[1, 3]]
+        job.write_input_file()
+        self.assertEqual(read_yaml_file(os.path.join(scan_dir, 'input.yml'))['partial_bonds'], [[0, 2]])
 
     @classmethod
     def tearDownClass(cls):
@@ -805,6 +1075,74 @@ class TestASEWorker(unittest.TestCase):
         save_yaml_file(input_path, {'job_type': job_type, 'xyz': ETHANE_XYZ, 'charge': 0, 'multiplicity': 1,
                                     'settings': settings or {'calculator': 'emt'}, **fields})
         return input_path
+
+    def write_scan(self, name: str) -> str:
+        """Write a quick EMT scan job of ethane's C-C torsion and return its input.yml path."""
+        return self.write_job(name, 'scan', settings={'calculator': 'emt', 'fmax': 0.05, 'steps': 100},
+                              torsions=[[2, 0, 1, 5]], scan_res=8.0)
+
+    def test_scan_group_key(self):
+        """Only UMA scans with the same settings share a key"""
+        uma = {'calculator': 'uma', 'model': 'uma-s-1p2', 'device': 'cuda', 'inference_settings': 'traineval'}
+        key = scan_group_key(self.write_job('a', 'scan', settings=uma))
+        self.assertIsNotNone(key)
+        self.assertEqual(scan_group_key(self.write_job('b', 'scan', settings=dict(uma))), key)
+        self.assertNotEqual(scan_group_key(self.write_job('c', 'scan', settings=dict(uma, model='uma-m-1p1'))), key)
+        self.assertIsNone(scan_group_key(self.write_job('d', 'sp', settings=uma)))
+        self.assertIsNone(scan_group_key(self.write_scan('e')))  # EMT is built for one charge and spin
+        self.assertIsNone(scan_group_key(os.path.join(self.tmp.name, 'missing', 'input.yml')))
+
+    def test_a_ticket_claim_skips_what_it_does_not_accept(self):
+        """A claim with a filter takes the oldest acceptable ticket and leaves the others queued"""
+        first = submit_ticket(self.spool, '/a/input.yml')
+        second = submit_ticket(self.spool, '/b/input.yml')
+        ticket, _ = claim_ticket(self.spool, 'w1', accept=lambda content: content['input_path'] == '/b/input.yml')
+        self.assertEqual(ticket, second)
+        self.assertEqual(get_ticket_status(self.spool, first)[0], 'queued')
+        self.assertIsNone(claim_ticket(self.spool, 'w1', accept=lambda content: False))
+
+    def test_scans_run_together_share_each_force_call(self):
+        """The walks of scans run as a group all reach the calculator together, and each scan finishes its ticket"""
+        group = list()
+        for name in ('scan_1', 'scan_2'):
+            submit_ticket(self.spool, self.write_scan(name), label=name)
+            group.append(claim_ticket(self.spool, 'w1'))
+        batch_sizes, make_function = list(), ase_script.batch_evaluation_function
+
+        def recording_function(calc):
+            evaluate = make_function(calc)
+
+            def recording_evaluate(structures: list) -> list:
+                batch_sizes.append(len(structures))
+                return evaluate(structures)
+
+            return recording_evaluate
+
+        with patch.object(ase_script, 'batch_evaluation_function', recording_function):
+            results = run_scan_group(self.spool, group, 'w1', dict())
+        self.assertEqual([result['status'] for result in results], ['done', 'done'])
+        self.assertEqual(max(batch_sizes), 4)  # two scans, two walks each
+        for (ticket, content), result in zip(group, results):
+            self.assertEqual(get_ticket_status(self.spool, ticket)[0], 'done')
+            output = read_yaml_file(os.path.join(os.path.dirname(content['input_path']), 'output.yml'))
+            self.assertEqual(len(output['energies']), 46)
+
+    def test_serve_groups_scans_and_runs_other_jobs_alone(self):
+        """A worker that claims a groupable scan also claims the other queued scans with its key"""
+        for name in ('scan_1', 'scan_2'):
+            submit_ticket(self.spool, self.write_scan(name), label=name)
+        submit_ticket(self.spool, self.write_job('sp_1'), label='sp_1')
+        groups, run_group = list(), ase_script.run_scan_group
+
+        def recording_run_group(spool_dir, group, worker_id, cache):
+            groups.append(len(group))
+            return run_group(spool_dir, group, worker_id, cache)
+
+        with patch.object(ase_script, 'scan_group_key', lambda path: 'emt' if 'scan' in path else None), \
+                patch.object(ase_script, 'run_scan_group', recording_run_group):
+            self.assertEqual(serve(self.spool, max_jobs=3, scan_group_wait=0.1), 3)
+        self.assertEqual(groups, [2])
+        self.assertEqual(len(os.listdir(os.path.join(self.spool, 'done'))), 3)
 
     def beat(self, worker_id: str, age: float = 0.0) -> None:
         """Write a worker heartbeat that is ``age`` seconds old."""
