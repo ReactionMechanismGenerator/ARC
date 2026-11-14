@@ -25,6 +25,7 @@ from arc.common import (almost_equal_coords,
                         )
 from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError, \
     SanitizationError
+from arc.family.family import get_current_family_name
 from arc.imports import settings
 from arc.level import Level
 from arc.molecule.atomtype import ATOMTYPES
@@ -2614,7 +2615,7 @@ class TSGuess(object):
                 self.success = True
                 self.execution_time = datetime.timedelta(seconds=0)
             self.arc_reaction = arc_reaction
-            self.family = family
+            self.family = get_current_family_name(family)
             self.imaginary_freqs = None
             self.conformer_index = None
             self.successful_irc = None
@@ -2751,7 +2752,7 @@ class TSGuess(object):
                 raise TSError('If no method is specified, an xyz guess must be given (initial_xyz).')
             self.success = self.success if self.success is not None else True
             self.execution_time = datetime.timedelta(seconds=0)
-        self.family = ts_dict['family'] if 'family' in ts_dict else None
+        self.family = get_current_family_name(ts_dict['family']) if 'family' in ts_dict else None
         self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
         if isinstance(ts_dict.get('method_source_paths'), dict):
             self.method_source_paths = {
@@ -3292,6 +3293,8 @@ def are_coords_compliant_with_graph(xyz: dict,
 def colliding_atoms(xyz: dict,
                     mol: Molecule | None = None,
                     threshold: float = 0.60,
+                    multiple_bond_pairs: set[tuple[int, int]] | None = None,
+                    multiple_bond_threshold: float = 0.60,
                     ) -> bool:
     """
     Check whether atoms are too close to each other.
@@ -3307,6 +3310,11 @@ def colliding_atoms(xyz: dict,
         xyz (dict): The Cartesian coordinates.
         mol (Molecule, optional): The corresponding Molecule object instance with formal charge information.
         threshold (float, optional): The collision threshold to use.
+        multiple_bond_pairs (set[tuple[int, int]], optional): Sorted (i, j) atom index pairs bonded with an order
+                                                              above single (e.g., C#C), which are shorter than the
+                                                              single-bond reference length.
+        multiple_bond_threshold (float, optional): The collision threshold for ``multiple_bond_pairs``,
+                                                   never stricter than ``threshold``.
 
     Returns:
         bool: ``True`` if they are colliding, ``False`` otherwise.
@@ -3320,7 +3328,9 @@ def colliding_atoms(xyz: dict,
             charge_1 = mol.atoms[i].charge if mol is not None else 0
             charge_2 = mol.atoms[j].charge if mol is not None else 0
             single_bond_r = get_single_bond_length(xyz['symbols'][i], xyz['symbols'][j], charge_1, charge_2)
-            if actual_r < single_bond_r * threshold:
+            pair_threshold = min(threshold, multiple_bond_threshold) \
+                if multiple_bond_pairs and (i, j) in multiple_bond_pairs else threshold
+            if actual_r < single_bond_r * pair_threshold:
                 return True
     return False
 

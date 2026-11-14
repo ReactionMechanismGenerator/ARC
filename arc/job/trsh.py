@@ -4,6 +4,7 @@ The ARC troubleshooting ("trsh") module
 
 import math
 import os
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -956,7 +957,14 @@ def trsh_ess_job(label: str,
         # - Changing Computational Parameters
         remove_checkfile, ess_trsh_methods, couldnt_trsh = trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh)
         if remove_checkfile:
-             logger_info.append('that failed with "Basis set data is not on the checkpoint file" by removing the checkfile.')
+            if 'No data on chk file' in job_status.get('error', '') or 'Error in GetGes' in job_status.get('error', ''):
+                if 'guess=mix' not in ess_trsh_methods:
+                    ess_trsh_methods.append('guess=mix')
+                if 'guess=mix' not in trsh_keyword:
+                    trsh_keyword.append('guess=mix')
+                logger_info.append(f'that failed with "{job_status["error"]}" by removing the checkfile and using guess=mix.')
+            else:
+                logger_info.append('that failed with "Basis set data is not on the checkpoint file" by removing the checkfile.')
 
         # Check if InternalCoordinateError is in the keyword or opt=(cartesian)
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword,couldnt_trsh)
@@ -2104,6 +2112,31 @@ def prioritize_opt_methods(opt_methods):
     filtered_methods = [method for method in opt_methods if method not in preferred_order or method == selected_method]
 
     return filtered_methods
+
+
+def get_gaussian_point_group(output_path: str) -> Optional[str]:
+    """
+    Parse the point group reported by Gaussian in an output file.
+    Returns the last reported full point group (final geometry), or None if not found.
+
+    Args:
+        output_path (str): Path to the Gaussian output file.
+
+    Returns:
+        Optional[str]: The point group string (e.g., 'C1', 'C3V'), or None.
+    """
+    point_group = None
+    try:
+        with open(output_path, 'r') as f:
+            for line in f:
+                if 'Full point group' in line:
+                    # e.g. " Full point group                 C1      NOp   1"
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        point_group = parts[3]
+    except (FileNotFoundError, IOError):
+        pass
+    return point_group
 
 
 def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
