@@ -12,6 +12,7 @@ from arc.imports import settings
 from arc.level import Level
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
+from arc.reaction import ARCReaction
 from arc.statmech.factory import statmech_factory
 
 
@@ -56,6 +57,112 @@ def _thermo_lib_has_isomorph(spc: 'ARCSpecies', species_list: list) -> bool:
     return False
 
 
+def not_verified_causes(label: str, output_dict: dict) -> list[str]:
+    """
+    The reasons why a species or TS result is not verified. This is the single not-verified predicate that gates
+    the RMG libraries ARC writes; a new cause joins here.
+
+    Args:
+        label (str): The species or TS label.
+        output_dict (dict): The Scheduler output dictionary.
+
+    Returns:
+        list[str]: The causes, empty if nothing marks the result as not verified.
+    """
+    entry = output_dict.get(label) or dict()
+    causes = list()
+    if entry.get('conformer_verified') is False:
+        causes.append(entry.get('conformer_verified_cause')
+                      or f'{label} is not verified to be at the lowest conformer found')
+    if entry.get('conformer_change_pending'):
+        causes.append(f'{label}: conformer change not judged')
+    return causes
+
+
+def gate_not_verified_library_entries(items: list,
+                                      output_dict: dict,
+                                      allow_not_verified: bool = False,
+                                      ) -> tuple[list, dict[str, str]]:
+    """
+    Gate species or reactions before they are written to an RMG library.
+    A species is not verified if ``not_verified_causes`` returns any cause for it. A reaction is not verified if any
+    of its reactants, products, or its TS is not verified.
+
+    Args:
+        items (list): ARCSpecies or ARCReaction objects.
+        output_dict (dict): The Scheduler output dictionary.
+        allow_not_verified (bool, optional): Whether to keep not verified entries (with their causes).
+
+    Returns:
+        tuple[list, dict[str, str]]:
+            - The items to write.
+            - Keys are labels of not verified items that are written, values are the text for their library comment.
+    """
+    kept, comments = list(), dict()
+    for item in items:
+        if isinstance(item, ARCReaction):
+            labels = [item.ts_label] + [spc.label for spc in item.r_species + item.p_species]
+        else:
+            labels = [item.label]
+        causes = [cause for label in labels for cause in not_verified_causes(label, output_dict)]
+        if not causes:
+            kept.append(item)
+        elif allow_not_verified:
+            kept.append(item)
+            comments[item.label] = 'NOT VERIFIED: ' + ' '.join(causes)
+            logger.warning(f'Writing {item.label} to the RMG library although it is not verified '
+                           f'(allow_not_verified_in_libraries is True): {" ".join(causes)}')
+        else:
+            logger.warning(f'Not writing {item.label} to the RMG library, it is not verified: {" ".join(causes)} '
+                           f'Set allow_not_verified_in_libraries to True to write it with this comment.')
+    return kept, comments
+
+
+def select_thermo_lib_species(species: list,
+                              output_dict: dict,
+                              allow_not_verified: bool = False,
+                              ) -> tuple[list, dict[str, str]]:
+    """
+    Select the species to write to the RMG thermo library: species with thermo that pass the not-verified gate,
+    one per molecular identity. A verified species is preferred over an isomorphic not verified one.
+
+    Args:
+        species (list): ARCSpecies objects with computed thermo.
+        output_dict (dict): The Scheduler output dictionary.
+        allow_not_verified (bool, optional): Whether to keep not verified species (with their causes).
+
+    Returns:
+        tuple[list, dict[str, str]]:
+            - The species to write.
+            - Keys are labels of not verified species that are written, values are the text for their comment.
+    """
+    candidates, not_verified = gate_not_verified_library_entries(
+        items=[spc for spc in species
+               if spc.thermo is not None and spc.thermo.data and spc.include_in_thermo_lib],
+        output_dict=output_dict, allow_not_verified=allow_not_verified)
+    selected = list()
+    for spc in sorted(candidates, key=lambda candidate: candidate.label in not_verified):
+        if not _thermo_lib_has_isomorph(spc, selected):
+            selected.append(spc)
+    return selected, {label: text for label, text in not_verified.items()
+                      if label in [spc.label for spc in selected]}
+
+
+def remove_gated_out_library(libraries_path: str, library: str, gated_out: bool) -> None:
+    """
+    Remove a library left from an earlier run when the not-verified gate left out every entry of this run,
+    so a stale library with not verified entries does not remain. Nothing is removed if nothing was gated out.
+
+    Args:
+        libraries_path (str): The path of the RMG libraries directory.
+        library (str): The library directory name, 'thermo' or 'kinetics'.
+        gated_out (bool): Whether this run had entries to write that the gate left out.
+    """
+    lib_path = os.path.join(libraries_path, library)
+    if gated_out and os.path.isdir(lib_path):
+        shutil.rmtree(lib_path)
+
+
 def process_arc_project(thermo_adapter: str,
                         kinetics_adapter: str,
                         project: str,
@@ -76,6 +183,7 @@ def process_arc_project(thermo_adapter: str,
                         lib_long_desc: str = '',
                         compare_to_rmg: bool = True,
                         skip_nmd: bool = False,
+                        allow_not_verified_in_libraries: bool = False,
                         ) -> None:
     """
     Process an ARC project, generate thermo and rate coefficients using statistical mechanics (statmech).
@@ -104,6 +212,9 @@ def process_arc_project(thermo_adapter: str,
         compare_to_rmg (bool, optional): If ``True``, ARC's calculations will be compared against estimations
                                          from RMG's database.
         skip_nmd (bool, optional): Whether to skip the normal mode displacement check analysis. Defaults to ``False``.
+        allow_not_verified_in_libraries (bool, optional): Whether to write not verified species and reactions to the
+                                                          RMG libraries, with the cause in their comment.
+                                                          Defaults to ``False``.
     """
     T_min = T_min or (300, 'K')
     T_max = T_max or (3000, 'K')
@@ -168,13 +279,16 @@ def process_arc_project(thermo_adapter: str,
             else:
                 unconverged_rxns.append(reaction)
                 logger.error(f'Could not compute a rate coefficient for {reaction.label}.')
-        if rxns_for_kinetics_lib:
-            plotter.save_kinetics_lib(rxn_list=rxns_for_kinetics_lib,
+        kinetics_lib_rxns, rxn_not_verified = gate_not_verified_library_entries(
+            items=rxns_for_kinetics_lib, output_dict=output_dict, allow_not_verified=allow_not_verified_in_libraries)
+        if kinetics_lib_rxns:
+            plotter.save_kinetics_lib(rxn_list=kinetics_lib_rxns,
                                       path=libraries_path,
                                       name=project,
                                       lib_long_desc=lib_long_desc,
                                       T_min=T_min[0],
                                       T_max=T_max[0],
+                                      not_verified=rxn_not_verified,
                                       )
         elif os.path.isdir(os.path.join(libraries_path, 'kinetics')):
             # A previous session's library may hold rates this session discarded.
@@ -232,11 +346,18 @@ def process_arc_project(thermo_adapter: str,
         if spc.thermo is not None and not _thermo_lib_has_isomorph(spc, species_for_thermo_lib):
             species_for_thermo_lib.append(spc)
         plotter.augment_arkane_yml_file_with_mol_repr(spc, output_directory)
-    if species_for_thermo_lib:
-        plotter.save_thermo_lib(species_list=species_for_thermo_lib,
+    thermo_lib_species, spc_not_verified = select_thermo_lib_species(
+        species=converged_species, output_dict=output_dict, allow_not_verified=allow_not_verified_in_libraries)
+    if thermo_lib_species:
+        plotter.save_thermo_lib(species_list=thermo_lib_species,
                                 path=libraries_path,
                                 name=project,
-                                lib_long_desc=lib_long_desc)
+                                lib_long_desc=lib_long_desc,
+                                not_verified=spc_not_verified)
+    else:
+        remove_gated_out_library(libraries_path=libraries_path, library='thermo',
+                                 gated_out=any(spc.thermo is not None and spc.thermo.data and spc.include_in_thermo_lib
+                                               for spc in converged_species))
 
     # 3. Transport
     if compute_transport:
