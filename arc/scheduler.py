@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING
 
 import arc.parser.parser as parser
 from arc import plotter
-from arc.checks.common import get_conformer_job_name, get_i_from_job_name, is_conformer_job, sum_time_delta
+from arc.checks.common import (get_conformer_job_name, get_i_from_job_name, is_conformer_job, record_ts_check_warning,
+                               sum_time_delta)
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
@@ -132,6 +133,8 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
                                 'reference followed by MRCI or CASPT2) is what this species calls for; '
 
 MAX_S_SQUARED_DEVIATION = 0.1
+
+FAILED_IRC_KEYWORDS = ('NoOutput', 'Unknown')
 
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
@@ -4239,12 +4242,32 @@ class Scheduler(object):
                             job: JobAdapter,
                             ):
         """
-        Spawn additional jobs after IRC has converged.
+        Spawn the jobs that follow an IRC job, or record it as a failed IRC.
+
+        The last geometry of the IRC output becomes a new IRC species, which is then optimized.
+        The IRC is recorded as failed (see ``record_failed_irc()``) and nothing is spawned when the ESS status
+        of the job carries a keyword in ``FAILED_IRC_KEYWORDS`` (the output is missing or was cut),
+        when the output holds no complete geometry, or when the parser raises ``IndexError`` or ``ValueError``.
+        Any other status, e.g., ``DeltaX`` for an IRC that stopped early, spawns from the last geometry.
 
         Args:
             label (str): The species label.
             job (JobAdapter): The IRC job object.
         """
+        ess_status = job.job_status[1] if isinstance(job.job_status, list) and len(job.job_status) > 1 \
+            and isinstance(job.job_status[1], dict) else dict()
+        if any(keyword in FAILED_IRC_KEYWORDS for keyword in ess_status.get('keywords') or list()):
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status)
+            return
+        try:
+            xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+        except (IndexError, ValueError) as e:
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status,
+                                   parse_error=f'{type(e).__name__}: {e}')
+            return
+        if xyz is None:
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status)
+            return
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
         self.output[label]['paths'].setdefault('irc_directions', list()).append(
             getattr(job, 'irc_direction', None)
@@ -4259,7 +4282,7 @@ class Scheduler(object):
                                                                   'rxns', label, 'irc_traj.gjf'))
         irc_label = self.add_label_to_unique_species_labels(label=f'IRC_{label}_{index}')
         irc_spc = ARCSpecies(label=irc_label,
-                             xyz=parser.parse_geometry(log_file_path=job.local_path_to_output_file),
+                             xyz=xyz,
                              irc_label=label,
                              compute_thermo=False,
                              multiplicity=job.species[0].multiplicity,
@@ -4278,6 +4301,42 @@ class Scheduler(object):
                      job_type='opt',
                      fine=False,
                      )
+
+    def record_failed_irc(self,
+                          label: str,
+                          job: JobAdapter,
+                          ess_status: dict,
+                          parse_error: str | None = None,
+                          ) -> None:
+        """
+        Record an IRC job that gave no usable endpoint as a failed IRC of its TS.
+
+        Nothing is spawned and no IRC path is stored, so the IRC check of the TS is never performed
+        and its verdict stays ``None`` (not verified). The cause goes to the TS's ``errors`` output entry
+        and to its ``ts_checks['warnings']``, which output.yml publishes. The job's files are left on disk.
+
+        Args:
+            label (str): The TS species label.
+            job (JobAdapter): The failed IRC job object.
+            ess_status (dict): The ESS status of the job, with optional ``error`` and ``keywords`` entries.
+            parse_error (str, optional): The error the geometry parser raised, if it raised one.
+        """
+        reason = ess_status.get('error') or 'no geometry could be parsed from its output'
+        if ess_status.get('keywords'):
+            reason += f' (keywords: {", ".join(ess_status["keywords"])})'
+        if parse_error:
+            reason += f'; parsing raised {parse_error}'
+        direction = getattr(job, 'irc_direction', None)
+        job_description = f'IRC job {job.job_name} ({direction})' if direction else f'IRC job {job.job_name}'
+        logger.error(f'{job_description} of TS {label} gave no usable endpoint in '
+                     f'{job.local_path_to_output_file}: {reason}. The IRC of {label} is not verified; '
+                     f'continuing with the other jobs.')
+        self.output[label]['errors'] += f'Error: {job_description} failed: {reason}; '
+        ts_species = self.species_dict[label]
+        if isinstance(ts_species.ts_checks, dict):
+            ts_species.ts_checks.setdefault('warnings', '')
+            record_ts_check_warning(ts_species, f'IRC not verified: {job_description} failed: {reason}; ')
+        self.save_restart_dict()
 
     def add_label_to_unique_species_labels(self, label: str) -> str:
         """
