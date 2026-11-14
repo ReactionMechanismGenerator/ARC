@@ -7,9 +7,10 @@ This module contains unit tests for the arc.utils.scale module
 
 import os
 import shutil
+import tempfile
 import unittest
 
-from arc.common import almost_equal_coords_lists, ARC_PATH
+from arc.common import almost_equal_coords_lists
 from arc.level import Level
 from arc.utils.scale import (calculate_truhlar_scaling_factors,
                              get_species_list,
@@ -71,7 +72,8 @@ class TestScale(unittest.TestCase):
                             ]
         times = ['3', '5']
         overall_time = '8.5'
-        base_path = os.path.join(ARC_PATH, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
+        base_path = tempfile.mkdtemp(prefix='arc_test_scaling_factors_')
+        self.addCleanup(shutil.rmtree, base_path, ignore_errors=True)
 
         summarize_results(lambda_zpes=lambda_zpes,
                           levels=levels_of_theory,
@@ -119,15 +121,6 @@ class TestScale(unittest.TestCase):
         self.assertEqual(renamed_level1, 'b3lyp_6-311pGss')
         self.assertEqual(renamed_level2, 'wb97xd_6-311pGb2d,2pb')
         self.assertEqual(renamed_level3, 'wb97xd_aug-ccpZQZ,_solvation_method.._SMD,_solvent.._DMSO,_software.._gaussian')
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all directories created during these unit tests
-        """
-        path = os.path.join(ARC_PATH, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
-        shutil.rmtree(path, ignore_errors=True)
 
 
 if __name__ == '__main__':
