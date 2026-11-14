@@ -4983,6 +4983,44 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIsNot(sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]['verified'], True)
         self.assertTrue(not_verified_causes(label, sched.output))
 
+    def check_reopt_without_dihedral(self, label: str, energy_shift: float) -> tuple[Scheduler, dict]:
+        """
+        Judge a re-opt whose scanned dihedral cannot be compared (no geometry recorded before the change).
+
+        Args:
+            label (str): The species label.
+            energy_shift (float): The re-opt energy minus the energy recorded before the change, in kJ/mol.
+
+        Returns:
+            tuple[Scheduler, dict]: The scheduler and the judged 'change conformer' record.
+        """
+        sched = self.make_sched(label)
+        method = {'change conformer': None, 'pre_xyz': None,
+                  'pre_e_elect': parser.parse_e_elect(log_file_path=self.nc3h7_log) - energy_shift,
+                  'torsion': self.scan, 'energy_gap': 3.2, 'verified': None}
+        sched.species_dict[label].rotors_dict[0]['trsh_methods'] = [method]
+        sched.check_change_conformer_reopt(label=label, job=SimpleNamespace(
+            job_type='opt', local_path_to_xyz=None, local_path_to_output_file=self.nc3h7_log))
+        sched.record_pending_conformer_changes()
+        return sched, method
+
+    def test_check_change_conformer_reopt_energy_up_without_dihedral_is_not_verified(self):
+        """A re-opt that ends at a higher energy is not verified also when its dihedral cannot be compared."""
+        label = 'cc_up_nodih'
+        sched, method = self.check_reopt_without_dihedral(label=label, energy_shift=3.0)
+        output = sched.output
+        self.assertIs(method['verified'], False)
+        self.assertIs(output[label]['conformer_verified'], False)
+        self.assertIn('3.00 kJ/mol above', output[label]['conformer_verified_cause'])
+        self.assertEqual(not_verified_causes(label, output), [output[label]['conformer_verified_cause']])
+
+    def test_check_change_conformer_reopt_energy_down_without_dihedral_is_verified(self):
+        """A re-opt that ends at a lower energy is verified when its dihedral cannot be compared."""
+        label = 'cc_down_nodih'
+        sched, method = self.check_reopt_without_dihedral(label=label, energy_shift=-3.0)
+        self.assertIs(method['verified'], True)
+        self.assertIsNone(sched.output[label]['conformer_verified'])
+
     def test_check_change_conformer_reopt_ignores_legacy_records(self):
         """A 'change conformer' record written before the check existed (no 'verified' key) is not re-judged."""
         sched = self.make_sched('cc_legacy')
@@ -5158,18 +5196,22 @@ class TestChangeConformerReopt(unittest.TestCase):
         label = 'cc_pending'
         sched.record_pending_conformer_changes()
         self.assertEqual(sched.output[label]['conformer_change_pending'], 0)
+        self.assertEqual(sched.output[label]['conformer_change_judged'], 0)
         rotor = sched.species_dict[label].rotors_dict[0]
         rotor['trsh_methods'] = [{'change conformer': None, 'verified': True},
                                  {'change conformer': None, 'verified': False},
                                  {'change conformer': None}]
         sched.record_pending_conformer_changes()
         self.assertEqual(sched.output[label]['conformer_change_pending'], 0)
+        self.assertEqual(sched.output[label]['conformer_change_judged'], 2)
         rotor['trsh_methods'].append({'change conformer': None, 'verified': None})
         sched.record_pending_conformer_changes()
         self.assertEqual(sched.output[label]['conformer_change_pending'], 1)
+        self.assertEqual(sched.output[label]['conformer_change_judged'], 2)
         rotor['trsh_methods'][-1]['verified'] = True
         sched.record_pending_conformer_changes()
         self.assertEqual(sched.output[label]['conformer_change_pending'], 0)
+        self.assertEqual(sched.output[label]['conformer_change_judged'], 3)
 
         rotor['trsh_methods'][-1]['verified'] = None
         restarted_spc = ARCSpecies(species_dict=sched.species_dict[label].as_dict())
@@ -5184,6 +5226,32 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertNotIn('conformer_change_pending', restarted.output[label])
         restarted.record_pending_conformer_changes()
         self.assertEqual(restarted.output[label]['conformer_change_pending'], 1)
+
+    def test_judged_conformer_change_with_no_rescan_verdict_is_not_verified(self):
+        """
+        A species whose conformer change was judged but whose rotor rescans never set ``conformer_verified`` does not
+        pass the RMG library gate. A species that never changed its conformer still passes with ``None``.
+        """
+        sched = self.make_sched('cc_judged')
+        label = 'cc_judged'
+        rotor = sched.species_dict[label].rotors_dict[0]
+        sched.record_pending_conformer_changes()
+        self.assertIsNone(sched.output[label]['conformer_verified'])
+        self.assertEqual(not_verified_causes(label, sched.output), list())
+        rotor['trsh_methods'] = [{'change conformer': None}]
+        sched.record_pending_conformer_changes()
+        self.assertEqual(not_verified_causes(label, sched.output), list())
+        rotor['trsh_methods'].append({'change conformer': None, 'verified': True})
+        rotor['success'], rotor['scan_path'] = False, ''
+        sched.set_conformer_verified(label)
+        sched.record_pending_conformer_changes()
+        self.assertIsNone(sched.output[label]['conformer_verified'])
+        self.assertEqual(not_verified_causes(label, sched.output),
+                         [f'{label}: conformer change not confirmed by a rotor rescan'])
+        rotor['success'], rotor['scan_path'] = True, self.nc3h7_log
+        sched.set_conformer_verified(label)
+        self.assertTrue(sched.output[label]['conformer_verified'])
+        self.assertEqual(not_verified_causes(label, sched.output), list())
 
     def test_change_conformer_record_is_in_the_restart_saved_by_the_reopt(self):
         """The pending record is attached before the re-opt is spawned, so the restart file it saves holds it."""
