@@ -499,10 +499,15 @@ def _validate_state_invariants(state: TaskStateRecord) -> None:
                              f'must be >= claimed_at ({state.claimed_at})')
 
 
+class TaskOwnershipError(ValueError):
+    """Raised when a guarded task-state update finds the task is no longer held by the expected claim."""
+
+
 def update_task_state(pipe_root: str,
                       task_id: str,
                       new_status: TaskState | None = None,
                       lock_timeout: float = 30.0,
+                      require_owner: tuple[str, str] | None = None,
                       **fields,
                       ) -> TaskStateRecord:
     """
@@ -518,6 +523,9 @@ def update_task_state(pipe_root: str,
         new_status (TaskState, optional): If provided, transition to this status
                                           (validated against allowed transitions).
         lock_timeout (float): Maximum seconds to wait for the lock.
+        require_owner (tuple[str, str], optional): ``(worker_id, claim_token)``. If given, the update is applied
+                                                   only when, under the lock, the task is CLAIMED or RUNNING with
+                                                   a matching ``claimed_by`` and ``claim_token``.
         **fields: Additional fields to update on the TaskStateRecord
                   (e.g., ``claimed_by='worker-3'``, ``lease_expires_at=1234567890.0``).
 
@@ -525,6 +533,7 @@ def update_task_state(pipe_root: str,
         TaskStateRecord: The updated state record.
 
     Raises:
+        TaskOwnershipError: If ``require_owner`` is given and the task is not held by that claim.
         ValueError: If the state transition or field invariants are invalid.
         TimeoutError: If the lock cannot be acquired within ``lock_timeout``.
     """
@@ -536,6 +545,12 @@ def update_task_state(pipe_root: str,
         _acquire_lock(lock_fd, lock_timeout)
         with open(state_path, 'r') as f:
             state = TaskStateRecord.from_dict(json.load(f))
+        if require_owner is not None:
+            owner_id, owner_token = require_owner
+            if (state.claimed_by != owner_id or state.claim_token != owner_token
+                    or TaskState(state.status) not in (TaskState.CLAIMED, TaskState.RUNNING)):
+                raise TaskOwnershipError(f'Task {task_id} is {state.status}, claimed_by={state.claimed_by}; '
+                                         f'not held by {owner_id}')
         if new_status is not None:
             current = TaskState(state.status)
             check_valid_transition(current, new_status)

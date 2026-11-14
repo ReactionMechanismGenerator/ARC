@@ -14,6 +14,7 @@ import time
 import unittest
 
 from arc.job.pipe.pipe_state import (
+    TaskOwnershipError,
     TaskState,
     PipeRunState,
     TASK_TRANSITIONS,
@@ -266,6 +267,26 @@ class TestUpdateTaskState(unittest.TestCase):
         update_task_state(self.tmpdir, 't', new_status=TaskState.RUNNING, started_at=now)
         with self.assertRaises(ValueError):
             update_task_state(self.tmpdir, 't', new_status=TaskState.COMPLETED)
+
+    def test_require_owner_field_only_update(self):
+        now = time.time()
+        update_task_state(self.tmpdir, 't', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now, lease_expires_at=now + 300)
+        state = update_task_state(self.tmpdir, 't', require_owner=('w', 'tok'), lease_expires_at=now + 900)
+        self.assertEqual(state.status, 'CLAIMED')
+        self.assertEqual(read_task_state(self.tmpdir, 't').lease_expires_at, now + 900)
+
+    def test_require_owner_rejects_other_claim_or_terminal(self):
+        now = time.time()
+        update_task_state(self.tmpdir, 't', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok', claimed_at=now, lease_expires_at=now + 300)
+        for owner in (('w', 'other'), ('other', 'tok')):
+            with self.assertRaises(TaskOwnershipError):
+                update_task_state(self.tmpdir, 't', require_owner=owner, lease_expires_at=now + 900)
+        update_task_state(self.tmpdir, 't', new_status=TaskState.CANCELLED, ended_at=now)
+        with self.assertRaises(TaskOwnershipError):
+            update_task_state(self.tmpdir, 't', require_owner=('w', 'tok'), lease_expires_at=now + 900)
+        self.assertEqual(read_task_state(self.tmpdir, 't').lease_expires_at, now + 300)
 
     def test_concurrent_claims(self):
         results, errors = [], []

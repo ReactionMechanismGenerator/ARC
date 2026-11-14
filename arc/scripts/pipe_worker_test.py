@@ -9,10 +9,12 @@ import json
 import os
 import shutil
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
 
+from arc.job.pipe.pipe_run import PipeRun
 from arc.job.pipe.pipe_state import (
     TaskState,
     TaskSpec,
@@ -22,8 +24,8 @@ from arc.job.pipe.pipe_state import (
     read_task_state,
     update_task_state,
 )
-from arc.scripts.pipe_worker import (claim_task, run_task, main, logger as worker_logger,
-                                     _get_family_extra_kwargs)
+from arc.scripts.pipe_worker import (LeaseHeartbeat, claim_task, get_lease_duration_s, run_task, main,
+                                     logger as worker_logger, _get_family_extra_kwargs)
 from arc.species import ARCSpecies
 
 
@@ -45,6 +47,166 @@ def _make_h2o_spec(task_id='sp_h2o', task_family='conf_opt'):
     )
 
 
+class TestLeaseHeartbeat(unittest.TestCase):
+
+    LEASE = 0.9
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_heartbeat_test_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        patcher = patch('arc.scripts.pipe_worker._parse_ess_error', return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = patch('arc.scripts.pipe_worker.get_lease_duration_s', return_value=self.LEASE)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _stage(self, task_id='hb'):
+        run = PipeRun(project_directory=self.tmpdir, run_id='hb_run',
+                      tasks=[_make_h2o_spec(task_id)], cluster_software='slurm')
+        run.stage()
+        now = time.time()
+        token = generate_claim_token()
+        state = update_task_state(run.pipe_root, task_id, new_status=TaskState.CLAIMED,
+                                  claimed_by='w', claim_token=token, claimed_at=now,
+                                  lease_expires_at=now + self.LEASE)
+        return run, state, token
+
+    def _run_in_thread(self, run, state, token, dispatch):
+        patcher = patch('arc.scripts.pipe_worker._dispatch_execution', side_effect=dispatch)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        t = threading.Thread(target=run_task, args=(run.pipe_root, 'hb', state, 'w', token), daemon=True)
+        t.start()
+        self.addCleanup(t.join, 10)
+        return t
+
+    def _heartbeat_threads(self):
+        return [t for t in threading.enumerate() if t.name.startswith('lease-heartbeat-')]
+
+    def test_interval_capped(self):
+        for lease, expected in ((0.9, 0.3), (3600, 300), (60, 20)):
+            hb = LeaseHeartbeat(self.tmpdir, 'hb', 'w', 't', lease_duration=lease)
+            self.assertAlmostEqual(hb.interval, expected)
+            self.assertLess(hb.interval, lease)
+
+    def test_relative_pipe_root_survives_chdir(self):
+        run, state, token = self._stage()
+        original = os.getcwd()
+        os.chdir(os.path.dirname(run.pipe_root))
+        self.addCleanup(os.chdir, original)
+        hb = LeaseHeartbeat(os.path.basename(run.pipe_root), 'hb', 'w', token,
+                            lease_duration=self.LEASE, interval=0.1)
+        self.assertTrue(os.path.isabs(hb.pipe_root))
+        other = tempfile.mkdtemp(prefix='pipe_heartbeat_cwd_')
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        os.chdir(other)
+        hb.start()
+        time.sleep(0.5)
+        hb.stop()
+        self.assertGreater(read_task_state(run.pipe_root, 'hb').lease_expires_at, state.lease_expires_at)
+
+    def test_transient_failure_retries_with_single_warning(self):
+        run, state, token = self._stage()
+        hb = LeaseHeartbeat(run.pipe_root, 'hb', 'w', token, lease_duration=self.LEASE, interval=0.1)
+        real = update_task_state
+        calls = []
+
+        def flaky(*args, **kwargs):
+            calls.append(1)
+            if len(calls) <= 2:
+                raise TimeoutError('slow lock')
+            return real(*args, **kwargs)
+
+        with patch('arc.scripts.pipe_worker.update_task_state', side_effect=flaky):
+            with self.assertLogs(worker_logger, level='WARNING') as logs:
+                hb.start()
+                time.sleep(0.8)
+                hb.stop()
+        self.assertEqual(len(logs.output), 1)
+        self.assertGreater(len(calls), 2)
+        self.assertGreater(read_task_state(run.pipe_root, 'hb').lease_expires_at, state.lease_expires_at)
+
+    def test_lease_renewed_while_task_runs_and_not_orphaned(self):
+        run, state, token = self._stage()
+        release = threading.Event()
+        self.addCleanup(release.set)
+        first_lease = state.lease_expires_at
+        thread = self._run_in_thread(run, state, token, lambda spec, scratch: release.wait(10))
+        time.sleep(self.LEASE * 2.5)
+        mid = read_task_state(run.pipe_root, 'hb')
+        self.assertEqual(mid.status, 'RUNNING')
+        self.assertGreater(mid.lease_expires_at, first_lease + self.LEASE)
+        self.assertGreater(mid.lease_expires_at, time.time())
+        run.reconcile()
+        after = read_task_state(run.pipe_root, 'hb')
+        self.assertEqual(after.status, 'RUNNING')
+        self.assertEqual(after.claim_token, token)
+        release.set()
+        thread.join(10)
+        self.assertEqual(read_task_state(run.pipe_root, 'hb').status, 'COMPLETED')
+
+    def test_heartbeat_stops_after_completion(self):
+        run, state, token = self._stage()
+        thread = self._run_in_thread(run, state, token, lambda spec, scratch: None)
+        thread.join(10)
+        self.assertEqual(self._heartbeat_threads(), [])
+        lease = read_task_state(run.pipe_root, 'hb').lease_expires_at
+        time.sleep(self.LEASE)
+        self.assertEqual(read_task_state(run.pipe_root, 'hb').lease_expires_at, lease)
+
+    def test_heartbeat_stops_after_exception(self):
+        run, state, token = self._stage()
+
+        def boom(spec, scratch):
+            raise RuntimeError('boom')
+
+        thread = self._run_in_thread(run, state, token, boom)
+        thread.join(10)
+        self.assertEqual(self._heartbeat_threads(), [])
+        self.assertIn(read_task_state(run.pipe_root, 'hb').status, ('FAILED_RETRYABLE', 'FAILED_TERMINAL'))
+
+    def test_heartbeat_stops_without_writing_when_reclaimed(self):
+        run, state, token = self._stage()
+        hb = LeaseHeartbeat(run.pipe_root, 'hb', 'w', token, lease_duration=self.LEASE, interval=0.1)
+        update_task_state(run.pipe_root, 'hb', new_status=TaskState.ORPHANED, claimed_by=None, claim_token=None,
+                          lease_expires_at=None)
+        update_task_state(run.pipe_root, 'hb', new_status=TaskState.PENDING)
+        now = time.time()
+        other = update_task_state(run.pipe_root, 'hb', new_status=TaskState.CLAIMED, claimed_by='other',
+                                  claim_token='other_token', claimed_at=now, lease_expires_at=now + 5)
+        with self.assertLogs(worker_logger, level='WARNING') as logs:
+            hb.start()
+            time.sleep(0.5)
+            hb.stop()
+        self.assertEqual(len(logs.output), 1)
+        self.assertEqual(self._heartbeat_threads(), [])
+        final = read_task_state(run.pipe_root, 'hb')
+        self.assertEqual(final.lease_expires_at, other.lease_expires_at)
+        self.assertEqual(final.claim_token, 'other_token')
+
+    def test_heartbeat_stops_without_writing_when_cancelled(self):
+        run, state, token = self._stage()
+        hb = LeaseHeartbeat(run.pipe_root, 'hb', 'w', token, lease_duration=self.LEASE, interval=0.1)
+        cancelled = update_task_state(run.pipe_root, 'hb', new_status=TaskState.CANCELLED, ended_at=time.time())
+        with self.assertLogs(worker_logger, level='WARNING'):
+            hb.start()
+            time.sleep(0.5)
+            hb.stop()
+        self.assertEqual(self._heartbeat_threads(), [])
+        self.assertEqual(read_task_state(run.pipe_root, 'hb').lease_expires_at, cancelled.lease_expires_at)
+
+    def test_dead_worker_is_orphaned_after_lease(self):
+        run, state, token = self._stage()
+        hb = LeaseHeartbeat(run.pipe_root, 'hb', 'w', token, lease_duration=self.LEASE, interval=0.1).start()
+        time.sleep(0.5)
+        hb.stop()
+        time.sleep(self.LEASE + 0.3)
+        run.reconcile()
+        self.assertNotEqual(read_task_state(run.pipe_root, 'hb').claim_token, token)
+        self.assertIn(read_task_state(run.pipe_root, 'hb').status, ('ORPHANED', 'PENDING'))
+
+
 class TestClaimTask(unittest.TestCase):
 
     def setUp(self):
@@ -52,6 +214,16 @@ class TestClaimTask(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_default_lease_duration(self):
+        with patch.dict('arc.scripts.pipe_worker.pipe_settings', {}, clear=True):
+            self.assertEqual(get_lease_duration_s(), 3600)
+
+    def test_claim_sets_lease_from_setting(self):
+        initialize_task(self.tmpdir, _make_h2o_spec('task_l'))
+        with patch.dict('arc.scripts.pipe_worker.pipe_settings', {}, clear=True):
+            _, state, _ = claim_task(self.tmpdir, 'worker-1')
+        self.assertAlmostEqual(state.lease_expires_at - state.claimed_at, 3600, places=3)
 
     def test_claims_pending_task(self):
         initialize_task(self.tmpdir, _make_h2o_spec('task_a'))

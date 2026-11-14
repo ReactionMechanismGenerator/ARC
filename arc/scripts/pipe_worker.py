@@ -17,6 +17,7 @@ import logging
 import os
 import shutil
 import tempfile
+import threading
 import time
 
 from arc.imports import settings
@@ -24,6 +25,7 @@ from arc.job.factory import job_factory
 from arc.job.pipe.pipe_run import worker_cpu_cores
 from arc.job.pipe.pipe_state import (
     TASK_FAMILY_TO_JOB_TYPE,
+    TaskOwnershipError,
     TaskState,
     TaskSpec,
     TaskStateRecord,
@@ -97,6 +99,75 @@ def setup_logging(log_path: str) -> None:
     logger.setLevel(logging.INFO)
 
 
+LEASE_RENEWALS_PER_LEASE = 3
+MAX_RENEWAL_INTERVAL_S = 300.0
+RENEWAL_LOCK_TIMEOUT_S = 30.0
+
+
+def get_lease_duration_s() -> float:
+    """Return the worker lease duration in seconds (``lease_duration_hrs`` setting, default 1 h)."""
+    return pipe_settings.get('lease_duration_hrs', 1) * 3600
+
+
+class LeaseHeartbeat:
+    """
+    Daemon thread that keeps a claimed task's lease alive while the worker computes.
+
+    Every ``interval`` seconds it moves ``lease_expires_at`` to ``now + lease_duration`` through a
+    field-only, ownership-guarded ``update_task_state`` call. It stops, logging once, when the task is
+    no longer held by this claim. A worker that dies stops renewing, so the lease still expires.
+
+    Args:
+        pipe_root (str): Root directory of the pipe run.
+        task_id (str): The task identifier.
+        worker_id (str): This worker's id.
+        claim_token (str): The claim token of this worker's claim.
+        lease_duration (float, optional): Lease length in seconds. Defaults to the setting.
+        interval (float, optional): Seconds between renewals. Defaults to ``min(lease_duration / 3, 300)``.
+    """
+
+    def __init__(self, pipe_root: str, task_id: str, worker_id: str, claim_token: str,
+                 lease_duration: float | None = None, interval: float | None = None):
+        self.pipe_root = os.path.abspath(pipe_root)
+        self.task_id = task_id
+        self.worker_id = worker_id
+        self.claim_token = claim_token
+        self.lease_duration = get_lease_duration_s() if lease_duration is None else lease_duration
+        self.interval = min(self.lease_duration / LEASE_RENEWALS_PER_LEASE, MAX_RENEWAL_INTERVAL_S) \
+            if interval is None else interval
+        self.lock_timeout = min(RENEWAL_LOCK_TIMEOUT_S, self.interval)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name=f'lease-heartbeat-{task_id}', daemon=True)
+
+    def start(self) -> 'LeaseHeartbeat':
+        """Start the renewal thread and return this heartbeat."""
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        """Stop renewing and wait for the thread to exit."""
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=self.lock_timeout + 5)
+
+    def _run(self) -> None:
+        failing = False
+        while not self._stop.wait(self.interval):
+            try:
+                update_task_state(self.pipe_root, self.task_id,
+                                  lock_timeout=self.lock_timeout,
+                                  require_owner=(self.worker_id, self.claim_token),
+                                  lease_expires_at=time.time() + self.lease_duration)
+                failing = False
+            except TaskOwnershipError as e:
+                logger.warning(f'Task {self.task_id}: lease heartbeat stopping, {e}')
+                return
+            except (ValueError, TimeoutError, OSError) as e:
+                if not failing:
+                    logger.warning(f'Task {self.task_id}: lease renewal failed ({type(e).__name__}: {e}); retrying.')
+                failing = True
+
+
 def claim_task(pipe_root: str, worker_id: str):
     """
     Scan for a PENDING task and attempt to claim it.
@@ -124,7 +195,7 @@ def claim_task(pipe_root: str, worker_id: str):
                                         claimed_by=worker_id,
                                         claim_token=token,
                                         claimed_at=now,
-                                        lease_expires_at=now + pipe_settings.get('lease_duration_hrs', 24) * 3600)
+                                        lease_expires_at=now + get_lease_duration_s())
             logger.info(f'Claimed task {task_id}')
             return task_id, updated, token
         except (ValueError, TimeoutError):
@@ -186,12 +257,16 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
         logger.warning(f'Task {task_id}: could not transition to RUNNING ({e}), skipping.')
         return
 
+    heartbeat = LeaseHeartbeat(pipe_root, task_id, worker_id, claim_token).start()
     scratch_dir = None
     try:
         spec = read_task_spec(pipe_root, task_id)
         scratch_dir = tempfile.mkdtemp(prefix=f'pipe_{task_id}_')
         result = _make_result_template(task_id, state.attempt_index, started_at)
-        _dispatch_execution(spec, scratch_dir)
+        try:
+            _dispatch_execution(spec, scratch_dir)
+        finally:
+            heartbeat.stop()
         _copy_outputs(scratch_dir, attempt_dir)
         ended_at = time.time()
         result['ended_at'] = ended_at
@@ -271,6 +346,7 @@ def run_task(pipe_root: str, task_id: str, state: TaskStateRecord,
             logger.warning(f'Task {task_id}: could not mark failed ({e}). '
                            f'Task may have been orphaned concurrently.')
     finally:
+        heartbeat.stop()
         if scratch_dir:
             shutil.rmtree(scratch_dir, ignore_errors=True)
 
