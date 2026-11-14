@@ -43,7 +43,12 @@ from arc.job.adapters.ts.linear import (GuessRecord,
                                         cleanup_after_existing_h_migration,
                                         interpolate,
                                         interpolate_addition,
+                                        get_path_bonds_in_uni_ordering,
+                                        get_requested_product_dict,
+                                        get_requested_reactive_bonds,
                                         interpolate_isomerization,
+                                        normalize_atom_maps,
+                                        path_matches_requested_center,
                                         postprocess_isomerization_records,
                                         trivial_fallback_scaffold_sound,
                                         )
@@ -72,6 +77,7 @@ from arc.job.adapters.ts.linear_utils.postprocess import (FAMILY_POSTPROCESSORS,
                                                            validate_ts_guess,
                                                            )
 from arc.mapping.driver import map_rxn
+from arc.mapping.engine import check_atom_map
 from arc.molecule import Molecule
 from arc.reaction import ARCReaction
 from arc.species.converter import compare_zmats, order_mol_by_atom_map, order_xyz_by_atom_map, str_to_xyz, xyz_to_str, zmat_from_xyz
@@ -6275,6 +6281,478 @@ class TestPostprocessIsomerizationRecords(unittest.TestCase):
         )
         self.assertEqual(len(out), 1)
         self.assertIs(out[0], rec)
+
+
+def assert_requested_h_migrates(test_case: unittest.TestCase,
+                                xyz: dict,
+                                mol: 'Molecule',
+                                migrating_h: int,
+                                donor: int,
+                                acceptor: int,
+                                ) -> None:
+    """
+    Assert that the hydrogen a requested atom map transfers is the one closest to the acceptor.
+
+    Only the donor's hydrogens are compared, since an unrelated hydrogen can drift close to the
+    acceptor in a TS guess that nonetheless transfers the right one.
+
+    Args:
+        test_case (unittest.TestCase): The running test case.
+        xyz (dict): The TS guess coordinates.
+        mol (Molecule): The reactant molecule, for the donor's hydrogens.
+        migrating_h (int): Index of the hydrogen the requested map transfers.
+        donor (int): Index of the atom the hydrogen leaves.
+        acceptor (int): Index of the atom the hydrogen moves to.
+    """
+    coords = np.array(xyz['coords'], dtype=float)
+    donor_hs = [mol.atoms.index(atom) for atom in mol.atoms[donor].bonds if atom.is_hydrogen()]
+    test_case.assertIn(migrating_h, donor_hs)
+    nearest = min(donor_hs, key=lambda idx: float(np.linalg.norm(coords[idx] - coords[acceptor])))
+    test_case.assertEqual(nearest, migrating_h,
+                          msg=f'H{nearest} of the donor is closer to the acceptor than the requested H{migrating_h}')
+
+
+class TestLinearAdapterForcedAtomMap(unittest.TestCase):
+    """Test requesting TS guesses for specific atom maps of an isomerization (issues #1042, #1044)."""
+
+    # sBu <=> nBu has six template paths: three 1,3-shifts of a C0 hydrogen onto C2 and three
+    # 1,2-shifts of a C3 hydrogen onto C2. These two maps pick one of each.
+    MAP_13_SHIFT = [3, 2, 1, 0, 7, 11, 12, 10, 9, 8, 5, 6, 4]   # H4 moves from C0 to C2
+    MAP_12_SHIFT = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 9, 12]   # H11 moves from C3 to C2
+    CENTERS = {tuple(MAP_13_SHIFT): (4, 0, 2), tuple(MAP_12_SHIFT): (11, 3, 2)}
+
+    @staticmethod
+    def _make_rxn() -> ARCReaction:
+        """
+        Construct a fresh sBu <=> nBu intra_H_migration reaction.
+
+        Returns:
+            ARCReaction: The reaction.
+        """
+        return ARCReaction(r_species=[ARCSpecies(label='sBu', smiles='CC[CH]C')],
+                           p_species=[ARCSpecies(label='nBu', smiles='CCC[CH2]')])
+
+    def _run(self, atom_map=None) -> tuple[ARCReaction, LinearAdapter]:
+        """
+        Execute the Linear adapter for a fresh reaction, optionally with requested atom map(s).
+
+        Args:
+            atom_map (list[int] | list[list[int]], optional): The atom map(s) to request.
+
+        Returns:
+            tuple[ARCReaction, LinearAdapter]: The processed reaction and the adapter.
+        """
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                atom_map=atom_map,
+                                )
+        adapter.execute()
+        return rxn, adapter
+
+    def test_normalize_atom_maps(self):
+        """Test normalizing the atom_map argument."""
+        self.assertIsNone(normalize_atom_maps(None))
+        self.assertEqual(normalize_atom_maps([1, 0]), [[1, 0]])
+        self.assertEqual(normalize_atom_maps([[1, 0], [0, 1]]), [[1, 0], [0, 1]])
+        # numpy integers are what the mapping pipeline produces, and are accepted.
+        self.assertEqual(normalize_atom_maps([np.int64(1), np.int64(0)]), [[1, 0]])
+        for invalid in ([], 'abc', [0, None], [[0, 1], [None]]):
+            with self.assertRaises(ValueError):
+                normalize_atom_maps(invalid)
+
+    def test_unusable_maps_are_dropped_per_reaction(self):
+        """Test that maps which are no bijection or change an atom's element are reported and dropped."""
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        n_atoms = len(rxn.r_species[0].get_xyz()['symbols'])
+        element_swapped = list(range(n_atoms))
+        element_swapped[0], element_swapped[-1] = element_swapped[-1], element_swapped[0]
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                atom_map=[list(range(n_atoms - 1)), element_swapped, list(self.MAP_13_SHIFT)],
+                                )
+        with self.assertLogs(logger='arc', level='WARNING') as cm:
+            maps = adapter.get_forced_atom_maps(rxn)
+        self.assertEqual(maps, [self.MAP_13_SHIFT])
+        self.assertTrue(any('is not a bijection' in line for line in cm.output))
+        self.assertTrue(any('different element' in line for line in cm.output))
+
+    def test_check_atom_map_counts_repeated_species(self):
+        """Test that a species appearing twice in a well is counted once per occurrence."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='CH3_b', smiles='[CH3]')])
+        # C0 C1 H2..H7 -> CH3 (C0 H1 H2 H3) + CH3 (C4 H5 H6 H7).
+        self.assertTrue(check_atom_map(rxn, atom_map=[0, 4, 1, 2, 3, 5, 6, 7]))
+        self.assertFalse(check_atom_map(rxn, atom_map=[0, 1, 2, 3, 4, 5, 6, 7]))
+        self.assertFalse(check_atom_map(rxn, atom_map=[0, 1, 2, 3]))
+
+    def test_requested_map_selects_the_migrating_hydrogen(self):
+        """Test that every guess transfers the hydrogen the requested map transfers."""
+        for atom_map in (self.MAP_13_SHIFT, self.MAP_12_SHIFT):
+            rxn, _ = self._run(atom_map=list(atom_map))
+            guesses = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and tsg.initial_xyz]
+            self.assertGreater(len(guesses), 0)
+            migrating_h, donor, acceptor = self.CENTERS[tuple(atom_map)]
+            for tsg in guesses:
+                assert_requested_h_migrates(self, tsg.initial_xyz, rxn.r_species[0].mol,
+                                            migrating_h, donor, acceptor)
+
+    def test_different_atom_maps_give_different_guesses(self):
+        """Test that two distinct atom maps yield distinct TS guesses."""
+        geometries = list()
+        for atom_map in (self.MAP_13_SHIFT, self.MAP_12_SHIFT):
+            rxn, _ = self._run(atom_map=list(atom_map))
+            guesses = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and tsg.initial_xyz]
+            self.assertGreater(len(guesses), 0)
+            geometries.append(guesses[0].initial_xyz)
+        self.assertFalse(almost_equal_coords(geometries[0], geometries[1]))
+
+    def test_several_atom_maps_in_one_job(self):
+        """Test that guesses of several requested atom maps are labeled by their map."""
+        rxn, _ = self._run(atom_map=[list(self.MAP_13_SHIFT), list(self.MAP_12_SHIFT)])
+        methods = [tsg.method for tsg in rxn.ts_species.ts_guesses]
+        self.assertGreater(len(methods), 0)
+        self.assertTrue(any('map=0' in method for method in methods))
+        self.assertTrue(any('map=1' in method for method in methods))
+
+    def test_single_atom_map_is_not_labeled(self):
+        """Test that a single requested map does not add a map index to the guess method."""
+        rxn, _ = self._run(atom_map=list(self.MAP_13_SHIFT))
+        self.assertTrue(all('map=' not in tsg.method for tsg in rxn.ts_species.ts_guesses))
+
+    def test_requested_map_is_set_on_the_reaction(self):
+        """Test that the requested map is set on the reaction, which the fallback paths read."""
+        seen = list()
+
+        def record(*args, **kwargs):
+            """Record the reaction's atom map as interpolate() sees it."""
+            seen.append(list(kwargs['rxn']._atom_map or list()))
+            return []
+
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                atom_map=list(self.MAP_12_SHIFT),
+                                )
+        with patch('arc.job.adapters.ts.linear.interpolate', side_effect=record):
+            adapter.execute()
+        self.assertGreater(len(seen), 0)
+        self.assertTrue(all(atom_map == self.MAP_12_SHIFT for atom_map in seen))
+        # And it is restored afterwards.
+        self.assertIsNone(rxn._atom_map)
+
+    def test_preset_atom_map_is_reported_as_unused(self):
+        """Test that a pre-set atom map is reported as not taking part in the per-path derivation."""
+        rxn = self._make_rxn()
+        rxn.atom_map = list(self.MAP_13_SHIFT)
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                )
+        with self.assertLogs(logger='arc', level='INFO') as cm:
+            adapter.execute()
+        self.assertTrue(any('does not take part in that derivation' in line for line in cm.output))
+        self.assertEqual(rxn._atom_map, list(self.MAP_13_SHIFT))
+
+
+class TestLinearAdapterAtomMapInAddition(unittest.TestCase):
+    """Test that a requested atom map selects the path in the addition/dissociation route (#1044)."""
+
+    # HO2 elimination from a peroxy radical, CCOO. -> C2H4 + HO2, where the unimolecular species is
+    # the reactant. These two maps eliminate a different hydrogen: H4 and H5.
+    MAP_H4 = [0, 1, 7, 6, 8, 3, 2, 5, 4]
+    MAP_H5 = [0, 1, 7, 6, 3, 8, 2, 5, 4]
+    # The same two reaction centers requested in the addition direction, C2H4 + HO2 -> CCOO., where
+    # the unimolecular species is the product. Every path of this direction is discovered in reverse.
+    REVERSE_MAP_H4 = [0, 1, 6, 5, 8, 7, 3, 2, 4]
+    REVERSE_MAP_H5 = [0, 1, 6, 4, 8, 7, 3, 2, 5]
+
+    @staticmethod
+    def _make_rxn() -> ARCReaction:
+        """
+        Construct a fresh CCOO. <=> C2H4 + HO2 dissociation.
+
+        Returns:
+            ARCReaction: The reaction.
+        """
+        return ARCReaction(r_species=[ARCSpecies(label='r0', smiles='CCO[O]')],
+                           p_species=[ARCSpecies(label='p0', smiles='C=C'), ARCSpecies(label='p1', smiles='O[O]')])
+
+    @staticmethod
+    def _make_reverse_rxn() -> ARCReaction:
+        """
+        Construct the same reaction in the addition direction, where the uni species is the product.
+
+        Returns:
+            ARCReaction: The reaction.
+        """
+        return ARCReaction(r_species=[ARCSpecies(label='r0', smiles='C=C'), ARCSpecies(label='r1', smiles='O[O]')],
+                           p_species=[ARCSpecies(label='p0', smiles='CCO[O]')])
+
+    def _guesses(self, atom_map) -> list[dict]:
+        """
+        Execute the Linear adapter for one requested atom map.
+
+        Args:
+            atom_map (list[int]): The atom map to request.
+
+        Returns:
+            list[dict]: The successful guess geometries.
+        """
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        LinearAdapter(job_type='tsg',
+                      reactions=[rxn],
+                      testing=True,
+                      project='test',
+                      project_directory=project_directory,
+                      atom_map=list(atom_map),
+                      ).execute()
+        return [tsg.initial_xyz for tsg in rxn.ts_species.ts_guesses if tsg.success and tsg.initial_xyz]
+
+    def _reverse_guesses(self, atom_map) -> list[dict]:
+        """
+        Execute the Linear adapter for one requested atom map in the addition direction.
+
+        Args:
+            atom_map (list[int]): The atom map to request.
+
+        Returns:
+            list[dict]: The successful guess geometries, in the unimolecular species' ordering.
+        """
+        rxn = self._make_reverse_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        LinearAdapter(job_type='tsg',
+                      reactions=[rxn],
+                      testing=True,
+                      project='test',
+                      project_directory=project_directory,
+                      atom_map=list(atom_map),
+                      ).execute()
+        return [tsg.initial_xyz for tsg in rxn.ts_species.ts_guesses if tsg.success and tsg.initial_xyz]
+
+    def test_requested_map_selects_the_hydrogen_in_the_addition_direction(self):
+        """Test that a reverse-discovered path honors the requested map instead of returning nothing."""
+        # The recipe bonds of a reverse-discovered path are already in the unimolecular ordering;
+        # mapping them a second time left the builders with no bond of the species to stretch.
+        for atom_map, requested, spectator in ((self.REVERSE_MAP_H4, 4, 5), (self.REVERSE_MAP_H5, 5, 4)):
+            xyzs = self._reverse_guesses(atom_map)
+            self.assertGreater(len(xyzs), 0)
+            for xyz in xyzs:
+                coords = np.array(xyz['coords'], dtype=float)
+                d_requested = float(np.linalg.norm(coords[requested] - coords[0]))
+                d_spectator = float(np.linalg.norm(coords[spectator] - coords[0]))
+                self.assertGreater(d_requested, d_spectator,
+                                   msg=f'map detaching H{requested}: d(C0,H{requested})={d_requested:.2f} '
+                                       f'is not above d(C0,H{spectator})={d_spectator:.2f}')
+
+    def test_different_maps_give_different_guesses_in_the_addition_direction(self):
+        """Test that the two addition-direction maps do not return the same geometries."""
+        self.assertNotEqual([xyz_to_str(xyz) for xyz in self._reverse_guesses(self.REVERSE_MAP_H4)],
+                            [xyz_to_str(xyz) for xyz in self._reverse_guesses(self.REVERSE_MAP_H5)])
+
+    def test_requested_map_selects_the_eliminated_hydrogen(self):
+        """Test that every guess eliminates the hydrogen the requested map eliminates."""
+        for atom_map, eliminated, retained in ((self.MAP_H4, 4, 5), (self.MAP_H5, 5, 4)):
+            xyzs = self._guesses(atom_map)
+            self.assertGreater(len(xyzs), 0)
+            for xyz in xyzs:
+                coords = np.array(xyz['coords'], dtype=float)
+                d_eliminated = float(np.linalg.norm(coords[eliminated] - coords[3]))
+                d_retained = float(np.linalg.norm(coords[retained] - coords[3]))
+                self.assertLess(d_eliminated, d_retained,
+                                msg=f'map eliminating H{eliminated}: d(O3,H{eliminated})={d_eliminated:.2f} '
+                                    f'is not below d(O3,H{retained})={d_retained:.2f}')
+
+    def test_different_maps_give_different_guesses(self):
+        """Test that the two maps no longer return the same geometries."""
+        self.assertNotEqual([xyz_to_str(xyz) for xyz in self._guesses(self.MAP_H4)],
+                            [xyz_to_str(xyz) for xyz in self._guesses(self.MAP_H5)])
+
+    def test_get_requested_reactive_bonds(self):
+        """Test reading the reaction center of a requested atom map, in unimolecular ordering."""
+        rxn = self._make_rxn()
+        # The unimolecular species is the reactant, so the center needs no conversion.
+        self.assertEqual(get_requested_reactive_bonds(rxn, self.MAP_H4, uni_is_product=False),
+                         {(0, 4), (1, 2), (3, 4)})
+        self.assertEqual(get_requested_reactive_bonds(rxn, self.MAP_H5, uni_is_product=False),
+                         {(0, 5), (1, 2), (3, 5)})
+        # In the addition direction the center is mapped into the product's (unimolecular) ordering.
+        reverse_rxn = self._make_reverse_rxn()
+        self.assertEqual(get_requested_reactive_bonds(reverse_rxn, self.REVERSE_MAP_H4, uni_is_product=True),
+                         {(0, 4), (1, 2), (3, 4)})
+        self.assertEqual(get_requested_reactive_bonds(reverse_rxn, self.REVERSE_MAP_H5, uni_is_product=True),
+                         {(0, 5), (1, 2), (3, 5)})
+
+    def test_get_path_bonds_in_uni_ordering(self):
+        """Test converting a path's recipe bonds to the unimolecular ordering."""
+        atom_map = [0, 1, 6, 5, 8, 7, 3, 2, 4]
+        # The unimolecular species is the reactant: the bonds are already in its ordering.
+        self.assertEqual(get_path_bonds_in_uni_ordering([(3, 1)], atom_map, False, False), [(1, 3)])
+        # A reverse-discovered path reports in the unimolecular ordering even for an addition.
+        self.assertEqual(get_path_bonds_in_uni_ordering([(3, 1)], atom_map, True, True), [(1, 3)])
+        # A forward path of an addition needs the map.
+        self.assertEqual(get_path_bonds_in_uni_ordering([(3, 1)], atom_map, True, False), [(1, 5)])
+        self.assertEqual(get_path_bonds_in_uni_ordering([(3, 1)], None, True, False), list())
+
+    def test_path_matches_requested_center(self):
+        """Test the path/center consistency check."""
+        requested = {(0, 4), (1, 2), (3, 4)}
+        self.assertTrue(path_matches_requested_center([(0, 5)], None))
+        self.assertTrue(path_matches_requested_center([(4, 0), (2, 1), (4, 3)], requested))
+        # A path that changes fewer or other bonds than the map does is not the requested one.
+        self.assertFalse(path_matches_requested_center([(0, 4), (1, 2)], requested))
+        self.assertFalse(path_matches_requested_center([(0, 5), (1, 2), (3, 5)], requested))
+
+    def test_get_requested_product_dict(self):
+        """Test selecting the product dictionary that the requested map describes."""
+        rxn = self._make_rxn()
+        self.assertIs(get_requested_product_dict(rxn, None, False), rxn.product_dicts[0])
+        selected = get_requested_product_dict(rxn, {(0, 5), (1, 2), (3, 5)}, False)
+        self.assertIsNotNone(selected)
+        bb, fb = rxn.get_expected_changing_bonds(r_label_dict=selected['r_label_map'],
+                                                 family=selected.get('family') or rxn.family)
+        self.assertEqual({tuple(sorted(b)) for b in list(bb) + list(fb)}, {(0, 5), (1, 2), (3, 5)})
+        self.assertIsNone(get_requested_product_dict(rxn, {(0, 1)}, False))
+
+
+class TestLinearAdapterAtomMapInSupplements(unittest.TestCase):
+    """Test that the supplementary builders of the addition route honor a requested atom map (#1044)."""
+
+    # [CH2]CCSC -> cC3H6 + CH3S, an intra_substitutionCS_cyclization whose guess comes from the
+    # SN2-like supplement. The second map also permutes hydrogens, so its reaction center is not
+    # the one this path describes.
+    MAP_OF_THE_PATH = [0, 1, 2, 10, 9, 3, 4, 5, 6, 7, 8, 11, 12, 13]
+    MAP_OF_ANOTHER_CENTER = [0, 1, 2, 10, 9, 5, 4, 3, 6, 7, 8, 11, 12, 13]
+
+    @staticmethod
+    def _make_rxn() -> ARCReaction:
+        """
+        Construct a fresh [CH2]CCSC <=> cC3H6 + CH3S cyclization.
+
+        Returns:
+            ARCReaction: The reaction.
+        """
+        return ARCReaction(r_species=[ARCSpecies(label='r0', smiles='[CH2]CCSC')],
+                           p_species=[ARCSpecies(label='p0', smiles='C1CC1'),
+                                      ARCSpecies(label='p1', smiles='C[S]')])
+
+    def _run(self, atom_map) -> tuple[ARCReaction, list[str]]:
+        """
+        Execute the Linear adapter for one requested atom map, capturing the debug log.
+
+        Args:
+            atom_map (list[int]): The atom map to request.
+
+        Returns:
+            tuple[ARCReaction, list[str]]: The processed reaction and the captured log lines.
+        """
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        with self.assertLogs(logger='arc', level='DEBUG') as cm:
+            LinearAdapter(job_type='tsg',
+                          reactions=[rxn],
+                          testing=True,
+                          project='test',
+                          project_directory=project_directory,
+                          atom_map=list(atom_map),
+                          ).execute()
+        return rxn, cm.output
+
+    def test_sn2_supplement_builds_for_the_requested_center(self):
+        """Test that the supplement still fires for a map describing the path it builds from."""
+        rxn, log = self._run(self.MAP_OF_THE_PATH)
+        self.assertTrue(any('used SN2-like builder' in line for line in log))
+        self.assertGreater(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 0)
+
+    def test_sn2_supplement_honors_a_rejected_path(self):
+        """Test that the supplement does not rebuild a path the requested center rejected."""
+        # The supplement builds from the recipe bonds of a path, so without the same check it
+        # returned a successful guess for the very correspondence the main loop had rejected.
+        rxn, log = self._run(self.MAP_OF_ANOTHER_CENTER)
+        self.assertTrue(any('the SN2-like path does not change the bonds of the requested atom map' in line
+                            for line in log))
+        self.assertFalse(any('used SN2-like builder' in line for line in log))
+        self.assertEqual([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success], list())
+
+
+class TestLinearAdapterAtomMapWithoutProductDicts(unittest.TestCase):
+    """Test that the trivial-map fallback of an isomerization honors a requested atom map (#1044)."""
+
+    # CCOO. -> .CH2CH2OOH, where R and P order their atoms differently, so the fallback has to
+    # reorder the product. Each map migrates a different hydrogen of C0 onto the terminal O3.
+    MAPS = {4: [3, 2, 1, 0, 4, 8, 7, 6, 5],
+            5: [3, 2, 1, 0, 8, 4, 7, 6, 5],
+            6: [3, 2, 1, 0, 8, 7, 4, 6, 5]}
+
+    def _guesses(self, atom_map) -> list[dict]:
+        """
+        Execute the Linear adapter for one requested atom map, with no product dictionaries.
+
+        Args:
+            atom_map (list[int]): The atom map to request.
+
+        Returns:
+            list[dict]: The successful guess geometries.
+        """
+        rxn = ARCReaction(r_species=[ARCSpecies(label='r0', smiles='CCO[O]')],
+                          p_species=[ARCSpecies(label='p0', smiles='OOC[CH2]')])
+        # Without a reaction family path the strategy pipeline has nothing to run, which is what
+        # sends the reaction through the trivial-map fallback.
+        rxn.product_dicts = list()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        LinearAdapter(job_type='tsg',
+                      reactions=[rxn],
+                      testing=True,
+                      project='test',
+                      project_directory=project_directory,
+                      atom_map=list(atom_map),
+                      ).execute()
+        return [tsg.initial_xyz for tsg in rxn.ts_species.ts_guesses if tsg.success and tsg.initial_xyz]
+
+    def test_requested_map_selects_the_migrating_hydrogen(self):
+        """Test that the hydrogen the requested map migrates is the one that moves."""
+        # The fallback reordered the product by a backbone atom map while deriving the changing
+        # bonds from the requested one; in the mixed ordering the requested breaking bond looked
+        # like a bond of the product and was dropped, leaving nothing to interpolate.
+        for migrating, atom_map in self.MAPS.items():
+            xyzs = self._guesses(atom_map)
+            self.assertGreater(len(xyzs), 0, msg=f'no guess for the map migrating H{migrating}')
+            spectators = [h for h in self.MAPS if h != migrating]
+            for xyz in xyzs:
+                coords = np.array(xyz['coords'], dtype=float)
+                d_migrating = float(np.linalg.norm(coords[migrating] - coords[3]))
+                for spectator in spectators:
+                    d_spectator = float(np.linalg.norm(coords[spectator] - coords[3]))
+                    self.assertLess(d_migrating, d_spectator,
+                                    msg=f'map migrating H{migrating}: d(O3,H{migrating})={d_migrating:.2f} '
+                                        f'is not below d(O3,H{spectator})={d_spectator:.2f}')
+                self.assertGreater(float(np.linalg.norm(coords[migrating] - coords[0])),
+                                   float(np.linalg.norm(coords[spectators[0]] - coords[0])))
 
 
 if __name__ == '__main__':
