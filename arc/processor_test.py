@@ -7,6 +7,7 @@ This module contains unit tests for the arc.processor module
 
 import os
 import shutil
+import tempfile
 import unittest
 
 import arc.processor as processor
@@ -91,6 +92,47 @@ class TestProcessor(unittest.TestCase):
         self.assertFalse(first.mol.is_isomorphic(second.mol))
         self.assertFalse(processor._thermo_lib_has_isomorph(second, [first]))
 
+    def test_process_arc_project_removes_a_stale_kinetics_library(self):
+        """A kinetics library left by a previous session is removed when no rate coefficient survives"""
+        project_directory = tempfile.mkdtemp(prefix='arc_test_stale_kinetics_lib_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        lib_path = os.path.join(project_directory, 'output', 'RMG libraries', 'kinetics')
+        os.makedirs(lib_path)
+        with open(os.path.join(lib_path, 'reactions.py'), 'w') as f:
+            f.write('# a rate computed by a previous session\n')
+        ch3, h2 = ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2', smiles='[H][H]')
+        rxn = ARCReaction(r_species=[self.ch4, self.h], p_species=[ch3, h2])
+        rxn.ts_label = 'TS0'
+        output_dict = {label: {'convergence': label != 'TS0'} for label in ['CH4', 'H', 'CH3', 'H2', 'TS0']}
+        processor.process_arc_project(thermo_adapter='arkane', kinetics_adapter='arkane', project='stale',
+                                      project_directory=project_directory,
+                                      species_dict={spc.label: spc for spc in [self.ch4, self.h, ch3, h2]},
+                                      reactions=[rxn], output_dict=output_dict, compute_thermo=False,
+                                      compare_to_rmg=False)
+        self.assertFalse(os.path.isdir(lib_path))
+
+    def test_process_arc_project_logs_a_stale_kinetics_library_it_cannot_remove(self):
+        """A stale kinetics library that cannot be removed is reported, not dropped silently"""
+        project_directory = tempfile.mkdtemp(prefix='arc_test_stuck_kinetics_lib_')
+        lib_path = os.path.join(project_directory, 'output', 'RMG libraries', 'kinetics')
+        locked = os.path.join(lib_path, 'locked')
+        os.makedirs(locked)
+        with open(os.path.join(locked, 'reactions.py'), 'w') as f:
+            f.write('# a rate computed by a previous session\n')
+        os.chmod(locked, 0o500)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        self.addCleanup(os.chmod, locked, 0o700)
+        ch3, h2 = ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2', smiles='[H][H]')
+        rxn = ARCReaction(r_species=[self.ch4, self.h], p_species=[ch3, h2])
+        rxn.ts_label = 'TS0'
+        output_dict = {label: {'convergence': label != 'TS0'} for label in ['CH4', 'H', 'CH3', 'H2', 'TS0']}
+        with self.assertLogs('arc', level='ERROR') as logs:
+            processor.process_arc_project(thermo_adapter='arkane', kinetics_adapter='arkane', project='stuck',
+                                          project_directory=project_directory,
+                                          species_dict={spc.label: spc for spc in [self.ch4, self.h, ch3, h2]},
+                                          reactions=[rxn], output_dict=output_dict, compute_thermo=False,
+                                          compare_to_rmg=False)
+        self.assertTrue(any('Could not remove the stale kinetics library' in line for line in logs.output))
 
     @classmethod
     def tearDownClass(cls):

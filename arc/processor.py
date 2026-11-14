@@ -176,6 +176,15 @@ def process_arc_project(thermo_adapter: str,
                                       T_min=T_min[0],
                                       T_max=T_max[0],
                                       )
+        elif os.path.isdir(os.path.join(libraries_path, 'kinetics')):
+            # A previous session's library may hold rates this session discarded.
+            stale_lib_path = os.path.join(libraries_path, 'kinetics')
+            logger.warning('No rate coefficient survived; removing the kinetics library of a previous session.')
+            try:
+                shutil.rmtree(stale_lib_path)
+            except OSError as e:
+                logger.error(f'Could not remove the stale kinetics library at {stale_lib_path}: {e}\n'
+                             f'It may hold rate coefficients that this session discarded; do not use it.')
 
     # 2. Thermo
     if compute_thermo:

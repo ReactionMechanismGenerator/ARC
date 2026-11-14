@@ -36,6 +36,26 @@ PLACEHOLDER_USERNAME = '<username>'
 SUBMISSION_CAP_WAIT_SECONDS = 5 * 60
 
 
+def submission_cap_reached(cluster_soft: str, stderr: list[str]) -> bool:
+    """
+    Whether the scheduler refused a submission because the per-user job cap is reached.
+
+    Args:
+        cluster_soft (str): The server cluster software.
+        stderr (list[str]): The stderr got from submitting a job.
+
+    Returns:
+        bool: Whether the stderr reports a reached per-user job cap.
+    """
+    cluster_soft = cluster_soft.lower()
+    if cluster_soft == 'slurm':
+        return any('AssocMaxSubmitJobLimit' in err_line for err_line in stderr)
+    if cluster_soft == 'pbs':
+        return any('qsub: would exceed' in err_line or 'qsub: Maximum number of jobs' in err_line
+                   for err_line in stderr)
+    return False
+
+
 class UnknownHostKeyError(ServerError, paramiko.SSHException):
     """
     Raised when a server's host key is absent from ``known_hosts`` and the server sets
@@ -458,8 +478,8 @@ class SSHClient(object):
     def submit_job(self, remote_path: str) -> tuple[str | None, str | None]:
         """
         Submit a job to the server.
-        If Slurm refuses the submission because the per-user job cap is reached
-        (``AssocMaxSubmitJobLimit``), the submission is retried every ``SUBMISSION_CAP_WAIT_SECONDS``
+        If the scheduler refuses the submission because the per-user job cap is reached
+        (see ``submission_cap_reached()``), the submission is retried every ``SUBMISSION_CAP_WAIT_SECONDS``
         until it is accepted.
 
         Args:
@@ -476,7 +496,7 @@ class SSHClient(object):
         cmd = f'{submit_command[cluster_soft]} {submit_filenames[cluster_soft]}'
         stdout, stderr = self._send_command_to_server(cmd, remote_path)
         waited = False
-        while cluster_soft.lower() == 'slurm' and any('AssocMaxSubmitJobLimit' in line for line in stderr):
+        while submission_cap_reached(cluster_soft, stderr):
             logger.warning(f'Max number of submitted jobs was reached, sleeping {SUBMISSION_CAP_WAIT_SECONDS} s '
                            f'before retrying the submission...')
             time.sleep(SUBMISSION_CAP_WAIT_SECONDS)
@@ -505,8 +525,17 @@ class SSHClient(object):
             # 1 job(s) submitted to cluster 443069.
             if len(stdout) and len(stdout[1].split()) and len(stdout[1].split()[-1].split('.')):
                 job_id = stdout[1].split()[-1][:-1]
-        else:
+        elif cluster_soft.lower() not in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
+        else:
+            # A recognized scheduler that returned nothing parsable on stdout. This is a failed
+            # submission (a full queue, a rejected resource request), not an unsupported cluster:
+            # raising here would kill the whole ARC process over one job, under a message that
+            # blames the scheduler name. Report it as an errored job instead, and let the
+            # scheduler's own troubleshooting decide whether to resubmit.
+            logger.error(f'Could not parse a job ID from the {cluster_soft} submission in {remote_path}. '
+                         f'stdout was:\n{stdout}\nstderr was:\n{stderr}')
+            job_status = 'errored'
         job_status = 'running' if job_id else job_status
         return job_status, job_id
 

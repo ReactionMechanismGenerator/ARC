@@ -6,6 +6,7 @@ Includes spawning, terminating, checking, and troubleshooting various jobs
 from __future__ import annotations
 
 import datetime
+import glob
 import itertools
 import os
 import pprint
@@ -50,6 +51,8 @@ from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
+from arc.job.pipe.pipe_run import rotor_scan_1d_task_id
+from arc.job.pipe.pipe_state import ROTOR_SCAN_1D_TASK_FAMILY, TaskState, read_task_state
 from arc.job.ssh_pool import borrow_ssh_client
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
@@ -539,6 +542,9 @@ class Scheduler(object):
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
+                # Evaluated before determine_rotors(), which adds never-scanned rotors to any species whose
+                # restored number_of_rotors is 0; asking afterwards would re-scan every converged species.
+                restored_rotor_scans_owed = self.rotor_scans_pending_on_restart(species, include_failed=False)
                 if self.job_types['rotors'] and not species.number_of_rotors and species.rotors_dict is not None:
                     # if species.rotors_dict is None, it means the species is marked to not spawn rotor scans
                     species.determine_rotors()
@@ -551,6 +557,9 @@ class Scheduler(object):
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label if not species.multi_species else species.multi_species] = list()
                 if self.output[species.label]['convergence']:
+                    # A converged species is scheduled no further, except for a rotor that was never scanned.
+                    if restored_rotor_scans_owed:
+                        self.run_scan_jobs(species.label)
                     continue
                 if species.is_monoatomic():
                     if not self.output[species.label]['job_types']['sp'] \
@@ -614,11 +623,7 @@ class Scheduler(object):
                                 and not self.output[species.label]['paths']['freq'] and self.job_types['freq'] \
                                 and (species.is_ts or species.number_of_atoms > 1) and species.irc_label is None:
                             self.run_freq_job(species.label)
-                        if self.output[species.label]['paths']['geo'] and self.job_types['rotors'] and \
-                                any(spc.rotors_dict is not None and
-                                    any(rotor_dict['success'] is False and not rotor_dict['invalidation_reason']
-                                        for rotor_dict in spc.rotors_dict.values())
-                                    for spc in self.species_list):
+                        if self.rotor_scans_pending_on_restart(species):
                             # Additional restart-related checks are performed within run_scan_jobs().
                             self.run_scan_jobs(species.label)
             else:
@@ -646,6 +651,63 @@ class Scheduler(object):
         self.timer = True
         if not self.testing:
             self.schedule_jobs()
+
+    def rotor_scans_pending_on_restart(self, species: ARCSpecies, include_failed: bool = True) -> bool:
+        """
+        Whether the restart loop still owes ``species`` a rotor scan spawn.
+
+        A rotor is owed if it was never scanned (no result and no scan_path, e.g., added to restart.yml by hand)
+        and no pipe worker currently holds it, or, if ``include_failed``, if its scan failed without an
+        invalidation reason. IRC endpoint species (non-TS species with an ``irc_label``) are never owed a scan.
+
+        Args:
+            species (ARCSpecies): The species being restarted.
+            include_failed (bool, optional): Whether a failed, non-invalidated rotor counts as owed.
+
+        Returns:
+            bool: Whether ``run_scan_jobs()`` should be called for this species.
+        """
+        if not self.output[species.label]['paths']['geo'] or not self.job_types['rotors'] \
+                or (species.irc_label is not None and not species.is_ts) or species.rotors_dict is None:
+            return False
+        return any((include_failed and rotor_dict['success'] is False and not rotor_dict['invalidation_reason'])
+                   or (rotor_dict['success'] is None and not rotor_dict['scan_path']
+                       and not self.rotor_scan_owed_to_a_pipe_run(species, rotor_index))
+                   for rotor_index, rotor_dict in species.rotors_dict.items())
+
+    def rotor_scan_owed_to_a_pipe_run(self, species: ARCSpecies, rotor_index: int) -> bool:
+        """
+        Whether a pipe worker from a previous session currently holds this rotor's scan under a live lease.
+
+        Pipe runs are not reloaded on restart, so this reads the rotor's task state from the pipe run's
+        staging directory. Only a CLAIMED or RUNNING task whose lease has not expired counts. A pending,
+        orphaned, terminal, or unreadable task does not, since no session will ingest its results.
+
+        Args:
+            species (ARCSpecies): The species being restarted.
+            rotor_index (int): The rotor's index in ``species.rotors_dict``.
+
+        Returns:
+            bool: Whether a live pipe worker holds this rotor's scan.
+        """
+        task_id = rotor_scan_1d_task_id(species.label, rotor_index)
+        task_dirs = glob.glob(os.path.join(self.project_directory, 'calcs',
+                                           'TSs' if species.is_ts else 'Species', species.label,
+                                           f'pipe_{ROTOR_SCAN_1D_TASK_FAMILY}_*', 'tasks', task_id))
+        now = time.time()
+        for task_dir in task_dirs:
+            pipe_root = os.path.dirname(os.path.dirname(task_dir))
+            try:
+                state = read_task_state(pipe_root, task_id)
+            except (OSError, ValueError, KeyError) as e:
+                logger.warning(f'Could not read the state of pipe task {task_id} under {pipe_root}: {e}')
+                continue
+            if state.status in (TaskState.CLAIMED.value, TaskState.RUNNING.value) \
+                    and state.lease_expires_at is not None and state.lease_expires_at > now:
+                logger.info(f'Rotor {rotor_index} of {species.label} is {state.status} in the pipe run at '
+                            f'{pipe_root}; not spawning a standalone scan for it on restart.')
+                return True
+        return False
 
     def has_pending_pipe_work(self, label: str) -> bool:
         """
@@ -1528,6 +1590,14 @@ class Scheduler(object):
         if len(successful_tsgs) > 1:
             xyzs = [tsg.initial_xyz for tsg in successful_tsgs]
             piped_indices = self.pipe_planner.try_pipe_ts_opt(label, xyzs, self.ts_guess_level)
+            # conf_opt jobs still running (e.g., restored from a previous session) are superseded by the
+            # conformers spawned below: cancel them and stop tracking them.
+            conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
+            for job_name in [name for name in self.running_jobs.get(label, list()) if 'conf_opt' in name]:
+                job = conf_opt_jobs.pop(get_i_from_job_name(job_name), None)
+                if job is not None:
+                    job.delete()
+                self.running_jobs[label].remove(job_name)
             if not piped_indices:
                 self.job_dict[label]['conf_opt'] = dict()
             for i, tsg in enumerate(successful_tsgs):
@@ -1810,13 +1880,17 @@ class Scheduler(object):
                                 self.spawn_directed_scan_jobs(label, rotor_index=i)
                         else:
                             self.spawn_directed_scan_jobs(label, rotor_index=i)
-                else:
+                elif not self.rotor_scan_owed_to_a_pipe_run(self.species_dict[label], i):
                     # This is a "normal" ESS scan (not directed). Collect for potential pipe batching.
                     ess_rotor_indices.append(i)
 
             # Attempt to batch ESS scans through pipe mode; fall back per-rotor for the rest.
-            piped_rotors = self.pipe_planner.try_pipe_rotor_scans_1d(label, ess_rotor_indices) \
-                if ess_rotor_indices else set()
+            # run_scan_jobs() is also called from the restart loop in __init__, which runs before the
+            # pipe planner is constructed. Batching is an optimization, so without a planner every
+            # rotor is scanned individually.
+            pipe_planner = getattr(self, 'pipe_planner', None)
+            piped_rotors = pipe_planner.try_pipe_rotor_scans_1d(label, ess_rotor_indices) \
+                if ess_rotor_indices and pipe_planner is not None else set()
             for i in ess_rotor_indices:
                 if i in piped_rotors:
                     continue
@@ -5173,9 +5247,23 @@ class Scheduler(object):
                          'Assuming all jobs have finished.')
         else:
             for spc_label in jobs.keys():
+                if spc_label not in self.species_dict:
+                    # An entry left by a species that is no longer in the project. Creating a
+                    # running_jobs key for it would keep schedule_jobs() looping forever.
+                    logger.warning(f'Not restoring the running jobs of {spc_label}: it is not in this project.')
+                    continue
                 if spc_label not in self.running_jobs.keys():
                     self.running_jobs[spc_label] = list()
                 for job_description in jobs[spc_label]:
+                    # A job may reference a species that no longer exists in this session, e.g. a TS adapter
+                    # job carrying an auto-generated '<rxn>_TS' label. Restoring it would raise a KeyError
+                    # below and kill the run over one stale job, so skip it.
+                    if job_description.get('species_labels') \
+                            and any(label not in self.species_dict for label in job_description['species_labels']):
+                        logger.warning(f"Not restoring job {job_description.get('job_name')} of {spc_label}: it "
+                                       f"references species {job_description['species_labels']}, and at least one "
+                                       f"of those is not in this project. Assuming the job is no longer running.")
+                        continue
                     if ('conformer' not in job_description or job_description['conformer'] is None) \
                             and ('tsg' not in job_description or job_description['tsg'] is None):
                         self.running_jobs[spc_label].append(job_description['job_name'])
@@ -5260,16 +5348,29 @@ class Scheduler(object):
             self.restart_dict['running_jobs'] = dict()
             for spc in self.species_dict.values():
                 if spc.label in self.running_jobs:
+                    # A conformer or TS-guess name in running_jobs whose job object is not in job_dict
+                    # cannot be serialized or polled. Raising here would kill the run over one untracked
+                    # job, so warn and drop it from both the restart file and running_jobs.
+                    def _conformer_job_dicts(key, names):
+                        dicts = list()
+                        for job_name in names:
+                            job = self.job_dict[spc.label].get(key, dict()).get(get_i_from_job_name(job_name))
+                            if job is None:
+                                logger.warning(f'Job {job_name} of species {spc.label} is listed as running '
+                                               f'but has no {key} entry in job_dict; dropping it.')
+                                self.running_jobs[spc.label].remove(job_name)
+                                continue
+                            dicts.append(job.as_dict())
+                        return dicts
                     self.restart_dict['running_jobs'][spc.label] = \
                         [self.job_dict[spc.label][job_name.rsplit('_', 1)[0]][job_name].as_dict()
                          for job_name in self.running_jobs[spc.label]
                          if not is_conformer_job(job_name) and 'tsg' not in job_name] \
-                        + [self.job_dict[spc.label]['conf_opt'][get_i_from_job_name(job_name)].as_dict()
-                           for job_name in self.running_jobs[spc.label] if 'conf_opt' in job_name] \
-                        + [self.job_dict[spc.label]['conf_sp'][get_i_from_job_name(job_name)].as_dict()
-                           for job_name in self.running_jobs[spc.label] if 'conf_sp' in job_name] \
-                        + [self.job_dict[spc.label]['tsg'][get_i_from_job_name(job_name)].as_dict()
-                           for job_name in self.running_jobs[spc.label] if 'tsg' in job_name]
+                        + _conformer_job_dicts('conf_opt', [n for n in self.running_jobs[spc.label]
+                                                            if 'conf_opt' in n]) \
+                        + _conformer_job_dicts('conf_sp', [n for n in self.running_jobs[spc.label]
+                                                           if 'conf_sp' in n]) \
+                        + _conformer_job_dicts('tsg', [n for n in self.running_jobs[spc.label] if 'tsg' in n])
             save_yaml_file(path=self.restart_path, content=self.restart_dict)    
     
     def make_reaction_labels_info_file(self):
