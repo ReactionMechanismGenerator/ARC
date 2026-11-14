@@ -8,6 +8,10 @@ repository. Install ARC on every machine that will execute ARC itself. Electroni
 structure software can be local to that machine or available on remote servers
 that ARC reaches over SSH.
 
+Conda itself comes from `Miniforge <https://conda-forge.org/download/>`_ or
+`Miniconda <https://www.anaconda.com/docs/getting-started/miniconda/install>`_.
+Install one of them first if ``conda`` is not already available.
+
 ARC currently targets Python 3.14 through ``environment.yml`` and
 ``pyproject.toml``. Linux and macOS are the supported practical targets. Windows
 is not expected to be smooth unless used through a Linux-like environment.
@@ -80,6 +84,11 @@ Useful Make targets include:
    make install-torchani  # TorchANI support
    make install-ob        # OpenBabel support
    make install-all       # install the full external stack
+
+``make install-rmg`` creates a separate ``rmg_env`` with the conda ``rmg`` 4.0.0
+package (which bundles RMG-database 4.0.0) on Python 3.11, apart from ``arc_env``'s
+Python 3.14. If an ``rmg_env`` on another Python or RMG version already exists, the
+installer stops and prints the command to remove it, rather than changing it in place.
 
 The RMG installer accepts flags:
 

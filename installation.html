@@ -116,6 +116,9 @@
 repository. Install ARC on every machine that will execute ARC itself. Electronic
 structure software can be local to that machine or available on remote servers
 that ARC reaches over SSH.</p>
+<p>Conda itself comes from <a class="reference external" href="https://conda-forge.org/download/">Miniforge</a> or
+<a class="reference external" href="https://www.anaconda.com/docs/getting-started/miniconda/install">Miniconda</a>.
+Install one of them first if <code class="docutils literal notranslate"><span class="pre">conda</span></code> is not already available.</p>
 <p>ARC currently targets Python 3.14 through <code class="docutils literal notranslate"><span class="pre">environment.yml</span></code> and
 <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>. Linux and macOS are the supported practical targets. Windows
 is not expected to be smooth unless used through a Linux-like environment.</p>
@@ -172,6 +175,10 @@ make<span class="w"> </span>install-ob<span class="w">        </span><span class
 make<span class="w"> </span>install-all<span class="w">       </span><span class="c1"># install the full external stack</span>
 </pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install-rmg</span></code> creates a separate <code class="docutils literal notranslate"><span class="pre">rmg_env</span></code> with the conda <code class="docutils literal notranslate"><span class="pre">rmg</span></code> 4.0.0
+package (which bundles RMG-database 4.0.0) on Python 3.11, apart from <code class="docutils literal notranslate"><span class="pre">arc_env</span></code>’s
+Python 3.14. If an <code class="docutils literal notranslate"><span class="pre">rmg_env</span></code> on another Python or RMG version already exists, the
+installer stops and prints the command to remove it, rather than changing it in place.</p>
 <p>The RMG installer accepts flags:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make<span class="w"> </span>install-rmg
 make<span class="w"> </span>install-rmg<span class="w"> </span><span class="nv">RMG_ARGS</span><span class="o">=</span>--source
