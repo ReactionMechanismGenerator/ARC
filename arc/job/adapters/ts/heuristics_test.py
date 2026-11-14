@@ -10,6 +10,7 @@ import itertools
 import os
 import shutil
 import unittest
+from unittest.mock import patch
 
 from arc.common import ARC_TESTING_PATH, almost_equal_coords
 from arc.family import get_reaction_family_products
@@ -31,10 +32,12 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             check_dao_angle,
                                             check_ts_bonds,
                                             h_abstraction,
+                                            hydrolysis,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
 from arc.species.species import ARCSpecies
+from arc.species.vectors import calculate_dihedral_angle, calculate_distance
 from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
 from arc.species.species import check_isomorphism
@@ -177,7 +180,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         H      -0.55632373   -0.82564527   -0.65815446
         H      -1.01755588   -0.12311763    0.91437513
         H       1.10435907    0.67758465    1.10037299""")
-        cls.propionitrile = ARCSpecies(label='nitrile', smiles='CC#N', xyz="""C      -0.48629842    0.00448354    0.00136213
+        cls.acetonitrile = ARCSpecies(label='nitrile', smiles='CC#N', xyz="""C      -0.48629842    0.00448354    0.00136213
         C       0.97554967   -0.00899430   -0.00273253
         N       2.13574353   -0.01969098   -0.00598223
         H      -0.88318669   -0.63966273   -0.78887729
@@ -1194,6 +1197,74 @@ H      -3.45360689    0.15275707   -0.76116277""")
         self.assertTrue(rxn.ts_species.is_ts)
         self.assertEqual(rxn.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('N', 'C', 'C', 'C', 'N', 'H', 'H', 'O', 'H', 'H'))
+
+    def test_heuristics_for_nitrile_hydrolysis_of_a_linear_molecule(self):
+        """
+        Test heuristics for nitrile hydrolysis of HCN, a linear molecule: C#N + H2O <=> OC=N.
+
+        Regression test for a real pilot failure. The dihedral that places the water O is referenced to
+        H, N and C, which lie on one line, so the dihedral was undefined (0/0 = NaN), every optimizer
+        failed, and add_atom_to_xyz_using_internal_coords() raised a bare KeyError: None.
+        The geometries are the pilot's optimized ones.
+        """
+        hcn = ARCSpecies(label='HCN', smiles='C#N', xyz="""C      -0.00000000    0.00000000   -0.49913500
+N       0.00000000   -0.00000000    0.65321600
+H      -0.00000000   -0.00000000   -1.57770000""")
+        water = ARCSpecies(label='H2O', smiles='O', xyz="""O      -0.00000000   -0.00000000    0.11908100
+H      -0.00000000    0.75477000   -0.47632400
+H      -0.00000000   -0.75477000   -0.47632400""")
+        rxn = ARCReaction(r_species=[hcn, water], p_species=[ARCSpecies(label='HN_CHOH', smiles='OC=N')])
+        self.assertEqual(rxn.family, 'nitrile_hydrolysis')
+        xyzs, families, indices = hydrolysis(reaction=rxn)
+        self.assertGreaterEqual(len(xyzs), 1)
+        self.assertEqual(set(families), {'nitrile_hydrolysis'})
+        for xyz in xyzs:
+            self.assertEqual(xyz['symbols'], ('C', 'N', 'H', 'O', 'H', 'H'))
+            self.assertAlmostEqual(calculate_distance(coords=xyz['coords'], atoms=[0, 3]), 1.8, delta=0.05)
+
+    def test_heuristics_reports_a_hydrolysis_value_error(self):
+        """A ValueError from the hydrolysis builder is logged with its reason instead of being dropped silently."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='nitrile', smiles='CC#N', xyz=self.acetonitrile.get_xyz()),
+                                     ARCSpecies(label='H2O', smiles='O', xyz=self.water.get_xyz())],
+                          p_species=[ARCSpecies(label='acid', smiles='CC(O)=N', xyz=self.imidic_acid.get_xyz())])
+        adapter = HeuristicsAdapter(job_type='tsg',
+                                    reactions=[rxn],
+                                    testing=True,
+                                    project='test',
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'heuristics_nitrile'))
+        with patch('arc.job.adapters.ts.heuristics.hydrolysis',
+                   side_effect=ValueError('Could not add a O atom: no optimizer produced a candidate.')), \
+                self.assertLogs('arc', level='WARNING') as captured:
+            adapter.execute_incore()
+        self.assertTrue(any(rxn.label in record.getMessage() and 'no optimizer produced a candidate' in record.getMessage()
+                            for record in captured.records))
+        self.assertEqual(rxn.ts_species.ts_guesses, [])
+
+    def test_heuristics_for_nitrile_hydrolysis_with_a_linear_substituent(self):
+        """
+        Test heuristics for nitrile hydrolysis of acetonitrile: CC#N + H2O <=> CC(O)=N.
+
+        The CH3, C and N reference atoms of the O placement are collinear, so the dihedral is taken against
+        the nearest off-axis atom, an H, rather than against floating-point noise: the guesses are reproducible
+        and their dihedral against that H is the template value.
+        """
+        def run() -> list[dict]:
+            """Generate the TS guesses."""
+            rxn = ARCReaction(r_species=[ARCSpecies(label='nitrile', smiles='CC#N', xyz=self.acetonitrile.get_xyz()),
+                                         ARCSpecies(label='H2O', smiles='O', xyz=self.water.get_xyz())],
+                              p_species=[ARCSpecies(label='acid', smiles='CC(O)=N', xyz=self.imidic_acid.get_xyz())])
+            self.assertEqual(rxn.family, 'nitrile_hydrolysis')
+            return hydrolysis(reaction=rxn)[0]
+
+        xyzs_1, xyzs_2 = run(), run()
+        self.assertGreaterEqual(len(xyzs_1), 1)
+        self.assertEqual(xyzs_1, xyzs_2)
+        for xyz in xyzs_1:
+            self.assertEqual(xyz['symbols'], ('C', 'C', 'N', 'H', 'H', 'H', 'O', 'H', 'H'))
+            # a = the nitrile C (1), b = N (2), e = the methyl C (0), and the water O is atom 6. The three methyl H
+            # atoms are equally near C0, so the reference is the lowest-index one, H3.
+            dihedral = calculate_dihedral_angle(coords=xyz['coords'], torsion=[3, 2, 1, 6])
+            self.assertAlmostEqual(abs((dihedral + 180) % 360 - 180), 174, delta=0.5)
 
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
