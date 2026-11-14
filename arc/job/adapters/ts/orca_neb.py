@@ -7,6 +7,8 @@ https://www.faccts.de/docs/orca/6.1/manual/contents/structurereactivity/neb.html
 
 import datetime
 import os
+import re
+import shlex
 from typing import TYPE_CHECKING
 
 from mako.template import Template
@@ -50,6 +52,21 @@ END
 
 * XYZFILE ${charge} ${multiplicity} ${abs_path}/reactant.xyz
 """
+
+# The files Orca 6 writes for a NEB-TS run that describe the path, as suffixes to the input file's basename.
+# Orca writes them next to its output in the directory it runs in, which a submit script usually removes.
+NEB_PATH_FILE_SUFFIXES = ('_initial_path_trj.xyz',  # The interpolated path, before any NEB iteration.
+                          '_MEP_ALL_trj.xyz',  # The path at every NEB iteration.
+                          '_MEP_trj.xyz',  # The final path.
+                          '_MEP.allxyz',  # The final path, as a multi-structure file with energies.
+                          '.interp',  # The energy profile along the path at every NEB iteration.
+                          '.final.interp',  # The energy profile along the final path.
+                          '_NEB-CI_converged.xyz',  # The converged climbing image.
+                          '_NEB-TS_converged.xyz',  # The TS optimized from the climbing image.
+                          '.NEB.log',  # The NEB optimizer log.
+                          '_reactant.xyz',  # The pre-optimized reactant endpoint.
+                          '_product.xyz',  # The pre-optimized product endpoint.
+                          )
 
 
 class OrcaNEBAdapter(OrcaAdapter):
@@ -320,6 +337,12 @@ class OrcaNEBAdapter(OrcaAdapter):
         job_sh_dict = self.set_job_shell_file_to_upload()  # Set optional job.sh files if relevant.
         if job_sh_dict is not None:
             self.files_to_upload.append(job_sh_dict)
+        # 1.5 Copy the NEB path files back from where Orca runs.
+        if self.execution_type != 'incore' and self.server is not None:
+            script_names = [submit_filenames[servers[self.server]['cluster_soft']]]
+            if job_sh_dict is not None:
+                script_names.append(job_sh_dict['file_name'])
+            self.add_path_file_copy_back(script_names=script_names)
         # 2. ** Download **
         # 2.1. HDF5 file
         if self.iterate_by and os.path.isfile(os.path.join(self.local_path, 'data.hdf5')):
@@ -332,6 +355,72 @@ class OrcaNEBAdapter(OrcaAdapter):
             # The Hessian file is useful when the user would like to project out the rotors
             if self.job_type in ['freq', 'optfreq']:
                 self.files_to_download.append(self.get_file_property_dictionary(file_name='input.hess'))
+
+    @property
+    def path_file_names(self) -> list[str]:
+        """
+        The names of the files Orca writes for this job that describe the NEB path.
+
+        Returns: list[str]
+        """
+        base_name = os.path.splitext(input_filenames[self.job_adapter])[0]
+        return [f'{base_name}{suffix}' for suffix in NEB_PATH_FILE_SUFFIXES]
+
+    def add_path_file_copy_back(self, script_names: list[str]) -> bool:
+        """
+        Make the job copy the NEB path files to the job directory as soon as Orca exits.
+
+        A submit script typically runs Orca in a scratch directory, copies back the files every
+        Orca job writes, and removes the scratch directory, so the files only a NEB writes are
+        lost. Submit scripts differ in how they do this, and the NEB shares the ``orca`` script
+        with all other Orca jobs, so instead of relying on a script to copy these files, the copy
+        is inserted right after the line that runs Orca, in the submit script or in ``job.sh``
+        (where HTCondor runs Orca). That line runs in the directory Orca runs in, wherever it is,
+        and the files are copied to the absolute job directory Orca reads the endpoints from.
+
+        Args:
+            script_names (list[str]): The names of the written scripts in the local job directory
+                                      that may run Orca.
+
+        Returns: bool
+            Whether the copy was inserted.
+        """
+        inserted = False
+        for script_name in script_names:
+            script_path = os.path.join(self.local_path, script_name)
+            if os.path.isfile(script_path):
+                with open(script_path, 'r') as f:
+                    script = f.read()
+                new_script = insert_path_file_copy_back(script=script,
+                                                        input_file_name=input_filenames[self.job_adapter],
+                                                        path_file_names=self.path_file_names,
+                                                        destination=self._get_abs_path())
+                if new_script is not None:
+                    with open(script_path, 'w') as f:
+                        f.write(new_script)
+                    inserted = True
+        if not inserted:
+            logger.warning(f'Could not find the line that runs Orca on {input_filenames[self.job_adapter]} in the '
+                           f'Orca submit script of server {self.server}. The NEB path files of {self.job_name} '
+                           f'are only returned if the submit script copies them to the job directory itself.')
+        return inserted
+
+    def download_files(self) -> None:
+        """
+        Download the relevant files, and the NEB path files Orca wrote.
+
+        Which path files Orca writes depends on how far the NEB got and on its settings, so only
+        the ones found in the remote job directory are downloaded.
+        """
+        super().download_files()
+        if self.testing or self.execution_type == 'incore' or self.server is None or self.server == 'local':
+            return
+        with self._open_or_borrow_ssh() as ssh:
+            remote_file_names = set(ssh.list_file_names(remote_path=self.remote_path))
+            for file_name in self.path_file_names:
+                if file_name in remote_file_names:
+                    ssh.download_file(remote_file_path=os.path.join(self.remote_path, file_name),
+                                      local_file_path=os.path.join(self.local_path, file_name))
 
     def set_additional_file_paths(self) -> None:
         """
@@ -375,6 +464,20 @@ class OrcaNEBAdapter(OrcaAdapter):
         finally:
             self.job_adapter = original_job_adapter # Revert job_adapter
 
+    def set_job_shell_file_to_upload(self) -> dict | None:
+        """
+        Write the server's ``orca_job`` shell file, if it has one, as ``job.sh``.
+
+        Returns:
+            dict | None: A file representation.
+        """
+        original_job_adapter = self.job_adapter
+        self.job_adapter = 'orca'  # The NEB runs with the job shell file of every Orca job.
+        try:
+            return super().set_job_shell_file_to_upload()
+        finally:
+            self.job_adapter = original_job_adapter
+
     def set_input_file_memory(self) -> None:
         """
         Set the input_file_memory attribute.
@@ -402,6 +505,53 @@ class OrcaNEBAdapter(OrcaAdapter):
         Execute a job to the server's queue.
         """
         self.legacy_queue_execution()
+
+
+def insert_path_file_copy_back(script: str,
+                               input_file_name: str,
+                               path_file_names: list[str],
+                               destination: str,
+                               ) -> str | None:
+    """
+    Insert shell commands that copy the NEB path files to ``destination`` after the line that runs Orca.
+
+    The commands run in the directory the line that runs Orca leaves the shell in, which is the
+    directory Orca ran in. They copy each path file found there, and skip the copy if that
+    directory is ``destination`` itself. They never fail, so a script that exits on an error
+    still reaches its own clean up.
+
+    Args:
+        script (str): The content of a submit script or job shell file.
+        input_file_name (str): The name of the Orca input file, e.g., ``input.in``.
+        path_file_names (list[str]): The names of the files to copy.
+        destination (str): The absolute directory to copy the files to.
+
+    Returns: str | None
+        The script with the copy inserted, or ``None`` if no line in it runs Orca on the input file.
+    """
+    orca_call = re.compile(rf'(?:^|[\s/;&|(])orca["\']?\s+["\']?{re.escape(input_file_name)}(?![\w.])')
+    lines = script.splitlines(keepends=True)
+    orca_line_index = None
+    for i, line in enumerate(lines):
+        if not line.lstrip().startswith('#') and orca_call.search(line) is not None:
+            orca_line_index = i
+    if orca_line_index is None:
+        return None
+    indent = re.match(r'[ \t]*', lines[orca_line_index]).group()
+    end_index = orca_line_index
+    while lines[end_index].rstrip().endswith('\\') and end_index + 1 < len(lines):
+        end_index += 1  # The command that runs Orca continues on the next line.
+    quoted_destination = shlex.quote(destination)
+    copy_back = ['# Copy the Orca NEB path files to the job directory (added by ARC).',
+                 f'if ! [ . -ef {quoted_destination} ]; then',
+                 f'    for arc_neb_file in {" ".join(path_file_names)}; do',
+                 f'        if [ -f "$arc_neb_file" ]; then cp -f "$arc_neb_file" {quoted_destination}/ || true; fi',
+                 '    done',
+                 'fi']
+    if not lines[end_index].endswith('\n'):
+        lines[end_index] += '\n'
+    lines[end_index + 1:end_index + 1] = [f'{indent}{line}\n' for line in copy_back]
+    return ''.join(lines)
 
 
 register_job_adapter('orca_neb', OrcaNEBAdapter)

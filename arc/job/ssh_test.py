@@ -452,6 +452,18 @@ class TestTransfersCheckTheConnection(unittest.TestCase):
                                       local_file_path=os.path.join(self.tmp_dir, 'out.txt'))
         self.connect.assert_called_once()
 
+    def test_list_file_names_connects_an_unconnected_client(self):
+        self.client.list_file_names(remote_path='/remote/job')
+        self.connect.assert_called_once()
+        self.client._sftp.listdir.assert_called_once_with('/remote/job')
+
+    def test_list_file_names_of_a_missing_directory_is_empty(self):
+        self.client._sftp, self.client._ssh = MagicMock(), MagicMock()
+        self.client._sftp.listdir.side_effect = IOError('No such file')
+        with patch.object(ssh.logger, 'warning') as warning:
+            self.assertEqual(self.client.list_file_names(remote_path='/remote/missing'), [])
+        warning.assert_called_once()
+
     def test_an_unconnected_client_does_not_unpack_the_connect_result(self):
         """connect() assigns the handles and returns None, so unpacking it raised TypeError."""
         self.client.read_remote_file(remote_file_path='/remote/out.txt')
