@@ -25,7 +25,7 @@ import numpy as np
 
 from arc.checks.common import get_conformer_job_name
 from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans, convert_to_hours
-from arc.exceptions import JobError
+from arc.exceptions import JobError, QueueQueryError
 from arc.imports import local_arc_path, settings, submit_scripts
 from arc.job.local import (change_mode,
                            check_job_status,
@@ -271,7 +271,7 @@ class JobAdapter(ABC):
         else:
             self._dispatch_execution(execution_type)
         if not self.restarted:
-            self._write_initiated_job_to_csv_file()
+            self.write_initiated_job_to_csv_file()
 
     def _open_or_borrow_ssh(self) -> ContextManager[SSHClient]:
         """Return a context manager yielding an :class:`SSHClient` for ``self.server``,
@@ -712,7 +712,7 @@ class JobAdapter(ABC):
         # 3. Set job_id.
         self.job_id = self.job_num if self.execution_type == 'incore' and self.job_id is None else self.job_id
 
-    def _write_initiated_job_to_csv_file(self):
+    def write_initiated_job_to_csv_file(self):
         """
         Write an initiated ARC job into the initiated_jobs.csv file.
         """
@@ -829,6 +829,8 @@ class JobAdapter(ABC):
         job_dict['cpu_cores'] = self.cpu_cores
         if self.dihedrals is not None:
             job_dict['dihedrals'] = self.dihedrals
+        if getattr(self, 'directed_scan_type', None) is not None:
+            job_dict['directed_scan_type'] = self.directed_scan_type
         job_dict['ess_settings'] = self.ess_settings
         if isinstance(self.ess_trsh_methods, list) and self.ess_trsh_methods:
             job_dict['ess_trsh_methods'] = self.ess_trsh_methods
@@ -847,6 +849,10 @@ class JobAdapter(ABC):
         job_dict['job_status'] = self.job_status
         job_dict['level'] = self.level.as_dict() if self.level is not None else None
         job_dict['max_job_time'] = self.max_job_time
+        if self.queue is not None:
+            job_dict['queue'] = self.queue
+        if self.attempted_queues:
+            job_dict['attempted_queues'] = list(self.attempted_queues)
         if self.reactions is not None:
             job_dict['reaction_indices'] = [reaction.index for reaction in self.reactions]
         if self.rotor_index is not None:
@@ -905,14 +911,24 @@ class JobAdapter(ABC):
             logger.debug('deleting job locally...')
             delete_job(job_id=self.job_id)
 
-    def determine_job_status(self):
+    def determine_job_status(self) -> bool:
         """
         Determine the Job's status. Updates self.job_status.
+
+        When the server's queue cannot be read, the job keeps the status it had, so the next poll checks it again.
+
+        Returns:
+            bool: ``False`` if the queue could not be read and the status is unknown, ``True`` otherwise.
         """
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         if self.job_status[0] == 'errored':
-            return
-        self.job_status[0] = self._check_job_server_status() if self.execution_type != 'incore' else 'done'
+            return True
+        try:
+            self.job_status[0] = self._check_job_server_status() if self.execution_type != 'incore' else 'done'
+        except QueueQueryError as e:
+            logger.warning(f'Could not read the status of job {self.job_name} ({self.job_id}) on {self.server}, '
+                           f'keeping it as {self.job_status[0]} until the next check. Got: {e}')
+            return False
         if self.job_status[0] == 'done':
             try:
                 self._check_job_ess_status()  # Populates self.job_status[1], and downloads the output file.
@@ -952,6 +968,7 @@ class JobAdapter(ABC):
                         break
         elif self.job_status[0] == 'running':
             self.job_status[1]['status'] = 'running'
+        return True
 
     def _get_additional_job_info(self):
         """

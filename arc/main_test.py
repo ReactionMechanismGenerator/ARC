@@ -20,6 +20,7 @@ from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
 from arc.main import ARC, process_adaptive_levels
+from arc.scheduler import Scheduler
 from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 from arc.species.species import ARCSpecies
 
@@ -792,8 +793,17 @@ class ReachedTheCleanup(Exception):
 class SchedulerStub(object):
     """Stands in for a Scheduler that has finished running a project's jobs on a server."""
 
-    def __init__(self, remote_project_paths: dict):
+    cleanable_remote_project_paths = Scheduler.cleanable_remote_project_paths
+    keeps_local_check_files = Scheduler.keeps_local_check_files
+
+    def __init__(self,
+                 remote_project_paths: dict,
+                 unreadable_queue_servers: dict | None = None,
+                 stranded_jobs: dict | None = None,
+                 ):
         self.remote_project_paths = remote_project_paths
+        self.unreadable_queue_servers = unreadable_queue_servers or dict()
+        self.stranded_jobs = stranded_jobs or dict()
         self.output = dict()
         self.species_dict = dict()
         self.rxn_list = list()
@@ -951,6 +961,42 @@ class TestCheckFileCleanup(unittest.TestCase):
         self.assertFalse(os.path.isfile(self.remote_check_path))
         self.assertTrue(os.path.isfile(self.remote_output_path))
         self.assertTrue(os.path.isfile(self.other_project_check_path))
+
+    def test_a_run_keeps_the_check_files_of_jobs_left_on_an_unreadable_queue(self):
+        """Jobs left on a remote queue that stayed unreadable keep both their remote and the local check files"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=False)
+        scheduler = SchedulerStub(remote_project_paths=self.remote_project_paths,
+                                  unreadable_queue_servers={self.server: dict()},
+                                  stranded_jobs={'spc': ['opt_a7']})
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch.object(ARC, 'delete_leftovers', side_effect=ReachedTheCleanup):
+            with self.assertRaises(ReachedTheCleanup):
+                arc0.execute()
+        self.assertTrue(os.path.isfile(self.remote_check_path))
+        self.assertTrue(os.path.isfile(self.local_check_path))
+
+    def test_a_run_keeps_the_local_check_file_a_held_back_job_names(self):
+        """A job held back before its server was recorded as unreadable still reads its checkpoint from calcs"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=False)
+        scheduler = SchedulerStub(remote_project_paths=self.remote_project_paths,
+                                  stranded_jobs={'spc': ['sp_a8']})
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch.object(ARC, 'delete_leftovers', side_effect=ReachedTheCleanup):
+            with self.assertRaises(ReachedTheCleanup):
+                arc0.execute()
+        self.assertTrue(os.path.isfile(self.local_check_path))
+
+    def test_a_run_keeps_the_local_check_files_when_the_local_queue_was_unreadable(self):
+        """Jobs left running on the local queue run from the project's calcs directory"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=False)
+        scheduler = SchedulerStub(remote_project_paths=self.remote_project_paths,
+                                  unreadable_queue_servers={'local': dict()})
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch.object(ARC, 'delete_leftovers', side_effect=ReachedTheCleanup):
+            with self.assertRaises(ReachedTheCleanup):
+                arc0.execute()
+        self.assertTrue(os.path.isfile(self.local_check_path))
+        self.assertFalse(os.path.isfile(self.remote_check_path))
 
     def tearDown(self):
         """

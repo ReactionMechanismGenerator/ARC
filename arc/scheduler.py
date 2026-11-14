@@ -10,7 +10,10 @@ import glob
 import itertools
 import os
 import pprint
+import re
+import shlex
 import shutil
+import sys
 import time
 
 import numpy as np
@@ -20,7 +23,8 @@ import arc.parser.parser as parser
 from arc import plotter
 from arc.checks.common import get_conformer_job_name, get_i_from_job_name, is_conformer_job, sum_time_delta
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
-from arc.common import (extremum_list,
+from arc.common import (ARC_PATH,
+                        extremum_list,
                         get_angle_in_180_range,
                         get_logger,
                         get_number_with_ordinal_indicator,
@@ -33,6 +37,7 @@ from arc.common import (extremum_list,
                         )
 from arc.exceptions import (DependencyError,
                             InputError,
+                            QueueQueryError,
                             SchedulerError,
                             SpeciesError,
                             TrshError,
@@ -53,6 +58,7 @@ from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
 from arc.job.pipe.pipe_run import rotor_scan_1d_task_id
 from arc.job.pipe.pipe_state import ROTOR_SCAN_1D_TASK_FAMILY, TaskState, read_task_state
+from arc.job.queue_status import queue_outage_limit
 from arc.job.ssh_pool import borrow_ssh_client
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
@@ -132,6 +138,9 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
                                 'reference followed by MRCI or CASPT2) is what this species calls for; '
 
 MAX_S_SQUARED_DEVIATION = 0.1
+
+QUEUE_QUERY_COOLDOWN = 60  # Seconds a server whose queue query failed is not queried again.
+QUEUE_OUTAGE_WARNING_INTERVAL = 600  # Seconds between two warnings about the same unreadable queue.
 
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
@@ -393,6 +402,12 @@ class Scheduler(object):
         self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
         self.job_dict = dict()
         self.server_job_ids = list()
+        self.queue_query_failures = dict()
+        self.queue_clock = time.monotonic
+        self.queue_outage_limit = queue_outage_limit(settings.get('queue_outage_limit_hrs'))
+        self.unreadable_queue_servers = dict()
+        self.stranded_jobs = dict()
+        self.unsubmitted_jobs = list()
         self.completed_incore_jobs = list()
         self.running_jobs = dict()
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
@@ -428,12 +443,21 @@ class Scheduler(object):
             if 'running_jobs' in self.restart_dict:
                 self.restore_running_jobs()
         self.initialize_output_dict()
+        for species_output in self.output.values():
+            if isinstance(species_output, dict):
+                species_output.pop('unreadable_queue', None)  # A restart polls those jobs again.
 
         self.restart_path = os.path.join(self.project_directory, 'restart.yml')
         self.running_jobs_snapshot_path = os.path.join(self.project_directory, 'running_jobs.yml')
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self._last_status_payload: dict | None = None
         self.servers = list()
+        for jobs in self.job_dict.values():  # Restored jobs: poll their servers so an outage there is bounded.
+            for typed_jobs in jobs.values():
+                for job in typed_jobs.values() if isinstance(typed_jobs, dict) else list():
+                    if getattr(job, 'execution_type', 'incore') != 'incore' and job.server is not None \
+                            and job.server not in self.servers:
+                        self.servers.append(job.server)
         self.remote_project_paths = dict()
         self.composite_method = composite_method
         self.conformer_opt_level = conformer_opt_level
@@ -649,6 +673,7 @@ class Scheduler(object):
 
         self.save_restart = True
         self.timer = True
+        self.warn_on_piped_queue_commands()
         if not self.testing:
             self.schedule_jobs()
 
@@ -708,6 +733,26 @@ class Scheduler(object):
                             f'{pipe_root}; not spawning a standalone scan for it on restart.')
                 return True
         return False
+
+    def warn_on_piped_queue_commands(self) -> None:
+        """
+        Log one warning per server this run uses whose ``check_status_command`` contains a pipe.
+        A pipeline exits with its last command's status, so a filter such as ``grep`` exits non-zero
+        on an empty queue, which ARC reads as an unreadable queue.
+        """
+        servers = list(self.servers)
+        for server_list in self.ess_settings.values():
+            for server in [server_list] if isinstance(server_list, str) else server_list:
+                if server not in servers:
+                    servers.append(server)
+        for server in servers:
+            cluster_soft = settings['servers'].get(server, dict()).get('cluster_soft')
+            command = settings['check_status_command'].get(cluster_soft) or ''
+            if re.search(r'(?<!\|)\|(?!\|)', command):
+                logger.warning(f'The check_status_command of server {server} contains a pipe: {command}\n'
+                               f'An empty queue would read as an outage, so finished jobs there would stay '
+                               f'running until queue_outage_limit_hrs and then be stranded. Use a bare queue '
+                               f'command, with no filter.')
 
     def has_pending_pipe_work(self, label: str) -> bool:
         """
@@ -804,6 +849,7 @@ class Scheduler(object):
         release does, and one that never arrived releases the held jobs unchanged.
         """
         self.release_held_stability_work()
+        self.submit_unsubmitted_jobs()
         for species in self.species_dict.values():
             if species.initial_xyz is None and species.final_xyz is None and species.conformers \
                     and any([e is not None for e in species.conformer_energies]):
@@ -820,6 +866,7 @@ class Scheduler(object):
                 or self._pending_pipe_sp or self._pending_pipe_freq \
                 or self._pending_pipe_irc or self._pending_pipe_conf_sp:
             self.timer = True
+            self.strand_unreadable_queue_jobs()
             for label in self.unique_species_labels:
                 if label in self.output and self.output[label]['convergence'] is False:
                     # Skip unconverged species.
@@ -852,14 +899,13 @@ class Scheduler(object):
                                     # below so it can call determine_most_likely_ts_conformer
                                     # on the conformers that already succeeded — otherwise ARC
                                     # mistakenly concludes no TS guess converged.
-                                    if any(is_conformer_job(j)
-                                           for j in self.running_jobs.get(label, [])):
+                                    if any(is_conformer_job(j) for j in self.unfinished_job_names(label)):
                                         break
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
                             # Note: end_job already removed the current job from running_jobs,
                             # so we don't need to exclude job_name.
-                            for spec_jobs in job_list:
+                            for spec_jobs in self.unfinished_job_names(label):
                                 if 'conf_opt' in spec_jobs or 'conf_sp' in spec_jobs:
                                     break
                             else:
@@ -888,7 +934,7 @@ class Scheduler(object):
                                     rxn.ts_species.process_completed_tsg_queue_jobs(path=job.local_path_to_output_file)
                             # Just terminated a tsg job.
                             # Are there additional tsg jobs currently running for this species?
-                            for spec_jobs in job_list:
+                            for spec_jobs in self.unfinished_job_names(label):
                                 if 'tsg' in spec_jobs:
                                     break
                             else:
@@ -951,6 +997,10 @@ class Scheduler(object):
                         job = self.job_dict[label]['directed_scan'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                            if not successful_server_termination and job_name in self.running_jobs.get(label, list()):
+                                # Its status is unknown and it is still tracked: keep its count and its files.
+                                self.timer = False
+                                break
                             if successful_server_termination:
                                 self.check_directed_scan_job(label=label, job=job)
                                 if 'cont' in job.directed_scan_type and job.job_status[1]['status'] == 'done':
@@ -1277,7 +1327,9 @@ class Scheduler(object):
                 self.servers.append(job.server)
             if job.remote_project_path and not self.remote_project_paths.get(job.server):
                 self.remote_project_paths[job.server] = job.remote_project_path
-        self.check_max_simultaneous_jobs_limit(job.server)
+        if job.execution_type != 'incore' and not self.check_max_simultaneous_jobs_limit(job.server):
+            self.refuse_job_on_unreadable_queue(label=label, job=job)
+            return
         job.execute()
         self.warn_on_collapsible_unrestricted_reference(label=label, job=job)
         self.save_restart_dict()
@@ -1365,7 +1417,8 @@ class Scheduler(object):
         """
         if job.job_status[0] != 'done' or job.job_status[1]['status'] != 'done':
             try:
-                job.determine_job_status()  # Also downloads the output file.
+                if not job.determine_job_status():  # Also downloads the output file.
+                    return False  # The queue could not be read, the job stays running for the next poll.
             except IOError:
                 if job.job_type not in ['orbitals', 'stability']:
                     logger.warning(f'Tried to determine status of job {job.job_name}, '
@@ -4599,6 +4652,11 @@ class Scheduler(object):
         Args:
             label (str): The species label.
         """
+        if self.stranded_jobs.get(label):
+            logger.info(f'Not judging the convergence of {label}: its jobs {self.stranded_jobs[label]} were left on an '
+                        f'unreadable queue, and a restart picks them up.')
+            self.save_restart_dict()
+            return
         all_converged = True
         if label in self.output and not self.output[label]['convergence']:
             # A TS that failed the E0 or the IRC check should stay unconverged even if all jobs succeeded.
@@ -4667,17 +4725,184 @@ class Scheduler(object):
         """
         Check job status on a specific server or on all active servers, get a list of relevant running job IDs.
 
+        A server whose queue cannot be read reports the queue jobs ARC tracks there as still running, so none of
+        them is ended on a failed query, and it is not queried again for ``QUEUE_QUERY_COOLDOWN`` seconds. The
+        outage is timed from its first failure, and warned about at most every ``QUEUE_OUTAGE_WARNING_INTERVAL``
+        seconds. A server past the outage limit is not queried at all (see ``strand_unreadable_queue_jobs()``).
+
         Args:
             specific_server (str, optional): The server to check. If ``None``, check all active servers.
         """
         self.server_job_ids = list()
         for server in self.servers:
-            if specific_server is None or server == specific_server:
+            if specific_server is not None and server != specific_server or server in self.unreadable_queue_servers:
+                continue
+            failure, now = self.queue_query_failures.get(server), self.queue_clock()
+            if failure is not None and now - failure['last_attempt'] < QUEUE_QUERY_COOLDOWN:
+                logger.debug(f'The queue on {server} failed to answer recently, keeping its tracked jobs running.')
+                self.server_job_ids.extend(tracked_queue_job_ids(self.job_dict, self.running_jobs, server))
+                continue
+            try:
                 if server != 'local':
                     with borrow_ssh_client(server) as ssh:
-                        self.server_job_ids.extend(ssh.check_running_jobs_ids())
+                        server_job_ids = ssh.check_running_jobs_ids()
                 else:
-                    self.server_job_ids.extend(check_running_jobs_ids())
+                    server_job_ids = check_running_jobs_ids(
+                        missing_command_reads_empty=not tracked_queue_job_ids(self.job_dict, self.running_jobs, server))
+            except QueueQueryError as e:
+                failure = failure or outage_record(now)
+                failure.update(last_attempt=now, stderr=e.stderr, exit_status=e.exit_status)
+                self.queue_query_failures[server] = failure
+                tracked = tracked_queue_job_ids(self.job_dict, self.running_jobs, server)
+                elapsed, left = now - failure['since'], max(self.queue_outage_limit - (now - failure['since']), 0)
+                message = (f'Could not read the job queue on {server} for {format_duration(elapsed)} '
+                           f'(exit status {e.exit_status}: {e.stderr}). ARC keeps the {len(tracked)} jobs it tracks '
+                           f'there as running (and holds new submissions there if max_simultaneous_jobs is set); '
+                           f'it stops polling {server} in '
+                           f'{format_duration(left)} (queue_outage_limit_hrs).')
+                if failure['last_warning'] is None or now - failure['last_warning'] >= QUEUE_OUTAGE_WARNING_INTERVAL:
+                    logger.warning(message)
+                    failure['last_warning'] = now
+                else:
+                    logger.debug(message)
+                self.server_job_ids.extend(tracked)
+                continue
+            self.queue_query_failures.pop(server, None)
+            self.server_job_ids.extend(server_job_ids)
+
+    def strand_unreadable_queue_jobs(self):
+        """
+        Leave the jobs of every server whose queue stayed unreadable past the outage limit for a restart.
+
+        Their jobs are neither ended nor deleted. They move from ``running_jobs`` to ``stranded_jobs``, which
+        restart.yml still lists as running, so the run can finish its other work and a restart polls them again.
+        The server is not queried any more, one ERROR names it, and status.yml records it per species.
+        """
+        for server, failure in list(self.queue_query_failures.items()):
+            elapsed = self.queue_clock() - failure['since']
+            if server in self.unreadable_queue_servers or elapsed < self.queue_outage_limit:
+                continue
+            jobs = tracked_queue_jobs(self.job_dict, self.running_jobs, server)
+            for label, job_name, _ in jobs:
+                self.running_jobs[label].remove(job_name)
+                self.stranded_jobs.setdefault(label, list()).append(job_name)
+            job_ids = [job_id for _, _, job_id in jobs]
+            record = {'server': server, 'job_ids': job_ids, 'since': failure['since_wall'],
+                      'last_stderr': failure['stderr'], 'exit_status': failure['exit_status']}
+            self.unreadable_queue_servers[server] = record
+            self.queue_query_failures.pop(server)
+            logger.error(f'The job queue on {server} has been unreadable for {format_duration(elapsed)}, past the '
+                         f'{format_duration(self.queue_outage_limit)} limit (queue_outage_limit_hrs). ARC stops '
+                         f'polling {server}. No job was ended or deleted: the {len(job_ids)} jobs ARC tracked there '
+                         f'{job_ids} stay listed as running in {self.restart_path}. Once the queue answers, restart '
+                         f'ARC to pick them up: {self.restart_command()}\n'
+                         f'Last error (exit status {failure["exit_status"]}): {failure["stderr"]}')
+            for label in {label for label, _, _ in jobs}:
+                if label in self.output:
+                    names = [job_name for job_label, job_name, _ in jobs if job_label == label]
+                    self.output[label].setdefault('unreadable_queue', dict())[server] = \
+                        dict(record, job_ids=[job_id for job_label, _, job_id in jobs if job_label == label])
+                    self.output[label]['errors'] += f'The queue on {server} was unreadable past the outage limit, ' \
+                                                    f'jobs {names} were left running for a restart; '
+            self.save_restart_dict()
+
+    def unfinished_job_names(self, label: str) -> list[str]:
+        """
+        Get the names of a species' jobs that have not finished: those ARC polls, and those left on an unreadable queue.
+
+        A family of jobs (e.g., conformers or TS guesses) is done only when none of its members is in this list.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            list[str]: The job names.
+        """
+        return list(self.running_jobs.get(label, list())) + list(self.stranded_jobs.get(label, list()))
+
+    def keeps_local_check_files(self) -> bool:
+        """
+        Whether the local check files must outlive the run.
+
+        A job left on an unreadable queue, or held back from one, may read a check file from the local ``calcs``
+        tree after a restart, e.g., as the initial guess its restart uploads.
+
+        Returns:
+            bool: ``True`` if any queue was left unreadable or any job was left for a restart.
+        """
+        return bool(self.unreadable_queue_servers or self.stranded_jobs)
+
+    def restart_command(self) -> str:
+        """
+        Get the command that restarts this project from its restart file.
+
+        Returns:
+            str: The command.
+        """
+        return shlex.join([sys.executable, os.path.join(ARC_PATH, 'ARC.py'), self.restart_path])
+
+    def cleanable_remote_project_paths(self) -> dict:
+        """
+        Get the remote project paths whose check files may be deleted once the run ends.
+
+        A server whose queue was unreadable past the outage limit still runs the jobs ARC left there for a restart,
+        so its check files are kept.
+
+        Returns:
+            dict: Keys are server names, values are the respective remote paths of the project's directory.
+        """
+        return {server: path for server, path in self.remote_project_paths.items()
+                if server not in self.unreadable_queue_servers}
+
+    def refuse_job_on_unreadable_queue(self, label: str, job: JobAdapter):
+        """
+        Hold back a job that was about to be submitted to a server whose queue stayed unreadable past the outage limit.
+
+        ARC could never track it there, so it is not submitted. It moves from ``running_jobs`` to ``stranded_jobs``
+        and stays in restart.yml with no job ID, and a restart submits it (see ``submit_unsubmitted_jobs()``).
+        Re-deriving it on a restart is not enough: its caller may already have latched a flag such as
+        ``ts_conf_spawned``. A new job still takes its row in initiated_jobs.csv, since that row count numbers and
+        names the next job; a restored job is ``restarted`` and already has its row.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The job that was not submitted.
+        """
+        if not job.restarted:
+            job.write_initiated_job_to_csv_file()
+            job.restarted = True
+        if job.job_name in self.running_jobs.get(label, list()):
+            self.running_jobs[label].remove(job.job_name)
+        self.stranded_jobs.setdefault(label, list()).append(job.job_name)
+        logger.error(f'Did not submit job {job.job_name} of {label} to {job.server}: its queue has been unreadable '
+                     f'past the outage limit, so ARC could not track the job. Nothing was submitted; the job stays '
+                     f'in {self.restart_path} and a restart submits it: {self.restart_command()}')
+        if label in self.output:
+            self.output[label]['errors'] += f'Job {job.job_name} was not submitted to {job.server}, ' \
+                                            f'whose queue was unreadable; '
+        self.save_restart_dict()
+
+    def submit_unsubmitted_jobs(self):
+        """
+        Submit the queue jobs restored from restart.yml that were never submitted, as ``run_job()`` would.
+
+        These are jobs held back on a server whose queue was unreadable past the outage limit
+        (see ``refuse_job_on_unreadable_queue()``). Each is submitted once, or held back again.
+        """
+        while self.unsubmitted_jobs:
+            label, job = self.unsubmitted_jobs.pop(0)
+            if job.server is not None:
+                if job.server not in self.servers:
+                    self.servers.append(job.server)
+                if job.remote_project_path and not self.remote_project_paths.get(job.server):
+                    self.remote_project_paths[job.server] = job.remote_project_path
+            if not self.check_max_simultaneous_jobs_limit(job.server):
+                self.refuse_job_on_unreadable_queue(label=label, job=job)
+                continue
+            logger.info(f'Submitting job {job.job_name} of {label}, which the previous run held back.')
+            job.execute()
+            self.warn_on_collapsible_unrestricted_reference(label=label, job=job)
+            self.save_restart_dict()
 
     def get_completed_incore_jobs(self):
         """
@@ -5291,6 +5516,10 @@ class Scheduler(object):
                     job = job_factory(**job_description)
                     if isinstance(restricted_used, (bool, list)):
                         job.restricted_used = restricted_used
+                    unsubmitted = job.execution_type != 'incore' and job.job_id is None \
+                        and job.job_status[0] == 'initializing'
+                    if unsubmitted:
+                        self.unsubmitted_jobs.append((spc_label, job))
                     if spc_label not in self.job_dict.keys():
                         self.job_dict[spc_label] = dict()
                     if ('conformer' not in job_description or job_description['conformer'] is None) \
@@ -5318,7 +5547,8 @@ class Scheduler(object):
                         if 'tsg' not in self.job_dict[spc_label].keys():
                             self.job_dict[spc_label]['tsg'] = dict()
                         self.job_dict[spc_label]['tsg'][int(job_description['tsg'])] = job
-                    self.server_job_ids.append(job.job_id)
+                    if not unsubmitted:
+                        self.server_job_ids.append(job.job_id)
             if self.job_dict:
                 content = 'Restarting ARC, tracking the following jobs spawned in a previous session:'
                 for spc_label in self.job_dict.keys():
@@ -5346,8 +5576,13 @@ class Scheduler(object):
             self.restart_dict['output_multi_spc'] = self.output_multi_spc
             self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
             self.restart_dict['running_jobs'] = dict()
+            # Jobs left on an unreadable queue are still running there, so a restart must poll them again.
+            running_jobs = {label: list(job_names) + self.stranded_jobs.get(label, list())
+                            for label, job_names in self.running_jobs.items()}
+            running_jobs.update({label: list(job_names) for label, job_names in self.stranded_jobs.items()
+                                 if label not in running_jobs})
             for spc in self.species_dict.values():
-                if spc.label in self.running_jobs:
+                if spc.label in running_jobs:
                     # A conformer or TS-guess name in running_jobs whose job object is not in job_dict
                     # cannot be serialized or polled. Raising here would kill the run over one untracked
                     # job, so warn and drop it from both the restart file and running_jobs.
@@ -5358,19 +5593,21 @@ class Scheduler(object):
                             if job is None:
                                 logger.warning(f'Job {job_name} of species {spc.label} is listed as running '
                                                f'but has no {key} entry in job_dict; dropping it.')
-                                self.running_jobs[spc.label].remove(job_name)
+                                for tracked in (self.running_jobs, self.stranded_jobs):
+                                    if job_name in tracked.get(spc.label, list()):
+                                        tracked[spc.label].remove(job_name)
                                 continue
                             dicts.append(job.as_dict())
                         return dicts
                     self.restart_dict['running_jobs'][spc.label] = \
                         [self.job_dict[spc.label][job_name.rsplit('_', 1)[0]][job_name].as_dict()
-                         for job_name in self.running_jobs[spc.label]
+                         for job_name in running_jobs[spc.label]
                          if not is_conformer_job(job_name) and 'tsg' not in job_name] \
-                        + _conformer_job_dicts('conf_opt', [n for n in self.running_jobs[spc.label]
+                        + _conformer_job_dicts('conf_opt', [n for n in running_jobs[spc.label]
                                                             if 'conf_opt' in n]) \
-                        + _conformer_job_dicts('conf_sp', [n for n in self.running_jobs[spc.label]
+                        + _conformer_job_dicts('conf_sp', [n for n in running_jobs[spc.label]
                                                            if 'conf_sp' in n]) \
-                        + _conformer_job_dicts('tsg', [n for n in self.running_jobs[spc.label] if 'tsg' in n])
+                        + _conformer_job_dicts('tsg', [n for n in running_jobs[spc.label] if 'tsg' in n])
             save_yaml_file(path=self.restart_path, content=self.restart_dict)    
     
     def make_reaction_labels_info_file(self):
@@ -5614,22 +5851,110 @@ class Scheduler(object):
         content[label] = self.species_dict[label].e_elect
         save_yaml_file(path=path, content=content)
 
-    def check_max_simultaneous_jobs_limit(self, server: str | None):
+    def check_max_simultaneous_jobs_limit(self, server: str | None) -> bool:
         """
         Check if the number of running jobs on the server is not above the set server limit.
 
+        While the server's queue cannot be read the count is unknown, as it holds only the jobs ARC tracks there,
+        so ARC waits for the queue to answer before submitting more, but no longer than the outage limit.
+
         Args:
             server (str): The server name.
+
+        Returns:
+            bool: Whether a job may be submitted to the server. ``False`` once its queue was unreadable past the limit.
         """
+        if server is not None and server in self.unreadable_queue_servers:
+            return False
         if server is not None and 'max_simultaneous_jobs' in servers_dict[server]:
             continue_lopping = True
             while continue_lopping:
                 self.get_server_job_ids(specific_server=server)
-                if len(self.server_job_ids) >= servers_dict[server]['max_simultaneous_jobs']:
+                failure = self.queue_query_failures.get(server)
+                if failure is not None and self.queue_clock() - failure['since'] >= self.queue_outage_limit:
+                    self.get_server_job_ids()
+                    return False
+                if failure is not None or len(self.server_job_ids) >= servers_dict[server]['max_simultaneous_jobs']:
                     time.sleep(90)
                 else:
                     continue_lopping = False
             self.get_server_job_ids()
+        return True
+
+
+def tracked_queue_jobs(job_dict: dict,
+                       running_jobs: dict,
+                       server: str,
+                       ) -> list[tuple[str, str, int | str]]:
+    """
+    Get the queue jobs ARC tracks as running on a server.
+
+    Args:
+        job_dict (dict): The scheduler's job objects, keyed by label, then job type, then job name or index.
+        running_jobs (dict): The names of the running jobs, keyed by label.
+        server (str): The server name.
+
+    Returns:
+        list[tuple[str, str, int | str]]: The (label, job name, job ID) of each job. Incore jobs and jobs without an
+                                          ID are left out.
+    """
+    jobs = list()
+    for label, job_names in running_jobs.items():
+        for typed_jobs in job_dict.get(label, dict()).values():
+            if not isinstance(typed_jobs, dict):
+                continue
+            for job in typed_jobs.values():
+                if getattr(job, 'job_name', None) in job_names and job.server == server \
+                        and job.execution_type != 'incore' and job.job_id is not None:
+                    jobs.append((label, job.job_name, job.job_id))
+    return jobs
+
+
+def tracked_queue_job_ids(job_dict: dict,
+                          running_jobs: dict,
+                          server: str,
+                          ) -> list:
+    """
+    Get the IDs of the queue jobs ARC tracks as running on a server.
+
+    Args:
+        job_dict (dict): The scheduler's job objects, keyed by label, then job type, then job name or index.
+        running_jobs (dict): The names of the running jobs, keyed by label.
+        server (str): The server name.
+
+    Returns:
+        list: The job IDs. Incore jobs and jobs without an ID are left out.
+    """
+    return [job_id for _, _, job_id in tracked_queue_jobs(job_dict, running_jobs, server)]
+
+
+def outage_record(now: float) -> dict:
+    """
+    Start the record of a server's queue outage.
+
+    Args:
+        now (float): The scheduler's queue clock reading at the outage's first failure.
+
+    Returns:
+        dict: The record: when the outage began (clock and wall time), the last attempt and warning, and the last
+              error.
+    """
+    return {'since': now, 'since_wall': datetime.datetime.now().isoformat(timespec='seconds'), 'last_attempt': now,
+            'last_warning': None, 'stderr': '', 'exit_status': None}
+
+
+def format_duration(seconds: float) -> str:
+    """
+    Format a duration in whole hours and minutes.
+
+    Args:
+        seconds (float): The duration in seconds.
+
+    Returns:
+        str: E.g., ``'3 h 49 min'`` or ``'21 min'``.
+    """
+    hours, minutes = divmod(int(max(seconds, 0) // 60), 60)
+    return f'{hours} h {minutes} min' if hours else f'{minutes} min'
 
 
 def species_has_freq(species_output_dict: dict,

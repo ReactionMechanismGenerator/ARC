@@ -143,6 +143,27 @@ class ServerError(Exception):
     pass
 
 
+class QueueQueryError(ServerError):
+    """
+    An exception raised when a server's queue status command keeps failing, so which jobs run there is unknown.
+
+    Args:
+        message (str): The error message.
+        server (str, optional): The server whose queue could not be read.
+        stderr (str, optional): The stderr of the last attempt, joined into one line.
+        exit_status (int, optional): The exit status of the last attempt, ``None`` where none was returned.
+    """
+
+    def __init__(self,
+                 message: str,
+                 server: str | None = None,
+                 stderr: str = '',
+                 exit_status: int | None = None,
+                 ):
+        super().__init__(message)
+        self.server, self.stderr, self.exit_status = server, stderr, exit_status
+
+
 class SettingsError(Exception):
     """
     An exception raised when dealing with settings.

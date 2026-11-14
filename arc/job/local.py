@@ -12,8 +12,9 @@ import subprocess
 import time
 
 from arc.common import get_logger
-from arc.exceptions import SettingsError
+from arc.exceptions import QueueQueryError, SettingsError
 from arc.imports import settings
+from arc.job.queue_status import run_queue_query
 from arc.job.ssh import SUBMISSION_CAP_WAIT_SECONDS, check_job_status_in_stdout, submission_cap_reached
 
 
@@ -30,7 +31,8 @@ def execute_command(command: str | list[str],
                     shell: bool = True,
                     no_fail: bool = False,
                     executable: str | None = None,
-                    ) -> tuple[list | None, list | None]:
+                    return_exit_status: bool = False,
+                    ) -> tuple[list | None, list | None] | tuple[list | None, list | None, int | None]:
     """
     Execute a command.
 
@@ -44,10 +46,12 @@ def execute_command(command: str | list[str],
         no_fail (bool, optional): If ``True`` then ARC will not crash if an error is encountered.
         executable (str, optional): Select a specific shell to run with, e.g., '/bin/bash'.
                                     Default shell of the subprocess command is '/bin/sh'.
+        return_exit_status (bool, optional): Whether to also return the command's exit status.
 
-    Returns: tuple[list, list]:
+    Returns: tuple[list, list] | tuple[list, list, int]:
         - A list of lines of standard output stream.
         - A list of lines of the standard error stream.
+        - The exit status, only if ``return_exit_status`` is ``True``.
     """
     error = None
     if not isinstance(command, list):
@@ -61,12 +65,15 @@ def execute_command(command: str | list[str],
                 completed_process = subprocess.run(command, shell=shell, capture_output=True)
             else:
                 completed_process = subprocess.run(command, shell=shell, capture_output=True, executable=executable)
+            if return_exit_status:
+                return (_format_stdout(completed_process.stdout), _format_stdout(completed_process.stderr),
+                        completed_process.returncode)
             return _format_stdout(completed_process.stdout), _format_stdout(completed_process.stderr)
         except subprocess.CalledProcessError as e:
             error = e  # Store the error so we can raise a SettingsError if needed.
             if no_fail:
                 _output_command_error_message(command, e, logger.warning)
-                return None, None
+                return (None, None, None) if return_exit_status else (None, None)
             else:
                 _output_command_error_message(command, e, logger.error)
                 logger.error(f'ARC is sleeping for {sleep_time * i} seconds before retrying.\nPlease check whether '
@@ -151,10 +158,14 @@ def check_job_status(job_id: int) -> str:
         3268.0 R 10 28161 a2726 18
         3269.0 R 10 28161 a2727 17
         3270.0 P 10 28161 a2728 23
+
+    Raises:
+        QueueQueryError: If the queue status command keeps failing, so the job's status is unknown.
     """
     server = 'local'
     cmd = check_status_command[servers[server]['cluster_soft']]
-    stdout = execute_command(cmd)[0]
+    # ARC submitted this job with that queue command, so a missing command (127) is a failure here, not "no jobs".
+    stdout = run_queue_query(lambda: execute_command(cmd, return_exit_status=True), server=server)
     return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=server)
 
 
@@ -167,7 +178,11 @@ def delete_job(job_id: int | str):
     if not success:
         logger.warning(f'Detected possible error when trying to delete job {job_id}. Checking to see if the job is '
                        f'still running...')
-        running_jobs = check_running_jobs_ids()
+        try:
+            running_jobs = check_running_jobs_ids(missing_command_reads_empty=False)
+        except QueueQueryError as e:
+            logger.warning(f'ARC could not verify whether job {job_id} is still running: {e}')
+            return
         if job_id in running_jobs:
             logger.error(f'Job {job_id} was scheduled for deletion, but the deletion command has appeared to errored. '
                          f'The job is still running.')
@@ -176,9 +191,16 @@ def delete_job(job_id: int | str):
             logger.info(f'Job {job_id} is no longer running.')
 
 
-def check_running_jobs_ids() -> list[str]:
+def check_running_jobs_ids(missing_command_reads_empty: bool = True) -> list[str]:
     """
     Check which jobs are still running on the server for this user.
+
+    Args:
+        missing_command_reads_empty (bool, optional): Whether a missing queue command (exit status 127) reads as no
+                                                      jobs. Pass ``False`` while ARC tracks jobs on the local queue.
+
+    Raises:
+        QueueQueryError: If the queue status command keeps failing, so which jobs run is unknown.
 
     Returns:
         list[str]: List of job IDs.
@@ -191,7 +213,8 @@ def check_running_jobs_ids() -> list[str]:
     if cluster_soft not in ['slurm', 'oge', 'sge', 'pbs', 'htcondor']:
         raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
     cmd = check_status_command[servers['local']['cluster_soft']]
-    stdout = execute_command(cmd)[0]
+    stdout = run_queue_query(lambda: execute_command(cmd, return_exit_status=True), server='local',
+                             missing_command_reads_empty=missing_command_reads_empty)
     running_job_ids = parse_running_jobs_ids(stdout, cluster_soft=cluster_soft)
     return running_job_ids
 
@@ -413,12 +436,16 @@ def delete_all_local_arc_jobs(jobs: list[str | int] | None = None) -> None:
 
     Args:
         jobs (list[str | int], optional): Specific ARC job IDs to delete.
+
+    Raises:
+        QueueQueryError: If the queue status command keeps failing, so the jobs to delete are unknown.
     """
     server = 'local'
     if server in servers:
         print('\nDeleting all ARC jobs from local server...')
         cmd = check_status_command[servers[server]['cluster_soft']]
-        stdout = execute_command(cmd, no_fail=True)[0]
+        stdout = run_queue_query(lambda: execute_command(cmd, no_fail=True, return_exit_status=True), server=server,
+                                 missing_command_reads_empty=True)
         for status_line in stdout:
             s = re.search(r' a\d+', status_line)
             if s is not None:
