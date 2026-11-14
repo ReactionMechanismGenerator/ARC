@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING
 
 import arc.parser.parser as parser
 from arc import plotter
-from arc.checks.common import get_conformer_job_name, get_i_from_job_name, is_conformer_job, sum_time_delta
+from arc.checks.common import (get_conformer_job_name, get_i_from_job_name, is_conformer_job, record_ts_check_warning,
+                               sum_time_delta)
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
@@ -4241,10 +4242,23 @@ class Scheduler(object):
         """
         Spawn additional jobs after IRC has converged.
 
+        An IRC whose output gives no geometry (e.g., a node fault left the output empty or cut it mid-write,
+        so the parser returns None or raises) is a failed IRC:
+        it is recorded as such and spawns nothing, so the TS's IRC stays unverified and the run continues.
+        The geometry is read before any state changes, so the failed path never counts as one of the two IRCs.
+
         Args:
             label (str): The species label.
             job (JobAdapter): The IRC job object.
         """
+        try:
+            xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+        except Exception as e:
+            self.record_failed_irc(label=label, job=job, parse_error=f'{type(e).__name__}: {e}')
+            return
+        if xyz is None:
+            self.record_failed_irc(label=label, job=job)
+            return
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
         self.output[label]['paths'].setdefault('irc_directions', list()).append(
             getattr(job, 'irc_direction', None)
@@ -4259,7 +4273,7 @@ class Scheduler(object):
                                                                   'rxns', label, 'irc_traj.gjf'))
         irc_label = self.add_label_to_unique_species_labels(label=f'IRC_{label}_{index}')
         irc_spc = ARCSpecies(label=irc_label,
-                             xyz=parser.parse_geometry(log_file_path=job.local_path_to_output_file),
+                             xyz=xyz,
                              irc_label=label,
                              compute_thermo=False,
                              multiplicity=job.species[0].multiplicity,
@@ -4278,6 +4292,40 @@ class Scheduler(object):
                      job_type='opt',
                      fine=False,
                      )
+
+    def record_failed_irc(self,
+                          label: str,
+                          job: JobAdapter,
+                          parse_error: str | None = None,
+                          ) -> None:
+        """
+        Record an IRC job whose output gave no geometry as a failed IRC of its TS.
+
+        Nothing is spawned and no IRC path is stored, so the IRC check of the TS is never performed
+        and its verdict stays ``None`` (not verified). The cause goes to the TS's ``errors`` output entry
+        and to its ``ts_checks['warnings']``, which output.yml publishes. The job's files are left on disk.
+
+        Args:
+            label (str): The TS species label.
+            job (JobAdapter): The failed IRC job object.
+            parse_error (str, optional): The error the geometry parser raised, if it raised one.
+        """
+        ess_status = job.job_status[1] if isinstance(job.job_status, list) and len(job.job_status) > 1 else dict()
+        reason = ess_status.get('error') or 'no geometry could be parsed from its output'
+        if ess_status.get('keywords'):
+            reason += f' (keywords: {ess_status["keywords"]})'
+        if parse_error:
+            reason += f'; parsing raised {parse_error}'
+        direction = getattr(job, 'irc_direction', None)
+        logger.error(f'IRC job {job.job_name} ({direction}) of TS {label} gave no geometry in '
+                     f'{job.local_path_to_output_file}: {reason}. The IRC of {label} is not verified; '
+                     f'continuing with the other jobs.')
+        self.output[label]['errors'] += f'Error: IRC job {job.job_name} ({direction}) failed: {reason}; '
+        ts_species = self.species_dict[label]
+        if isinstance(ts_species.ts_checks, dict):
+            ts_species.ts_checks.setdefault('warnings', '')
+            record_ts_check_warning(ts_species, f'IRC not verified: IRC job {job.job_name} ({direction}) failed: {reason}; ')
+        self.save_restart_dict()
 
     def add_label_to_unique_species_labels(self, label: str) -> str:
         """
