@@ -19,6 +19,7 @@ import uuid
 
 import yaml
 
+from arc.checks.common import get_ts_validation_caution
 from arc.common import (
     ARC_PATH,
     NUMBER_BY_SYMBOL,
@@ -2852,4 +2853,7 @@ def _rxn_to_dict(rxn) -> dict:
     long_kin_desc = getattr(rxn, 'long_kinetic_description', None)
     if long_kin_desc:
         rxn_dict['long_kinetic_description'] = long_kin_desc
+    ts_validation_caution = get_ts_validation_caution(getattr(rxn, 'ts_species', None))
+    if ts_validation_caution is not None:
+        rxn_dict['ts_validation_caution'] = ts_validation_caution
     return rxn_dict

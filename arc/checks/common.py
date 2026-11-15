@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
 CONFORMER_JOB_TYPES = ('conf_opt', 'conf_sp')
 TS_IRC_FAILED_MARKER = 'INVALID TS (failed IRC validation)'
+TS_IRC_NOT_CONFIRMED_MARKER = 'IRC NOT CONFIRMED (a requested IRC job failed)'
+IRC_JOB_FAILED_WARNING = 'IRC not verified: '
 
 
 def get_conformer_job_name(job_type: str, i: int) -> str:
@@ -165,3 +167,28 @@ def get_ts_validation_comment(ts_species: 'ARCSpecies | None') -> str | None:
     if other_failed_checks:
         comment += f' Additional TS checks that failed: {", ".join(other_failed_checks)}.'
     return comment
+
+
+def get_ts_validation_caution(ts_species: 'ARCSpecies | None') -> str | None:
+    """
+    Get a non-blocking caution for a rate whose TS was not confirmed by its requested IRC.
+
+    A TS gets the caution when its IRC verdict is ``None`` and its ``ts_checks['warnings']`` record that
+    one of its IRC jobs failed (the warning ``record_failed_irc()`` of the Scheduler writes, which starts
+    with ``IRC_JOB_FAILED_WARNING``). Such a rate is computed and kept, but the TS was not shown to connect
+    the reactants and products of its reaction. A TS whose IRC passed or failed gets no caution;
+    a failed IRC is reported by ``get_ts_validation_comment()`` instead.
+
+    Args:
+        ts_species (ARCSpecies, optional): The TS species of the reaction the rate was computed for.
+
+    Returns:
+        str | None: The caution, starting with ``TS_IRC_NOT_CONFIRMED_MARKER``, or ``None``.
+    """
+    ts_checks = getattr(ts_species, 'ts_checks', None) or dict()
+    warnings = ts_checks.get('warnings', None)
+    if ts_checks.get('IRC', None) is not None or not isinstance(warnings, str) \
+            or IRC_JOB_FAILED_WARNING not in warnings:
+        return None
+    return f'{TS_IRC_NOT_CONFIRMED_MARKER}: an IRC job of this TS failed, so the TS was not confirmed to connect ' \
+           f'the reactants and products of this reaction. The cause is in the ts_checks warnings of the TS.'

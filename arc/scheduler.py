@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 
 import arc.parser.parser as parser
 from arc import plotter
-from arc.checks.common import (get_conformer_job_name, get_i_from_job_name, is_conformer_job, record_ts_check_warning,
-                               sum_time_delta)
+from arc.checks.common import (IRC_JOB_FAILED_WARNING, get_conformer_job_name, get_i_from_job_name, is_conformer_job,
+                               record_ts_check_warning, sum_time_delta)
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
@@ -4335,7 +4335,7 @@ class Scheduler(object):
         ts_species = self.species_dict[label]
         if isinstance(ts_species.ts_checks, dict):
             ts_species.ts_checks.setdefault('warnings', '')
-            record_ts_check_warning(ts_species, f'IRC not verified: {job_description} failed: {reason}; ')
+            record_ts_check_warning(ts_species, f'{IRC_JOB_FAILED_WARNING}{job_description} failed: {reason}; ')
         self.save_restart_dict()
 
     def add_label_to_unique_species_labels(self, label: str) -> str:

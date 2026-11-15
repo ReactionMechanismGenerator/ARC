@@ -17,6 +17,7 @@ from types import SimpleNamespace
 
 
 import arc.parser.parser as parser
+from arc.checks.common import TS_IRC_NOT_CONFIRMED_MARKER, get_ts_validation_comment
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.exceptions import DependencyError, ReactionError
@@ -1648,6 +1649,23 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertEqual(ts_entry['irc_logs'], list())
         self.assertIn(job.job_name, ts_entry['ts_checks']['warnings'])
         self.assertIn('Log file could not be read', ts_entry['ts_checks']['warnings'])
+
+    def test_a_rate_from_a_ts_whose_irc_failed_carries_a_caution_in_output_yml(self):
+        """Test that the reaction of a TS with a failed IRC job carries a machine-readable caution in output.yml"""
+        sched, label, job = self._irc_scheduler()
+        self._write_irc_output(job)
+        self._set_ess_status_from_output(job)
+        with patch.object(sched, 'run_job'):
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        ts_species = sched.species_dict[label]
+        self.assertIsNone(get_ts_validation_comment(ts_species))
+        rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O', ts_label=label)
+        rxn.ts_species = ts_species
+        write_output_yml(project='project_test_irc', project_directory=self.project_directory,
+                         species_dict=sched.species_dict, reactions=[rxn], output_dict=sched.output,
+                         compute_thermo=False)
+        document = read_yaml_file(os.path.join(self.project_directory, 'output', 'output.yml'))
+        self.assertTrue(document['reactions'][0]['ts_validation_caution'].startswith(TS_IRC_NOT_CONFIRMED_MARKER))
 
     def test_an_irc_with_a_parsable_output_spawns_its_species_and_opt(self):
         """

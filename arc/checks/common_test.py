@@ -107,5 +107,25 @@ class TestChecks(unittest.TestCase):
         self.assertIn('E0', comment)
 
 
+    def test_get_ts_validation_caution(self):
+        """Test that only a TS whose IRC is unverified because an IRC job failed gets a caution"""
+        self.assertIsNone(common.get_ts_validation_caution(None))
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        self.assertIsNone(common.get_ts_validation_caution(ts))
+        ts.ts_checks['warnings'] = 'NMD check could not run; '
+        self.assertIsNone(common.get_ts_validation_caution(ts))
+        ts.ts_checks['warnings'] += f'{common.IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
+        caution = common.get_ts_validation_caution(ts)
+        self.assertTrue(caution.startswith(common.TS_IRC_NOT_CONFIRMED_MARKER))
+        self.assertIsNone(common.get_ts_validation_comment(ts))
+        for verdict in [True, False]:
+            with self.subTest(irc=verdict):
+                ts.ts_checks['IRC'] = verdict
+                self.assertIsNone(common.get_ts_validation_caution(ts))
+        ts.ts_checks['warnings'] = None
+        ts.ts_checks['IRC'] = None
+        self.assertIsNone(common.get_ts_validation_caution(ts))
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

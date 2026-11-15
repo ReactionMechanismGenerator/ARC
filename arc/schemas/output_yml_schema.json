@@ -2050,6 +2050,11 @@
           "description": "Omitted (key absent, never null) when the reaction carries no description.",
           "type": "string",
           "minLength": 1
+        },
+        "ts_validation_caution": {
+          "description": "Non-blocking caution: an IRC job of the TS failed, so the TS was not confirmed by IRC. Starts with 'IRC NOT CONFIRMED (a requested IRC job failed)'. Omitted (key absent, never null) otherwise.",
+          "type": "string",
+          "pattern": "^IRC NOT CONFIRMED \\(a requested IRC job failed\\)"
         }
       },
       "additionalProperties": false

@@ -25,6 +25,7 @@ from unittest.mock import patch
 from jsonschema import Draft202012Validator
 from jsonschema.validators import validator_for
 
+from arc.checks.common import IRC_JOB_FAILED_WARNING, get_ts_validation_caution
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file
 from arc.constants import E_h_kJmol
 from arc.level import Level
@@ -1190,6 +1191,16 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         """Reaction records are closed too; drift there is a contract break."""
         self.document['reactions'][0]['brand_new_reaction_field'] = 'x'
         self.assert_invalid(self.document, 'brand_new_reaction_field')
+
+    def test_a_reaction_ts_validation_caution_must_start_with_its_marker(self):
+        """The caution of a rate whose TS lost its IRC is found by its marker, so the schema pins it."""
+        self.assertNotIn('ts_validation_caution', self.document['reactions'][0])
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.ts_checks['warnings'] = f'{IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
+        self.document['reactions'][0]['ts_validation_caution'] = get_ts_validation_caution(ts)
+        self.assert_valid(self.document)
+        self.document['reactions'][0]['ts_validation_caution'] = 'IRC not confirmed'
+        self.assert_invalid(self.document, 'ts_validation_caution')
 
     def test_unknown_correction_total_unit_is_rejected(self):
         """The unit vocabulary is pinned: an unlisted unit is a silent rescale."""
