@@ -3943,6 +3943,15 @@ class TestTSGuess(unittest.TestCase):
         self.assertFalse(self.tsg2.almost_equal_tsgs(self.tsg3))
 
 
+    def test_add_method_source(self):
+        """Test adding a method to a TS guess's method_sources"""
+        tsg = TSGuess(method='KinBot', success=True)
+        self.assertEqual(tsg.method_sources, ['kinbot'])
+        tsg.add_method_source('GoFlow')
+        tsg.add_method_source('goflow')
+        tsg.add_method_source('Linear (w=0.35, 1)')
+        self.assertEqual(tsg.method_sources, ['kinbot', 'goflow', 'linear (w=0.35, 1)'])
+
 TS0_CONF_0 = """O       1.29503100   -0.10783400    0.00000100
 H       1.38087500    0.85868300   -0.00000100
 C      -1.20395400    0.00755100    0.00000100

@@ -18,6 +18,7 @@ from arc.exceptions import DependencyError
 import arc.job.adapters.ts.kinbot_ts as kinbot_ts
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
+from arc.species.species import TSGuess
 
 
 def kinbot_list_to_coords(structure: list) -> list:
@@ -186,6 +187,20 @@ class TestKinBotAdapter(unittest.TestCase):
         self.assertFalse(ts_guesses[1].success)
         self.assertEqual(ts_guesses[1].method_direction, 'R')
         self.assertEqual(ts_guesses[1].method_index, 1)
+
+    def test_parse_kinbot_results_duplicate_credits_kinbot_in_method_sources(self):
+        """A KinBot result that matches an existing guess adds 'kinbot' to that guess's method_sources."""
+        adapter = self.get_adapter(dir_name='tst5')
+        self.rxn_1.ts_species = ARCSpecies(label='TS', is_ts=True, charge=0, multiplicity=2)
+        existing = TSGuess(method='GoFlow', method_direction='F', index=0, success=True,
+                           xyz=self.rxn_1.r_species[0].get_xyz())
+        self.rxn_1.ts_species.ts_guesses.append(existing)
+        species_to_explore = {'F': self.rxn_1.r_species[0], 'R': self.rxn_1.p_species[0]}
+        coords_f = [list(coord) for coord in self.rxn_1.r_species[0].get_xyz()['coords']]
+        results = [{'direction': 'F', 'success': True, 'coords': coords_f, 'execution_time': '0:00:00.05'}]
+        adapter.parse_kinbot_results(rxn=self.rxn_1, results=results, species_to_explore=species_to_explore)
+        self.assertEqual(len(self.rxn_1.ts_species.ts_guesses), 1)
+        self.assertEqual(self.rxn_1.ts_species.ts_guesses[0].method_sources, ['goflow', 'kinbot'])
 
     def test_uma_refinement_flag(self):
         """Test that the UMA settings cross the boundary and that refined guesses are marked in the method."""

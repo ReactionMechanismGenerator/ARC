@@ -284,6 +284,7 @@ class HeuristicsAdapter(JobAdapter):
                     if almost_equal_coords(xyz, other_tsg.initial_xyz):
                         if 'heuristics' not in other_tsg.method.lower():
                             other_tsg.method += ' and Heuristics'
+                        other_tsg.add_method_source('Heuristics')
                         unique = False
                         break
                 if unique:

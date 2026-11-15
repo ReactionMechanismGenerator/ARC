@@ -296,6 +296,21 @@ class TestProcessGoFlowTSG(unittest.TestCase):
         self.assertIn('goflow', merged_method)
 
 
+    def test_consolidation_credits_goflow_in_method_sources(self):
+        """A GoFlow sample that matches an existing guess adds 'goflow' to that guess's method_sources."""
+        ts_xyz_str = ('C 0.000 0.000 0.000\nH 0.000 0.000 1.100\n'
+                      'H 0.000 1.000 -0.400\nH 0.900 -0.500 -0.400\n'
+                      'H -0.900 -0.500 -0.400')
+        seed = TSGuess(method='KinBot', method_direction='F', method_index=0, success=True,
+                       xyz=str_to_xyz(ts_xyz_str))
+        self.ts_species.ts_guesses.append(seed)
+        twin = {'method': 'GoFlow', 'method_direction': 'F', 'method_index': 0, 'success': True,
+                'initial_xyz': ts_xyz_str}
+        self.assertFalse(process_goflow_tsg(twin, self.tmpdir, self.ts_species))
+        self.assertEqual(self.ts_species.ts_guesses[0].method_sources, ['kinbot', 'goflow'])
+        self.assertFalse(process_goflow_tsg(twin, self.tmpdir, self.ts_species))
+        self.assertEqual(self.ts_species.ts_guesses[0].method_sources, ['kinbot', 'goflow'])
+
 class TestBuildAtomMappedSmiles(unittest.TestCase):
     """
     `build_atom_mapped_smiles(rxn, side)` produces SMILES with every atom

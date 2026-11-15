@@ -280,6 +280,7 @@ class AutoTSTAdapter(JobAdapter):
                                     if other_tsg.success and almost_equal_coords(xyz, other_tsg.initial_xyz):
                                         if 'autotst' not in other_tsg.method.lower():
                                             other_tsg.method += ' and AutoTST'
+                                        other_tsg.add_method_source('AutoTST')
                                         unique = False
                                         break
                                 if unique and not colliding_atoms(xyz):

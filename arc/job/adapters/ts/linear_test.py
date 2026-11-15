@@ -5243,6 +5243,24 @@ H       0.94413319   -0.68860760   -0.83098698"""
         self.assertEqual(rxn_1.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'))
 
+    def test_linear_duplicate_credits_linear_in_method_sources(self):
+        """A Linear guess that matches an existing guess adds its Linear label to that guess's method_sources."""
+        rxn_1 = _make_rxn_1()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        kwargs = dict(job_type='tsg', reactions=[rxn_1], testing=True, project='test',
+                      project_directory=project_directory)
+        LinearAdapter(**kwargs).execute_incore()
+        n_guesses = len(rxn_1.ts_species.ts_guesses)
+        self.assertGreater(n_guesses, 0)
+        for tsg in rxn_1.ts_species.ts_guesses:
+            tsg.method, tsg.method_sources = 'GoFlow', ['goflow']
+        LinearAdapter(**kwargs).execute_incore()
+        self.assertEqual(len(rxn_1.ts_species.ts_guesses), n_guesses)
+        for tsg in rxn_1.ts_species.ts_guesses:
+            self.assertEqual(tsg.method_sources[0], 'goflow')
+            self.assertTrue(any(source.startswith('linear (w=') for source in tsg.method_sources[1:]))
+
     def test_linear_adapter_2(self):
         """Test the LinearAdapter class for intra_NO2_ONO_conversion"""
         rxn_2 = _make_rxn_2()

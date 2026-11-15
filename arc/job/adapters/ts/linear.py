@@ -920,6 +920,7 @@ class LinearAdapter(JobAdapter):
                             if almost_equal_coords(xyz, other_tsg.initial_xyz):
                                 if 'linear' not in other_tsg.method.lower():
                                     other_tsg.method += f' and Linear (w={w:.2f}, {xyz_i})'
+                                other_tsg.add_method_source(f'Linear (w={w:.2f}, {xyz_i})')
                                 unique = False
                                 break
 

@@ -428,6 +428,7 @@ def process_tsg(direction: str,
             if other_tsg.success and almost_equal_coords(ts_xyz, other_tsg.initial_xyz):
                 if 'gcn' not in other_tsg.method.lower():
                     other_tsg.method += ' and GCN'
+                other_tsg.add_method_source('GCN')
                 unique = False
                 break
         if unique:

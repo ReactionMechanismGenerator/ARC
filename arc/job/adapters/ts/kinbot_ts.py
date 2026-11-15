@@ -396,6 +396,7 @@ class KinBotAdapter(JobAdapter):
                         if other_tsg.success and almost_equal_coords(xyz, other_tsg.initial_xyz):
                             if 'kinbot' not in other_tsg.method.lower():
                                 other_tsg.method += ' and KinBot'
+                            other_tsg.add_method_source(method)
                             unique = False
                             break
                     if unique:

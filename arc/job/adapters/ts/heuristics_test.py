@@ -552,6 +552,21 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                    (2.063927797423041, -2.798718649055232e-07, -1.7157539600187732e-07))}
         self.assertTrue(almost_equal_coords(rxn4.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
 
+    def test_heuristics_duplicate_credits_heuristics_in_method_sources(self):
+        """A heuristics guess that matches an existing guess adds 'heuristics' to that guess's method_sources."""
+        rxn = ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh])
+        kwargs = dict(job_type='tsg', reactions=[rxn], testing=True, project='test',
+                      project_directory=os.path.join(self.scratch_dir, 'heuristics'), dihedral_increment=10)
+        HeuristicsAdapter(**kwargs).execute_incore()
+        n_guesses = len(rxn.ts_species.ts_guesses)
+        self.assertGreater(n_guesses, 0)
+        for tsg in rxn.ts_species.ts_guesses:
+            tsg.method, tsg.method_sources = 'GoFlow', ['goflow']
+        HeuristicsAdapter(**kwargs).execute_incore()
+        self.assertEqual(len(rxn.ts_species.ts_guesses), n_guesses)
+        for tsg in rxn.ts_species.ts_guesses:
+            self.assertEqual(tsg.method_sources, ['goflow', 'heuristics'])
+
     def test_h_abstraction_with_empty_product_dicts(self):
         """
         Test that h_abstraction() does not raise and returns an empty list of TS guesses
