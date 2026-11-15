@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from arc.common import get_logger
+from arc.common import ARC_INPUT_SCHEMA_VERSION, VERSION, get_logger
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.job.adapters.gaussian import GaussianAdapter
@@ -72,7 +72,9 @@ class TestARC(unittest.TestCase):
         self.assertIn("'C-C': 1", long_thermo_description)
         self.assertIn("'C-H': 6", long_thermo_description)
         # mol.atoms are not tested since all id's (including connectivity) changes depending on how the test is run.
-        expected_dict = {'arkane_level_of_theory': {'basis': 'cc-pvdz-f12',
+        expected_dict = {'schema_version': ARC_INPUT_SCHEMA_VERSION,
+                         'arc_version': VERSION,
+                         'arkane_level_of_theory': {'basis': 'cc-pvdz-f12',
                                                     'method': 'ccsd(t)-f12',
                                                     'method_type': 'wavefunction',
                                                     'software': 'molpro'},
