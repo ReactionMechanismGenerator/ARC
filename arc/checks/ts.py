@@ -579,8 +579,10 @@ def check_irc_species_and_rxn(xyz_1: dict,
 
     if not any(m is None for m in r_mols + p_mols):
         charge = rxn.charge or 0
-        frags_1 = _perceive_irc_fragments_from_bond_orders(log_path_1) or _perceive_irc_fragments(xyz_1, charge=charge)
-        frags_2 = _perceive_irc_fragments_from_bond_orders(log_path_2) or _perceive_irc_fragments(xyz_2, charge=charge)
+        frags_1 = _perceive_irc_fragments_from_bond_orders(log_path_1, charge=charge) \
+            or _perceive_irc_fragments(xyz_1, charge=charge)
+        frags_2 = _perceive_irc_fragments_from_bond_orders(log_path_2, charge=charge) \
+            or _perceive_irc_fragments(xyz_2, charge=charge)
         if frags_1 is not None and frags_2 is not None:
             if (_match_fragments_to_species(frags_1, r_mols)
                     and _match_fragments_to_species(frags_2, p_mols)) \

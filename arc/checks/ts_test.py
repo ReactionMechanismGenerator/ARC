@@ -1008,6 +1008,24 @@ class TestTSChecks(unittest.TestCase):
                                      )
         self.assertFalse(other_rxn.ts_species.ts_checks['IRC'])
 
+    def test_check_irc_species_and_rxn_perceives_bond_orders_with_the_reaction_charge(self):
+        """Test that check_irc_species_and_rxn() perceives the IRC endpoints from bond orders at the reaction's charge."""
+        log_path_1 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_mayer_orca.out')
+        log_path_2 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_isomer_mayer_orca.out')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='OCc1ccon1')],
+                          p_species=[ARCSpecies(label='P', smiles='OCC1=NC1C=O')])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        rxn.charge = 1
+        with patch('arc.checks.ts._perceive_irc_fragments_from_bond_orders', return_value=None) as perceive:
+            ts.check_irc_species_and_rxn(xyz_1=parse_geometry(log_path_1),
+                                         xyz_2=parse_geometry(log_path_2),
+                                         rxn=rxn,
+                                         log_path_1=log_path_1,
+                                         log_path_2=log_path_2,
+                                         )
+        self.assertEqual([(c.args[0], c.kwargs.get('charge')) for c in perceive.call_args_list],
+                         [(log_path_1, 1), (log_path_2, 1)])
+
     def test_perceive_irc_fragments_from_bond_orders(self):
         """Test the _perceive_irc_fragments_from_bond_orders() function."""
         log_path = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_mayer_orca.out')
