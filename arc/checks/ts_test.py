@@ -22,6 +22,8 @@ from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
 from arc.reaction import ARCReaction
 from arc.species.converter import xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess
+from arc.checks.common import NMD_ACCEPTED_ON_IRC_WARNING, NMD_NEAR_MISS_KEY
+from arc.checks.nmd_test import make_c2h5cl_rxn, make_retroene_rxn
 
 
 class TestTSChecks(unittest.TestCase):
@@ -569,9 +571,9 @@ class TestTSChecks(unittest.TestCase):
 
         def record_amplitude(reaction, job, amplitude):
             forwarded.append(amplitude)
-            return None
+            return None, None
 
-        with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', side_effect=record_amplitude):
+        with patch('arc.checks.ts.evaluate_ts_normal_mode_displacement', side_effect=record_amplitude):
             for requested in requested_amplitudes:
                 rxn = self.make_c3h7_intra_h_rxn()
                 rxn.ts_species.populate_ts_checks()
@@ -601,11 +603,11 @@ class TestTSChecks(unittest.TestCase):
         self.assertIsNone(rxn.ts_species.ts_checks['NMD'])
 
         def fail_the_check(reaction, job, amplitude):
-            return False
+            return False, None
 
         rxn = self.make_c3h7_intra_h_rxn()
         rxn.ts_species.populate_ts_checks()
-        with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', side_effect=fail_the_check):
+        with patch('arc.checks.ts.evaluate_ts_normal_mode_displacement', side_effect=fail_the_check):
             ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=True)
         self.assertIs(rxn.ts_species.ts_checks['NMD'], True)
 
@@ -630,6 +632,111 @@ class TestTSChecks(unittest.TestCase):
             ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(rxn, self.job1)
         self.assertEqual([key for key, rotor in rxn.ts_species.rotors_dict.items()
                           if 'pivTS' in rotor['invalidation_reason']], list())
+
+    def test_check_normal_mode_displacement_stores_a_near_miss_record_beside_a_false_verdict(self):
+        """Test that a near-miss NMD failure keeps NMD False and stores the record, and that a re-check clears it."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq',
+                                                           'TS_C2H5Cl_guess7_near_miss.log')
+        rxn = make_c2h5cl_rxn()
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=self.job1.local_path_to_output_file)
+        rxn.ts_species.populate_ts_checks()
+        ts.check_normal_mode_displacement(reaction=rxn, job=self.job1)
+        self.assertIs(rxn.ts_species.ts_checks['NMD'], False)
+        record = rxn.ts_species.ts_checks[NMD_NEAR_MISS_KEY]
+        self.assertEqual([bond['symbols'] for bond in record['sub_gate_bonds']], ['C-Cl'])
+
+        with patch('arc.checks.ts.evaluate_ts_normal_mode_displacement', return_value=(False, None)):
+            ts.check_normal_mode_displacement(reaction=rxn, job=self.job1)
+        self.assertIs(rxn.ts_species.ts_checks['NMD'], False)
+        self.assertNotIn(NMD_NEAR_MISS_KEY, rxn.ts_species.ts_checks)
+
+    def test_check_normal_mode_displacement_drops_a_previous_irc_acceptance_warning(self):
+        """Test that re-evaluating NMD drops the IRC acceptance warning of the previous evaluation and keeps the
+        other warnings, whatever the new verdict."""
+        rxn = make_c2h5cl_rxn()
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=os.path.join(ARC_TESTING_PATH, 'freq',
+                                                                             'TS_C2H5Cl_four_centre_near_miss.log'))
+        record = {'amplitude': 0.9, 'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': 4.55}]}
+        for result in [(True, None), (False, None), (False, record)]:
+            rxn.ts_species.populate_ts_checks()
+            rxn.ts_species.ts_checks['warnings'] = f'Other; {NMD_ACCEPTED_ON_IRC_WARNING}C-Cl (1, 2) 4.55%; '
+            with patch('arc.checks.ts.evaluate_ts_normal_mode_displacement', return_value=result):
+                ts.check_normal_mode_displacement(reaction=rxn, job=self.job1)
+            self.assertEqual(rxn.ts_species.ts_checks['warnings'], 'Other; ', msg=f'{result}')
+
+    def test_ts_passed_checks_ignores_the_near_miss_record(self):
+        """Test that the near-miss record is not treated as a TS check by ts_passed_checks()."""
+        spc = ARCSpecies(label='TS', is_ts=True)
+        spc.populate_ts_checks()
+        for key in ['E0', 'e_elect', 'IRC', 'freq', 'NMD']:
+            spc.ts_checks[key] = True
+        for record in [None, {}, {'sub_gate_bonds': []}]:
+            spc.ts_checks[NMD_NEAR_MISS_KEY] = record
+            self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']), msg=f'record {record}')
+
+    def test_check_irc_species_and_rxn_on_the_errored_irc_ends_of_a_saddle_and_a_wrong_saddle(self):
+        """Test the IRC verdict on the last points of DeltaX-stopped IRCs: True for the saddle, False for TS4."""
+        saddle_forward = parse_geometry(log_file_path=os.path.join(ARC_TESTING_PATH, 'irc',
+                                                                   'TS_C2H5Cl_irc_deltax.log'))
+        saddle_reverse = """C      -2.18178800   -0.44220100   -0.00001600
+                            C      -1.84077300    0.84545100   -0.00020600
+                            Cl      1.59698300   -0.15466400    0.00006200
+                            H       0.30228200   -0.16319900    0.00090300
+                            H      -2.33091500   -0.99631900    0.93191200
+                            H      -2.32821200   -0.99723900   -0.93170200
+                            H      -1.69676800    1.40108800    0.93088000
+                            H      -1.69380200    1.39998300   -0.93149600"""
+        rxn = make_c2h5cl_rxn()
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True,
+                                    xyz=os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5Cl_four_centre_near_miss.log'))
+        rxn.ts_species.populate_ts_checks()
+        ts.check_irc_species_and_rxn(xyz_1=saddle_forward, xyz_2=saddle_reverse, rxn=rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], True)
+
+        ts4_forward = """C      -1.19635600   -1.31138600    0.88921100
+                         C      -0.73971800   -0.80869400   -0.48250200
+                         C      -1.06754100    0.67396500   -0.71629500
+                         C      -0.18420100    1.64990500    0.09470400
+                         C       1.09835100    1.05786400    0.61496600
+                         C       1.55114200   -0.14543700    0.25618000
+                         C       0.76815100   -1.02427800   -0.68360300
+                         H      -0.92868600   -2.37047300    1.02859400
+                         H      -2.28836700   -1.22426400    0.99703800
+                         H      -1.27658400   -1.39236000   -1.24944600
+                         H      -0.94456500    0.88073100   -1.79170700
+                         H      -2.12950400    0.86160700   -0.49131000
+                         H       0.06525700    2.52374900   -0.53069000
+                         H      -0.74631400    2.06774600    0.94685800
+                         H      -0.73020100   -0.74137100    1.70663400
+                         H       1.67497200    1.66995500    1.31514900
+                         H       2.49874700   -0.51474200    0.66152900
+                         H       1.03899200   -0.79284100   -1.73053300
+                         H       1.02907400   -2.08409700   -0.52965400"""
+        ts4_reverse = """C      -1.80406400   -1.35359500    0.95557900
+                         C      -1.33206900   -0.80055500   -0.16213500
+                         C      -1.38723900    0.67481000   -0.44807800
+                         C      -0.06361600    1.46212800   -0.24290400
+                         C       0.92884800    0.84899300    0.74381600
+                         C       1.79995500   -0.25385700    0.20447500
+                         C       1.88651600   -0.66886900   -1.05960400
+                         H      -1.73107400   -2.42824800    1.14068300
+                         H      -2.28634200   -0.74734400    1.73005900
+                         H      -0.85000200   -1.44239100   -0.90679000
+                         H      -1.73740900    0.83676700   -1.47876700
+                         H      -2.15654200    1.11074000    0.20714300
+                         H       0.44455400    1.61474100   -1.21012300
+                         H      -0.32781900    2.47448000    0.10494500
+                         H       0.39587300    0.47057400    1.63378300
+                         H       1.59952500    1.63949500    1.12533200
+                         H       2.44047700   -0.73930400    0.95097200
+                         H       1.27964800   -0.23998900   -1.86186500
+                         H       2.57450300   -1.46873500   -1.34331200"""
+        rxn = make_retroene_rxn()
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True,
+                                    xyz=os.path.join(ARC_TESTING_PATH, 'freq', 'TS_retroene_wrong_a1577.log'))
+        rxn.ts_species.populate_ts_checks()
+        ts.check_irc_species_and_rxn(xyz_1=ts4_forward, xyz_2=ts4_reverse, rxn=rxn)
+        self.assertIs(rxn.ts_species.ts_checks['IRC'], False)
 
     def test_ts_passed_checks_nmd(self):
         """Test that ts_passed_checks() treats the three-valued NMD check correctly."""

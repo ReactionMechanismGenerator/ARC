@@ -286,7 +286,9 @@ class ARCSpecies(object):
         chosen_ts (int): The TSGuess index corresponding to the chosen TS conformer used for optimization.
         chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
-        ts_checks (dict[str, bool]): Checks that a TS species went through.
+        ts_checks (dict[str, bool]): Checks that a TS species went through. A TS whose NMD check failed only on
+                                     the 5% reactive-bond gate also carries its near-miss record under
+                                     ``'NMD_near_miss'``.
         rxn_zone_atom_indices (list[int]): 0-indexed atom indices of the active reaction zone.
         ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its
                                 TSGuess objects.

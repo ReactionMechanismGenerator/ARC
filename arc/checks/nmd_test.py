@@ -15,7 +15,8 @@ from unittest.mock import patch
 import numpy as np
 
 import arc.checks.nmd as nmd
-from arc.checks.ts import check_ts
+from arc.checks.common import NMD_NEAR_MISS_KEY
+from arc.checks.ts import check_normal_mode_displacement, check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, get_element_mass
 from arc.job.factory import job_factory
 from arc.level import Level
@@ -26,6 +27,86 @@ from arc.scheduler import Scheduler
 from arc.species.species import ARCSpecies
 from arc.species.converter import check_xyz_dict, xyz_to_np_array
 from arc.species.vectors import get_vector_length, rotate_vector
+
+
+C2H5CL_XYZ = """C      -1.60806700   -0.35450900    0.00000700
+C      -0.47885600    0.65358100    0.00000600
+Cl      1.13159900   -0.15086600   -0.00000100
+H      -1.56320100   -0.99682200    0.89093200
+H      -2.57517400    0.17202800    0.00032400
+H      -1.56358800   -0.99632000   -0.89130300
+H      -0.50684300    1.29572900    0.89010200
+H      -0.50684000    1.29568100   -0.89012500"""
+C2H4_XYZ = """C       0.00000000    0.00000000    0.66496000
+C       0.00000000    0.00000000   -0.66496000
+H       0.00000000    0.93095500    1.23885200
+H      -0.00000000   -0.93095500    1.23885200
+H       0.00000000    0.93095500   -1.23885200
+H      -0.00000000   -0.93095500   -1.23885200"""
+HCL_XYZ = """Cl      0.00000000    0.00000000    0.07138300
+H       0.00000000    0.00000000   -1.21350700"""
+HEPTA16DIENE_XYZ = """C       3.34521400   -0.39769500   -0.26251900
+C       2.23557200   -0.23075200    0.45652800
+C       0.83446300   -0.30149200   -0.07462500
+C       0.06776200    1.01341000    0.09528800
+C      -1.38053500    0.94560800   -0.40554300
+C      -2.23814900    0.00086200    0.38561400
+C      -2.86030600   -1.07342000   -0.09939800
+H       4.33716200   -0.32639700    0.19061200
+H       3.30239100   -0.61721700   -1.33442300
+H       2.32916700   -0.00892500    1.52787500
+H       0.28593800   -1.10398400    0.44958900
+H       0.85203600   -0.58348900   -1.14109700
+H       0.60115100    1.81402000   -0.44272200
+H       0.07259000    1.30643800    1.16053000
+H      -1.39345200    0.65698900   -1.47013100
+H      -1.81847600    1.95703800   -0.34804200
+H      -2.33649600    0.23048800    1.45504100
+H      -2.78707400   -1.34484100   -1.15762500
+H      -3.46906900   -1.71924300    0.53832300"""
+C3H6_XYZ = """C       1.28228000   -0.22047500    0.00000000
+C       0.13224000    0.45288700   -0.00000000
+C      -1.23350000   -0.16258800    0.00000000
+H       1.30396600   -1.31497300   -0.00000000
+H       2.24557000    0.29531800    0.00000000
+H       0.16627600    1.54928300    0.00000000
+H      -1.80903100    0.15633100    0.88389100
+H      -1.80903100    0.15633300   -0.88389000
+H      -1.18387300   -1.26123700   -0.00000100"""
+BUTADIENE_XYZ = """C       0.60502200    1.74848200   -0.00000000
+C       0.60502200    0.41084800   -0.00000000
+C      -0.60502200   -0.41084800    0.00000000
+C      -0.60502200   -1.74848200   -0.00000000
+H      -0.33017200    2.31698300   -0.00000000
+H       1.53553200    2.32029300   -0.00000000
+H       1.55999700   -0.12791800   -0.00000000
+H      -1.55999700    0.12791800    0.00000000
+H      -1.53553200   -2.32029300   -0.00000000
+H       0.33017200   -2.31698300   -0.00000000"""
+
+
+def make_c2h5cl_rxn() -> ARCReaction:
+    """
+    Make the C2H5Cl <=> C2H4 + HCl reaction whose TS freq logs ship as near-miss fixtures.
+
+    Returns:
+        ARCReaction: The reaction, with species geometries in the atom order of the TS fixtures.
+    """
+    return ARCReaction(r_species=[ARCSpecies(label='C2H5Cl', smiles='CCCl', xyz=C2H5CL_XYZ)],
+                       p_species=[ARCSpecies(label='C2H4', smiles='C=C', xyz=C2H4_XYZ),
+                                  ARCSpecies(label='HCl', smiles='Cl', xyz=HCL_XYZ)])
+
+
+def make_retroene_rxn() -> ARCReaction:
+    """
+    Make the hepta-1,6-diene <=> C3H6 + butadiene reaction whose wrong-saddle TS freq logs ship as fixtures.
+
+    Returns:
+        ARCReaction: The reaction, with species geometries in the atom order of the TS fixtures.
+    """
+    return ARCReaction(r_species=[ARCSpecies(label='hepta16diene', smiles='C=CCCCC=C', xyz=HEPTA16DIENE_XYZ)],
+                       p_species=[ARCSpecies(label='C3H6', smiles='C=CC', xyz=C3H6_XYZ),
+                                  ARCSpecies(label='butadiene', smiles='C=CC=C', xyz=BUTADIENE_XYZ)])
 
 
 class TestNMD(unittest.TestCase):
@@ -1673,6 +1754,123 @@ H       0.33017200   -2.31698300   -0.00000000"""
         for file_path in file_paths:
             if os.path.isfile(file_path):
                 os.remove(file_path)
+
+
+    def test_evaluate_sets_the_near_miss_record_for_saddles_that_fail_only_on_the_5_percent_gate(self):
+        """Test that a TS whose NMD fails only by reactive bonds under the 5% gate carries a near-miss record."""
+        cases = [('TS_C2H5Cl_four_centre_near_miss.log', make_c2h5cl_rxn(), 0.9, 'C-Cl', 4.55),
+                 ('TS_C2H5Cl_guess7_near_miss.log', make_c2h5cl_rxn(), nmd.DEFAULT_AMPLITUDE, None, None),
+                 ('TS_retroene_wrong_a1577.log', make_retroene_rxn(), nmd.DEFAULT_AMPLITUDE, None, None),
+                 ('TS_retroene_wrong_a1605.log', make_retroene_rxn(), nmd.DEFAULT_AMPLITUDE, None, None)]
+        for log_name, rxn, amplitude, weakest_symbols, weakest_percent in cases:
+            with self.subTest(log=log_name):
+                log_path = os.path.join(ARC_TESTING_PATH, 'freq', log_name)
+                self.generic_job.local_path_to_output_file = log_path
+                rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+                rxn.ts_species.populate_ts_checks()
+                verdict, near_miss = nmd.evaluate_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job,
+                                                                              amplitude=amplitude)
+                self.assertFalse(verdict)
+                self.assertIsInstance(near_miss, dict)
+                self.assertEqual(near_miss['amplitude'], 0.9)
+                self.assertTrue(near_miss['sub_gate_bonds'])
+                for bond in near_miss['sub_gate_bonds']:
+                    self.assertLess(bond['percent'], 5.0)
+                    self.assertEqual(len(bond['atoms']), 2)
+                    self.assertTrue(all(isinstance(i, int) for i in bond['atoms']))
+                if weakest_symbols is not None:
+                    self.assertEqual([bond['symbols'] for bond in near_miss['sub_gate_bonds']], [weakest_symbols])
+                    self.assertAlmostEqual(near_miss['sub_gate_bonds'][0]['percent'], weakest_percent, places=2)
+                self.assertFalse(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job,
+                                                                         amplitude=amplitude))
+
+    def test_evaluate_gives_a_pass_and_no_near_miss_record_when_another_amplitude_passes(self):
+        """Test that a TS that is a near miss at 0.9 but passes at 1.1 passes the default check with no near-miss
+        record, so that it is not deferred."""
+        log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5Cl_four_centre_near_miss.log')
+        self.generic_job.local_path_to_output_file = log_path
+        rxn = make_c2h5cl_rxn()
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+        rxn.ts_species.populate_ts_checks()
+        verdict, near_miss = nmd.evaluate_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.9)
+        self.assertFalse(verdict)
+        self.assertIsInstance(near_miss, dict)
+        self.assertEqual(nmd.DEFAULT_AMPLITUDE, [0.9, 1.1])
+        self.assertEqual(nmd.evaluate_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job), (True, None))
+        check_normal_mode_displacement(reaction=rxn, job=self.generic_job)
+        self.assertIs(rxn.ts_species.ts_checks['NMD'], True)
+        self.assertNotIn(NMD_NEAR_MISS_KEY, rxn.ts_species.ts_checks)
+
+    def test_evaluate_sets_no_near_miss_record_for_shipped_passing_or_wrong_saddles(self):
+        """Test that a TS that passes the NMD check, or fails it as a wrong saddle, carries no near-miss record."""
+        ho2_rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5O2', smiles='CCO[O]', multiplicity=2)],
+                              p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                         ARCSpecies(label='HO2', smiles='[O]O', multiplicity=2)])
+        c3h7_path = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7')
+        c3h7_rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C',
+                                                     xyz=os.path.join(c3h7_path, 'iC3H7.gjf'))],
+                               p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC',
+                                                     xyz=os.path.join(c3h7_path, 'nC3H7.gjf'))])
+        cases = [(os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5O2_HO2_elimination.log'), ho2_rxn, True),
+                 (os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5O2_HO2_elimination_wrong_saddle.log'), ho2_rxn, False),
+                 (os.path.join(c3h7_path, 'TS4.log'), c3h7_rxn, False),
+                 (os.path.join(c3h7_path, 'TS7.log'), c3h7_rxn, False)]
+        for log_path, rxn, expected in cases:
+            with self.subTest(log=os.path.basename(log_path)):
+                self.generic_job.local_path_to_output_file = log_path
+                rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+                rxn.ts_species.populate_ts_checks()
+                verdict, near_miss = nmd.evaluate_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job)
+                self.assertEqual(verdict, expected)
+                self.assertIsNone(near_miss)
+                self.assertEqual(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job), expected)
+
+    def test_evaluate_sets_no_near_miss_record_when_the_bonds_that_clear_the_gate_do_not_stand_out(self):
+        """Test that a near miss also needs its bonds that clear the 5% gate to stand out of the background."""
+        log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5Cl_four_centre_near_miss.log')
+        self.generic_job.local_path_to_output_file = log_path
+        rxn = make_c2h5cl_rxn()
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+        rxn.ts_species.populate_ts_checks()
+        with patch('arc.checks.nmd.do_reactive_bonds_stand_out', return_value=False):
+            self.assertEqual(nmd.evaluate_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job,
+                                                                    amplitude=0.9),
+                             (False, None))
+
+    def test_evaluate_sets_no_near_miss_record_when_a_sub_gate_bond_does_not_stand_out(self):
+        """Test that a near miss needs its sub-gate bonds, not only the bonds that clear the gate, to stand out."""
+        log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5Cl_four_centre_near_miss.log')
+        self.generic_job.local_path_to_output_file = log_path
+        rxn = make_c2h5cl_rxn()
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+        rxn.ts_species.populate_ts_checks()
+        stand_out = nmd.do_reactive_bonds_stand_out
+
+        def sub_gate_bond_below_baseline(**kwargs) -> bool:
+            """
+            Fail the standout test for any bond set holding the sub-gate C-Cl bond, and run it otherwise.
+
+            Args:
+                **kwargs: The arguments of ``do_reactive_bonds_stand_out()``.
+
+            Returns:
+                bool: Whether the bonds stand out.
+            """
+            if (1, 2) in kwargs['check_bonds'] or (2, 1) in kwargs['check_bonds']:
+                return False
+            return stand_out(**kwargs)
+
+        with patch('arc.checks.nmd.do_reactive_bonds_stand_out', side_effect=sub_gate_bond_below_baseline):
+            self.assertEqual(nmd.evaluate_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job,
+                                                                    amplitude=0.9),
+                             (False, None))
+
+    def test_evaluate_returns_no_near_miss_record_when_the_analysis_cannot_run(self):
+        """Test that an NMD analysis that cannot run returns neither a verdict nor a near-miss record."""
+        rxn = make_c2h5cl_rxn()
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, smiles='CCCl')
+        rxn.ts_species.populate_ts_checks()
+        self.assertEqual(nmd.evaluate_ts_normal_mode_displacement(reaction=rxn, job=None), (None, None))
 
 
 if __name__ == '__main__':
