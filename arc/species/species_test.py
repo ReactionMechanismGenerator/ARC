@@ -12,6 +12,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+import numpy as np
+
 from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
                         almost_equal_coords_lists,
@@ -25,7 +27,10 @@ from arc.molecule.molecule import Molecule
 from arc.parser.parser import parse_e_elect
 from arc.plotter import save_conformers_file
 from arc.species.converter import (check_isomorphism,
+                                   compare_confs,
+                                   s_bonds_mol_from_xyz,
                                    str_to_xyz,
+                                   xyz_from_data,
                                    xyz_to_str,
                                    xyz_to_x_y_z,
                                    )
@@ -2909,9 +2914,10 @@ H       1.11582953    0.94384729   -0.10134685"""
             spc_3.ts_guesses[-1].execution_time = '00:00:01'
         self.assertEqual(len(spc_3.ts_guesses), 12)
         spc_3.cluster_tsgs()
-        self.assertEqual(len(spc_3.ts_guesses), 6)
+        self.assertEqual(len(spc_3.ts_guesses), 5)
         indices = [cluster.index for cluster in spc_3.ts_guesses]
-        self.assertEqual(indices, [0, 1, 2, 4, 7, 9])
+        self.assertEqual(indices, [0, 1, 2, 4, 7])
+        self.assertIn(9, spc_3.ts_guesses[2].cluster)
 
         spc_3 = ARCSpecies(label='TS_3', is_ts=True)
         for i in range(12):
@@ -2925,7 +2931,7 @@ H       1.11582953    0.94384729   -0.10134685"""
             spc_3.ts_guesses[-1].execution_time = '00:00:01'
         self.assertEqual(len(spc_3.ts_guesses), 12)
         spc_3.cluster_tsgs()
-        self.assertEqual(len(spc_3.ts_guesses), 6)
+        self.assertEqual(len(spc_3.ts_guesses), 5)
 
     def test_cluster_tsgs_with_coordinate_less_guesses(self):
         """Clustering must tolerate coordinate-less TS guesses (e.g. failed kinbot/queue guesses
@@ -3935,6 +3941,272 @@ class TestTSGuess(unittest.TestCase):
         self.assertTrue(self.tsg2.almost_equal_tsgs(self.tsg2))
         self.assertFalse(self.tsg3.almost_equal_tsgs(self.tsg2))
         self.assertFalse(self.tsg2.almost_equal_tsgs(self.tsg3))
+
+
+TS0_CONF_0 = """O       1.29503100   -0.10783400    0.00000100
+H       1.38087500    0.85868300   -0.00000100
+C      -1.20395400    0.00755100    0.00000100
+H       0.00766600   -0.17858500   -0.00002000
+H      -1.38410100    1.08884500    0.00008300
+H      -1.57048400   -0.47571900   -0.91306300
+H      -1.57047900   -0.47585800    0.91299300"""
+
+TS0_CONF_2 = """O       0.04727500   -1.29949900   -0.00000000
+H      -0.92221100   -1.34391100   -0.00000000
+C       0.04727500    1.20415500    0.00000000
+H       0.17043600   -0.01444300    0.00000000
+H       1.07908100    1.57540000    0.00000000
+H      -0.49458100    1.47700600   -0.91276900
+H      -0.49458100    1.47700600    0.91276900"""
+
+TS3_CONF_1 = """C      -1.55999800   -0.09499500   -0.00000100
+H      -1.54613600   -0.66021400    0.93471600
+H      -2.06781400    0.87031300   -0.00215700
+H      -1.54504700   -0.66384100   -0.93249700
+C       0.61314700    0.56683700   -0.00001100
+O       1.35501300   -0.29716400    0.00000100"""
+
+TS3_CONF_6 = """C      -1.56062600   -0.09547100    0.00022300
+H      -2.03058500    0.77263400    0.46453100
+H      -1.68070900   -0.21615000   -1.07863000
+H      -1.45219600   -1.00137300    0.60075100
+C       0.61294200    0.56570100    0.00255200
+O       1.35619900   -0.29706200   -0.00041300"""
+
+TS3_CONF_12 = """C       1.56086400    0.09607300   -0.00000000
+C      -0.61060500   -0.56221500   -0.00000000
+O      -1.35978300    0.29565600    0.00000000
+H       1.41097300    1.17806700   -0.00019100
+H       1.88292100   -0.37339000   -0.93150200
+H       1.88282100   -0.37307200    0.93169600"""
+
+TS3_CONF_13 = """C       1.55995800    0.09499800    0.00000400
+C      -0.61314600   -0.56685900   -0.00000600
+O      -1.35496200    0.29718600   -0.00000200
+H       1.54581600    0.66160100   -0.93386600
+H       2.06762600   -0.87038800    0.00054900
+H       1.54537900    0.66246700    0.93334000"""
+
+
+def reorder_xyz(xyz: str, order: list[int]) -> dict:
+    """
+    Return an xyz dict whose atom ``i`` is atom ``order[i]`` of ``xyz``.
+
+    Args:
+        xyz (str): The geometry as a string.
+        order (list[int]): The new atom order, as indices into ``xyz``.
+
+    Returns:
+        dict: The re-ordered geometry.
+    """
+    xyz_dict = str_to_xyz(xyz)
+    return xyz_from_data(coords=[xyz_dict['coords'][i] for i in order],
+                         symbols=[xyz_dict['symbols'][i] for i in order])
+
+
+def reflect_xyz(xyz: dict) -> dict:
+    """
+    Return the mirror image of a geometry through the xy plane.
+
+    Args:
+        xyz (dict): The geometry.
+
+    Returns:
+        dict: The reflected geometry, in the same atom order.
+    """
+    return xyz_from_data(coords=[(x, y, -z) for x, y, z in xyz['coords']], symbols=xyz['symbols'])
+
+
+def move_atom_along_bond(xyz: str, anchor: int, atom: int, distance: float) -> dict:
+    """
+    Move ``atom`` along the ``anchor``-``atom`` axis to the given distance from ``anchor``.
+
+    Args:
+        xyz (str): The geometry as a string.
+        anchor (int): The index of the fixed atom.
+        atom (int): The index of the atom to move.
+        distance (float): The new ``anchor``-``atom`` distance in Angstrom.
+
+    Returns:
+        dict: The modified geometry.
+    """
+    xyz_dict = str_to_xyz(xyz)
+    coords = np.array(xyz_dict['coords'])
+    direction = (coords[atom] - coords[anchor]) / np.linalg.norm(coords[atom] - coords[anchor])
+    coords[atom] = coords[anchor] + direction * distance
+    return xyz_from_data(coords=coords, symbols=xyz_dict['symbols'])
+
+
+def make_opt_tsg(index: int, method: str, xyz: str | dict, energy: float | None) -> TSGuess:
+    """
+    Make a successful TS guess that carries an optimized geometry and an energy.
+
+    Args:
+        index (int): The guess index.
+        method (str): The guess method.
+        xyz (str | dict): The optimized geometry.
+        energy (float | None): The energy in kJ/mol.
+
+    Returns:
+        TSGuess: The guess.
+    """
+    tsg = TSGuess(index=index, method=method, success=True, xyz=xyz, energy=energy)
+    tsg.opt_xyz = xyz
+    return tsg
+
+
+class TestTSGuessPermutedFold(unittest.TestCase):
+    """
+    Contains unit tests for folding TS guesses that are the same structure with atoms numbered differently.
+    """
+
+    def cluster(self, tsgs: list[TSGuess]) -> ARCSpecies:
+        """
+        Cluster the given guesses on a fresh TS species.
+
+        Args:
+            tsgs (list[TSGuess]): The guesses.
+
+        Returns:
+            ARCSpecies: The TS species after clustering.
+        """
+        ts = ARCSpecies(label='TS', is_ts=True)
+        ts.ts_guesses = tsgs
+        ts.cluster_tsgs()
+        return ts
+
+    def test_cluster_tsgs_folds_swapped_methyl_h(self):
+        """Two guesses that differ only by swapping two methyl H atoms fold and keep both sources."""
+        swapped = reorder_xyz(TS0_CONF_0, [0, 1, 2, 3, 5, 4, 6])
+        ts = self.cluster([make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0),
+                           make_opt_tsg(1, 'linear', swapped, 0.0)])
+        self.assertEqual(len(ts.ts_guesses), 1)
+        self.assertEqual(ts.ts_guesses[0].method_sources, ['goflow', 'linear'])
+
+    def test_cluster_tsgs_folds_heavy_atoms_first(self):
+        """The same geometry listed with heavy atoms first folds and keeps both sources."""
+        heavy_first = reorder_xyz(TS0_CONF_0, [0, 2, 1, 3, 4, 5, 6])
+        ts = self.cluster([make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0),
+                           make_opt_tsg(1, 'linear', heavy_first, 0.0)])
+        self.assertEqual(len(ts.ts_guesses), 1)
+        self.assertEqual(ts.ts_guesses[0].method_sources, ['goflow', 'linear'])
+
+    def test_almost_equal_tsgs_folds_pilot_heavy_atoms_first_pair(self):
+        """A goflow opt and a linear opt (heavy atoms first) that ended on the same TS conformer fold."""
+        goflow = make_opt_tsg(0, 'goflow', TS3_CONF_1, 0.0)
+        linear = make_opt_tsg(1, 'linear (w=0.50, 0)', TS3_CONF_13, 0.0)
+        self.assertTrue(goflow.almost_equal_tsgs(linear))
+
+    def test_almost_equal_tsgs_keeps_distinct_pilot_conformers(self):
+        """Different TS conformers of one reaction within the energy window stay apart."""
+        ts0_a = make_opt_tsg(0, 'heuristics', TS0_CONF_0, 0.0)
+        ts0_b = make_opt_tsg(1, 'heuristics', TS0_CONF_2, 0.0409)
+        self.assertFalse(ts0_a.almost_equal_tsgs(ts0_b))
+        ts3_a = make_opt_tsg(0, 'goflow', TS3_CONF_1, 0.0)
+        ts3_b = make_opt_tsg(1, 'rits', TS3_CONF_6, 0.0672)
+        self.assertFalse(ts3_a.almost_equal_tsgs(ts3_b))
+        ts3_c = make_opt_tsg(0, 'goflow', TS3_CONF_1, None)
+        ts3_d = make_opt_tsg(1, 'linear (w=0.35, 0)', TS3_CONF_12, None)
+        self.assertFalse(ts3_c.almost_equal_tsgs(ts3_d))
+
+    def test_almost_equal_tsgs_migrating_h_vs_spectator_h(self):
+        """A migrating H put back in a spectator position on its carbon is a different structure."""
+        spectator_like = move_atom_along_bond(TS0_CONF_0, anchor=2, atom=3, distance=1.09)
+        relabeled_spectator_like = xyz_from_data(coords=[spectator_like['coords'][i] for i in [0, 1, 2, 4, 3, 5, 6]],
+                                                 symbols=[spectator_like['symbols'][i] for i in [0, 1, 2, 4, 3, 5, 6]])
+        ts_a = make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0)
+        self.assertFalse(ts_a.almost_equal_tsgs(make_opt_tsg(2, 'linear', spectator_like, 0.0)))
+        self.assertFalse(ts_a.almost_equal_tsgs(make_opt_tsg(3, 'linear', relabeled_spectator_like, 0.0)))
+
+    def test_almost_equal_tsgs_folds_migrating_h_listed_as_spectator(self):
+        """The same geometry listed with the migrating H in a spectator H's slot is the same structure."""
+        relabeled = reorder_xyz(TS0_CONF_0, [0, 1, 2, 4, 3, 5, 6])
+        ts_a = make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0)
+        ts_b = make_opt_tsg(1, 'linear', relabeled, 0.0)
+        self.assertTrue(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_almost_equal_tsgs_connectivity_keeps_apart(self):
+        """An element-preserving map that passes compare_confs but breaks the bond graph does not fold."""
+        bonded = move_atom_along_bond(TS0_CONF_0, anchor=0, atom=3, distance=1.40)
+        unbonded = move_atom_along_bond(TS0_CONF_0, anchor=0, atom=3, distance=1.46)
+        bonded_mol, unbonded_mol = s_bonds_mol_from_xyz(bonded), s_bonds_mol_from_xyz(unbonded)
+        self.assertTrue(bonded_mol.has_bond(bonded_mol.atoms[0], bonded_mol.atoms[3]))
+        self.assertFalse(unbonded_mol.has_bond(unbonded_mol.atoms[0], unbonded_mol.atoms[3]))
+        self.assertTrue(compare_confs(bonded, unbonded))
+        order = [0, 1, 2, 4, 3, 5, 6]
+        permuted = xyz_from_data(coords=[unbonded['coords'][i] for i in order],
+                                 symbols=[unbonded['symbols'][i] for i in order])
+        self.assertFalse(compare_confs(bonded, permuted))
+        ts_a = make_opt_tsg(0, 'goflow', bonded, 0.0)
+        ts_b = make_opt_tsg(1, 'linear', permuted, 0.0)
+        self.assertFalse(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_almost_equal_tsgs_index_ordered_path_ignores_bonds(self):
+        """The index-ordered comparison folds a bonded and an unbonded geometry; the renumbered pair stays apart."""
+        bonded = move_atom_along_bond(TS0_CONF_0, anchor=0, atom=3, distance=1.40)
+        unbonded = move_atom_along_bond(TS0_CONF_0, anchor=0, atom=3, distance=1.46)
+        ts_a = make_opt_tsg(0, 'goflow', bonded, 0.0)
+        self.assertTrue(ts_a.almost_equal_tsgs(make_opt_tsg(1, 'linear', unbonded, 0.0)))
+        renumbered = xyz_from_data(coords=[unbonded['coords'][i] for i in [0, 1, 2, 3, 5, 4, 6]],
+                                   symbols=[unbonded['symbols'][i] for i in [0, 1, 2, 3, 5, 4, 6]])
+        self.assertFalse(ts_a.almost_equal_tsgs(make_opt_tsg(2, 'linear', renumbered, 0.0)))
+
+    def test_almost_equal_tsgs_folds_mirror_image_same_numbering(self):
+        """A TS conformer and its mirror image with the same atom numbering fold."""
+        xyz = str_to_xyz(TS3_CONF_6)
+        ts_a = make_opt_tsg(0, 'goflow', xyz, 0.0)
+        ts_b = make_opt_tsg(1, 'rits', reflect_xyz(xyz), 0.0)
+        self.assertTrue(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_almost_equal_tsgs_folds_mirror_image_renumbered(self):
+        """A TS conformer and its renumbered mirror image fold."""
+        xyz = str_to_xyz(TS3_CONF_6)
+        mirror = reflect_xyz(reorder_xyz(TS3_CONF_6, [0, 4, 5, 2, 1, 3]))
+        ts_a = make_opt_tsg(0, 'goflow', xyz, 0.0)
+        ts_b = make_opt_tsg(1, 'rits', mirror, 0.0)
+        self.assertTrue(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_cluster_tsgs_after_restart_folds_renumbered_guesses(self):
+        """Guesses restored from a restart dictionary that were kept apart before still fold and keep sources."""
+        swapped = reorder_xyz(TS0_CONF_0, [0, 1, 2, 3, 5, 4, 6])
+        ts = ARCSpecies(label='TS', is_ts=True, multiplicity=2,
+                        xyz=TS0_CONF_0)
+        ts.ts_guesses = [make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0),
+                         make_opt_tsg(1, 'linear', swapped, 0.0)]
+        ts.chosen_ts, ts.chosen_ts_list = 1, [1]
+        restored = ARCSpecies(species_dict=ts.as_dict())
+        self.assertEqual(len(restored.ts_guesses), 2)
+        restored.cluster_tsgs()
+        self.assertEqual(len(restored.ts_guesses), 1)
+        self.assertEqual(restored.ts_guesses[0].index, 0)
+        self.assertEqual(restored.ts_guesses[0].cluster, [0, 1])
+        self.assertEqual(restored.ts_guesses[0].method_sources, ['goflow', 'linear'])
+        self.assertEqual(restored.chosen_ts_list, [1])
+
+    def test_almost_equal_tsgs_respects_isotopes(self):
+        """A D atom in the migrating position does not fold with a D atom in a spectator position."""
+        def labeled(deuterium_index, order):
+            xyz = str_to_xyz(TS0_CONF_0)
+            isotopes = [2 if i == deuterium_index else iso for i, iso in enumerate(xyz['isotopes'])]
+            return xyz_from_data(coords=[xyz['coords'][i] for i in order],
+                                 symbols=[xyz['symbols'][i] for i in order],
+                                 isotopes=[isotopes[i] for i in order])
+        migrating_d = labeled(3, [0, 1, 2, 3, 4, 5, 6])
+        spectator_d = labeled(4, [0, 1, 2, 3, 5, 4, 6])
+        spectator_d_renumbered = labeled(4, [0, 1, 2, 3, 4, 6, 5])
+        ts_a = make_opt_tsg(0, 'goflow', migrating_d, None)
+        ts_b = make_opt_tsg(1, 'linear', spectator_d, None)
+        self.assertFalse(ts_a.almost_equal_tsgs(ts_b))
+        ts_c = make_opt_tsg(2, 'rits', labeled(4, [0, 1, 2, 3, 4, 5, 6]), None)
+        self.assertTrue(ts_c.almost_equal_tsgs(make_opt_tsg(3, 'linear', spectator_d, None)))
+        self.assertTrue(ts_c.almost_equal_tsgs(make_opt_tsg(4, 'linear', spectator_d_renumbered, None)))
+
+    def test_almost_equal_tsgs_keeps_energy_gate(self):
+        """A renumbered copy outside the 0.1 kJ/mol energy window stays apart."""
+        swapped = reorder_xyz(TS0_CONF_0, [0, 1, 2, 3, 5, 4, 6])
+        ts_a = make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0)
+        ts_b = make_opt_tsg(1, 'linear', swapped, 0.2)
+        self.assertFalse(ts_a.almost_equal_tsgs(ts_b))
 
 
 if __name__ == '__main__':

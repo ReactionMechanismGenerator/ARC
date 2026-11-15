@@ -1999,6 +1999,152 @@ def compare_confs(xyz1: dict,
         return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
 
 
+def compare_confs_by_graph_maps(xyz1: dict,
+                                xyz2: dict,
+                                rtol: float = 0.01,
+                                atol: float = 0.1,
+                                ) -> bool:
+    """
+    Compare two conformers whose atoms may be numbered differently.
+
+    The conformers are the same when some atom map keeps each atom's element, isotope and bonded
+    neighbours (bonds from ``s_bonds_mol_from_xyz``) and makes ``compare_confs`` pass on ``xyz2``
+    re-ordered by that map. A map that is not a bond-graph isomorphism is never accepted, so two
+    geometries whose distances agree but whose bonds differ are reported as different.
+    Before any map is searched, the sorted distances of each element pair must agree within the same
+    tolerances; this is a necessary condition for any map to pass, so it only saves time.
+
+    Args:
+        xyz1 (dict): Conformer 1.
+        xyz2 (dict): Conformer 2.
+        rtol (float): The relative tolerance passed to ``compare_confs``.
+        atol (float): The absolute tolerance passed to ``compare_confs``.
+
+    Returns:
+        bool: Whether some bond-preserving atom map makes the two conformers almost equal.
+    """
+    xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(xyz2)
+    if sorted(zip(xyz1['symbols'], xyz1['isotopes'])) != sorted(zip(xyz2['symbols'], xyz2['isotopes'])):
+        return False
+    if not almost_equal_lists(sorted_distances_by_element_pair(xyz1),
+                              sorted_distances_by_element_pair(xyz2),
+                              rtol=rtol, atol=atol):
+        return False
+    order = map_atoms_by_bonds_and_distances(xyz1, xyz2, rtol=rtol, atol=atol)
+    return order is not None and compare_confs(xyz1, sort_xyz_using_indices(xyz2, order), rtol=rtol, atol=atol)
+
+
+def map_atoms_by_bonds_and_distances(xyz1: dict,
+                                     xyz2: dict,
+                                     rtol: float = 0.01,
+                                     atol: float = 0.1,
+                                     ) -> list[int] | None:
+    """
+    Find an atom map from ``xyz1`` onto ``xyz2`` that keeps elements, isotopes, bonds and distances.
+
+    Atoms of ``xyz1`` are mapped one at a time, in breadth-first order over its bond graph (bonds from
+    ``s_bonds_mol_from_xyz``). An atom of ``xyz2`` is a candidate only if it has the same element,
+    isotope and number of bonds, if it is bonded to the images of exactly the already-mapped atoms
+    that the mapped atom is bonded to, and if its distance to each of those images agrees with the
+    ``xyz1`` distance within ``compare_confs``' tolerance (``np.isclose`` with ``rtol`` and ``atol``).
+    The search backtracks on a dead end (with an explicit stack, so its depth is not bound by Python's
+    recursion limit) and stops at the first complete map, so it never lists every symmetry-equivalent map.
+
+    Args:
+        xyz1 (dict): Conformer 1.
+        xyz2 (dict): Conformer 2.
+        rtol (float): The relative distance tolerance.
+        atol (float): The absolute distance tolerance in Angstrom.
+
+    Returns:
+        list[int] | None: ``order`` such that atom ``i`` of ``xyz1`` corresponds to atom ``order[i]`` of
+        ``xyz2`` (pass it to ``sort_xyz_using_indices(xyz2, order)``), or ``None`` if no such map exists.
+    """
+    xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(xyz2)
+    n = len(xyz1['symbols'])
+    if len(xyz2['symbols']) != n:
+        return None
+    dmat1, dmat2 = xyz_to_dmat(xyz1), xyz_to_dmat(xyz2)
+    bonds1, bonds2 = bonded_atom_indices(xyz1), bonded_atom_indices(xyz2)
+    keys1 = [(s, i, len(b)) for s, i, b in zip(xyz1['symbols'], xyz1['isotopes'], bonds1)]
+    keys2 = [(s, i, len(b)) for s, i, b in zip(xyz2['symbols'], xyz2['isotopes'], bonds2)]
+    visit = list()
+    for root in sorted(range(n), key=lambda i: (keys1.count(keys1[i]), i)):
+        if root in visit:
+            continue
+        queue = [root]
+        visit.append(root)
+        while queue:
+            atom = queue.pop(0)
+            for neighbor in sorted(bonds1[atom]):
+                if neighbor not in visit:
+                    visit.append(neighbor)
+                    queue.append(neighbor)
+    order, used = [None] * n, [False] * n
+
+    def fits(i: int, candidate: int) -> bool:
+        """Return whether atom ``i`` of ``xyz1`` may map onto ``candidate`` of ``xyz2`` given the partial map."""
+        if used[candidate] or keys1[i] != keys2[candidate]:
+            return False
+        for j in visit:
+            if order[j] is None:
+                break
+            if (j in bonds1[i]) != (order[j] in bonds2[candidate]) \
+                    or not np.isclose(dmat1[i][j], dmat2[candidate][order[j]], rtol=rtol, atol=atol):
+                return False
+        return True
+
+    next_candidate, depth = [0] * (n + 1), 0
+    while 0 <= depth < n:
+        i = visit[depth]
+        if order[i] is not None:
+            used[order[i]], order[i] = False, None
+        candidate = next((c for c in range(next_candidate[depth], n) if fits(i, c)), None)
+        if candidate is None:
+            next_candidate[depth] = 0
+            depth -= 1
+            continue
+        order[i], used[candidate] = candidate, True
+        next_candidate[depth] = candidate + 1
+        depth += 1
+    return list(order) if depth == n else None
+
+
+def bonded_atom_indices(xyz: dict) -> list[set[int]]:
+    """
+    List the bonded neighbours of each atom, with bonds perceived by ``s_bonds_mol_from_xyz``.
+
+    Args:
+        xyz (dict): The Cartesian coordinates.
+
+    Returns:
+        list[set[int]]: The indices of the atoms bonded to each atom, in atom order.
+    """
+    mol = s_bonds_mol_from_xyz(xyz)
+    indices = {atom: i for i, atom in enumerate(mol.atoms)}
+    return [{indices[neighbor] for neighbor in atom.edges} for atom in mol.atoms]
+
+
+def sorted_distances_by_element_pair(xyz: dict) -> list[list[float]]:
+    """
+    List the interatomic distances of a geometry grouped by element pair, each group sorted.
+
+    The result does not depend on the atom order.
+
+    Args:
+        xyz (dict): The Cartesian coordinates.
+
+    Returns:
+        list[list[float]]: One sorted list of distances per element pair, the pairs in sorted order.
+    """
+    dmat, symbols = xyz_to_dmat(xyz), xyz['symbols']
+    groups = dict()
+    for i in range(len(symbols)):
+        for j in range(i + 1, len(symbols)):
+            groups.setdefault(tuple(sorted((symbols[i], symbols[j]))), list()).append(float(dmat[i][j]))
+    return [sorted(groups[pair]) for pair in sorted(groups)]
+
+
 def cluster_confs_by_rmsd(xyzs: Iterable[dict[str, tuple]],
                           rmsd_threshold: float = 1e-2,
                           ) -> tuple[dict[str, tuple]]:
