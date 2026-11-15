@@ -33,6 +33,7 @@ from arc.molecule.resonance import generate_aromatic_resonance_structure, genera
 from arc.parser.parser import (parse_1d_scan_energies,
                                parse_dipole_moment,
                                parse_geometry,
+                               parse_neb_ts_failure,
                                parse_polarizability,
                                process_conformers_file,
                                )
@@ -1858,7 +1859,14 @@ class ARCSpecies(object):
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """
-        Process YAML files which are the output of running a TS guess job in the queue.
+        Process the output of a TS guess job that ran in the queue, and add the resulting TS guesses.
+
+        A ``.yml``/``.yaml`` file holds a list of TSGuess dictionaries; each guess with a usable
+        geometry is added. A ``.log`` file is an ORCA NEB-TS (orca_neb) output. If the run did not
+        finish (see ``parse_neb_ts_failure``), a failed, coordinate-less ``orca_neb`` guess is added,
+        with the cause in its ``errors`` attribute. Otherwise the last geometry in the log is added
+        as a successful guess, or the guess is marked failed and not added if that geometry is
+        missing or has colliding atoms. The guesses are then clustered.
 
         Args:
             path (str): The path to the output file.
@@ -1866,6 +1874,14 @@ class ARCSpecies(object):
         if not isinstance(path, str) or not os.path.isfile(path):
             return None
         if path.endswith('.log'):
+            failure = parse_neb_ts_failure(path)
+            if failure is not None:
+                tsg = TSGuess(method='orca_neb', success=False, log_path=path)
+                tsg.errors = failure
+                self.append_ts_guess(tsg)
+                logger.warning(f'The orca_neb TS-guess job at {path} is a failed guess: {failure}')
+                self.cluster_tsgs()
+                return None
             xyz = parse_geometry(path)
             tsg = TSGuess(method='orca_neb',
                           success=True,
