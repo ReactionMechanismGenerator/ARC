@@ -977,6 +977,20 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(restored.stability_pending_opt_job, 'opt_a7')
         self.assertTrue(restored.stability_reoptimized)
 
+    def test_restoring_a_ts_keeps_its_ts_check_warnings(self):
+        """Test that restoring a TS whose verdicts are all None keeps its warnings, while a reset clears them"""
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=self.spc2.get_xyz(), multiplicity=2)
+        warning = 'IRC not verified: IRC job irc_a1 (forward) failed: Log file could not be read; '
+        ts.ts_checks['warnings'] = warning
+        restored = ARCSpecies(species_dict=ts.as_dict())
+        self.assertEqual(restored.ts_checks['warnings'], warning)
+        self.assertTrue(all(value is None for key, value in restored.ts_checks.items() if key != 'warnings'))
+        restored.populate_ts_checks()
+        self.assertEqual(restored.ts_checks['warnings'], '')
+        species_dict = ts.as_dict()
+        species_dict['ts_checks'] = {'IRC': None}
+        self.assertEqual(ARCSpecies(species_dict=species_dict).ts_checks['warnings'], '')
+
     def test_from_dict(self):
         """Test Species.from_dict()"""
         species_dict = self.spc2.as_dict()

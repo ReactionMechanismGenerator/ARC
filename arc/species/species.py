@@ -594,7 +594,7 @@ class ARCSpecies(object):
 
         self.set_mol_list()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
-            self.populate_ts_checks()
+            self.populate_ts_checks(keep_warnings=True)
         self._set_final_xyz_for_monoatomic()
 
     def __str__(self) -> str:
@@ -2403,12 +2403,20 @@ class ARCSpecies(object):
                     raise SpeciesError(f'Could not figure out which atom should gain a radical '
                                        f'due to scission in {self.label}')
 
-    def populate_ts_checks(self):
-        """Populate (or restart) the .ts_checks attribute with default (``None``) values."""
+    def populate_ts_checks(self, keep_warnings: bool = False):
+        """
+        Populate (or restart) the .ts_checks attribute with default (``None``) values.
+
+        Args:
+            keep_warnings (bool, optional): Whether to keep an existing ``warnings`` string, as when the TS is
+                                            restored, instead of resetting it to an empty string, as when a new
+                                            TS guess replaces the previous one.
+        """
         if self.is_ts:
+            warnings = self.ts_checks.get('warnings') if keep_warnings and isinstance(self.ts_checks, dict) else None
             keys = ['E0', 'e_elect', 'IRC', 'freq', 'NMD']
             self.ts_checks = {key: None for key in keys}
-            self.ts_checks['warnings'] = ''
+            self.ts_checks['warnings'] = warnings if isinstance(warnings, str) else ''
 
     def get_symmetry_number(self):
         """
