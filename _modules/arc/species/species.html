@@ -100,6 +100,7 @@
 <span class="sd">If the species is a transition state (TS), its ``ts_guesses`` attribute will have one or more ``TSGuess`` objects.</span>
 <span class="sd">"""</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
@@ -157,6 +158,11 @@
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
 <span class="n">valid_chars</span><span class="p">,</span> <span class="n">minimum_barrier</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'valid_chars'</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">'minimum_barrier'</span><span class="p">]</span>
+
+<span class="c1"># Frozen: keys T3 wrote flat into species dicts before it nested them under ``extensions['t3']``.</span>
+<span class="c1"># Never add to this list; new downstream metadata belongs in ``extensions`` only.</span>
+<span class="n">LEGACY_FLAT_EXTENSION_KEYS</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'t3'</span><span class="p">:</span> <span class="p">(</span><span class="s1">'key'</span><span class="p">,</span> <span class="s1">'qm_label'</span><span class="p">,</span> <span class="s1">'rmg_label'</span><span class="p">,</span> <span class="s1">'thermo_method'</span><span class="p">,</span> <span class="s1">'thermo_source'</span><span class="p">,</span>
+                                     <span class="s1">'thermo_comment'</span><span class="p">,</span> <span class="s1">'t3_status'</span><span class="p">,</span> <span class="s1">'created_at_iteration'</span><span class="p">,</span> <span class="s1">'reasons'</span><span class="p">)}</span>
 
 
 <div class="viewcode-block" id="ARCSpecies">
@@ -217,6 +223,8 @@
 <span class="sd">            reaction-consistent (coarser) level and no copy is made.</span>
 <span class="sd">        include_in_thermo_lib (bool, optional): Whether to include in the output RMG library.</span>
 <span class="sd">        e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.</span>
+<span class="sd">        extensions (dict, optional): Data owned by a downstream tool, keyed by the tool's name (e.g., ``'t3'``).</span>
+<span class="sd">                                     ARC does not read it, and writes it back to the restart file verbatim.</span>
 <span class="sd">        species_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).</span>
 <span class="sd">        yml_path (str, optional): Path to an Arkane YAML file representing a species (for loading the object).</span>
 <span class="sd">        ts_number (int, optional): An auto-generated number associating the TS ARCSpecies object with the corresponding</span>
@@ -367,6 +375,7 @@
 <span class="sd">            ``None`` means use the species' own heavy-atom count.</span>
 <span class="sd">        include_in_thermo_lib (bool): Whether to include in the output RMG library.</span>
 <span class="sd">        e0_only (bool): Whether to only run statmech (w/o thermo) to compute E0.</span>
+<span class="sd">        extensions (dict): Data owned by a downstream tool, keyed by the tool's name, kept verbatim.</span>
 <span class="sd">        thermo (ThermoData): The thermo data calculated by ARC with 'H298' in kJ/mol and 'S298' in J/mol*K.</span>
 <span class="sd">        rmg_thermo (ThermoData): The thermo data estimated by RMG with 'H298' in kJ/mol and 'S298' in J/mol*K for comparison.</span>
 <span class="sd">        long_thermo_description (str): A description for the species entry in the thermo library outputted.</span>
@@ -447,6 +456,7 @@
                  <span class="n">consider_all_diastereomers</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                  <span class="n">directed_rotors</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">e0_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">extensions</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">external_symmetry</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">fragments</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">force_field</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">'MMFF94s'</span><span class="p">,</span>
@@ -503,6 +513,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">checkfile</span> <span class="o">=</span> <span class="n">checkfile</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">transport_data</span> <span class="o">=</span> <span class="n">TransportData</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">yml_path</span> <span class="o">=</span> <span class="n">yml_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">extensions</span> <span class="o">=</span> <span class="n">check_extensions</span><span class="p">(</span><span class="n">extensions</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">keep_mol</span> <span class="o">=</span> <span class="n">keep_mol</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">fragments</span> <span class="o">=</span> <span class="n">fragments</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">original_label</span> <span class="o">=</span> <span class="kc">None</span>
@@ -928,6 +939,8 @@
             <span class="n">species_dict</span><span class="p">[</span><span class="s1">'tsg_spawned'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tsg_spawned</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">yml_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">species_dict</span><span class="p">[</span><span class="s1">'yml_path'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">yml_path</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">extensions</span><span class="p">:</span>
+            <span class="n">species_dict</span><span class="p">[</span><span class="s1">'extensions'</span><span class="p">]</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">extensions</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">run_time</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">species_dict</span><span class="p">[</span><span class="s1">'run_time'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">run_time</span><span class="o">.</span><span class="n">total_seconds</span><span class="p">()</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">number_of_radicals</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -1017,10 +1030,12 @@
 <span class="sd">        The 2D graph is taken from the dictionary as-is whenever it was serialized by ``as_dict()``</span>
 <span class="sd">        (see ``dict_repr_is_authoritative()``), and is otherwise perceived from the coordinates.</span>
 <span class="sd">        """</span>
+        <span class="n">species_dict</span> <span class="o">=</span> <span class="n">lift_legacy_extension_keys</span><span class="p">(</span><span class="n">species_dict</span><span class="p">)</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'label'</span><span class="p">]</span>
         <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
             <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="s1">'All species must have a label'</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">extensions</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">check_extensions</span><span class="p">(</span><span class="n">species_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'extensions'</span><span class="p">)))</span> <span class="ow">or</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">run_time</span> <span class="o">=</span> <span class="n">process_run_time</span><span class="p">(</span><span class="n">species_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'run_time'</span><span class="p">))</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">original_label</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'original_label'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'original_label'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">t1</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'t1'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'t1'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
@@ -3264,6 +3279,64 @@
 <span class="sd">        """</span>
         <span class="k">return</span> <span class="p">(</span><span class="n">TransportData</span><span class="p">,</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">shapeIndex</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">epsilon</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">dipoleMoment</span><span class="p">,</span>
                                 <span class="bp">self</span><span class="o">.</span><span class="n">polarizability</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rotrelaxcollnum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">comment</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="check_extensions">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.check_extensions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_extensions</span><span class="p">(</span><span class="n">extensions</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Check that an ``extensions`` block maps tool names to dictionaries.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        extensions (dict | None): The block to check.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        InputError: If the block is neither ``None`` nor a dict of string keys to dict values.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        dict | None: The block, unchanged.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">extensions</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">extensions</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> \
+            <span class="ow">or</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">tool</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">for</span> <span class="n">tool</span><span class="p">,</span> <span class="n">block</span> <span class="ow">in</span> <span class="n">extensions</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
+        <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'extensions must map tool names to dictionaries, got: </span><span class="si">{</span><span class="n">extensions</span><span class="si">!r}</span><span class="s1">'</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">extensions</span></div>
+
+
+
+<div class="viewcode-block" id="lift_legacy_extension_keys">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.lift_legacy_extension_keys">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">lift_legacy_extension_keys</span><span class="p">(</span><span class="n">species_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Move the flat legacy downstream keys listed in ``LEGACY_FLAT_EXTENSION_KEYS`` into ``extensions``.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        species_dict (dict): A species dictionary. It is not modified.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        InputError: If a flat key and the same key in ``extensions`` carry different values.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        dict: A copy of the dictionary with the legacy keys moved, or the original if it has none.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">key</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">for</span> <span class="n">keys</span> <span class="ow">in</span> <span class="n">LEGACY_FLAT_EXTENSION_KEYS</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">species_dict</span>
+    <span class="n">species_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">species_dict</span><span class="p">)</span>
+    <span class="n">extensions</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">check_extensions</span><span class="p">(</span><span class="n">species_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'extensions'</span><span class="p">))</span> <span class="ow">or</span> <span class="nb">dict</span><span class="p">())</span>
+    <span class="k">for</span> <span class="n">tool</span><span class="p">,</span> <span class="n">keys</span> <span class="ow">in</span> <span class="n">LEGACY_FLAT_EXTENSION_KEYS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">species_dict</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">species_dict</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+            <span class="n">tool_block</span> <span class="o">=</span> <span class="n">extensions</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">tool</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span>
+            <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">tool_block</span> <span class="ow">and</span> <span class="n">tool_block</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">!=</span> <span class="n">value</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Species </span><span class="si">{</span><span class="n">species_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'label'</span><span class="p">)</span><span class="si">}</span><span class="s2"> carries '</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">' both flat (</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">) and in "</span>
+                                 <span class="sa">f</span><span class="s2">"extensions['</span><span class="si">{</span><span class="n">tool</span><span class="si">}</span><span class="s2">'] (</span><span class="si">{</span><span class="n">tool_block</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="si">}</span><span class="s2">) with different values."</span><span class="p">)</span>
+            <span class="n">tool_block</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+    <span class="n">species_dict</span><span class="p">[</span><span class="s1">'extensions'</span><span class="p">]</span> <span class="o">=</span> <span class="n">extensions</span>
+    <span class="k">return</span> <span class="n">species_dict</span></div>
 
 
 

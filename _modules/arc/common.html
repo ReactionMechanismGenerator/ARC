@@ -146,6 +146,10 @@
 
 <span class="n">VERSION</span> <span class="o">=</span> <span class="s1">'1.1.0'</span>
 
+<span class="c1"># The input/restart file schema version. Bumped only when the input/restart contract changes,</span>
+<span class="c1"># NOT with ARC releases.</span>
+<span class="n">ARC_INPUT_SCHEMA_VERSION</span> <span class="o">=</span> <span class="mi">1</span>
+
 <span class="n">R</span> <span class="o">=</span> <span class="mf">8.31446261815324</span>  <span class="c1"># J/(mol*K)</span>
 <span class="n">EA_UNIT_CONVERSION</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'J/mol'</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">'kJ/mol'</span><span class="p">:</span> <span class="mf">1e+3</span><span class="p">,</span> <span class="s1">'cal/mol'</span><span class="p">:</span> <span class="mf">4.184</span><span class="p">,</span> <span class="s1">'kcal/mol'</span><span class="p">:</span> <span class="mf">4.184e+3</span><span class="p">}</span>
 <span class="n">FULL_CIRCLE</span> <span class="o">=</span> <span class="mf">360.0</span>
@@ -189,7 +193,7 @@
     <span class="n">defaults_to_true</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'conf_opt'</span><span class="p">,</span> <span class="s1">'fine'</span><span class="p">,</span> <span class="s1">'freq'</span><span class="p">,</span> <span class="s1">'irc'</span><span class="p">,</span> <span class="s1">'opt'</span><span class="p">,</span> <span class="s1">'rotors'</span><span class="p">,</span> <span class="s1">'sp'</span><span class="p">]</span>
     <span class="n">defaults_to_false</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'conf_sp'</span><span class="p">,</span> <span class="s1">'bde'</span><span class="p">,</span> <span class="s1">'onedmin'</span><span class="p">,</span> <span class="s1">'orbitals'</span><span class="p">,</span> <span class="s1">'stability'</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">job_types</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">job_types</span> <span class="o">=</span> <span class="n">default_job_types</span>
+        <span class="n">job_types</span> <span class="o">=</span> <span class="n">default_job_types</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"Job types were not specified, using ARC's defaults"</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">'the following job types were specified: </span><span class="si">{</span><span class="n">job_types</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>

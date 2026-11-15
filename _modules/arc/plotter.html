@@ -660,7 +660,7 @@
     <span class="k">if</span> <span class="n">T_max</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">T_max</span> <span class="o">=</span> <span class="p">(</span><span class="mi">3000</span><span class="p">,</span> <span class="s1">'K'</span><span class="p">)</span>
     <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">T_max</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
-        <span class="n">T_max</span> <span class="o">=</span> <span class="p">(</span><span class="n">T_min</span><span class="p">,</span> <span class="s1">'K'</span><span class="p">)</span>
+        <span class="n">T_max</span> <span class="o">=</span> <span class="p">(</span><span class="n">T_max</span><span class="p">,</span> <span class="s1">'K'</span><span class="p">)</span>
     <span class="n">temperatures</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">T_min</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">T_max</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">T_count</span><span class="p">)</span>
 
     <span class="n">pp</span> <span class="o">=</span> <span class="kc">None</span>
