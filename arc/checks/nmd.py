@@ -1,14 +1,14 @@
 """
 A module for checking the normal mode displacement of a TS.
 
-``DEFAULT_AMPLITUDE`` scales the normal mode vector that is added to the TS Cartesian coordinates,
-and a bond counts as reactive only once its length changes by more than 5% of that length. To first
-order the relative change of a bond between atoms i and j is ``2 * A * |u . (d_i - d_j)| / r_eq``,
+``DEFAULT_AMPLITUDE`` is a list of amplitudes, each of which scales the normal mode vector that is added to the
+TS Cartesian coordinates. The amplitudes are tried in order, and the TS passes the check if the displacement at
+any one of them passes. A bond counts as reactive only once its length changes by more than 5% of that length.
+To first order the relative change of a bond between atoms i and j is ``2 * A * |u . (d_i - d_j)| / r_eq``,
 so the amplitude and that 5% fraction set one and the same threshold on the reactive-mode rate
 ``|u . (d_i - d_j)| / r_eq``: moving one is equivalent to moving the other, and neither is a
-statement about how far an atom physically moves. The value is not a separation point between
-genuine and doubtful saddles; every verdict reached on the frequency logs shipped under
-``arc/testing`` is unchanged for any amplitude between 0.5 and 1.5.
+statement about how far an atom physically moves. An amplitude given explicitly by a caller, a single value
+or a list, is used as given.
 
 ``SIGMA_THRESHOLD`` is applied to the reactive bonds that survive that 5% gate, measured against the
 median and MAD-based spread of the non-reactive bonds of the same structure. Structures that are
@@ -39,7 +39,7 @@ logger = get_logger()
 SIGMA_THRESHOLD = 3.0
 STD_FLOOR = 1e-4
 DIRECTIONALITY_MIN_DELTA = 0.005
-DEFAULT_AMPLITUDE = 0.9
+DEFAULT_AMPLITUDE = [0.9, 1.1]
 ATOM_COUNT_MISMATCH_WARNING = 'The TS atom count does not match the reactants; skipped the TS normal mode ' \
                               'displacement check; '
 NO_REACTIVE_BONDS_WARNING = 'No reactive bonds could be derived; skipped the TS normal mode displacement check; '
@@ -68,7 +68,8 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
         reaction (ARCReaction): The reaction for which the TS is checked.
         job (JobAdapter): The frequency job object instance that points to the respective log file.
         amplitude (float | list): The amplitude of the normal mode displacement motion to check.
-                                        If a list, all possible results are returned.
+                                  If a list, each amplitude is tried in order, and the check passes
+                                  if the displacement at any one of them passes.
         weights (bool | np.ndarray): Per-atom weights. They are applied to the bond lengths that are
                                          compared, and are not applied to the normal mode displacement.
                                          If ``False``, use ones as weights. If ``True``, use sqrt of atom masses.
