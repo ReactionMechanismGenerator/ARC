@@ -90,5 +90,32 @@ H      -1.57047900   -0.47585800    0.91299300""")
         self.assertEqual(len(self.rxn.ts_species.ts_guesses), 1)
         self.assertEqual(self.rxn.ts_species.ts_guesses[0].method_sources, ['goflow', 'autotst'])
 
+    def test_autotst_skips_earlier_guess_without_coordinates(self):
+        """An earlier successful guess with no coordinates does not stop AutoTST from adding its guess."""
+        xyz = str_to_xyz("""O       1.29503100   -0.10783400    0.00000100
+H       1.38087500    0.85868300   -0.00000100
+C      -1.20395400    0.00755100    0.00000100
+H       0.00766600   -0.17858500   -0.00002000
+H      -1.38410100    1.08884500    0.00008300
+H      -1.57048400   -0.47571900   -0.91306300
+H      -1.57047900   -0.47585800    0.91299300""")
+        self.rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        self.rxn.ts_species.ts_guesses.append(TSGuess(method='GoFlow', index=0, success=True))
+        adapter = autotst_ts.AutoTSTAdapter(job_type='tsg', reactions=[self.rxn], testing=True, project='test',
+                                            project_directory=self.project_directory)
+
+        def fake_run_in_conda_env(python_executable, script_path, *script_args, check=False,
+                                  strip_pythonpath=False):
+            """Write one AutoTST result."""
+            save_yaml_file(path=script_args[1],
+                           content=[{'coords': [list(coord) for coord in xyz['coords']],
+                                     'numbers': [NUMBER_BY_SYMBOL[symbol] for symbol in xyz['symbols']]}])
+            return subprocess.CompletedProcess(args=[], returncode=0, stdout='', stderr='')
+
+        with unittest.mock.patch.object(autotst_ts, 'AUTOTST_PYTHON', autotst_ts.__file__), \
+                unittest.mock.patch.object(autotst_ts, 'run_in_conda_env', side_effect=fake_run_in_conda_env):
+            adapter.execute_incore()
+        self.assertEqual(len(self.rxn.ts_species.ts_guesses), 2)
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

@@ -393,7 +393,8 @@ class KinBotAdapter(JobAdapter):
                     success = False
                 else:
                     for other_tsg in rxn.ts_species.ts_guesses:
-                        if other_tsg.success and almost_equal_coords(xyz, other_tsg.initial_xyz):
+                        if other_tsg.success and other_tsg.initial_xyz is not None \
+                                and almost_equal_coords(xyz, other_tsg.initial_xyz):
                             if 'kinbot' not in other_tsg.method.lower():
                                 other_tsg.method += ' and KinBot'
                             other_tsg.add_method_source(method)

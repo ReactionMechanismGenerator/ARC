@@ -281,7 +281,8 @@ class HeuristicsAdapter(JobAdapter):
             for method_index, xyz in enumerate(xyzs):
                 unique = True
                 for other_tsg in rxn.ts_species.ts_guesses:
-                    if almost_equal_coords(xyz, other_tsg.initial_xyz):
+                    if other_tsg.success and other_tsg.initial_xyz is not None \
+                            and almost_equal_coords(xyz, other_tsg.initial_xyz):
                         if 'heuristics' not in other_tsg.method.lower():
                             other_tsg.method += ' and Heuristics'
                         other_tsg.add_method_source('Heuristics')
