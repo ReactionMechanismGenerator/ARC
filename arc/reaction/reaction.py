@@ -829,6 +829,39 @@ class ARCReaction(object):
         self.warn_if_identity_reaction(family=family)
         return restricted
 
+    def adopt_product_dicts(self,
+                            product_dicts: list[dict],
+                            dropped_families: dict[str, str] | None = None,
+                            ) -> list[dict]:
+        """
+        Adopt family product dictionaries generated outside the cached ``product_dicts`` property,
+        e.g., from a wider RMG family set, as this reaction's product dictionaries.
+
+        The entries are first restricted by restrict_product_dicts_to_family(), so a preset family is
+        never replaced: only its own entries are kept, and none are kept if it is unavailable. If no
+        family was set, the family ranked first is chosen, and its source, candidates, and tie are
+        recorded as they would be when the product dictionaries are generated on demand.
+
+        Args:
+            product_dicts (list[dict]): The family product dictionaries to adopt, in ranked order.
+            dropped_families (dict[str, str], optional): The families that matched after the direction gate
+                                                         but were dropped by a later gate, mapped to that gate.
+
+        Raises:
+            ReactionError: If this reaction's family was set, is available, and none of the entries belong to it.
+
+        Returns:
+            list[dict]: The adopted product dictionaries, empty if none belong to this reaction's family.
+        """
+        restricted = self.restrict_product_dicts_to_family(product_dicts, dropped_families=dropped_families)
+        if len(restricted):
+            self._product_dicts = restricted
+            if self._family is None:
+                self._family = restricted[0]['family']
+                self._family_own_reverse = None
+                self._family_determined = True
+        return restricted
+
     def warn_if_identity_reaction(self, family: str):
         """
         Warn once, when the family is chosen or before the TS search of a preset or restored family, if this is
