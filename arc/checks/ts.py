@@ -304,7 +304,8 @@ def check_normal_mode_displacement(reaction: ARCReaction,
         reaction (ARCReaction): The reaction for which the TS is checked.
         job (JobAdapter): The frequency job object instance.
         amplitude (float | list | None): The amplitude of the normal mode displacement motion to check.
-                                        If a list, all possible results are returned.
+                                        If a list, each amplitude is tried in order, and the check passes
+                                        if the displacement at any one of them passes.
                                         ``None`` selects ``DEFAULT_AMPLITUDE``; any other value is passed
                                         through as given, including ``0`` and an empty list, which both
                                         leave no amplitude to probe.
