@@ -17,7 +17,7 @@ import sys
 import time
 
 import numpy as np
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import arc.parser.parser as parser
 from arc import plotter
@@ -147,6 +147,10 @@ UNREADABLE_QUEUE_ERROR = 'The queue on {server} was unreadable past the outage l
                          'jobs {job_names} were left running for a restart; '
 HELD_BACK_JOB_ERROR = 'Job {job_name} was not submitted to {server}, whose queue was unreadable; '
 SUBMIT, DEFER, REFUSE = 'submit', 'defer', 'refuse'
+SHELL_ASSIGNMENT = r'[A-Za-z_]\w*=(?:"[^"]*"|\'[^\']*\'|[^\s;|&\'"])*'
+SHELL_ASSIGNMENTS = rf'(?:export\s+)?{SHELL_ASSIGNMENT}(?:\s+{SHELL_ASSIGNMENT})*'
+HIDDEN_FAILURE_PATTERNS = (('a pipe', r'(?<!\|)\|(?!\|)'), ('an OR-list (||)', r'\|\|'),
+                           ('a ";"', rf'^(?!(?:\s*{SHELL_ASSIGNMENTS}\s*;)+[^;]*$).*;'))
 
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
@@ -410,6 +414,7 @@ class Scheduler(object):
         self.server_job_ids = list()
         self.queue_query_failures = dict()
         self.job_query_failures = dict()
+        self.job_query_failed = False
         self.answered_queue_servers = set()
         self.queue_clock = time.monotonic
         self.queue_outage_limit = queue_outage_limit(settings.get('queue_outage_limit_hrs'))
@@ -747,11 +752,23 @@ class Scheduler(object):
 
     def warn_on_piped_queue_commands(self) -> None:
         """
-        Log one warning per server this run uses whose ``check_status_command`` contains a pipe.
+        Log one warning per server this run uses whose ``check_status_command`` can hide the queue command's exit
+        status.
 
-        A pipeline exits with its last command's status, not the queue command's. A filter such as ``grep`` exits
-        non-zero on an empty queue, which ARC reads as an unreadable queue. A command such as ``tail`` or ``awk``
-        exits 0 when the queue command failed, which ARC reads as an empty queue.
+        ARC judges a queue query by the exit status of the whole command. The check warns on three forms:
+
+        - a pipe (``|``): a pipeline exits with its last command's status. A filter such as ``grep`` exits non-zero on
+          an empty queue, which ARC reads as an unreadable queue. A command such as ``tail`` or ``awk`` exits 0 when
+          the queue command failed, which ARC reads as an empty queue.
+        - an OR-list (``||``), e.g., ``squeue -u $USER || true`` or ``... || echo``: it exits 0 when the queue command
+          failed.
+        - a ``;`` after anything but variable assignments, e.g., ``qstat -u $USER; true`` or ``cd dir; squeue``: the
+          command exits with the status of the last command in the list. A ``;`` that only ends assignments, as in
+          ``export SGE_ROOT=/opt/sge; qstat -u $USER``, leaves the queue command last and is not warned about.
+
+        The check matches these characters in the command string and does not parse shell. It does not catch a
+        failure hidden elsewhere: in a wrapper script, a shell function or alias, a command substitution, a newline,
+        or an ``exit 0``. An ``&&``-list is not warned about, since it exits non-zero once the queue command fails.
         """
         servers = list(self.servers)
         for server_list in self.ess_settings.values():
@@ -761,13 +778,17 @@ class Scheduler(object):
         for server in servers:
             cluster_soft = settings['servers'].get(server, dict()).get('cluster_soft')
             command = settings['check_status_command'].get(cluster_soft) or ''
-            if re.search(r'(?<!\|)\|(?!\|)', command):
-                logger.warning(f'The check_status_command of server {server} contains a pipe: {command}\n'
-                               f'ARC reads the exit status of the last command in the pipeline. A filter such as '
-                               f'grep exits non-zero on an empty queue, which reads as an outage, so finished jobs '
-                               f'stay running until queue_outage_limit_hrs and are then stranded. A command such '
-                               f'as tail or awk exits 0 when the queue command fails, which reads as an empty '
-                               f'queue. Use a bare queue command.')
+            forms = [form for form, pattern in HIDDEN_FAILURE_PATTERNS if re.search(pattern, command)]
+            if forms:
+                logger.warning(f'The check_status_command of server {server} contains {" and ".join(forms)}: '
+                               f'{command}\n'
+                               f'ARC reads the exit status of the whole command, which is that of its last command. '
+                               f'A filter such as grep exits non-zero on an empty queue, which reads as an outage, '
+                               f'so finished jobs stay running until queue_outage_limit_hrs and are then stranded. '
+                               f'A pipe into tail or awk, "|| true", "|| echo" or "; true" exits 0 when the queue '
+                               f'command fails, which reads as an empty queue, so ARC ends every job it tracks '
+                               f'there. Use a bare queue command, preceded only by variable assignments '
+                               f'such as "export SGE_ROOT=/opt/sge;".')
 
     def has_pending_pipe_work(self, label: str) -> bool:
         """
@@ -881,6 +902,7 @@ class Scheduler(object):
                 or self._pending_pipe_sp or self._pending_pipe_freq \
                 or self._pending_pipe_irc or self._pending_pipe_conf_sp:
             self.timer = True
+            self.job_query_failed = False
             self.strand_unreadable_queue_jobs()
             self.submit_unsubmitted_jobs()
             for label in self.unique_species_labels:
@@ -1115,7 +1137,8 @@ class Scheduler(object):
             # newly-ready work has been discovered and before the loop sleeps.
             self.flush_pending_pipe_batches()
 
-            should_sleep = self.timer and (self.running_jobs or self.active_pipes or self.unsubmitted_jobs)
+            should_sleep = (self.timer or self.job_query_failed) \
+                and (self.running_jobs or self.active_pipes or self.unsubmitted_jobs)
             if should_sleep:
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
             t = time.time() - self.report_time
@@ -4761,6 +4784,11 @@ class Scheduler(object):
         outage is timed from its first failure, and warned about at most every ``QUEUE_OUTAGE_WARNING_INTERVAL``
         seconds. A server past the outage limit is not queried at all (see ``strand_unreadable_queue_jobs()``).
 
+        A check of all servers skips a server where ARC tracks no queue job, since no job of its can end. A check of a
+        specific server (the job limit check before a submission) queries it anyway. A check of all servers also lists
+        as running each job whose own status query failed less than ``QUEUE_QUERY_COOLDOWN`` seconds ago, so the
+        main loop does not query it again before then (see ``record_job_query_failure()``).
+
         A missing queue command (exit status 127) on a server whose queue has not answered once in this run is a
         configuration error, not an outage, so ARC stops at once. Once a server has answered, a later 127 is an
         outage like any other failure. On the local machine a 127 reads as an empty queue only while ARC tracks no
@@ -4776,6 +4804,8 @@ class Scheduler(object):
         self.server_job_ids = list()
         for server in self.servers:
             if specific_server is not None and server != specific_server or server in self.unreadable_queue_servers:
+                continue
+            if specific_server is None and not tracked_queue_job_ids(self.job_dict, self.running_jobs, server):
                 continue
             failure, now = self.queue_query_failures.get(server), self.queue_clock()
             if failure is not None and now - failure['last_attempt'] < QUEUE_QUERY_COOLDOWN:
@@ -4822,6 +4852,37 @@ class Scheduler(object):
                 self.answered_queue_servers.add(server)
             self.clear_job_query_failures_seen_running(server, server_job_ids)
             self.server_job_ids.extend(server_job_ids)
+        if specific_server is None:
+            self.server_job_ids.extend(self.job_ids_in_query_cooldown())
+
+    def job_ids_in_query_cooldown(self) -> list:
+        """
+        Get the IDs of the tracked queue jobs whose own status query failed less than ``QUEUE_QUERY_COOLDOWN`` seconds
+        ago.
+
+        The per-job outage record of a server (``job_query_failures``) holds the IDs of the jobs whose status query
+        failed there and, per job, the time of its last failed query. While that time is within the cooldown, the
+        job is not queried again. A server past the outage limit is left out, and so is a job ARC no longer tracks.
+        The main loop matches job IDs without their server, so an ID that a tracked queue job on another server also
+        holds is left out too: that job may have ended, and the ID must not hide it. The job in cooldown is then
+        queried as usual.
+
+        Returns:
+            list: The job IDs, as the job objects hold them.
+        """
+        now = self.queue_clock()
+        tracked = {server: tracked_queue_job_ids(self.job_dict, self.running_jobs, server)
+                   for server in set(self.servers) | set(self.job_query_failures)}
+        job_ids = list()
+        for server, failure in self.job_query_failures.items():
+            if server in self.unreadable_queue_servers:
+                continue
+            attempts = failure.get('job_last_attempts', dict())
+            elsewhere = {str(job_id) for other, ids in tracked.items() if other != server for job_id in ids}
+            job_ids.extend(job_id for job_id in tracked.get(server, list())
+                           if str(job_id) in failure.get('job_ids', set()) and str(job_id) not in elsewhere
+                           and now - attempts.get(str(job_id), failure['last_attempt']) < QUEUE_QUERY_COOLDOWN)
+        return job_ids
 
     def strand_unreadable_queue_jobs(self):
         """
@@ -4833,6 +4894,10 @@ class Scheduler(object):
         a server. Their jobs are neither ended nor deleted. They move from ``running_jobs`` to ``stranded_jobs``, which
         restart.yml still lists as running, so the run can finish its other work and a restart polls them again.
         The server is not queried any more, one ERROR names it, and status.yml records it per species.
+
+        A job queue outage on a server where ARC tracks no queue job strands nothing. It is dropped once no job waits
+        for that server either; while a put-off job waits, its clock runs on, and the job limit check holds the job
+        back at the outage limit (see ``check_max_simultaneous_jobs_limit()``).
         """
         outages = [(server, failure, 'job queue') for server, failure in self.queue_query_failures.items()] \
             + [(server, failure, 'per-job status query') for server, failure in self.job_query_failures.items()]
@@ -4840,6 +4905,10 @@ class Scheduler(object):
             if server in self.unreadable_queue_servers:
                 continue
             jobs = tracked_queue_jobs(self.job_dict, self.running_jobs, server)
+            if what == 'job queue' and not jobs:
+                if all(job.server != server for _, job in self.unsubmitted_jobs):
+                    self.queue_query_failures.pop(server, None)
+                continue
             if what == 'per-job status query':
                 self.prune_job_query_failure(server, failure.get('job_ids', set())
                                              & {str(job_id) for _, _, job_id in jobs})
@@ -4953,19 +5022,23 @@ class Scheduler(object):
 
         A per-job query can keep failing while the bulk query of the same server answers, so it has its own outage
         clock in ``job_query_failures``, started at its first failure, with the IDs of the jobs whose query
-        failed (job names repeat across species, IDs on one server do not). A bulk answer does not stop it; it
-        stops once each of those jobs has answered a per-job query (see ``clear_job_query_failure()``). The record
-        keeps the output and exit status of the job's last failed query, which the outage ERROR and status.yml
-        report. Past the outage limit ``strand_unreadable_queue_jobs()`` leaves the
-        server's jobs for a restart, as it does for an unreadable queue.
+        failed (job names repeat across species, IDs on one server do not) and the time of each one's last failed
+        query. A bulk answer does not stop it; it stops once each of those jobs has answered a per-job query (see
+        ``clear_job_query_failure()``). The record keeps the output and exit status of the job's last failed query,
+        which the outage ERROR and status.yml report. Past the outage limit ``strand_unreadable_queue_jobs()`` leaves
+        the server's jobs for a restart, as it does for an unreadable queue. Each failed job is not queried again for
+        ``QUEUE_QUERY_COOLDOWN`` seconds after its own last failure (see ``job_ids_in_query_cooldown()``), and the
+        main loop sleeps after this pass as though no job ended.
 
         Args:
             job (JobAdapter): The job whose status query failed.
         """
         if job.execution_type == 'incore' or job.server is None:
             return
+        self.job_query_failed = True
         failure = self.job_query_failures.setdefault(job.server, outage_record(self.queue_clock()))
         failure.setdefault('job_ids', set()).add(str(job.job_id))
+        failure.setdefault('job_last_attempts', dict())[str(job.job_id)] = self.queue_clock()
         failure.setdefault('job_since', dict()).setdefault(
             str(job.job_id), (self.queue_clock(), datetime.datetime.now().isoformat(timespec='seconds')))
         error = getattr(job, 'last_queue_query_error', None)
@@ -5038,9 +5111,9 @@ class Scheduler(object):
         Put off a job that was about to be submitted to a server whose queue cannot be read right now.
 
         The server sets ``max_simultaneous_jobs``, so ARC must count its jobs before it submits more, and the count
-        is unknown. Rather than wait for the queue, which would stop the whole scheduler, the job moves from
-        ``running_jobs`` to ``deferred_jobs`` and joins ``unsubmitted_jobs``, which the main loop tries again on each
-        pass (see ``submit_unsubmitted_jobs()``). Other servers, incore jobs, pipes, reports and restart saves go on
+        is unknown. The call does not wait for the queue: the job moves from ``running_jobs`` to ``deferred_jobs``
+        and joins ``unsubmitted_jobs``, which the main loop tries again on each pass (see
+        ``submit_unsubmitted_jobs()``). Other servers, incore jobs, pipes, reports and restart saves go on
         meanwhile. restart.yml lists the job with no job ID, so a restart submits it. A new job gets its row in
         initiated_jobs.csv with no job ID and is marked ``restarted``, since the row count numbers the next job.
         A job already put off is only queued again for the next pass, with no log line and no restart save.
@@ -6098,7 +6171,7 @@ class Scheduler(object):
         content[label] = self.species_dict[label].e_elect
         save_yaml_file(path=path, content=content)
 
-    def check_max_simultaneous_jobs_limit(self, server: str | None) -> bool:
+    def check_max_simultaneous_jobs_limit(self, server: str | None) -> Literal['submit', 'defer', 'refuse']:
         """
         Check if the number of running jobs on the server is not above the set server limit.
 
@@ -6111,8 +6184,8 @@ class Scheduler(object):
             server (str): The server name.
 
         Returns:
-            str: ``SUBMIT`` if a job may be submitted to the server now, ``DEFER`` while its queue cannot be read, and
-                 ``REFUSE`` once its queue was unreadable past the outage limit.
+            Literal['submit', 'defer', 'refuse']: ``SUBMIT`` if a job may be submitted to the server now, ``DEFER``
+                while its queue cannot be read, and ``REFUSE`` once its queue was unreadable past the outage limit.
         """
         if server is not None and server in self.unreadable_queue_servers:
             return REFUSE

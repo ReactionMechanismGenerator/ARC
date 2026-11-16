@@ -329,8 +329,8 @@ class TestJobAdapter(unittest.TestCase):
                                        'make_x': True})
 
     def test_determine_job_status(self):
-        """Test determining the job status"""
-        with patch('arc.job.local.execute_command', return_value=([], [], 0)):  # An empty queue: the job ended.
+        """A job missing from an empty queue is read as ended, and its output gives the error keywords."""
+        with patch('arc.job.local.execute_command', return_value=([], [], 0)):
             self.job_5.determine_job_status()
         self.assertEqual(self.job_5.job_status[0], 'done')
         self.assertEqual(self.job_5.job_status[1]['status'], 'errored')
@@ -573,6 +573,7 @@ class _MinimalAdapter(JobAdapter):
     Skips the heavyweight construction the GaussianAdapter does — we
     only need ``server``, ``execution_type``, ``files_to_upload``,
     ``remote_path``, and ``testing=False`` for the SSH-share path.
+    It is marked ``restarted``, so ``execute()`` writes no row to the initiated-jobs CSV.
     """
 
     job_adapter = 'mockter'
@@ -584,7 +585,7 @@ class _MinimalAdapter(JobAdapter):
         self.server = server
         self.execution_type = execution_type
         self.testing = False
-        self.restarted = True   # skip write_initiated_job_to_csv_file
+        self.restarted = True
         self.files_to_upload = [
             {'file_name': 'input.gjf', 'source': 'path',
              'local': '/local/input.gjf', 'remote': '/remote/input.gjf', 'make_x': False},
