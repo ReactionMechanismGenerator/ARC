@@ -17,7 +17,9 @@ from types import SimpleNamespace
 
 
 import arc.parser.parser as parser
-from arc.checks.common import IRC_JOB_FAILED_WARNING, TS_IRC_NOT_CONFIRMED_MARKER, get_ts_validation_comment
+from arc.checks.common import (IRC_CAUSE_COMPARISON_INCONCLUSIVE, IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED,
+                               IRC_CAUSE_JOB_FAILED, IRC_JOB_FAILED_WARNING, TS_IRC_NOT_CONFIRMED_MARKER,
+                               get_ts_validation_comment)
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.exceptions import DependencyError, ReactionError
@@ -1777,13 +1779,74 @@ H      -0.38158795    1.01273118   -0.02607927""")),
             sched.spawn_post_irc_jobs(label=label, job=job)
         ts_species = sched.species_dict[label]
         self.assertIsNone(get_ts_validation_comment(ts_species))
-        rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O', ts_label=label)
+        rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O', ts_label=label,
+                          kinetics={'A': (1.2e10, 'cm^3/(mol*s)'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')})
         rxn.ts_species = ts_species
         write_output_yml(project='project_test_irc', project_directory=self.project_directory,
                          species_dict=sched.species_dict, reactions=[rxn], output_dict=sched.output,
                          compute_thermo=False)
         document = read_yaml_file(os.path.join(self.project_directory, 'output', 'output.yml'))
-        self.assertTrue(document['reactions'][0]['ts_validation_caution'].startswith(TS_IRC_NOT_CONFIRMED_MARKER))
+        self.assertTrue(document['reactions'][0]['ts_validation_caution'].startswith(
+            f'{TS_IRC_NOT_CONFIRMED_MARKER} ({IRC_CAUSE_JOB_FAILED})'))
+
+    def _spawn_both_irc_endpoints(self):
+        """
+        Build a testing Scheduler whose TS ran a forward and a reverse IRC, each spawning an endpoint species.
+
+        Returns:
+            tuple: The scheduler, the TS label, and the labels of the two endpoint species.
+        """
+        sched, label, job = self._irc_scheduler()
+        for direction, file_name in [('forward', 'rxn_1_irc_1.out'), ('reverse', 'rxn_1_irc_2.out')]:
+            job.irc_direction = direction
+            with open(os.path.join(ARC_TESTING_PATH, 'irc', file_name), 'r') as f:
+                self._write_irc_output(job, content=f.read())
+            self._set_ess_status_from_output(job)
+            with patch.object(sched, 'run_job'), patch('arc.scheduler.plotter.save_irc_traj_animation'):
+                sched.spawn_post_irc_jobs(label=label, job=job)
+        endpoint_labels = sched.species_dict[label].irc_label.split()
+        self.assertEqual(len(endpoint_labels), 2)
+        return sched, label, endpoint_labels
+
+    def _caution_in_output_yml(self, sched, label):
+        """
+        Write output.yml for one reaction of a TS, with IRC requested, and read back the reaction's caution.
+
+        Args:
+            sched (Scheduler): The scheduler.
+            label (str): The TS label.
+
+        Returns:
+            str | None: The ``ts_validation_caution`` of the reaction, or ``None`` if it is absent.
+        """
+        rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O', ts_label=label,
+                          kinetics={'A': (1.2e10, 'cm^3/(mol*s)'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')})
+        rxn.ts_species = sched.species_dict[label]
+        write_output_yml(project='project_test_irc', project_directory=self.project_directory,
+                         species_dict={label: sched.species_dict[label]}, reactions=[rxn], output_dict=sched.output,
+                         compute_thermo=False, irc_requested=True)
+        document = read_yaml_file(os.path.join(self.project_directory, 'output', 'output.yml'))
+        return document['reactions'][0].get('ts_validation_caution')
+
+    def test_a_rate_whose_irc_endpoint_opt_did_not_converge_carries_a_caution(self):
+        """Test that a rate whose IRC endpoint opt never converged, so no comparison ran, carries a caution"""
+        sched, label, endpoint_labels = self._spawn_both_irc_endpoints()
+        sched.output[endpoint_labels[0]]['paths']['geo'] = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
+        self.assertIsNone(sched.species_dict[label].ts_checks['IRC'])
+        caution = self._caution_in_output_yml(sched, label)
+        self.assertTrue(caution.startswith(f'{TS_IRC_NOT_CONFIRMED_MARKER} ({IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED})'))
+
+    def test_a_rate_whose_irc_comparison_is_inconclusive_carries_a_caution(self):
+        """Test that a rate whose optimized IRC endpoints could not be compared with the wells carries a caution"""
+        sched, label, endpoint_labels = self._spawn_both_irc_endpoints()
+        for endpoint_label, file_name in zip(endpoint_labels, ['rxn_1_irc_1.out', 'rxn_1_irc_2.out']):
+            sched.output[endpoint_label]['paths']['geo'] = os.path.join(ARC_TESTING_PATH, 'irc', file_name)
+        with patch('arc.scheduler.check_irc_species_and_rxn', return_value=None) as check_irc_species_and_rxn:
+            sched.check_irc_species(label=endpoint_labels[1])
+        check_irc_species_and_rxn.assert_called_once()
+        self.assertIsNone(sched.species_dict[label].ts_checks['IRC'])
+        caution = self._caution_in_output_yml(sched, label)
+        self.assertTrue(caution.startswith(f'{TS_IRC_NOT_CONFIRMED_MARKER} ({IRC_CAUSE_COMPARISON_INCONCLUSIVE})'))
 
     def test_an_irc_with_a_parsable_output_spawns_its_species_and_opt(self):
         """

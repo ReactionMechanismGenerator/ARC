@@ -228,7 +228,8 @@ def write_output_yml(
             doc['species'].append(d)
 
     # ---- reactions --------------------------------------------------------------
-    doc['reactions'] = [_rxn_to_dict(rxn) for rxn in reactions]
+    doc['reactions'] = [_rxn_to_dict(rxn, irc_requested=irc_requested, output_dict=output_dict)
+                        for rxn in reactions]
 
     # ---- atomic write -----------------------------------------------------------
     out_dir = os.path.join(project_directory, 'output')
@@ -2807,8 +2808,21 @@ def _ts_checks_to_dict(spc) -> dict:
     return result
 
 
-def _rxn_to_dict(rxn) -> dict:
-    """Convert an ARCReaction to a plain dict for output.yml."""
+def _rxn_to_dict(rxn,
+                 irc_requested: bool = True,
+                 output_dict: dict | None = None,
+                 ) -> dict:
+    """
+    Convert an ARCReaction to a plain dict for output.yml.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+        irc_requested (bool, optional): Whether IRC jobs were requested for this run.
+        output_dict (dict, optional): The Scheduler output dictionary, keyed by species label.
+
+    Returns:
+        dict: The reaction entry of output.yml.
+    """
     kinetics = rxn.kinetics
     kin_dict: dict | None = None
     if kinetics is not None:
@@ -2853,7 +2867,9 @@ def _rxn_to_dict(rxn) -> dict:
     long_kin_desc = getattr(rxn, 'long_kinetic_description', None)
     if long_kin_desc:
         rxn_dict['long_kinetic_description'] = long_kin_desc
-    ts_validation_caution = get_ts_validation_caution(getattr(rxn, 'ts_species', None))
+    ts_validation_caution = get_ts_validation_caution(getattr(rxn, 'ts_species', None),
+                                                      irc_requested=irc_requested, output_dict=output_dict) \
+        if kin_dict is not None else None
     if ts_validation_caution is not None:
         rxn_dict['ts_validation_caution'] = ts_validation_caution
     return rxn_dict

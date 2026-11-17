@@ -861,7 +861,7 @@ all `null` has not been shown to be wrong, only left unvalidated.
 | `ts_label` | `str?` | Label of the associated transition state |
 | `kinetics` | `dict?` | Fitted kinetics (see below); `null` if not computed |
 | `long_kinetic_description` | `str` | ARC's verbose description of how the rate coefficient was obtained. **Omitted** (key absent) when the reaction carries no such description |
-| `ts_validation_caution` | `str` | A non-blocking caution: an IRC job of the TS failed (its output was missing or cut), so `ts_checks.IRC` of the TS is `null` and the TS was not confirmed to connect this reaction's reactants and products. The rate is kept. Always starts with `IRC NOT CONFIRMED (a requested IRC job failed)`, so a consumer can match on that prefix; the cause is in the TS's `ts_checks.warnings`. **Omitted** (key absent) otherwise |
+| `ts_validation_caution` | `str` | A non-blocking caution: an IRC was requested for the TS and `ts_checks.IRC` of the TS is `null`, so the TS was not confirmed to connect this reaction's reactants and products. The rate is kept. Always starts with `IRC NOT CONFIRMED (<cause>)`, so a consumer can match on that prefix. The cause is `IRC job failed` (an IRC job did not end normally; its cause is in the TS's `ts_checks.warnings`), `endpoint opt not converged` (an IRC endpoint has no optimized geometry, so the endpoints were never compared), `comparison inconclusive` (both endpoints were optimized but could not be compared with the wells), or `IRC not completed` (no other cause applies). **Omitted** (key absent) when `kinetics` is `null`, when no IRC was requested, or when `ts_checks.IRC` is `true` or `false` |
 
 **`kinetics`**:
 

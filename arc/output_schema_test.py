@@ -25,7 +25,8 @@ from unittest.mock import patch
 from jsonschema import Draft202012Validator
 from jsonschema.validators import validator_for
 
-from arc.checks.common import IRC_JOB_FAILED_WARNING, get_ts_validation_caution
+from arc.checks.common import (IRC_JOB_FAILED_WARNING, IRC_NOT_CONFIRMED_CAUSES, TS_IRC_NOT_CONFIRMED_MARKER,
+                               get_ts_validation_caution)
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file
 from arc.constants import E_h_kJmol
 from arc.level import Level
@@ -1199,8 +1200,15 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         ts.ts_checks['warnings'] = f'{IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
         self.document['reactions'][0]['ts_validation_caution'] = get_ts_validation_caution(ts)
         self.assert_valid(self.document)
-        self.document['reactions'][0]['ts_validation_caution'] = 'IRC not confirmed'
-        self.assert_invalid(self.document, 'ts_validation_caution')
+        for cause in IRC_NOT_CONFIRMED_CAUSES:
+            with self.subTest(cause=cause):
+                self.document['reactions'][0]['ts_validation_caution'] = f'{TS_IRC_NOT_CONFIRMED_MARKER} ({cause}): x'
+                self.assert_valid(self.document)
+        for caution in ['IRC not confirmed', TS_IRC_NOT_CONFIRMED_MARKER, f'{TS_IRC_NOT_CONFIRMED_MARKER} (other): x',
+                        'IRC NOT CONFIRMED (a requested IRC job failed): x']:
+            with self.subTest(caution=caution):
+                self.document['reactions'][0]['ts_validation_caution'] = caution
+                self.assert_invalid(self.document, 'ts_validation_caution')
 
     def test_unknown_correction_total_unit_is_rejected(self):
         """The unit vocabulary is pinned: an unlisted unit is a silent rescale."""

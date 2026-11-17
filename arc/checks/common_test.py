@@ -116,7 +116,7 @@ class TestChecks(unittest.TestCase):
         self.assertIsNone(common.get_ts_validation_caution(ts))
         ts.ts_checks['warnings'] += f'{common.IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
         caution = common.get_ts_validation_caution(ts)
-        self.assertTrue(caution.startswith(common.TS_IRC_NOT_CONFIRMED_MARKER))
+        self.assertTrue(caution.startswith(f'{common.TS_IRC_NOT_CONFIRMED_MARKER} ({common.IRC_CAUSE_JOB_FAILED})'))
         self.assertIsNone(common.get_ts_validation_comment(ts))
         for verdict in [True, False]:
             with self.subTest(irc=verdict):
@@ -125,6 +125,37 @@ class TestChecks(unittest.TestCase):
         ts.ts_checks['warnings'] = None
         ts.ts_checks['IRC'] = None
         self.assertIsNone(common.get_ts_validation_caution(ts))
+
+    def test_get_ts_validation_caution_names_its_cause(self):
+        """Test that a TS whose requested IRC reached no verdict gets a caution naming why"""
+        converged = {'paths': {'geo': 'opt.log'}}
+        unconverged = {'paths': {'geo': ''}}
+        cases = {common.IRC_CAUSE_JOB_FAILED: (f'{common.IRC_JOB_FAILED_WARNING}IRC job irc_a1 failed: x; ',
+                                               'IRC_TS0_1', {'IRC_TS0_1': converged}),
+                 common.IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED: ('', 'IRC_TS0_1 IRC_TS0_2',
+                                                               {'IRC_TS0_1': converged, 'IRC_TS0_2': unconverged}),
+                 common.IRC_CAUSE_COMPARISON_INCONCLUSIVE: ('', 'IRC_TS0_1 IRC_TS0_2',
+                                                            {'IRC_TS0_1': converged, 'IRC_TS0_2': converged}),
+                 common.IRC_CAUSE_NOT_COMPLETED: ('', None, dict())}
+        for cause, (warnings, irc_label, output_dict) in cases.items():
+            with self.subTest(cause=cause):
+                ts = ARCSpecies(label='TS0', is_ts=True)
+                ts.ts_checks['warnings'], ts.irc_label = warnings, irc_label
+                caution = common.get_ts_validation_caution(ts, irc_requested=True, output_dict=output_dict)
+                self.assertTrue(caution.startswith(f'{common.TS_IRC_NOT_CONFIRMED_MARKER} ({cause}): '))
+                self.assertIn(common.IRC_NOT_CONFIRMED_CAUSES[cause], caution)
+                for verdict in [True, False]:
+                    with self.subTest(cause=cause, irc=verdict):
+                        ts.ts_checks['IRC'] = verdict
+                        self.assertIsNone(common.get_ts_validation_caution(ts, irc_requested=True,
+                                                                           output_dict=output_dict))
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.irc_label = 'IRC_TS0_1 IRC_TS0_2'
+        self.assertIsNone(common.get_ts_validation_caution(ts, irc_requested=False,
+                                                           output_dict={'IRC_TS0_1': unconverged}))
+        self.assertIn(common.IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED,
+                      common.get_ts_validation_caution(ts, irc_requested=True))
+        self.assertIsNone(common.get_ts_validation_caution(None, irc_requested=True))
 
 
 if __name__ == '__main__':
