@@ -28,11 +28,27 @@ Clone ARC and create the environment:
    conda env create -f environment.yml
    conda activate arc_env
 
-Compile ARC's Cython extensions:
+Build ARC's Cython extensions and register ARC in ``arc_env`` as an editable
+install, so that ``import arc`` works from any directory without adding the
+repository to ``PYTHONPATH``; then compile ARC's C kernels:
 
 .. code-block:: bash
 
-   make compile
+   python -m pip install -e . --no-deps --no-build-isolation
+   make kernels
+
+``--no-deps`` leaves all dependencies to Conda, and ``--no-build-isolation`` builds
+the Cython extensions against the Cython and NumPy already in ``arc_env``. The
+install points at the repository checkout, so changes to ARC's Python sources take
+effect without reinstalling. The Cython-compiled modules (the ``.pyx`` files and the
+other modules listed in ``setup.py``) are the exception: after editing one, run
+``make compile``, which rebuilds the Cython extensions and the C kernels. A
+``PYTHONPATH`` entry pointing at another ARC checkout takes precedence over the
+editable install.
+
+``devtools/install_arc.sh`` runs all of the above in one go: it creates or updates
+``arc_env``, performs the editable install, compiles the C kernels, and writes
+``arc_env`` activation hooks that add the repository to ``PATH`` and ``PYTHONPATH``.
 
 Run the unit tests when you want to verify the installation:
 
