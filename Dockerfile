@@ -105,7 +105,7 @@ RUN micromamba create -y -v -n arc_env python=3.14 -c conda-forge -c danagroup -
     micromamba clean --all -f -y
 
 RUN micromamba run -n arc_env bash -euxo pipefail -c \
-      "make compile" && \
+      "python -m pip install -e . --no-deps --no-build-isolation && make kernels" && \
     micromamba clean --all --yes
 
 # Stage 2: Final image

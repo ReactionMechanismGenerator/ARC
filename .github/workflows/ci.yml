@@ -107,13 +107,17 @@ jobs:
         run: |
           echo "PYTHONPATH=$(realpath ../TS-GCN):$(realpath ../AutoTST):$PYTHONPATH" >> $GITHUB_ENV
 
-      - name: Compile ARC molecule
+      - name: Compile and install ARC
         shell: micromamba-shell {0}
         working-directory: ARC
         env:
           ARC_COVERAGE: 1
         run: |
-          make compile
+          set -eu
+          python -m pip install -e . --no-deps --no-build-isolation
+          make kernels
+          cd "$RUNNER_TEMP"
+          env -u PYTHONPATH python -c "import sys, arc, arc.molecule.graph, arc.species.species, arc.species._zmat_kernels as k; print(arc.__file__); sys.exit(0 if k.available else f'C kernels unavailable: {k.load_error}')"
 
       - name: Run Unit Tests
         shell: micromamba-shell {0}
