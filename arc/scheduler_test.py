@@ -19,6 +19,7 @@ import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.exceptions import DependencyError, ReactionError
+from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_incore_adapters,
                                       derived_instability_breaks_spin_symmetry, is_restricted,
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
@@ -30,10 +31,14 @@ from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_stat
 from arc.level import Level, get_freq_level_for_composite_method
 from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED,
-                           INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
-                           MIXED_SCF_REFERENCE_MESSAGE, SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
+                           CONFORMER_ISOMORPHISM_TRSH_NOTE,
+                           CONFORMER_SET_REPLACED_NOTE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
+                           MIXED_SCF_REFERENCE_MESSAGE, REFUSED_CONFORMER_TRSH_RECOVERY_MESSAGE,
+                           SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
                            SYMMETRY_BREAKING_ADAPTERS, UNREACHABLE_REFERENCE_MESSAGE,
-                           Scheduler, SchedulerError, get_conformer_isomorphism_trsh_history, species_has_freq,
+                           UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE, Scheduler, SchedulerError,
+                           get_conformer_isomorphism_trsh_history, get_conformer_trsh_levels,
+                           get_respawned_conformer_trsh_methods, species_has_freq,
                            species_has_geo, species_has_sp, species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
@@ -641,8 +646,17 @@ H      -0.66133128   -0.19490562    1.08785111
 H       3.88047852    0.26966160   -1.37780789
 H       4.27889520   -0.81548721   -0.22940984"""
 
-    def _issue622_kwargs(self, species_list):
-        """Scheduler kwargs shared by the ARC issue #622 restart tests."""
+    def _issue622_kwargs(self, species_list, **overrides):
+        """
+        Scheduler kwargs shared by the ARC issue #622 restart tests.
+
+        Args:
+            species_list (list): The species.
+            **overrides: Scheduler kwargs that replace the shared ones.
+
+        Returns:
+            dict: The Scheduler kwargs.
+        """
         project_directory = tempfile.mkdtemp(prefix='arc_test_issue622_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         return dict(project='project_test_issue622', ess_settings=self.ess_settings,
@@ -655,7 +669,7 @@ H       4.27889520   -0.81548721   -0.22940984"""
                     ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
                     project_directory=project_directory,
                     job_types=self.job_types1, orbitals_level=default_levels_of_theory['orbitals'],
-                    adaptive_levels=None)
+                    adaptive_levels=None) | overrides
 
     def _issue622_restarted_scheduler(self, conformers_note=''):
         """
@@ -688,7 +702,8 @@ H       4.27889520   -0.81548721   -0.22940984"""
 
     def _issue622_run_schedule_jobs(self, sched):
         """
-        Run ``schedule_jobs`` with job spawning mocked.
+        Run ``schedule_jobs`` up to its first main-loop poll, with job spawning and restart saving mocked: each
+        submitted conformer job is listed as running, as the real ``run_job`` does.
 
         Args:
             sched (Scheduler): The scheduler.
@@ -696,9 +711,23 @@ H       4.27889520   -0.81548721   -0.22940984"""
         Returns:
             MagicMock: The ``run_job`` mock.
         """
-        with patch.object(Scheduler, 'spawn_ts_jobs'), patch.object(Scheduler, 'run_job') as run_job:
-            sched.schedule_jobs()
-        return run_job
+        class _ReachedMainLoop(Exception):
+            """Raised to stop the run at the first main-loop poll."""
+
+        def run_job(**kwargs):
+            """List the submitted conformer job as running."""
+            label = kwargs['label']
+            sched.job_dict[label].setdefault('conf_opt', dict())[kwargs['conformer']] = MagicMock()
+            sched.running_jobs.setdefault(label, list()).append(f"conf_opt_{kwargs['conformer']}")
+
+        with patch.object(Scheduler, 'spawn_ts_jobs'), patch.object(Scheduler, 'run_job', side_effect=run_job) as rj, \
+                patch.object(Scheduler, 'save_restart_dict'), \
+                patch.object(Scheduler, 'get_server_job_ids', side_effect=_ReachedMainLoop):
+            try:
+                sched.schedule_jobs()
+            except _ReachedMainLoop:
+                pass
+        return rj
 
     def test_issue622_restart_troubleshoots_non_isomorphic_conformers_with_no_conf_opt_jobs(self):
         """
@@ -810,6 +839,15 @@ H       4.27889520   -0.81548721   -0.22940984"""
         self.assertIsNone(sched.species_dict[label].initial_xyz)
         self.assertEqual(sched.running_jobs[label], running_before)
         self.assertEqual(sched.job_dict[label], job_dict_before)
+
+    def test_get_conformer_trsh_levels(self):
+        """Test reading the conformer isomorphism troubleshooting levels from conf_opt jobs' ess_trsh_methods"""
+        self.assertEqual(get_conformer_trsh_levels([]), list())
+        self.assertEqual(get_conformer_trsh_levels([MagicMock(ess_trsh_methods=None)]), list())
+        jobs = [MagicMock(ess_trsh_methods=['memory', 'conformer wb97xd/def2TZVP', 'conf_opt: wb97xd/def2TZVP',
+                                            'conformer apfd/def2TZVP', 'conf_opt: apfd/def2TZVP']),
+                MagicMock(ess_trsh_methods=['conf_opt: wb97xd/def2TZVP', 'scf=(qc)'])]
+        self.assertEqual(get_conformer_trsh_levels(jobs), ['wb97xd/def2TZVP', 'apfd/def2TZVP'])
 
     def test_get_conformer_isomorphism_trsh_history(self):
         """Test reading the tried conformer isomorphism troubleshooting levels from output[label]['conformers']"""
@@ -1200,19 +1238,843 @@ H       4.27889520   -0.81548721   -0.22940984"""
                 self._issue622_assert_top_block_does_not_decide(sched)
                 self.assertEqual(sched.species_dict[label].conformer_energies, [0.0, None])
 
-    def test_issue622_restart_mid_respawn_keeps_the_round_one_energies(self):
+    def test_issue622_restart_mid_respawn_resubmits_at_the_trsh_level(self):
         """
         A restart during a troubleshooting respawn that was killed before its note was written restores a job
-        tagged with the troubleshooting level; the species is not in its first round, so the conformers that
-        have an energy are not resubmitted and their energies are kept.
+        tagged with the troubleshooting level; the conformer that was not respawned has its earlier-level energy
+        cleared and is resubmitted at that level with the restored job's adapter and tags, and the note is written.
         """
         label = 'methylamine'
         job_1 = MagicMock(job_adapter='gaussian',
                           ess_trsh_methods=['conformer wb97xd/def2TZVP', 'conf_opt: wb97xd/def2TZVP'])
         sched = self._issue622_scheduler_with_running_conformers(
             energies=[0.0, None], running=['conf_opt_1'], job_dict={'conf_opt': {1: job_1}})
-        self._issue622_assert_top_block_does_not_decide(sched)
+        with patch.object(Scheduler, 'run_job') as run_job, patch.object(Scheduler, 'save_restart_dict') as save:
+            sched.run_conformer_jobs(labels=[label])
+        self.assertEqual(len(run_job.call_args_list), 1)
+        call = run_job.call_args_list[0].kwargs
+        self.assertEqual((call['conformer'], call['level_of_theory'], call['job_adapter']),
+                         (0, 'wb97xd/def2TZVP', 'gaussian'))
+        self.assertEqual(call['ess_trsh_methods'], job_1.ess_trsh_methods)
+        self.assertIsNot(call['ess_trsh_methods'], job_1.ess_trsh_methods)
+        self.assertEqual(call['xyz'], sched.species_dict[label].conformers_before_opt[0])
+        self.assertEqual(sched.species_dict[label].conformer_energies, [None, None])
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']),
+                         ['conformer wb97xd/def2TZVP'])
+        save.assert_called_once()
+
+    def test_i109_restart_mid_second_level_respawn_resubmits_at_that_level(self):
+        """
+        A restart that caught the respawn at the second troubleshooting level, after the first level's note was
+        written, resubmits the conformer that was not respawned at the second level, not the first.
+        """
+        label = 'methylamine'
+        job_1 = MagicMock(job_adapter='gaussian',
+                          ess_trsh_methods=['conformer wb97xd/def2TZVP', 'conf_opt: wb97xd/def2TZVP',
+                                            'conformer apfd/def2TZVP', 'conf_opt: apfd/def2TZVP'])
+        sched = self._issue622_scheduler_with_running_conformers(
+            energies=[0.0, None], running=['conf_opt_1'], job_dict={'conf_opt': {1: job_1}})
+        sched.output[label]['conformers'] += 'Troubleshooting conformer isomorphism at wb97xd/def2TZVP; '
+        with patch.object(Scheduler, 'run_job') as run_job, patch.object(Scheduler, 'save_restart_dict'):
+            sched.run_conformer_jobs(labels=[label])
+        self.assertEqual([(c.kwargs['conformer'], c.kwargs['level_of_theory']) for c in run_job.call_args_list],
+                         [(0, 'apfd/def2TZVP')])
+        self.assertEqual(sched.species_dict[label].conformer_energies, [None, None])
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']),
+                         ['conformer wb97xd/def2TZVP', 'conformer apfd/def2TZVP'])
+
+    def test_i109_restart_mid_respawn_reads_either_level_tag(self):
+        """
+        A restored job tagged with the troubleshooting level by its ``'conformer <level>'`` tag only, beside an
+        untagged one, still leads the restart to resubmit the conformer that was not respawned at that level.
+        """
+        label = 'methylamine'
+        job_0 = MagicMock(job_adapter='gaussian', ess_trsh_methods=None)
+        job_1 = MagicMock(job_adapter='gaussian', ess_trsh_methods=['conformer wb97xd/def2TZVP'])
+        sched = self._issue622_scheduler_with_running_conformers(
+            energies=[0.0, None, 5.0], running=['conf_opt_0', 'conf_opt_1'],
+            job_dict={'conf_opt': {0: job_0, 1: job_1}})
+        sched.species_dict[label].conformers_before_opt.append(str_to_xyz(self._METHYLAMINE_XYZ))
+        sched.species_dict[label].conformers.append(str_to_xyz(self._ISSUE622_BROKEN_XYZ))
+        with patch.object(Scheduler, 'run_job') as run_job, patch.object(Scheduler, 'save_restart_dict'):
+            sched.run_conformer_jobs(labels=[label])
+        self.assertEqual([(c.kwargs['conformer'], c.kwargs['level_of_theory'], c.kwargs['ess_trsh_methods'])
+                          for c in run_job.call_args_list],
+                         [(2, 'wb97xd/def2TZVP', ['conformer wb97xd/def2TZVP', 'conf_opt: wb97xd/def2TZVP'])])
+        self.assertEqual(sched.species_dict[label].conformer_energies, [0.0, None, None])
+
+    def test_i109_restart_without_a_readable_level_warns(self):
+        """
+        A restart whose species is past its first round only by the exhausted marker, with an untagged running
+        job, keeps its energies, resubmits nothing at a troubleshooting level, warns naming the species, and
+        records the warning once in the species' output warnings, which the restart file keeps.
+        """
+        label = 'methylamine'
+        job_1 = MagicMock(job_adapter='gaussian', ess_trsh_methods=list())
+        sched = self._issue622_scheduler_with_running_conformers(
+            energies=[0.0, None], running=['conf_opt_1'], job_dict={'conf_opt': {1: job_1}})
+        sched.output[label]['conformers'] += CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED
+        with patch.object(Scheduler, 'run_job') as run_job, self.assertLogs('arc', level='WARNING') as logs:
+            sched.run_conformer_jobs(labels=[label])
+        run_job.assert_not_called()
         self.assertEqual(sched.species_dict[label].conformer_energies, [0.0, None])
+        warnings = [line for line in logs.output if 'No conformer isomorphism troubleshooting level' in line]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn(label, warnings[0])
+        self.assertEqual(sched.output[label]['warnings'].count(UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE), 1)
+        sched.restart_dict, sched.save_restart, sched.running_jobs[label] = dict(), True, list()
+        sched.save_restart_dict()
+        restarted = self._i109_restart(sched)
+        self.assertEqual(restarted.output[label]['warnings'].count(UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE), 1)
+        restarted.running_jobs[label] = ['conf_opt_1']
+        restarted.job_dict[label] = {'conf_opt': {1: job_1}}
+        with patch.object(Scheduler, 'run_job'):
+            restarted.run_conformer_jobs(labels=[label])
+        self.assertEqual(restarted.output[label]['warnings'].count(UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE), 1)
+
+    @staticmethod
+    def _i109_level(level_of_theory) -> str:
+        """
+        Normalize a ``run_job`` level_of_theory argument (a Level or a string) for comparison.
+
+        Args:
+            level_of_theory (Level, str): The level passed to ``run_job``.
+
+        Returns:
+            str: The level in its simple lowercase form.
+        """
+        level = level_of_theory if isinstance(level_of_theory, Level) else Level(repr=level_of_theory)
+        return level.simple().lower()
+
+    def _i109_live_scheduler(self, **overrides):
+        """
+        Build a live-run Scheduler that saves a real restart file, whose species has three conformers, and run its
+        first conformer round at the conformer level with the real ``run_job``, submission patched out.
+
+        Args:
+            **overrides: Scheduler kwargs that replace the shared ones.
+
+        Returns:
+            Scheduler: The scheduler, with the three round-1 conf_opt jobs listed as running.
+        """
+        label = 'methylamine'
+        spc = ARCSpecies(label=label, smiles='CN')
+        spc.conformers = [str_to_xyz(self._METHYLAMINE_XYZ)] * 3
+        spc.conformer_energies = [None] * 3
+        sched = Scheduler(testing=True, restart_dict=dict(), **self._issue622_kwargs([spc], **overrides))
+        sched.trsh_ess_jobs = True
+        sched.species_dict[label].conformers_before_opt = tuple(spc.conformers)
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            for i, xyz in enumerate(spc.conformers):
+                sched.run_job(label=label, xyz=xyz, job_type='conf_opt', level_of_theory=sched.conformer_opt_level,
+                              conformer=i)
+        return sched
+
+    def _i109_end_conformer_jobs(self, sched, energies):
+        """
+        End every running conf_opt job of the species as ``end_job`` and ``parse_conformer`` do: the name leaves
+        running_jobs, the restart file is saved, then the energy and the optimized (non-isomorphic) xyz are set.
+
+        Args:
+            sched (Scheduler): The scheduler.
+            energies (list): The energy each conformer's job yields, by conformer index.
+        """
+        label = 'methylamine'
+        spc = sched.species_dict[label]
+        for job_name in list(sched.running_jobs[label]):
+            i = int(job_name.rsplit('_', 1)[1])
+            sched.running_jobs[label].remove(job_name)
+            sched.save_restart_dict()
+            spc.conformer_energies[i] = energies[i]
+            spc.conformers[i] = str_to_xyz(self._ISSUE622_BROKEN_XYZ)
+
+    def _i109_restart(self, sched, **overrides):
+        """
+        Restart from the restart file the given scheduler wrote, as ``ARC.py restart.yml`` would.
+
+        Args:
+            sched (Scheduler): The scheduler of the interrupted run.
+            **overrides: Scheduler kwargs that replace the shared ones.
+
+        Returns:
+            Scheduler: The restarted scheduler, with ``schedule_jobs`` not yet called.
+        """
+        restart_dict = read_yaml_file(sched.restart_path)
+        spc = ARCSpecies(species_dict=restart_dict['species'][0])
+        with patch.object(Scheduler, 'schedule_jobs'):
+            return Scheduler(testing=False, restart_dict=restart_dict, **self._issue622_kwargs([spc], **overrides))
+
+    def _i109_interrupted_respawn_restart(self, round_1_energies, kill_after=1):
+        """
+        Run a first conformer round, let none of the conformers pass isomorphism so the real troubleshooting
+        respawns them all at the first troubleshooting level, kill the run after ``kill_after`` respawn submissions,
+        and restart from the restart file that run left behind.
+
+        Args:
+            round_1_energies (list): The conformer-level energies of the three round-1 conformers.
+            kill_after (int, optional): The number of respawn submissions that went through before the kill.
+
+        Returns:
+            Scheduler: The restarted scheduler, with ``schedule_jobs`` not yet called.
+        """
+        label = 'methylamine'
+        sched = self._i109_live_scheduler()
+        self._i109_end_conformer_jobs(sched, round_1_energies)
+        self._i109_kill_mid_respawn(sched, kill_after=kill_after)
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']), list())
+        return self._i109_restart(sched)
+
+    def _i109_kill_mid_respawn(self, sched, kill_after=1):
+        """
+        Let none of the species' conformers pass isomorphism so the real troubleshooting respawns them, and kill
+        the run after ``kill_after`` respawn submissions went through the real ``run_job``.
+
+        Args:
+            sched (Scheduler): A live-run scheduler whose conf_opt jobs ended.
+            kill_after (int, optional): The number of respawn submissions that went through before the kill.
+        """
+        real_run_job, respawned = sched.run_job, list()
+
+        def run_job_until_killed(**kwargs):
+            """Run the real run_job until ``kill_after`` submissions went through, then simulate a kill."""
+            if len(respawned) == kill_after:
+                raise KeyboardInterrupt('ARC was killed mid-respawn')
+            respawned.append(kwargs['conformer'])
+            real_run_job(**kwargs)
+
+        with patch.object(sched, 'run_job', side_effect=run_job_until_killed), \
+                patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            with self.assertRaises(KeyboardInterrupt):
+                sched.determine_most_stable_conformer('methylamine')
+        self.assertEqual(respawned, list(range(kill_after)))
+
+    def _i109_drive_restart(self, sched, job_energies):
+        """
+        Run ``schedule_jobs`` on a restarted scheduler: every conf_opt job ends with the given energy, and the
+        conformer decision records the energies it sees and stops the run.
+
+        Args:
+            sched (Scheduler): The restarted scheduler.
+            job_energies (dict): The energy each conformer's job yields, keyed by conformer index.
+
+        Returns:
+            tuple: The ``run_job`` calls' kwargs, and the list of energy lists seen at each decision.
+        """
+        label = 'methylamine'
+        spc = sched.species_dict[label]
+        submitted, energies_at_decision = list(), list()
+
+        def run_job(**kwargs):
+            """Record the submission and list a stub conf_opt job as running."""
+            submitted.append(kwargs)
+            sched.job_dict[label]['conf_opt'][kwargs['conformer']] = MagicMock(job_id=200 + kwargs['conformer'])
+            sched.running_jobs[label].append(f"conf_opt_{kwargs['conformer']}")
+
+        def end_job(job, label, job_name):
+            """End the job successfully by removing it from running_jobs."""
+            sched.running_jobs[label].remove(job_name)
+            return True
+
+        def parse_conformer(job, label, i):
+            """Set the conformer's energy to the one its job yields."""
+            spc.conformer_energies[i] = job_energies[i]
+            return False
+
+        class _Decided(Exception):
+            """Raised to stop the run at the conformer decision."""
+
+        def determine(label, sp_flag=False):
+            """Record the energies the decision sees and stop the run."""
+            energies_at_decision.append(list(spc.conformer_energies))
+            raise _Decided
+
+        def server_job_ids():
+            """Report no server jobs so the stub jobs are polled as terminated."""
+            sched.server_job_ids = list()
+
+        with patch.object(Scheduler, 'determine_most_stable_conformer', side_effect=determine), \
+                patch.object(Scheduler, 'run_job', side_effect=run_job), \
+                patch.object(Scheduler, 'save_restart_dict'), \
+                patch.object(Scheduler, 'end_job', side_effect=end_job), \
+                patch.object(Scheduler, 'parse_conformer', side_effect=parse_conformer), \
+                patch.object(sched.pipe_planner, 'try_pipe_conformers', return_value=set()), \
+                patch.object(Scheduler, 'spawn_ts_jobs'), \
+                patch.object(Scheduler, 'get_server_job_ids', side_effect=server_job_ids):
+            with self.assertRaises(_Decided):
+                sched.schedule_jobs()
+        return submitted, energies_at_decision
+
+    def test_i109_restart_mid_respawn_does_not_select_across_levels(self):
+        """
+        A run killed after the troubleshooting respawn resubmitted conformer 0 only must not, after a restart,
+        select a conformer from conformer-level energies of conformers 1 and 2 mixed with the troubleshooting-level
+        energy of conformer 0: conformers 1 and 2 are resubmitted at the troubleshooting level.
+        """
+        label = 'methylamine'
+        sched = self._i109_interrupted_respawn_restart(round_1_energies=[0.0, 10.0, 20.0])
+        restored = sched.job_dict[label]['conf_opt']
+        self.assertEqual(list(restored), [0])
+        self.assertEqual(self._i109_level(restored[0].level), 'wb97xd/def2tzvp')
+        self.assertIn('conf_opt: wb97xd/def2TZVP', restored[0].ess_trsh_methods)
+        self.assertEqual(sched.species_dict[label].conformer_energies, [None, 10.0, 20.0])
+
+        trsh_level_energies = {0: 30.0, 1: 20.0, 2: 10.0}
+        submitted, energies_at_decision = self._i109_drive_restart(sched, trsh_level_energies)
+        self.assertEqual(energies_at_decision, [[30.0, 20.0, 10.0]],
+                         'the conformer was selected from energies of two levels')
+        self.assertEqual([(c['conformer'], self._i109_level(c['level_of_theory'])) for c in submitted],
+                         [(1, 'wb97xd/def2tzvp'), (2, 'wb97xd/def2tzvp')])
+
+    def test_i109_restart_mid_respawn_resubmits_a_none_energy_conformer_at_the_trsh_level(self):
+        """
+        A conformer whose round-1 job gave no energy, not yet respawned when the run was killed mid-respawn, is
+        resubmitted on restart at the troubleshooting level, not at the conformer level that already failed.
+        """
+        sched = self._i109_interrupted_respawn_restart(round_1_energies=[0.0, 10.0, None])
+        submitted, _ = self._i109_drive_restart(sched, {0: 30.0, 1: 20.0, 2: 10.0})
+        levels = {c['conformer']: self._i109_level(c['level_of_theory']) for c in submitted}
+        self.assertIn(2, levels)
+        self.assertEqual(levels[2], 'wb97xd/def2tzvp',
+                         'the None-energy conformer was resubmitted at the base conformer level')
+
+    def test_i109_restart_mid_respawn_records_the_level_in_the_restart_file(self):
+        """
+        Once a restart completed an interrupted respawn, its restart file records the level as tried: a second
+        restart from that file whose conformers again fail isomorphism moves on to the next level.
+        """
+        label = 'methylamine'
+        sched = self._i109_interrupted_respawn_restart(round_1_energies=[0.0, 10.0, 20.0])
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.run_conformer_jobs(labels=[label])
+        self.assertEqual(sorted(sched.job_dict[label]['conf_opt']), [0, 1, 2])
+        for i in (1, 2):
+            self.assertEqual(self._i109_level(sched.job_dict[label]['conf_opt'][i].level), 'wb97xd/def2tzvp')
+        restart_dict = read_yaml_file(sched.restart_path)
+        self.assertEqual(get_conformer_isomorphism_trsh_history(restart_dict['output'][label]['conformers']),
+                         ['conformer wb97xd/def2TZVP'])
+
+        restarted = self._i109_restart(sched)
+        self.assertEqual(sorted(restarted.job_dict[label]['conf_opt']), [0, 1, 2])
+        with patch.object(Scheduler, 'run_job') as run_job:
+            restarted.troubleshoot_conformer_isomorphism(label=label)
+        self.assertEqual({c.kwargs['level_of_theory'] for c in run_job.call_args_list}, {'apfd/def2TZVP'})
+
+    def test_get_respawned_conformer_trsh_methods(self):
+        """Test building the tags of a conformer that a troubleshooting respawn submits with no job of its own"""
+        history = ['conformer wb97xd/def2TZVP']
+        self.assertEqual(get_respawned_conformer_trsh_methods(history, 'apfd/def2TZVP'),
+                         ['conformer wb97xd/def2TZVP', 'conformer apfd/def2TZVP', 'conf_opt: apfd/def2TZVP'])
+        self.assertEqual(history, ['conformer wb97xd/def2TZVP'])
+        self.assertEqual(get_respawned_conformer_trsh_methods(['conformer apfd/def2TZVP'], 'apfd/def2TZVP'),
+                         ['conformer apfd/def2TZVP', 'conf_opt: apfd/def2TZVP'])
+
+    def test_i109_recovery_does_not_copy_the_reference_jobs_ess_trsh_history(self):
+        """
+        The conformers a restart resubmits to complete an interrupted respawn start from the species' isomorphism
+        history and the level tags only, not from the ESS troubleshooting attempts of the restored job.
+        """
+        label = 'methylamine'
+        job_1 = MagicMock(job_adapter='gaussian',
+                          ess_trsh_methods=['trsh_attempt', 'memory', 'trsh_attempt',
+                                            'conformer wb97xd/def2TZVP', 'conf_opt: wb97xd/def2TZVP'])
+        sched = self._issue622_scheduler_with_running_conformers(
+            energies=[0.0, None], running=['conf_opt_1'], job_dict={'conf_opt': {1: job_1}})
+        with patch.object(Scheduler, 'run_job') as run_job, patch.object(Scheduler, 'save_restart_dict'):
+            sched.run_conformer_jobs(labels=[label])
+        self.assertEqual(len(run_job.call_args_list), 1)
+        tags = run_job.call_args_list[0].kwargs['ess_trsh_methods']
+        self.assertNotIn('trsh_attempt', tags)
+        self.assertNotIn('memory', tags)
+        self.assertEqual(tags, ['conformer wb97xd/def2TZVP', 'conf_opt: wb97xd/def2TZVP'])
+
+    def _i109_recovery_state(self, branch, energies=None):
+        """
+        Build a restarted scheduler in the state that one conformer isomorphism troubleshooting recovery branch
+        handles: a running conformer tagged with a level the note does not record (``'unnoted'``), a running
+        conformer at the last noted level (``'noted'``), or no running conformer and no energy (``'idle'``).
+
+        Args:
+            branch (str): ``'unnoted'``, ``'noted'`` or ``'idle'``.
+            energies (list, optional): The conformer energies. Defaults to ``[None, None]``.
+
+        Returns:
+            Scheduler: The scheduler.
+        """
+        label = 'methylamine'
+        energies = energies if energies is not None else [None, None]
+        job_1 = MagicMock(job_adapter='gaussian',
+                          ess_trsh_methods=['conformer wb97xd/def2TZVP', 'conf_opt: wb97xd/def2TZVP'])
+        if branch == 'idle':
+            sched = self._issue622_scheduler_with_running_conformers(energies=energies, running=[], job_dict=dict())
+        else:
+            sched = self._issue622_scheduler_with_running_conformers(
+                energies=energies, running=['conf_opt_1'], job_dict={'conf_opt': {1: job_1}})
+        if branch in ('noted', 'idle'):
+            sched.output[label]['conformers'] += 'Troubleshooting conformer isomorphism at wb97xd/def2TZVP; '
+        return sched
+
+    def test_i109_refused_recovery_submits_nothing(self):
+        """
+        With ``trsh_ess_jobs`` off or the exhausted marker in the conformers note, no recovery branch submits a
+        job, at a troubleshooting level or at the conformer level, nor generates conformers; each warns once naming
+        the species and records the warning once in the species' output warnings.
+        """
+        label = 'methylamine'
+        for branch in ('unnoted', 'noted', 'idle'):
+            for condition in ('trsh_ess_jobs off', 'exhausted'):
+                with self.subTest(branch=branch, condition=condition):
+                    sched = self._i109_recovery_state(branch)
+                    if condition == 'exhausted':
+                        sched.output[label]['conformers'] += CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED
+                    else:
+                        sched.trsh_ess_jobs = False
+                    with patch.object(Scheduler, 'run_job') as run_job, \
+                            patch.object(Scheduler, 'save_restart_dict'), \
+                            patch.object(Scheduler, 'process_conformers') as process_conformers, \
+                            patch.object(ARCSpecies, 'generate_conformers') as generate_conformers, \
+                            self.assertLogs('arc', level='WARNING') as logs:
+                        sched.run_conformer_jobs(labels=[label])
+                        sched.run_conformer_jobs(labels=[label])
+                    run_job.assert_not_called()
+                    process_conformers.assert_not_called()
+                    generate_conformers.assert_not_called()
+                    self.assertEqual(sched.species_dict[label].conformer_energies, [None, None])
+                    warnings = [line for line in logs.output if REFUSED_CONFORMER_TRSH_RECOVERY_MESSAGE in line]
+                    self.assertEqual(len(warnings), 2)
+                    self.assertIn(label, warnings[0])
+                    self.assertEqual(
+                        sched.output[label]['warnings'].count(REFUSED_CONFORMER_TRSH_RECOVERY_MESSAGE), 1)
+
+    def test_i109_refused_recovery_decides_on_the_running_jobs_energies_only(self):
+        """
+        A refused recovery of a respawn caught midway clears the earlier-level energy of every conformer with no
+        running job, so the decision sees only the energies of the restored troubleshooting-level jobs.
+        """
+        label = 'methylamine'
+        for condition in ('trsh_ess_jobs off', 'exhausted'):
+            with self.subTest(condition=condition):
+                sched = self._i109_recovery_state('unnoted', energies=[0.0, None])
+                if condition == 'exhausted':
+                    sched.output[label]['conformers'] += CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED
+                else:
+                    sched.trsh_ess_jobs = False
+                with patch.object(Scheduler, 'run_job') as run_job, patch.object(Scheduler, 'save_restart_dict'):
+                    sched.run_conformer_jobs(labels=[label])
+                run_job.assert_not_called()
+                self.assertEqual(sched.species_dict[label].conformer_energies, [None, None])
+                self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']), list())
+
+    def test_i109_restart_of_an_invalidated_species_does_not_reach_idle_recovery(self):
+        """
+        A species troubleshot at a conformer isomorphism level, selected, then invalidated by the real
+        ``troubleshoot_negative_freq`` has ``convergence`` False; its restart file keeps its initial_xyz and
+        energies, so a restart neither resubmits its conformers nor generates new ones.
+        """
+        label = 'methylamine'
+        sched = self._i109_live_scheduler()
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.determine_most_stable_conformer(label)
+        spc = sched.species_dict[label]
+        for job_name in list(sched.running_jobs[label]):
+            i = int(job_name.rsplit('_', 1)[1])
+            sched.running_jobs[label].remove(job_name)
+            spc.conformer_energies[i] = 10.0 * i
+            spc.conformers[i] = str_to_xyz(self._METHYLAMINE_XYZ)
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.determine_most_stable_conformer(label)
+        self.assertIsNotNone(spc.initial_xyz)
+        invalidation = (list(), list(), ['Error: Encountered negative frequencies too many times; '
+                                         'Invalidating species; '], list())
+        with patch('arc.scheduler.trsh_negative_freq', return_value=invalidation), patch.object(JobAdapter, 'delete'):
+            sched.troubleshoot_negative_freq(label=label, job=MagicMock())
+        self.assertIs(sched.output[label]['convergence'], False)
+        sched.save_restart_dict()
+
+        with patch.object(Scheduler, 'run_job'):
+            restarted = self._i109_restart(sched)
+        self.assertIs(restarted.output[label]['convergence'], False)
+        self.assertIsNotNone(restarted.species_dict[label].initial_xyz)
+        with patch.object(Scheduler, 'run_job') as run_job, \
+                patch.object(Scheduler, 'process_conformers') as process_conformers, \
+                patch.object(ARCSpecies, 'generate_conformers') as generate_conformers:
+            restarted.run_conformer_jobs(labels=[label])
+        run_job.assert_not_called()
+        process_conformers.assert_not_called()
+        generate_conformers.assert_not_called()
+
+    def test_i109_restart_after_a_trsh_level_job_ended_unparsed_does_not_select_across_levels(self):
+        """
+        A respawn at the troubleshooting level completes and writes its note; conformer 1's job then ends and the
+        restart file is saved without it, but the run is killed before its energy is parsed. After a restart,
+        the conformer is not selected from conformer 1's earlier-level energy: conformer 1 is resubmitted at the
+        troubleshooting level.
+        """
+        label = 'methylamine'
+        sched = self._i109_live_scheduler()
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.determine_most_stable_conformer(label)
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']),
+                         ['conformer wb97xd/def2TZVP'])
+        self.assertEqual(sorted(sched.running_jobs[label]), ['conf_opt_0', 'conf_opt_1', 'conf_opt_2'])
+        sched.running_jobs[label].remove('conf_opt_1')
+        sched.save_restart_dict()
+
+        restarted = self._i109_restart(sched)
+        self.assertEqual(sorted(restarted.job_dict[label]['conf_opt']), [0, 2])
+        submitted, energies_at_decision = self._i109_drive_restart(restarted, {0: 30.0, 1: 20.0, 2: 10.0})
+        self.assertEqual(energies_at_decision, [[30.0, 20.0, 10.0]],
+                         'the conformer was selected from energies of two levels')
+        self.assertEqual([(c['conformer'], self._i109_level(c['level_of_theory'])) for c in submitted],
+                         [(1, 'wb97xd/def2tzvp')])
+
+    def test_i109_restart_resubmits_a_none_energy_conformer_at_the_noted_level(self):
+        """
+        A restart whose running conf_opt job is at the last noted troubleshooting level resubmits a conformer that
+        has no energy and no job at that level, with the species' history tags, not at the conformer level.
+        """
+        label = 'methylamine'
+        job_1 = MagicMock(job_adapter='gaussian',
+                          ess_trsh_methods=['trsh_attempt', 'conformer wb97xd/def2TZVP', 'conf_opt: wb97xd/def2TZVP'])
+        sched = self._issue622_scheduler_with_running_conformers(
+            energies=[None, None], running=['conf_opt_1'], job_dict={'conf_opt': {1: job_1}})
+        sched.output[label]['conformers'] += 'Troubleshooting conformer isomorphism at wb97xd/def2TZVP; '
+        with patch.object(Scheduler, 'run_job') as run_job, patch.object(Scheduler, 'save_restart_dict'):
+            sched.run_conformer_jobs(labels=[label])
+        self.assertEqual(len(run_job.call_args_list), 1)
+        call = run_job.call_args_list[0].kwargs
+        self.assertEqual((call['conformer'], call['level_of_theory'], call['job_adapter']),
+                         (0, 'wb97xd/def2TZVP', 'gaussian'))
+        self.assertEqual(call['ess_trsh_methods'], ['conformer wb97xd/def2TZVP', 'conf_opt: wb97xd/def2TZVP'])
+        self.assertEqual(call['xyz'], sched.species_dict[label].conformers_before_opt[0])
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']),
+                         ['conformer wb97xd/def2TZVP'])
+
+    def test_i109_restart_with_no_energy_and_no_running_job_resubmits_at_the_noted_level(self):
+        """
+        A respawn at the troubleshooting level completes and writes its note; every respawned job then ends and
+        the restart file is saved, with no energy parsed (two jobs failed, the third ended as the run was
+        killed). After a restart, all conformers are resubmitted at the troubleshooting level and no new
+        conformers are generated.
+        """
+        label = 'methylamine'
+        sched = self._i109_live_scheduler()
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.determine_most_stable_conformer(label)
+        for job_name in list(sched.running_jobs[label]):
+            sched.running_jobs[label].remove(job_name)
+            sched.save_restart_dict()
+
+        restarted = self._i109_restart(sched)
+        self.assertEqual(restarted.species_dict[label].conformer_energies, [None, None, None])
+        self.assertFalse(restarted.running_jobs.get(label))
+        with patch.object(Scheduler, 'run_job') as run_job, \
+                patch.object(Scheduler, 'process_conformers') as process_conformers, \
+                patch.object(ARCSpecies, 'generate_conformers') as generate_conformers:
+            restarted.run_conformer_jobs(labels=[label])
+        process_conformers.assert_not_called()
+        generate_conformers.assert_not_called()
+        self.assertEqual([(c.kwargs['conformer'], c.kwargs['level_of_theory'], c.kwargs['ess_trsh_methods'])
+                          for c in run_job.call_args_list],
+                         [(i, 'wb97xd/def2TZVP', ['conformer wb97xd/def2TZVP', 'conf_opt: wb97xd/def2TZVP'])
+                          for i in range(3)])
+
+    def test_i109_respawn_clears_the_energies_it_resubmits(self):
+        """The troubleshooting respawn clears the earlier-level energy of every conformer it resubmits."""
+        label = 'methylamine'
+        sched = self._i109_live_scheduler()
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        with patch.object(Scheduler, 'run_job') as run_job:
+            sched.troubleshoot_conformer_isomorphism(label=label)
+        self.assertEqual([c.kwargs['conformer'] for c in run_job.call_args_list], [0, 1, 2])
+        self.assertEqual(sched.species_dict[label].conformer_energies, [None, None, None])
+
+    def _i112_respawned_scheduler(self, conformers_note=''):
+        """
+        Run a first conformer round that fails isomorphism, and let the real troubleshooting respawn every
+        conformer at the next troubleshooting level, submission patched out.
+
+        Args:
+            conformers_note (str, optional): Text appended to the species' conformers note before the respawn.
+
+        Returns:
+            Scheduler: The scheduler, with the three respawned conf_opt jobs listed as running.
+        """
+        sched = self._i109_live_scheduler()
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        sched.output['methylamine']['conformers'] += conformers_note
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.determine_most_stable_conformer('methylamine')
+        return sched
+
+    @staticmethod
+    def _i112_fail_conformer_jobs(sched, keywords):
+        """
+        End every running conf_opt job of the species as ``errored`` and handle it as ``schedule_jobs`` does: the
+        real ``parse_conformer`` (hence ``troubleshoot_ess``) per job, then the real
+        ``determine_most_stable_conformer`` once no conformer job is running. Submission is patched out.
+
+        Args:
+            sched (Scheduler): The scheduler.
+            keywords (dict): The ESS error keywords of each conformer's job, keyed by conformer index.
+
+        Returns:
+            list: The ``(conformer, level)`` of every conf_opt job submitted meanwhile.
+        """
+        label = 'methylamine'
+        submitted, real_run_job = list(), sched.run_job
+
+        def run_job(**kwargs):
+            """Record the submission and run the real run_job."""
+            submitted.append((kwargs['conformer'], TestScheduler._i109_level(kwargs['level_of_theory'])))
+            real_run_job(**kwargs)
+
+        with patch.object(sched, 'run_job', side_effect=run_job), \
+                patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            for job_name in [name for name in sched.running_jobs[label] if name.startswith('conf_opt')]:
+                i = int(job_name.rsplit('_', 1)[1])
+                job = sched.job_dict[label]['conf_opt'][i]
+                job.job_status = ['done', {'status': 'errored', 'keywords': keywords[i],
+                                           'error': 'conformer job failed', 'line': ''}]
+                sched.running_jobs[label].remove(job_name)
+                sched.parse_conformer(job=job, label=label, i=i)
+            if not sched.has_running_conformer_jobs(label):
+                sched.determine_most_stable_conformer(label)
+        return submitted
+
+    def test_i112_all_none_after_a_trsh_level_moves_to_the_next_level(self):
+        """
+        When every conformer job at a conformer isomorphism troubleshooting level fails and its ESS
+        troubleshooting cannot resubmit it, the species moves on to the next troubleshooting level.
+        """
+        label = 'methylamine'
+        sched = self._i112_respawned_scheduler()
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']),
+                         ['conformer wb97xd/def2TZVP'])
+        submitted = self._i112_fail_conformer_jobs(sched, {i: ['DiskSpace'] for i in range(3)})
+        self.assertEqual(submitted, [(i, 'apfd/def2tzvp') for i in range(3)])
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']),
+                         ['conformer wb97xd/def2TZVP', 'conformer apfd/def2TZVP'])
+        self.assertEqual(sched.species_dict[label].conformer_energies, [None, None, None])
+
+    def test_i112_all_none_at_the_last_trsh_level_marks_it_exhausted(self):
+        """When every conformer job at the last troubleshooting level fails, troubleshooting ends as exhausted."""
+        label = 'methylamine'
+        sched = self._i112_respawned_scheduler()
+        self._i112_fail_conformer_jobs(sched, {i: ['DiskSpace'] for i in range(3)})
+        submitted = self._i112_fail_conformer_jobs(sched, {i: ['DiskSpace'] for i in range(3)})
+        self.assertEqual(submitted, list())
+        self.assertIn(CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED, sched.output[label]['conformers'])
+        self.assertFalse(sched.has_running_conformer_jobs(label))
+
+    def test_i112_all_none_at_the_conformer_level_does_not_troubleshoot_isomorphism(self):
+        """When every first-round conformer job fails, no conformer isomorphism troubleshooting level is tried."""
+        label = 'methylamine'
+        sched = self._i109_live_scheduler()
+        submitted = self._i112_fail_conformer_jobs(sched, {i: ['DiskSpace'] for i in range(3)})
+        self.assertEqual(submitted, list())
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']), list())
+
+    def test_i112_all_none_moves_to_the_next_level_once_ess_troubleshooting_ends(self):
+        """
+        While ESS troubleshooting still reruns a failed troubleshooting-level conformer job, the species stays at
+        that level; once the rerun fails too, it moves to the next level exactly once.
+        """
+        label = 'methylamine'
+        sched = self._i112_respawned_scheduler()
+        submitted = self._i112_fail_conformer_jobs(sched, {0: ['MaxOptCycles', 'GL9999'], 1: ['DiskSpace'],
+                                                           2: ['DiskSpace']})
+        self.assertEqual(submitted, [(0, 'wb97xd/def2tzvp')])
+        self.assertEqual(sched.running_jobs[label], [sched.job_dict[label]['conf_opt'][0].job_name])
+        submitted = self._i112_fail_conformer_jobs(sched, {0: ['DiskSpace']})
+        self.assertEqual(submitted, [(i, 'apfd/def2tzvp') for i in range(3)])
+        self.assertEqual(sched.output[label]['conformers'].count(
+            CONFORMER_ISOMORPHISM_TRSH_NOTE.format(level='apfd/def2TZVP')), 1)
+
+    def test_i109_restart_with_only_conf_sp_running_does_not_warn(self):
+        """
+        A first-round restart that finds only conf_sp jobs running, their conf_opt jobs done, is not a
+        troubleshooting state: it resubmits nothing and records no unreadable-level warning.
+        """
+        label = 'methylamine'
+        sched = self._i109_live_scheduler()
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            for i, xyz in enumerate(sched.species_dict[label].conformers):
+                sched.run_job(label=label, xyz=xyz, job_type='conf_sp', level_of_theory=sched.sp_level,
+                              conformer=i)
+        restarted = self._i109_restart(sched)
+        self.assertEqual(sorted(restarted.job_dict[label]['conf_sp']), [0, 1, 2])
+        self.assertFalse(restarted.job_dict[label].get('conf_opt'))
+        with patch.object(Scheduler, 'run_job') as run_job, patch('arc.scheduler.logger') as logger:
+            restarted.run_conformer_jobs(labels=[label])
+        run_job.assert_not_called()
+        self.assertFalse([c for c in logger.warning.call_args_list
+                          if 'No conformer isomorphism troubleshooting level' in str(c)])
+        self.assertNotIn(UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE, restarted.output[label]['warnings'])
+
+    def test_i112_idle_recovery_submits_with_the_adapter_of_the_adaptive_level(self):
+        """
+        A species whose conf_opt jobs run at an adaptive level in another software than the conformer level, after
+        a noted troubleshooting round whose jobs all ended with no energy, is resubmitted on restart with the
+        adapter of the level its jobs actually run at.
+        """
+        label = 'methylamine'
+        adaptive_level = Level(method='b3lyp', basis='def2-svp', software='qchem')
+        overrides = dict(adaptive_levels={(1, 'inf'): {('conf_opt',): adaptive_level}})
+        self.assertEqual(Level(repr=default_levels_of_theory['conformer']).software, 'gaussian')
+        sched = self._i109_live_scheduler(**overrides)
+        self.assertEqual({job.job_adapter for job in sched.job_dict[label]['conf_opt'].values()}, {'qchem'})
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.determine_most_stable_conformer(label)
+        self.assertEqual(len(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers'])), 1)
+        for job_name in list(sched.running_jobs[label]):
+            sched.running_jobs[label].remove(job_name)
+            sched.save_restart_dict()
+
+        restarted = self._i109_restart(sched, **overrides)
+        self.assertFalse(restarted.running_jobs.get(label))
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            restarted.run_conformer_jobs(labels=[label])
+        jobs = restarted.job_dict[label]['conf_opt']
+        self.assertEqual(sorted(jobs), [0, 1, 2])
+        for job in jobs.values():
+            self.assertEqual(job.level.software, 'qchem')
+            self.assertEqual(job.job_adapter, job.level.software,
+                             'the job runs one software\'s level with another software\'s adapter')
+
+    def _i112_conf_sp_restart(self, trsh_ess_jobs=True):
+        """
+        Run a conformer round with conformer single points that fails isomorphism, let the real troubleshooting
+        respawn every conformer at its first level, then: conformer 0's conf_opt ends with an energy and its conf_sp
+        is submitted, conformer 1's conf_opt fails, conformer 2's conf_opt and conf_sp end with an energy. Restart
+        from the restart file that run left behind, with only conformer 0's conf_sp running.
+
+        Args:
+            trsh_ess_jobs (bool, optional): Whether the restarted run troubleshoots ESS jobs.
+
+        Returns:
+            Scheduler: The restarted scheduler, with ``schedule_jobs`` not yet called.
+        """
+        label = 'methylamine'
+        overrides = dict(conformer_sp_level=Level(repr=default_levels_of_theory['sp']),
+                         job_types=dict(self.job_types1, conf_sp=True))
+        sched = self._i109_live_scheduler(**overrides)
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.determine_most_stable_conformer(label)
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']),
+                         ['conformer wb97xd/def2TZVP'])
+        self._i109_end_conformer_jobs(sched, [30.0, None, 25.0])
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.run_sp_job(label=label, conformer=0)
+        self.assertEqual(sched.running_jobs[label], ['conf_sp_0'])
+        sched.save_restart_dict()
+        restarted = self._i109_restart(sched, **overrides)
+        restarted.trsh_ess_jobs = trsh_ess_jobs
+        self.assertEqual(sorted(restarted.job_dict[label]['conf_sp']), [0])
+        self.assertFalse(restarted.job_dict[label].get('conf_opt'))
+        self.assertEqual(restarted.species_dict[label].conformer_energies, [30.0, None, 25.0])
+        return restarted
+
+    def test_i112_restart_with_only_conf_sp_running_resubmits_at_the_noted_level(self):
+        """
+        A restart that finds only a conf_sp job running after a noted troubleshooting round resubmits the sibling
+        whose conf_opt failed at the noted level, and nothing at the conformer level.
+        """
+        label = 'methylamine'
+        restarted = self._i112_conf_sp_restart()
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            restarted.run_conformer_jobs(labels=[label])
+        jobs = restarted.job_dict[label].get('conf_opt', dict())
+        self.assertEqual([(i, self._i109_level(job.level)) for i, job in sorted(jobs.items())],
+                         [(1, 'wb97xd/def2tzvp')],
+                         'a conformer was resubmitted at the conformer level after a troubleshooting round')
+
+    def test_i112_restart_with_only_conf_sp_running_and_trsh_off_submits_nothing(self):
+        """
+        With ESS troubleshooting off, a restart that finds only a conf_sp job running after a noted troubleshooting
+        round submits nothing, and warns once naming the species.
+        """
+        label = 'methylamine'
+        restarted = self._i112_conf_sp_restart(trsh_ess_jobs=False)
+        with patch.object(Scheduler, 'run_job') as run_job, patch('arc.scheduler.logger') as logger:
+            restarted.run_conformer_jobs(labels=[label])
+        run_job.assert_not_called()
+        warnings = [str(c) for c in logger.warning.call_args_list
+                    if REFUSED_CONFORMER_TRSH_RECOVERY_MESSAGE in str(c)]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn(label, warnings[0])
+
+    def _i109_negative_freq_replacement(self, sched):
+        """
+        Replace the species' conformers with the real ``troubleshoot_negative_freq``, which submits the new set at
+        the conformer level through the real ``run_job``, and save the restart file.
+
+        Args:
+            sched (Scheduler): A live-run scheduler.
+        """
+        label = 'methylamine'
+        new_confs = [str_to_xyz(self._METHYLAMINE_XYZ)] * 3
+        with patch('arc.scheduler.trsh_negative_freq', return_value=([], new_confs, [], [])), \
+                patch.object(JobAdapter, 'delete'), patch.object(JobAdapter, 'execute'), \
+                patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'):
+            sched.troubleshoot_negative_freq(label=label, job=MagicMock())
+        sched.save_restart_dict()
+
+    def test_i109_negative_freq_replacement_ends_the_trsh_history_in_the_restart_file(self):
+        """
+        ``troubleshoot_negative_freq`` marks the end of the replaced conformer set's troubleshooting history in the
+        conformers note; the restart file keeps the marker, so the reloaded history is empty and later notes count.
+        """
+        label = 'methylamine'
+        sched = self._i109_live_scheduler()
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.determine_most_stable_conformer(label)
+        self._i109_negative_freq_replacement(sched)
+        restart_dict = read_yaml_file(sched.restart_path)
+        note = restart_dict['output'][label]['conformers']
+        self.assertTrue(note.endswith(CONFORMER_SET_REPLACED_NOTE))
+        self.assertIn('Troubleshooting conformer isomorphism at wb97xd/def2TZVP; ', note)
+        self.assertEqual(get_conformer_isomorphism_trsh_history(note), list())
+        self.assertEqual(get_conformer_isomorphism_trsh_history(
+            note + 'Troubleshooting conformer isomorphism at apfd/def2TZVP; '), ['conformer apfd/def2TZVP'])
+
+        restarted = self._i109_restart(sched)
+        self.assertEqual(get_conformer_isomorphism_trsh_history(restarted.output[label]['conformers']), list())
+        self.assertEqual(sorted(restarted.job_dict[label]['conf_opt']), [0, 1, 2])
+        self.assertEqual(get_conformer_trsh_levels(restarted.job_dict[label]['conf_opt'].values()), list())
+
+    def test_i109_restart_mid_respawn_after_a_negative_freq_replacement_does_not_select_across_levels(self):
+        """
+        A species troubleshot at the first troubleshooting level has its conformers replaced by
+        ``troubleshoot_negative_freq``; the new set fails isomorphism and the respawn, again at the first level,
+        is killed after conformer 0. After a restart, conformers 1 and 2 are resubmitted at that level, not kept
+        with their conformer-level energies, although the earlier set's note names the level as tried.
+        """
+        label = 'methylamine'
+        sched = self._i109_live_scheduler()
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), patch.object(JobAdapter, 'execute'):
+            sched.determine_most_stable_conformer(label)
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']),
+                         ['conformer wb97xd/def2TZVP'])
+        self._i109_negative_freq_replacement(sched)
+        self.assertEqual(sorted(sched.running_jobs[label]), ['conf_opt_0', 'conf_opt_1', 'conf_opt_2'])
+        self._i109_end_conformer_jobs(sched, [0.0, 10.0, 20.0])
+        self._i109_kill_mid_respawn(sched, kill_after=1)
+        self.assertEqual(self._i109_level(sched.job_dict[label]['conf_opt'][0].level), 'wb97xd/def2tzvp')
+
+        restarted = self._i109_restart(sched)
+        submitted, energies_at_decision = self._i109_drive_restart(restarted, {0: 30.0, 1: 20.0, 2: 10.0})
+        self.assertEqual(energies_at_decision, [[30.0, 20.0, 10.0]],
+                         'the conformer was selected from energies of two levels')
+        self.assertEqual([(c['conformer'], self._i109_level(c['level_of_theory'])) for c in submitted],
+                         [(1, 'wb97xd/def2tzvp'), (2, 'wb97xd/def2tzvp')])
 
     def _issue622_scheduler_after_negative_freq_trsh(self):
         """
