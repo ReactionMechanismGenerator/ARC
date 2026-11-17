@@ -2,11 +2,14 @@
 # encoding: utf-8
 
 """
-This module contains unit tests checking that ARC's Makefile only references devtools scripts that exist
+This module contains unit tests checking that ARC's Makefile only references devtools scripts that exist,
+and what its compile targets build
 """
 
 import os
 import re
+import shutil
+import subprocess
 import unittest
 
 
@@ -83,6 +86,40 @@ class TestMakefileDevtoolsScripts(unittest.TestCase):
         self.assertEqual(get_makefile_devtools_scripts('all:\n\techo hi.sh\n'), set())
         self.assertIsNone(get_devtools_dir('all:\n\techo hi\n'))
         self.assertEqual(get_makefile_devtools_scripts('a:\n\tbash $(DEVTOOLS_DIR)/a.sh\n'), {'None/a.sh'})
+
+
+def dry_run(target: str) -> str:
+    """
+    Print the commands a Makefile target would run, without running them.
+
+    Args:
+        target (str): The Makefile target.
+
+    Returns:
+        str: The output of ``make -n <target>`` in the repository root.
+    """
+    return subprocess.run(['make', '-n', '-C', ARC_ROOT, '--no-print-directory', target],
+                          check=True, capture_output=True, text=True, timeout=60).stdout
+
+
+@unittest.skipIf(shutil.which('make') is None, 'make is not on PATH')
+class TestMakefileCompileTargets(unittest.TestCase):
+    """
+    Contains unit tests for the commands ARC's compile and kernels targets run.
+    """
+
+    def test_kernels_builds_only_the_c_kernels(self):
+        """Test that make kernels compiles the C kernels and not the Cython extensions"""
+        commands = dry_run('kernels')
+        self.assertIn('-o arc/species/_zmat_c_kernels.so', commands)
+        self.assertIn('utilities.py check-python', commands)
+        self.assertNotIn('build_ext', commands)
+
+    def test_compile_builds_cython_extensions_and_c_kernels(self):
+        """Test that make compile builds the Cython extensions in place and the C kernels"""
+        commands = dry_run('compile')
+        self.assertIn('python setup.py build_ext main --inplace', commands)
+        self.assertIn('-o arc/species/_zmat_c_kernels.so', commands)
 
 
 if __name__ == '__main__':

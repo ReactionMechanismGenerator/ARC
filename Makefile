@@ -9,7 +9,7 @@ DEVTOOLS_DIR := devtools
 .PHONY: all help clean test test-unittests test-functional test-all \
         install-all install-ci install-rmg install-autotst install-gcn \
         install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-uma install-ob \
-        install-goflow install-rits lite check-env compile
+        install-goflow install-rits lite check-env compile kernels
 
 
 # Default target
@@ -44,7 +44,8 @@ help:
 	@echo "  lite             Run lite installation (no tests)"
 	@echo "  clean            Clean build artifacts"
 	@echo "  delete           Delete cloned repositories (inc. RMG)"
-	@echo "  compile          Compile ARC's Cython module (arc.molecule)"
+	@echo "  compile          Compile ARC's Cython module (arc.molecule) and C kernels"
+	@echo "  kernels          Compile ARC's C kernels (arc/species/_zmat_c_kernels.so)"
 	@echo ""
 	@echo "Diagnostics:"
 	@echo "  check-env        Show Python environment info"
@@ -128,10 +129,12 @@ check-env:
 	@echo "PYTHONPATH:"; echo $$PYTHONPATH
 
 
-compile:
+compile: kernels
 	@echo "Compiling ARC's Cython module (arc.molecule)…"
-	@ python utilities.py check-python
 	python setup.py build_ext main --inplace --build-temp .
+
+kernels:
+	@ python utilities.py check-python
 	@ python utilities.py check-dependencies
 	@echo "Compiling arc/species/_zmat_c_kernels.so…"
 # No -march=native: the result must run on whatever CPU the user has, and a SIGILL from
