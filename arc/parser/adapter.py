@@ -334,13 +334,27 @@ class ESSAdapter(ABC):
         """
         Parse the Mayer bond order matrix from the log file.
 
-        The Mayer bond order is a density-derived bond index, useful for inferring connectivity
-        (including partial bonds at a TS) without relying on interatomic distances.
+        The Mayer bond order (I. Mayer, Chem. Phys. Lett. 1983, 97, 270) is a bond index computed from the
+        density matrix and the overlap matrix of the basis functions. It is near 1 for a single bond, near 2
+        for a double bond, between 0 and 1 for a bond partially formed or broken at a TS, and near 0 for atoms
+        that are not bonded. That makes it useful for perceiving connectivity without relying on interatomic
+        distances. Two caveats on what the numbers mean:
+
+        - They depend on the basis set, as Mulliken charges do, and diffuse functions can make them erratic.
+          Compare bond orders computed at the same level of theory only.
+        - They are computed from the density the ESS analyzed, by default the SCF (HF or KS) density.
+          This holds for a correlated single point as well: the bond orders of a CCSD(T) single point are
+          those of its HF reference. Some methods analyze their own density too, e.g., Orca's MRCI,
+          and the last analysis in the log file is the one used.
 
         Returns: np.ndarray | None
-            A symmetric NxN matrix of Mayer bond orders in the log file's atom order.
-            The diagonal holds the Mayer atomic valence of each atom.
-            ``None`` if the log file does not contain a Mayer population analysis.
+            A symmetric NxN matrix in the log file's atom order, NxN matching the geometry.
+            An off-diagonal entry is the Mayer bond order of an atom pair.
+            A diagonal entry is the Mayer bonded valence of an atom, the sum of its bond orders.
+            For an open-shell atom this leaves out its free valence.
+            ``None`` if the log file does not contain a complete Mayer bond order section,
+            or if a later geometry follows its last one, e.g., in an optimization that did not finish,
+            so the matrix always belongs to the geometry ``parse_geometry()`` returns.
         """
         return None
 

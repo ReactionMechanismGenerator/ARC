@@ -956,47 +956,72 @@ class OrcaParser(ESSAdapter, ABC):
         Parse the Mayer bond order matrix from an Orca log file.
 
         Orca prints a "MAYER POPULATION ANALYSIS" section by default. It consists of a per-atom
-        table (from which the number of atoms and the Mayer total valence ``VA`` are taken) followed
-        by a sparse list of atom pairs, e.g. ``B(  0-O ,  1-C ) :   1.0172``. Note that Orca only
-        prints pairs above a threshold (0.1 by default), so bond orders below that threshold are
-        reported here as zero. The last such section in the file is used.
+        table with the columns ``NA ZA QA VA BVA FA``, followed by a sparse list of atom pairs,
+        e.g., ``B(  0-O ,  1-C ) :   1.0172``. The last such section in the file is used.
+        The diagonal is the ``BVA`` column, the bonded valence. ``VA`` is the total valence,
+        which for an open-shell atom also includes its free valence ``FA``.
+        Orca only prints pairs above a threshold, 0.1 by default, so the bond orders below it
+        are returned as exactly zero. This bounds how low a threshold is meaningful downstream.
+
+        The matrix is returned only if the per-atom table lists every atom of the geometry,
+        and if both the table and the pair list end before the file does.
+
+        See ``ESSAdapter.parse_bond_orders()`` for what the numbers mean.
 
         Returns: np.ndarray | None
-            A symmetric NxN matrix of Mayer bond orders in the log file's atom order.
-            The diagonal holds the Mayer atomic valence of each atom.
-            ``None`` if the log file does not contain a Mayer population analysis.
+            The Mayer bond order matrix, with bonded valences on the diagonal.
         """
         lines = _get_lines_from_file(self.log_file_path)
-        start = None
-        for i in reversed(range(len(lines))):
-            if 'MAYER POPULATION ANALYSIS' in lines[i]:
-                start = i + 1
-                break
+        start = next((i for i in range(len(lines) - 1, -1, -1) if 'MAYER POPULATION ANALYSIS' in lines[i]), None)
         if start is None:
             return None
-        atom_pattern = re.compile(r'^\s*(\d+)\s+[A-Za-z]{1,3}\s+(-?\d+\.\d+(?:\s+-?\d+\.\d+){5})\s*$')
-        bond_pattern = re.compile(r'B\(\s*(\d+)-\w+\s*,\s*(\d+)-\w+\s*\)\s*:\s*(-?\d+\.\d+)')
-        valences, bonds = dict(), dict()
-        for line in lines[start:]:
-            if 'TIMINGS' in line:
-                break
-            match = atom_pattern.match(line)
-            if match is not None:
-                # The six columns are NA, ZA, QA, VA, BVA and FA; VA is the Mayer total valence.
-                valences[int(match.group(1))] = float(match.group(2).split()[3])
-                continue
-            for i, j, value in bond_pattern.findall(line):
-                bonds[(int(i), int(j))] = float(value)
-        if not valences:
+        if any('CARTESIAN COORDINATES (ANGSTROEM)' in line or 'CARTESIAN COORDINATES (A.U.)' in line
+               for line in lines[start:]):
+            # The bond orders belong to an earlier geometry than the one parse_geometry() returns.
             return None
-        n = max(valences.keys()) + 1
-        bond_orders = np.zeros((n, n), np.float64)
-        for i, valence in valences.items():
-            bond_orders[i, i] = valence
-        for (i, j), value in bonds.items():
-            if i >= n or j >= n:
+        xyz = self.parse_geometry()
+        if xyz is None:
+            return None
+        n = len(xyz['symbols'])
+        k = next((i for i in range(start, min(start + 20, len(lines)))
+                  if lines[i].split()[:7] == ['ATOM', 'NA', 'ZA', 'QA', 'VA', 'BVA', 'FA']), None)
+        if k is None:
+            return None
+        bonded_valences = list()
+        k += 1
+        while k < len(lines) and lines[k].strip():
+            # E.g., "  0 O      8.5069     8.0000    -0.5069     1.8834     1.4917     0.3917".
+            splits = lines[k].split()
+            if len(splits) != 8 or splits[0] != str(len(bonded_valences)):
                 return None
-            bond_orders[i, j] = bond_orders[j, i] = value
+            try:
+                bonded_valences.append(float(splits[6]))
+            except ValueError:
+                return None
+            k += 1
+        if k == len(lines) or len(bonded_valences) != n:
+            return None
+        while k < len(lines) and not lines[k].strip():
+            k += 1
+        if k == len(lines) or 'Mayer bond orders larger than' not in lines[k]:
+            return None
+        bond_orders = np.zeros((n, n), np.float64)
+        bond_pattern = re.compile(r'B\(\s*(\d+)-\w+\s*,\s*(\d+)-\w+\s*\)\s*:\s*(-?\d+\.\d+)')
+        k += 1
+        while k < len(lines) and lines[k].strip():
+            pairs = bond_pattern.findall(lines[k])
+            if not pairs:
+                return None
+            for i, j, value in pairs:
+                i, j = int(i), int(j)
+                if i >= n or j >= n or i == j:
+                    return None
+                bond_orders[i, j] = bond_orders[j, i] = float(value)
+            k += 1
+        if k == len(lines):
+            # The pair list is cut off, e.g., in a log of a job that was killed.
+            return None
+        np.fill_diagonal(bond_orders, bonded_valences)
         return bond_orders
 
 

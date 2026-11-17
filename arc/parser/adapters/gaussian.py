@@ -43,6 +43,49 @@ def _find_force_constants_header(lines: list[str]) -> int | None:
     return None
 
 
+def _read_gaussian_paged_matrix(lines: list[str],
+                                start: int,
+                                n_labels: int = 0,
+                                ) -> dict[tuple[int, int], float] | None:
+    """
+    Read a matrix Gaussian prints in pages of columns.
+
+    Each page opens with a line of 1-based column indices, followed by rows of
+    ``<row_index> [<label> ...] <value> [<value> ...]``, with values possibly in
+    Fortran ``D`` exponent notation. The block ends at a blank line, at a line whose
+    leading token is not an integer, or at the end of the file.
+
+    Args:
+        lines (list[str]): The log file lines.
+        start (int): The index of the first line of the block, a page header.
+        n_labels (int, optional): The number of tokens between a row's index and its values,
+                                  e.g., 1 for the element symbol of each row of the Mayer bond order matrix.
+
+    Returns: dict[tuple[int, int], float] | None
+        The values as printed, keyed by their 0-based (row, column) indices,
+        or ``None`` if a value could not be read.
+    """
+    matrix: dict[tuple[int, int], float] = {}
+    col_offset = 0
+    for line in lines[start:]:
+        tokens = line.split()
+        if not tokens:
+            break
+        if all(tok.isdigit() for tok in tokens):
+            # Page header: leading value is the first 1-based column index.
+            col_offset = int(tokens[0]) - 1
+            continue
+        if not tokens[0].isdigit():
+            break
+        row = int(tokens[0]) - 1
+        for k, value in enumerate(tokens[1 + n_labels:]):
+            try:
+                matrix[(row, col_offset + k)] = float(value.replace('D', 'E').replace('d', 'E'))
+            except ValueError:
+                return None
+    return matrix
+
+
 def _read_irc_geometry_table(lines: list[str], start: int) -> tuple[dict | None, int]:
     """
     Read one Gaussian IRC Cartesian geometry table.
@@ -293,34 +336,13 @@ class GaussianParser(ESSAdapter, ABC):
             return None
         start = header + 1
 
-        # The block is a paged lower triangle. Each page opens with a header
-        # line of 1-based column indices (all-integer tokens), followed by data
-        # rows: ``<row_index> <val> [<val> ...]`` with values in Fortran ``D``
-        # exponent notation. Any line whose leading token is not an integer
-        # (e.g. ``Final forces over variables, ...``) terminates the block.
-        matrix: dict[tuple[int, int], float] = {}
-        col_offset = 0
-        max_index = -1
-        for line in lines[start:]:
-            tokens = line.split()
-            if not tokens:
-                break
-            if all(tok.isdigit() for tok in tokens):
-                # Page header: leading value is the first 1-based column index.
-                col_offset = int(tokens[0]) - 1
-                continue
-            if not tokens[0].isdigit():
-                break
-            row = int(tokens[0]) - 1
-            for k, value in enumerate(tokens[1:]):
-                col = col_offset + k
-                try:
-                    matrix[(row, col)] = float(value.replace('D', 'E').replace('d', 'E'))
-                except ValueError:
-                    return None
-            max_index = max(max_index, row)
+        # The block is a paged lower triangle. Any line whose leading token is not
+        # an integer (e.g. ``Final forces over variables, ...``) terminates it.
+        matrix = _read_gaussian_paged_matrix(lines, start)
+        if matrix is None:
+            return None
 
-        n_rows = max_index + 1
+        n_rows = max((row for row, _ in matrix), default=-1) + 1
         if n_rows < 6:
             # No block parsed (n_rows == 0) or a single atom (3N == 3); a
             # monatomic species carries no meaningful Cartesian Hessian.
@@ -1336,51 +1358,57 @@ class GaussianParser(ESSAdapter, ABC):
         """
         Parse the Mayer bond order matrix from a Gaussian log file.
 
-        Requires ``IOp(6/80=1)`` in the route section, which makes Gaussian print an
-        "Atomic Valencies and Mayer Atomic Bond Orders:" section. The matrix is printed in
-        Fortran-style column blocks of six, each block preceded by a line of column indices.
-        The last such section in the file is used (relevant for multi-step jobs).
+        Requires ``IOp(6/80=1)`` in the route section, which makes Gaussian print the full square
+        matrix under "Atomic Valencies and Mayer Atomic Bond Orders:" in its population analysis,
+        in pages of six columns. The last such section in the file is used. Only a header that reads
+        exactly so counts, not one with a spin prefix such as "Alpha". If the population analysis
+        prints that header more than once, e.g., once per spin, ``None`` is returned rather than
+        a guess at which matrix is the total one.
+
+        The matrix is returned only if every cell of an NxN matrix was read, N being the number of
+        atoms in the geometry, and if it is symmetric to print precision. For a closed shell, the
+        diagonal Gaussian prints is the bonded valence. Wherever it differs from the sum of the
+        atom's bond orders beyond print precision, e.g., if it includes an open-shell atom's free
+        valence, the sum is used.
+
+        See ``ESSAdapter.parse_bond_orders()`` for what the numbers mean.
 
         Returns: np.ndarray | None
-            A symmetric NxN matrix of Mayer bond orders in the log file's atom order.
-            The diagonal holds the Mayer atomic valence of each atom.
-            ``None`` if the log file does not contain a Mayer bond order section.
+            The Mayer bond order matrix, with bonded valences on the diagonal.
         """
         lines = _get_lines_from_file(self.log_file_path)
-        start = None
-        for i in reversed(range(len(lines))):
-            if 'Atomic Valencies and Mayer Atomic Bond Orders' in lines[i]:
-                start = i + 1
-                break
-        if start is None:
+        headers = [i for i, line in enumerate(lines)
+                   if line.strip() == 'Atomic Valencies and Mayer Atomic Bond Orders:']
+        if not headers:
             return None
-        matrix, columns = dict(), list()
-        for line in lines[start:]:
-            splits = line.split()
-            if not splits:
-                continue
-            if all(split.isdigit() for split in splits):
-                # A column index header line, e.g. "   1   2   3   4   5   6".
-                columns = [int(split) - 1 for split in splits]
-                continue
-            # A data line, e.g. "     1  C    3.931186   1.908673   ...".
-            if len(splits) < 3 or not splits[0].isdigit() or not columns:
-                break
-            try:
-                row = int(splits[0]) - 1
-                values = [float(split) for split in splits[2:]]
-            except ValueError:
-                break
-            for column, value in zip(columns, values):
-                matrix[(row, column)] = value
-        if not matrix:
+        start = headers[-1]
+        analysis_start = next((i for i in range(start, -1, -1) if 'Population analysis using' in lines[i]), 0)
+        if sum(i >= analysis_start for i in headers) > 1:
             return None
-        n = max(max(key) for key in matrix.keys()) + 1
+        if any(header in line for line in lines[start:]
+               for header in ('Input orientation:', 'Standard orientation:', 'Z-Matrix orientation:')):
+            # The bond orders belong to an earlier geometry than the one parse_geometry() returns.
+            return None
+        xyz = self.parse_geometry()
+        if xyz is None:
+            return None
+        n = len(xyz['symbols'])
+        matrix = _read_gaussian_paged_matrix(lines, start + 1, n_labels=1)
+        if matrix is None or set(matrix) != {(i, j) for i in range(n) for j in range(n)}:
+            # A section cut off, e.g., in a log of a job that was killed, or one of another molecule.
+            return None
         bond_orders = np.zeros((n, n), np.float64)
         for (i, j), value in matrix.items():
             bond_orders[i, j] = value
-        # Gaussian prints the full square matrix, symmetrizing absorbs print-precision asymmetry.
-        return 0.5 * (bond_orders + bond_orders.T)
+        # Values are printed to six decimals.
+        if not np.allclose(bond_orders, bond_orders.T, rtol=0, atol=1e-5):
+            return None
+        printed_valences = np.diag(bond_orders).copy()
+        bonded_valences = bond_orders.sum(axis=1) - printed_valences
+        # Each value summed is rounded by up to 5e-7, so a printed bonded valence is within n * 5e-7 of the sum.
+        np.fill_diagonal(bond_orders, np.where(np.abs(printed_valences - bonded_valences) <= n * 1e-6,
+                                               printed_valences, bonded_valences))
+        return bond_orders
 
     def _load_scan_specs(self, letter_spec, get_after_letter_spec=False):
         """
