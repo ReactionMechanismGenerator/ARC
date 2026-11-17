@@ -1806,6 +1806,18 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertAlmostEqual(bond_orders_1[23, 9], 0.978791, places=6)  # the same bond, on the second page
         self.assertAlmostEqual(bond_orders_1[23, 23], 0.976564, places=6)  # the last cell
 
+        # An open-shell Gaussian single point (UwB97XD, the ethyl radical), with a single matrix of the total density.
+        path6 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C2H5_mayer_gaussian.out')
+        bond_orders_6 = parser.parse_bond_orders(path6)
+        self.assertEqual(bond_orders_6.shape, (7, 7))
+        self.assertAlmostEqual(bond_orders_6[0, 1], 1.011674, places=6)  # the C-C bond
+        self.assertAlmostEqual(bond_orders_6[1, 5], 0.967415, places=6)  # a C-H bond of the radical C
+        self.assertAlmostEqual(bond_orders_6[6, 1], 0.967415, places=6)  # another one, on the second page
+        self.assertAlmostEqual(bond_orders_6[0, 2], 0.970513, places=6)  # a C-H bond of the methyl C
+        # The radical C's bonded valence, as printed: the sum of its bond orders, leaving out its free valence.
+        self.assertAlmostEqual(bond_orders_6[1, 1], 2.924141, places=6)
+        self.assertAlmostEqual(bond_orders_6[0, 0], 3.890626, places=6)
+
         # Orca, printed by default.
         path2 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_mayer_orca.out')
         bond_orders_2 = parser.parse_bond_orders(path2)

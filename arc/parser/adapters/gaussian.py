@@ -1360,16 +1360,16 @@ class GaussianParser(ESSAdapter, ABC):
 
         Requires ``IOp(6/80=1)`` in the route section, which makes Gaussian print the full square
         matrix under "Atomic Valencies and Mayer Atomic Bond Orders:" in its population analysis,
-        in pages of six columns. The last such section in the file is used. Only a header that reads
-        exactly so counts, not one with a spin prefix such as "Alpha". If the population analysis
-        prints that header more than once, e.g., once per spin, ``None`` is returned rather than
-        a guess at which matrix is the total one.
+        in pages of six columns. The last such section in the file is used. An open shell gets a
+        single matrix of the total density as well, under the same header. Only a header that reads
+        exactly so counts, not one with a spin prefix such as "Alpha", and if the population analysis
+        prints that header more than once, ``None`` is returned rather than a guess at which matrix
+        is the total one.
 
         The matrix is returned only if every cell of an NxN matrix was read, N being the number of
-        atoms in the geometry, and if it is symmetric to print precision. For a closed shell, the
-        diagonal Gaussian prints is the bonded valence. Wherever it differs from the sum of the
-        atom's bond orders beyond print precision, e.g., if it includes an open-shell atom's free
-        valence, the sum is used.
+        atoms in the geometry, and if it is symmetric to print precision. The diagonal Gaussian prints
+        is the bonded valence, the sum of the atom's bond orders, for closed and open shells alike.
+        Wherever it differs from that sum beyond print precision, the sum is used.
 
         See ``ESSAdapter.parse_bond_orders()`` for what the numbers mean.
 
