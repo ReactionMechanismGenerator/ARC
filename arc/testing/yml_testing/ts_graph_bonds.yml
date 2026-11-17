@@ -1,5 +1,6 @@
-# TS 2D graphs, TS geometries, wells and atom maps of five TSs from a 17-reaction test set, used to test
-# which TS graph bonds the reactive ring check keeps (conformers.get_ts_bonds).
+# TS 2D graphs, TS geometries, wells and atom maps of TSs from a 17-reaction test set, used to test
+# which TS graph bonds the reactive ring check keeps (conformers.get_ts_bonds) and which TS rotors it scans.
+# TS4 has no wells: its 2D graph is in a different atom order than its geometry.
 TS5:
   reaction: hepta16diene <=> C3H6 + butadiene
   family: Retroene
@@ -490,3 +491,22 @@ TS15:
       H       0.95355300   -0.24517000    1.43546000
       H       2.86146400   -0.75670900    0.18318200
   atom_map: [0, 1, 2, 3, 4, 13, 5, 6, 7, 8, 9, 10, 11, 12]
+TS4:
+  reaction: CH3 + CO <=> CH3CO
+  family: R_Addition_MultipleBond
+  ts_adjlist: |
+    multiplicity 2
+    1 C u0 p0 c0 {2,S} {3,S} {4,S} {5,S}
+    2 H u0 p0 c0 {1,S}
+    3 H u0 p0 c0 {1,S}
+    4 H u0 p0 c0 {1,S}
+    5 C u1 p0 c0 {1,S} {6,D}
+    6 O u0 p2 c0 {5,D}
+  ts_xyz: |
+    C      -1.55991000   -0.09499800    0.00000000
+    C       0.61328500    0.56703900   -0.00008600
+    O       1.35476000   -0.29729100    0.00001300
+    H      -2.06803400    0.87012600   -0.00550900
+    H      -1.54626300   -0.65718500    0.93654500
+    H      -1.54403600   -0.66686300   -0.93062800
+  ts_rotor_pivots: [[1, 5]]

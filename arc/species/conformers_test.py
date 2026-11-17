@@ -275,7 +275,7 @@ def make_ts0_both_directions() -> tuple[ARCReaction, ARCReaction, dict]:
 TS_GRAPH_CASES = read_yaml_file(os.path.join(ARC_TESTING_PATH, 'yml_testing', 'ts_graph_bonds.yml'))
 
 
-def load_ts_graph_case(label: str) -> tuple[Molecule, dict, ARCReaction, list[list[int]]]:
+def load_ts_graph_case(label: str) -> tuple[Molecule, dict, ARCReaction | None, list[list[int]]]:
     """
     Load a TS 2D graph, TS geometry, reaction, and rotor pivots from the TS graph bond test cases.
 
@@ -284,7 +284,8 @@ def load_ts_graph_case(label: str) -> tuple[Molecule, dict, ARCReaction, list[li
 
     Returns:
         tuple[Molecule, dict, ARCReaction, list[list[int]]]:
-            The TS 2D graph, the TS geometry, the reaction with its stored atom map, and the 1-indexed rotor pivots.
+            The TS 2D graph, the TS geometry, the reaction with its stored atom map (``None`` for a case without
+            wells), and the 1-indexed rotor pivots.
     """
     case = TS_GRAPH_CASES[label]
 
@@ -301,9 +302,11 @@ def load_ts_graph_case(label: str) -> tuple[Molecule, dict, ARCReaction, list[li
         return ARCSpecies(label=spc['label'], multiplicity=spc['multiplicity'], adjlist=spc['adjlist'],
                           xyz=spc['xyz'])
 
-    reaction = ARCReaction(r_species=[make_species(spc) for spc in case['reactants']],
-                           p_species=[make_species(spc) for spc in case['products']])
-    reaction.atom_map = case['atom_map']
+    reaction = None
+    if 'reactants' in case:
+        reaction = ARCReaction(r_species=[make_species(spc) for spc in case['reactants']],
+                               p_species=[make_species(spc) for spc in case['products']])
+        reaction.atom_map = case['atom_map']
     mol = Molecule().from_adjacency_list(case['ts_adjlist'], raise_atomtype_exception=False)
     return mol, converter.str_to_xyz(case['ts_xyz']), reaction, case['ts_rotor_pivots']
 
@@ -3510,6 +3513,24 @@ class TestTSGraphBonds(unittest.TestCase):
         self.assertIn('atom order of the reactants', reason)
         self.assertLessEqual({(2, 3), (4, 5)}, bonds)
         self.assertEqual(dropped, [])
+
+
+    def test_get_top_from_bonds(self):
+        """Test that the top of a pivot is its side of the pivot bond, and holds the other pivot on a ring"""
+        chain = {(0, 1), (1, 2), (2, 3), (2, 4)}
+        self.assertEqual(conformers.get_top_from_bonds(bonds=chain, pivots=(1, 2)), {0, 1})
+        self.assertEqual(conformers.get_top_from_bonds(bonds=chain, pivots=(2, 1)), {2, 3, 4})
+        ring = chain | {(0, 3)}
+        self.assertEqual(conformers.get_top_from_bonds(bonds=ring, pivots=(1, 2)), {0, 1, 2, 3, 4})
+
+    def test_is_ts_graph_out_of_order(self):
+        """Test that a TS graph in another atom order than its geometry (TS4) is detected, and only then"""
+        mol, xyz, _, _ = load_ts_graph_case('TS4')
+        self.assertTrue(conformers.is_ts_graph_out_of_order(mol=mol, xyz=xyz))
+        self.assertFalse(conformers.is_ts_graph_out_of_order(mol=mol, xyz=None))
+        self.assertFalse(conformers.is_ts_graph_out_of_order(mol=None, xyz=xyz))
+        mol, xyz, _, _ = load_ts_graph_case('TS5')
+        self.assertFalse(conformers.is_ts_graph_out_of_order(mol=mol, xyz=xyz))
 
 
 class TestGraphStereocenters(unittest.TestCase):

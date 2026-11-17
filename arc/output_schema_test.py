@@ -924,6 +924,43 @@ class TestOnlyRejectedRotorsValidate(SchemaAssertionMixin, unittest.TestCase):
         self.assertNotIn(2, rejected_indices)
 
 
+class TestTSGraphFallbackValidates(SchemaAssertionMixin, unittest.TestCase):
+    """A TS rotor left harmonic because the TS graph contradicts the TS geometry carries its own cause."""
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        Build the output document of a TS with one such rotor once for the class.
+        """
+        cls.schema = load_output_schema()
+        cls.validator = Draft202012Validator(cls.schema)
+        cls.tmp_dir = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.tmp_dir, ignore_errors=True)
+        spc = ARCSpecies(label='TSgraph', smiles='CCO')
+        spc.initial_xyz = spc.get_xyz()
+        spc.final_xyz = spc.get_xyz()
+        spc.e_elect = -105236.6
+        spc.e0 = -105136.6
+        spc.freqs = [1300.0, 1500.0]
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc._is_linear = False
+        spc.rotors_dict = {0: {'success': False, 'scan': [1, 2, 3, 4], 'pivots': [2, 3], 'dimensions': 1,
+                               'invalidation_reason': 'TS graph contradicts the geometry (code: ts graph). '}}
+        cls.document = build_output_document(
+            project_directory=cls.tmp_dir,
+            species_dict={'TSgraph': spc},
+            output_dict={'TSgraph': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}},
+        )
+        cls.statmech = cls.document['species'][0]['statmech']
+
+    def test_document_validates(self):
+        """The TS graph cause is a valid harmonic-fallback cause."""
+        self.assertIn(([2, 3], 'TS graph contradicts the geometry'),
+                      [(e['pivot_atoms'], e['cause']) for e in self.statmech['harmonic_fallback_torsions']])
+        self.assert_valid(self.document)
+
+
 class TestRingTorsionWithoutDihedralValidates(SchemaAssertionMixin, unittest.TestCase):
     """Dioxirane: its O-O ring bond has no dihedral with four distinct atoms, so its entry carries a null scan."""
 

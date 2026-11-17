@@ -71,24 +71,27 @@ LEGACY_FLAT_EXTENSION_KEYS = {'t3': ('key', 'qm_label', 'rmg_label', 'thermo_met
 USER_OPTICAL_ISOMERS_CAUSE = 'given by the user'
 
 REACTIVE_RING_INVALIDATION_REASON = 'Torsion lies in the TS reactive ring (code: reactive ring). '
+TS_GRAPH_INVALIDATION_REASON = 'TS graph contradicts the geometry (code: ts graph). '
 
 
 def is_reactive_ring_rejection(rotor: dict, sole_reason: bool = False) -> bool:
     """
-    Determine whether a rotor was rejected because its torsion lies in the reactive ring of its TS,
+    Determine whether a rotor was rejected by a TS rotor check (see ``ARCSpecies.check_reactive_ring_rotors``):
+    its torsion lies in the reactive ring of its TS, or the TS graph contradicts the TS geometry,
     so no scan of it may be submitted, continued, or used.
 
     Args:
         rotor (dict): A ``rotors_dict`` entry.
-        sole_reason (bool, optional): Whether the reactive ring must be the only recorded invalidation reason.
+        sole_reason (bool, optional): Whether a TS rotor check must be the only recorded invalidation reason.
 
     Returns:
-        bool: Whether the rotor carries the reactive-ring rejection (as its only reason, if ``sole_reason``).
+        bool: Whether the rotor carries a TS rotor check rejection (as its only reason, if ``sole_reason``).
     """
     reason = rotor.get('invalidation_reason') or ''
     if rotor.get('success') is not False:
         return False
-    return reason == REACTIVE_RING_INVALIDATION_REASON if sole_reason else REACTIVE_RING_INVALIDATION_REASON in reason
+    reasons = (REACTIVE_RING_INVALIDATION_REASON, TS_GRAPH_INVALIDATION_REASON)
+    return reason in reasons if sole_reason else any(check_reason in reason for check_reason in reasons)
 
 
 class ARCSpecies(object):
@@ -1446,10 +1449,13 @@ class ARCSpecies(object):
         """
         Invalidate the rotors of a TS whose pivot bond lies in a ring of the TS graph, e.g., the reactive ring of an
         intra-molecular H migration, which the TS 2D graph lacks. Scanning such a torsion breaks the ring.
+        Also invalidate the rotors of a TS whose 2D graph the TS geometry contradicts, since their tops come from
+        that graph: all rotors if the graph and the geometry are in different atom orders, and, if a graph bond was
+        dropped (see ``conformers.get_ts_bonds``), each rotor whose top differs from its top in the TS bonds.
         Rotors that were not scanned yet are judged, and so are rotors that only this check invalidated (judged on an
-        earlier geometry, e.g. a TS guess), which are restored if their torsion is no longer in a ring, and rotors with
-        a successful scan (e.g., restored from a run before this check existed), which are rejected with a warning if
-        their torsion lies in a ring. Rotors with a failed scan are not judged.
+        earlier geometry, e.g. a TS guess), which are restored if no longer invalid, and rotors with a successful
+        scan (e.g., restored from a run before this check existed), which are rejected with a warning if invalid.
+        Rotors with a failed scan are not judged.
         The sources used are recorded in each rotor's ``ring_check``.
         If neither the reaction nor the TS geometry is available, the rotors are kept, marked as unverified,
         and judged on the next call.
@@ -1465,6 +1471,35 @@ class ARCSpecies(object):
         if not rotors:
             return
         xyz = self.get_xyz(generate=False)
+
+        def reject(rotor: dict, reason: str, cause: str) -> None:
+            """
+            Invalidate a rotor by a TS rotor check, replacing an earlier verdict of these checks.
+
+            Args:
+                rotor (dict): The ``rotors_dict`` entry.
+                reason (str): The invalidation reason to record.
+                cause (str): Why the rotor is invalid, for the log.
+            """
+            if rotor.get('success') is True:
+                logger.warning(f"Rejecting the hindered rotor with pivots {rotor['pivots']} of TS {self.label}, "
+                               f"restored with a successful scan: {reason.strip()}")
+            else:
+                logger.info(f"Not considering rotor with pivots {rotor['pivots']} in TS {self.label}: {cause}.")
+            invalidation_reason = '' if is_reactive_ring_rejection(rotor, sole_reason=True) \
+                else rotor.get('invalidation_reason') or ''
+            rotor['success'] = False
+            if reason not in invalidation_reason:
+                rotor['invalidation_reason'] = invalidation_reason + reason
+
+        if conformers.is_ts_graph_out_of_order(mol=self.mol, xyz=xyz):
+            logger.warning(f'The 2D graph of TS {self.label} is not in the atom order of its geometry, '
+                           f'so none of its {len(rotors)} rotor(s) is scanned.')
+            for rotor in rotors:
+                rotor['ring_check'] = 'not run: the TS geometry is not in the atom order of the TS 2D graph'
+                reject(rotor, TS_GRAPH_INVALIDATION_REASON,
+                       'the TS 2D graph is not in the atom order of the TS geometry')
+            return
         bonds, sources, reason, dropped = conformers.get_ts_bonds(mol=self.mol, xyz=xyz, reaction=reaction)
         if not sources:
             unjudged_rotors = [rotor for rotor in rotors if rotor.get('success') is None]
@@ -1488,23 +1523,28 @@ class ARCSpecies(object):
         for rotor in rotors:
             rotor['ring_check'] = ', '.join(sources) + (f' ({reason})' if reason else '')
             rotor['ring_check_dropped_bonds'] = dropped_bonds
-            pivots_list = rotor['pivots'] if isinstance(rotor['pivots'][0], list) else [rotor['pivots']]
+            nested = isinstance(rotor['pivots'][0], list)
+            pivots_list = rotor['pivots'] if nested else [rotor['pivots']]
             if any(conformers.is_ring_twist(bonds=bonds, pivots=(pivots[0] - 1, pivots[1] - 1))
                    for pivots in pivots_list):
-                if rotor.get('success') is True:
-                    logger.warning(f"Rejecting the hindered rotor with pivots {rotor['pivots']} of TS {self.label}, "
-                                   f"restored with a successful scan: {REACTIVE_RING_INVALIDATION_REASON.strip()}")
-                else:
-                    logger.info(f"Not considering rotor with pivots {rotor['pivots']} in TS {self.label}: "
-                                f"its torsion lies in the reactive ring.")
-                rotor['success'] = False
-                invalidation_reason = rotor.get('invalidation_reason') or ''
-                if REACTIVE_RING_INVALIDATION_REASON not in invalidation_reason:
-                    rotor['invalidation_reason'] = invalidation_reason + REACTIVE_RING_INVALIDATION_REASON
-            elif rotor.get('success') is False:
+                reject(rotor, REACTIVE_RING_INVALIDATION_REASON, 'its torsion lies in the reactive ring')
+                continue
+            if dropped and rotor.get('top'):
+                tops = rotor['top'] if nested else [rotor['top']]
+                differing = [(top, sorted(i + 1 for i in conformers.get_top_from_bonds(
+                                 bonds=bonds, pivots=(pivots[0] - 1, pivots[1] - 1) if pivots[0] in top
+                                 else (pivots[1] - 1, pivots[0] - 1))))
+                             for pivots, top in zip(pivots_list, tops)]
+                differing = [(top, bond_top) for top, bond_top in differing if sorted(top) != bond_top]
+                if differing:
+                    reject(rotor, TS_GRAPH_INVALIDATION_REASON,
+                           'its top in the TS 2D graph differs from its top in the TS geometry ('
+                           + '; '.join(f'{sorted(top)} vs. {bond_top}' for top, bond_top in differing) + ')')
+                    continue
+            if rotor.get('success') is False:
                 rotor['success'], rotor['invalidation_reason'] = None, ''
                 logger.info(f"Considering rotor with pivots {rotor['pivots']} in TS {self.label} again: "
-                            f"its torsion is no longer in a ring.")
+                            f"its torsion is no longer in a ring and its top agrees with the TS geometry.")
 
     def initialize_directed_rotors(self):
         """

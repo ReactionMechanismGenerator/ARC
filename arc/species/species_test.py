@@ -18,6 +18,7 @@ from arc.common import (ARC_PATH,
                         check_that_all_entries_are_in_list,
                         save_yaml_file,
                         )
+from arc.species.conformers import find_internal_rotors
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import InputError, SpeciesError
 from arc.level import Level
@@ -33,7 +34,9 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_to_x_y_z,
                                    )
 from arc.species.perceive_test import perceive_molecule_from_xyz
+from arc.statmech.arkane import ROTOR_FALLBACK_TS_GRAPH, get_harmonic_fallback_torsions
 from arc.species.species import (REACTIVE_RING_INVALIDATION_REASON,
+                                 TS_GRAPH_INVALIDATION_REASON,
                                  ARCSpecies,
                                  TSGuess,
                                  are_coords_compliant_with_graph,
@@ -550,6 +553,101 @@ class TestARCSpecies(unittest.TestCase):
                              [{'atoms': [7, 12], 'distance_angstrom': 2.925, 'ratio': 2.684}])
         with self.assertNoLogs('arc', level='WARNING'):
             ts.check_reactive_ring_rotors(reaction=reaction)
+
+    @staticmethod
+    def _ts_with_graph_rotors(label: str, mol: Molecule, xyz: dict) -> ARCSpecies:
+        """
+        Make a TS with a given 2D graph and the rotors found from that graph, as ARC finds them for a TS.
+
+        Args:
+            label (str): The TS label.
+            mol (Molecule): The TS 2D graph.
+            xyz (dict): The TS geometry.
+
+        Returns:
+            ARCSpecies: The TS.
+        """
+        ts = ARCSpecies(label=label, is_ts=True, xyz=xyz)
+        ts.mol = mol
+        ts.rotors_dict = dict(enumerate(find_internal_rotors(mol.copy(deep=True))))
+        return ts
+
+    def _assert_ts_graph_rejection(self, ts: ARCSpecies, pivots: list[int]) -> None:
+        """
+        Assert that a TS rotor is rejected because the TS graph contradicts the TS geometry, and stays harmonic.
+
+        Args:
+            ts (ARCSpecies): The TS.
+            pivots (list[int]): The 1-indexed rotor pivots.
+        """
+        rotor = [rotor for rotor in ts.rotors_dict.values() if rotor['pivots'] == pivots][0]
+        self.assertIs(rotor['success'], False)
+        self.assertEqual(rotor['invalidation_reason'], TS_GRAPH_INVALIDATION_REASON)
+        self.assertIn((pivots, ROTOR_FALLBACK_TS_GRAPH),
+                      [(entry['pivots'], entry['cause']) for entry in get_harmonic_fallback_torsions(ts)])
+
+    def test_ts_rotor_with_a_contradicted_top_is_not_scanned(self):
+        """Test that TS5 rotor [6, 7], whose graph top holds H12 that the geometry bonds to C3, stays harmonic"""
+        mol, xyz, reaction, _ = load_ts_graph_case('TS5')
+        ts = self._ts_with_graph_rotors('TS5', mol, xyz)
+        self.assertEqual({tuple(rotor['pivots']): rotor['top'] for rotor in ts.rotors_dict.values()}[(6, 7)],
+                         [7, 12, 18, 19])
+        with self.assertLogs('arc', level='INFO') as logs:
+            ts.check_reactive_ring_rotors(reaction=reaction)
+        self.assertTrue(any('[6, 7]' in line and '[7, 12, 18, 19] vs. [7, 18, 19]' in line for line in logs.output))
+        self._assert_ts_graph_rejection(ts, [6, 7])
+        for rotor in ts.rotors_dict.values():
+            if rotor['pivots'] != [6, 7]:
+                self.assertEqual(rotor['invalidation_reason'], REACTIVE_RING_INVALIDATION_REASON, rotor['pivots'])
+        ts.check_reactive_ring_rotors(reaction=reaction)
+        self._assert_ts_graph_rejection(ts, [6, 7])
+
+    def test_ts_rotor_top_is_compared_as_an_atom_set(self):
+        """
+        Test that a TS rotor whose graph top has the right size but the wrong atoms stays harmonic.
+        The TS8 graph here is synthetic: H3 and H5 are swapped between C1 and C2, so the graph top of [1, 2] is
+        [2, 3, 6] and its geometry top is [2, 5, 6].
+        """
+        _, xyz, reaction, _ = load_ts_graph_case('TS8')
+        mol = Molecule().from_adjacency_list("""multiplicity 2
+1 C u0 p0 c0 {2,S} {4,S} {5,S} {7,S}
+2 C u1 p0 c0 {1,S} {3,S} {6,S}
+3 H u0 p0 c0 {2,S}
+4 H u0 p0 c0 {1,S}
+5 H u0 p0 c0 {1,S}
+6 H u0 p0 c0 {2,S}
+7 H u0 p0 c0 {1,S}
+""", raise_atomtype_exception=False)
+        ts = self._ts_with_graph_rotors('TS8', mol, xyz)
+        self.assertEqual([(rotor['pivots'], sorted(rotor['top'])) for rotor in ts.rotors_dict.values()],
+                         [([1, 2], [2, 3, 6])])
+        ts.check_reactive_ring_rotors(reaction=reaction)
+        self.assertEqual([bond['atoms'] for bond in ts.rotors_dict[0]['ring_check_dropped_bonds']], [[1, 5], [2, 3]])
+        self._assert_ts_graph_rejection(ts, [1, 2])
+
+    def test_ts_rotor_without_a_dropped_bond_is_unchanged(self):
+        """Test that a TS with no dropped graph bond (TS8) keeps its rotor [1, 2] to scan"""
+        mol, xyz, reaction, _ = load_ts_graph_case('TS8')
+        ts = self._ts_with_graph_rotors('TS8', mol, xyz)
+        ts.check_reactive_ring_rotors(reaction=reaction)
+        self.assertEqual(ts.rotors_dict[0]['pivots'], [1, 2])
+        self.assertIsNone(ts.rotors_dict[0]['success'])
+        self.assertEqual(ts.rotors_dict[0]['invalidation_reason'], '')
+        self.assertEqual(ts.rotors_dict[0]['ring_check_dropped_bonds'], [])
+
+    def test_ts_graph_in_another_atom_order_scans_no_rotor(self):
+        """Test that a TS whose 2D graph (TS4, C H H H C O) and geometry (C C O H H H) differ in atom order scans no
+        rotor, also one that an earlier check rejected for another reason"""
+        mol, xyz, _, _ = load_ts_graph_case('TS4')
+        ts = self._ts_with_graph_rotors('TS4', mol, xyz)
+        self.assertEqual([(rotor['pivots'], rotor['top']) for rotor in ts.rotors_dict.values()], [([1, 5], [5, 6])])
+        with self.assertLogs('arc', level='WARNING') as logs:
+            ts.check_reactive_ring_rotors()
+        self.assertTrue(any('TS4' in line and 'atom order' in line for line in logs.output))
+        self._assert_ts_graph_rejection(ts, [1, 5])
+        ts.rotors_dict[0]['invalidation_reason'] = REACTIVE_RING_INVALIDATION_REASON
+        ts.check_reactive_ring_rotors()
+        self._assert_ts_graph_rejection(ts, [1, 5])
 
     def test_determine_rotors_ts_keeps_non_ring_rotor(self):
         """Test that a TS rotor outside any ring is still listed as a rotor to scan"""

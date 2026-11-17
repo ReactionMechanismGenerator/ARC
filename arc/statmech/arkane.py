@@ -24,7 +24,7 @@ from arc.statmech.factory import register_statmech_adapter
 
 from arc.species.conformers import find_internal_rotors
 from arc.species.optical_isomers import determine_optical_isomers, get_rotor_torsions
-from arc.species.species import ThermoData, is_reactive_ring_rejection
+from arc.species.species import TS_GRAPH_INVALIDATION_REASON, ThermoData, is_reactive_ring_rejection
 
 if TYPE_CHECKING:
     from arc.level import Level
@@ -51,6 +51,7 @@ ROTOR_FALLBACK_SCAN_INCOMPLETE = 'scan not completed'
 ROTOR_FALLBACK_TS_REACTION_ZONE = 'TS reaction zone'
 ROTOR_FALLBACK_RING = 'ring'
 ROTOR_FALLBACK_REACTIVE_RING = 'reactive ring'
+ROTOR_FALLBACK_TS_GRAPH = 'TS graph contradicts the geometry'
 ROTOR_FALLBACK_USER_CHOICE = 'user choice'
 ROTOR_FALLBACK_BDE_FRAGMENT = 'not scanned (BDE fragment)'
 RING_FALLBACK_CAUSES = (ROTOR_FALLBACK_RING, ROTOR_FALLBACK_REACTIVE_RING)
@@ -675,6 +676,8 @@ def _classify_rotor_fallback(rotor: dict) -> str:
         if any(isinstance(method, dict) and 'change conformer' in method for method in rotor.get('trsh_methods') or list()):
             return ROTOR_FALLBACK_SCAN_STOPPED
         return ROTOR_FALLBACK_SCAN_INCOMPLETE
+    if TS_GRAPH_INVALIDATION_REASON in reason:
+        return ROTOR_FALLBACK_TS_GRAPH
     if is_reactive_ring_rejection(rotor):
         return ROTOR_FALLBACK_REACTIVE_RING
     if TS_REACTION_ZONE_CODE in reason:

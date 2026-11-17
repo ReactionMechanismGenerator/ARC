@@ -1815,7 +1815,7 @@ def get_ts_bonds(mol: Molecule | None,
     if mol is not None:
         index = {atom: i for i, atom in enumerate(mol.atoms)}
         bonds = {tuple(sorted((index[atom_1], index[atom_2]))) for atom_1 in mol.atoms for atom_2 in atom_1.edges}
-        if xyz is not None and [atom.element.symbol for atom in mol.atoms] != list(xyz['symbols']):
+        if is_ts_graph_out_of_order(mol=mol, xyz=xyz):
             reasons.append('the TS geometry is not in the atom order of the TS 2D graph')
             xyz = None
     graph_bonds, named_bonds = set(bonds), set()
@@ -1913,6 +1913,23 @@ def is_ring_twist(bonds: set[tuple[int, int]],
     Returns:
         bool: Whether the pivot bond lies on a ring of the graph.
     """
+    return pivots[1] in get_top_from_bonds(bonds=bonds, pivots=pivots)
+
+
+def get_top_from_bonds(bonds: set[tuple[int, int]],
+                       pivots: tuple[int, int] | list[int],
+                       ) -> set[int]:
+    """
+    Get the atoms connected to the first pivot of a torsion once the pivot bond is removed, i.e., the top of the
+    first pivot. If the pivot bond lies on a ring, the result also holds the second pivot.
+
+    Args:
+        bonds (set[tuple[int, int]]): The bonds of the graph, each a tuple of 0-indexed atom indices.
+        pivots (tuple[int, int] | list[int]): The 0-indexed atom indices of the torsion pivots.
+
+    Returns:
+        set[int]: The 0-indexed atoms of the top, including the first pivot.
+    """
     start, end = pivots
     neighbors = dict()
     for i, j in bonds:
@@ -1922,12 +1939,25 @@ def is_ring_twist(bonds: set[tuple[int, int]],
     visited, stack = {start}, [start]
     while stack:
         for neighbor in neighbors.get(stack.pop(), set()):
-            if neighbor == end:
-                return True
             if neighbor not in visited:
                 visited.add(neighbor)
                 stack.append(neighbor)
-    return False
+    return visited
+
+
+def is_ts_graph_out_of_order(mol: Molecule | None, xyz: dict | None) -> bool:
+    """
+    Determine whether a TS 2D graph and the TS geometry are in different atom orders (different element sequences).
+
+    Args:
+        mol (Molecule | None): The TS 2D graph.
+        xyz (dict | None): The TS coordinates.
+
+    Returns:
+        bool: Whether both exist and their element sequences differ.
+    """
+    return mol is not None and xyz is not None \
+        and [atom.element.symbol for atom in mol.atoms] != list(xyz['symbols'])
 
 
 def determine_smallest_atom_index_in_scan(atom1: Atom,

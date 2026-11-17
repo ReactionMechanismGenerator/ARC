@@ -32,6 +32,7 @@ from arc.statmech.arkane import (
     ROTOR_FALLBACK_SCAN_FAILED,
     ROTOR_FALLBACK_SCAN_INCOMPLETE,
     ROTOR_FALLBACK_SCAN_STOPPED,
+    ROTOR_FALLBACK_TS_GRAPH,
     ROTOR_FALLBACK_TS_REACTION_ZONE,
     ROTOR_FALLBACK_USER_CHOICE,
     ROTOR_FALLBACK_BDE_FRAGMENT,
@@ -1190,6 +1191,15 @@ class TestHarmonicFallbackTorsions(unittest.TestCase):
         self.assertEqual([(e['pivots'], e['cause']) for e in fallback],
                          [([1, 2], ROTOR_FALLBACK_TS_REACTION_ZONE), ([2, 3], ROTOR_FALLBACK_REACTIVE_RING)])
         self.assertEqual(count_harmonic_fallback_torsions(fallback), (1, 1))
+
+    def test_ts_graph_contradiction(self):
+        """Test that a TS rotor whose TS graph contradicts the geometry is a fallback that could have been a rotor."""
+        ts = self._ts()
+        ts.rotors_dict[1]['invalidation_reason'] = 'TS graph contradicts the geometry (code: ts graph). '
+        fallback = get_harmonic_fallback_torsions(ts)
+        self.assertEqual([(e['pivots'], e['cause']) for e in fallback],
+                         [([1, 2], ROTOR_FALLBACK_TS_REACTION_ZONE), ([2, 3], ROTOR_FALLBACK_TS_GRAPH)])
+        self.assertEqual(count_harmonic_fallback_torsions(fallback), (2, 0))
 
     def test_ring_torsion_of_a_stored_rotor_is_listed_once(self):
         """Test that a ring bond of the TS graph that a restored rotor already covers keeps the rotor's treatment:
