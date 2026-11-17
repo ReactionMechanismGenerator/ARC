@@ -2134,11 +2134,30 @@ def _statmech_to_dict(spc,
         'harmonic_frequencies_cm1': [float(f) for f in freqs] if freqs is not None else None,
         'torsions': _get_torsions(spc, project_directory, scan_keys=scan_keys),
         'rejected_torsions': _get_rejected_torsions(spc, project_directory),
+        'ring_check_dropped_bonds': _get_ring_check_dropped_bonds(spc),
         'harmonic_fallback_torsions': [{'pivot_atoms': entry['pivots'], 'atom_indices': entry['scan'],
                                         'cause': entry['cause'], 'reason': entry['reason']} for entry in fallback],
         'n_harmonic_fallback_torsions': n_fallback,
         'n_ring_torsions': n_ring,
     }
+
+
+def _get_ring_check_dropped_bonds(spc) -> list[dict]:
+    """
+    Get the TS 2D-graph bonds that the reactive ring check of a TS dropped, as recorded on its rotors.
+
+    Args:
+        spc (ARCSpecies): The species or TS.
+
+    Returns:
+        list[dict]: The dropped bonds, each with 1-indexed ``atoms``, ``distance_angstrom`` and ``ratio``,
+            sorted by atoms.
+    """
+    dropped = dict()
+    for rotor in (getattr(spc, 'rotors_dict', None) or dict()).values():
+        for bond in rotor.get('ring_check_dropped_bonds') or list():
+            dropped[tuple(bond['atoms'])] = dict(bond)
+    return [dropped[atoms] for atoms in sorted(dropped)]
 
 
 def _get_torsions(spc, project_directory: str, scan_keys: set[str] | None = None) -> list[dict]:

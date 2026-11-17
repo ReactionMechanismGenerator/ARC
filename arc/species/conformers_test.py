@@ -22,7 +22,7 @@ from rdkit.Chem import rdMolTransforms as rdMT
 import arc.species.conformers as conformers
 import arc.species.converter as converter
 import arc.species.vectors as vectors
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, read_yaml_file
 from arc.exceptions import ConformerError, ReactionError
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.group import GroupAtom, GroupBond, Group
@@ -271,6 +271,41 @@ def make_ts0_both_directions() -> tuple[ARCReaction, ARCReaction, dict]:
     ts = converter.xyz_from_data(coords=coords.tolist(), symbols=ts['symbols'])
     return (ARCReaction(r_species=[reactant], p_species=[product]),
             ARCReaction(r_species=[product], p_species=[reactant]), ts)
+
+TS_GRAPH_CASES = read_yaml_file(os.path.join(ARC_TESTING_PATH, 'yml_testing', 'ts_graph_bonds.yml'))
+
+
+def load_ts_graph_case(label: str) -> tuple[Molecule, dict, ARCReaction, list[list[int]]]:
+    """
+    Load a TS 2D graph, TS geometry, reaction, and rotor pivots from the TS graph bond test cases.
+
+    Args:
+        label (str): The TS label in ``ts_graph_bonds.yml``.
+
+    Returns:
+        tuple[Molecule, dict, ARCReaction, list[list[int]]]:
+            The TS 2D graph, the TS geometry, the reaction with its stored atom map, and the 1-indexed rotor pivots.
+    """
+    case = TS_GRAPH_CASES[label]
+
+    def make_species(spc: dict) -> ARCSpecies:
+        """
+        Make a well of the reaction.
+
+        Args:
+            spc (dict): The well's label, multiplicity, adjacency list, and geometry.
+
+        Returns:
+            ARCSpecies: The well.
+        """
+        return ARCSpecies(label=spc['label'], multiplicity=spc['multiplicity'], adjlist=spc['adjlist'],
+                          xyz=spc['xyz'])
+
+    reaction = ARCReaction(r_species=[make_species(spc) for spc in case['reactants']],
+                           p_species=[make_species(spc) for spc in case['products']])
+    reaction.atom_map = case['atom_map']
+    mol = Molecule().from_adjacency_list(case['ts_adjlist'], raise_atomtype_exception=False)
+    return mol, converter.str_to_xyz(case['ts_xyz']), reaction, case['ts_rotor_pivots']
 
 
 class TestConformers(unittest.TestCase):
@@ -3341,8 +3376,8 @@ Cl      2.38846685    0.24054066    0.55443324
         with unittest.mock.patch.object(ARCReaction, 'get_formed_and_broken_bonds',
                                         side_effect=ReactionError('could not be atom mapped')) as bonds_of:
             for _ in range(3):
-                bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(),
-                                                                 reaction=rxn)
+                bonds, sources, reason, _ = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(),
+                                                                    reaction=rxn)
                 self.assertEqual(sources, ['geometry'])
                 self.assertIn('could not be atom mapped', reason)
             self.assertEqual(bonds_of.call_count, 1)
@@ -3372,29 +3407,32 @@ Cl      2.38846685    0.24054066    0.55443324
         mol_bonds = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=None)[0]
         self.assertNotIn((0, 5), mol_bonds)
         self.assertNotIn((4, 5), mol_bonds)
-        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=self.rxn0)
+        bonds, sources, reason, _ = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(),
+                                                            reaction=self.rxn0)
         self.assertLessEqual({(0, 5), (4, 5)}, bonds)
         self.assertEqual(sources, ['reaction', 'geometry'])
         self.assertEqual(reason, '')
-        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=None)
+        bonds, sources, reason, _ = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=None)
         self.assertLessEqual({(0, 5), (4, 5)}, bonds)
         self.assertEqual(sources, ['geometry'])
-        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=self.rxn0)
+        bonds, sources, reason, _ = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=self.rxn0)
         self.assertLessEqual({(0, 5), (4, 5)}, bonds)
         self.assertEqual(sources, ['reaction'])
-        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=None)
+        bonds, sources, reason, _ = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=None)
         self.assertEqual(bonds, mol_bonds)
         self.assertEqual(sources, [])
         self.assertIn('no reaction', reason)
         self.assertIn('no TS geometry', reason)
         # The atom map picks an H of the other ethane C than the one abstracted in the TS1 geometry.
-        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts1.mol, xyz=self.ts1.get_xyz(), reaction=self.rxn1)
+        bonds, sources, reason, _ = conformers.get_ts_bonds(mol=self.ts1.mol, xyz=self.ts1.get_xyz(),
+                                                            reaction=self.rxn1)
         self.assertIn((0, 10), bonds)
         self.assertNotIn((0, 6), bonds)
         # A reaction whose bonds cannot be determined is skipped with the reason, it does not raise.
         broken_rxn = ARCReaction(r_species=self.rxn0.r_species, p_species=self.rxn0.p_species)
         broken_rxn.atom_map = [0] * 12
-        bonds, sources, reason = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(), reaction=broken_rxn)
+        bonds, sources, reason, _ = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(),
+                                                            reaction=broken_rxn)
         self.assertEqual(sources, ['geometry'])
         self.assertIn('ValueError', reason)
         self.assertLessEqual({(0, 5), (4, 5)}, bonds)
@@ -3404,7 +3442,7 @@ Cl      2.38846685    0.24054066    0.55443324
         permuted = converter.xyz_from_data(coords=[xyz['coords'][i] for i in order],
                                            symbols=[xyz['symbols'][i] for i in order])
         permuted_mol = perceive_molecule_from_xyz(permuted)
-        bonds, sources, reason = conformers.get_ts_bonds(mol=permuted_mol, xyz=permuted, reaction=self.rxn0)
+        bonds, sources, reason, _ = conformers.get_ts_bonds(mol=permuted_mol, xyz=permuted, reaction=self.rxn0)
         self.assertEqual(sources, ['geometry'])
         self.assertIn('atom order', reason)
         self.assertLessEqual({(4, 5), (0, 5)}, bonds)
@@ -3414,10 +3452,66 @@ Cl      2.38846685    0.24054066    0.55443324
         swapped = converter.xyz_from_data(coords=[xyz['coords'][i] for i in order],
                                           symbols=[xyz['symbols'][i] for i in order])
         self.assertEqual(swapped['symbols'], xyz['symbols'])
-        bonds, sources, reason = conformers.get_ts_bonds(mol=perceive_molecule_from_xyz(swapped), xyz=None,
-                                                         reaction=self.rxn0)
+        bonds, sources, reason, _ = conformers.get_ts_bonds(mol=perceive_molecule_from_xyz(swapped), xyz=None,
+                                                            reaction=self.rxn0)
         self.assertEqual(sources, [])
         self.assertIn('atom order', reason)
+class TestTSGraphBonds(unittest.TestCase):
+    """
+    Contains unit tests of the TS graph bonds that the TS geometry contradicts.
+    """
+
+    def test_contradicted_graph_bond_does_not_close_a_ring(self):
+        """Test that a TS graph bond far beyond its single bond length (TS5 C7-H12) does not reject rotor [6, 7]"""
+        mol, xyz, reaction, _ = load_ts_graph_case('TS5')
+        bonds, sources, _, dropped = conformers.get_ts_bonds(mol=mol, xyz=xyz, reaction=reaction)
+        self.assertEqual(sources, ['reaction', 'geometry'])
+        self.assertNotIn((6, 11), bonds)
+        self.assertEqual([(i, j) for i, j, _, _ in dropped], [(6, 11)])
+        self.assertAlmostEqual(dropped[0][2], 2.925, places=3)
+        self.assertAlmostEqual(dropped[0][3], 2.684, places=3)
+        self.assertFalse(conformers.is_ring_twist(bonds=bonds, pivots=(5, 6)))
+        for pivots in [(2, 3), (3, 4)]:
+            self.assertTrue(conformers.is_ring_twist(bonds=bonds, pivots=pivots), pivots)
+
+    def test_reaction_bond_beyond_the_cut_is_kept(self):
+        """Test that the forming bond of an early TS (TS8 C1-H7, 1.906 times the single bond) is kept"""
+        mol, xyz, reaction, _ = load_ts_graph_case('TS8')
+        bonds, sources, _, dropped = conformers.get_ts_bonds(mol=mol, xyz=xyz, reaction=reaction)
+        self.assertEqual(sources, ['reaction', 'geometry'])
+        self.assertIn((0, 6), reaction.get_formed_and_broken_bonds()[0])
+        self.assertIn((0, 6), bonds)
+        self.assertEqual(dropped, [])
+
+    def test_unnamed_graph_bond_within_the_cut_is_kept(self):
+        """Test that a reactive TS graph bond the atom map does not name (TS6 C1-H6, 1.525) is kept"""
+        mol, xyz, reaction, _ = load_ts_graph_case('TS6')
+        bonds, sources, _, dropped = conformers.get_ts_bonds(mol=mol, xyz=xyz, reaction=reaction)
+        self.assertEqual(sources, ['reaction', 'geometry'])
+        formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
+        self.assertNotIn((0, 5), [tuple(sorted(bond)) for bond in formed_bonds + broken_bonds])
+        self.assertIn((0, 5), bonds)
+        self.assertEqual(dropped, [])
+
+    def test_reactive_ring_rotors_stay_rejected(self):
+        """Test that dropping a contradicted graph bond (TS15 O5-H13) keeps all four reactive-ring rejections"""
+        mol, xyz, reaction, pivots_list = load_ts_graph_case('TS15')
+        bonds, _, _, dropped = conformers.get_ts_bonds(mol=mol, xyz=xyz, reaction=reaction)
+        self.assertEqual([(i, j) for i, j, _, _ in dropped], [(4, 12)])
+        self.assertEqual(len(pivots_list), 4)
+        for pivots in pivots_list:
+            self.assertTrue(conformers.is_ring_twist(bonds=bonds, pivots=(pivots[0] - 1, pivots[1] - 1)), pivots)
+
+    def test_untrusted_reaction_keeps_the_graph_forming_bonds(self):
+        """Test that a TS whose reaction cannot be used (TS7) keeps its forming bonds from the TS graph"""
+        mol, xyz, reaction, _ = load_ts_graph_case('TS7')
+        bonds, sources, reason, dropped = conformers.get_ts_bonds(mol=mol, xyz=xyz, reaction=reaction)
+        self.assertEqual(sources, ['geometry'])
+        self.assertIn('atom order of the reactants', reason)
+        self.assertLessEqual({(2, 3), (4, 5)}, bonds)
+        self.assertEqual(dropped, [])
+
+
 class TestGraphStereocenters(unittest.TestCase):
     """
     Contains unit tests for perceiving the stereocenters of a well's 2D graph.

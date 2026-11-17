@@ -26,7 +26,7 @@ from arc.parser.parser import parse_e_elect
 from arc.plotter import save_conformers_file
 from arc.reaction import ARCReaction
 from arc.species.conformers_test import (C2H5_XYZ, C2H6_XYZ, CH3_XYZ, CH4_XYZ, NC3H7OO_XYZ, QOOH_XYZ, TS0_XYZ,
-                                         TS1_XYZ)
+                                         TS1_XYZ, load_ts_graph_case)
 from arc.species.converter import (check_isomorphism,
                                    str_to_xyz,
                                    xyz_to_str,
@@ -532,6 +532,24 @@ class TestARCSpecies(unittest.TestCase):
             for rotor in ts.rotors_dict.values():
                 self.assertIs(rotor['success'], False, msg=reason)
                 self.assertEqual(rotor['invalidation_reason'], REACTIVE_RING_INVALIDATION_REASON, msg=reason)
+
+    def test_check_reactive_ring_rotors_records_dropped_graph_bonds(self):
+        """Test that a TS graph bond the geometry contradicts is logged once, recorded, and does not reject a rotor"""
+        mol, xyz, reaction, _ = load_ts_graph_case('TS5')
+        ts = ARCSpecies(label='TS5', is_ts=True, xyz=xyz)
+        ts.mol = mol
+        ts.rotors_dict = {0: {'pivots': [6, 7], 'success': None, 'invalidation_reason': '', 'scan_path': ''},
+                          1: {'pivots': [3, 4], 'success': None, 'invalidation_reason': '', 'scan_path': ''}}
+        with self.assertLogs('arc', level='WARNING') as logs:
+            ts.check_reactive_ring_rotors(reaction=reaction)
+        self.assertEqual(len([line for line in logs.output if 'C7-H12 (2.925 A, 2.68 times' in line]), 1)
+        self.assertIsNone(ts.rotors_dict[0]['success'])
+        self.assertIs(ts.rotors_dict[1]['success'], False)
+        for rotor in ts.rotors_dict.values():
+            self.assertEqual(rotor['ring_check_dropped_bonds'],
+                             [{'atoms': [7, 12], 'distance_angstrom': 2.925, 'ratio': 2.684}])
+        with self.assertNoLogs('arc', level='WARNING'):
+            ts.check_reactive_ring_rotors(reaction=reaction)
 
     def test_determine_rotors_ts_keeps_non_ring_rotor(self):
         """Test that a TS rotor outside any ring is still listed as a rotor to scan"""

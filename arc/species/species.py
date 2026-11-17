@@ -118,6 +118,8 @@ class ARCSpecies(object):
                                                           # values: dicts of energy, xyz, is_isomorphic, trsh
                               'ring_check': ``str``,  # TSs only: the sources of the reactive ring check,
                                                       # or 'unverified: <reason>'
+                              'ring_check_dropped_bonds': ``list[dict]``,  # TSs only: the TS 2D-graph bonds
+                                                      # the reactive ring check dropped, see ``get_ts_bonds``
                              }
                           1: {}, ...
                          }
@@ -1462,8 +1464,8 @@ class ARCSpecies(object):
                   or (is_reactive_ring_rejection(rotor, sole_reason=True) and not rotor.get('scan_path'))]
         if not rotors:
             return
-        bonds, sources, reason = conformers.get_ts_bonds(mol=self.mol, xyz=self.get_xyz(generate=False),
-                                                         reaction=reaction)
+        xyz = self.get_xyz(generate=False)
+        bonds, sources, reason, dropped = conformers.get_ts_bonds(mol=self.mol, xyz=xyz, reaction=reaction)
         if not sources:
             unjudged_rotors = [rotor for rotor in rotors if rotor.get('success') is None]
             if unjudged_rotors:
@@ -1476,8 +1478,16 @@ class ARCSpecies(object):
         if reaction is not None and 'reaction' not in sources:
             logger.warning(f'The reactive ring of TS {self.label} was found from its geometry alone, '
                            f'since its reaction could not be used: {reason}')
+        dropped_bonds = [{'atoms': [i + 1, j + 1], 'distance_angstrom': round(distance, 3), 'ratio': round(ratio, 3)}
+                         for i, j, distance, ratio in dropped]
+        if dropped_bonds and any(rotor.get('ring_check_dropped_bonds') != dropped_bonds for rotor in rotors):
+            logger.warning(f'The reactive ring check of TS {self.label} dropped 2D-graph bonds that its geometry '
+                           f'contradicts: ' + ', '.join(f"{xyz['symbols'][i]}{i + 1}-{xyz['symbols'][j]}{j + 1} "
+                                                       f"({distance:.3f} A, {ratio:.2f} times the single bond)"
+                                                       for i, j, distance, ratio in dropped))
         for rotor in rotors:
             rotor['ring_check'] = ', '.join(sources) + (f' ({reason})' if reason else '')
+            rotor['ring_check_dropped_bonds'] = dropped_bonds
             pivots_list = rotor['pivots'] if isinstance(rotor['pivots'][0], list) else [rotor['pivots']]
             if any(conformers.is_ring_twist(bonds=bonds, pivots=(pivots[0] - 1, pivots[1] - 1))
                    for pivots in pivots_list):

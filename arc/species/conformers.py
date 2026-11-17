@@ -71,6 +71,9 @@ logger = get_logger()
 TS_PARTIAL_BOND_RATIO = 1.3
 TS_PARTIAL_BOND_RATIO_H = 1.5
 TS_STRETCHED_BOND_RATIO = 1.6
+# Distance / single bond length ratio beyond which a TS 2D-graph bond that the reaction neither forms nor breaks is
+# absent from the TS geometry. It lies between 1.525 (a real reactive bond) and 2.097 (a contradicted graph bond).
+TS_CONTRADICTED_BOND_RATIO = 1.8
 
 # The reactions whose formed and broken bonds could not be determined: reaction -> (geometries, reason).
 REACTION_BOND_FAILURES = weakref.WeakKeyDictionary()
@@ -1776,7 +1779,7 @@ def find_internal_rotors(mol):
 def get_ts_bonds(mol: Molecule | None,
                  xyz: dict | None = None,
                  reaction: 'ARCReaction | None' = None,
-                 ) -> tuple[set[tuple[int, int]], list[str], str]:
+                 ) -> tuple[set[tuple[int, int]], list[str], str, list[tuple[int, int, float, float]]]:
     """
     Get the bonds of a TS graph: the bonds of the TS 2D graph plus the bonds the reaction forms and breaks.
     A TS 2D graph perceived from coordinates lacks the partial (forming and breaking) bonds, so a reactive ring
@@ -1788,6 +1791,10 @@ def get_ts_bonds(mol: Molecule | None,
     The bonds the reaction forms or breaks are added only if they are within ``TS_STRETCHED_BOND_RATIO`` in the TS
     geometry, so a reaction and its reverse give the same TS bonds. A reaction whose bonds could not be determined
     is not tried again until a reactant or product geometry changes.
+    A TS 2D-graph bond that the TS geometry puts farther apart than ``TS_CONTRADICTED_BOND_RATIO`` times its single
+    bond length is dropped, unless the reaction forms or breaks it. If the cut drops a real bond, the ring through it
+    is missed and its torsions are scanned, as without a reactive-ring check; if it keeps a bad bond, a real torsion
+    is left harmonic.
 
     Args:
         mol (Molecule | None): The TS 2D graph.
@@ -1795,14 +1802,15 @@ def get_ts_bonds(mol: Molecule | None,
         reaction (ARCReaction | None, optional): The reaction of the TS.
 
     Returns:
-        tuple[set[tuple[int, int]], list[str], str]:
+        tuple[set[tuple[int, int]], list[str], str, list[tuple[int, int, float, float]]]:
             The TS bonds, each a sorted tuple of 0-indexed atom indices;
             the sources of reactive bonds that were used ('reaction', 'geometry'), empty if neither was;
-            and why a source was not used (an empty string if both were).
+            why a source was not used (an empty string if both were);
+            and the dropped TS 2D-graph bonds, each as 0-indexed atoms, distance in Angstrom, and distance ratio.
     """
     reasons = list()
     if mol is None and xyz is None:
-        return set(), list(), 'no TS 2D graph and no TS geometry'
+        return set(), list(), 'no TS 2D graph and no TS geometry', list()
     bonds = set()
     if mol is not None:
         index = {atom: i for i, atom in enumerate(mol.atoms)}
@@ -1810,7 +1818,21 @@ def get_ts_bonds(mol: Molecule | None,
         if xyz is not None and [atom.element.symbol for atom in mol.atoms] != list(xyz['symbols']):
             reasons.append('the TS geometry is not in the atom order of the TS 2D graph')
             xyz = None
+    graph_bonds, named_bonds = set(bonds), set()
     symbols = list(xyz['symbols']) if xyz is not None else [atom.element.symbol for atom in mol.atoms]
+
+    def distance(i: int, j: int) -> float:
+        """
+        Get the distance between two TS atoms.
+
+        Args:
+            i (int): The 0-indexed first atom.
+            j (int): The 0-indexed second atom.
+
+        Returns:
+            float: The distance in Angstrom.
+        """
+        return sum((xyz['coords'][i][k] - xyz['coords'][j][k]) ** 2 for k in range(3)) ** 0.5
 
     def distance_ratio(i: int, j: int) -> float:
         """
@@ -1823,8 +1845,7 @@ def get_ts_bonds(mol: Molecule | None,
         Returns:
             float: The distance divided by the single bond length of the two elements.
         """
-        distance = sum((xyz['coords'][i][k] - xyz['coords'][j][k]) ** 2 for k in range(3)) ** 0.5
-        return distance / get_single_bond_length(symbols[i], symbols[j])
+        return distance(i, j) / get_single_bond_length(symbols[i], symbols[j])
 
     sources = list()
     if reaction is None:
@@ -1858,18 +1879,24 @@ def get_ts_bonds(mol: Molecule | None,
                     reasons.append(f'the TS is not in the atom order of the reactants (reactant bonds '
                                    f'{stretched_bonds} that the reaction does not break are absent from the TS)')
                 else:
+                    named_bonds = {tuple(sorted(bond)) for bond in formed_bonds} | broken_bonds
                     bonds |= r_bonds - broken_bonds
                     bonds |= {tuple(sorted(bond)) for bond in set(formed_bonds) | broken_bonds
                               if xyz is None or distance_ratio(*bond) <= TS_STRETCHED_BOND_RATIO}
                     sources.append('reaction')
+    dropped = list()
     if xyz is None:
         reasons.append('no TS geometry')
     else:
-        bonds |= {(i, j) for i in range(len(symbols)) for j in range(i + 1, len(symbols))
-                  if distance_ratio(i, j) <= (TS_PARTIAL_BOND_RATIO_H if 'H' in (symbols[i], symbols[j])
-                                              else TS_PARTIAL_BOND_RATIO)}
+        geometry_bonds = {(i, j) for i in range(len(symbols)) for j in range(i + 1, len(symbols))
+                          if distance_ratio(i, j) <= (TS_PARTIAL_BOND_RATIO_H if 'H' in (symbols[i], symbols[j])
+                                                      else TS_PARTIAL_BOND_RATIO)}
+        dropped = [(i, j, distance(i, j), distance_ratio(i, j)) for i, j in sorted(graph_bonds - named_bonds)
+                   if distance_ratio(i, j) > TS_CONTRADICTED_BOND_RATIO]
+        bonds -= {(i, j) for i, j, _, _ in dropped}
+        bonds |= geometry_bonds
         sources.append('geometry')
-    return bonds, sources, '; '.join(reasons)
+    return bonds, sources, '; '.join(reasons), dropped
 
 
 def is_ring_twist(bonds: set[tuple[int, int]],

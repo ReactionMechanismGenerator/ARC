@@ -574,6 +574,17 @@ class TestStatmechToDict(unittest.TestCase):
         result = _statmech_to_dict(spc, '/tmp/project')
         self.assertEqual(result['rejected_torsions'], [])
 
+    def test_ring_check_dropped_bonds(self):
+        """Test that the TS graph bonds the reactive ring check dropped are listed once, from every rotor"""
+        spc = self._make_spc()
+        self.assertEqual(_statmech_to_dict(spc, '/tmp/project')['ring_check_dropped_bonds'], [])
+        bond = {'atoms': [7, 12], 'distance_angstrom': 2.925, 'ratio': 2.684}
+        spc.rotors_dict = {0: {'success': None, 'pivots': [6, 7], 'ring_check_dropped_bonds': [bond]},
+                           1: {'success': False, 'pivots': [3, 4], 'ring_check_dropped_bonds': [bond],
+                               'invalidation_reason': 'reactive ring'},
+                           2: {'success': False, 'pivots': [1, 2], 'invalidation_reason': 'scan failed'}}
+        self.assertEqual(_statmech_to_dict(spc, '/tmp/project')['ring_check_dropped_bonds'], [bond])
+
     def test_mixed_rotors_split_between_torsions_and_rejected_torsions(self):
         spc = self._make_spc()
         spc.rotors_dict = {
