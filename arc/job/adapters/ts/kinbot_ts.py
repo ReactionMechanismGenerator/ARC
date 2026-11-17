@@ -17,7 +17,7 @@ from arc.common import ARC_PATH, almost_equal_coords, get_logger, read_yaml_file
 from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter
+from arc.job.adapters.common import _initialize_adapter, order_product_guess_by_atom_map
 from arc.job.env_run import run_in_conda_env
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
@@ -389,6 +389,14 @@ class KinBotAdapter(JobAdapter):
             if success:
                 ts_guess.success = True
                 xyz = xyz_from_data(coords=result['coords'], symbols=symbols)
+                if xyz is not None and method_direction == 'R':
+                    try:
+                        atom_map = rxn.atom_map
+                    except Exception as e:
+                        logger.warning(f'KinBot could not atom map {rxn.label}: {e} Discarding this guess.')
+                        xyz = None
+                    else:
+                        xyz = order_product_guess_by_atom_map(xyz=xyz, atom_map=atom_map, label=rxn.label)
                 if xyz is None or colliding_atoms(xyz):
                     success = False
                 else:
