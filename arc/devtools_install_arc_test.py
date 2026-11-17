@@ -2,10 +2,11 @@
 # encoding: utf-8
 
 """
-Tests for the conda (de)activation hooks written by devtools/install_arc.sh.
+Tests for devtools/install_arc.sh: the conda (de)activation hooks it writes and its compile step.
 
 The two hook heredocs are extracted verbatim from the installer, rendered into a temporary directory
-the same way the installer writes them, and sourced in clean bash subshells.
+the same way the installer writes them, and sourced in clean bash subshells. The compile block is
+extracted the same way and run against a stub conda front-end that records its calls.
 """
 
 import os
@@ -22,6 +23,8 @@ INSTALL_ARC = os.path.join(ARC_PATH, 'devtools', 'install_arc.sh')
 BASE_PATH = '/usr/bin:/bin'
 SEP = '@@@'
 HOOK_BLOCK = re.compile(r'^# ── activation hook.*?^\} >"\$DEACTIVATE_DIR/arc_env\.sh"\n', re.M | re.S)
+COMPILE_BLOCK = re.compile(r'^if \$DO_COMPILE; then\n.*?^fi\n', re.M | re.S)
+SET_LINE = re.compile(r'^set -\S+.*$', re.M)
 
 REPORT = r"""
 _report () {
@@ -232,6 +235,98 @@ class TestInstallArcHooks(unittest.TestCase):
             _, _, _, names_before, names_after = round_trip(self.act, self.deact, setup=setup)
             self.assertEqual(names_after - names_before, set(), msg=setup)
 
+
+def run_compile_block(root: str, do_compile: bool = True, pip_status: int = 0, make_status: int = 0) -> tuple:
+    """
+    Run the compile block of install_arc.sh against a stub conda front-end that records its arguments.
+
+    The block runs under the installer's own ``set`` line, so it sees the same shell options.
+
+    Args:
+        root (str): A directory to use as the ARC root and to hold the stub and its log.
+        do_compile (bool): The value of the installer's ``DO_COMPILE`` flag.
+        pip_status (int): The exit status the stub returns for the ``pip install`` call.
+        make_status (int): The exit status the stub returns for the ``make`` call.
+
+    Returns:
+        tuple: The finished bash process, the list of argument lines the stub recorded,
+               and the content of the build log (``None`` if it was not written).
+    """
+    with open(INSTALL_ARC) as f:
+        text = f.read()
+    blocks = COMPILE_BLOCK.findall(text)
+    if len(blocks) != 1:
+        raise ValueError(f'Expected 1 compile block in {INSTALL_ARC}, found {len(blocks)}')
+    set_line = SET_LINE.search(text)
+    if set_line is None:
+        raise ValueError(f'No top-level set line in {INSTALL_ARC}')
+    stub, calls = os.path.join(root, 'stub_pkg'), os.path.join(root, 'calls.log')
+    build_log = os.path.join(root, 'build', 'compile.log')
+    with open(stub, 'w') as f:
+        f.write('#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$STUB_LOG"\necho "stub output: $*"\n'
+                'case "$*" in *"pip install"*) exit "$PIP_STATUS" ;; *" make "*) exit "$MAKE_STATUS" ;; esac\n')
+    os.chmod(stub, 0o755)
+    env = {'PATH': BASE_PATH, 'COMMAND_PKG': stub, 'ENV_NAME': 'arc_env', 'ARC_ROOT': root,
+           'BUILD_LOG': build_log, 'DO_COMPILE': 'true' if do_compile else 'false',
+           'STUB_LOG': calls, 'PIP_STATUS': str(pip_status), 'MAKE_STATUS': str(make_status)}
+    proc = subprocess.run(['bash', '-c', set_line.group(0) + '\n' + blocks[0]], env=env,
+                          capture_output=True, text=True, timeout=60)
+    recorded, log = [], None
+    if os.path.isfile(calls):
+        with open(calls) as f:
+            recorded = f.read().splitlines()
+    if os.path.isfile(build_log):
+        with open(build_log) as f:
+            log = f.read()
+    return proc, recorded, log
+
+
+class TestInstallArcCompile(unittest.TestCase):
+    """
+    Contains unit tests for the compile block of install_arc.sh.
+    """
+
+    def setUp(self):
+        """
+        A method that is run before each unit test in this class.
+        """
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.pip = f'run -n arc_env python -m pip install -e {self.root} --no-deps --no-build-isolation'
+        self.kernels = 'run -n arc_env make kernels'
+
+    def test_editable_install_then_kernels(self):
+        """Test that ARC is pip-installed in editable mode into the env, without deps or build isolation, then make kernels runs"""
+        proc, calls, _ = run_compile_block(self.root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(calls, [self.pip, self.kernels])
+
+    def test_build_log_holds_both_steps(self):
+        """Test that the build log keeps the pip output when the kernel build output is added to it"""
+        proc, _, log = run_compile_block(self.root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(log, f'stub output: {self.pip}\nstub output: {self.kernels}\n')
+
+    def test_editable_install_failure_stops_the_installer(self):
+        """Test that a failed editable install exits non-zero with a message and skips the kernel build"""
+        proc, calls, _ = run_compile_block(self.root, pip_status=1)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn('Editable install failed', proc.stdout)
+        self.assertEqual(calls, [self.pip])
+
+    def test_kernel_build_failure_stops_the_installer(self):
+        """Test that a failed kernel build exits non-zero with a message"""
+        proc, calls, _ = run_compile_block(self.root, make_status=2)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn('Build failed', proc.stdout)
+        self.assertEqual(calls, [self.pip, self.kernels])
+
+    def test_no_compile_skips_editable_install_and_kernels(self):
+        """Test that --no-compile skips both the editable install and the kernel build"""
+        proc, calls, log = run_compile_block(self.root, do_compile=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(calls, [])
+        self.assertIsNone(log)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

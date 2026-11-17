@@ -95,21 +95,23 @@ else
 fi
 
 ###############################################################################
-# Compile Cython extensions
+# Build the Cython extensions, register ARC in the env, compile the C kernels
 ###############################################################################
 if $DO_COMPILE; then
     cd "$ARC_ROOT"
-    echo "🔨 Compiling Cython extensions … (log → $BUILD_LOG)"
+    echo "📌 Building ARC and registering it in $ENV_NAME (editable pip install) … (log → $BUILD_LOG)"
     mkdir -p "$(dirname "$BUILD_LOG")"
 
-    # Run make *inside* the env without activating the shell session
-    $COMMAND_PKG run -n "$ENV_NAME" \
-        make -j"$(nproc)" BUILD_DIR=build compile 2>&1 | tee "$BUILD_LOG"
+    if ! $COMMAND_PKG run -n "$ENV_NAME" \
+        python -m pip install -e "$ARC_ROOT" --no-deps --no-build-isolation 2>&1 | tee "$BUILD_LOG"; then
+        echo "❌ Editable install failed – check $BUILD_LOG"
+        exit 1
+    fi
 
-    status=${PIPESTATUS[0]}        # real exit code from make
-    if (( status != 0 )); then
+    echo "🔨 Compiling C kernels … (log → $BUILD_LOG)"
+    if ! $COMMAND_PKG run -n "$ENV_NAME" make kernels 2>&1 | tee -a "$BUILD_LOG"; then
         echo "❌ Build failed – check $BUILD_LOG"
-        exit $status
+        exit 1
     fi
 fi
 
