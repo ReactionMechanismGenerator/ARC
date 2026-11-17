@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 
 import arc.parser.parser as parser
-from arc.checks.common import TS_IRC_NOT_CONFIRMED_MARKER, get_ts_validation_comment
+from arc.checks.common import IRC_JOB_FAILED_WARNING, TS_IRC_NOT_CONFIRMED_MARKER, get_ts_validation_comment
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.exceptions import DependencyError, ReactionError
@@ -37,7 +37,7 @@ from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_ME
                            MIXED_SCF_REFERENCE_MESSAGE, SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
                            SYMMETRY_BREAKING_ADAPTERS, UNREACHABLE_REFERENCE_MESSAGE,
                            Scheduler, SchedulerError, species_has_freq, species_has_geo, species_has_sp,
-                           species_has_sp_and_freq, tsg_method_matches_adapter)
+                           species_has_sp_and_freq, irc_ended_usably, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
@@ -1568,6 +1568,124 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                 self.assertFalse(run_job.called)
                 self._assert_failed_irc_left_no_trace(sched, label, job, before, cause='Unknown')
 
+    def test_an_irc_killed_by_the_server_or_for_memory_is_recorded_as_failed(self):
+        """Test that an IRC cut by a server time limit, a memory kill, or a GS2 failure is a failed IRC"""
+        with open(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'), 'r') as f:
+            lines = f.readlines()
+        point_lines = [i for i, line in enumerate(lines) if 'Point Number:' in line and 'Path Number' in line]
+        statuses = {'ServerTimeLimit': 'Job killed by the server since it reached the maximal time limit.',
+                    'Memory': 'Insufficient job memory.',
+                    'GS2Opt': 'GS2 optimization failed.'}
+        for keyword, error in statuses.items():
+            with self.subTest(keyword=keyword):
+                sched, label, job = self._irc_scheduler()
+                self._write_irc_output(job, content=''.join(lines[:point_lines[1] + 1]))
+                self.assertIsNotNone(parser.parse_geometry(log_file_path=job.local_path_to_output_file))
+                keywords = [keyword, 'GL123'] if keyword == 'GS2Opt' else [keyword]
+                job.job_status = ['done', {'status': 'errored', 'keywords': keywords, 'error': error, 'line': ''}]
+                before = self._irc_state(sched, label)
+                with patch.object(sched, 'run_job') as run_job:
+                    sched.spawn_post_irc_jobs(label=label, job=job)
+                self.assertFalse(run_job.called)
+                self._assert_failed_irc_left_no_trace(sched, label, job, before, cause=keyword)
+                self.assertIn(error, sched.output[label]['errors'])
+                self.assertIn(error, sched.species_dict[label].ts_checks['warnings'])
+
+    def test_an_irc_with_a_server_error_is_recorded_as_failed(self):
+        """Test that an IRC job the server reports as errored is a failed IRC, though end_job() does not end it"""
+        sched, label, job = self._irc_scheduler()
+        self._write_irc_output(job)
+
+        def server_error(**kwargs):
+            """Set the server status of the IRC job to errored, as end_job() leaves it, and return False."""
+            job.job_status = ['errored', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
+            return False
+
+        before = self._irc_state(sched, label)
+        with patch.object(sched, 'end_job', side_effect=server_error), patch.object(sched, 'run_job') as run_job:
+            sched.end_irc_job(label=label, job=job)
+        self.assertFalse(run_job.called)
+        self._assert_failed_irc_left_no_trace(sched, label, job, before, cause='server status: errored')
+
+    def test_an_irc_rerun_by_end_job_is_not_recorded_as_failed(self):
+        """Test that an IRC job end_job() reran is neither spawned from nor recorded as a failed IRC"""
+        sched, label, job = self._irc_scheduler()
+        job.job_status = ['done', {'status': 'errored', 'keywords': ['ServerTimeLimit'], 'error': '', 'line': ''}]
+        with patch.object(sched, 'end_job', return_value=False), \
+                patch.object(sched, 'spawn_post_irc_jobs') as spawn_post_irc_jobs:
+            sched.end_irc_job(label=label, job=job)
+        self.assertFalse(spawn_post_irc_jobs.called)
+        with patch.object(sched, 'end_job', return_value=True), \
+                patch.object(sched, 'spawn_post_irc_jobs') as spawn_post_irc_jobs:
+            sched.end_irc_job(label=label, job=job)
+        spawn_post_irc_jobs.assert_called_once_with(label=label, job=job)
+
+    def _end_errored_irc_without_output(self, sched, label, job):
+        """
+        End an IRC job the server reports as errored and whose output file is missing, through the real end_job().
+
+        Args:
+            sched (Scheduler): The scheduler.
+            label (str): The TS label.
+            job (JobAdapter): The IRC job, whose output file does not exist.
+
+        Returns:
+            MagicMock: The patched ``run_job``, which marks the job it submits as running, as ``run_job`` does.
+        """
+        sched.running_jobs[label] = [job.job_name]
+
+        def server_error():
+            """Set the server status of the IRC job to errored, as determine_job_status() does."""
+            job.job_status = ['errored', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
+
+        def submit(**kwargs):
+            """Mark a new IRC job of the TS as running."""
+            sched.running_jobs[label].append('irc_a1588')
+
+        with patch.object(job, 'determine_job_status', side_effect=server_error), \
+                patch.object(job, 'rename_output_file'), patch('arc.scheduler.time.sleep'), \
+                patch.object(sched, 'run_job', side_effect=submit) as run_job:
+            sched.end_irc_job(label=label, job=job)
+        return run_job
+
+    def test_an_errored_irc_rerun_for_a_missing_output_is_not_recorded_as_failed(self):
+        """Test that an errored IRC end_job() reruns for a missing output on the first look leaves no failed IRC"""
+        sched, label, job = self._irc_scheduler()
+        self.assertFalse(os.path.isfile(job.local_path_to_output_file))
+        run_job = self._end_errored_irc_without_output(sched, label, job)
+        self.assertTrue(run_job.called)
+        self.assertIn('restart_due_to_file_not_found', job.ess_trsh_methods)
+        self.assertEqual(sched.running_jobs[label], ['irc_a1588'])
+        self.assertNotIn(job.job_name, sched.output[label]['errors'])
+        self.assertNotIn(IRC_JOB_FAILED_WARNING, sched.species_dict[label].ts_checks.get('warnings') or '')
+
+    def test_an_errored_irc_missing_its_output_twice_is_recorded_as_failed(self):
+        """Test that an errored IRC whose output is missing on the second look is a failed IRC"""
+        sched, label, job = self._irc_scheduler()
+        job.ess_trsh_methods.append('restart_due_to_file_not_found')
+        before = self._irc_state(sched, label)
+        run_job = self._end_errored_irc_without_output(sched, label, job)
+        self.assertFalse(run_job.called)
+        self._assert_failed_irc_left_no_trace(sched, label, job, before, cause='server status: errored')
+        self.assertIn(IRC_JOB_FAILED_WARNING, sched.species_dict[label].ts_checks['warnings'])
+
+    def test_irc_ended_usably(self):
+        """Test which server and ESS statuses of an IRC job allow its last geometry to be used"""
+        cases = [('done', {'status': 'done', 'keywords': list()}, True),
+                 ('done', {'status': 'errored', 'keywords': ['DeltaX', 'GL123']}, True),
+                 ('done', {'status': 'errored', 'keywords': ['DeltaX']}, True),
+                 ('done', {'status': 'errored', 'keywords': ['DeltaX', 'Memory']}, False),
+                 ('done', {'status': 'errored', 'keywords': list()}, False),
+                 ('done', {'status': 'errored', 'keywords': None}, False),
+                 ('done', {'status': 'errored', 'keywords': ['ServerTimeLimit']}, False),
+                 ('done', {'status': 'unconverged', 'keywords': list()}, False),
+                 ('done', dict(), False),
+                 ('errored', {'status': 'done', 'keywords': list()}, False),
+                 (None, {'status': 'done', 'keywords': list()}, False)]
+        for server_status, ess_status, expected in cases:
+            with self.subTest(server_status=server_status, ess_status=ess_status):
+                self.assertEqual(irc_ended_usably(server_status=server_status, ess_status=ess_status), expected)
+
     def test_a_completed_irc_output_without_a_geometry_is_recorded_as_failed(self):
         """Test that an IRC whose status is not a failure but whose output holds no geometry is a failed IRC"""
         sched, label, job = self._irc_scheduler()
@@ -1673,7 +1791,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
 
         ``irc_failed.out`` stopped with 'Delta-x Convergence NOT Met' (keywords ``DeltaX``, ``GL123``) and its last
         geometry is about 0.007 Angstrom from the TS. Spawning it as an endpoint is pre-existing behaviour,
-        kept unchanged here: only ``NoOutput`` and ``Unknown`` mark a failed IRC.
+        kept unchanged here: an ESS status of ``errored`` with only ``DeltaX`` and ``GL123`` still spawns.
         """
         cases = [('rxn_1_irc_1.out', 2, list()), ('irc_failed.out', 1, ['DeltaX', 'GL123'])]
         for file_name, multiplicity, keywords in cases:
