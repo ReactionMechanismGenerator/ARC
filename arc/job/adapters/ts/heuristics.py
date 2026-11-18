@@ -26,6 +26,7 @@ from arc.common import (ARC_PATH, almost_equal_coords, get_angle_in_180_range, g
 from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
+from arc.job.adapters.ts.linear_utils.addition import _multi_atom_idx_to_species
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import (compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz,
@@ -1158,8 +1159,8 @@ def extract_reactant_and_indices(reaction: ARCReaction,
             - xyz_indices(dict): Dictionary mapping a, b, e, d , o, h1 atoms to their indices in the xyz dictionary
     """
     main_reactant, water = get_main_reactant_and_water_from_hydrolysis_reaction(reaction)
-    a_xyz_index = product_dict["r_label_map"]["*1"]
-    b_xyz_index = product_dict["r_label_map"]["*2"]
+    a_xyz_index = get_main_reactant_atom_index(reaction, product_dict["r_label_map"]["*1"])
+    b_xyz_index = get_main_reactant_atom_index(reaction, product_dict["r_label_map"]["*2"])
     two_neighbors = is_set_1
     try:
         e_xyz_index, d_xyz_indices = get_neighbors_by_electronegativity(
@@ -1311,6 +1312,35 @@ def get_main_reactant_and_water_from_hydrolysis_reaction(reaction: ARCReaction) 
         raise ValueError("Reactants must include a non-water molecule and water.")
 
     return arc_reactant, water
+
+
+def get_main_reactant_atom_index(reaction: ARCReaction,
+                                 reactants_index: int,
+                                 ) -> int:
+    """
+    Convert an atom index over the concatenated reactants of a hydrolysis reaction, as used by the
+    ``r_label_map`` of a reaction family product dict, into the atom index within the non-water reactant.
+
+    Args:
+        reaction (ARCReaction): The hydrolysis reaction.
+        reactants_index (int): The atom index over all reactants, in the order of
+                               ``reaction.get_reactants_and_products()``.
+
+    Returns:
+        int: The atom index within the non-water reactant.
+
+    Raises:
+        ValueError: If the atom does not belong to the non-water reactant.
+    """
+    reactants = reaction.get_reactants_and_products(return_copies=False)[0]
+    cum_sizes = [0]
+    for spc in reactants:
+        cum_sizes.append(cum_sizes[-1] + len(spc.mol.atoms))
+    species_index = _multi_atom_idx_to_species(reactants_index, cum_sizes)
+    if species_index is None or reactants[species_index].is_water():
+        raise ValueError(f"Atom {reactants_index} over the reactants of {reaction} "
+                         f"is not in the non-water reactant.")
+    return reactants_index - cum_sizes[species_index]
 
 
 def get_neighbors_by_electronegativity(spc: ARCSpecies,

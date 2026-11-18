@@ -25,6 +25,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_new_zmat_2_map,
                                             stretch_zmat_bond,
                                             get_main_reactant_and_water_from_hydrolysis_reaction,
+                                            get_main_reactant_atom_index,
                                             setup_zmat_indices,
                                             get_neighbors_by_electronegativity,
                                             get_matching_dihedrals,
@@ -32,6 +33,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             check_dao_angle,
                                             check_ts_bonds,
                                             h_abstraction,
+                                            hydrolysis,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
@@ -2052,6 +2054,82 @@ H      -3.45360689    0.15275707   -0.76116277""")
                           p_species=[ARCSpecies(label='CCCC([O])=O', smiles='CCCC([O])=O'),
                                      ARCSpecies(label='H2O', smiles='O')])
         self._check_h_abs_wells_reversed(rxn, expected_r_reversed=False, expected_p_reversed=False)
+
+    def _assert_hydrolysis_core_atoms(self, main_reactant: ARCSpecies, family: str, a: int, b: int):
+        """Assert that ``a`` and ``b`` are the electrophilic centre and the leaving atom ``family`` labels."""
+        atom_a, atom_b = main_reactant.mol.atoms[a], main_reactant.mol.atoms[b]
+        self.assertEqual(atom_a.element.symbol, 'C')
+        self.assertIn(atom_b, atom_a.edges)
+        order_ab = atom_a.edges[atom_b].order
+        if family == 'carbonyl_based_hydrolysis':
+            self.assertIn(atom_b.element.symbol, ('O', 'N'))
+            self.assertEqual(order_ab, 1)
+            carbonyl_oxygens = [n for n, bond in atom_a.edges.items()
+                                if n is not atom_b and n.is_oxygen() and bond.order == 2]
+            self.assertEqual(len(carbonyl_oxygens), 1)
+        elif family == 'ether_hydrolysis':
+            self.assertEqual(atom_b.element.symbol, 'O')
+            self.assertEqual(order_ab, 1)
+            self.assertEqual(sorted(n.element.symbol for n in atom_b.edges), ['C', 'C'])
+        elif family == 'nitrile_hydrolysis':
+            self.assertEqual(atom_b.element.symbol, 'N')
+            self.assertEqual(order_ab, 3)
+        else:
+            self.fail(f'Unexpected hydrolysis family {family}')
+
+    def test_get_main_reactant_atom_index(self):
+        """Test the get_main_reactant_atom_index() function."""
+        n_ester, n_water = len(self.methylformate.mol.atoms), len(self.water.mol.atoms)
+        rxn_water_second = ARCReaction(r_species=[self.methylformate, self.water],
+                                       p_species=[self.formicacid, self.methanol])
+        rxn_water_first = ARCReaction(r_species=[self.water, self.methylformate],
+                                      p_species=[self.formicacid, self.methanol])
+        for local_index in range(n_ester):
+            with self.subTest(local_index=local_index):
+                self.assertEqual(get_main_reactant_atom_index(rxn_water_second, local_index), local_index)
+                self.assertEqual(get_main_reactant_atom_index(rxn_water_first, local_index + n_water), local_index)
+        for reactants_index in range(n_water):
+            with self.subTest(water_atom=reactants_index):
+                with self.assertRaises(ValueError):
+                    get_main_reactant_atom_index(rxn_water_first, reactants_index)
+                with self.assertRaises(ValueError):
+                    get_main_reactant_atom_index(rxn_water_second, reactants_index + n_ester)
+        with self.assertRaises(ValueError):
+            get_main_reactant_atom_index(rxn_water_second, n_ester + n_water)
+
+    def test_hydrolysis_is_independent_of_reactant_order(self):
+        """
+        Test that hydrolysis() picks the same a/b atoms and builds the same TS guesses
+        whether water is the first or the second reactant.
+        """
+        methyl_acetate = ARCSpecies(label='methyl_acetate', smiles='COC(C)=O')
+        cases = [('methyl_acetate', methyl_acetate, [self.acetic_acid, self.methanol]),
+                 ('methyl_formate', self.methylformate, [self.formicacid, self.methanol]),
+                 ('acetamide', self.acetamide, [self.acetic_acid, self.ammonia]),
+                 ('allyl_methyl_ether', self.allylmethylether, [self.allylalcohol, self.methanol]),
+                 ('malononitrile', self.malononitrile, [self.iminopropanoic_acid]),
+                 ]
+        for name, main_reactant, products in cases:
+            results = dict()
+            for order, r_species in (('water_second', [main_reactant, self.water]),
+                                     ('water_first', [self.water, main_reactant])):
+                with self.subTest(reaction=name, order=order):
+                    rxn = ARCReaction(r_species=r_species, p_species=products)
+                    xyzs, families, indices = hydrolysis(reaction=rxn)
+                    self.assertGreater(len(xyzs), 0)
+                    for family, guess_indices in zip(families, indices):
+                        self._assert_hydrolysis_core_atoms(main_reactant, family, guess_indices[0], guess_indices[1])
+                    results[order] = (xyzs, families, indices)
+            if len(results) != 2:
+                continue
+            with self.subTest(reaction=name, comparison='water_first vs water_second'):
+                xyzs_2, families_2, indices_2 = results['water_second']
+                xyzs_1, families_1, indices_1 = results['water_first']
+                self.assertEqual(families_1, families_2)
+                self.assertEqual(indices_1, indices_2)
+                self.assertEqual(len(xyzs_1), len(xyzs_2))
+                for xyz_1, xyz_2 in zip(xyzs_1, xyzs_2):
+                    self.assertTrue(almost_equal_coords(xyz_1, xyz_2))
 
     def test_process_hydrolysis_reaction(self):
         """Test the process_hydrolysis_reaction() function."""
