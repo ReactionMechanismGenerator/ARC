@@ -2147,7 +2147,7 @@ def add_atom_to_xyz_using_internal_coords(xyz: dict | str,
                 total_error = r_error + a_error + d_error
 
                 if meets_precision(new_coord):
-                    print("Precision criteria met. Returning result.")
+                    logger.debug("Precision criteria met. Returning result.")
                     return updated_xyz
 
                 if total_error < best_error:

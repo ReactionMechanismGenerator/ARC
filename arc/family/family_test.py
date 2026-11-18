@@ -22,6 +22,7 @@ from arc.family.family import (ReactionFamily,
                                filter_products_by_reaction,
                                get_reaction_family_products,
                                get_all_families,
+                               get_non_ring_bonds,
                                get_rmg_family_directories,
                                get_entries,
                                split_entries,
@@ -1031,7 +1032,7 @@ H       1.24252625    0.91583948   -0.84155142"""
         updated_structures = fam_1.apply_recipe(mols=[reactant], isomorphic_subgraph=isomorphic_subgraph)
         self.assertEqual(len(updated_structures), 1)
         product = Molecule(smiles='NCC=O')
-        self.assertTrue(updated_structures[0].is_isomorphic(product))
+        self.assertTrue(updated_structures[0][0].is_isomorphic(product))
 
     def test_get_reactant_num(self):
         """Test getting the number of reactants from a family"""
@@ -1072,6 +1073,12 @@ H       1.24252625    0.91583948   -0.84155142"""
                            'products=["X_H_or_Xrad_H_Xbirad_H_Xtrirad_H", "Y_rad_birad_trirad_quadrad"], ' +
                            'ownReverse=True)', 'reversible = True']
         self.assertTrue(is_own_reverse(groups_as_lines))
+
+    def test_get_non_ring_bonds(self):
+        """Test parsing the labeled bonds that must not be in a ring."""
+        self.assertEqual(get_non_ring_bonds(["productNum = 3\n", "non_ring_bonds = [('*1', '*2')]\n"]), [('*1', '*2')])
+        self.assertEqual(get_non_ring_bonds(["productNum = 3\n"]), list())
+        self.assertEqual(ReactionFamily('H_Abstraction').non_ring_bonds, list())
 
     def test_get_product_num(self):
         """Test getting the number of products from a family"""
@@ -1730,6 +1737,22 @@ H       1.24252625    0.91583948   -0.84155142"""
                                      ARCSpecies(label='H2O', smiles='O')])
         self.assertEqual(rxn.family, 'H_Abstraction')
         self.assertTrue(rxn.family_own_reverse)
+
+    def test_apply_recipe_rejects_extra_fragments(self):
+        """
+        Test that a recipe leaving more fragments than the family's product number gives no product set,
+        unless a reactant of the family is a disconnected species.
+        """
+        family = ReactionFamily('H_Abstraction')
+        self.assertFalse(family.has_a_disconnected_reactant)
+        self.assertFalse(ReactionFamily('R_Recombination').has_a_disconnected_reactant)
+        self.assertFalse(ReactionFamily('Surface_Proton_Electron_Reduction_Beta_vdW').has_a_disconnected_reactant)
+        methane_water, hydroxyl = Molecule(smiles='C.O'), Molecule(smiles='[OH]')
+        h_index = next(i for i, atom in enumerate(methane_water.atoms)
+                       if atom.is_hydrogen() and methane_water.atoms[0] in atom.edges)
+        product_sets = family.apply_recipe(mols=[methane_water, hydroxyl],
+                                           isomorphic_subgraph={0: '*1', h_index: '*2', len(methane_water.atoms): '*3'})
+        self.assertIsNone(product_sets)
 
     def test_apply_recipe_form_bond_duplicate_labels(self):
         """Test that apply_recipe handles FORM_BOND with duplicate labels (*,*).

@@ -138,5 +138,276 @@ class TestEtherHydrolysisReactionFamily(unittest.TestCase):
         self.assertEqual(actions, expected_actions)
 
 
+class TestQASN2ReactionFamily(unittest.TestCase):
+    """
+    Contains unit tests for the qa-sn2 reaction family.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up the test by defining the qa_sn2 reaction family."""
+        cls.family = ReactionFamily('qa_sn2')
+
+    def test_qa_sn2_reaction(self):
+        """Test if qa-sn2 products are correctly generated."""
+        qa = ARCSpecies(label='QA', smiles='C[N+](C)(C)C')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+
+        alcohol_water = ARCSpecies(label='alcohol_water', smiles='CO.O')
+        amine = ARCSpecies(label='amine', smiles='CN(C)C')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[alcohol_water, amine])
+
+        products = get_reaction_family_products(rxn)
+        product_smiles = [p.to_smiles() for p in products[0]['products']]
+
+        expected_product_smiles = ['CO.O', 'CN(C)C']
+        self.assertEqual(sorted(product_smiles), sorted(expected_product_smiles))
+
+        # The OH_d1 species (a disconnected hydroxide-water group) may be listed first.
+        rxn = ARCReaction(r_species=[oh_d1, qa], p_species=[alcohol_water, amine])
+        self.assertEqual(rxn.family, 'qa_sn2')
+        products = get_reaction_family_products(rxn)
+        self.assertEqual(sorted(p.to_smiles() for p in products[0]['products']), sorted(expected_product_smiles))
+
+    def test_recipe_actions(self):
+        """Test if the reaction recipe is applied correctly."""
+        groups_file_path = os.path.join(ARC_FAMILIES_PATH, 'qa_sn2.py')
+        with open(groups_file_path, 'r') as f:
+            groups_as_lines = f.readlines()
+
+        actions = get_recipe_actions(groups_as_lines)
+
+        expected_actions = [
+            ['BREAK_BOND', '*1', 1, '*2'],
+            ['FORM_BOND', '*1', 1, '*3'],
+            ['LOSE_PAIR', '*3', '1'],
+            ['GAIN_PAIR', '*2', '1'],
+        ]
+
+        self.assertEqual(actions, expected_actions)
+
+    def test_qa_sn2_with_a_heteroatom_on_the_reacting_carbon(self):
+        """Test that a heteroatom bonded to the reacting carbon (a methoxymethyl group) matches the family."""
+        qa = ARCSpecies(label='QA', smiles='COC[N+](C)(C)C')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[ARCSpecies(label='alcohol_water', smiles='COCO.O'),
+                                                             ARCSpecies(label='amine', smiles='CN(C)C')])
+        self.assertEqual(rxn.family, 'qa_sn2')
+        products = get_reaction_family_products(rxn)
+        self.assertEqual(sorted(p.to_smiles() for p in products[0]['products']), sorted(['COCO.O', 'CN(C)C']))
+
+    def test_qa_tsn2_with_longer_alkyl_group(self):
+        """Test if qa-sn2 products are correctly generated for a longer alkyl substituent."""
+        qa = ARCSpecies(label='QA', smiles='CC[N+](C)(C)C')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+
+        alcohol_water = ARCSpecies(label='alcohol_water', smiles='CCO.O')
+        amine = ARCSpecies(label='amine', smiles='CN(C)C')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[alcohol_water, amine])
+
+        products = get_reaction_family_products(rxn)
+        product_smiles = [p.to_smiles() for p in products[0]['products']]
+
+        expected_product_smiles = ['CCO.O', 'CN(C)C']
+        self.assertEqual(sorted(product_smiles), sorted(expected_product_smiles))
+
+
+class TestQARingOpeningReactionFamily(unittest.TestCase):
+    """
+    Contains unit tests for the qa_ring_opening reaction family.
+    """
+
+    def test_qa_ring_opening_reaction(self):
+        """Test if qa_ring_opening products are correctly generated, as a single ring-opened product."""
+        qa = ARCSpecies(label='QA', smiles='C[N+]1(C)CCCC1')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        amino_alcohol_water = ARCSpecies(label='amino_alcohol_water', smiles='CN(C)CCCCO.O')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[amino_alcohol_water])
+
+        products = get_reaction_family_products(rxn)
+        self.assertEqual(rxn.family, 'qa_ring_opening')
+        self.assertEqual({p['family'] for p in products}, {'qa_ring_opening'})
+        self.assertEqual(len(products[0]['products']), 1)
+        self.assertTrue(products[0]['products'][0].is_isomorphic(amino_alcohol_water.mol))
+
+    def test_qa_ring_opening_with_a_heteroatom_on_the_reacting_carbon(self):
+        """Test that a ring heteroatom bonded to the reacting carbon (an oxazolidinium) matches the family."""
+        qa = ARCSpecies(label='QA', smiles='C[N+]1(C)COCC1')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        product = ARCSpecies(label='amino_alcohol_water', smiles='CN(C)CCOCO.O')
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[product])
+        self.assertEqual(rxn.family, 'qa_ring_opening')
+        products = get_reaction_family_products(rxn)
+        self.assertTrue(products[0]['products'][0].is_isomorphic(product.mol))
+
+    def test_qa_ring_opening_three_membered_ring(self):
+        """Test qa_ring_opening matches an aziridinium, where Ca and N share their ring neighbour."""
+        qa = ARCSpecies(label='QA', smiles='C[N+]1(C)CC1')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        amino_alcohol_water = ARCSpecies(label='amino_alcohol_water', smiles='CN(C)CCO.O')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[amino_alcohol_water])
+
+        products = get_reaction_family_products(rxn)
+        self.assertEqual(rxn.family, 'qa_ring_opening')
+        self.assertEqual({p['family'] for p in products}, {'qa_ring_opening'})
+        self.assertTrue(products[0]['products'][0].is_isomorphic(amino_alcohol_water.mol))
+
+    def test_families_are_exclusive(self):
+        """Test that an open-chain QA SN2 reaction is not a ring opening, and a ring opening is not a QA SN2 reaction."""
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='QA', smiles='C[N+](C)(C)C'), oh_d1],
+                            p_species=[ARCSpecies(label='alcohol_water', smiles='CO.O'),
+                                       ARCSpecies(label='amine', smiles='CN(C)C')])
+        self.assertEqual({p['family'] for p in get_reaction_family_products(rxn_1)}, {'qa_sn2'})
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='QA', smiles='C1CC[N+]2(CC1)CCCCC2'), oh_d1],
+                            p_species=[ARCSpecies(label='amino_alcohol_water', smiles='OCCCCCN1CCCCC1.O')])
+        self.assertEqual({p['family'] for p in get_reaction_family_products(rxn_2)}, {'qa_ring_opening'})
+
+    def test_qa_sn2_does_not_open_a_ring(self):
+        """
+        Test that qa_sn2 does not match a ring C-N bond, even if the ring-opened product and the water are given
+        as separate species, while an SN2 on an exocyclic carbon of the same cyclic QA does match qa_sn2.
+        """
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        qa = ARCSpecies(label='QA', smiles='C[N+]1(C)CCCC1')
+        self.assertEqual(ReactionFamily('qa_sn2').non_ring_bonds, [('*1', '*2')])
+        rxn_1 = ARCReaction(r_species=[qa, oh_d1],
+                            p_species=[ARCSpecies(label='amino_alcohol', smiles='CN(C)CCCCO'),
+                                       ARCSpecies(label='H2O', smiles='O')])
+        self.assertNotEqual(rxn_1.family, 'qa_sn2')
+        rxn_2 = ARCReaction(r_species=[qa, oh_d1],
+                            p_species=[ARCSpecies(label='amino_alcohol_water', smiles='CN(C)CCCCO.O')])
+        self.assertEqual(rxn_2.family, 'qa_ring_opening')
+        rxn_3 = ARCReaction(r_species=[qa, oh_d1],
+                            p_species=[ARCSpecies(label='alcohol_water', smiles='CO.O'),
+                                       ARCSpecies(label='amine', smiles='CN1CCCC1')])
+        self.assertEqual(rxn_3.family, 'qa_sn2')
+        self.assertEqual({p['family'] for p in get_reaction_family_products(rxn_3)}, {'qa_sn2'})
+
+    def test_recipe_actions(self):
+        """Test that the recipe is the QA SN2 recipe."""
+        recipes = list()
+        for family in ['qa_ring_opening', 'qa_sn2']:
+            with open(os.path.join(ARC_FAMILIES_PATH, f'{family}.py'), 'r') as f:
+                recipes.append(get_recipe_actions(f.readlines()))
+        self.assertEqual(recipes[0], recipes[1])
+
+
+class TestQAHofmannEliminationReactionFamily(unittest.TestCase):
+    """
+    Contains unit tests for the qa_hofmann reaction family.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up the test by defining the qa_hofmann reaction family."""
+        cls.family = ReactionFamily('qa_hofmann')
+
+    def test_qa_hofmann_elimination_reaction(self):
+        """Test if qa_hofmann products are correctly generated."""
+        qa = ARCSpecies(label='QA', smiles='CC[N+](C)(C)C')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+
+        alkene = ARCSpecies(label='alkene', smiles='C=C')
+        amine = ARCSpecies(
+            label='amine', smiles='CN(C)C')
+        water_dimer = ARCSpecies(label='water_dimer', smiles='O.O')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[alkene, amine, water_dimer])
+
+        products = get_reaction_family_products(rxn)
+        product_smiles = [p.to_smiles() for p in products[0]['products']]
+
+        expected_product_smiles = ['C=C', 'CN(C)C', 'O.O']
+        self.assertEqual(sorted(product_smiles), sorted(expected_product_smiles))
+
+        # The OH_d1 species (a disconnected hydroxide-water group) may be listed first.
+        rxn = ARCReaction(r_species=[oh_d1, qa], p_species=[alkene, amine, water_dimer])
+        self.assertEqual(rxn.family, 'qa_hofmann')
+        products = get_reaction_family_products(rxn)
+        self.assertEqual(sorted(p.to_smiles() for p in products[0]['products']), sorted(expected_product_smiles))
+
+    def test_recipe_actions(self):
+        """Test if the reaction recipe is applied correctly."""
+        groups_file_path = os.path.join(ARC_FAMILIES_PATH, 'qa_hofmann.py')
+        with open(groups_file_path, 'r') as f:
+            groups_as_lines = f.readlines()
+
+        actions = get_recipe_actions(groups_as_lines)
+
+        expected_actions = [
+            ['BREAK_BOND', '*1', 1, '*2'],
+            ['BREAK_BOND', '*3', 1, '*4'],
+            ['CHANGE_BOND', '*1', 1, '*3'],
+            ['FORM_BOND', '*5', 1, '*4'],
+            ['LOSE_PAIR', '*5', '1'],
+            ['GAIN_PAIR', '*2', '1'],
+        ]
+
+        self.assertEqual(actions, expected_actions)
+
+    def test_qa_hofmann_elimination_of_choline(self):
+        """Test that choline, with a hydroxyl group on the beta carbon, matches the family."""
+        qa = ARCSpecies(label='choline', smiles='OCC[N+](C)(C)C')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[ARCSpecies(label='enol', smiles='C=CO'),
+                                                             ARCSpecies(label='amine', smiles='CN(C)C'),
+                                                             ARCSpecies(label='water_dimer', smiles='O.O')])
+        self.assertEqual(rxn.family, 'qa_hofmann')
+        products = get_reaction_family_products(rxn)
+        self.assertEqual(sorted(p.to_smiles() for p in products[0]['products']), sorted(['C=CO', 'CN(C)C', 'O.O']))
+
+    def test_qa_hofmann_elimination_does_not_open_a_ring(self):
+        """
+        Test that a Hofmann elimination whose C_alpha-N bond is in a ring (a ring-opening elimination) does not match,
+        while a Hofmann elimination of a QA with a ring that is kept (N outside the ring) does.
+        """
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+        dmp = ARCSpecies(label='DMP', smiles='C[N+]1(C)CCCCC1')
+        rxn = ARCReaction(r_species=[dmp, oh_d1], p_species=[ARCSpecies(label='aminoalkene', smiles='C=CCCCN(C)C'),
+                                                              ARCSpecies(label='H2O_1', smiles='O'),
+                                                              ARCSpecies(label='H2O_2', smiles='O')])
+        self.assertIsNone(rxn.family)
+        self.assertEqual(self.family.non_ring_bonds, [('*1', '*2')])
+        cyclopentyl_tma = ARCSpecies(label='QA', smiles='C[N+](C)(C)C1CCCC1')
+        rxn = ARCReaction(r_species=[cyclopentyl_tma, oh_d1],
+                          p_species=[ARCSpecies(label='cyclopentene', smiles='C1=CCCC1'),
+                                     ARCSpecies(label='amine', smiles='CN(C)C'),
+                                     ARCSpecies(label='water_dimer', smiles='O.O')])
+        self.assertEqual(rxn.family, 'qa_hofmann')
+
+    def test_qa_hofmann_merges_the_water_fragments(self):
+        """Test that the two water fragments of the recipe are merged into the water dimer product."""
+        self.assertTrue(self.family.has_a_disconnected_reactant)
+        rxn = ARCReaction(r_species=[ARCSpecies(label='QA', smiles='CC[N+](C)(C)C'),
+                                     ARCSpecies(label='OH_d1', smiles='[OH-].O')],
+                          p_species=[ARCSpecies(label='alkene', smiles='C=C'),
+                                     ARCSpecies(label='amine', smiles='CN(C)C'),
+                                     ARCSpecies(label='water_dimer', smiles='O.O')])
+        products = get_reaction_family_products(rxn)
+        self.assertEqual(sorted(p.to_smiles() for p in products[0]['products']), sorted(['C=C', 'CN(C)C', 'O.O']))
+
+    def test_qa_hofmann_elimination_with_longer_alkyl_group(self):
+        """Test if qa_hofmann products are correctly generated for a longer alkyl substituent."""
+        qa = ARCSpecies(label='QA', smiles='CCC[N+](C)(C)C')
+        oh_d1 = ARCSpecies(label='OH_d1', smiles='[OH-].O')
+
+        alkene = ARCSpecies(label='alkene', smiles='C=CC')
+        amine = ARCSpecies(label='amine', smiles='CN(C)C')
+        water_dimer = ARCSpecies(label='water_dimer', smiles='O.O')
+
+        rxn = ARCReaction(r_species=[qa, oh_d1], p_species=[alkene, amine, water_dimer])
+
+        products = get_reaction_family_products(rxn)
+        product_smiles = [p.to_smiles() for p in products[0]['products']]
+
+        expected_product_smiles = ['C=CC', 'CN(C)C', 'O.O']
+        self.assertEqual(sorted(product_smiles), sorted(expected_product_smiles))
+
+
 if __name__ == '__main__':
     unittest.main()
