@@ -495,6 +495,21 @@ H      -0.56460509    0.87663914    1.25780346""")
         self.assertEqual(vectors.get_delta_angle(372, 359), 13.0)
         self.assertAlmostEqual(vectors.get_delta_angle(730, 10.1), 0.1)
 
+    def test_is_torsion_linear(self):
+        """Test identifying a torsion that spans a linear segment."""
+        bent = {'symbols': ('H', 'O', 'O', 'H'), 'isotopes': (1, 16, 16, 1),
+                'coords': ((0.0, 0.9, 0.4), (0.0, 0.0, 0.0), (1.5, 0.0, 0.0), (1.5, 0.9, -0.4))}
+        self.assertFalse(vectors.is_torsion_linear(xyz=bent, torsion=[0, 1, 2, 3]))
+
+        ketene = {'symbols': ('H', 'C', 'C', 'O'), 'isotopes': (1, 12, 12, 16),
+                  'coords': ((0.0, 1.1, 0.0), (0.0, 0.0, 0.0), (0.0, -1.3, 0.0), (0.0, -2.5, 0.0))}
+        self.assertTrue(vectors.is_torsion_linear(xyz=ketene, torsion=[0, 1, 2, 3]))
+
+        first_triplet_linear = {'symbols': ('H', 'C', 'C', 'H'), 'isotopes': (1, 12, 12, 1),
+                                'coords': ((0.0, 0.0, 0.0), (1.2, 0.0, 0.0), (2.4, 0.0, 0.0),
+                                           (3.0, 0.9, 0.0))}
+        self.assertTrue(vectors.is_torsion_linear(xyz=first_triplet_linear, torsion=[0, 1, 2, 3]))
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
