@@ -1615,31 +1615,39 @@ def map_hydrogens(spc_1: ARCSpecies,
     return atom_map
 
 
-def check_atom_map(rxn: ARCReaction) -> bool:
+def check_atom_map(rxn: ARCReaction,
+                   atom_map: list[int] | None = None,
+                   ) -> bool:
     """
     A helper function for testing a reaction atom map.
-    Tests that element symbols are ordered correctly.
-    Tests that the elements in the atom map are unique, so that the function is one to one.
+    Tests that the map covers every atom of the reactants well, that it maps each atom onto an atom of
+    the same element, and that its entries are unique, so that the map is one to one.
+    A species participating more than once in a well is counted once per occurrence.
     Note: These are necessary but not sufficient conditions.
 
     Args:
         rxn (ARCReaction): The reaction to examine.
+        atom_map (list[int], optional): A candidate atom map to check instead of ``rxn.atom_map``.
 
     Returns: bool
         Whether the atom mapping makes sense.
     """
-    if len(rxn.atom_map) != sum([spc.number_of_atoms for spc in rxn.r_species]):
+    atom_map = atom_map if atom_map is not None else rxn.atom_map
+    if atom_map is None:
         return False
+    reactants, products = rxn.get_reactants_and_products(return_copies=False)
     r_elements, p_elements = list(), list()
-    for r_species in rxn.r_species:
+    for r_species in reactants:
         r_elements.extend(list(r_species.get_xyz()['symbols']))
-    for p_species in rxn.p_species:
+    for p_species in products:
         p_elements.extend(list(p_species.get_xyz()['symbols']))
-    for i, map_i in enumerate(rxn.atom_map):
-        if r_elements[i] != p_elements[map_i]:
-            break
-    for i in range(len(np.unique(rxn.atom_map))):
-        if np.unique(rxn.atom_map)[i] != i:
+    if len(atom_map) != len(r_elements):
+        return False
+    for i, map_i in enumerate(atom_map):
+        if map_i >= len(p_elements) or r_elements[i] != p_elements[map_i]:
+            return False
+    for i in range(len(np.unique(atom_map))):
+        if np.unique(atom_map)[i] != i:
             return False
     return True
 
