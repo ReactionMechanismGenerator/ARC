@@ -81,7 +81,7 @@ from arc.mapping.engine import check_atom_map
 from arc.molecule import Molecule
 from arc.reaction import ARCReaction
 from arc.species.converter import compare_zmats, order_mol_by_atom_map, order_xyz_by_atom_map, str_to_xyz, xyz_to_str, zmat_from_xyz
-from arc.species.species import ARCSpecies, colliding_atoms
+from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
 
 def _angle_deg(p1: np.ndarray, vertex: np.ndarray, p2: np.ndarray) -> float:
@@ -6753,6 +6753,167 @@ class TestLinearAdapterAtomMapWithoutProductDicts(unittest.TestCase):
                                         f'is not below d(O3,H{spectator})={d_spectator:.2f}')
                 self.assertGreater(float(np.linalg.norm(coords[migrating] - coords[0])),
                                    float(np.linalg.norm(coords[spectators[0]] - coords[0])))
+
+
+class TestLinearAdapterAtomMapWithoutGuesses(unittest.TestCase):
+    """Test reporting a requested atom map for which no TS guess survives (issue #1045)."""
+
+    # Two atom maps of sBu <=> nBu with a different reaction center. The 1,3-shift of H4 onto C2
+    # yields guesses; the 1,2-shift of H10 onto C2 has every guess rejected by the geometry
+    # validators, so it comes back empty.
+    MAP_WITH_GUESSES = [3, 2, 1, 0, 7, 11, 12, 10, 9, 8, 5, 6, 4]
+    MAP_WITHOUT_GUESSES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+    @staticmethod
+    def _make_rxn() -> ARCReaction:
+        """
+        Construct a fresh sBu <=> nBu intra_H_migration reaction.
+
+        Returns:
+            ARCReaction: The reaction.
+        """
+        return ARCReaction(r_species=[ARCSpecies(label='sBu', smiles='CC[CH]C')],
+                           p_species=[ARCSpecies(label='nBu', smiles='CCC[CH2]')])
+
+    def _run(self, atom_map) -> tuple[ARCReaction, LinearAdapter]:
+        """
+        Execute the Linear adapter for a fresh reaction with the given requested atom map(s).
+
+        Args:
+            atom_map (list[int] | list[list[int]]): The atom map(s) to request.
+
+        Returns:
+            tuple[ARCReaction, LinearAdapter]: The processed reaction and the adapter.
+        """
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                atom_map=atom_map,
+                                )
+        adapter.execute()
+        return rxn, adapter
+
+    def test_empty_requested_map_is_reported(self):
+        """Test that a requested map yielding no guess is reported rather than silently dropped."""
+        with self.assertLogs(logger='arc', level='WARNING') as cm:
+            rxn, adapter = self._run(atom_map=list(self.MAP_WITHOUT_GUESSES))
+        self.assertEqual(adapter.atom_maps_without_guesses, [self.MAP_WITHOUT_GUESSES])
+        self.assertTrue(any('generated no TS guess for the requested atom map' in line for line in cm.output))
+        # The reaction itself records the outcome, so it survives into the restart file.
+        self.assertEqual([tsg.success for tsg in rxn.ts_species.ts_guesses], [False])
+        self.assertEqual(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 0)
+
+    def test_successful_map_is_not_reported_as_empty(self):
+        """Test that a requested map which does produce guesses is not reported as empty."""
+        rxn, adapter = self._run(atom_map=list(self.MAP_WITH_GUESSES))
+        self.assertEqual(adapter.atom_maps_without_guesses, list())
+        self.assertGreater(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 0)
+        self.assertTrue(all(tsg.success for tsg in rxn.ts_species.ts_guesses))
+
+    def test_only_the_empty_map_of_several_is_reported(self):
+        """Test that requesting both maps distinguishes the empty one from the successful one."""
+        rxn, adapter = self._run(atom_map=[list(self.MAP_WITH_GUESSES), list(self.MAP_WITHOUT_GUESSES)])
+        self.assertEqual(adapter.atom_maps_without_guesses, [self.MAP_WITHOUT_GUESSES])
+        self.assertGreater(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 0)
+        failed = [tsg for tsg in rxn.ts_species.ts_guesses if not tsg.success]
+        self.assertEqual([tsg.method for tsg in failed], ['linear (map=1)'])
+
+    def test_no_report_without_a_requested_map(self):
+        """Test that the default (derived-map) mode never reports an empty requested map."""
+        rxn = self._make_rxn()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                )
+        adapter.execute()
+        self.assertEqual(adapter.atom_maps_without_guesses, list())
+        self.assertTrue(all(tsg.success for tsg in rxn.ts_species.ts_guesses))
+
+    def test_empty_map_does_not_abort_the_remaining_maps(self):
+        """Test that a map yielding nothing does not take the later maps' guesses down with it."""
+        # The unsuccessful guess recorded for the empty map carries no coordinates, which the
+        # deduplication of a later map's geometries must not try to compare against.
+        rxn, adapter = self._run(atom_map=[list(self.MAP_WITHOUT_GUESSES), list(self.MAP_WITH_GUESSES)])
+        self.assertEqual(adapter.atom_maps_without_guesses, [self.MAP_WITHOUT_GUESSES])
+        successful = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]
+        self.assertGreater(len(successful), 0)
+        self.assertTrue(all('map=1' in tsg.method for tsg in successful))
+
+    def test_duplicate_geometries_are_not_reported_as_empty(self):
+        """Test that a map reproducing another map's geometries is not reported as having produced none."""
+        rxn, adapter = self._run(atom_map=[list(self.MAP_WITH_GUESSES), list(self.MAP_WITH_GUESSES)])
+        self.assertEqual(adapter.atom_maps_without_guesses, list())
+        self.assertTrue(all(tsg.success for tsg in rxn.ts_species.ts_guesses))
+        # The duplicates are still deduplicated, they are just not mistaken for a failure.
+        xyzs = [xyz_to_str(tsg.initial_xyz) for tsg in rxn.ts_species.ts_guesses if tsg.initial_xyz]
+        self.assertEqual(len(xyzs), len(set(xyzs)))
+
+    def test_summary_separates_rejected_maps(self):
+        """Test that a map rejected as unusable is not counted as one that produced geometries."""
+        with self.assertLogs(logger='arc', level='INFO') as cm:
+            rxn, adapter = self._run(atom_map=[0])
+        summaries = [line for line in cm.output if 'requested atom maps' in line]
+        self.assertEqual(len(summaries), 1)
+        self.assertIn('(0 of 1 requested atom maps, 1 rejected as unusable)', summaries[0])
+        self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
+
+    def test_summary_counts_a_mix_of_valid_and_invalid_maps(self):
+        """Test that the summary tells a rejected map, an empty one and a productive one apart."""
+        with self.assertLogs(logger='arc', level='INFO') as cm:
+            rxn, adapter = self._run(atom_map=[list(self.MAP_WITH_GUESSES), list(self.MAP_WITHOUT_GUESSES), [0]])
+        summaries = [line for line in cm.output if 'requested atom maps' in line]
+        self.assertEqual(len(summaries), 1)
+        self.assertIn('(1 of 3 requested atom maps, 1 rejected as unusable)', summaries[0])
+        self.assertEqual(adapter.atom_maps_without_guesses, [self.MAP_WITHOUT_GUESSES])
+        self.assertGreater(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 0)
+
+    def test_requested_map_survives_a_ts_guess_round_trip(self):
+        """Test that the requested permutation, not just its index, is persisted with the guesses."""
+        rxn, adapter = self._run(atom_map=[list(self.MAP_WITH_GUESSES), list(self.MAP_WITHOUT_GUESSES)])
+        failed = [tsg for tsg in rxn.ts_species.ts_guesses if not tsg.success]
+        successful = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]
+        self.assertEqual([tsg.atom_map for tsg in failed], [self.MAP_WITHOUT_GUESSES])
+        self.assertTrue(successful)
+        self.assertTrue(all(tsg.atom_map == self.MAP_WITH_GUESSES for tsg in successful))
+        # The adapter attribute is transient; the restart file must still say which map came back empty.
+        restored = [TSGuess(ts_dict=tsg.as_dict()) for tsg in rxn.ts_species.ts_guesses]
+        self.assertEqual([tsg.atom_map for tsg in restored if not tsg.success], [self.MAP_WITHOUT_GUESSES])
+        self.assertTrue(all(tsg.atom_map == self.MAP_WITH_GUESSES for tsg in restored if tsg.success))
+
+    def test_single_requested_map_is_identifiable_without_an_index(self):
+        """Test that a one-map call, whose guesses are all labeled map=0, still names the permutation."""
+        rxn, _ = self._run(atom_map=list(self.MAP_WITHOUT_GUESSES))
+        failed = [tsg for tsg in rxn.ts_species.ts_guesses if not tsg.success]
+        self.assertEqual([tsg.method for tsg in failed], ['linear (map=0)'])
+        self.assertEqual([tsg.atom_map for tsg in failed], [self.MAP_WITHOUT_GUESSES])
+
+    def test_summary_counts_only_the_current_reaction(self):
+        """Test that one reaction's empty maps do not count against the next reaction's summary."""
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[self._make_rxn(), self._make_rxn()],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                atom_map=list(self.MAP_WITHOUT_GUESSES),
+                                )
+        with self.assertLogs(logger='arc', level='INFO') as cm:
+            adapter.execute()
+        summaries = [line for line in cm.output if 'requested atom maps' in line]
+        self.assertEqual(len(summaries), 2)
+        self.assertTrue(all('(0 of 1 requested atom maps)' in line for line in summaries))
+        self.assertEqual(len(adapter.atom_maps_without_guesses), 2)
+
 
 
 if __name__ == '__main__':
