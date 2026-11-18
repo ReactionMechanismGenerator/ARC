@@ -14,7 +14,8 @@ import unittest.mock
 import pytest
 
 from arc.exceptions import SettingsError
-from arc.job.adapters.ts.orca_neb import OrcaNEBAdapter
+from arc.job import adapter as job_adapter_module
+from arc.job.adapters.ts.orca_neb import OrcaNEBAdapter, insert_path_file_copy_back
 from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
@@ -213,6 +214,77 @@ class TestOrcaNEB(unittest.TestCase):
         self.assertTrue(os.path.isabs(self.job.remote_path))
         self.assertEqual(self.job._get_abs_path(), self.job.local_path)
 
+    def _remote_job(self) -> OrcaNEBAdapter:
+        """A NEB job on a remote PBS server, with its local files written to a fresh directory."""
+        return OrcaNEBAdapter(project='test_orca_neb',
+                              job_type='tsg',
+                              project_directory=tempfile.mkdtemp(dir=self.project_directory),
+                              reactions=[self.reaction],
+                              level=self.level,
+                              server='remote_server')
+
+    def test_task_1g_the_submit_script_copies_the_path_files_to_the_remote_job_directory(self):
+        """A submit script that runs Orca in scratch and removes it would otherwise lose the path."""
+        submit_script = ('#!/bin/bash -l\n'
+                         'cd /scratch/$PBS_JOBID\n'
+                         '${{OrcaDir}}/orca input.in > $PBS_O_WORKDIR/input.log\n'
+                         'cd $PBS_O_WORKDIR\n'
+                         'rm -rf /scratch/$PBS_JOBID\n')
+        job = self._remote_job()
+        with unittest.mock.patch.dict(job_adapter_module.submit_scripts['remote_server'], {'orca': submit_script}):
+            job.set_files()
+        with open(os.path.join(job.local_path, 'submit.sub'), 'r') as f:
+            lines = f.read().splitlines()
+        orca_line = lines.index('${OrcaDir}/orca input.in > $PBS_O_WORKDIR/input.log')
+        rm_line = lines.index('rm -rf /scratch/$PBS_JOBID')
+        copy_line = next(i for i, line in enumerate(lines) if 'cp -f "$arc_neb_file"' in line)
+        self.assertLess(orca_line, copy_line)
+        self.assertLess(copy_line, rm_line)
+        self.assertIn(f'{job.remote_path}/', lines[copy_line])
+        for file_name in ['input_MEP_trj.xyz', 'input_initial_path_trj.xyz', 'input_MEP_ALL_trj.xyz']:
+            self.assertIn(file_name, ' '.join(lines))
+
+    def test_task_1h_htcondor_runs_the_neb_with_the_orca_job_shell_file(self):
+        """HTCondor runs Orca from job.sh, which the NEB must upload and add the copy to."""
+        job = self._remote_job()
+        scripts = {'orca': 'Executable = job.sh\n', 'orca_job': '#!/bin/bash -l\n$OrcaDir/orca input.in > input.log\n'}
+        with unittest.mock.patch.dict(job_adapter_module.submit_scripts['remote_server'], scripts):
+            job.set_files()
+        self.assertIn('job.sh', [f['file_name'] for f in job.files_to_upload])
+        with open(os.path.join(job.local_path, 'job.sh'), 'r') as f:
+            self.assertIn('cp -f "$arc_neb_file"', f.read())
+        with open(os.path.join(job.local_path, 'submit.sub'), 'r') as f:
+            self.assertEqual(f.read(), 'Executable = job.sh\n')
+        self.assertEqual(job.job_adapter, 'orca_neb')
+
+    def test_task_1i_a_submit_script_that_does_not_run_orca_is_reported(self):
+        job = self._remote_job()
+        with unittest.mock.patch('arc.job.adapters.ts.orca_neb.logger.warning') as warning:
+            job.set_files()
+        warning.assert_called_once()
+        self.assertIn('remote_server', warning.call_args[0][0])
+
+    def test_task_1j_only_the_path_files_orca_wrote_are_downloaded(self):
+        """A NEB that stopped early writes some of the files, and a missing one is not an error."""
+        job = self._remote_job()
+        job.files_to_download = list()
+        ssh = unittest.mock.MagicMock()
+        ssh.list_file_names.return_value = ['input.log', 'input_initial_path_trj.xyz', 'input.interp', 'input.gbw']
+        ssh_context = unittest.mock.MagicMock()
+        ssh_context.__enter__.return_value = ssh
+        with unittest.mock.patch.object(job, '_open_or_borrow_ssh', return_value=ssh_context):
+            job.download_files()
+        downloaded = [c.kwargs['remote_file_path'] for c in ssh.download_file.call_args_list]
+        self.assertEqual(downloaded, [os.path.join(job.remote_path, 'input_initial_path_trj.xyz'),
+                                      os.path.join(job.remote_path, 'input.interp')])
+        ssh.list_file_names.assert_called_once_with(remote_path=job.remote_path)
+
+    def test_task_1k_a_local_server_downloads_nothing(self):
+        """The copy writes the path files to the local job directory directly."""
+        with unittest.mock.patch.object(self.job, '_open_or_borrow_ssh') as open_ssh:
+            self.job.download_files()
+        open_ssh.assert_not_called()
+
     def test_task_2_post_processing(self):
         """
         Task 2: Post processing parts.
@@ -258,6 +330,61 @@ class TestOrcaNEB(unittest.TestCase):
         cls.orca_neb_output_filenames_patcher.stop()
         cls.orca_neb_servers_patcher.stop()
         cls.orca_neb_submit_filenames_patcher.stop()
+
+
+class TestInsertPathFileCopyBack(unittest.TestCase):
+    """
+    Contains unit tests for inserting the NEB path file copy into a submit script.
+    """
+
+    names = ['input_MEP_trj.xyz', 'input_initial_path_trj.xyz']
+
+    def insert(self, script: str, destination: str = '/home/user/job') -> str | None:
+        return insert_path_file_copy_back(script=script, input_file_name='input.in',
+                                          path_file_names=self.names, destination=destination)
+
+    def test_the_copy_follows_the_line_that_runs_orca(self):
+        script = 'cd $SCRATCH\n/opt/orca/orca input.in > input.log\ncp input.log $WORKDIR\nrm -rf $SCRATCH\n'
+        lines = self.insert(script).splitlines()
+        self.assertEqual(lines[:2], ['cd $SCRATCH', '/opt/orca/orca input.in > input.log'])
+        self.assertEqual(lines[-2:], ['cp input.log $WORKDIR', 'rm -rf $SCRATCH'])
+        self.assertEqual(lines[2:-2], [
+            '# Copy the Orca NEB path files to the job directory (added by ARC).',
+            'if ! [ . -ef /home/user/job ]; then',
+            '    for arc_neb_file in input_MEP_trj.xyz input_initial_path_trj.xyz; do',
+            '        if [ -f "$arc_neb_file" ]; then cp -f "$arc_neb_file" /home/user/job/ || true; fi',
+            '    done',
+            'fi'])
+
+    def test_the_ways_submit_scripts_run_orca_are_recognized(self):
+        for orca_line in ['orca input.in', '$orcadir/orca input.in > input.log', '${OrcaDir}/orca input.in',
+                          '${ORCA_DIR}/orca input.in > input.log', 'srun "$ORCA/orca" "input.in" > out',
+                          'time orca input.in > $PBS_O_WORKDIR/input.log || true']:
+            with self.subTest(orca_line=orca_line):
+                self.assertIsNotNone(self.insert(f'{orca_line}\n'))
+
+    def test_lines_that_do_not_run_orca_on_the_input_file_are_left_alone(self):
+        for line in ['cp "$PBS_O_WORKDIR/input.in" "$ORCA_SCRDIR"', 'cp input.in /scratch/orca/',
+                     '# ${OrcaDir}/orca input.in > input.log', 'orca input.in.bak', 'orca_2mkl input.in',
+                     'Executable = job.sh']:
+            with self.subTest(line=line):
+                self.assertIsNone(self.insert(f'{line}\n'))
+
+    def test_the_copy_keeps_the_indentation_of_the_orca_line(self):
+        script = 'if true; then\n    orca input.in > input.log\nfi\n'
+        lines = self.insert(script).splitlines()
+        self.assertTrue(all(line.startswith('    ') for line in lines[2:8]))
+        self.assertEqual(lines[-1], 'fi')
+
+    def test_the_copy_follows_a_continued_orca_command(self):
+        script = 'orca input.in \\\n    > input.log\nrm -rf $SCRATCH'
+        lines = self.insert(script).splitlines()
+        self.assertEqual(lines[:2], ['orca input.in \\', '    > input.log'])
+        self.assertEqual(lines[-1], 'rm -rf $SCRATCH')
+
+    def test_a_destination_with_spaces_is_quoted(self):
+        result = self.insert('orca input.in\n', destination='/home/user/my runs/job')
+        self.assertIn("cp -f \"$arc_neb_file\" '/home/user/my runs/job'/ || true", result)
 
 
 if __name__ == '__main__':
