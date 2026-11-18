@@ -1127,6 +1127,21 @@ H      -1.69381305    0.40788834    0.90078104"""
         t1 = parser.parse_t1(path)
         self.assertEqual(t1, 0.0002)
 
+    def test_parse_t1_molpro_open_shell_skips_the_mp2_step(self):
+        """Test that the UCCSD T1 diagnostic is parsed, not the RMP2 one printed before it"""
+        for name, expected in (('TS_x118_sp_CCSD(T).out', 0.04469461),
+                               ('ONHO(T)_sp_CCSD(T).out', 0.08392018),
+                               ('N_CCSD.out', 0.00030073),
+                               ('H_CCSD.out', 0.0)):
+            with self.subTest(fixture=name):
+                self.assertAlmostEqual(parser.parse_t1(os.path.join(ARC_TESTING_PATH, 'sp', name)), expected,
+                                       places=7)
+
+    def test_parse_t1_molpro_closed_shell(self):
+        """Test that closed-shell Molpro T1 diagnostics are unchanged"""
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
+        self.assertAlmostEqual(parser.parse_t1(path), 0.01583694, places=7)
+
     def test_parse_s_squared_gaussian_doublet(self):
         """Test parsing the S**2 diagnostic of a Gaussian open-shell doublet"""
         path = os.path.join(ARC_TESTING_PATH, 'restart', '2_restart_rate', 'calcs', 'Species', 'NH2_freq.out')
