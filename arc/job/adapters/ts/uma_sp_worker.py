@@ -3,7 +3,7 @@
 UMA single-point energies for a directory of xyz files. Runs INSIDE ``uma_env``.
 
 This is a standalone worker invoked by the qa_sn2 heuristics TS-guess pre-filter
-(``arc/job/adapters/ts/heuristics.py``) via the ``UMA_PYTHON`` interpreter, because
+(``arc/job/adapters/ts/heuristics_qa.py``) via the ``UMA_PYTHON`` interpreter, because
 ``fairchem`` cannot be imported in ARC's own environment. It mirrors the UMA
 single-point path of ``arc/job/adapters/scripts/ase_script.py`` (fairchem-core
 ``uma-s-1p2`` by default, ``omol`` task, gas phase; total charge and spin conditioned on the

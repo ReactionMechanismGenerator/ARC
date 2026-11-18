@@ -210,7 +210,7 @@ Quaternary ammonium degradation TS search
 """"""""""""""""""""""""""""""""""""""""""
 
 The ``heuristics`` adapter also generates TS guesses for the degradation of quaternary ammonium (QA) cations by
-hydroxide, in three ARC families:
+hydroxide, in three ARC families (implemented in ``arc/job/adapters/ts/heuristics_qa.py``):
 
 - ``qa_sn2`` - SN2 attack of the hydroxide at a carbon bonded to the QA nitrogen, releasing a tertiary amine.
 - ``qa_ring_opening`` - the same SN2 attack when the broken C-N bond is in a ring, giving a single amino alcohol.
