@@ -4158,7 +4158,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.ess_settings = {'gaussian': ['server1']}
-        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 22)] \
+        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 25)] \
             + [f'arc_project_for_testing_delete_after_usage_tsg_save_{i}' for i in range(1, 3)]
 
     @classmethod
@@ -4834,6 +4834,67 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                             and "['kinbot', 'linear'] raised an exception" in record.getMessage()
                             for record in captured.records))
         self.assertEqual(sched.running_jobs[rxn_2.ts_label], ['tsg0', 'tsg1'])
+
+    def test_spawn_ts_jobs_ends_only_the_reaction_whose_every_adapter_raised(self):
+        """Test that ending the TS search of a reaction whose every adapter raised leaves the other reaction going."""
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_22',
+            raising={('kinbot', 'HOCHO'): ValueError('kinbot failed'),
+                     ('linear', 'HOCHO'): RuntimeError('linear failed')})
+        with patch.object(sched, 'end_ts_search_without_guesses',
+                          wraps=sched.end_ts_search_without_guesses) as end_search, \
+                self.assertLogs('arc', level='ERROR'):
+            sched.spawn_ts_jobs()
+        self.assertEqual([call.kwargs['label'] for call in end_search.call_args_list], [rxn_1.ts_label])
+        self.assertIs(sched.output[rxn_1.ts_label]['convergence'], False)
+        self.assertTrue(sched.species_dict[rxn_1.ts_label].ts_guesses_exhausted)
+        self.assertIn('Not spawning any TS search job', sched.output[rxn_1.ts_label]['errors'])
+        self.assertIn(rxn_1.label, sched.output[rxn_1.ts_label]['errors'])
+        self.assertEqual(sched.running_jobs[rxn_2.ts_label], ['tsg0', 'tsg1'])
+        self.assertEqual([job.job_adapter for job in sched.job_dict[rxn_2.ts_label]['tsg'].values()],
+                         ['kinbot', 'linear'])
+        self.assertIsNot(sched.output[rxn_2.ts_label]['convergence'], False)
+        self.assertFalse(sched.output[rxn_2.ts_label]['errors'])
+        self.assertFalse(sched.species_dict[rxn_2.ts_label].ts_guesses_exhausted)
+
+    def test_spawn_ts_jobs_does_not_end_a_search_whose_raising_adapter_saved_a_guess(self):
+        """Test that a guess saved by an adapter that then raised starts the TS conformer jobs even if every
+        other eligible adapter raised, and that the TS search of that reaction is not ended."""
+        guess = TSGuess(method='kinbot', xyz=ARCSpecies(label='HOCHO', smiles='OC=O').get_xyz(), index=0,
+                        success=True)
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_23',
+            raising={('kinbot', 'HOCHO'): RuntimeError('the reverse run failed'),
+                     ('linear', 'HOCHO'): RuntimeError('linear failed')},
+            partial_guesses={('kinbot', 'HOCHO'): guess})
+        with patch.object(sched, 'end_ts_search_without_guesses',
+                          wraps=sched.end_ts_search_without_guesses) as end_search, \
+                self.assertLogs('arc', level='ERROR'):
+            sched.spawn_ts_jobs()
+        self.assertEqual([failure['adapter'] for failure in rxn_1.ts_species.ts_adapter_failures], ['kinbot', 'linear'])
+        end_search.assert_not_called()
+        self.assertEqual(rxn_1.ts_species.ts_guesses, [guess])
+        self.assertTrue(rxn_1.ts_species.ts_conf_spawned)
+        self.assertEqual(sched.running_jobs[rxn_1.ts_label], ['opt_gaussian'])
+        self.assertIsNot(sched.output[rxn_1.ts_label]['convergence'], False)
+        self.assertFalse(sched.output[rxn_1.ts_label]['errors'])
+        self.assertFalse(sched.species_dict[rxn_1.ts_label].ts_guesses_exhausted)
+
+    def test_spawn_ts_jobs_does_not_end_a_search_while_an_adapter_job_is_tracked(self):
+        """Test that an adapter that ran without raising keeps its job tracked, so the no-search message never
+        fires for it; whether it found a guess is settled when its job completes."""
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_24',
+            raising={('kinbot', 'HOCHO'): RuntimeError('kinbot failed')})
+        with patch.object(sched, 'end_ts_search_without_guesses',
+                          wraps=sched.end_ts_search_without_guesses) as end_search, \
+                self.assertLogs('arc', level='ERROR'):
+            sched.spawn_ts_jobs()
+        end_search.assert_not_called()
+        self.assertEqual(rxn_1.ts_species.ts_guesses, list())
+        self.assertEqual(sched.running_jobs[rxn_1.ts_label], ['tsg0'])
+        self.assertEqual(sched.job_dict[rxn_1.ts_label]['tsg'][0].job_adapter, 'linear')
+        self.assertFalse(sched.output[rxn_1.ts_label]['errors'])
 
 
 class TestSchedulerTsAdaptersSource(unittest.TestCase):
