@@ -108,6 +108,8 @@ Example input pattern:
 
    reactions:
      - label: methane + OH <=> methyl + water
+       # Optional: name the RMG reaction family, e.g., when several families match.
+       family: H_Abstraction
        reactants:
          - methane
          - OH
