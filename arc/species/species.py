@@ -3,6 +3,7 @@ A module for representing stationary points (chemical species and transition sta
 If the species is a transition state (TS), its ``ts_guesses`` attribute will have one or more ``TSGuess`` objects.
 """
 
+import copy
 import datetime
 import numpy as np
 import os
@@ -62,6 +63,11 @@ logger = get_logger()
 
 valid_chars, minimum_barrier = settings['valid_chars'], settings['minimum_barrier']
 
+# Frozen: keys T3 wrote flat into species dicts before it nested them under ``extensions['t3']``.
+# Never add to this list; new downstream metadata belongs in ``extensions`` only.
+LEGACY_FLAT_EXTENSION_KEYS = {'t3': ('key', 'qm_label', 'rmg_label', 'thermo_method', 'thermo_source',
+                                     'thermo_comment', 't3_status', 'created_at_iteration', 'reasons')}
+
 
 class ARCSpecies(object):
     """
@@ -119,6 +125,8 @@ class ARCSpecies(object):
             reaction-consistent (coarser) level and no copy is made.
         include_in_thermo_lib (bool, optional): Whether to include in the output RMG library.
         e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.
+        extensions (dict, optional): Data owned by a downstream tool, keyed by the tool's name (e.g., ``'t3'``).
+                                     ARC does not read it, and writes it back to the restart file verbatim.
         species_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         yml_path (str, optional): Path to an Arkane YAML file representing a species (for loading the object).
         ts_number (int, optional): An auto-generated number associating the TS ARCSpecies object with the corresponding
@@ -269,12 +277,15 @@ class ARCSpecies(object):
             ``None`` means use the species' own heavy-atom count.
         include_in_thermo_lib (bool): Whether to include in the output RMG library.
         e0_only (bool): Whether to only run statmech (w/o thermo) to compute E0.
+        extensions (dict): Data owned by a downstream tool, keyed by the tool's name, kept verbatim.
         thermo (ThermoData): The thermo data calculated by ARC with 'H298' in kJ/mol and 'S298' in J/mol*K.
         rmg_thermo (ThermoData): The thermo data estimated by RMG with 'H298' in kJ/mol and 'S298' in J/mol*K for comparison.
         long_thermo_description (str): A description for the species entry in the thermo library outputted.
         ts_guesses (list): A list of TSGuess objects for each of the specified methods.
         successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.
         unsuccessful_methods (list): Methods used to generate a TS guess that were unsuccessfully.
+        ts_adapter_failures (list[dict]): TS adapters that raised an exception for this TS, each recorded
+                                          by its ``adapter``, ``exception_type`` and one-line ``message``.
         chosen_ts (int): The TSGuess index corresponding to the chosen TS conformer used for optimization.
         chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
@@ -349,6 +360,7 @@ class ARCSpecies(object):
                  consider_all_diastereomers: bool = True,
                  directed_rotors: dict | None = None,
                  e0_only: bool = False,
+                 extensions: dict[str, dict] | None = None,
                  external_symmetry: int | None = None,
                  fragments: list[list[int]] | None = None,
                  force_field: str = 'MMFF94s',
@@ -405,6 +417,7 @@ class ARCSpecies(object):
         self.checkfile = checkfile
         self.transport_data = TransportData()
         self.yml_path = yml_path
+        self.extensions = check_extensions(extensions)
         self.keep_mol = keep_mol
         self.fragments = fragments
         self.original_label = None
@@ -450,6 +463,7 @@ class ARCSpecies(object):
             self.rxn_index = rxn_index
             self.successful_methods = list()
             self.unsuccessful_methods = list()
+            self.ts_adapter_failures = list()
             self.chosen_ts_method = None
             self.chosen_ts_list = list()
             self.compute_thermo = compute_thermo if compute_thermo is not None else not self.is_ts
@@ -796,6 +810,8 @@ class ARCSpecies(object):
                 species_dict['successful_methods'] = self.successful_methods
             if len(self.unsuccessful_methods):
                 species_dict['unsuccessful_methods'] = self.unsuccessful_methods
+            if len(self.ts_adapter_failures):
+                species_dict['ts_adapter_failures'] = self.ts_adapter_failures
             if self.chosen_ts_method is not None:
                 species_dict['chosen_ts_method'] = self.chosen_ts_method
             if self.chosen_ts is not None:
@@ -822,6 +838,8 @@ class ARCSpecies(object):
             species_dict['tsg_spawned'] = self.tsg_spawned
         if self.yml_path is not None:
             species_dict['yml_path'] = self.yml_path
+        if self.extensions:
+            species_dict['extensions'] = copy.deepcopy(self.extensions)
         if self.run_time is not None:
             species_dict['run_time'] = self.run_time.total_seconds()
         if self.number_of_radicals is not None:
@@ -908,10 +926,12 @@ class ARCSpecies(object):
         The 2D graph is taken from the dictionary as-is whenever it was serialized by ``as_dict()``
         (see ``dict_repr_is_authoritative()``), and is otherwise perceived from the coordinates.
         """
+        species_dict = lift_legacy_extension_keys(species_dict)
         try:
             self.label = species_dict['label']
         except KeyError:
             raise InputError('All species must have a label')
+        self.extensions = copy.deepcopy(check_extensions(species_dict.get('extensions'))) or None
         self.run_time = process_run_time(species_dict.get('run_time'))
         self.original_label = species_dict['original_label'] if 'original_label' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
@@ -953,6 +973,7 @@ class ARCSpecies(object):
                 if 'successful_methods' in species_dict else list()
             self.unsuccessful_methods = species_dict['unsuccessful_methods'] \
                 if 'unsuccessful_methods' in species_dict else list()
+            self.ts_adapter_failures = species_dict.get('ts_adapter_failures', list())
             self.chosen_ts_method = species_dict['chosen_ts_method'] if 'chosen_ts_method' in species_dict else None
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
             self.rxn_zone_atom_indices = species_dict['rxn_zone_atom_indices'] \
@@ -3031,6 +3052,58 @@ class TransportData(object):
         """
         return (TransportData, (self.shapeIndex, self.epsilon, self.sigma, self.dipoleMoment,
                                 self.polarizability, self.rotrelaxcollnum, self.comment))
+
+
+def check_extensions(extensions: dict | None) -> dict | None:
+    """
+    Check that an ``extensions`` block maps tool names to dictionaries.
+
+    Args:
+        extensions (dict | None): The block to check.
+
+    Raises:
+        InputError: If the block is neither ``None`` nor a dict of string keys to dict values.
+
+    Returns:
+        dict | None: The block, unchanged.
+    """
+    if extensions is None:
+        return None
+    if not isinstance(extensions, dict) \
+            or not all(isinstance(tool, str) and isinstance(block, dict) for tool, block in extensions.items()):
+        raise InputError(f'extensions must map tool names to dictionaries, got: {extensions!r}')
+    return extensions
+
+
+def lift_legacy_extension_keys(species_dict: dict) -> dict:
+    """
+    Move the flat legacy downstream keys listed in ``LEGACY_FLAT_EXTENSION_KEYS`` into ``extensions``.
+
+    Args:
+        species_dict (dict): A species dictionary. It is not modified.
+
+    Raises:
+        InputError: If a flat key and the same key in ``extensions`` carry different values.
+
+    Returns:
+        dict: A copy of the dictionary with the legacy keys moved, or the original if it has none.
+    """
+    if not any(key in species_dict for keys in LEGACY_FLAT_EXTENSION_KEYS.values() for key in keys):
+        return species_dict
+    species_dict = dict(species_dict)
+    extensions = copy.deepcopy(check_extensions(species_dict.get('extensions')) or dict())
+    for tool, keys in LEGACY_FLAT_EXTENSION_KEYS.items():
+        for key in keys:
+            if key not in species_dict:
+                continue
+            value = species_dict.pop(key)
+            tool_block = extensions.setdefault(tool, dict())
+            if key in tool_block and tool_block[key] != value:
+                raise InputError(f"Species {species_dict.get('label')} carries '{key}' both flat ({value}) and in "
+                                 f"extensions['{tool}'] ({tool_block[key]}) with different values.")
+            tool_block[key] = value
+    species_dict['extensions'] = extensions
+    return species_dict
 
 
 def process_run_time(run_time: datetime.timedelta | int | float | None,

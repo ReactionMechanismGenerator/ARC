@@ -2000,7 +2000,8 @@
         "family",
         "multiplicity",
         "ts_label",
-        "kinetics"
+        "kinetics",
+        "ts_adapter_failures"
       ],
       "properties": {
         "label": {
@@ -2050,6 +2051,34 @@
           "description": "Omitted (key absent, never null) when the reaction carries no description.",
           "type": "string",
           "minLength": 1
+        },
+        "ts_adapter_failures": {
+          "description": "TS search adapters that raised an exception for this reaction and were skipped. Empty when none did.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "adapter",
+              "exception_type",
+              "message"
+            ],
+            "properties": {
+              "adapter": {
+                "type": "string",
+                "minLength": 1
+              },
+              "exception_type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "description": "The first line of the exception message, or the exception type when the message is empty.",
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false

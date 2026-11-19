@@ -20,7 +20,7 @@ from arc.common import (ARC_PATH,
                         save_yaml_file,
                         )
 from arc.species.converter import check_xyz_dict
-from arc.exceptions import SpeciesError
+from arc.exceptions import InputError, SpeciesError
 from arc.level import Level
 from arc.molecule.molecule import Molecule
 from arc.parser.parser import parse_e_elect
@@ -35,6 +35,7 @@ from arc.species.species import (ARCSpecies,
                                  TSGuess,
                                  are_coords_compliant_with_graph,
                                  check_atom_balance,
+                                 check_extensions,
                                  check_label,
                                  check_xyz,
                                  colliding_atoms,
@@ -43,11 +44,17 @@ from arc.species.species import (ARCSpecies,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
                                  dict_repr_is_authoritative,
+                                 lift_legacy_extension_keys,
                                  process_run_time,
                                  rmg_mol_from_dict_repr,
                                  rmg_mol_to_dict_repr,
                                  split_mol,
                                  )
+
+
+T3_EXTENSION = {'key': 12, 'qm_label': 's12_CH3', 'rmg_label': {0: '[CH3](15)'}, 'thermo_method': 'GAV',
+                'thermo_source': None, 'thermo_comment': '', 't3_status': 'pending', 'created_at_iteration': 1,
+                'reasons': ['(i 1) the 2nd most sensitive species thermo for OH(3)']}
 
 
 class TestARCSpecies(unittest.TestCase):
@@ -3822,6 +3829,56 @@ H      -1.47626400   -0.10694600   -1.88883800"""
             spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
 
 
+    def test_extensions_round_trip(self):
+        """Test that a downstream extensions block is kept verbatim through as_dict(), from_dict() and copy()"""
+        self.assertNotIn('extensions', ARCSpecies(label='CH4', smiles='C').as_dict())
+        spc = ARCSpecies(label='CH3', smiles='[CH3]', extensions={'t3': T3_EXTENSION})
+        species_dict = spc.as_dict()
+        self.assertEqual(species_dict['extensions'], {'t3': T3_EXTENSION})
+        self.assertEqual(ARCSpecies(species_dict=species_dict).extensions, {'t3': T3_EXTENSION})
+        self.assertEqual(spc.copy().extensions, {'t3': T3_EXTENSION})
+        species_dict['extensions']['t3']['key'] = 99
+        self.assertEqual(spc.extensions['t3']['key'], 12)
+
+    def test_from_dict_lifts_legacy_flat_t3_keys(self):
+        """Test that the frozen list of flat T3 keys is moved into extensions['t3'] when a species is loaded"""
+        species_dict = {'label': 'CH3', 'smiles': '[CH3]', **T3_EXTENSION}
+        spc = ARCSpecies(species_dict=species_dict)
+        self.assertEqual(spc.extensions, {'t3': T3_EXTENSION})
+        written = spc.as_dict()
+        self.assertEqual(written['extensions'], {'t3': T3_EXTENSION})
+        for key in T3_EXTENSION:
+            self.assertNotIn(key, written)
+        self.assertIn('qm_label', species_dict)
+
+    def test_lift_legacy_extension_keys(self):
+        """Test lifting flat legacy keys: no-op, merge with an existing block, equal duplicates, and a conflict"""
+        self.assertEqual(lift_legacy_extension_keys({'label': 'H2'}), {'label': 'H2'})
+        lifted = lift_legacy_extension_keys({'label': 'CH3', 'qm_label': 's12_CH3',
+                                             'extensions': {'t3': {'key': 12}, 'other': {'x': 1}}})
+        self.assertEqual(lifted, {'label': 'CH3', 'extensions': {'t3': {'key': 12, 'qm_label': 's12_CH3'},
+                                                                 'other': {'x': 1}}})
+        lifted = lift_legacy_extension_keys({'label': 'CH3', 'key': 12, 'extensions': {'t3': {'key': 12}}})
+        self.assertEqual(lifted, {'label': 'CH3', 'extensions': {'t3': {'key': 12}}})
+        with self.assertRaises(InputError):
+            lift_legacy_extension_keys({'label': 'CH3', 'key': 12, 'extensions': {'t3': {'key': 13}}})
+
+    def test_malformed_extensions_raise_input_error(self):
+        """Test that a malformed extensions block raises InputError on every path, with or without a flat legacy key"""
+        self.assertIsNone(check_extensions(None))
+        self.assertEqual(check_extensions({'t3': {'key': 12}}), {'t3': {'key': 12}})
+        for bad in (5, 'abc', ['t3'], {'t3': 5}, {'t3': ['key']}, {1: {'key': 12}}):
+            with self.assertRaises(InputError):
+                check_extensions(bad)
+            with self.assertRaises(InputError):
+                ARCSpecies(label='H', smiles='[H]', extensions=bad)
+            with self.assertRaises(InputError):
+                ARCSpecies(species_dict={'label': 'H', 'smiles': '[H]', 'extensions': bad})
+            with self.assertRaises(InputError):
+                ARCSpecies(species_dict={'label': 'H', 'smiles': '[H]', 'qm_label': 'a', 'extensions': bad})
+            with self.assertRaises(InputError):
+                lift_legacy_extension_keys({'label': 'H', 'qm_label': 'a', 'extensions': bad})
+
 class TestTSGuess(unittest.TestCase):
     """
     Contains unit tests for the TSGuess class
@@ -3930,6 +3987,26 @@ class TestTSGuess(unittest.TestCase):
         self.assertTrue(self.tsg2.almost_equal_tsgs(self.tsg2))
         self.assertFalse(self.tsg3.almost_equal_tsgs(self.tsg2))
         self.assertFalse(self.tsg2.almost_equal_tsgs(self.tsg3))
+
+
+class TestTsAdapterFailuresPersistence(unittest.TestCase):
+    """The TS adapter failures a TS species records survive a restart."""
+
+    def test_ts_adapter_failures_round_trip(self):
+        """as_dict() writes the records only when there are any, and from_dict() restores them."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        self.assertEqual(ts.ts_adapter_failures, list())
+        self.assertNotIn('ts_adapter_failures', ts.as_dict())
+        failure = {'adapter': 'heuristics', 'exception_type': 'KeyError', 'message': 'None'}
+        ts.ts_adapter_failures.append(failure)
+        restored = ARCSpecies(species_dict=ts.as_dict())
+        self.assertEqual(restored.ts_adapter_failures, [failure])
+
+    def test_ts_adapter_failures_default_for_an_old_restart_file(self):
+        """A restart dictionary written before the field existed restores an empty list."""
+        species_dict = ARCSpecies(label='TS0', is_ts=True).as_dict()
+        species_dict.pop('ts_adapter_failures', None)
+        self.assertEqual(ARCSpecies(species_dict=species_dict).ts_adapter_failures, list())
 
 
 if __name__ == '__main__':

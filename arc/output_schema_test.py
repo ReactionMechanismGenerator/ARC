@@ -1239,5 +1239,46 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
                          len(self.species['conformer_energies']))
 
 
+class TestTsAdapterFailuresValidate(SchemaAssertionMixin, unittest.TestCase):
+    """A TS adapter that raised is recorded on its reaction, and a reaction without a TS species carries none."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.schema = load_output_schema()
+        cls.validator = Draft202012Validator(cls.schema)
+        cls.tmp_dir = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.tmp_dir, ignore_errors=True)
+        cls.failure = {'adapter': 'heuristics', 'exception_type': 'KeyError', 'message': 'None'}
+        failed = ARCReaction(r_species=[ARCSpecies(label='HOCHO', smiles='OC=O')],
+                             p_species=[ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')])
+        failed.ts_species = ARCSpecies(label='TS1', is_ts=True)
+        failed.ts_species.ts_adapter_failures = [dict(cls.failure)]
+        cls.document = build_output_document(project_directory=cls.tmp_dir,
+                                             species_dict={},
+                                             output_dict={},
+                                             reactions=[failed, make_reaction()])
+
+    def test_document_validates(self):
+        """The record passes the schema."""
+        self.assert_valid(self.document)
+
+    def test_the_failure_is_recorded_on_its_reaction_only(self):
+        """The failing reaction lists its record, the other an empty list."""
+        self.assertEqual(self.document['reactions'][0]['ts_adapter_failures'], [self.failure])
+        self.assertEqual(self.document['reactions'][1]['ts_adapter_failures'], [])
+
+    def test_a_failure_with_an_unknown_key_is_rejected(self):
+        """A record is closed: a stray key fails the schema."""
+        document = copy.deepcopy(self.document)
+        document['reactions'][0]['ts_adapter_failures'][0]['traceback'] = 'Traceback ...'
+        self.assert_invalid(document, 'traceback')
+
+    def test_a_failure_missing_its_exception_type_is_rejected(self):
+        """Every record names the exception type."""
+        document = copy.deepcopy(self.document)
+        del document['reactions'][0]['ts_adapter_failures'][0]['exception_type']
+        self.assert_invalid(document, 'exception_type')
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

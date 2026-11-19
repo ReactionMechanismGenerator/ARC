@@ -2,6 +2,8 @@
 A module for representing a reaction.
 """
 
+import copy
+
 from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
@@ -14,7 +16,7 @@ from arc.species.converter import (check_xyz_dict,
                                    )
 from arc.mapping.cluster import map_reaction_clusters
 from arc.mapping.driver import map_reaction
-from arc.species.species import ARCSpecies, check_atom_balance, check_label
+from arc.species.species import ARCSpecies, check_atom_balance, check_extensions, check_label
 
 
 logger = get_logger()
@@ -53,6 +55,8 @@ class ARCReaction(object):
         kinetics (dict[str, float | tuple[float, str]], optional): The high pressure limit rate coefficient
                                                                          calculated by ARC. Keys are 'A' (value, unit),
                                                                          n (value), and Ea (value, unit).
+        extensions (dict, optional): Data owned by a downstream tool, keyed by the tool's name (e.g., ``'t3'``).
+                                     ARC does not read it, and writes it back to the restart file verbatim.
 
     Attributes:
         label (str): The reaction's label in the format `r1 + r2 <=> p1 + p2`
@@ -68,6 +72,7 @@ class ARCReaction(object):
         kinetics (dict[str, float | tuple[float, str]]): The high pressure limit rate coefficient
                                                                calculated by ARC. Keys are 'A' (value, unit),
                                                                n (value), and Ea (value, unit).
+        extensions (dict): Data owned by a downstream tool, keyed by the tool's name, kept verbatim.
         rmg_kinetics (list[dict[str, float]]): The Arrhenius kinetics from RMG's libraries and families.
                                                Each dict has 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol as keys,
                                                and a 'comment' key with a description of the source of the kinetics.
@@ -102,12 +107,14 @@ class ARCReaction(object):
                  species_list: list[ARCSpecies] | None = None,
                  preserve_param_in_scan: list | None = None,
                  kinetics: dict[str, float | tuple[float, str]] = None,
+                 extensions: dict[str, dict] | None = None,
                  ):
         self.arrow = ' <=> '
         self.plus = ' + '
         self.r_species = r_species or list()
         self.p_species = p_species or list()
         self.kinetics = kinetics
+        self.extensions = check_extensions(extensions)
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
         self._family = None
@@ -345,6 +352,8 @@ class ARCReaction(object):
         if len(self.ts_xyz_guess):
             reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
         reaction_dict['label'] = self.label
+        if self.extensions:
+            reaction_dict['extensions'] = copy.deepcopy(self.extensions)
         if self.ts_label is not None:
             reaction_dict['ts_label'] = self.ts_label
         return reaction_dict
@@ -357,6 +366,7 @@ class ARCReaction(object):
         A helper function for loading this object from a dictionary in a YAML file for restarting ARC.
         """
         self.index = reaction_dict['index'] if 'index' in reaction_dict else None
+        self.extensions = copy.deepcopy(check_extensions(reaction_dict.get('extensions'))) or None
         self.label = reaction_dict['label'] if 'label' in reaction_dict else ''
         self.multiplicity = reaction_dict['multiplicity'] if 'multiplicity' in reaction_dict else None
         self.charge = reaction_dict.get('charge')
