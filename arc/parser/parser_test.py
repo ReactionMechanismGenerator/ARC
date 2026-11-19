@@ -1787,6 +1787,134 @@ H      -1.69381305    0.40788834    0.90078104"""
                     ' Variable memory set to 100.0 MB\n')
         self.assertIsNone(parser.parse_ess_version(path))
 
+    def test_parse_bond_orders(self):
+        """Test parsing Mayer bond orders from various ESS output files."""
+        # Gaussian, requires IOp(6/80=1) in the route section.
+        path1 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C8H14O2_mayer_gaussian.out')
+        bond_orders_1 = parser.parse_bond_orders(path1)
+        self.assertEqual(bond_orders_1.shape, (24, 24))
+        # The diagonal holds the Mayer bonded valence.
+        self.assertAlmostEqual(bond_orders_1[0, 0], 3.931186, places=6)  # C
+        self.assertAlmostEqual(bond_orders_1[4, 4], 1.861909, places=6)  # O
+        self.assertAlmostEqual(bond_orders_1[0, 1], 1.908673, places=6)  # a C=C double bond
+        self.assertAlmostEqual(bond_orders_1[4, 5], 0.822247, places=6)  # a peroxide O-O bond
+        self.assertAlmostEqual(bond_orders_1[0, 10], 0.965318, places=6)  # a C-H bond
+        self.assertAlmostEqual(bond_orders_1[0, 6], 0.000079, places=6)  # not bonded
+        # Both triangles are read from their own printed cells, on the first page and on the last.
+        self.assertAlmostEqual(bond_orders_1[5, 4], 0.822247, places=6)
+        self.assertAlmostEqual(bond_orders_1[9, 23], 0.978791, places=6)  # a C-H bond, on the last page
+        self.assertAlmostEqual(bond_orders_1[23, 9], 0.978791, places=6)  # the same bond, on the second page
+        self.assertAlmostEqual(bond_orders_1[23, 23], 0.976564, places=6)  # the last cell
+
+        # An open-shell Gaussian single point (UwB97XD, the ethyl radical), with a single matrix of the total density.
+        path6 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C2H5_mayer_gaussian.out')
+        bond_orders_6 = parser.parse_bond_orders(path6)
+        self.assertEqual(bond_orders_6.shape, (7, 7))
+        self.assertAlmostEqual(bond_orders_6[0, 1], 1.011674, places=6)  # the C-C bond
+        self.assertAlmostEqual(bond_orders_6[1, 5], 0.967415, places=6)  # a C-H bond of the radical C
+        self.assertAlmostEqual(bond_orders_6[6, 1], 0.967415, places=6)  # another one, on the second page
+        self.assertAlmostEqual(bond_orders_6[0, 2], 0.970513, places=6)  # a C-H bond of the methyl C
+        # The radical C's bonded valence, as printed: the sum of its bond orders, leaving out its free valence.
+        self.assertAlmostEqual(bond_orders_6[1, 1], 2.924141, places=6)
+        self.assertAlmostEqual(bond_orders_6[0, 0], 3.890626, places=6)
+
+        # Orca, printed by default.
+        path2 = os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_mayer_orca.out')
+        bond_orders_2 = parser.parse_bond_orders(path2)
+        self.assertEqual(bond_orders_2.shape, (12, 12))
+        self.assertAlmostEqual(bond_orders_2[0, 0], 1.8586, places=4)  # O
+        self.assertAlmostEqual(bond_orders_2[1, 1], 3.9312, places=4)  # C
+        # A C-O bond, from the last of the opt's two sections (1.0172 in the first one, at the initial geometry).
+        self.assertAlmostEqual(bond_orders_2[0, 1], 1.0121, places=4)
+        self.assertAlmostEqual(bond_orders_2[5, 6], 1.6025, places=4)  # a C=C double bond
+        self.assertAlmostEqual(bond_orders_2[2, 3], 1.5612, places=4)  # a C=N double bond
+        self.assertEqual(bond_orders_2[0, 2], 0)  # not bonded, below Orca's print threshold
+
+        # An open-shell Orca TS, with two partial bonds of a migrating H atom.
+        path3 = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        bond_orders_3 = parser.parse_bond_orders(path3)
+        self.assertEqual(bond_orders_3.shape, (7, 7))
+        self.assertAlmostEqual(bond_orders_3[2, 5], 0.6169, places=4)  # a breaking C-H bond
+        self.assertAlmostEqual(bond_orders_3[0, 5], 0.3644, places=4)  # a forming O-H bond
+        # The bonded valence BVA, not the total valence VA (1.8834), which includes the free valence FA (0.3917).
+        self.assertAlmostEqual(bond_orders_3[0, 0], 1.4917, places=4)
+
+        # A double bond in an Orca opt job.
+        path4 = os.path.join(ARC_TESTING_PATH, 'orca_example_opt.log')
+        bond_orders_4 = parser.parse_bond_orders(path4)
+        self.assertEqual(bond_orders_4.shape, (4, 4))
+        self.assertAlmostEqual(bond_orders_4[0, 1], 2.1427, places=4)  # a C=O double bond
+
+        # An Orca CASSCF/MRCI job, whose last section (of the MRCI density) is not followed by a TIMINGS line.
+        path5 = os.path.join(ARC_TESTING_PATH, 'trsh', 'orca', 'O2_MRCI.log')
+        bond_orders_5 = parser.parse_bond_orders(path5)
+        self.assertEqual(bond_orders_5.shape, (2, 2))
+        self.assertAlmostEqual(bond_orders_5[0, 1], 1.3999, places=4)  # 1.4220 for the CASSCF density
+
+        # Log files without a Mayer population analysis.
+        self.assertIsNone(parser.parse_bond_orders(os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')))
+        self.assertIsNone(parser.parse_bond_orders(os.path.join(ARC_TESTING_PATH, 'freq', 'orca6_example.out')))
+
+    def test_parse_bond_orders_from_incomplete_or_ambiguous_logs(self):
+        """Test that parse_bond_orders() returns None rather than a matrix it cannot vouch for."""
+        with open(os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C8H14O2_mayer_gaussian.out'), 'r') as f:
+            gaussian_lines = f.readlines()
+        with open(os.path.join(ARC_TESTING_PATH, 'bond_orders', 'C4H5NO2_mayer_orca.out'), 'r') as f:
+            orca_lines = f.readlines()
+        # Gaussian: the header is line 864, the four pages of six columns are lines 865-964,
+        # and the Standard orientation table is lines 275-304.
+        mayer_section, orientation = gaussian_lines[863:964], gaussian_lines[274:304]
+        self.assertEqual(mayer_section[0].strip(), 'Atomic Valencies and Mayer Atomic Bond Orders:')
+        self.assertIn('Lowdin Atomic Charges:', gaussian_lines[964])
+        # Orca: the last section's per-atom table is lines 4520-4531, and its pair list is lines 4534-4538.
+        self.assertIn('Mayer bond orders larger than', orca_lines[4532])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            def parse(name: str, lines: list[str]) -> np.ndarray | None:
+                path = os.path.join(tmp_dir, name)
+                with open(path, 'w') as f:
+                    f.writelines(lines)
+                return parser.parse_bond_orders(path)
+
+            # A log cut after six rows of the first page, a complete 6x6 matrix of a 24 atom molecule.
+            self.assertIsNone(parse('g_cut_first_page.out', gaussian_lines[:871]))
+            # A log cut inside the last page.
+            self.assertIsNone(parse('g_cut_last_page.out', gaussian_lines[:950]))
+            # A later geometry, e.g., an optimization that did not finish.
+            self.assertIsNone(parse('g_later_geometry.out', gaussian_lines[:964] + orientation + gaussian_lines[964:]))
+            # An asymmetric matrix.
+            lines = list(gaussian_lines)
+            lines[870] = lines[870].replace('0.822247', '0.832247')
+            self.assertIsNone(parse('g_asymmetric.out', lines))
+            # A header with a spin prefix.
+            lines = list(gaussian_lines)
+            lines[863] = ' Alpha Atomic Valencies and Mayer Atomic Bond Orders:\n'
+            self.assertIsNone(parse('g_alpha.out', lines))
+            # Two matrices under the same header in one population analysis, e.g., one per spin.
+            self.assertIsNone(parse('g_two_matrices.out', gaussian_lines[:964] + mayer_section + gaussian_lines[964:]))
+
+            # Two population analyses at the same geometry: the last one is used.
+            second_section = [line.replace('0.822247', '0.800000') for line in mayer_section]
+            bond_orders = parse('g_two_analyses.out', gaussian_lines[:964]
+                                + [' Population analysis using the SCF Density.\n'] + second_section
+                                + gaussian_lines[964:])
+            self.assertEqual(bond_orders.shape, (24, 24))
+            self.assertAlmostEqual(bond_orders[4, 5], 0.8, places=6)
+            self.assertAlmostEqual(bond_orders[5, 4], 0.8, places=6)
+            # The printed diagonal (1.861909) is no longer the sum of the row, so the sum is used.
+            self.assertAlmostEqual(bond_orders[4, 4], 1.861909 - 0.022247, places=5)
+            self.assertAlmostEqual(bond_orders[4, 4], np.sum(bond_orders[4]) - bond_orders[4, 4], places=10)
+            self.assertAlmostEqual(bond_orders[0, 0], 3.931186, places=6)
+
+            # Orca: an optimization that did not finish, whose only section is at the initial geometry.
+            self.assertIsNone(parse('o_unfinished_opt.out', orca_lines[:3797]))
+            # A log cut inside the per-atom table.
+            self.assertIsNone(parse('o_cut_atoms.out', orca_lines[:4525]))
+            # A log cut inside the pair list.
+            self.assertIsNone(parse('o_cut_pairs.out', orca_lines[:4536]))
+            # The full log.
+            self.assertEqual(parse('o_full.out', orca_lines).shape, (12, 12))
+
     def test_yaml_parser(self):
         """Test the YAMLParser adapter for all its parse methods."""
         from arc.parser.adapters.yaml import YAMLParser
