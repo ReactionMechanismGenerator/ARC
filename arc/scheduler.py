@@ -4383,6 +4383,8 @@ class Scheduler(object):
                 check_irc_species_and_rxn(xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
                                           xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
                                           rxn=rxn,
+                                          log_path_1=self.output[irc_species_labels[0]]['paths']['geo'],
+                                          log_path_2=self.output[irc_species_labels[1]]['paths']['geo'],
                                           )
                 self.process_irc_verdict(ts_label=ts_label, rxn=rxn)
 
