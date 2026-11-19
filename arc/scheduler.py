@@ -12,6 +12,7 @@ import os
 import pprint
 import shutil
 import time
+import traceback
 
 import numpy as np
 from typing import TYPE_CHECKING
@@ -154,6 +155,23 @@ the orbitals a ``ROTATE`` would mix needs their index and irreducible representa
 that adapter has neither at the point it writes its input nor a ``nosym`` geometry to make
 unambiguous.
 """
+
+
+def exception_summary_line(exception: BaseException, max_length: int = 300) -> str:
+    """
+    Summarize an exception in one line for a record: the first non-empty line of its message,
+    or its type name when the message is empty, cut to ``max_length`` characters.
+
+    Args:
+        exception (BaseException): The exception to summarize.
+        max_length (int, optional): The maximal length of the line.
+
+    Returns:
+        str: The one-line summary.
+    """
+    lines = [line.strip() for line in str(exception).splitlines() if line.strip()]
+    line = lines[0] if lines else type(exception).__name__
+    return line if len(line) <= max_length else line[:max_length - 3] + '...'
 
 
 def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> bool:
@@ -2818,20 +2836,36 @@ class Scheduler(object):
                                 # record it and carry on so one missing dependency can't abort the run.
                                 logger.error(f'The {method!r} TS search adapter is not available and '
                                              f'was skipped for reaction {rxn.label}: {e}')
-                                if method not in rxn.ts_species.unsuccessful_methods:
-                                    rxn.ts_species.unsuccessful_methods.append(method)
-                                # Roll back the job run_job() registered before it raised, so a
-                                # never-run 'tsg<i>' entry isn't serialized and parsed as completed.
-                                if f'tsg{tsg_index}' in self.running_jobs.get(rxn.ts_label, list()):
-                                    self.running_jobs[rxn.ts_label].remove(f'tsg{tsg_index}')
-                                self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).pop(tsg_index, None)
+                                self._roll_back_failed_tsg_job(rxn=rxn, method=method, tsg_index=tsg_index)
                                 continue
+                            except Exception as e:
+                                # The one boundary between the Scheduler and a TS search adapter: a bug in
+                                # one adapter costs that adapter for this reaction, never the whole run.
+                                submitted = self._tsg_job_was_submitted(rxn=rxn, tsg_index=tsg_index)
+                                consequence = 'its submitted job stays tracked' if submitted else 'skipping it'
+                                logger.error(f'The {method!r} TS search adapter raised {type(e).__name__} '
+                                             f'for reaction {rxn.label}; {consequence}, and continuing with '
+                                             f'the other adapters.\n{traceback.format_exc()}')
+                                rxn.ts_species.ts_adapter_failures.append(
+                                    {'adapter': method,
+                                     'exception_type': type(e).__name__,
+                                     'message': exception_summary_line(e)})
+                                if not submitted:
+                                    self._roll_back_failed_tsg_job(rxn=rxn, method=method, tsg_index=tsg_index)
+                                    continue
                             tsg_index += 1
                     if not tsg_index and not rxn.ts_species.ts_guesses:
                         # No adapter ran and no user guess was given, and tsg_spawned is already
                         # latched True, so warn explicitly rather than fail silently much later.
                         eligible = ts_adapters_by_rmg_family.get(rxn.family) if family_known else None
-                        if eligible_methods:
+                        raised = [failure['adapter'] for failure in rxn.ts_species.ts_adapter_failures]
+                        unavailable = [m for m in eligible_methods if m not in raised]
+                        if raised:
+                            reason = (f'its eligible adapters {raised} raised an exception (see the errors '
+                                      f'above)' + (f' and {unavailable} are unavailable on this machine'
+                                                   if unavailable else '')
+                                      + '. Fix the reported error, or add another eligible adapter')
+                        elif eligible_methods:
                             reason = (f'all of its eligible adapters {eligible_methods} are unavailable '
                                       f'on this machine (see the errors above). Install one of them, or add '
                                       f'an eligible adapter that is installed')
@@ -2847,9 +2881,45 @@ class Scheduler(object):
                                        f'(in the input file or in ~/.arc/settings.py) to compute this TS. '
                                        f'No TS guess will be generated and this reaction will be reported '
                                        f'as not converged.')
+                    elif not tsg_index and not all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
+                        # An adapter saved guesses and then raised, so its job was rolled back. No tracked
+                        # job is left whose completion would start the TS conformer jobs, so start them here.
+                        self.run_conformer_jobs(labels=[rxn.ts_label])
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
+
+    def _tsg_job_was_submitted(self, rxn: ARCReaction, tsg_index: int) -> bool:
+        """
+        Whether a TS guess job reached a server queue (it is not incore and has a job ID).
+
+        Args:
+            rxn (ARCReaction): The reaction of the job.
+            tsg_index (int): The index of the TS guess job.
+
+        Returns:
+            bool: Whether the job was submitted.
+        """
+        job = self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).get(tsg_index)
+        return job is not None and getattr(job, 'execution_type', 'incore') != 'incore' \
+            and getattr(job, 'job_id', None) is not None
+
+    def _roll_back_failed_tsg_job(self, rxn: ARCReaction, method: str, tsg_index: int) -> None:
+        """
+        Mark a TS search adapter that failed for a reaction as unsuccessful, and roll back the job
+        ``run_job()`` registered before it raised, so a never-run 'tsg<i>' entry isn't serialized
+        and parsed as completed.
+
+        Args:
+            rxn (ARCReaction): The reaction the adapter failed for.
+            method (str): The TS search adapter.
+            tsg_index (int): The index of the TS guess job that failed.
+        """
+        if method not in rxn.ts_species.unsuccessful_methods:
+            rxn.ts_species.unsuccessful_methods.append(method)
+        if f'tsg{tsg_index}' in self.running_jobs.get(rxn.ts_label, list()):
+            self.running_jobs[rxn.ts_label].remove(f'tsg{tsg_index}')
+        self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).pop(tsg_index, None)
 
     def spawn_directed_scan_jobs(self,
                                  label: str,
