@@ -137,8 +137,55 @@ def apply_constraints(atoms: Atoms, constraints_data: list):
     atoms.set_constraint(FixInternals(bonds=bonds, angles_deg=angles, dihedrals_deg=dihedrals))
 
 
-def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
-              pivot_mult: float = 1.8) -> list:
+def _adjacency_from_bonds(bonds: list, n_atoms: int) -> dict:
+    """
+    Build an adjacency mapping from an explicit list of bonded atom pairs.
+
+    Args:
+        bonds (list): Pairs of 0-indexed atom indices, as written by the ARC adapter.
+        n_atoms (int): The number of atoms in the geometry, used to reject a mismatched graph.
+
+    Raises:
+        ValueError: If a bond references an atom index outside the geometry.
+
+    Returns:
+        dict: Maps each atom index to the set of its bonded neighbours.
+    """
+    adj = {i: set() for i in range(n_atoms)}
+    for bond in bonds:
+        i, j = int(bond[0]), int(bond[1])
+        if not (0 <= i < n_atoms and 0 <= j < n_atoms):
+            raise ValueError(f'Bond {bond} references an atom outside the {n_atoms}-atom geometry; '
+                             f'cannot determine the rotating group.')
+        if i != j:
+            adj[i].add(j)
+            adj[j].add(i)
+    return adj
+
+
+def _reachable(adj: dict, start: int) -> set:
+    """
+    The set of atoms reachable from ``start`` through an adjacency mapping.
+
+    Args:
+        adj (dict): Maps each atom index to the set of its bonded neighbours.
+        start (int): The atom index to traverse from.
+
+    Returns:
+        set: The atom indices reachable from ``start``, including ``start`` itself.
+    """
+    seen, stack = {start}, [start]
+    while stack:
+        cur = stack.pop()
+        for nb in adj[cur]:
+            if nb not in seen:
+                seen.add(nb)
+                stack.append(nb)
+    return seen
+
+
+def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, bonds: list | None = None,
+              mult: float = 1.2, pivot_mult: float = 1.8) -> list:
     """
     Determine the rotating group (the "top") on the ``pivot_2`` side of the ``pivot_1``-``pivot_2`` bond.
 
@@ -148,21 +195,34 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
     This is the same "top" that ``arc.common.determine_top_group_indices`` computes, but kept as a
     standalone reimplementation on purpose: this script runs in the calculator's own environment
     (e.g. ``uma_env``), which has neither ARC nor RMG-Py, so it can import neither that function nor
-    the RMG ``Molecule`` it operates on. Connectivity is instead rebuilt from the geometry via ASE's
-    neighbor list. Keep the two traversals in agreement if either changes.
+    the RMG ``Molecule`` it operates on. Keep the two traversals in agreement if either changes.
 
-    Because connectivity here is geometric rather than a real bond graph, a bond stretched well past
-    its equilibrium length - the forming or breaking bond of a TS being the case that matters - can
-    fall outside the default cutoff and look non-bonded. Only the pivot pair is given the looser
-    ``pivot_mult`` allowance; the rest of the graph stays at ``mult``. Loosening the whole graph
-    instead would let the substituents on the two pivots reach each other across the widened gap and
-    fuse into a spurious ring, which the ring check below would then report.
+    Connectivity comes from one of two sources, and the distinction matters:
+
+    - ``bonds``, the species' real bond graph, written into the job's input file by the ARC adapter.
+      Preferred whenever available, because it is the only source that can tell a bond stretched
+      past any geometric cutoff from two atoms that merely sit close together.
+    - the geometry itself, via ASE's neighbor list at ``mult``, when no bond graph was supplied.
+      A bond stretched well past its equilibrium length - the forming or breaking bond of a TS being
+      the case that matters - then falls outside the cutoff and looks non-bonded, so an atom whose
+      only bond was that one drops out of the top. This function does **not** invent a bond to
+      repair that: guessing from distance alone cannot distinguish a stretched bond from a separate
+      fragment (a van der Waals complex, a counterion), and bridging the two corrupts the top
+      silently. Atoms left connected to neither pivot are reported on stderr instead.
+
+    Only the pivot pair is given the looser ``pivot_mult`` allowance; the rest of the graph stays at
+    ``mult``. Loosening the whole graph instead would let the substituents on the two pivots reach
+    each other across the widened gap and fuse into a spurious ring, which the ring check below
+    would then report.
 
     Args:
         atoms (Atoms): The molecule.
         pivot_1 (int): The 0-indexed atom on the fixed side of the rotation axis.
         pivot_2 (int): The 0-indexed atom on the rotating side of the rotation axis.
-        mult (float, optional): The natural-cutoff multiplier defining the bond graph.
+        bonds (list, optional): The real bond graph as pairs of 0-indexed atom indices. When given,
+                                the geometry is not used to infer connectivity at all.
+        mult (float, optional): The natural-cutoff multiplier defining the bond graph, used only
+                                when ``bonds`` is not supplied.
         pivot_mult (float, optional): The covalent-radii multiplier allowed for the pivot bond
                                       alone, accommodating a stretched TS bond.
 
@@ -173,10 +233,24 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
     Returns:
         list: The sorted 0-indexed atoms of the rotating group.
     """
-    nl = build_neighbor_list(atoms, natural_cutoffs(atoms, mult=mult),
-                             self_interaction=False, bothways=True)
-    adj = {i: set(nl.get_neighbors(i)[0]) for i in range(len(atoms))}
+    # skin=0.0 is load-bearing, not tidying. ASE's default skin is 0.3 Angstrom PER ATOM, a
+    # rebuild buffer that is nonetheless added to the neighbour test, so a pair counts as bonded
+    # at d < mult * sum_r + 0.6 rather than the d < mult * sum_r this function reasons in and the
+    # pivot check below applies literally. On 1,1-dimethylhydrazine that 0.6 was the difference
+    # between a correct graph and one where every 1-3 pair around the central N (C-C at 2.38 A,
+    # C-N at 2.33 A) became a bond: the three heavy neighbours fused into a spurious ring and
+    # every rotor in the molecule was rejected as "part of a ring". Real bonds here sit at
+    # d/sum_r <= 1.03 against a 1.2 threshold, so the tolerance was never the tight part.
+    if bonds is not None:
+        adj = _adjacency_from_bonds(bonds, len(atoms))
+    else:
+        nl = build_neighbor_list(atoms, natural_cutoffs(atoms, mult=mult),
+                                 self_interaction=False, bothways=True, skin=0.0)
+        adj = {i: set(nl.get_neighbors(i)[0]) for i in range(len(atoms))}
     if pivot_2 not in adj[pivot_1]:
+        # Reached both when the geometry stretched the pivot bond past ``mult`` and when a real bond
+        # graph does not carry it at all (a TS's forming bond is absent from the 2D graph). Either
+        # way the distance decides, under the allowance the pivot bond alone is given.
         numbers = atoms.get_atomic_numbers()
         radii_sum = covalent_radii[numbers[pivot_1]] + covalent_radii[numbers[pivot_2]]
         distance = float(atoms.get_distance(pivot_1, pivot_2))
@@ -185,16 +259,21 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
                              f'apart, too far to be bonded; cannot determine the rotating group.')
     adj[pivot_1].discard(pivot_2)
     adj[pivot_2].discard(pivot_1)
-    seen, stack = {pivot_2}, [pivot_2]
-    while stack:
-        cur = stack.pop()
-        for nb in adj[cur]:
-            if nb not in seen:
-                seen.add(nb)
-                stack.append(nb)
+    seen = _reachable(adj, pivot_2)
     if pivot_1 in seen:
         raise ValueError(f'The pivot bond {pivot_1}-{pivot_2} is part of a ring; '
                          f'a 1D rotor scan is ill-defined.')
+    stranded = sorted(set(range(len(atoms))) - seen - _reachable(adj, pivot_1))
+    if stranded:
+        # Not an error: these atoms are genuinely attached to neither side of the rotation axis.
+        # With a real bond graph that means a separate fragment, which correctly stays out of the
+        # top. Without one it may instead be a bond stretched past ``mult``, which this function
+        # will not guess at - so say so, since the alternative is omitting them silently.
+        source = 'the supplied bond graph' if bonds is not None else f'the geometry at mult={mult}'
+        print(f'Warning: atoms {stranded} are connected to neither pivot {pivot_1} nor {pivot_2} '
+              f'according to {source}, so they are not part of the rotating top and will not move '
+              f'with it. This is expected for a separate fragment; if they belong to the scanned '
+              f'molecule through a stretched bond, pass the real bond graph instead.')
     return sorted(int(x) for x in seen)
 
 
@@ -289,7 +368,7 @@ def merge_scan_branches(e_f: list, e_b: list, nsteps: int, coords_f: list = None
 
 def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: int,
                          top: list = None, fmax: float = 0.005, steps: int = 500,
-                         optimizer=LBFGS) -> dict:
+                         optimizer=LBFGS, bonds: list | None = None) -> dict:
     """
     Perform a full 1D relaxed torsional scan in a single process.
 
@@ -311,6 +390,8 @@ def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: i
         fmax (float): The force convergence criterion in eV/Angstrom.
         steps (int): The maximum optimizer steps per point.
         optimizer: The ASE optimizer class to relax each point.
+        bonds (list, optional): The real bond graph as pairs of 0-indexed atom indices, used to
+                                determine ``top`` when it is not given. See :func:`rotor_top`.
 
     Raises:
         ValueError: If ``nsteps`` is less than 1, ``step_deg`` is not positive, or the two do not
@@ -333,7 +414,7 @@ def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: i
                          f'increments of step_deg={step_deg} span {nsteps * step_deg} degrees.')
     i, j, k, l = torsion
     if top is None:
-        top = rotor_top(atoms, j, k)
+        top = rotor_top(atoms, j, k, bonds=bonds)
 
     e_f, r_f, c_f = _scan_walk(atoms, torsion, step_deg, nsteps, top, fmax, steps, +1, optimizer)
     e_b, r_b, c_b = _scan_walk(atoms, torsion, step_deg, nsteps, top, fmax, steps, -1, optimizer)
@@ -361,8 +442,9 @@ def run_torsion_scan(atoms: Atoms, input_dict: dict, settings: dict) -> dict:
 
     Args:
         atoms (Atoms): The molecule with a calculator attached.
-        input_dict (dict): The job input; ``torsions`` (a list holding one 0-indexed torsion) and
-                           ``scan_res`` (the dihedral increment in degrees) are read here.
+        input_dict (dict): The job input; ``torsions`` (a list holding one 0-indexed torsion),
+                           ``scan_res`` (the dihedral increment in degrees) and the optional
+                           ``bonds`` (the species' real bond graph) are read here.
         settings (dict): ASE run settings; optional ``fmax``, ``steps``, ``optimizer`` override the
                          relaxed-scan defaults (LBFGS, fmax 0.005 eV/Angstrom, 500 steps per point).
 
@@ -393,7 +475,8 @@ def run_torsion_scan(atoms: Atoms, input_dict: dict, settings: dict) -> dict:
     optimizer = engine_dict.get(str(settings.get('optimizer', 'LBFGS')).lower(), LBFGS)
 
     result = relaxed_torsion_scan(atoms, torsion, scan_res, nsteps, top=None,
-                                  fmax=fmax, steps=steps, optimizer=optimizer)
+                                  fmax=fmax, steps=steps, optimizer=optimizer,
+                                  bonds=input_dict.get('bonds'))
     # ARC's YAML scan parser reads absolute energies and subtracts the minimum before converting
     # Hartree->kJ/mol, so the energies must be in Hartree.
     result['energies'] = [energy * e / E_h for energy in result['energies']]
