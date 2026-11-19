@@ -137,6 +137,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.main.check_rotor_scan_resolution"><code class="docutils literal notranslate"><span class="pre">check_rotor_scan_resolution()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.main.process_adaptive_levels"><code class="docutils literal notranslate"><span class="pre">process_adaptive_levels()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.main.ts_adapter_failure_lines"><code class="docutils literal notranslate"><span class="pre">ts_adapter_failure_lines()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="species.html">arc.species.species</a></li>
@@ -1080,6 +1081,23 @@ Job types that share a level may be given as a single whitespace- or comma-separ
 <dl class="simple">
 <dt>Returns: dict | None</dt><dd><p>The processed adaptive levels keyed by <code class="docutils literal notranslate"><span class="pre">(min_heavy_atoms,</span> <span class="pre">max_heavy_atoms)</span></code> tuples,
 each mapping job-type tuples to <code class="docutils literal notranslate"><span class="pre">Level</span></code> objects, or <code class="docutils literal notranslate"><span class="pre">None</span></code> if the input is <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.main.ts_adapter_failure_lines">
+<span class="sig-prename descclassname"><span class="pre">arc.main.</span></span><span class="sig-name descname"><span class="pre">ts_adapter_failure_lines</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reactions</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/main.html#ts_adapter_failure_lines"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.main.ts_adapter_failure_lines" title="Link to this definition"></a></dt>
+<dd><p>List every TS search adapter exception the Scheduler caught, one line per failure, for the run summary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>reactions</strong> (<em>list</em>) – The ARCReaction objects of the run.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Lines naming the reaction, the adapter, the exception type and its message.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[str]</p>
 </dd>
 </dl>
 </dd></dl>

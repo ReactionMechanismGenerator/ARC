@@ -109,6 +109,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">pprint</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
@@ -251,6 +252,26 @@
 <span class="sd">that adapter has neither at the point it writes its input nor a ``nosym`` geometry to make</span>
 <span class="sd">unambiguous.</span>
 <span class="sd">"""</span>
+
+
+<div class="viewcode-block" id="exception_summary_line">
+<a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.exception_summary_line">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">exception_summary_line</span><span class="p">(</span><span class="n">exception</span><span class="p">:</span> <span class="ne">BaseException</span><span class="p">,</span> <span class="n">max_length</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">300</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Summarize an exception in one line for a record: the first non-empty line of its message,</span>
+<span class="sd">    or its type name when the message is empty, cut to ``max_length`` characters.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        exception (BaseException): The exception to summarize.</span>
+<span class="sd">        max_length (int, optional): The maximal length of the line.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        str: The one-line summary.</span>
+<span class="sd">    """</span>
+    <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">exception</span><span class="p">)</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
+    <span class="n">line</span> <span class="o">=</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">lines</span> <span class="k">else</span> <span class="nb">type</span><span class="p">(</span><span class="n">exception</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span>
+    <span class="k">return</span> <span class="n">line</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">max_length</span> <span class="k">else</span> <span class="n">line</span><span class="p">[:</span><span class="n">max_length</span> <span class="o">-</span> <span class="mi">3</span><span class="p">]</span> <span class="o">+</span> <span class="s1">'...'</span></div>
+
 
 
 <div class="viewcode-block" id="tsg_method_matches_adapter">
@@ -3021,20 +3042,36 @@
                                 <span class="c1"># record it and carry on so one missing dependency can't abort the run.</span>
                                 <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">'The </span><span class="si">{</span><span class="n">method</span><span class="si">!r}</span><span class="s1"> TS search adapter is not available and '</span>
                                              <span class="sa">f</span><span class="s1">'was skipped for reaction </span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
-                                <span class="k">if</span> <span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">unsuccessful_methods</span><span class="p">:</span>
-                                    <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">unsuccessful_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
-                                <span class="c1"># Roll back the job run_job() registered before it raised, so a</span>
-                                <span class="c1"># never-run 'tsg&lt;i&gt;' entry isn't serialized and parsed as completed.</span>
-                                <span class="k">if</span> <span class="sa">f</span><span class="s1">'tsg</span><span class="si">{</span><span class="n">tsg_index</span><span class="si">}</span><span class="s1">'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">running_jobs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_label</span><span class="p">,</span> <span class="nb">list</span><span class="p">()):</span>
-                                    <span class="bp">self</span><span class="o">.</span><span class="n">running_jobs</span><span class="p">[</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_label</span><span class="p">]</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="sa">f</span><span class="s1">'tsg</span><span class="si">{</span><span class="n">tsg_index</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
-                                <span class="bp">self</span><span class="o">.</span><span class="n">job_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_label</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'tsg'</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">tsg_index</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                                <span class="bp">self</span><span class="o">.</span><span class="n">_roll_back_failed_tsg_job</span><span class="p">(</span><span class="n">rxn</span><span class="o">=</span><span class="n">rxn</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">tsg_index</span><span class="o">=</span><span class="n">tsg_index</span><span class="p">)</span>
                                 <span class="k">continue</span>
+                            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                                <span class="c1"># The one boundary between the Scheduler and a TS search adapter: a bug in</span>
+                                <span class="c1"># one adapter costs that adapter for this reaction, never the whole run.</span>
+                                <span class="n">submitted</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tsg_job_was_submitted</span><span class="p">(</span><span class="n">rxn</span><span class="o">=</span><span class="n">rxn</span><span class="p">,</span> <span class="n">tsg_index</span><span class="o">=</span><span class="n">tsg_index</span><span class="p">)</span>
+                                <span class="n">consequence</span> <span class="o">=</span> <span class="s1">'its submitted job stays tracked'</span> <span class="k">if</span> <span class="n">submitted</span> <span class="k">else</span> <span class="s1">'skipping it'</span>
+                                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">'The </span><span class="si">{</span><span class="n">method</span><span class="si">!r}</span><span class="s1"> TS search adapter raised </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1"> '</span>
+                                             <span class="sa">f</span><span class="s1">'for reaction </span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1">; </span><span class="si">{</span><span class="n">consequence</span><span class="si">}</span><span class="s1">, and continuing with '</span>
+                                             <span class="sa">f</span><span class="s1">'the other adapters.</span><span class="se">\n</span><span class="si">{</span><span class="n">traceback</span><span class="o">.</span><span class="n">format_exc</span><span class="p">()</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+                                <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">ts_adapter_failures</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                                    <span class="p">{</span><span class="s1">'adapter'</span><span class="p">:</span> <span class="n">method</span><span class="p">,</span>
+                                     <span class="s1">'exception_type'</span><span class="p">:</span> <span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                                     <span class="s1">'message'</span><span class="p">:</span> <span class="n">exception_summary_line</span><span class="p">(</span><span class="n">e</span><span class="p">)})</span>
+                                <span class="k">if</span> <span class="ow">not</span> <span class="n">submitted</span><span class="p">:</span>
+                                    <span class="bp">self</span><span class="o">.</span><span class="n">_roll_back_failed_tsg_job</span><span class="p">(</span><span class="n">rxn</span><span class="o">=</span><span class="n">rxn</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">tsg_index</span><span class="o">=</span><span class="n">tsg_index</span><span class="p">)</span>
+                                    <span class="k">continue</span>
                             <span class="n">tsg_index</span> <span class="o">+=</span> <span class="mi">1</span>
                     <span class="k">if</span> <span class="ow">not</span> <span class="n">tsg_index</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">:</span>
                         <span class="c1"># No adapter ran and no user guess was given, and tsg_spawned is already</span>
                         <span class="c1"># latched True, so warn explicitly rather than fail silently much later.</span>
                         <span class="n">eligible</span> <span class="o">=</span> <span class="n">ts_adapters_by_rmg_family</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">family</span><span class="p">)</span> <span class="k">if</span> <span class="n">family_known</span> <span class="k">else</span> <span class="kc">None</span>
-                        <span class="k">if</span> <span class="n">eligible_methods</span><span class="p">:</span>
+                        <span class="n">raised</span> <span class="o">=</span> <span class="p">[</span><span class="n">failure</span><span class="p">[</span><span class="s1">'adapter'</span><span class="p">]</span> <span class="k">for</span> <span class="n">failure</span> <span class="ow">in</span> <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">ts_adapter_failures</span><span class="p">]</span>
+                        <span class="n">unavailable</span> <span class="o">=</span> <span class="p">[</span><span class="n">m</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">eligible_methods</span> <span class="k">if</span> <span class="n">m</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">raised</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="n">raised</span><span class="p">:</span>
+                            <span class="n">reason</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">'its eligible adapters </span><span class="si">{</span><span class="n">raised</span><span class="si">}</span><span class="s1"> raised an exception (see the errors '</span>
+                                      <span class="sa">f</span><span class="s1">'above)'</span> <span class="o">+</span> <span class="p">(</span><span class="sa">f</span><span class="s1">' and </span><span class="si">{</span><span class="n">unavailable</span><span class="si">}</span><span class="s1"> are unavailable on this machine'</span>
+                                                   <span class="k">if</span> <span class="n">unavailable</span> <span class="k">else</span> <span class="s1">''</span><span class="p">)</span>
+                                      <span class="o">+</span> <span class="s1">'. Fix the reported error, or add another eligible adapter'</span><span class="p">)</span>
+                        <span class="k">elif</span> <span class="n">eligible_methods</span><span class="p">:</span>
                             <span class="n">reason</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">'all of its eligible adapters </span><span class="si">{</span><span class="n">eligible_methods</span><span class="si">}</span><span class="s1"> are unavailable '</span>
                                       <span class="sa">f</span><span class="s1">'on this machine (see the errors above). Install one of them, or add '</span>
                                       <span class="sa">f</span><span class="s1">'an eligible adapter that is installed'</span><span class="p">)</span>
@@ -3050,10 +3087,46 @@
                                        <span class="sa">f</span><span class="s1">'(in the input file or in ~/.arc/settings.py) to compute this TS. '</span>
                                        <span class="sa">f</span><span class="s1">'No TS guess will be generated and this reaction will be reported '</span>
                                        <span class="sa">f</span><span class="s1">'as not converged.'</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="ow">not</span> <span class="n">tsg_index</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="s1">'user guess'</span> <span class="ow">in</span> <span class="n">tsg</span><span class="o">.</span><span class="n">method</span> <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">):</span>
+                        <span class="c1"># An adapter saved guesses and then raised, so its job was rolled back. No tracked</span>
+                        <span class="c1"># job is left whose completion would start the TS conformer jobs, so start them here.</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">run_conformer_jobs</span><span class="p">(</span><span class="n">labels</span><span class="o">=</span><span class="p">[</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_label</span><span class="p">])</span>
                 <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="s1">'user guess'</span> <span class="ow">in</span> <span class="n">tsg</span><span class="o">.</span><span class="n">method</span> <span class="k">for</span> <span class="n">tsg</span> <span class="ow">in</span> <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">ts_guesses</span><span class="p">):</span>
                     <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">tsg_spawned</span> <span class="o">=</span> <span class="kc">True</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">run_conformer_jobs</span><span class="p">(</span><span class="n">labels</span><span class="o">=</span><span class="p">[</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_label</span><span class="p">])</span></div>
 
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_tsg_job_was_submitted</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rxn</span><span class="p">:</span> <span class="n">ARCReaction</span><span class="p">,</span> <span class="n">tsg_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Whether a TS guess job reached a server queue (it is not incore and has a job ID).</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            rxn (ARCReaction): The reaction of the job.</span>
+<span class="sd">            tsg_index (int): The index of the TS guess job.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            bool: Whether the job was submitted.</span>
+<span class="sd">        """</span>
+        <span class="n">job</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">job_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_label</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'tsg'</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">tsg_index</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">job</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="s1">'execution_type'</span><span class="p">,</span> <span class="s1">'incore'</span><span class="p">)</span> <span class="o">!=</span> <span class="s1">'incore'</span> \
+            <span class="ow">and</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="s1">'job_id'</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_roll_back_failed_tsg_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rxn</span><span class="p">:</span> <span class="n">ARCReaction</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">tsg_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Mark a TS search adapter that failed for a reaction as unsuccessful, and roll back the job</span>
+<span class="sd">        ``run_job()`` registered before it raised, so a never-run 'tsg&lt;i&gt;' entry isn't serialized</span>
+<span class="sd">        and parsed as completed.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            rxn (ARCReaction): The reaction the adapter failed for.</span>
+<span class="sd">            method (str): The TS search adapter.</span>
+<span class="sd">            tsg_index (int): The index of the TS guess job that failed.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">unsuccessful_methods</span><span class="p">:</span>
+            <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">unsuccessful_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+        <span class="k">if</span> <span class="sa">f</span><span class="s1">'tsg</span><span class="si">{</span><span class="n">tsg_index</span><span class="si">}</span><span class="s1">'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">running_jobs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_label</span><span class="p">,</span> <span class="nb">list</span><span class="p">()):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">running_jobs</span><span class="p">[</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_label</span><span class="p">]</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="sa">f</span><span class="s1">'tsg</span><span class="si">{</span><span class="n">tsg_index</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">job_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">ts_label</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'tsg'</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">tsg_index</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 
 <div class="viewcode-block" id="Scheduler.spawn_directed_scan_jobs">
 <a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.spawn_directed_scan_jobs">[docs]</a>

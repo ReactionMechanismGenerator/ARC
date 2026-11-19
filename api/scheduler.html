@@ -199,6 +199,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.scheduler.Scheduler.warn_on_collapsible_unrestricted_reference"><code class="docutils literal notranslate"><span class="pre">Scheduler.warn_on_collapsible_unrestricted_reference()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.exception_summary_line"><code class="docutils literal notranslate"><span class="pre">exception_summary_line()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.species_has_freq"><code class="docutils literal notranslate"><span class="pre">species_has_freq()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.species_has_geo"><code class="docutils literal notranslate"><span class="pre">species_has_geo()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#arc.scheduler.species_has_sp"><code class="docutils literal notranslate"><span class="pre">species_has_sp()</span></code></a></li>
@@ -2482,6 +2483,27 @@ not reported either.</p>
 </dl>
 </dd></dl>
 
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.scheduler.exception_summary_line">
+<span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">exception_summary_line</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">exception</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">300</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#exception_summary_line"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.exception_summary_line" title="Link to this definition"></a></dt>
+<dd><p>Summarize an exception in one line for a record: the first non-empty line of its message,
+or its type name when the message is empty, cut to <code class="docutils literal notranslate"><span class="pre">max_length</span></code> characters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>exception</strong> (<em>BaseException</em>) – The exception to summarize.</p></li>
+<li><p><strong>max_length</strong> (<em>int</em><em>, </em><em>optional</em>) – The maximal length of the line.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The one-line summary.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">

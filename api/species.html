@@ -109,6 +109,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.ts_guesses"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.ts_guesses</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.successful_methods"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.successful_methods</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.unsuccessful_methods"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.unsuccessful_methods</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.ts_adapter_failures"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.ts_adapter_failures</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.chosen_ts"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.chosen_ts</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.chosen_ts_list"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.chosen_ts_list</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.chosen_ts_method"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.chosen_ts_method</span></code></a></li>
@@ -957,6 +958,18 @@ level by instead of this species’ own count (set to the reaction-wide count fo
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.ts_adapter_failures">
+<span class="sig-name descname"><span class="pre">ts_adapter_failures</span></span><a class="headerlink" href="#arc.species.species.ARCSpecies.ts_adapter_failures" title="Link to this definition"></a></dt>
+<dd><p>TS adapters that raised an exception for this TS, each recorded
+by its <code class="docutils literal notranslate"><span class="pre">adapter</span></code>, <code class="docutils literal notranslate"><span class="pre">exception_type</span></code> and one-line <code class="docutils literal notranslate"><span class="pre">message</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[dict]</p>
 </dd>
 </dl>
 </dd></dl>

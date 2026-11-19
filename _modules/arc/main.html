@@ -928,6 +928,10 @@
                 <span class="k">if</span> <span class="s1">'errors'</span> <span class="ow">in</span> <span class="n">output</span> <span class="ow">and</span> <span class="n">output</span><span class="p">[</span><span class="s1">'errors'</span><span class="p">]:</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">'  and errors: </span><span class="si">{</span><span class="n">output</span><span class="p">[</span><span class="s2">"errors"</span><span class="p">]</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
                 <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">'</span><span class="se">\n</span><span class="s1">'</span><span class="p">)</span>
+        <span class="n">failure_lines</span> <span class="o">=</span> <span class="n">ts_adapter_failure_lines</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reactions</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">failure_lines</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s1">'TS search adapters raised an exception (tracebacks are logged above):</span><span class="se">\n</span><span class="s1">  '</span>
+                         <span class="o">+</span> <span class="s1">'</span><span class="se">\n</span><span class="s1">  '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">failure_lines</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'</span><span class="se">\n</span><span class="s1">'</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">status_dict</span></div>
 
 
@@ -1510,6 +1514,27 @@
                          <span class="sa">f</span><span class="s1">'number of steps. Got: </span><span class="si">{</span><span class="n">rotor_scan_resolution</span><span class="si">}</span><span class="s1">, which leaves a remainder of '</span>
                          <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="nb">divmod</span><span class="p">(</span><span class="mi">360</span><span class="p">,</span><span class="w"> </span><span class="n">rotor_scan_resolution</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s1">.'</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">rotor_scan_resolution</span></div>
+
+
+
+<div class="viewcode-block" id="ts_adapter_failure_lines">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ts_adapter_failure_lines">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">ts_adapter_failure_lines</span><span class="p">(</span><span class="n">reactions</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    List every TS search adapter exception the Scheduler caught, one line per failure, for the run summary.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        reactions (list): The ARCReaction objects of the run.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        list[str]: Lines naming the reaction, the adapter, the exception type and its message.</span>
+<span class="sd">    """</span>
+    <span class="n">lines</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">rxn</span> <span class="ow">in</span> <span class="n">reactions</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">failure</span> <span class="ow">in</span> <span class="nb">getattr</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">rxn</span><span class="p">,</span> <span class="s1">'ts_species'</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s1">'ts_adapter_failures'</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]:</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s2">: TS adapter </span><span class="si">{</span><span class="n">failure</span><span class="p">[</span><span class="s1">'adapter'</span><span class="p">]</span><span class="si">!r}</span><span class="s2"> raised "</span>
+                         <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">failure</span><span class="p">[</span><span class="s1">'exception_type'</span><span class="p">]</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">failure</span><span class="p">[</span><span class="s1">'message'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">lines</span></div>
 
 
 

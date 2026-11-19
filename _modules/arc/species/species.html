@@ -382,6 +382,8 @@
 <span class="sd">        ts_guesses (list): A list of TSGuess objects for each of the specified methods.</span>
 <span class="sd">        successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.</span>
 <span class="sd">        unsuccessful_methods (list): Methods used to generate a TS guess that were unsuccessfully.</span>
+<span class="sd">        ts_adapter_failures (list[dict]): TS adapters that raised an exception for this TS, each recorded</span>
+<span class="sd">                                          by its ``adapter``, ``exception_type`` and one-line ``message``.</span>
 <span class="sd">        chosen_ts (int): The TSGuess index corresponding to the chosen TS conformer used for optimization.</span>
 <span class="sd">        chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.</span>
 <span class="sd">        chosen_ts_method (str): The TS method that was actually used for optimization.</span>
@@ -559,6 +561,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">rxn_index</span> <span class="o">=</span> <span class="n">rxn_index</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">successful_methods</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">unsuccessful_methods</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapter_failures</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts_method</span> <span class="o">=</span> <span class="kc">None</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span> <span class="o">=</span> <span class="n">compute_thermo</span> <span class="k">if</span> <span class="n">compute_thermo</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_ts</span>
@@ -913,6 +916,8 @@
                 <span class="n">species_dict</span><span class="p">[</span><span class="s1">'successful_methods'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">successful_methods</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unsuccessful_methods</span><span class="p">):</span>
                 <span class="n">species_dict</span><span class="p">[</span><span class="s1">'unsuccessful_methods'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unsuccessful_methods</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ts_adapter_failures</span><span class="p">):</span>
+                <span class="n">species_dict</span><span class="p">[</span><span class="s1">'ts_adapter_failures'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapter_failures</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">species_dict</span><span class="p">[</span><span class="s1">'chosen_ts_method'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts_method</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -1077,6 +1082,7 @@
                 <span class="k">if</span> <span class="s1">'successful_methods'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="nb">list</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">unsuccessful_methods</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'unsuccessful_methods'</span><span class="p">]</span> \
                 <span class="k">if</span> <span class="s1">'unsuccessful_methods'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="nb">list</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapter_failures</span> <span class="o">=</span> <span class="n">species_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'ts_adapter_failures'</span><span class="p">,</span> <span class="nb">list</span><span class="p">())</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts_method</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'chosen_ts_method'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'chosen_ts_method'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'chosen_ts'</span><span class="p">]</span> <span class="k">if</span> <span class="s1">'chosen_ts'</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">rxn_zone_atom_indices</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">'rxn_zone_atom_indices'</span><span class="p">]</span> \
