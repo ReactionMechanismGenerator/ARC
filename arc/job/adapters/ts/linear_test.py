@@ -78,7 +78,7 @@ from arc.mapping.driver import map_rxn
 from arc.molecule import Molecule
 from arc.reaction import ARCReaction
 from arc.species.converter import compare_zmats, order_mol_by_atom_map, order_xyz_by_atom_map, str_to_xyz, xyz_from_data, xyz_to_str, zmat_from_xyz
-from arc.species.species import ARCSpecies, colliding_atoms
+from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
 
 def _angle_deg(p1: np.ndarray, vertex: np.ndarray, p2: np.ndarray) -> float:
@@ -5245,6 +5245,50 @@ H       0.94413319   -0.68860760   -0.83098698"""
         self.assertGreater(len(rxn_1.ts_species.ts_guesses), 0)
         self.assertEqual(rxn_1.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'))
+
+    def test_linear_duplicate_credits_linear_in_method_sources(self):
+        """A Linear guess that matches an existing guess adds its Linear label to that guess's method_sources."""
+        rxn_1 = _make_rxn_1()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        kwargs = dict(job_type='tsg', reactions=[rxn_1], testing=True, project='test',
+                      project_directory=project_directory)
+        LinearAdapter(**kwargs).execute_incore()
+        n_guesses = len(rxn_1.ts_species.ts_guesses)
+        self.assertGreater(n_guesses, 0)
+        for tsg in rxn_1.ts_species.ts_guesses:
+            tsg.method, tsg.method_sources = 'GoFlow', ['goflow']
+        LinearAdapter(**kwargs).execute_incore()
+        self.assertEqual(len(rxn_1.ts_species.ts_guesses), n_guesses)
+        for tsg in rxn_1.ts_species.ts_guesses:
+            self.assertEqual(tsg.method_sources[0], 'goflow')
+            self.assertTrue(any(source.startswith('linear (w=') for source in tsg.method_sources[1:]))
+
+    def test_linear_skips_earlier_guess_without_coordinates(self):
+        """An earlier failed guess with no coordinates does not stop Linear from adding its guesses."""
+        rxn_1 = _make_rxn_1()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        rxn_1.ts_species = ARCSpecies(label='TS', is_ts=True, multiplicity=rxn_1.multiplicity, charge=rxn_1.charge)
+        rxn_1.ts_species.ts_guesses.append(TSGuess(method='RitS', index=0, success=False))
+        LinearAdapter(job_type='tsg', reactions=[rxn_1], testing=True, project='test',
+                      project_directory=project_directory).execute_incore()
+        self.assertGreater(len([tsg for tsg in rxn_1.ts_species.ts_guesses if tsg.success]), 0)
+
+    def test_linear_failed_guess_does_not_absorb_new_guess(self):
+        """A failed earlier guess that kept its coordinates does not absorb a successful Linear guess."""
+        rxn_1 = _make_rxn_1()
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        kwargs = dict(job_type='tsg', reactions=[rxn_1], testing=True, project='test',
+                      project_directory=project_directory)
+        LinearAdapter(**kwargs).execute_incore()
+        n_guesses = len(rxn_1.ts_species.ts_guesses)
+        for tsg in rxn_1.ts_species.ts_guesses:
+            tsg.success, tsg.method, tsg.method_sources = False, 'RitS', ['rits']
+        LinearAdapter(**kwargs).execute_incore()
+        self.assertEqual(len([tsg for tsg in rxn_1.ts_species.ts_guesses if tsg.success]), n_guesses)
+        self.assertTrue(all(tsg.method_sources == ['rits'] for tsg in rxn_1.ts_species.ts_guesses if not tsg.success))
 
     def test_linear_adapter_2(self):
         """Test the LinearAdapter class for intra_NO2_ONO_conversion"""

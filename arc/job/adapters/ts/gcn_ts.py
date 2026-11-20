@@ -425,9 +425,11 @@ def process_tsg(direction: str,
     unique = True
     if ts_xyz is not None and not colliding_atoms(ts_xyz):
         for other_tsg in ts_species.ts_guesses:
-            if other_tsg.success and almost_equal_coords(ts_xyz, other_tsg.initial_xyz):
+            if other_tsg.success and other_tsg.initial_xyz is not None \
+                    and almost_equal_coords(ts_xyz, other_tsg.initial_xyz):
                 if 'gcn' not in other_tsg.method.lower():
                     other_tsg.method += ' and GCN'
+                other_tsg.add_method_source('GCN')
                 unique = False
                 break
         if unique:

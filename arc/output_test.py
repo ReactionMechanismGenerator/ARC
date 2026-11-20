@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import yaml
 
+from arc.checks.common import IRC_CAUSE_NOT_COMPLETED, TS_IRC_NOT_CONFIRMED_MARKER
 from arc.common import ARC_PATH, read_yaml_file
 from arc.constants import E_h_kJmol
 from arc.exceptions import InputError
@@ -1821,6 +1822,43 @@ class TestRxnToDict(unittest.TestCase):
         self.assertAlmostEqual(result['kinetics']['Ea'], 45.6)
         self.assertEqual(result['kinetics']['Ea_units'], 'kJ/mol')
         self.assertEqual(result['kinetics']['n'], 0.5)
+
+    def _rxn_with_unconfirmed_ts(self, kinetics):
+        """
+        Build a reaction whose TS has every ts_checks entry None and no irc_label.
+
+        Args:
+            kinetics (dict | None): The kinetics of the reaction.
+
+        Returns:
+            MagicMock: The reaction.
+        """
+        rxn = MagicMock()
+        rxn.label = 'CH4 + OH <=> CH3 + H2O'
+        rxn.reactants = ['CH4', 'OH']
+        rxn.products = ['CH3', 'H2O']
+        rxn.ts_label = 'TS0'
+        rxn.long_kinetic_description = None
+        rxn.kinetics = kinetics
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.ts_checks = {key: None for key in ts.ts_checks}
+        ts.irc_label = None
+        rxn.ts_species = ts
+        return rxn
+
+    def test_a_reaction_with_no_rate_carries_no_ts_validation_caution(self):
+        """Test that a reaction with no rate gets no IRC caution, though IRC was requested and its TS is unconfirmed"""
+        result = _rxn_to_dict(self._rxn_with_unconfirmed_ts(kinetics=None), irc_requested=True, output_dict=dict())
+        self.assertIsNone(result['kinetics'])
+        self.assertNotIn('ts_validation_caution', result)
+
+    def test_a_kept_rate_with_an_unconfirmed_ts_carries_a_ts_validation_caution(self):
+        """Test that a kept rate whose TS IRC was requested but not confirmed carries the IRC caution"""
+        kinetics = {'A': (1.2e10, 's^-1'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')}
+        result = _rxn_to_dict(self._rxn_with_unconfirmed_ts(kinetics=kinetics), irc_requested=True, output_dict=dict())
+        self.assertIsNotNone(result['kinetics'])
+        self.assertTrue(result['ts_validation_caution'].startswith(
+            f'{TS_IRC_NOT_CONFIRMED_MARKER} ({IRC_CAUSE_NOT_COMPLETED})'))
 
 
 class TestSpcToDict(unittest.TestCase):
