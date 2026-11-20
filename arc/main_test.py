@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from arc.common import ARC_INPUT_SCHEMA_VERSION, VERSION, get_logger
@@ -19,7 +20,8 @@ from arc.imports import settings
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
-from arc.main import ARC, process_adaptive_levels
+from arc.main import ARC, process_adaptive_levels, ts_adapter_failure_lines
+from arc.scheduler import Scheduler
 from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 from arc.species.species import ARCSpecies
 
@@ -794,8 +796,17 @@ class ReachedTheCleanup(Exception):
 class SchedulerStub(object):
     """Stands in for a Scheduler that has finished running a project's jobs on a server."""
 
-    def __init__(self, remote_project_paths: dict):
+    cleanable_remote_project_paths = Scheduler.cleanable_remote_project_paths
+    keeps_local_check_files = Scheduler.keeps_local_check_files
+
+    def __init__(self,
+                 remote_project_paths: dict,
+                 unreadable_queue_servers: dict | None = None,
+                 stranded_jobs: dict | None = None,
+                 ):
         self.remote_project_paths = remote_project_paths
+        self.unreadable_queue_servers = unreadable_queue_servers or dict()
+        self.stranded_jobs = stranded_jobs or dict()
         self.output = dict()
         self.species_dict = dict()
         self.rxn_list = list()
@@ -954,6 +965,42 @@ class TestCheckFileCleanup(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.remote_output_path))
         self.assertTrue(os.path.isfile(self.other_project_check_path))
 
+    def test_a_run_keeps_the_check_files_of_jobs_left_on_an_unreadable_queue(self):
+        """Jobs left on a remote queue that stayed unreadable keep both their remote and the local check files"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=False)
+        scheduler = SchedulerStub(remote_project_paths=self.remote_project_paths,
+                                  unreadable_queue_servers={self.server: dict()},
+                                  stranded_jobs={'spc': ['opt_a7']})
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch.object(ARC, 'delete_leftovers', side_effect=ReachedTheCleanup):
+            with self.assertRaises(ReachedTheCleanup):
+                arc0.execute()
+        self.assertTrue(os.path.isfile(self.remote_check_path))
+        self.assertTrue(os.path.isfile(self.local_check_path))
+
+    def test_a_run_keeps_the_local_check_file_a_held_back_job_names(self):
+        """A job held back before its server was recorded as unreadable still reads its checkpoint from calcs"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=False)
+        scheduler = SchedulerStub(remote_project_paths=self.remote_project_paths,
+                                  stranded_jobs={'spc': ['sp_a8']})
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch.object(ARC, 'delete_leftovers', side_effect=ReachedTheCleanup):
+            with self.assertRaises(ReachedTheCleanup):
+                arc0.execute()
+        self.assertTrue(os.path.isfile(self.local_check_path))
+
+    def test_a_run_keeps_the_local_check_files_when_the_local_queue_was_unreadable(self):
+        """Jobs left running on the local queue run from the project's calcs directory"""
+        arc0 = self.set_up_arc_and_check_files(keep_checks=False)
+        scheduler = SchedulerStub(remote_project_paths=self.remote_project_paths,
+                                  unreadable_queue_servers={'local': dict()})
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch.object(ARC, 'delete_leftovers', side_effect=ReachedTheCleanup):
+            with self.assertRaises(ReachedTheCleanup):
+                arc0.execute()
+        self.assertTrue(os.path.isfile(self.local_check_path))
+        self.assertFalse(os.path.isfile(self.remote_check_path))
+
     def tearDown(self):
         """
         A method that is run after each unit test in this class.
@@ -967,6 +1014,25 @@ class TestCheckFileCleanup(unittest.TestCase):
                 arc_logger.removeHandler(handler)
         shutil.rmtree(self.remote_root, ignore_errors=True)
         shutil.rmtree(os.path.dirname(self.project_directory), ignore_errors=True)
+
+
+class TestTsAdapterFailureLines(unittest.TestCase):
+    """The run summary lists every TS adapter failure the Scheduler caught."""
+
+    def test_one_line_per_failure(self):
+        """Each caught failure gives one line naming the reaction, the adapter, and the exception."""
+        rxn_1 = SimpleNamespace(label='HCN + H2O <=> HN_CHOH', ts_species=SimpleNamespace(ts_adapter_failures=[
+            {'adapter': 'heuristics', 'exception_type': 'KeyError', 'message': 'None'},
+            {'adapter': 'kinbot', 'exception_type': 'ValueError', 'message': 'bad'}]))
+        rxn_2 = SimpleNamespace(label='OH + CH4 <=> H2O + CH3', ts_species=SimpleNamespace(ts_adapter_failures=[]))
+        rxn_3 = SimpleNamespace(label='A <=> B', ts_species=None)
+        self.assertEqual(ts_adapter_failure_lines([rxn_1, rxn_2, rxn_3]),
+                         ["HCN + H2O <=> HN_CHOH: TS adapter 'heuristics' raised KeyError: None",
+                          "HCN + H2O <=> HN_CHOH: TS adapter 'kinbot' raised ValueError: bad"])
+
+    def test_no_failures_give_no_lines(self):
+        """A run with no caught failure adds nothing to the summary."""
+        self.assertEqual(ts_adapter_failure_lines([]), [])
 
 
 if __name__ == '__main__':

@@ -654,27 +654,13 @@ class TestNMD(unittest.TestCase):
         self.assertNotIn('frame of the normal modes', warning)
 
     def test_get_ts_xyz_in_normal_mode_frame_falls_back_when_parsing_raises(self):
-        """Test that a log file whose geometry parser raises falls back to the species geometry.
-
-        The log is a Gaussian frequency output truncated in the middle of its 'Input orientation:'
-        block, as a job killed while writing one leaves behind.
-        """
-        scratch_dir = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
-        log_path = os.path.join(scratch_dir, 'truncated_freq.log')
-        with open(log_path, 'w') as f:
-            f.write(' Entering Gaussian System, Link 0=g16\n'
-                    '                          Input orientation:\n'
-                    ' ---------------------------------------------------------------------\n'
-                    ' Center     Atomic      Atomic             Coordinates (Angstroms)\n'
-                    ' Number     Number       Type             X           Y           Z\n'
-                    ' ---------------------------------------------------------------------\n'
-                    '      1          6           0        0.000000    0.000000    0.000000\n')
-        with self.assertRaises(IndexError):
-            parse_geometry(log_file_path=log_path)
+        """Test that a log file whose geometry parser raises falls back to the species geometry."""
+        log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')
         self.generic_job.local_path_to_output_file = log_path
         rxn = self.make_ch4_oh_rxn(ts_xyz=self.ts_1_xyz)
-        with self.assertLogs('arc', level='WARNING') as captured:
+        with self.assertLogs('arc', level='WARNING') as captured, \
+                patch('arc.checks.nmd.parser.parse_geometry_in_normal_mode_frame',
+                      side_effect=IndexError('list index out of range')):
             frame_xyz = nmd.get_ts_xyz_in_normal_mode_frame(reaction=rxn, job=self.generic_job)
         self.assertEqual(frame_xyz['symbols'], self.ts_1_xyz['symbols'])
         np.testing.assert_allclose(np.array(frame_xyz['coords']),

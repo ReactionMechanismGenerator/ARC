@@ -34,6 +34,7 @@ from arc.molecule.resonance import generate_aromatic_resonance_structure, genera
 from arc.parser.parser import (parse_1d_scan_energies,
                                parse_dipole_moment,
                                parse_geometry,
+                               parse_neb_ts_failure,
                                parse_polarizability,
                                process_conformers_file,
                                )
@@ -42,6 +43,7 @@ from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
                                    check_zmat_dict,
                                    compare_confs,
+                                   compare_confs_by_graph_maps,
                                    get_xyz_radius,
                                    modify_coords,
                                    order_atoms,
@@ -313,6 +315,8 @@ class ARCSpecies(object):
         ts_guesses (list): A list of TSGuess objects for each of the specified methods.
         successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.
         unsuccessful_methods (list): Methods used to generate a TS guess that were unsuccessfully.
+        ts_adapter_failures (list[dict]): TS adapters that raised an exception for this TS, each recorded
+                                          by its ``adapter``, ``exception_type`` and one-line ``message``.
         chosen_ts (int): The TSGuess index corresponding to the chosen TS conformer used for optimization.
         chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
@@ -492,6 +496,7 @@ class ARCSpecies(object):
             self.rxn_index = rxn_index
             self.successful_methods = list()
             self.unsuccessful_methods = list()
+            self.ts_adapter_failures = list()
             self.chosen_ts_method = None
             self.chosen_ts_list = list()
             self.compute_thermo = compute_thermo if compute_thermo is not None else not self.is_ts
@@ -626,7 +631,7 @@ class ARCSpecies(object):
 
         self.set_mol_list()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
-            self.populate_ts_checks()
+            self.populate_ts_checks(keep_warnings=True)
         self._set_final_xyz_for_monoatomic()
 
     def __str__(self) -> str:
@@ -848,6 +853,8 @@ class ARCSpecies(object):
                 species_dict['successful_methods'] = self.successful_methods
             if len(self.unsuccessful_methods):
                 species_dict['unsuccessful_methods'] = self.unsuccessful_methods
+            if len(self.ts_adapter_failures):
+                species_dict['ts_adapter_failures'] = self.ts_adapter_failures
             if self.chosen_ts_method is not None:
                 species_dict['chosen_ts_method'] = self.chosen_ts_method
             if self.chosen_ts is not None:
@@ -1009,6 +1016,7 @@ class ARCSpecies(object):
                 if 'successful_methods' in species_dict else list()
             self.unsuccessful_methods = species_dict['unsuccessful_methods'] \
                 if 'unsuccessful_methods' in species_dict else list()
+            self.ts_adapter_failures = species_dict.get('ts_adapter_failures', list())
             self.chosen_ts_method = species_dict['chosen_ts_method'] if 'chosen_ts_method' in species_dict else None
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
             self.rxn_zone_atom_indices = species_dict['rxn_zone_atom_indices'] \
@@ -2028,7 +2036,14 @@ class ARCSpecies(object):
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """
-        Process YAML files which are the output of running a TS guess job in the queue.
+        Process the output of a TS guess job that ran in the queue, and add the resulting TS guesses.
+
+        A ``.yml``/``.yaml`` file holds a list of TSGuess dictionaries; each guess with a usable
+        geometry is added. A ``.log`` file is an ORCA NEB-TS (orca_neb) output. If the run did not
+        finish (see ``parse_neb_ts_failure``), a failed, coordinate-less ``orca_neb`` guess is added,
+        with the cause in its ``errors`` attribute. Otherwise the last geometry in the log is added
+        as a successful guess, or the guess is marked failed and not added if that geometry is
+        missing or has colliding atoms. The guesses are then clustered.
 
         Args:
             path (str): The path to the output file.
@@ -2036,6 +2051,14 @@ class ARCSpecies(object):
         if not isinstance(path, str) or not os.path.isfile(path):
             return None
         if path.endswith('.log'):
+            failure = parse_neb_ts_failure(path)
+            if failure is not None:
+                tsg = TSGuess(method='orca_neb', success=False, log_path=path)
+                tsg.errors = failure
+                self.append_ts_guess(tsg)
+                logger.warning(f'The orca_neb TS-guess job at {path} is a failed guess: {failure}')
+                self.cluster_tsgs()
+                return None
             xyz = parse_geometry(path)
             tsg = TSGuess(method='orca_neb',
                           success=True,
@@ -2558,12 +2581,20 @@ class ARCSpecies(object):
                     raise SpeciesError(f'Could not figure out which atom should gain a radical '
                                        f'due to scission in {self.label}')
 
-    def populate_ts_checks(self):
-        """Populate (or restart) the .ts_checks attribute with default (``None``) values."""
+    def populate_ts_checks(self, keep_warnings: bool = False):
+        """
+        Populate (or restart) the .ts_checks attribute with default (``None``) values.
+
+        Args:
+            keep_warnings (bool, optional): Whether to keep an existing ``warnings`` string, as when the TS is
+                                            restored, instead of resetting it to an empty string, as when a new
+                                            TS guess replaces the previous one.
+        """
         if self.is_ts:
+            warnings = self.ts_checks.get('warnings') if keep_warnings and isinstance(self.ts_checks, dict) else None
             keys = ['E0', 'e_elect', 'IRC', 'freq', 'NMD']
             self.ts_checks = {key: None for key in keys}
-            self.ts_checks['warnings'] = ''
+            self.ts_checks['warnings'] = warnings if isinstance(warnings, str) else ''
 
     def get_symmetry_number(self):
         """
@@ -2842,6 +2873,18 @@ class TSGuess(object):
                 normalized.append(method)
         return normalized
 
+    def add_method_source(self, method: str) -> None:
+        """
+        Record that another method produced this guess's geometry.
+
+        The method is added to ``method_sources`` in the normalized form (lowercase, unique, in order
+        of addition) that ``ARCSpecies.cluster_tsgs`` uses when it folds two guesses.
+
+        Args:
+            method (str): The name of the method, e.g., ``'GoFlow'`` or ``'Linear (w=0.35, 1)'``.
+        """
+        self.method_sources = self._normalize_method_sources((self.method_sources or []) + [method])
+
     def as_dict(self, for_report: bool = False) -> dict:
         """
         A helper function for dumping this object as a dictionary.
@@ -2978,6 +3021,12 @@ class TSGuess(object):
         """
         Determine whether two TSGuess object instances represent the same geometry.
 
+        The two guesses must agree on ``success``, on the energy within 0.1 kJ/mol (when both are set),
+        and on the imaginary frequencies (when both are set). Their geometries (``get_xyz()``) are then
+        compared in the given atom order, and, if that fails, under every atom map that keeps each atom's
+        element and bonded neighbours (``compare_confs_by_graph_maps``), so the same structure numbered
+        differently still counts as the same geometry.
+
         Args:
             other (TSGuess): The other TSGuess object instance to compare to.
 
@@ -2999,10 +3048,9 @@ class TSGuess(object):
             # parseable geometry) can never be a geometric duplicate. Comparing it would pass None
             # into almost_equal_coords and crash clustering (TypeError), so treat it as not-equal.
             return False
-        if almost_equal_coords(xyz1=self_xyz, xyz2=other_xyz) \
-                or compare_confs(xyz1=self_xyz, xyz2=other_xyz, rmsd_score=False):
-            return True
-        return False
+        return almost_equal_coords(xyz1=self_xyz, xyz2=other_xyz) \
+            or compare_confs(xyz1=self_xyz, xyz2=other_xyz, rmsd_score=False) \
+            or compare_confs_by_graph_maps(xyz1=self_xyz, xyz2=other_xyz)
 
     def tic(self):
         """

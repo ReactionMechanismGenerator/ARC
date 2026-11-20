@@ -646,7 +646,8 @@ class ARC(object):
         record_harmonic_fallback_warnings(self.output, self.scheduler.species_dict)
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.output)
 
-        self.clean_check_files(remote_project_paths=self.scheduler.remote_project_paths)
+        self.clean_check_files(remote_project_paths=self.scheduler.cleanable_remote_project_paths(),
+                               keep_local=self.scheduler.keeps_local_check_files())
         self.delete_leftovers()
 
         self.save_project_info_file()
@@ -816,6 +817,10 @@ class ARC(object):
                 if 'errors' in output and output['errors']:
                     logger.info(f'  and errors: {output["errors"]}')
                 logger.info('\n')
+        failure_lines = ts_adapter_failure_lines(self.reactions)
+        if failure_lines:
+            logger.error('TS search adapters raised an exception (tracebacks are logged above):\n  '
+                         + '\n  '.join(failure_lines) + '\n')
         return status_dict
 
     def determine_ess_settings(self, diagnostics=False):
@@ -980,7 +985,7 @@ class ARC(object):
         logger.info(f'Using harmonic frequencies scaling factor: {self.freq_scale_factor} '
                     f'(source: {factor_source}).')
 
-    def clean_check_files(self, remote_project_paths: dict | None = None) -> None:
+    def clean_check_files(self, remote_project_paths: dict | None = None, keep_local: bool = False) -> None:
         """
         Delete ESS checkfiles, both locally and on the servers this project ran jobs on.
         Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
@@ -988,10 +993,13 @@ class ARC(object):
         Args:
             remote_project_paths (dict, optional): Keys are server names, values are the respective remote
                                                    paths of the project's directory on that server.
+            keep_local (bool, optional): Whether to keep the local check files, e.g., while jobs are left on an
+                                         unreadable queue or held back from one for a restart.
         """
         if self.keep_checks:
             return
-        delete_check_files(self.project_directory)
+        if not keep_local:
+            delete_check_files(self.project_directory)
         delete_check_files_on_servers(remote_project_paths or dict())
 
     def delete_leftovers(self):
@@ -1358,6 +1366,24 @@ def check_rotor_scan_resolution(rotor_scan_resolution: float | None) -> float | 
                          f'number of steps. Got: {rotor_scan_resolution}, which leaves a remainder of '
                          f'{divmod(360, rotor_scan_resolution)[1]}.')
     return rotor_scan_resolution
+
+
+def ts_adapter_failure_lines(reactions: list) -> list[str]:
+    """
+    List every TS search adapter exception the Scheduler caught, one line per failure, for the run summary.
+
+    Args:
+        reactions (list): The ARCReaction objects of the run.
+
+    Returns:
+        list[str]: Lines naming the reaction, the adapter, the exception type and its message.
+    """
+    lines = list()
+    for rxn in reactions:
+        for failure in getattr(getattr(rxn, 'ts_species', None), 'ts_adapter_failures', None) or []:
+            lines.append(f"{rxn.label}: TS adapter {failure['adapter']!r} raised "
+                         f"{failure['exception_type']}: {failure['message']}")
+    return lines
 
 
 def process_adaptive_levels(adaptive_levels: list | None) -> dict | None:
