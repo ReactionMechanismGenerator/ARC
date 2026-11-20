@@ -226,6 +226,34 @@ class TestGCNAdapter(unittest.TestCase):
         self.assertEqual(len(ts_species.ts_guesses), 1)
 
 
+    def test_process_tsg_duplicate_credits_gcn_in_method_sources(self):
+        """A GCN guess that matches an existing guess adds 'gcn' to that guess's method_sources."""
+        ts_xyz = str_to_xyz(os.path.join(ARC_TESTING_PATH, 'opt', 'TS_nC3H7-iC3H7.out'))
+        ts_species = ARCSpecies(label='TS', is_ts=True)
+        existing = TSGuess(method='KinBot', method_direction='F', index=0, success=True, xyz=ts_xyz)
+        ts_species.ts_guesses.append(existing)
+        ts_gcn.process_tsg(direction='R',
+                           ts_xyz=ts_xyz,
+                           local_path=self.output_dir,
+                           ts_species=ts_species,
+                           tsg=TSGuess(method='GCN', method_direction='R', index=1),
+                           )
+        self.assertEqual(len(ts_species.ts_guesses), 1)
+        self.assertEqual(ts_species.ts_guesses[0].method_sources, ['kinbot', 'gcn'])
+
+    def test_process_tsg_skips_earlier_guess_without_coordinates(self):
+        """An earlier successful guess with no coordinates does not stop GCN from adding its guess."""
+        ts_species = ARCSpecies(label='TS', is_ts=True)
+        ts_species.ts_guesses.append(TSGuess(method='GoFlow', index=0, success=True))
+        ts_gcn.process_tsg(direction='R',
+                           ts_xyz=str_to_xyz(os.path.join(ARC_TESTING_PATH, 'opt', 'TS_nC3H7-iC3H7.out')),
+                           local_path=self.output_dir,
+                           ts_species=ts_species,
+                           tsg=TSGuess(method='GCN', method_direction='R', index=1),
+                           )
+        self.assertTrue(ts_species.ts_guesses[-1].success)
+        self.assertEqual(len(ts_species.ts_guesses), 2)
+
 class TestGCNScript(unittest.TestCase):
     """
     Contains unit tests for the standalone gcn_script.py

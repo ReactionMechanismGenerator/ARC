@@ -11,6 +11,7 @@ import os
 import numpy as np
 from scipy.spatial.transform import Rotation
 import unittest
+from unittest.mock import patch
 
 from ase import Atoms
 from rdkit import Chem
@@ -4629,6 +4630,75 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertTrue(converter.compare_confs(occco_1, occco_5))
         self.assertAlmostEqual(converter.compare_confs(occco_1, occco_5, rmsd_score=True), 0.0, places=4)
 
+    def test_compare_confs_by_graph_maps(self):
+        """Test comparing conformers under bond-preserving atom maps"""
+        xyz = converter.str_to_xyz("""O       1.29503100   -0.10783400    0.00000100
+H       1.38087500    0.85868300   -0.00000100
+C      -1.20395400    0.00755100    0.00000100
+H       0.00766600   -0.17858500   -0.00002000
+H      -1.38410100    1.08884500    0.00008300
+H      -1.57048400   -0.47571900   -0.91306300
+H      -1.57047900   -0.47585800    0.91299300""")
+        swapped = converter.sort_xyz_using_indices(xyz, [0, 1, 2, 3, 5, 4, 6])
+        heavy_first = converter.sort_xyz_using_indices(xyz, [2, 0, 6, 3, 1, 4, 5])
+        self.assertFalse(converter.compare_confs(xyz, swapped))
+        self.assertTrue(converter.compare_confs_by_graph_maps(xyz, swapped))
+        self.assertTrue(converter.compare_confs_by_graph_maps(xyz, heavy_first))
+        stretched = converter.xyz_from_data(coords=[(x * 1.2, y * 1.2, z * 1.2) for x, y, z in swapped['coords']],
+                                            symbols=swapped['symbols'])
+        self.assertFalse(converter.compare_confs_by_graph_maps(xyz, stretched))
+        other_elements = converter.xyz_from_data(coords=xyz['coords'], symbols=('N',) + xyz['symbols'][1:])
+        self.assertFalse(converter.compare_confs_by_graph_maps(xyz, other_elements))
+
+    def test_compare_confs_by_graph_maps_many_equivalent_groups(self):
+        """Test that six equivalent methyl groups are matched without enumerating every isomorphism"""
+        xyz = converter.str_to_xyz("""C      -1.18680947    0.50062837    1.51686554
+C      -0.76519774   -0.14630912    0.17522090
+C      -1.05208525   -1.66244114    0.29904922
+C      -1.72374373    0.40413885   -0.90851857
+C       0.76519721    0.14630937   -0.17522082
+C       1.06604936    1.66352591   -0.23716176
+C       1.72678780   -0.45869407    0.87625884
+C       1.16980031   -0.44715737   -1.54649320
+H      -2.23434281    0.27195703    1.74891380
+H      -0.59073468    0.13075557    2.35617602
+H      -1.10319179    1.59126597    1.48947110
+H      -2.11125895   -1.84300929    0.52042947
+H      -0.47992791   -2.12231875    1.11045657
+H      -0.82832668   -2.19956663   -0.62722382
+H      -1.55741003   -0.06943291   -1.88078178
+H      -2.76964880    0.21058762   -0.64003534
+H      -1.62576659    1.48662407   -1.03172542
+H       0.46229091    2.17113949   -0.99502541
+H       0.89417737    2.15449089    0.72546262
+H       2.11630635    1.84340140   -0.49806014
+H       1.54597192   -0.05657682    1.87733857
+H       1.64771757   -1.54897947    0.92378447
+H       2.77074780   -0.23029722    0.62837954
+H       2.22819339   -0.25262871   -1.75962316
+H       1.03657423   -1.53238151   -1.57954251
+H       0.59863020   -0.00503151   -2.36839471""")
+        order = list(range(7, -1, -1)) + list(range(25, 7, -1))
+        renumbered = converter.sort_xyz_using_indices(xyz, order)
+        self.assertFalse(converter.compare_confs(xyz, renumbered))
+        self.assertTrue(converter.compare_confs_by_graph_maps(xyz, renumbered))
+        self.assertIsNotNone(converter.map_atoms_by_bonds_and_distances(xyz, renumbered))
+        self.assertIsNone(converter.map_atoms_by_bonds_and_distances(
+            xyz, converter.xyz_from_data(coords=[(x * 1.1, y, z) for x, y, z in renumbered['coords']],
+                                         symbols=renumbered['symbols'])))
+
+    def test_sorted_distances_by_element_pair(self):
+        """Test grouping and sorting interatomic distances by element pair"""
+        xyz = converter.str_to_xyz("""O 0.0 0.0 0.0
+H 0.0 0.0 1.0
+H 0.0 2.0 0.0""")
+        distances = converter.sorted_distances_by_element_pair(xyz)
+        self.assertEqual(len(distances), 2)
+        self.assertTrue(np.allclose(distances[0], [5 ** 0.5]))
+        self.assertTrue(np.allclose(distances[1], [1.0, 2.0]))
+        reordered = converter.sort_xyz_using_indices(xyz, [2, 0, 1])
+        self.assertEqual(converter.sorted_distances_by_element_pair(reordered), distances)
+
     def test_compare_confs_fl(self):
         """Test that compare_confs_fl gives identical results with and without precomputed fl_distance1/dmat1"""
         xyz1 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
@@ -5389,6 +5459,78 @@ H      -1.88123946   -2.00923795    0.23313156"""
         for file_path in file_paths:
             if os.path.isfile(file_path):
                 os.remove(file_path)
+
+
+class TestCollinearDihedralReference(unittest.TestCase):
+    """
+    Contains unit tests for placing an atom whose dihedral reference atoms are collinear,
+    as in the nitrile hydrolysis TS guesses, where substituent-C#N is linear.
+    """
+
+    hcn = {'symbols': ('C', 'N', 'H'), 'isotopes': (12, 14, 1),
+           'coords': ((0.0, 0.0, -0.58105841), (0.0, 0.0, 0.61738665), (0.0, 0.0, -1.65962341))}
+    ch3cn = {'symbols': ('C', 'C', 'N', 'H', 'H', 'H'), 'isotopes': (12, 12, 14, 1, 1, 1),
+             'coords': ((0.0, 0.0, -1.3102), (0.0, 0.0, 0.1498), (0.0, 0.0, 1.3562),
+                        (1.028, 0.0, -1.6752), (-0.514, 0.89027, -1.6752), (-0.514, -0.89027, -1.6752))}
+
+    def test_a_non_collinear_reference_is_kept(self):
+        """A reference that defines a plane is returned unchanged, with no substitute point."""
+        indices, substitute = converter.resolve_dihedral_reference(coords=self.ch3cn['coords'], d_indices=[3, 0, 1])
+        self.assertEqual(indices, [3, 0, 1])
+        self.assertIsNone(substitute)
+
+    def test_a_collinear_reference_takes_the_nearest_off_axis_atom(self):
+        """The first reference atom is replaced by the off-axis atom nearest to it, the lowest index on a tie."""
+        indices, substitute = converter.resolve_dihedral_reference(coords=self.ch3cn['coords'], d_indices=[0, 2, 1])
+        self.assertEqual(indices, [3, 2, 1])  # H3, H4 and H5 are equally near C0.
+        self.assertIsNone(substitute)
+        coords = [list(c) for c in self.ch3cn['coords']]
+        coords[5][2] += 0.05  # H5 is now the nearest off-axis atom to C0.
+        indices, _ = converter.resolve_dihedral_reference(coords=coords, d_indices=[0, 2, 1])
+        self.assertEqual(indices, [5, 2, 1])
+
+    def test_a_linear_molecule_takes_a_fixed_perpendicular(self):
+        """With no off-axis atom, the substitute is a fixed point perpendicular to the axis at M."""
+        indices, substitute = converter.resolve_dihedral_reference(coords=self.hcn['coords'], d_indices=[2, 1, 0])
+        self.assertEqual(indices, [2, 1, 0])
+        self.assertIsNotNone(substitute)
+        m, n = np.array(self.hcn['coords'][1]), np.array(self.hcn['coords'][0])
+        offset = np.array(substitute) - m
+        self.assertAlmostEqual(float(np.linalg.norm(offset)), 1.0, places=8)
+        self.assertAlmostEqual(float(np.dot(offset, n - m)), 0.0, places=8)
+        self.assertEqual(substitute, converter.resolve_dihedral_reference(self.hcn['coords'], [2, 1, 0])[1])
+
+    def test_an_atom_is_placed_on_a_linear_molecule(self):
+        """HCN: the O of the nitrile hydrolysis TS guess is placed at the requested distance and angle."""
+        xyz = converter.add_atom_to_xyz_using_internal_coords(xyz=self.hcn, element='O', r_index=0, a_indices=[1, 0],
+                                                              d_indices=[2, 1, 0], r_value=1.8, a_value=97,
+                                                              d_value=174)
+        self.assertEqual(xyz['symbols'], ('C', 'N', 'H', 'O'))
+        self.assertAlmostEqual(calculate_param(coords=xyz['coords'], atoms=[0, 3]), 1.8, places=4)
+        self.assertAlmostEqual(calculate_param(coords=xyz['coords'], atoms=[1, 0, 3]), 97, places=3)
+
+    def test_an_atom_is_placed_against_the_chosen_off_axis_atom(self):
+        """CH3CN: the dihedral is defined against the chosen H, so it equals the requested value."""
+        for d_value in (174, -174):
+            xyz = converter.add_atom_to_xyz_using_internal_coords(xyz=self.ch3cn, element='O', r_index=1,
+                                                                  a_indices=[2, 1], d_indices=[0, 2, 1], r_value=1.8,
+                                                                  a_value=97, d_value=d_value)
+            self.assertAlmostEqual(calculate_param(coords=xyz['coords'], atoms=[1, 6]), 1.8, places=4)
+            self.assertAlmostEqual(calculate_param(coords=xyz['coords'], atoms=[2, 1, 6]), 97, places=3)
+            self.assertAlmostEqual(calculate_param(coords=xyz['coords'], atoms=[3, 2, 1, 6]), d_value % 360, places=3)
+
+    def test_no_candidate_raises_a_clear_value_error(self):
+        """When no optimizer gives a candidate, the error says so instead of a bare KeyError."""
+        xyz = {'symbols': ('C', 'N', 'H'), 'isotopes': (12, 14, 1),
+               'coords': ((0.0, 0.0, 0.0), (1.2, 0.0, 0.0), (-1.0, 0.3, 0.0))}
+        with patch('arc.species.converter._add_atom_to_xyz_using_internal_coords',
+                   side_effect=ValueError('Failed to find a solution')):
+            with self.assertRaises(ValueError) as cm:
+                converter.add_atom_to_xyz_using_internal_coords(xyz=xyz, element='O', r_index=0, a_indices=[1, 2],
+                                                                d_indices=[2, 1, 0], r_value=1.8, a_value=97,
+                                                                d_value=174)
+        self.assertIn('no optimizer produced a candidate', str(cm.exception))
+        self.assertNotIsInstance(cm.exception, KeyError)
 
 
 if __name__ == '__main__':

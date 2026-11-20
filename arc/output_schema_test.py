@@ -25,6 +25,8 @@ from unittest.mock import patch
 from jsonschema import Draft202012Validator
 from jsonschema.validators import validator_for
 
+from arc.checks.common import (IRC_JOB_FAILED_WARNING, IRC_NOT_CONFIRMED_CAUSES, TS_IRC_NOT_CONFIRMED_MARKER,
+                               get_ts_validation_caution)
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file
 from arc.constants import E_h_kJmol
 from arc.level import Level
@@ -1191,6 +1193,23 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.document['reactions'][0]['brand_new_reaction_field'] = 'x'
         self.assert_invalid(self.document, 'brand_new_reaction_field')
 
+    def test_a_reaction_ts_validation_caution_must_start_with_its_marker(self):
+        """The caution of a rate whose TS lost its IRC is found by its marker, so the schema pins it."""
+        self.assertNotIn('ts_validation_caution', self.document['reactions'][0])
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.ts_checks['warnings'] = f'{IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
+        self.document['reactions'][0]['ts_validation_caution'] = get_ts_validation_caution(ts)
+        self.assert_valid(self.document)
+        for cause in IRC_NOT_CONFIRMED_CAUSES:
+            with self.subTest(cause=cause):
+                self.document['reactions'][0]['ts_validation_caution'] = f'{TS_IRC_NOT_CONFIRMED_MARKER} ({cause}): x'
+                self.assert_valid(self.document)
+        for caution in ['IRC not confirmed', TS_IRC_NOT_CONFIRMED_MARKER, f'{TS_IRC_NOT_CONFIRMED_MARKER} (other): x',
+                        'IRC NOT CONFIRMED (a requested IRC job failed): x']:
+            with self.subTest(caution=caution):
+                self.document['reactions'][0]['ts_validation_caution'] = caution
+                self.assert_invalid(self.document, 'ts_validation_caution')
+
     def test_unknown_correction_total_unit_is_rejected(self):
         """The unit vocabulary is pinned: an unlisted unit is a silent rescale."""
         aec = next(correction for correction in self.species['energy_corrections']
@@ -1237,6 +1256,47 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         """The alignment the schema cannot express, asserted against the producer."""
         self.assertEqual(len(self.species['conformers']),
                          len(self.species['conformer_energies']))
+
+
+class TestTsAdapterFailuresValidate(SchemaAssertionMixin, unittest.TestCase):
+    """A TS adapter that raised is recorded on its reaction, and a reaction without a TS species carries none."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.schema = load_output_schema()
+        cls.validator = Draft202012Validator(cls.schema)
+        cls.tmp_dir = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.tmp_dir, ignore_errors=True)
+        cls.failure = {'adapter': 'heuristics', 'exception_type': 'KeyError', 'message': 'None'}
+        failed = ARCReaction(r_species=[ARCSpecies(label='HOCHO', smiles='OC=O')],
+                             p_species=[ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')])
+        failed.ts_species = ARCSpecies(label='TS1', is_ts=True)
+        failed.ts_species.ts_adapter_failures = [dict(cls.failure)]
+        cls.document = build_output_document(project_directory=cls.tmp_dir,
+                                             species_dict={},
+                                             output_dict={},
+                                             reactions=[failed, make_reaction()])
+
+    def test_document_validates(self):
+        """The record passes the schema."""
+        self.assert_valid(self.document)
+
+    def test_the_failure_is_recorded_on_its_reaction_only(self):
+        """The failing reaction lists its record, the other an empty list."""
+        self.assertEqual(self.document['reactions'][0]['ts_adapter_failures'], [self.failure])
+        self.assertEqual(self.document['reactions'][1]['ts_adapter_failures'], [])
+
+    def test_a_failure_with_an_unknown_key_is_rejected(self):
+        """A record is closed: a stray key fails the schema."""
+        document = copy.deepcopy(self.document)
+        document['reactions'][0]['ts_adapter_failures'][0]['traceback'] = 'Traceback ...'
+        self.assert_invalid(document, 'traceback')
+
+    def test_a_failure_missing_its_exception_type_is_rejected(self):
+        """Every record names the exception type."""
+        document = copy.deepcopy(self.document)
+        del document['reactions'][0]['ts_adapter_failures'][0]['exception_type']
+        self.assert_invalid(document, 'exception_type')
 
 
 if __name__ == '__main__':

@@ -143,7 +143,7 @@ import numpy as np
 
 from arc.common import almost_equal_coords, get_logger, get_single_bond_length
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
+from arc.job.adapters.common import _initialize_adapter, order_product_guess_by_atom_map, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
 from arc.mapping.driver import map_rxn
 from arc.plotter import save_geo
@@ -883,6 +883,17 @@ class LinearAdapter(JobAdapter):
             if any(spc.get_xyz() is None for spc in rxn.r_species + rxn.p_species):
                 logger.warning(f'The linear TS search adapter requires coordinates for all species; skipping {rxn}.')
                 continue
+            sides = None if rxn.is_isomerization() else get_addition_sides(rxn)
+            try:
+                product_order_map = rxn.atom_map if sides is not None and sides[2] else None
+            except Exception as e:
+                logger.error(f'Linear TS adapter could not atom map {rxn.label}: {e}', exc_info=True)
+                product_order_map = None
+            if sides is not None and sides[2] and product_order_map is None:
+                logger.warning(f'The linear TS search adapter builds the TS guesses of {rxn} from its product, '
+                               f'and needs the reaction atom map to reorder them to the reactant atom order; '
+                               f'skipping {rxn}.')
+                continue
             # Snapshot shared reaction state via the private attributes (the property
             # getters compute on access). interpolate() may set approximate values
             # (e.g., a heavy-backbone atom map or a wider-family-set product_dicts)
@@ -913,13 +924,20 @@ class LinearAdapter(JobAdapter):
                     all_xyzs_so_far.extend(xyzs)
 
                     for xyz_i, xyz in enumerate(xyzs):
+                        if product_order_map is not None:
+                            xyz = order_product_guess_by_atom_map(xyz=xyz, atom_map=product_order_map,
+                                                                  label=rxn.label)
+                            if xyz is None:
+                                continue
                         if colliding_atoms(xyz):
                             continue
                         unique = True
                         for other_tsg in rxn.ts_species.ts_guesses:
-                            if almost_equal_coords(xyz, other_tsg.initial_xyz):
+                            if other_tsg.success and other_tsg.initial_xyz is not None \
+                                    and almost_equal_coords(xyz, other_tsg.initial_xyz):
                                 if 'linear' not in other_tsg.method.lower():
                                     other_tsg.method += f' and Linear (w={w:.2f}, {xyz_i})'
+                                other_tsg.add_method_source(f'Linear (w={w:.2f}, {xyz_i})')
                                 unique = False
                                 break
 
@@ -1645,12 +1663,35 @@ def interpolate(rxn: ARCReaction,
             caching atom maps and the wider-family-set scan outcome; ``None`` disables caching.
 
     Returns:
-        list[dict] | None: XYZ coordinate guesses in reactant atom ordering.
+        list[dict] | None: XYZ coordinate guesses, in reactant atom ordering for an isomerization,
+            and in the atom ordering of the single species for an addition or a dissociation.
     """
     if rxn.is_isomerization():
         return interpolate_isomerization(rxn=rxn, weight=weight, existing_xyzs=existing_xyzs, map_cache=map_cache)
     elif rxn.is_unimolecular():
         return interpolate_addition(rxn=rxn, weight=weight, existing_xyzs=existing_xyzs, map_cache=map_cache)
+    return None
+
+
+def get_addition_sides(rxn: ARCReaction) -> tuple[ARCSpecies, list[ARCSpecies], bool] | None:
+    """
+    Get the single species and the multiple species of an addition or a dissociation reaction.
+
+    Species are counted stoichiometrically, so that symmetric dissociations like C2H6 <=> CH3 + CH3
+    are classified correctly.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+
+    Returns:
+        tuple[ARCSpecies, list[ARCSpecies], bool] | None: The single species, the multiple species, and whether
+            the single species is the product. ``None`` if the reaction is not A <=> B + C or B + C <=> A.
+    """
+    reactants, products = rxn.get_reactants_and_products(return_copies=False)
+    if len(reactants) == 1 and len(products) > 1:
+        return reactants[0], products, False
+    if len(products) == 1 and len(reactants) > 1:
+        return products[0], reactants, True
     return None
 
 
@@ -1706,22 +1747,11 @@ def interpolate_addition(rxn: ARCReaction,
     if not (0.0 <= weight <= 1.0):
         return None
 
-    # Stoichiometric (not unique-species) counts, so that symmetric
-    # dissociations like C2H6 <=> CH3 + CH3 are classified correctly.
-    reactants, products = rxn.get_reactants_and_products(return_copies=False)
-    n_r = len(reactants)
-    n_p = len(products)
-    if n_r == 1 and n_p > 1:
-        uni_species = reactants[0]
-        multi_species = products
-        uni_is_product = False
-    elif n_p == 1 and n_r > 1:
-        uni_species = products[0]
-        multi_species = reactants
-        uni_is_product = True
-    else:
+    sides = get_addition_sides(rxn)
+    if sides is None:
         logger.debug(f'Linear addition (rxn={rxn.label}): not an addition/dissociation reaction.')
         return []
+    uni_species, multi_species, uni_is_product = sides
 
     uni_xyz = uni_species.get_xyz()
     uni_mol = uni_species.mol
