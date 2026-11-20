@@ -26,6 +26,8 @@ from unittest.mock import patch
 from jsonschema import Draft202012Validator
 from jsonschema.validators import validator_for
 
+from arc.checks.common import (IRC_JOB_FAILED_WARNING, IRC_NOT_CONFIRMED_CAUSES, TS_IRC_NOT_CONFIRMED_MARKER,
+                               get_ts_validation_caution)
 from arc.common import ARC_PATH, ARC_TESTING_PATH, get_logger, read_yaml_file
 from arc.constants import E_h_kJmol
 from arc.level import Level
@@ -139,6 +141,7 @@ def make_rich_species() -> ARCSpecies:
     spc.e0 = -105136.6
     spc.freqs = [1300.0, 1500.0, 3000.0]
     spc.optical_isomers = 1
+    spc.optical_isomers_cause = None
     spc.external_symmetry = 1
     spc._is_linear = False
     spc.conformers = [spc.get_xyz(), spc.get_xyz()]
@@ -179,6 +182,7 @@ def make_directed_rotor_species() -> ARCSpecies:
     spc.e0 = -105136.6
     spc.freqs = [1300.0, 1500.0, 3000.0]
     spc.optical_isomers = 1
+    spc.optical_isomers_cause = None
     spc.external_symmetry = 1
     spc._is_linear = False
     spc.rotors_dict = {
@@ -201,6 +205,7 @@ def make_transition_state() -> ARCSpecies:
     ts.e0 = -104900.0
     ts.freqs = [-1235.4, -18.2, 1300.0, 1500.0]
     ts.optical_isomers = 1
+    ts.optical_isomers_cause = None
     ts.external_symmetry = 1
     ts._is_linear = False
     ts.chosen_ts = 0
@@ -600,6 +605,7 @@ class TestOrcaRotorScanValidates(SchemaAssertionMixin, unittest.TestCase):
         spc.e0 = -539300.0
         spc.freqs = [640.0, 1265.0, 3590.0]
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc._is_linear = False
         spc.rotors_dict = {
@@ -621,6 +627,13 @@ class TestOrcaRotorScanValidates(SchemaAssertionMixin, unittest.TestCase):
     def test_document_validates(self):
         """The whole document satisfies the schema."""
         self.assert_valid(self.document)
+
+    def test_all_rotors_treated_has_no_harmonic_fallback(self):
+        """A species whose every rotor was treated reports a zero harmonic-fallback count."""
+        statmech = self.document['species'][0]['statmech']
+        self.assertEqual(statmech['harmonic_fallback_torsions'], [])
+        self.assertEqual(statmech['n_harmonic_fallback_torsions'], 0)
+        self.assertEqual(statmech['n_ring_torsions'], 0)
 
     def test_relative_energies_are_relative_and_in_kj_mol(self):
         """The published curve is zeroed and in kJ/mol, not raw Hartree.
@@ -886,6 +899,7 @@ class TestOnlyRejectedRotorsValidate(SchemaAssertionMixin, unittest.TestCase):
         spc.e0 = -105136.6
         spc.freqs = [1300.0, 1500.0]
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc._is_linear = False
         spc.rotors_dict = {
@@ -921,10 +935,97 @@ class TestOnlyRejectedRotorsValidate(SchemaAssertionMixin, unittest.TestCase):
         rejected = {entry['rotor_index']: entry for entry in self.species['statmech']['rejected_torsions']}
         self.assertEqual(rejected[1]['invalidation_reason'], '')
 
+    def test_harmonic_fallback_lists_failed_and_pending_rotors(self):
+        """Every rotor left harmonic is listed with its cause, and the count includes the pending one."""
+        statmech = self.species['statmech']
+        self.assertEqual([(e['pivot_atoms'], e['cause'], e['reason']) for e in statmech['harmonic_fallback_torsions']],
+                         [([2, 3], 'scan failed', 'rotor set too many (5) times'),
+                          ([3, 4], 'scan failed', ''),
+                          ([4, 5], 'scan not completed', '')])
+        self.assertEqual(statmech['n_harmonic_fallback_torsions'], 3)
+        self.assertEqual(statmech['n_ring_torsions'], 0)
+
     def test_pending_rotor_is_not_published_as_a_rejection(self):
         """``success is None`` means pending/never-attempted, not rejected -- it must not appear here."""
         rejected_indices = {entry['rotor_index'] for entry in self.species['statmech']['rejected_torsions']}
         self.assertNotIn(2, rejected_indices)
+
+
+class TestTSGraphFallbackValidates(SchemaAssertionMixin, unittest.TestCase):
+    """A TS rotor left harmonic because the TS graph contradicts the TS geometry carries its own cause."""
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        Build the output document of a TS with one such rotor once for the class.
+        """
+        cls.schema = load_output_schema()
+        cls.validator = Draft202012Validator(cls.schema)
+        cls.tmp_dir = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.tmp_dir, ignore_errors=True)
+        spc = ARCSpecies(label='TSgraph', smiles='CCO')
+        spc.initial_xyz = spc.get_xyz()
+        spc.final_xyz = spc.get_xyz()
+        spc.e_elect = -105236.6
+        spc.e0 = -105136.6
+        spc.freqs = [1300.0, 1500.0]
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc._is_linear = False
+        spc.rotors_dict = {0: {'success': False, 'scan': [1, 2, 3, 4], 'pivots': [2, 3], 'dimensions': 1,
+                               'invalidation_reason': 'TS graph contradicts the geometry (code: ts graph). '}}
+        cls.document = build_output_document(
+            project_directory=cls.tmp_dir,
+            species_dict={'TSgraph': spc},
+            output_dict={'TSgraph': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}},
+        )
+        cls.statmech = cls.document['species'][0]['statmech']
+
+    def test_document_validates(self):
+        """The TS graph cause is a valid harmonic-fallback cause."""
+        self.assertIn(([2, 3], 'TS graph contradicts the geometry'),
+                      [(e['pivot_atoms'], e['cause']) for e in self.statmech['harmonic_fallback_torsions']])
+        self.assert_valid(self.document)
+
+
+class TestRingTorsionWithoutDihedralValidates(SchemaAssertionMixin, unittest.TestCase):
+    """Dioxirane: its O-O ring bond has no dihedral with four distinct atoms, so its entry carries a null scan."""
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        Build the output document of a converged dioxirane once for the class.
+        """
+        cls.schema = load_output_schema()
+        cls.validator = Draft202012Validator(cls.schema)
+        cls.tmp_dir = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.tmp_dir, ignore_errors=True)
+        spc = ARCSpecies(label='dioxirane', smiles='C1OO1')
+        spc.initial_xyz = spc.get_xyz()
+        spc.final_xyz = spc.get_xyz()
+        spc.e_elect = -500000.0
+        spc.e0 = -499900.0
+        spc.freqs = [800.0, 1200.0]
+        spc.optical_isomers = 1
+        spc.external_symmetry = 2
+        spc._is_linear = False
+        cls.document = build_output_document(
+            project_directory=cls.tmp_dir,
+            species_dict={'dioxirane': spc},
+            output_dict={'dioxirane': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}},
+        )
+        cls.statmech = cls.document['species'][0]['statmech']
+
+    def test_document_validates(self):
+        """The null atom_indices of the O-O ring torsion is valid."""
+        self.assert_valid(self.document)
+
+    def test_ring_entry_is_kept_with_a_null_scan(self):
+        """The O-O ring torsion is listed, with no dihedral rather than one that repeats an atom."""
+        ring = {tuple(e['pivot_atoms']): e['atom_indices'] for e in self.statmech['harmonic_fallback_torsions']}
+        self.assertEqual(sorted(ring), [(1, 2), (1, 3), (2, 3)])
+        self.assertIsNone(ring[(2, 3)])
+        self.assertEqual(self.statmech['n_ring_torsions'], 3)
 
 
 class TestMeliusRunValidates(SchemaAssertionMixin, unittest.TestCase):
@@ -1225,6 +1326,23 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         """Reaction records are closed too; drift there is a contract break."""
         self.document['reactions'][0]['brand_new_reaction_field'] = 'x'
         self.assert_invalid(self.document, 'brand_new_reaction_field')
+
+    def test_a_reaction_ts_validation_caution_must_start_with_its_marker(self):
+        """The caution of a rate whose TS lost its IRC is found by its marker, so the schema pins it."""
+        self.assertNotIn('ts_validation_caution', self.document['reactions'][0])
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.ts_checks['warnings'] = f'{IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
+        self.document['reactions'][0]['ts_validation_caution'] = get_ts_validation_caution(ts)
+        self.assert_valid(self.document)
+        for cause in IRC_NOT_CONFIRMED_CAUSES:
+            with self.subTest(cause=cause):
+                self.document['reactions'][0]['ts_validation_caution'] = f'{TS_IRC_NOT_CONFIRMED_MARKER} ({cause}): x'
+                self.assert_valid(self.document)
+        for caution in ['IRC not confirmed', TS_IRC_NOT_CONFIRMED_MARKER, f'{TS_IRC_NOT_CONFIRMED_MARKER} (other): x',
+                        'IRC NOT CONFIRMED (a requested IRC job failed): x']:
+            with self.subTest(caution=caution):
+                self.document['reactions'][0]['ts_validation_caution'] = caution
+                self.assert_invalid(self.document, 'ts_validation_caution')
 
     def test_unknown_correction_total_unit_is_rejected(self):
         """The unit vocabulary is pinned: an unlisted unit is a silent rescale."""

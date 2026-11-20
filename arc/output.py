@@ -19,6 +19,7 @@ import uuid
 
 import yaml
 
+from arc.checks.common import get_ts_validation_caution
 from arc.common import (
     ARC_PATH,
     NUMBER_BY_SYMBOL,
@@ -58,7 +59,8 @@ from arc.statmech.arkane import (
     AEC_SECTION_START, AEC_SECTION_END,
     MBAC_SECTION_START, MBAC_SECTION_END,
     PBAC_SECTION_START, PBAC_SECTION_END,
-    find_best_across_files, get_qm_corrections_files,
+    count_harmonic_fallback_torsions, find_best_across_files, get_harmonic_fallback_torsions,
+    get_qm_corrections_files,
 )
 from arc.parser_evidence import (
     EVIDENCE_FILENAME,
@@ -238,7 +240,8 @@ def write_output_yml(
             doc['species'].append(d)
 
     # ---- reactions --------------------------------------------------------------
-    doc['reactions'] = [_rxn_to_dict(rxn) for rxn in reactions]
+    doc['reactions'] = [_rxn_to_dict(rxn, irc_requested=irc_requested, output_dict=output_dict)
+                        for rxn in reactions]
 
     # ---- atomic write -----------------------------------------------------------
     out_dir = os.path.join(project_directory, 'output')
@@ -2104,9 +2107,18 @@ def _statmech_to_dict(spc,
                       point_group: str | None = None,
                       scan_keys: set[str] | None = None,
                       ) -> dict:
-    """Build the statmech sub-section for a non-monoatomic converged species/TS.
+    """
+    Build the statmech sub-section for a non-monoatomic converged species/TS, including its torsions,
+    its rejected torsions, and every torsion left as a harmonic mode.
 
-    ``scan_keys`` is forwarded unchanged to :func:`_get_torsions`.
+    Args:
+        spc (ARCSpecies): The species or TS.
+        project_directory (str): The project directory.
+        point_group (str, optional): The point group of the species.
+        scan_keys (set[str], optional): Forwarded unchanged to :func:`_get_torsions`.
+
+    Returns:
+        dict: The statmech sub-section.
     """
     # Use the cached private attribute to avoid triggering a geometry re-read
     is_linear = spc._is_linear
@@ -2123,10 +2135,13 @@ def _statmech_to_dict(spc,
         # Exclude the imaginary mode (most negative frequency)
         freqs = [f for f in freqs if f >= 0]
 
+    fallback = get_harmonic_fallback_torsions(spc)
+    n_fallback, n_ring = count_harmonic_fallback_torsions(fallback)
     return {
         'e0_kj_mol': spc.e0,
         'spin_multiplicity': spc.multiplicity,
         'optical_isomers': spc.optical_isomers,
+        'optical_isomers_cause': spc.optical_isomers_cause,
         'is_linear': is_linear,
         'external_symmetry': spc.external_symmetry,
         'point_group': point_group,
@@ -2134,7 +2149,30 @@ def _statmech_to_dict(spc,
         'harmonic_frequencies_cm1': [float(f) for f in freqs] if freqs is not None else None,
         'torsions': _get_torsions(spc, project_directory, scan_keys=scan_keys),
         'rejected_torsions': _get_rejected_torsions(spc, project_directory),
+        'ring_check_dropped_bonds': _get_ring_check_dropped_bonds(spc),
+        'harmonic_fallback_torsions': [{'pivot_atoms': entry['pivots'], 'atom_indices': entry['scan'],
+                                        'cause': entry['cause'], 'reason': entry['reason']} for entry in fallback],
+        'n_harmonic_fallback_torsions': n_fallback,
+        'n_ring_torsions': n_ring,
     }
+
+
+def _get_ring_check_dropped_bonds(spc) -> list[dict]:
+    """
+    Get the TS 2D-graph bonds that the reactive ring check of a TS dropped, as recorded on its rotors.
+
+    Args:
+        spc (ARCSpecies): The species or TS.
+
+    Returns:
+        list[dict]: The dropped bonds, each with 1-indexed ``atoms``, ``distance_angstrom`` and ``ratio``,
+            sorted by atoms.
+    """
+    dropped = dict()
+    for rotor in (getattr(spc, 'rotors_dict', None) or dict()).values():
+        for bond in rotor.get('ring_check_dropped_bonds') or list():
+            dropped[tuple(bond['atoms'])] = dict(bond)
+    return [dropped[atoms] for atoms in sorted(dropped)]
 
 
 def _get_torsions(spc, project_directory: str, scan_keys: set[str] | None = None) -> list[dict]:
@@ -2819,8 +2857,21 @@ def _ts_checks_to_dict(spc) -> dict:
     return result
 
 
-def _rxn_to_dict(rxn) -> dict:
-    """Convert an ARCReaction to a plain dict for output.yml."""
+def _rxn_to_dict(rxn,
+                 irc_requested: bool = True,
+                 output_dict: dict | None = None,
+                 ) -> dict:
+    """
+    Convert an ARCReaction to a plain dict for output.yml.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+        irc_requested (bool, optional): Whether IRC jobs were requested for this run.
+        output_dict (dict, optional): The Scheduler output dictionary, keyed by species label.
+
+    Returns:
+        dict: The reaction entry of output.yml.
+    """
     kinetics = rxn.kinetics
     kin_dict: dict | None = None
     if kinetics is not None:
@@ -2867,4 +2918,9 @@ def _rxn_to_dict(rxn) -> dict:
     long_kin_desc = getattr(rxn, 'long_kinetic_description', None)
     if long_kin_desc:
         rxn_dict['long_kinetic_description'] = long_kin_desc
+    ts_validation_caution = get_ts_validation_caution(getattr(rxn, 'ts_species', None),
+                                                      irc_requested=irc_requested, output_dict=output_dict) \
+        if kin_dict is not None else None
+    if ts_validation_caution is not None:
+        rxn_dict['ts_validation_caution'] = ts_validation_caution
     return rxn_dict

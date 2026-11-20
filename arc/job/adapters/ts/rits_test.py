@@ -482,6 +482,26 @@ H    0.0 -1.0  0.0"""
         self.assertIn('rits', merged)
         self.assertIn('gcn', merged)
 
+    def test_process_rits_tsg_dedup_credits_rits_in_method_sources(self):
+        """A RitS guess that matches an existing guess adds 'rits' to that guess's method_sources."""
+        ts_species = ARCSpecies(label='TS', is_ts=True)
+        xyz_str = """C    0.0  0.0  0.0
+H    1.0  0.0  0.0
+H   -1.0  0.0  0.0
+H    0.0  1.0  0.0
+H    0.0 -1.0  0.0"""
+        existing = TSGuess(method='GCN', method_direction='F', method_index=0, index=0, success=True)
+        existing.process_xyz(str_to_xyz(xyz_str))
+        ts_species.ts_guesses.append(existing)
+        added = process_rits_tsg(
+            tsg_dict={'method': 'RitS', 'method_direction': 'F', 'method_index': 0,
+                      'initial_xyz': xyz_str, 'success': True, 'execution_time': '0:00:01.0'},
+            local_path=self.tmp_dir,
+            ts_species=ts_species,
+        )
+        self.assertFalse(added)
+        self.assertEqual(ts_species.ts_guesses[0].method_sources, ['gcn', 'rits'])
+
     def test_process_rits_tsg_unique_guess_appended(self):
         """A unique non-colliding guess should be appended."""
         ts_species = ARCSpecies(label='TS', is_ts=True)

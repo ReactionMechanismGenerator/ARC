@@ -42,7 +42,7 @@ from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
-from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs
+from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs, record_harmonic_fallback_warnings
 from arc.utils.scale import determine_scaling_factors
 
 
@@ -645,9 +645,11 @@ class ARC(object):
                                    )
 
         self.output = self.scheduler.output
+        record_harmonic_fallback_warnings(self.output, self.scheduler.species_dict)
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.output)
 
-        self.clean_check_files(remote_project_paths=self.scheduler.remote_project_paths)
+        self.clean_check_files(remote_project_paths=self.scheduler.cleanable_remote_project_paths(),
+                               keep_local=self.scheduler.keeps_local_check_files())
         self.delete_leftovers()
 
         self.save_project_info_file()
@@ -987,7 +989,7 @@ class ARC(object):
         logger.info(f'Using harmonic frequencies scaling factor: {self.freq_scale_factor} '
                     f'(source: {factor_source}).')
 
-    def clean_check_files(self, remote_project_paths: dict | None = None) -> None:
+    def clean_check_files(self, remote_project_paths: dict | None = None, keep_local: bool = False) -> None:
         """
         Delete ESS checkfiles, both locally and on the servers this project ran jobs on.
         Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
@@ -995,10 +997,13 @@ class ARC(object):
         Args:
             remote_project_paths (dict, optional): Keys are server names, values are the respective remote
                                                    paths of the project's directory on that server.
+            keep_local (bool, optional): Whether to keep the local check files, e.g., while jobs are left on an
+                                         unreadable queue or held back from one for a restart.
         """
         if self.keep_checks:
             return
-        delete_check_files(self.project_directory)
+        if not keep_local:
+            delete_check_files(self.project_directory)
         delete_check_files_on_servers(remote_project_paths or dict())
 
     def delete_leftovers(self):

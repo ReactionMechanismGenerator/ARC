@@ -17,6 +17,7 @@ from arc.common import get_logger
 from arc.exceptions import InputError
 from arc.imports import repo_default_ts_adapters, settings
 from arc.level import Level
+from arc.species.converter import order_xyz_by_atom_map
 
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
@@ -1118,3 +1119,30 @@ def combine_parameters(input_dict: dict, terms: list) -> tuple[dict, list]:
     parameters.sort()
 
     return input_dict_copy, parameters
+
+
+def order_product_guess_by_atom_map(xyz: dict,
+                                    atom_map: list | None,
+                                    label: str,
+                                    ) -> dict | None:
+    """
+    Reorder a TS guess from the atom order of the reaction's single product to the reactant atom order.
+
+    Args:
+        xyz (dict): The TS guess, in the atom order of the reaction's single product.
+        atom_map (list): The reaction's atom map, ``atom_map[reactant_index] = product_index``.
+        label (str): The reaction label, for the warnings.
+
+    Returns:
+        dict | None: The TS guess in reactant atom order, or ``None`` if it cannot be reordered.
+    """
+    if atom_map is None:
+        logger.warning(f'Cannot reorder a TS guess of reaction {label} to the reactant atom order, '
+                       f'since the reaction has no atom map. Discarding this guess.')
+        return None
+    try:
+        return order_xyz_by_atom_map(xyz=xyz, atom_map=atom_map)
+    except ValueError as e:
+        logger.warning(f'Cannot reorder a TS guess of reaction {label} to the reactant atom order: {e} '
+                       f'Discarding this guess.')
+        return None

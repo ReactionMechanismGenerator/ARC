@@ -12,25 +12,38 @@ import tempfile
 import unittest
 from unittest import mock
 
+import numpy as np
+
 from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
+                        almost_equal_coords,
                         almost_equal_coords_lists,
                         check_that_all_entries_are_in_list,
                         save_yaml_file,
                         )
+from arc.species.conformers import find_internal_rotors
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import InputError, SpeciesError
 from arc.level import Level
 from arc.molecule.molecule import Molecule
 from arc.parser.parser import parse_e_elect
 from arc.plotter import save_conformers_file
+from arc.reaction import ARCReaction
+from arc.species.conformers_test import (C2H5_XYZ, C2H6_XYZ, CH3_XYZ, CH4_XYZ, NC3H7OO_XYZ, QOOH_XYZ, TS0_XYZ,
+                                         TS1_XYZ, load_ts_graph_case)
 from arc.species.converter import (check_isomorphism,
+                                   compare_confs,
+                                   s_bonds_mol_from_xyz,
                                    str_to_xyz,
+                                   xyz_from_data,
                                    xyz_to_str,
                                    xyz_to_x_y_z,
                                    )
 from arc.species.perceive_test import perceive_molecule_from_xyz
-from arc.species.species import (ARCSpecies,
+from arc.statmech.arkane import ROTOR_FALLBACK_TS_GRAPH, get_harmonic_fallback_torsions
+from arc.species.species import (REACTIVE_RING_INVALIDATION_REASON,
+                                 TS_GRAPH_INVALIDATION_REASON,
+                                 ARCSpecies,
                                  TSGuess,
                                  are_coords_compliant_with_graph,
                                  check_atom_balance,
@@ -469,6 +482,266 @@ class TestARCSpecies(unittest.TestCase):
         spc12.generate_conformers()
         self.assertEqual(len(spc12.conformers), 2)
         self.assertEqual(len(spc12.conformer_energies), 2)
+
+    def _ts0_rxn(self) -> ARCReaction:
+        """
+        Build the nC3H7OO <=> QOOH (1,5 H-shift) reaction.
+
+        Returns:
+            ARCReaction: The reaction.
+        """
+        return ARCReaction(r_species=[ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)],
+                           p_species=[ARCSpecies(label='QOOH', smiles='[CH2]CCOO', xyz=QOOH_XYZ)])
+
+    def assert_reactive_ring_rotors_not_scanned(self, ts: ARCSpecies):
+        """
+        Assert that each rotor of TS0 lies in its reactive ring and is invalidated with the reactive ring cause.
+
+        Args:
+            ts (ARCSpecies): The TS0 species.
+        """
+        self.assertEqual(sorted(rotor['pivots'] for rotor in ts.rotors_dict.values()), [[1, 2], [2, 3], [3, 4]])
+        for rotor in ts.rotors_dict.values():
+            self.assertIs(rotor['success'], False, rotor['pivots'])
+            self.assertIn('Torsion lies in the TS reactive ring (code: reactive ring). ', rotor['invalidation_reason'])
+
+    def test_reactive_ring_invalidation_reason_code(self):
+        """Test that the reactive ring invalidation reason carries its code and is the only reason the check records"""
+        self.assertIn('(code: reactive ring)', REACTIVE_RING_INVALIDATION_REASON)
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        ts.determine_rotors()
+        self.assertTrue(all(rotor['invalidation_reason'] == REACTIVE_RING_INVALIDATION_REASON
+                            for rotor in ts.rotors_dict.values()))
+
+    def test_determine_rotors_ts_reactive_ring(self):
+        """Test that the torsions of a TS reactive ring are not listed as rotors to scan"""
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        ts.determine_rotors()
+        self.assert_reactive_ring_rotors_not_scanned(ts)
+        self.assertTrue(all(rotor['ring_check'] == 'geometry (no reaction)' for rotor in ts.rotors_dict.values()))
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        ts.determine_rotors(reaction=self._ts0_rxn())
+        self.assert_reactive_ring_rotors_not_scanned(ts)
+        self.assertTrue(all(rotor['ring_check'] == 'reaction, geometry' for rotor in ts.rotors_dict.values()))
+        ts.determine_rotors()
+        self.assertEqual(ts.rotors_dict[0]['invalidation_reason'].count('reactive ring)'), 1)
+
+    def test_determine_rotors_ts_reactive_ring_without_a_reason(self):
+        """Test that restored TS rotors with a missing or null invalidation reason are judged without raising"""
+        for reason in ['missing', None]:
+            ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+            ts.determine_rotors()
+            for rotor in ts.rotors_dict.values():  # As restored from a restart file of another ARC version.
+                rotor['success'] = None
+                if reason == 'missing':
+                    del rotor['invalidation_reason']
+                else:
+                    rotor['invalidation_reason'] = None
+            ts.check_reactive_ring_rotors()
+            for rotor in ts.rotors_dict.values():
+                self.assertIs(rotor['success'], False, msg=reason)
+                self.assertEqual(rotor['invalidation_reason'], REACTIVE_RING_INVALIDATION_REASON, msg=reason)
+
+    def test_check_reactive_ring_rotors_records_dropped_graph_bonds(self):
+        """Test that a TS graph bond the geometry contradicts is logged once, recorded, and does not reject a rotor"""
+        mol, xyz, reaction, _ = load_ts_graph_case('TS5')
+        ts = ARCSpecies(label='TS5', is_ts=True, xyz=xyz)
+        ts.mol = mol
+        ts.rotors_dict = {0: {'pivots': [6, 7], 'success': None, 'invalidation_reason': '', 'scan_path': ''},
+                          1: {'pivots': [3, 4], 'success': None, 'invalidation_reason': '', 'scan_path': ''}}
+        with self.assertLogs('arc', level='WARNING') as logs:
+            ts.check_reactive_ring_rotors(reaction=reaction)
+        self.assertEqual(len([line for line in logs.output if 'C7-H12 (2.925 A, 2.68 times' in line]), 1)
+        self.assertIsNone(ts.rotors_dict[0]['success'])
+        self.assertIs(ts.rotors_dict[1]['success'], False)
+        for rotor in ts.rotors_dict.values():
+            self.assertEqual(rotor['ring_check_dropped_bonds'],
+                             [{'atoms': [7, 12], 'distance_angstrom': 2.925, 'ratio': 2.684}])
+        with self.assertNoLogs('arc', level='WARNING'):
+            ts.check_reactive_ring_rotors(reaction=reaction)
+
+    @staticmethod
+    def _ts_with_graph_rotors(label: str, mol: Molecule, xyz: dict) -> ARCSpecies:
+        """
+        Make a TS with a given 2D graph and the rotors found from that graph, as ARC finds them for a TS.
+
+        Args:
+            label (str): The TS label.
+            mol (Molecule): The TS 2D graph.
+            xyz (dict): The TS geometry.
+
+        Returns:
+            ARCSpecies: The TS.
+        """
+        ts = ARCSpecies(label=label, is_ts=True, xyz=xyz)
+        ts.mol = mol
+        ts.rotors_dict = dict(enumerate(find_internal_rotors(mol.copy(deep=True))))
+        return ts
+
+    def _assert_ts_graph_rejection(self, ts: ARCSpecies, pivots: list[int]) -> None:
+        """
+        Assert that a TS rotor is rejected because the TS graph contradicts the TS geometry, and stays harmonic.
+
+        Args:
+            ts (ARCSpecies): The TS.
+            pivots (list[int]): The 1-indexed rotor pivots.
+        """
+        rotor = [rotor for rotor in ts.rotors_dict.values() if rotor['pivots'] == pivots][0]
+        self.assertIs(rotor['success'], False)
+        self.assertEqual(rotor['invalidation_reason'], TS_GRAPH_INVALIDATION_REASON)
+        self.assertIn((pivots, ROTOR_FALLBACK_TS_GRAPH),
+                      [(entry['pivots'], entry['cause']) for entry in get_harmonic_fallback_torsions(ts)])
+
+    def test_ts_rotor_with_a_contradicted_top_is_not_scanned(self):
+        """Test that TS5 rotor [6, 7], whose graph top holds H12 that the geometry bonds to C3, stays harmonic"""
+        mol, xyz, reaction, _ = load_ts_graph_case('TS5')
+        ts = self._ts_with_graph_rotors('TS5', mol, xyz)
+        self.assertEqual({tuple(rotor['pivots']): rotor['top'] for rotor in ts.rotors_dict.values()}[(6, 7)],
+                         [7, 12, 18, 19])
+        with self.assertLogs('arc', level='INFO') as logs:
+            ts.check_reactive_ring_rotors(reaction=reaction)
+        self.assertTrue(any('[6, 7]' in line and '[7, 12, 18, 19] vs. [7, 18, 19]' in line for line in logs.output))
+        self._assert_ts_graph_rejection(ts, [6, 7])
+        for rotor in ts.rotors_dict.values():
+            if rotor['pivots'] != [6, 7]:
+                self.assertEqual(rotor['invalidation_reason'], REACTIVE_RING_INVALIDATION_REASON, rotor['pivots'])
+        ts.check_reactive_ring_rotors(reaction=reaction)
+        self._assert_ts_graph_rejection(ts, [6, 7])
+
+    def test_ts_rotor_top_is_compared_as_an_atom_set(self):
+        """
+        Test that a TS rotor whose graph top has the right size but the wrong atoms stays harmonic.
+        The TS8 graph here is synthetic: H3 and H5 are swapped between C1 and C2, so the graph top of [1, 2] is
+        [2, 3, 6] and its geometry top is [2, 5, 6].
+        """
+        _, xyz, reaction, _ = load_ts_graph_case('TS8')
+        mol = Molecule().from_adjacency_list("""multiplicity 2
+1 C u0 p0 c0 {2,S} {4,S} {5,S} {7,S}
+2 C u1 p0 c0 {1,S} {3,S} {6,S}
+3 H u0 p0 c0 {2,S}
+4 H u0 p0 c0 {1,S}
+5 H u0 p0 c0 {1,S}
+6 H u0 p0 c0 {2,S}
+7 H u0 p0 c0 {1,S}
+""", raise_atomtype_exception=False)
+        ts = self._ts_with_graph_rotors('TS8', mol, xyz)
+        self.assertEqual([(rotor['pivots'], sorted(rotor['top'])) for rotor in ts.rotors_dict.values()],
+                         [([1, 2], [2, 3, 6])])
+        ts.check_reactive_ring_rotors(reaction=reaction)
+        self.assertEqual([bond['atoms'] for bond in ts.rotors_dict[0]['ring_check_dropped_bonds']], [[1, 5], [2, 3]])
+        self._assert_ts_graph_rejection(ts, [1, 2])
+
+    def test_ts_rotor_without_a_dropped_bond_is_unchanged(self):
+        """Test that a TS with no dropped graph bond (TS8) keeps its rotor [1, 2] to scan"""
+        mol, xyz, reaction, _ = load_ts_graph_case('TS8')
+        ts = self._ts_with_graph_rotors('TS8', mol, xyz)
+        ts.check_reactive_ring_rotors(reaction=reaction)
+        self.assertEqual(ts.rotors_dict[0]['pivots'], [1, 2])
+        self.assertIsNone(ts.rotors_dict[0]['success'])
+        self.assertEqual(ts.rotors_dict[0]['invalidation_reason'], '')
+        self.assertEqual(ts.rotors_dict[0]['ring_check_dropped_bonds'], [])
+
+    def test_ts_graph_in_another_atom_order_scans_no_rotor(self):
+        """Test that a TS whose 2D graph (TS4, C H H H C O) and geometry (C C O H H H) differ in atom order scans no
+        rotor, also one that an earlier check rejected for another reason"""
+        mol, xyz, _, _ = load_ts_graph_case('TS4')
+        ts = self._ts_with_graph_rotors('TS4', mol, xyz)
+        self.assertEqual([(rotor['pivots'], rotor['top']) for rotor in ts.rotors_dict.values()], [([1, 5], [5, 6])])
+        with self.assertLogs('arc', level='WARNING') as logs:
+            ts.check_reactive_ring_rotors()
+        self.assertTrue(any('TS4' in line and 'atom order' in line for line in logs.output))
+        self._assert_ts_graph_rejection(ts, [1, 5])
+        ts.rotors_dict[0]['invalidation_reason'] = REACTIVE_RING_INVALIDATION_REASON
+        ts.check_reactive_ring_rotors()
+        self._assert_ts_graph_rejection(ts, [1, 5])
+
+    def test_determine_rotors_ts_keeps_non_ring_rotor(self):
+        """Test that a TS rotor outside any ring is still listed as a rotor to scan"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=CH3_XYZ),
+                                     ARCSpecies(label='C2H6', smiles='CC', xyz=C2H6_XYZ)],
+                          p_species=[ARCSpecies(label='CH4', smiles='C', xyz=CH4_XYZ),
+                                     ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=C2H5_XYZ)])
+        for reaction in [None, rxn]:
+            ts = ARCSpecies(label='TS1', is_ts=True, xyz=TS1_XYZ)
+            ts.determine_rotors(reaction=reaction)
+            self.assertEqual([rotor['pivots'] for rotor in ts.rotors_dict.values()], [[5, 6]])
+            self.assertIsNone(ts.rotors_dict[0]['success'])
+            self.assertEqual(ts.rotors_dict[0]['invalidation_reason'], '')
+
+    def test_determine_rotors_ts_neither_source(self):
+        """Test that a TS rotor without a reaction or a TS geometry is loudly recorded as unverified, then re-judged"""
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        mol = ts.mol
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.mol = mol
+        with self.assertLogs('arc', level='WARNING') as logs:
+            ts.determine_rotors()
+        self.assertTrue(any('TS0' in line and 'reactive ring' in line for line in logs.output))
+        self.assertEqual(len(ts.rotors_dict), 3)
+        for rotor in ts.rotors_dict.values():
+            self.assertTrue(rotor['ring_check'].startswith('unverified: '))
+            self.assertIsNone(rotor['success'])
+            self.assertEqual(rotor['invalidation_reason'], '')
+        ts.final_xyz = str_to_xyz(TS0_XYZ)
+        ts.determine_rotors()
+        self.assert_reactive_ring_rotors_not_scanned(ts)
+
+    def test_determine_rotors_ts_rejects_a_restored_successful_ring_rotor(self):
+        """
+        Test that a TS rotor restored with a successful scan of a reactive-ring torsion is rejected with one warning
+        naming it, while a rotor whose scan failed is not re-judged.
+        """
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
+        mol = ts.mol
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.mol = mol
+        ts.determine_rotors()
+        ts.rotors_dict[0]['success'] = True
+        del ts.rotors_dict[1]['ring_check']  # A rotor restored from a restart file written before the check existed.
+        ts.rotors_dict[2].update({'success': False, 'invalidation_reason': 'Could not read energies. ',
+                                  'scan_path': 'scan.out'})
+        ts.final_xyz = str_to_xyz(TS0_XYZ)
+        with self.assertLogs('arc', level='WARNING') as logs:
+            ts.determine_rotors()
+        warnings = [line for line in logs.output if 'restored with a successful scan' in line]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('pivots [1, 2]', warnings[0])
+        self.assertIn('(code: reactive ring)', warnings[0])
+        self.assertIs(ts.rotors_dict[0]['success'], False)
+        self.assertEqual(ts.rotors_dict[0]['invalidation_reason'], REACTIVE_RING_INVALIDATION_REASON)
+        self.assertIs(ts.rotors_dict[1]['success'], False)
+        self.assertEqual(ts.rotors_dict[2]['invalidation_reason'], 'Could not read energies. ')
+
+    def test_determine_rotors_ts_restores_stale_ring_rejection(self):
+        """Test that a TS rotor rejected only by the reactive ring check is restored once it is no longer in a ring"""
+        ts = ARCSpecies(label='TS1', is_ts=True, xyz=TS1_XYZ)
+        ts.determine_rotors()
+        rotor = ts.rotors_dict[0]
+        rotor['success'], rotor['invalidation_reason'] = False, REACTIVE_RING_INVALIDATION_REASON
+        ts.determine_rotors()
+        self.assertIsNone(rotor['success'])
+        self.assertEqual(rotor['invalidation_reason'], '')
+        rotor['success'] = False
+        rotor['invalidation_reason'] = REACTIVE_RING_INVALIDATION_REASON + 'Pivots participate in the TS reaction ' \
+                                                                           'zone (code: pivTS). '
+        ts.determine_rotors()
+        self.assertIs(rotor['success'], False)
+
+    def test_determine_rotors_ts_records_unused_reaction(self):
+        """Test that a reaction that cannot be used for the reactive ring check is logged and recorded"""
+        xyz = str_to_xyz(TS0_XYZ)
+        order = [4, 1, 2, 3, 0] + list(range(5, 12))
+        permuted = {'symbols': tuple(xyz['symbols'][i] for i in order),
+                    'isotopes': tuple(xyz['isotopes'][i] for i in order),
+                    'coords': tuple(xyz['coords'][i] for i in order)}
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=permuted)
+        with self.assertLogs('arc', level='WARNING') as logs:
+            ts.determine_rotors(reaction=self._ts0_rxn())
+        self.assertTrue(any('geometry alone' in line and 'atom order' in line for line in logs.output))
+        self.assertEqual(len(ts.rotors_dict), 3)
+        for rotor in ts.rotors_dict.values():
+            self.assertTrue(rotor['ring_check'].startswith('geometry (the TS is not in the atom order'))
+            self.assertIs(rotor['success'], False)
 
     def test_determine_rotors(self):
         """Test determination of rotors in ARCSpecies"""
@@ -976,6 +1249,20 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertTrue(restored.stability_analysis_ran)
         self.assertEqual(restored.stability_pending_opt_job, 'opt_a7')
         self.assertTrue(restored.stability_reoptimized)
+
+    def test_restoring_a_ts_keeps_its_ts_check_warnings(self):
+        """Test that restoring a TS whose verdicts are all None keeps its warnings, while a reset clears them"""
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=self.spc2.get_xyz(), multiplicity=2)
+        warning = 'IRC not verified: IRC job irc_a1 (forward) failed: Log file could not be read; '
+        ts.ts_checks['warnings'] = warning
+        restored = ARCSpecies(species_dict=ts.as_dict())
+        self.assertEqual(restored.ts_checks['warnings'], warning)
+        self.assertTrue(all(value is None for key, value in restored.ts_checks.items() if key != 'warnings'))
+        restored.populate_ts_checks()
+        self.assertEqual(restored.ts_checks['warnings'], '')
+        species_dict = ts.as_dict()
+        species_dict['ts_checks'] = {'IRC': None}
+        self.assertEqual(ARCSpecies(species_dict=species_dict).ts_checks['warnings'], '')
 
     def test_from_dict(self):
         """Test Species.from_dict()"""
@@ -2909,9 +3196,10 @@ H       1.11582953    0.94384729   -0.10134685"""
             spc_3.ts_guesses[-1].execution_time = '00:00:01'
         self.assertEqual(len(spc_3.ts_guesses), 12)
         spc_3.cluster_tsgs()
-        self.assertEqual(len(spc_3.ts_guesses), 6)
+        self.assertEqual(len(spc_3.ts_guesses), 5)
         indices = [cluster.index for cluster in spc_3.ts_guesses]
-        self.assertEqual(indices, [0, 1, 2, 4, 7, 9])
+        self.assertEqual(indices, [0, 1, 2, 4, 7])
+        self.assertIn(9, spc_3.ts_guesses[2].cluster)
 
         spc_3 = ARCSpecies(label='TS_3', is_ts=True)
         for i in range(12):
@@ -2925,7 +3213,7 @@ H       1.11582953    0.94384729   -0.10134685"""
             spc_3.ts_guesses[-1].execution_time = '00:00:01'
         self.assertEqual(len(spc_3.ts_guesses), 12)
         spc_3.cluster_tsgs()
-        self.assertEqual(len(spc_3.ts_guesses), 6)
+        self.assertEqual(len(spc_3.ts_guesses), 5)
 
     def test_cluster_tsgs_with_coordinate_less_guesses(self):
         """Clustering must tolerate coordinate-less TS guesses (e.g. failed kinbot/queue guesses
@@ -2979,6 +3267,57 @@ H       1.11582953    0.94384729   -0.10134685"""
         # No coordinate-less guess was added as a successful clusterable guess.
         self.assertTrue(all(tsg.get_xyz() is not None or not tsg.success for tsg in spc.ts_guesses))
         self.assertFalse(any(tsg.success and tsg.get_xyz() is None for tsg in spc.ts_guesses))
+
+    def test_process_completed_tsg_queue_jobs_killed_orca_neb(self):
+        """An orca_neb log cut in any phase gives one failed, coordinate-less guess with its cause."""
+        cases = {'neb_killed_preopt_reactant.log': 'before the NEB iterations',
+                 'neb_killed_preopt_product.log': 'before the NEB iterations',
+                 'neb_killed_neb_iterations.log': 'during the NEB iterations',
+                 'neb_killed_ts_opt.log': 'during the TS optimization',
+                 'neb_killed_after_ts_opt.log': 'after the TS optimization',
+                 }
+        for file_name, phase in cases.items():
+            with self.subTest(file_name=file_name):
+                spc = ARCSpecies(label='TS_neb_killed', is_ts=True)
+                path = os.path.join(ARC_TESTING_PATH, 'neb', 'killed', file_name)
+                spc.process_completed_tsg_queue_jobs(path=path)
+                self.assertEqual(len(spc.ts_guesses), 1)
+                tsg = spc.ts_guesses[0]
+                self.assertEqual(tsg.method, 'orca_neb')
+                self.assertIs(tsg.success, False)
+                self.assertIsNone(tsg.initial_xyz)
+                self.assertIsNone(tsg.get_xyz())
+                self.assertEqual(tsg.log_path, path)
+                self.assertIn(phase, tsg.errors)
+                self.assertIsNone(spc.get_xyz(generate=False))
+                restored = TSGuess(ts_dict=tsg.as_dict())
+                self.assertIs(restored.success, False)
+                self.assertEqual(restored.errors, tsg.errors)
+
+    def test_process_completed_tsg_queue_jobs_finished_orca_neb(self):
+        """A finished orca_neb log still gives one successful guess at the converged TS geometry."""
+        ts_xyz = str_to_xyz("""C       0.827642    1.091217    0.088192
+                               C       1.170850   -0.369911    0.204307
+                               C      -0.022957   -1.228334   -0.303762
+                               C      -1.220350   -0.516629    0.234891
+                               C      -1.368843    0.773643   -0.184568
+                               H       0.904955    1.717127    0.968478
+                               H       1.063932    1.597148   -0.841716
+                               H       1.360301   -0.622452    1.250089
+                               H       2.080546   -0.612238   -0.352099
+                               H      -0.030875   -1.225858   -1.398254
+                               H       0.060229   -2.264688    0.024987
+                               H      -1.648810   -0.842078    1.177244
+                               H      -2.018418    1.461368    0.345938
+                               H      -1.158201    1.041685   -1.213726""")
+        spc = ARCSpecies(label='TS_neb_finished', is_ts=True)
+        spc.process_completed_tsg_queue_jobs(path=os.path.join(ARC_TESTING_PATH, 'neb', 'killed', 'neb_finished.log'))
+        self.assertEqual(len(spc.ts_guesses), 1)
+        tsg = spc.ts_guesses[0]
+        self.assertEqual(tsg.method, 'orca_neb')
+        self.assertIs(tsg.success, True)
+        self.assertEqual(tsg.errors, '')
+        self.assertTrue(almost_equal_coords(tsg.initial_xyz, ts_xyz))
 
     def test_next_ts_guess_index_survives_clustering(self):
         """A TSGuess identity must never be reused after clustering shrank the ts_guesses list."""
@@ -3935,6 +4274,281 @@ class TestTSGuess(unittest.TestCase):
         self.assertTrue(self.tsg2.almost_equal_tsgs(self.tsg2))
         self.assertFalse(self.tsg3.almost_equal_tsgs(self.tsg2))
         self.assertFalse(self.tsg2.almost_equal_tsgs(self.tsg3))
+
+
+    def test_add_method_source(self):
+        """Test adding a method to a TS guess's method_sources"""
+        tsg = TSGuess(method='KinBot', success=True)
+        self.assertEqual(tsg.method_sources, ['kinbot'])
+        tsg.add_method_source('GoFlow')
+        tsg.add_method_source('goflow')
+        tsg.add_method_source('Linear (w=0.35, 1)')
+        self.assertEqual(tsg.method_sources, ['kinbot', 'goflow', 'linear (w=0.35, 1)'])
+
+TS0_CONF_0 = """O       1.29503100   -0.10783400    0.00000100
+H       1.38087500    0.85868300   -0.00000100
+C      -1.20395400    0.00755100    0.00000100
+H       0.00766600   -0.17858500   -0.00002000
+H      -1.38410100    1.08884500    0.00008300
+H      -1.57048400   -0.47571900   -0.91306300
+H      -1.57047900   -0.47585800    0.91299300"""
+
+TS0_CONF_2 = """O       0.04727500   -1.29949900   -0.00000000
+H      -0.92221100   -1.34391100   -0.00000000
+C       0.04727500    1.20415500    0.00000000
+H       0.17043600   -0.01444300    0.00000000
+H       1.07908100    1.57540000    0.00000000
+H      -0.49458100    1.47700600   -0.91276900
+H      -0.49458100    1.47700600    0.91276900"""
+
+TS3_CONF_1 = """C      -1.55999800   -0.09499500   -0.00000100
+H      -1.54613600   -0.66021400    0.93471600
+H      -2.06781400    0.87031300   -0.00215700
+H      -1.54504700   -0.66384100   -0.93249700
+C       0.61314700    0.56683700   -0.00001100
+O       1.35501300   -0.29716400    0.00000100"""
+
+TS3_CONF_6 = """C      -1.56062600   -0.09547100    0.00022300
+H      -2.03058500    0.77263400    0.46453100
+H      -1.68070900   -0.21615000   -1.07863000
+H      -1.45219600   -1.00137300    0.60075100
+C       0.61294200    0.56570100    0.00255200
+O       1.35619900   -0.29706200   -0.00041300"""
+
+TS3_CONF_12 = """C       1.56086400    0.09607300   -0.00000000
+C      -0.61060500   -0.56221500   -0.00000000
+O      -1.35978300    0.29565600    0.00000000
+H       1.41097300    1.17806700   -0.00019100
+H       1.88292100   -0.37339000   -0.93150200
+H       1.88282100   -0.37307200    0.93169600"""
+
+TS3_CONF_13 = """C       1.55995800    0.09499800    0.00000400
+C      -0.61314600   -0.56685900   -0.00000600
+O      -1.35496200    0.29718600   -0.00000200
+H       1.54581600    0.66160100   -0.93386600
+H       2.06762600   -0.87038800    0.00054900
+H       1.54537900    0.66246700    0.93334000"""
+
+
+def reorder_xyz(xyz: str, order: list[int]) -> dict:
+    """
+    Return an xyz dict whose atom ``i`` is atom ``order[i]`` of ``xyz``.
+
+    Args:
+        xyz (str): The geometry as a string.
+        order (list[int]): The new atom order, as indices into ``xyz``.
+
+    Returns:
+        dict: The re-ordered geometry.
+    """
+    xyz_dict = str_to_xyz(xyz)
+    return xyz_from_data(coords=[xyz_dict['coords'][i] for i in order],
+                         symbols=[xyz_dict['symbols'][i] for i in order])
+
+
+def reflect_xyz(xyz: dict) -> dict:
+    """
+    Return the mirror image of a geometry through the xy plane.
+
+    Args:
+        xyz (dict): The geometry.
+
+    Returns:
+        dict: The reflected geometry, in the same atom order.
+    """
+    return xyz_from_data(coords=[(x, y, -z) for x, y, z in xyz['coords']], symbols=xyz['symbols'])
+
+
+def move_atom_along_bond(xyz: str, anchor: int, atom: int, distance: float) -> dict:
+    """
+    Move ``atom`` along the ``anchor``-``atom`` axis to the given distance from ``anchor``.
+
+    Args:
+        xyz (str): The geometry as a string.
+        anchor (int): The index of the fixed atom.
+        atom (int): The index of the atom to move.
+        distance (float): The new ``anchor``-``atom`` distance in Angstrom.
+
+    Returns:
+        dict: The modified geometry.
+    """
+    xyz_dict = str_to_xyz(xyz)
+    coords = np.array(xyz_dict['coords'])
+    direction = (coords[atom] - coords[anchor]) / np.linalg.norm(coords[atom] - coords[anchor])
+    coords[atom] = coords[anchor] + direction * distance
+    return xyz_from_data(coords=coords, symbols=xyz_dict['symbols'])
+
+
+def make_opt_tsg(index: int, method: str, xyz: str | dict, energy: float | None) -> TSGuess:
+    """
+    Make a successful TS guess that carries an optimized geometry and an energy.
+
+    Args:
+        index (int): The guess index.
+        method (str): The guess method.
+        xyz (str | dict): The optimized geometry.
+        energy (float | None): The energy in kJ/mol.
+
+    Returns:
+        TSGuess: The guess.
+    """
+    tsg = TSGuess(index=index, method=method, success=True, xyz=xyz, energy=energy)
+    tsg.opt_xyz = xyz
+    return tsg
+
+
+class TestTSGuessPermutedFold(unittest.TestCase):
+    """
+    Contains unit tests for folding TS guesses that are the same structure with atoms numbered differently.
+    """
+
+    def cluster(self, tsgs: list[TSGuess]) -> ARCSpecies:
+        """
+        Cluster the given guesses on a fresh TS species.
+
+        Args:
+            tsgs (list[TSGuess]): The guesses.
+
+        Returns:
+            ARCSpecies: The TS species after clustering.
+        """
+        ts = ARCSpecies(label='TS', is_ts=True)
+        ts.ts_guesses = tsgs
+        ts.cluster_tsgs()
+        return ts
+
+    def test_cluster_tsgs_folds_swapped_methyl_h(self):
+        """Two guesses that differ only by swapping two methyl H atoms fold and keep both sources."""
+        swapped = reorder_xyz(TS0_CONF_0, [0, 1, 2, 3, 5, 4, 6])
+        ts = self.cluster([make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0),
+                           make_opt_tsg(1, 'linear', swapped, 0.0)])
+        self.assertEqual(len(ts.ts_guesses), 1)
+        self.assertEqual(ts.ts_guesses[0].method_sources, ['goflow', 'linear'])
+
+    def test_cluster_tsgs_folds_heavy_atoms_first(self):
+        """The same geometry listed with heavy atoms first folds and keeps both sources."""
+        heavy_first = reorder_xyz(TS0_CONF_0, [0, 2, 1, 3, 4, 5, 6])
+        ts = self.cluster([make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0),
+                           make_opt_tsg(1, 'linear', heavy_first, 0.0)])
+        self.assertEqual(len(ts.ts_guesses), 1)
+        self.assertEqual(ts.ts_guesses[0].method_sources, ['goflow', 'linear'])
+
+    def test_almost_equal_tsgs_folds_pilot_heavy_atoms_first_pair(self):
+        """A goflow opt and a linear opt (heavy atoms first) that ended on the same TS conformer fold."""
+        goflow = make_opt_tsg(0, 'goflow', TS3_CONF_1, 0.0)
+        linear = make_opt_tsg(1, 'linear (w=0.50, 0)', TS3_CONF_13, 0.0)
+        self.assertTrue(goflow.almost_equal_tsgs(linear))
+
+    def test_almost_equal_tsgs_keeps_distinct_pilot_conformers(self):
+        """Different TS conformers of one reaction within the energy window stay apart."""
+        ts0_a = make_opt_tsg(0, 'heuristics', TS0_CONF_0, 0.0)
+        ts0_b = make_opt_tsg(1, 'heuristics', TS0_CONF_2, 0.0409)
+        self.assertFalse(ts0_a.almost_equal_tsgs(ts0_b))
+        ts3_a = make_opt_tsg(0, 'goflow', TS3_CONF_1, 0.0)
+        ts3_b = make_opt_tsg(1, 'rits', TS3_CONF_6, 0.0672)
+        self.assertFalse(ts3_a.almost_equal_tsgs(ts3_b))
+        ts3_c = make_opt_tsg(0, 'goflow', TS3_CONF_1, None)
+        ts3_d = make_opt_tsg(1, 'linear (w=0.35, 0)', TS3_CONF_12, None)
+        self.assertFalse(ts3_c.almost_equal_tsgs(ts3_d))
+
+    def test_almost_equal_tsgs_migrating_h_vs_spectator_h(self):
+        """A migrating H put back in a spectator position on its carbon is a different structure."""
+        spectator_like = move_atom_along_bond(TS0_CONF_0, anchor=2, atom=3, distance=1.09)
+        relabeled_spectator_like = xyz_from_data(coords=[spectator_like['coords'][i] for i in [0, 1, 2, 4, 3, 5, 6]],
+                                                 symbols=[spectator_like['symbols'][i] for i in [0, 1, 2, 4, 3, 5, 6]])
+        ts_a = make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0)
+        self.assertFalse(ts_a.almost_equal_tsgs(make_opt_tsg(2, 'linear', spectator_like, 0.0)))
+        self.assertFalse(ts_a.almost_equal_tsgs(make_opt_tsg(3, 'linear', relabeled_spectator_like, 0.0)))
+
+    def test_almost_equal_tsgs_folds_migrating_h_listed_as_spectator(self):
+        """The same geometry listed with the migrating H in a spectator H's slot is the same structure."""
+        relabeled = reorder_xyz(TS0_CONF_0, [0, 1, 2, 4, 3, 5, 6])
+        ts_a = make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0)
+        ts_b = make_opt_tsg(1, 'linear', relabeled, 0.0)
+        self.assertTrue(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_almost_equal_tsgs_connectivity_keeps_apart(self):
+        """An element-preserving map that passes compare_confs but breaks the bond graph does not fold."""
+        bonded = move_atom_along_bond(TS0_CONF_0, anchor=0, atom=3, distance=1.40)
+        unbonded = move_atom_along_bond(TS0_CONF_0, anchor=0, atom=3, distance=1.46)
+        bonded_mol, unbonded_mol = s_bonds_mol_from_xyz(bonded), s_bonds_mol_from_xyz(unbonded)
+        self.assertTrue(bonded_mol.has_bond(bonded_mol.atoms[0], bonded_mol.atoms[3]))
+        self.assertFalse(unbonded_mol.has_bond(unbonded_mol.atoms[0], unbonded_mol.atoms[3]))
+        self.assertTrue(compare_confs(bonded, unbonded))
+        order = [0, 1, 2, 4, 3, 5, 6]
+        permuted = xyz_from_data(coords=[unbonded['coords'][i] for i in order],
+                                 symbols=[unbonded['symbols'][i] for i in order])
+        self.assertFalse(compare_confs(bonded, permuted))
+        ts_a = make_opt_tsg(0, 'goflow', bonded, 0.0)
+        ts_b = make_opt_tsg(1, 'linear', permuted, 0.0)
+        self.assertFalse(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_almost_equal_tsgs_index_ordered_path_ignores_bonds(self):
+        """The index-ordered comparison folds a bonded and an unbonded geometry; the renumbered pair stays apart."""
+        bonded = move_atom_along_bond(TS0_CONF_0, anchor=0, atom=3, distance=1.40)
+        unbonded = move_atom_along_bond(TS0_CONF_0, anchor=0, atom=3, distance=1.46)
+        ts_a = make_opt_tsg(0, 'goflow', bonded, 0.0)
+        self.assertTrue(ts_a.almost_equal_tsgs(make_opt_tsg(1, 'linear', unbonded, 0.0)))
+        renumbered = xyz_from_data(coords=[unbonded['coords'][i] for i in [0, 1, 2, 3, 5, 4, 6]],
+                                   symbols=[unbonded['symbols'][i] for i in [0, 1, 2, 3, 5, 4, 6]])
+        self.assertFalse(ts_a.almost_equal_tsgs(make_opt_tsg(2, 'linear', renumbered, 0.0)))
+
+    def test_almost_equal_tsgs_folds_mirror_image_same_numbering(self):
+        """A TS conformer and its mirror image with the same atom numbering fold."""
+        xyz = str_to_xyz(TS3_CONF_6)
+        ts_a = make_opt_tsg(0, 'goflow', xyz, 0.0)
+        ts_b = make_opt_tsg(1, 'rits', reflect_xyz(xyz), 0.0)
+        self.assertTrue(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_almost_equal_tsgs_folds_mirror_image_renumbered(self):
+        """A TS conformer and its renumbered mirror image fold."""
+        xyz = str_to_xyz(TS3_CONF_6)
+        mirror = reflect_xyz(reorder_xyz(TS3_CONF_6, [0, 4, 5, 2, 1, 3]))
+        ts_a = make_opt_tsg(0, 'goflow', xyz, 0.0)
+        ts_b = make_opt_tsg(1, 'rits', mirror, 0.0)
+        self.assertTrue(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_cluster_tsgs_after_restart_folds_renumbered_guesses(self):
+        """Guesses restored from a restart dictionary that were kept apart before still fold and keep sources."""
+        swapped = reorder_xyz(TS0_CONF_0, [0, 1, 2, 3, 5, 4, 6])
+        ts = ARCSpecies(label='TS', is_ts=True, multiplicity=2,
+                        xyz=TS0_CONF_0)
+        ts.ts_guesses = [make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0),
+                         make_opt_tsg(1, 'linear', swapped, 0.0)]
+        ts.chosen_ts, ts.chosen_ts_list = 1, [1]
+        restored = ARCSpecies(species_dict=ts.as_dict())
+        self.assertEqual(len(restored.ts_guesses), 2)
+        restored.cluster_tsgs()
+        self.assertEqual(len(restored.ts_guesses), 1)
+        self.assertEqual(restored.ts_guesses[0].index, 0)
+        self.assertEqual(restored.ts_guesses[0].cluster, [0, 1])
+        self.assertEqual(restored.ts_guesses[0].method_sources, ['goflow', 'linear'])
+        self.assertEqual(restored.chosen_ts_list, [1])
+
+    def test_almost_equal_tsgs_respects_isotopes(self):
+        """A D atom in the migrating position does not fold with a D atom in a spectator position."""
+        def labeled(deuterium_index, order):
+            xyz = str_to_xyz(TS0_CONF_0)
+            isotopes = [2 if i == deuterium_index else iso for i, iso in enumerate(xyz['isotopes'])]
+            return xyz_from_data(coords=[xyz['coords'][i] for i in order],
+                                 symbols=[xyz['symbols'][i] for i in order],
+                                 isotopes=[isotopes[i] for i in order])
+        migrating_d = labeled(3, [0, 1, 2, 3, 4, 5, 6])
+        spectator_d = labeled(4, [0, 1, 2, 3, 5, 4, 6])
+        spectator_d_renumbered = labeled(4, [0, 1, 2, 3, 4, 6, 5])
+        ts_a = make_opt_tsg(0, 'goflow', migrating_d, None)
+        ts_b = make_opt_tsg(1, 'linear', spectator_d, None)
+        self.assertFalse(ts_a.almost_equal_tsgs(ts_b))
+        ts_c = make_opt_tsg(2, 'rits', labeled(4, [0, 1, 2, 3, 4, 5, 6]), None)
+        self.assertTrue(ts_c.almost_equal_tsgs(make_opt_tsg(3, 'linear', spectator_d, None)))
+        self.assertTrue(ts_c.almost_equal_tsgs(make_opt_tsg(4, 'linear', spectator_d_renumbered, None)))
+
+    def test_almost_equal_tsgs_keeps_energy_gate(self):
+        """A renumbered copy outside the 0.1 kJ/mol energy window stays apart."""
+        swapped = reorder_xyz(TS0_CONF_0, [0, 1, 2, 3, 5, 4, 6])
+        ts_a = make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0)
+        ts_b = make_opt_tsg(1, 'linear', swapped, 0.2)
+        self.assertFalse(ts_a.almost_equal_tsgs(ts_b))
 
 
 class TestSkippedMethods(unittest.TestCase):

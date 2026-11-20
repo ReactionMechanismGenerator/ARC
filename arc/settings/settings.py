@@ -153,6 +153,19 @@ levels_ess = {
     # PySCF is opt-in: request it explicitly (e.g. Level(..., software='pyscf')).
 }
 
+# A status command must exit with status 0 when it answers, also when the queue is empty: ARC reads any other exit
+# status as an unreadable queue. 127, a command that is not installed, stops ARC with a SettingsError if the server's
+# queue has not answered once in this run; on the local machine it reads as no jobs while ARC tracks no job on the
+# local queue and the local server sets no `max_simultaneous_jobs`.
+# A pipeline reports its last command's status: a command piped through `grep` exits with 1 when nothing matches,
+# and one piped through e.g. `cat` hides the queue command's failure, so prefer a bare queue command.
+# While a server's queue is unreadable ARC keeps the jobs it tracks there running, and puts off new submissions there
+# if the server sets `max_simultaneous_jobs` (the count of its jobs is then unknown) while its other work goes on.
+# After `queue_outage_limit_hrs` hours (absent or malformed: arc.job.queue_status.QUEUE_OUTAGE_LIMIT_HRS, i.e. 4),
+# ARC stops polling that server, ends and deletes no job, and leaves the jobs in restart.yml for a restart.
+# To change it, set e.g. `queue_outage_limit_hrs = 12` in ~/.arc/settings.py.
+# Each attempt of a status command that does not answer within `queue_query_timeout` seconds (absent or malformed:
+# arc.job.queue_status.QUEUE_QUERY_TIMEOUT, i.e. 120) is stopped and counts as a failed attempt.
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
                         'Slurm': '/usr/bin/squeue -u $USER',
                         'PBS': '/usr/local/bin/qstat -u $USER',
