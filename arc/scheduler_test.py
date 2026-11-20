@@ -994,6 +994,72 @@ H       4.27889520   -0.81548721   -0.22940984"""
         spc.conformers_before_opt = [str_to_xyz(self._METHYLAMINE_XYZ)] * 3
         self._issue622_assert_top_block_does_not_decide(sched, resubmitted=(0, 1))
 
+    def _held_conformer_scheduler(self, held_in: str):
+        """
+        Build a restarted Scheduler whose conformer 1 job is out of ``running_jobs`` but still unfinished, held in
+        ``stranded_jobs`` or ``deferred_jobs``, with its ``job_dict`` entry kept and conformer 0 finished.
+
+        Args:
+            held_in (str): ``'stranded_jobs'`` or ``'deferred_jobs'``.
+
+        Returns:
+            tuple[Scheduler, MagicMock]: The scheduler and the held conformer 1 job.
+        """
+        job_1 = MagicMock(job_adapter='gaussian', ess_trsh_methods=list())
+        sched = self._issue622_scheduler_with_running_conformers(
+            energies=[0.0, None], running=list(), job_dict={'conf_opt': {1: job_1}})
+        getattr(sched, held_in)['methylamine'] = ['conf_opt_1']
+        return sched, job_1
+
+    def _run_conformer_jobs_with_mocked_submission(self, sched):
+        """
+        Run ``run_conformer_jobs`` with every job submission mocked.
+
+        Args:
+            sched (Scheduler): The scheduler.
+
+        Returns:
+            dict: The mocks, keyed by the mocked method name.
+        """
+        with patch.object(Scheduler, 'run_job') as run_job, \
+                patch.object(Scheduler, 'run_opt_job') as run_opt_job, \
+                patch.object(Scheduler, 'run_composite_job') as run_composite_job, \
+                patch.object(Scheduler, 'process_conformers', wraps=sched.process_conformers) as process_conformers, \
+                patch.object(Scheduler, 'determine_most_stable_conformer') as determine, \
+                patch.object(sched.pipe_planner, 'try_pipe_conformers', return_value=set()):
+            sched.run_conformer_jobs()
+        return {'run_job': run_job, 'run_opt_job': run_opt_job, 'run_composite_job': run_composite_job,
+                'process_conformers': process_conformers, 'determine_most_stable_conformer': determine}
+
+    def test_a_stranded_or_deferred_conformer_job_keeps_the_species_from_advancing(self):
+        """A conformer job left on an unreadable queue, or held back from one, counts as unfinished"""
+        label = 'methylamine'
+        for held_in in ('stranded_jobs', 'deferred_jobs'):
+            with self.subTest(held_in=held_in):
+                sched, job_1 = self._held_conformer_scheduler(held_in)
+                self.assertNotIn('conf_opt_1', sched.running_jobs[label])
+                self.assertTrue(sched.has_running_conformer_jobs(label))
+                mocks = self._run_conformer_jobs_with_mocked_submission(sched)
+                mocks['process_conformers'].assert_not_called()
+                mocks['determine_most_stable_conformer'].assert_not_called()
+                mocks['run_opt_job'].assert_not_called()
+                mocks['run_composite_job'].assert_not_called()
+                self.assertIsNone(sched.species_dict[label].initial_xyz)
+                self.assertIs(sched.job_dict[label]['conf_opt'][1], job_1)
+                self.assertEqual(getattr(sched, held_in)[label], ['conf_opt_1'])
+
+    def test_a_stranded_or_deferred_conf_opt_job_is_not_submitted_again(self):
+        """The restored-conformer block submits no new job for a conformer whose conf_opt job is held"""
+        for held_in in ('stranded_jobs', 'deferred_jobs'):
+            with self.subTest(held_in=held_in):
+                sched, _ = self._held_conformer_scheduler(held_in)
+                run_job = self._run_conformer_jobs_with_mocked_submission(sched)['run_job']
+                submitted = [call.kwargs['conformer'] for call in run_job.call_args_list]
+                self.assertEqual(submitted.count(1), 0)
+                self.assertEqual(submitted.count(0), 1)
+                for call in run_job.call_args_list:
+                    self.assertEqual(call.kwargs['job_type'], 'conf_opt')
+
     def _issue622_fresh_scheduler(self, conformers_before_opt=True):
         """
         Build a Scheduler (no restart) whose species has two optimized, non-isomorphic conformers with energies,
