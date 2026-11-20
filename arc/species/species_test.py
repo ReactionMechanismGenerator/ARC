@@ -16,6 +16,7 @@ import numpy as np
 
 from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
+                        almost_equal_coords,
                         almost_equal_coords_lists,
                         check_that_all_entries_are_in_list,
                         save_yaml_file,
@@ -981,6 +982,20 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertTrue(restored.stability_analysis_ran)
         self.assertEqual(restored.stability_pending_opt_job, 'opt_a7')
         self.assertTrue(restored.stability_reoptimized)
+
+    def test_restoring_a_ts_keeps_its_ts_check_warnings(self):
+        """Test that restoring a TS whose verdicts are all None keeps its warnings, while a reset clears them"""
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=self.spc2.get_xyz(), multiplicity=2)
+        warning = 'IRC not verified: IRC job irc_a1 (forward) failed: Log file could not be read; '
+        ts.ts_checks['warnings'] = warning
+        restored = ARCSpecies(species_dict=ts.as_dict())
+        self.assertEqual(restored.ts_checks['warnings'], warning)
+        self.assertTrue(all(value is None for key, value in restored.ts_checks.items() if key != 'warnings'))
+        restored.populate_ts_checks()
+        self.assertEqual(restored.ts_checks['warnings'], '')
+        species_dict = ts.as_dict()
+        species_dict['ts_checks'] = {'IRC': None}
+        self.assertEqual(ARCSpecies(species_dict=species_dict).ts_checks['warnings'], '')
 
     def test_from_dict(self):
         """Test Species.from_dict()"""
@@ -2986,6 +3001,57 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertTrue(all(tsg.get_xyz() is not None or not tsg.success for tsg in spc.ts_guesses))
         self.assertFalse(any(tsg.success and tsg.get_xyz() is None for tsg in spc.ts_guesses))
 
+    def test_process_completed_tsg_queue_jobs_killed_orca_neb(self):
+        """An orca_neb log cut in any phase gives one failed, coordinate-less guess with its cause."""
+        cases = {'neb_killed_preopt_reactant.log': 'before the NEB iterations',
+                 'neb_killed_preopt_product.log': 'before the NEB iterations',
+                 'neb_killed_neb_iterations.log': 'during the NEB iterations',
+                 'neb_killed_ts_opt.log': 'during the TS optimization',
+                 'neb_killed_after_ts_opt.log': 'after the TS optimization',
+                 }
+        for file_name, phase in cases.items():
+            with self.subTest(file_name=file_name):
+                spc = ARCSpecies(label='TS_neb_killed', is_ts=True)
+                path = os.path.join(ARC_TESTING_PATH, 'neb', 'killed', file_name)
+                spc.process_completed_tsg_queue_jobs(path=path)
+                self.assertEqual(len(spc.ts_guesses), 1)
+                tsg = spc.ts_guesses[0]
+                self.assertEqual(tsg.method, 'orca_neb')
+                self.assertIs(tsg.success, False)
+                self.assertIsNone(tsg.initial_xyz)
+                self.assertIsNone(tsg.get_xyz())
+                self.assertEqual(tsg.log_path, path)
+                self.assertIn(phase, tsg.errors)
+                self.assertIsNone(spc.get_xyz(generate=False))
+                restored = TSGuess(ts_dict=tsg.as_dict())
+                self.assertIs(restored.success, False)
+                self.assertEqual(restored.errors, tsg.errors)
+
+    def test_process_completed_tsg_queue_jobs_finished_orca_neb(self):
+        """A finished orca_neb log still gives one successful guess at the converged TS geometry."""
+        ts_xyz = str_to_xyz("""C       0.827642    1.091217    0.088192
+                               C       1.170850   -0.369911    0.204307
+                               C      -0.022957   -1.228334   -0.303762
+                               C      -1.220350   -0.516629    0.234891
+                               C      -1.368843    0.773643   -0.184568
+                               H       0.904955    1.717127    0.968478
+                               H       1.063932    1.597148   -0.841716
+                               H       1.360301   -0.622452    1.250089
+                               H       2.080546   -0.612238   -0.352099
+                               H      -0.030875   -1.225858   -1.398254
+                               H       0.060229   -2.264688    0.024987
+                               H      -1.648810   -0.842078    1.177244
+                               H      -2.018418    1.461368    0.345938
+                               H      -1.158201    1.041685   -1.213726""")
+        spc = ARCSpecies(label='TS_neb_finished', is_ts=True)
+        spc.process_completed_tsg_queue_jobs(path=os.path.join(ARC_TESTING_PATH, 'neb', 'killed', 'neb_finished.log'))
+        self.assertEqual(len(spc.ts_guesses), 1)
+        tsg = spc.ts_guesses[0]
+        self.assertEqual(tsg.method, 'orca_neb')
+        self.assertIs(tsg.success, True)
+        self.assertEqual(tsg.errors, '')
+        self.assertTrue(almost_equal_coords(tsg.initial_xyz, ts_xyz))
+
     def test_next_ts_guess_index_survives_clustering(self):
         """A TSGuess identity must never be reused after clustering shrank the ts_guesses list."""
         xyz_1 = """N       0.9177905887     0.5194617797     0.0000000000
@@ -4216,6 +4282,26 @@ class TestTSGuessPermutedFold(unittest.TestCase):
         ts_a = make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0)
         ts_b = make_opt_tsg(1, 'linear', swapped, 0.2)
         self.assertFalse(ts_a.almost_equal_tsgs(ts_b))
+
+
+class TestTsAdapterFailuresPersistence(unittest.TestCase):
+    """The TS adapter failures a TS species records survive a restart."""
+
+    def test_ts_adapter_failures_round_trip(self):
+        """as_dict() writes the records only when there are any, and from_dict() restores them."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        self.assertEqual(ts.ts_adapter_failures, list())
+        self.assertNotIn('ts_adapter_failures', ts.as_dict())
+        failure = {'adapter': 'heuristics', 'exception_type': 'KeyError', 'message': 'None'}
+        ts.ts_adapter_failures.append(failure)
+        restored = ARCSpecies(species_dict=ts.as_dict())
+        self.assertEqual(restored.ts_adapter_failures, [failure])
+
+    def test_ts_adapter_failures_default_for_an_old_restart_file(self):
+        """A restart dictionary written before the field existed restores an empty list."""
+        species_dict = ARCSpecies(label='TS0', is_ts=True).as_dict()
+        species_dict.pop('ts_adapter_failures', None)
+        self.assertEqual(ARCSpecies(species_dict=species_dict).ts_adapter_failures, list())
 
 
 if __name__ == '__main__':

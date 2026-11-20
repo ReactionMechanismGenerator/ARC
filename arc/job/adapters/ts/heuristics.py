@@ -275,7 +275,8 @@ class HeuristicsAdapter(JobAdapter):
                     if not xyzs:
                         logger.warning(f'Heuristics TS search failed to generate any valid TS guesses for {rxn.label}.')
                         continue
-                except ValueError:
+                except ValueError as e:
+                    logger.warning(f'Heuristics TS search could not generate a hydrolysis TS guess for {rxn.label}: {e}')
                     continue
 
             for method_index, xyz in enumerate(xyzs):
