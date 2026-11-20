@@ -3089,6 +3089,105 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                 self.assertFalse(any(job in superseded.values()
                                      for job in sched.job_dict[label].get('conf_opt', dict()).values()))
 
+    def _make_ts_scheduler(self, label: str, project: str, folder: str, ts_guesses: list) -> Scheduler:
+        """
+        Create a Scheduler holding a single TS species with the given TS guesses.
+
+        Args:
+            label (str): The TS species label.
+            project (str): The project name.
+            folder (str): The prefix of the unique project folder created under ARC's Projects directory.
+            ts_guesses (list): The TSGuess object instances to assign to the TS species.
+
+        Returns:
+            Scheduler: The scheduler instance.
+        """
+        ts_spc = ARCSpecies(label=label, is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = ts_guesses
+        project_directory = self.make_project_directory(folder)
+        return Scheduler(project=project, ess_settings=self.ess_settings,
+                         species_list=[ts_spc],
+                         opt_level=Level(repr=default_levels_of_theory['opt']),
+                         freq_level=Level(repr=default_levels_of_theory['freq']),
+                         sp_level=Level(repr=default_levels_of_theory['sp']),
+                         ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                         project_directory=project_directory,
+                         testing=True,
+                         job_types=self.job_types1,
+                         )
+
+    def test_determine_most_likely_ts_conformer_credits_all_method_sources(self):
+        """Test that every method source of a successful TS guess is reported as a successful method."""
+        xyz_1 = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        xyz_2 = str_to_xyz("""N       0.92779059    0.52946178    0.00000000
+        H       1.84402049    1.05819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.93779059    1.25790192    0.75426890""")
+        xyz_3 = str_to_xyz("""N       0.95779059    0.55946178    0.00000000
+        H       1.88402049    1.09819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.96779059    1.28790192    0.78426890""")
+        merged = TSGuess(index=0, method='heuristics', success=True, energy=100.0, xyz=xyz_1,
+                         execution_time='0:00:01')
+        merged.method_sources = ['heuristics', 'crest']
+        merged.opt_xyz = xyz_1
+        merged.imaginary_freqs = [-500.0]
+        sourceless = TSGuess(index=1, method='xtb_gsm', success=True, energy=120.0, xyz=xyz_2,
+                             execution_time='0:00:01')
+        sourceless.method_sources = None
+        sourceless.opt_xyz = xyz_2
+        sourceless.imaginary_freqs = [-400.0]
+        failed = TSGuess(index=2, method='AutoTST', success=False, xyz=xyz_3, execution_time='0:00:01')
+
+        label = 'TS_method_sources'
+        sched = self._make_ts_scheduler(label=label, project='test_ts_method_sources',
+                                        folder='arc_project_for_testing_delete_after_usage_method_sources',
+                                        ts_guesses=[merged, sourceless, failed])
+        sched.determine_most_likely_ts_conformer(label=label)
+
+        successful_methods = sched.species_dict[label].successful_methods
+        unsuccessful_methods = sched.species_dict[label].unsuccessful_methods
+        self.assertEqual(successful_methods, ['heuristics', 'crest', 'xtb_gsm'])
+        self.assertEqual(unsuccessful_methods, ['autotst'])
+        self.assertNotIn('crest', unsuccessful_methods)
+        self.assertNotIn('heuristics', unsuccessful_methods)
+        self.assertNotIn('xtb_gsm', unsuccessful_methods)
+
+    def test_determine_most_likely_ts_conformer_dedups_methods_case_insensitively(self):
+        """Test that a method credited under different letter cases is reported once and never as unsuccessful."""
+        xyz_1 = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        xyz_2 = str_to_xyz("""N       0.92779059    0.52946178    0.00000000
+        H       1.84402049    1.05819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.93779059    1.25790192    0.75426890""")
+        upper = TSGuess(index=0, method='crest', success=True, energy=100.0, xyz=xyz_1,
+                        execution_time='0:00:01')
+        upper.method = 'CREST'
+        upper.opt_xyz = xyz_1
+        upper.imaginary_freqs = [-500.0]
+        lower = TSGuess(index=1, method='crest', success=True, energy=120.0, xyz=xyz_2,
+                        execution_time='0:00:01')
+        lower.opt_xyz = xyz_2
+        lower.imaginary_freqs = [-400.0]
+
+        label = 'TS_case_dedup'
+        sched = self._make_ts_scheduler(label=label, project='test_ts_case_dedup',
+                                        folder='arc_project_for_testing_delete_after_usage_case_dedup',
+                                        ts_guesses=[upper, lower])
+        sched.determine_most_likely_ts_conformer(label=label)
+
+        successful_methods = sched.species_dict[label].successful_methods
+        unsuccessful_methods = sched.species_dict[label].unsuccessful_methods
+        self.assertEqual(len(successful_methods), 1)
+        self.assertEqual(successful_methods[0].lower(), 'crest')
+        self.assertEqual(unsuccessful_methods, list())
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
         """Test that switch_ts resets job_types, convergence, cleans up IRC species, and clears pending pipes."""
@@ -4141,6 +4240,33 @@ class StubJob(object):
             raise self.raises
 
 
+class SimulatedKill(BaseException):
+    """Stands for ARC being killed while it waits on a synchronous TS-search adapter."""
+
+
+class RestartableStubJob(StubJob):
+    """
+    A StubJob that saves as a TS-search job, so it can be restored from a restart file, and that
+    simulates ARC being killed while it executes when its adapter is named in ``killed_adapters``.
+    """
+
+    def __init__(self, job_type: str, job_adapter: str | None, tsg: int | None = None,
+                 killed_adapters: tuple = (), **kwargs):
+        super().__init__(job_type=job_type, job_adapter=job_adapter)
+        self.tsg = tsg
+        self.killed = job_adapter in killed_adapters
+
+    def as_dict(self) -> dict:
+        """Return a dictionary representation of the job, used when saving the restart file."""
+        return {'job_type': self.job_type, 'job_adapter': self.job_adapter, 'job_name': f'tsg{self.tsg}',
+                'tsg': self.tsg}
+
+    def execute(self) -> None:
+        """Execute the job, raising SimulatedKill if ARC is to be killed while it runs."""
+        if self.killed:
+            raise SimulatedKill(f'ARC was killed while the {self.job_adapter} adapter ran.')
+
+
 class TestSpawnTsJobsAdmission(unittest.TestCase):
     """
     Contains unit tests for the TS adapter admission logic of Scheduler.spawn_ts_jobs().
@@ -4325,6 +4451,74 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         self.assertEqual(sched.running_jobs[rxn.ts_label], ['tsg0'])
         self.assertEqual(list(sched.job_dict[rxn.ts_label]['tsg'].keys()), [0])
         self.assertEqual(sched.job_dict[rxn.ts_label]['tsg'][0].job_adapter, 'linear')
+
+    def test_a_restart_runs_the_ts_adapters_a_killed_session_never_delivered(self):
+        """Killing ARC while it waits on an incore TS adapter must not cost that adapter or the ones after it.
+
+        The first session launches 'linear', then is killed while 'kinbot' executes. The restart file it
+        left behind is read into a second session, which must launch 'kinbot' and 'rits' but not 'linear',
+        whose job it restored, and must number the new jobs after the restored one.
+        """
+        project_directory = tempfile.mkdtemp(prefix='arc_tsg_restart_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        ts_adapters = ['linear', 'kinbot', 'rits']
+        spawned = list()
+
+        def make_session(restart_dict, ts_species, killed_adapters):
+            """Build a scheduler over HOCHO <=> H2O + CO whose job factory hands back RestartableStubJob."""
+            r_species = [ARCSpecies(label='HOCHO', smiles='OC=O')]
+            p_species = [ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')]
+            for spc in r_species + p_species:
+                spc.final_xyz = spc.get_xyz()
+            rxn = ARCReaction(r_species=r_species, p_species=p_species)
+            rxn.ts_label = 'TS_restart'
+
+            def stub_job_factory(job_type, job_adapter=None, tsg=None, **kwargs):
+                """Record the job being created and hand back a RestartableStubJob."""
+                spawned.append((job_adapter, tsg))
+                return RestartableStubJob(job_type=job_type, job_adapter=job_adapter, tsg=tsg,
+                                          killed_adapters=killed_adapters)
+
+            patcher = patch('arc.scheduler.job_factory', new=stub_job_factory)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+            sched = Scheduler(project='tsg_restart',
+                              ess_settings=self.ess_settings,
+                              species_list=r_species + p_species + ([ts_species] if ts_species else []),
+                              rxn_list=[rxn],
+                              restart_dict=restart_dict,
+                              project_directory=project_directory,
+                              ts_adapters=ts_adapters,
+                              job_types=initialize_job_types(),
+                              conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                              opt_level=Level(repr=default_levels_of_theory['opt']),
+                              testing=True,
+                              )
+            return sched, rxn
+
+        sched_1, rxn_1 = make_session(restart_dict=dict(), ts_species=None, killed_adapters=('kinbot',))
+        with self.assertRaises(SimulatedKill):
+            sched_1.spawn_ts_jobs()
+        self.assertEqual(spawned, [('linear', 0), ('kinbot', 1)])
+
+        restart_dict = read_yaml_file(os.path.join(project_directory, 'restart.yml'))
+        ts_dict = [spc for spc in restart_dict['species'] if spc['label'] == 'TS_restart'][0]
+        self.assertFalse(ts_dict.get('tsg_spawned', False))
+        self.assertEqual([job['job_adapter'] for job in restart_dict['running_jobs']['TS_restart']], ['linear'])
+
+        spawned.clear()
+        sched_2, rxn_2 = make_session(restart_dict=restart_dict, ts_species=ARCSpecies(species_dict=ts_dict),
+                                      killed_adapters=())
+        self.assertEqual(spawned, [('linear', 0)])
+        sched_2.spawn_ts_jobs()
+        self.assertEqual(spawned, [('linear', 0), ('kinbot', 1), ('rits', 2)])
+        self.assertTrue(rxn_2.ts_species.tsg_spawned)
+        self.assertEqual(sorted(sched_2.running_jobs['TS_restart']), ['tsg0', 'tsg1', 'tsg2'])
+        self.assertEqual({index: job.job_adapter for index, job in sched_2.job_dict['TS_restart']['tsg'].items()},
+                         {0: 'linear', 1: 'kinbot', 2: 'rits'})
+        restart_dict = read_yaml_file(os.path.join(project_directory, 'restart.yml'))
+        ts_dict = [spc for spc in restart_dict['species'] if spc['label'] == 'TS_restart'][0]
+        self.assertTrue(ts_dict['tsg_spawned'])
 
     def test_spawn_ts_jobs_warns_when_every_eligible_adapter_is_unavailable(self):
         """Test that a reaction whose every eligible adapter is uninstalled is reported, and leaves no state."""

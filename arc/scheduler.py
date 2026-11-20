@@ -410,6 +410,7 @@ class Scheduler(object):
         self.rxn_list = rxn_list if rxn_list is not None else list()
         self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
         self.job_dict = dict()
+        self.tsg_spawn_in_progress = set()
         self.server_job_ids = list()
         self.completed_incore_jobs = list()
         self.running_jobs = dict()
@@ -2802,6 +2803,12 @@ class Scheduler(object):
         Check if any new reaction has all of its reactants and products optimized,
         and if so spawn the respective TSG jobs.
         Don't spawn TS jobs if the multiplicity of the reaction could not be determined.
+
+        While the TS-search adapters of a TS are being launched, its label is in ``tsg_spawn_in_progress``,
+        so :meth:`save_restart_dict` saves it with ``tsg_spawned`` unset; the restart file is saved once
+        all of them were launched. An adapter whose TS-search job is already in ``job_dict`` (restored
+        from the restart file of an earlier session) is not launched again, and new TS-search jobs are
+        numbered after the restored ones.
         """
         for rxn in self.rxn_list:
             rxn.check_done_opt_r_n_p()
@@ -2810,7 +2817,11 @@ class Scheduler(object):
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
                 else:
                     rxn.ts_species.tsg_spawned = True
-                    tsg_index, eligible_methods = 0, list()
+                    self.tsg_spawn_in_progress.add(rxn.ts_label)
+                    restored_tsg_jobs = self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict())
+                    restored_methods = [str(job.job_adapter).lower() for job in restored_tsg_jobs.values()]
+                    tsg_index = max(restored_tsg_jobs) + 1 if restored_tsg_jobs else 0
+                    eligible_methods = list()
                     family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
                     for method in self.ts_adapters:
                         admit_unknown_family = (not family_known
@@ -2825,6 +2836,10 @@ class Scheduler(object):
                                             f'via ts_adapters_for_unknown_unimolecular '
                                             f'(RMG family is {rxn.family!r}).')
                             eligible_methods.append(method)
+                            if method in restored_methods:
+                                logger.info(f'Not re-running the {method!r} TS search adapter for reaction '
+                                            f'{rxn.label}: its job was restored from a previous session.')
+                                continue
                             try:
                                 self.run_job(job_type='tsg',
                                              job_adapter=method,
@@ -2885,6 +2900,8 @@ class Scheduler(object):
                         # An adapter saved guesses and then raised, so its job was rolled back. No tracked
                         # job is left whose completion would start the TS conformer jobs, so start them here.
                         self.run_conformer_jobs(labels=[rxn.ts_label])
+                    self.tsg_spawn_in_progress.discard(rxn.ts_label)
+                    self.save_restart_dict()
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
@@ -3468,6 +3485,11 @@ class Scheduler(object):
         Determine the most likely TS conformer.
         Save the resulting xyz as the ``.initial_xyz`` attribute of the TS Species.
 
+        A successful guess credits its method and every method listed in its ``method_sources``
+        to the species' ``successful_methods``, deduplicated case-insensitively. A guess's method
+        is appended to ``unsuccessful_methods`` only if it was not credited, compared
+        case-insensitively as well.
+
         Args:
             label (str): The TS species label.
         """
@@ -3478,9 +3500,14 @@ class Scheduler(object):
             # Only run this block once, not every time a TS is selecting a different guess.
             for tsg in self.species_dict[label].ts_guesses:
                 if tsg.success:
-                    self.species_dict[label].successful_methods.append(tsg.method)
+                    recorded = [method.lower() for method in self.species_dict[label].successful_methods]
+                    for method in [tsg.method] + list(tsg.method_sources or []):
+                        if method.lower() not in recorded:
+                            self.species_dict[label].successful_methods.append(method)
+                            recorded.append(method.lower())
+            successful_lower = [method.lower() for method in self.species_dict[label].successful_methods]
             for tsg in self.species_dict[label].ts_guesses:
-                if tsg.method not in self.species_dict[label].successful_methods:
+                if tsg.method.lower() not in successful_lower:
                     self.species_dict[label].unsuccessful_methods.append(tsg.method)
             message = f'\nAll TS guesses for {label} terminated.'
             if self.species_dict[label].successful_methods and not self.species_dict[label].unsuccessful_methods:
@@ -5409,12 +5436,21 @@ class Scheduler(object):
     def save_restart_dict(self):
         """
         Update the restart_dict and save the restart.yml file.
+
+        A TS whose label is in ``tsg_spawn_in_progress`` is saved with ``tsg_spawned`` unset, so a restart
+        launches the TS-search adapters that had not been launched, see :meth:`spawn_ts_jobs`.
         """
         if self.save_restart and self.restart_dict is not None:
             logger.debug('Creating a restart file...')
             self.restart_dict['output'] = self.output
             self.restart_dict['output_multi_spc'] = self.output_multi_spc
-            self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
+            species_dicts = list()
+            for spc in self.species_dict.values():
+                species_dict = spc.as_dict()
+                if spc.label in self.tsg_spawn_in_progress:
+                    species_dict.pop('tsg_spawned', None)
+                species_dicts.append(species_dict)
+            self.restart_dict['species'] = species_dicts
             self.restart_dict['running_jobs'] = dict()
             for spc in self.species_dict.values():
                 if spc.label in self.running_jobs:

@@ -290,6 +290,7 @@ def xyz_to_xyz_file_format(xyz_dict: dict,
 def xyz_to_turbomol_format(xyz_dict: dict,
                            charge: int | None = None,
                            unpaired: int | None = None,
+                           units: str = 'angstrom',
                            ) -> str | None:
     """
     Get the respective Turbomole coordinates format.
@@ -300,16 +301,24 @@ $eht charge=0 unpaired=0
         xyz_dict (dict): The ARC xyz format.
         charge (int, optional): The net charge.
         unpaired (int, optional): The number of unpaired electrons.
+        units (str, optional): The units of the written coordinates, ``'angstrom'`` (under a ``$coord angs``
+                               header) or ``'bohr'`` (under a plain ``$coord`` header).
+
+    Raises:
+        ConverterError: If ``units`` is neither ``'angstrom'`` nor ``'bohr'``.
 
     Returns:
         str: The respective Turbomole coordinates.
     """
     if xyz_dict is None:
         return None
+    if units not in ('angstrom', 'bohr'):
+        raise ConverterError(f"units must be either 'angstrom' or 'bohr', got {units!r}")
     xyz_dict = check_xyz_dict(xyz_dict)
-    coords_list = ['$coord angs']
+    factor = constants.angstrom_to_bohr if units == 'bohr' else 1.0
+    coords_list = ['$coord' if units == 'bohr' else '$coord angs']
     for symbol, coord in zip(xyz_dict['symbols'], xyz_dict['coords']):
-        row = '{0:11.8f}{1:14.8f}{2:14.8f}'.format(*coord)
+        row = '{0:11.8f}{1:14.8f}{2:14.8f}'.format(*(value * factor for value in coord))
         row += f'      {symbol.lower()}'
         coords_list.append(row)
     if charge is not None and unpaired is not None:

@@ -8,7 +8,7 @@ DEVTOOLS_DIR := devtools
 
 .PHONY: all help clean test test-unittests test-functional test-all \
         install-all install-ci install-rmg install-autotst install-gcn \
-        install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-uma install-ob \
+        install-gcn-cpu install-kinbot install-sella install-xtb install-crest install-torchani install-uma install-ob \
         install-goflow install-rits lite check-env compile
 
 
@@ -34,6 +34,7 @@ help:
 	@echo "  install-kinbot   Install KinBot"
 	@echo "  install-sella    Install Sella"
 	@echo "  install-xtb      Install xTB"
+	@echo "  install-crest    Install CREST"
 	@echo "  install-torchani Install TorchANI"
 	@echo "  install-uma      Install UMA (fairchem MLIP, gated model; users only, not CI)"
 	@echo "  install-ob       Install OpenBabel"
@@ -94,6 +95,9 @@ install-sella:
 
 install-xtb:
 	bash $(DEVTOOLS_DIR)/install_xtb.sh
+
+install-crest:
+	bash $(DEVTOOLS_DIR)/install_crest.sh
 
 install-torchani:
 	bash $(DEVTOOLS_DIR)/install_torchani.sh
