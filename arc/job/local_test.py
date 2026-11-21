@@ -8,7 +8,9 @@ This module contains unit tests of the arc.job.local module
 import datetime
 import os
 import shutil
+import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -296,9 +298,21 @@ class TestLocalQueueQueryExitStatus(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        sleep = patch('time.sleep')
-        self.sleep = sleep.start()
-        self.addCleanup(sleep.stop)
+        self.own_sleeps = list()
+        test_thread = threading.get_ident()
+
+        def sleep(*args):
+            caller = sys._getframe(1)
+            while caller.f_globals.get('__name__') == 'unittest.mock':
+                caller = caller.f_back
+            if threading.get_ident() == test_thread and caller.f_globals.get('__name__', '').startswith('arc.'):
+                self.own_sleeps.append(args)
+            else:
+                REAL_SLEEP(*args)
+
+        patcher = patch('time.sleep', side_effect=sleep)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _stub(self, stdout: str = '', stderr: str = '', exit_status: int = 0) -> str:
         """Write a stand-in queue command and return the status command that runs it."""
@@ -321,7 +335,7 @@ class TestLocalQueueQueryExitStatus(unittest.TestCase):
     def test_an_empty_queue_with_a_banner_on_stderr_reads_as_no_jobs(self):
         cmd = self._stub(stderr='lmod: warning: module foo is deprecated\\n', exit_status=0)
         self.assertEqual(self._query(cmd), list())
-        self.sleep.assert_not_called()
+        self.assertEqual(self.own_sleeps, list())
 
     def test_a_listing_with_a_banner_on_stderr_is_parsed(self):
         cmd = self._stub(stdout='JOBID PARTITION NAME USER ST\\n  4242 short a42 user R\\n',
@@ -377,7 +391,7 @@ class TestLocalQueueQueryExitStatus(unittest.TestCase):
         """The shell's 127 decides; the message is not read"""
         self.assertEqual(self._query(os.path.join(self.tmp, 'no_such_squeue') + ' -u $USER'), list())
         self.assertEqual(self._query(self._stub(stderr='squeue: introuvable\\n', exit_status=127)), list())
-        self.sleep.assert_not_called()
+        self.assertEqual(self.own_sleeps, list())
 
 
 if __name__ == '__main__':
