@@ -31,6 +31,7 @@ from arc.common import (ARC_INPUT_SCHEMA_VERSION,
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.level import Level, assign_frequency_scale_factor, get_freq_level_for_composite_method
+from arc.job.adapters.common import ts_adapters_used_by_the_map
 from arc.job.factory import get_registered_job_adapters
 from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
 from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
@@ -337,8 +338,9 @@ class ARC(object):
         self.report_e_elect = report_e_elect
         self.skip_nmd = skip_nmd
         registered_job_adapters = get_registered_job_adapters()
+        mapped_ts_adapters = ts_adapters_used_by_the_map(registered=None)
         for ts_adapter in self.ts_adapters or list():
-            if ts_adapter.lower() not in registered_job_adapters.keys():
+            if ts_adapter.lower() not in registered_job_adapters.keys() and ts_adapter.lower() not in mapped_ts_adapters:
                 raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
 
         # attributes related to level of theory specifications
@@ -679,7 +681,7 @@ class ARC(object):
         _yml_scale = assign_frequency_scale_factor(level=_freq_level_for_lookup) if _freq_level_for_lookup is not None else None
         _user_provided_scale = (_yml_scale is None or _yml_scale != self.freq_scale_factor)
 
-        neb_level = resolve_neb_level(self.ts_adapters)
+        neb_level = resolve_neb_level(self.scheduler.ts_adapters)
 
         try:
             write_output_yml(
@@ -700,6 +702,8 @@ class ARC(object):
                 arkane_level_of_theory=self.arkane_level_of_theory,
                 irc_requested=self.job_types.get('irc', True),
                 t0=self.t0,
+                ts_adapters=self.scheduler.ts_adapters,
+                ts_adapters_source=self.scheduler.ts_adapters_source,
             )
         except Exception as e:
             logger.error(f'Could not write output.yml: {e}')

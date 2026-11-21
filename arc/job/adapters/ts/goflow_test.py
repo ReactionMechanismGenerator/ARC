@@ -35,6 +35,7 @@ from unittest import mock
 from rdkit import Chem
 
 from arc.common import read_yaml_file, save_yaml_file
+from arc.exceptions import DependencyError
 from arc.job.adapter import JobEnum
 from arc.job.adapters.common import (all_families_ts_adapters,
                                      default_incore_adapters,
@@ -607,18 +608,31 @@ class TestExecuteIncoreWithMockedSubprocess(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def test_skips_cleanly_when_environment_not_ready(self):
+    def test_raises_dependency_error_when_environment_not_ready(self):
         adapter = GoFlowAdapter(project='goflow_test',
                                 project_directory=self.tmpdir,
                                 job_type='tsg',
                                 reactions=[self.rxn],
                                 testing=False)
-        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts._goflow_environment_ready', return_value=False):
-            # Should not raise.
-            adapter.execute_incore()
+        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts.GOFLOW_PYTHON', None):
+            with self.assertRaisesRegex(DependencyError, 'GOFLOW_PYTHON'):
+                adapter.execute_incore()
         # No TSGuesses should have been added.
         if self.rxn.ts_species is not None:
             self.assertEqual(len(self.rxn.ts_species.ts_guesses), 0)
+
+    def test_guard_reports_the_reason_it_checked(self):
+        """The guard judges the engine once, so the reason it raises with is the one it checked."""
+        adapter = GoFlowAdapter(project='goflow_test',
+                                project_directory=self.tmpdir,
+                                job_type='tsg',
+                                reactions=[self.rxn],
+                                testing=False)
+        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts.engine_unavailable_reason',
+                                 side_effect=['the checkpoint vanished', None]) as reason_mock:
+            with self.assertRaisesRegex(DependencyError, 'GoFlow is not available: the checkpoint vanished'):
+                adapter.execute_incore()
+        self.assertEqual(reason_mock.call_count, 1)
 
     def test_skips_bimolecular_reaction_without_invoking_the_model(self):
         """
@@ -634,7 +648,7 @@ class TestExecuteIncoreWithMockedSubprocess(unittest.TestCase):
                                 job_type='tsg',
                                 reactions=[rxn],
                                 testing=False)
-        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts._goflow_environment_ready', return_value=True), \
+        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts.engine_unavailable_reason', return_value=None), \
              unittest.mock.patch('arc.job.adapters.ts.goflow_ts.subprocess.run') as run_mock:
             adapter.execute_incore()
         run_mock.assert_not_called()
@@ -659,7 +673,7 @@ class TestExecuteIncoreWithMockedSubprocess(unittest.TestCase):
             save_yaml_file(path=adapter.yml_out_path, content=stub_tsgs)
             return unittest.mock.Mock(returncode=0)
 
-        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts._goflow_environment_ready', return_value=True), \
+        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts.engine_unavailable_reason', return_value=None), \
              unittest.mock.patch('arc.job.adapters.ts.goflow_ts._within_goflow_supported_domain', return_value=(True, '')), \
              unittest.mock.patch('arc.job.adapters.ts.goflow_ts.GOFLOW_PYTHON', '/usr/bin/python'), \
              unittest.mock.patch('arc.job.adapters.ts.goflow_ts.GOFLOW_REPO_PATH', self.tmpdir), \
@@ -714,7 +728,7 @@ class TestExecuteIncoreWithMockedSubprocess(unittest.TestCase):
                 'execution_time': '0:00:00.001'}])
             return unittest.mock.Mock(returncode=0)
 
-        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts._goflow_environment_ready', return_value=True), \
+        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts.engine_unavailable_reason', return_value=None), \
              unittest.mock.patch('arc.job.adapters.ts.goflow_ts._within_goflow_supported_domain', return_value=(True, '')), \
              unittest.mock.patch('arc.job.adapters.ts.goflow_ts.GOFLOW_PYTHON', '/usr/bin/python'), \
              unittest.mock.patch('arc.job.adapters.ts.goflow_ts.GOFLOW_REPO_PATH', self.tmpdir), \
@@ -742,7 +756,7 @@ class TestExecuteIncoreWithMockedSubprocess(unittest.TestCase):
         def hanging_subprocess_run(cmd, **kwargs):
             raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get('timeout', 1))
 
-        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts._goflow_environment_ready', return_value=True), \
+        with unittest.mock.patch('arc.job.adapters.ts.goflow_ts.engine_unavailable_reason', return_value=None), \
              unittest.mock.patch('arc.job.adapters.ts.goflow_ts._within_goflow_supported_domain', return_value=(True, '')), \
              unittest.mock.patch('arc.job.adapters.ts.goflow_ts.GOFLOW_PYTHON', '/usr/bin/python'), \
              unittest.mock.patch('arc.job.adapters.ts.goflow_ts.GOFLOW_REPO_PATH', self.tmpdir), \

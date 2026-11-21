@@ -17,6 +17,7 @@ from unittest.mock import patch
 from arc.common import ARC_INPUT_SCHEMA_VERSION, VERSION, get_logger
 from arc.exceptions import InputError
 from arc.imports import settings
+from arc.job.adapters.common import ts_adapters_by_rmg_family
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.ssh import SSHClient
 from arc.level import Level
@@ -705,6 +706,23 @@ class TestARC(unittest.TestCase):
                        ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
                        )
 
+    def test_ts_adapter_listed_in_the_family_map_is_accepted_without_a_module(self):
+        """Test that a TS adapter the family map lists is accepted even when this build has no module for it.
+
+        Such an adapter is dropped for each reaction at TS search time with a named warning; rejecting
+        it as unknown at input time would abort the whole run instead.
+        """
+        unregistered = 'absent_unregistered_ts_adapter'
+        family_map = {'H_Abstraction': ts_adapters_by_rmg_family['H_Abstraction'] + [unregistered]}
+        with patch.dict(ts_adapters_by_rmg_family, family_map):
+            arc0 = ARC(project='arc_test',
+                       job_types=self.job_types1,
+                       species=[ARCSpecies(label='spc1', smiles='CC', compute_thermo=False)],
+                       level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
+                       ts_adapters=[unregistered, 'linear'],
+                       )
+        self.assertEqual(arc0.ts_adapters, [unregistered, 'linear'])
+
     def test_summary_reports_the_warnings_of_a_converged_species(self):
         """Test that the run summary prints the warnings of a species that converged"""
         arc0 = ARC(project='arc_test',
@@ -756,6 +774,35 @@ class TestExecuteReleasesPooledConnections(unittest.TestCase):
                 patch('arc.main.reset_default_pool') as released:
             self.assertRaises(KeyboardInterrupt, self._arc().execute)
         released.assert_called_once()
+
+
+class TestOutputYmlNebLevel(unittest.TestCase):
+    """
+    Contains unit tests for the NEB level that output.yml records.
+    """
+
+    def test_neb_level_follows_the_scheduler_ts_adapters(self):
+        """Test that the NEB level is resolved from the run's resolved adapters when the input sets none."""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_neb_level_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        arc0 = ARC(project='arc_test_neb_level_from_scheduler', calc_freq_factor=False,
+                   project_directory=os.path.join(scratch_dir, 'arc_test_neb_level_from_scheduler'))
+        self.assertIsNone(arc0.ts_adapters)
+        scheduler = SimpleNamespace(ts_adapters=['heuristics', 'orca_neb'], ts_adapters_source='repo default',
+                                    output=dict(), species_dict=dict(), rxn_list=list(), remote_project_paths=dict(),
+                                    cleanable_remote_project_paths=lambda: dict(),
+                                    keeps_local_check_files=lambda: False)
+        neb_settings = dict(settings, orca_neb_settings={'level': 'wb97xd/def2svp'})
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch('arc.processor.settings', neb_settings), \
+                patch('arc.main.process_arc_project'), \
+                patch('arc.main.write_output_yml') as write_output_yml, \
+                patch.object(ARC, 'clean_check_files'), \
+                patch.object(ARC, 'summary', return_value=dict()):
+            arc0.execute()
+        neb_level = write_output_yml.call_args.kwargs['neb_level']
+        self.assertEqual(neb_level, Level(repr='wb97xd/def2svp'))
+        self.assertEqual(write_output_yml.call_args.kwargs['ts_adapters'], ['heuristics', 'orca_neb'])
 
 
 class TestServerMappingBorrowsItsConnection(unittest.TestCase):
