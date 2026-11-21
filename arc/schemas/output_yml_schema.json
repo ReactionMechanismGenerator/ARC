@@ -2052,6 +2052,11 @@
           "type": "string",
           "minLength": 1
         },
+        "ts_validation_caution": {
+          "description": "Non-blocking caution: an IRC was requested for the TS and its IRC verdict is null, so the TS was not confirmed by IRC. Starts with 'IRC NOT CONFIRMED (<cause>)', the cause being one of 'IRC job failed', 'endpoint opt not converged', 'comparison inconclusive' or 'IRC not completed'. Omitted (key absent, never null) when kinetics is null or no caution applies.",
+          "type": "string",
+          "pattern": "^IRC NOT CONFIRMED \\((IRC job failed|endpoint opt not converged|comparison inconclusive|IRC not completed)\\)"
+        },
         "ts_adapter_failures": {
           "description": "TS search adapters that raised an exception for this reaction and were skipped. Empty when none did.",
           "type": "array",

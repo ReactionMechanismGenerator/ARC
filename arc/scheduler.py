@@ -20,7 +20,8 @@ from typing import TYPE_CHECKING
 
 import arc.parser.parser as parser
 from arc import plotter
-from arc.checks.common import get_conformer_job_name, get_i_from_job_name, is_conformer_job, sum_time_delta
+from arc.checks.common import (IRC_JOB_FAILED_WARNING, get_conformer_job_name, get_i_from_job_name, is_conformer_job,
+                               record_ts_check_warning, sum_time_delta)
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
@@ -146,6 +147,8 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
 
 MAX_S_SQUARED_DEVIATION = 0.1
 
+IRC_EARLY_STOP_KEYWORDS = ('DeltaX', 'GL123')
+
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
 """
@@ -209,6 +212,29 @@ def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> b
         return text.lower().replace('-', '').replace('_', '')
 
     return normalize(job_adapter) in normalize(method)
+
+
+def irc_ended_usably(server_status: str | None, ess_status: dict) -> bool:
+    """
+    Determine whether an IRC job ended in a way its last geometry may be used as an IRC endpoint.
+
+    It did when the server status is ``done`` and the ESS status is ``done``, or ``errored`` with a non-empty
+    list of keywords that are all in ``IRC_EARLY_STOP_KEYWORDS``.
+
+    Args:
+        server_status (str, optional): The server status of the job, ``job.job_status[0]``.
+        ess_status (dict): The ESS status of the job, ``job.job_status[1]``.
+
+    Returns:
+        bool: Whether the IRC job ended usably.
+    """
+    if server_status != 'done':
+        return False
+    status, keywords = ess_status.get('status'), ess_status.get('keywords')
+    if status == 'done':
+        return True
+    return status == 'errored' and isinstance(keywords, list) and bool(keywords) \
+        and all(keyword in IRC_EARLY_STOP_KEYWORDS for keyword in keywords)
 
 
 def get_conformer_isomorphism_trsh_history(conformers_note: str | None) -> list[str]:
@@ -1075,9 +1101,7 @@ class Scheduler(object):
                     elif 'irc' in job_name:
                         job = self.job_dict[label]['irc'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
-                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            if successful_server_termination:
-                                self.spawn_post_irc_jobs(label=label, job=job)
+                            self.end_irc_job(label=label, job=job)
                             self.timer = False
                             break
                     elif 'orbitals' in job_name:
@@ -4611,12 +4635,34 @@ class Scheduler(object):
                             job: JobAdapter,
                             ):
         """
-        Spawn additional jobs after IRC has converged.
+        Spawn the jobs that follow an IRC job, or record it as a failed IRC.
+
+        The last geometry of the IRC output becomes a new IRC species, which is then optimized.
+        Only an IRC job whose server status is ``done`` and whose ESS status is ``done``, or ``errored`` with
+        every keyword in ``IRC_EARLY_STOP_KEYWORDS`` (an IRC that stopped early on Delta-x), spawns.
+        Any other status, e.g., a server time limit, a memory kill, a cut output, or an absent status,
+        is recorded as a failed IRC (see ``record_failed_irc()``) and nothing is spawned.
+        So is an output that holds no complete geometry, or one whose parsing raises ``IndexError`` or ``ValueError``.
 
         Args:
             label (str): The species label.
             job (JobAdapter): The IRC job object.
         """
+        job_status = job.job_status if isinstance(job.job_status, list) else list()
+        ess_status = job_status[1] if len(job_status) > 1 and isinstance(job_status[1], dict) else dict()
+        if not irc_ended_usably(server_status=job_status[0] if job_status else None, ess_status=ess_status):
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status,
+                                   server_status=job_status[0] if job_status else None)
+            return
+        try:
+            xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+        except (IndexError, ValueError) as e:
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status,
+                                   parse_error=f'{type(e).__name__}: {e}')
+            return
+        if xyz is None:
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status)
+            return
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
         self.output[label]['paths'].setdefault('irc_directions', list()).append(
             getattr(job, 'irc_direction', None)
@@ -4631,7 +4677,7 @@ class Scheduler(object):
                                                                   'rxns', label, 'irc_traj.gjf'))
         irc_label = self.add_label_to_unique_species_labels(label=f'IRC_{label}_{index}')
         irc_spc = ARCSpecies(label=irc_label,
-                             xyz=parser.parse_geometry(log_file_path=job.local_path_to_output_file),
+                             xyz=xyz,
                              irc_label=label,
                              compute_thermo=False,
                              multiplicity=job.species[0].multiplicity,
@@ -4650,6 +4696,69 @@ class Scheduler(object):
                      job_type='opt',
                      fine=False,
                      )
+
+    def end_irc_job(self,
+                    label: str,
+                    job: JobAdapter,
+                    ) -> None:
+        """
+        End an IRC job, then spawn the jobs that follow it or record it as a failed IRC.
+
+        A job that ``end_job()`` ended is passed to ``spawn_post_irc_jobs()``, and so is a job the server reports
+        as ``errored``, for which ``end_job()`` does not return ``True``. A job ``end_job()`` reran is left alone,
+        whatever its server status: ``end_job()`` reran it if it added a new job of the TS to ``running_jobs``.
+
+        Args:
+            label (str): The TS species label.
+            job (JobAdapter): The IRC job object.
+        """
+        jobs_before = set(self.running_jobs.get(label, list()))
+        successful_server_termination = self.end_job(job=job, label=label, job_name=job.job_name)
+        if set(self.running_jobs.get(label, list())) - jobs_before:
+            return
+        if successful_server_termination or job.job_status[0] == 'errored':
+            self.spawn_post_irc_jobs(label=label, job=job)
+
+    def record_failed_irc(self,
+                          label: str,
+                          job: JobAdapter,
+                          ess_status: dict,
+                          parse_error: str | None = None,
+                          server_status: str | None = None,
+                          ) -> None:
+        """
+        Record an IRC job that gave no usable endpoint as a failed IRC of its TS.
+
+        Nothing is spawned and no IRC path is stored, so the IRC check of the TS is never performed
+        and its verdict stays ``None`` (not verified). The cause goes to the TS's ``errors`` output entry
+        and to its ``ts_checks['warnings']``, which output.yml publishes. The job's files are left on disk.
+
+        Args:
+            label (str): The TS species label.
+            job (JobAdapter): The failed IRC job object.
+            ess_status (dict): The ESS status of the job, with optional ``error`` and ``keywords`` entries.
+            parse_error (str, optional): The error the geometry parser raised, if it raised one.
+            server_status (str, optional): The server status of the job.
+        """
+        if server_status not in (None, 'done'):
+            reason = ess_status.get('error') or f'server status: {server_status}'
+        else:
+            reason = ess_status.get('error') or 'no geometry could be parsed from its output'
+        if ess_status.get('keywords'):
+            reason += f' (keywords: {", ".join(ess_status["keywords"])})'
+        if parse_error:
+            reason += f'; parsing raised {parse_error}'
+        direction = getattr(job, 'irc_direction', None)
+        job_description = f'IRC job {job.job_name} ({direction})' if direction else f'IRC job {job.job_name}'
+        logger.error(f'{job_description} of TS {label} gave no usable endpoint in '
+                     f'{job.local_path_to_output_file}: {reason}. The IRC of {label} is not verified; '
+                     f'continuing with the other jobs.')
+        self.output[label]['errors'] += f'Error: {job_description} failed: {reason}; '
+        ts_species = self.species_dict[label]
+        if isinstance(ts_species.ts_checks, dict):
+            ts_species.ts_checks.setdefault('warnings', '')
+            record_ts_check_warning(ts_species, f'{IRC_JOB_FAILED_WARNING}{job_description} failed: {reason}; ')
+        self.save_restart_dict()
 
     def add_label_to_unique_species_labels(self, label: str) -> str:
         """

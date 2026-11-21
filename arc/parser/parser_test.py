@@ -614,6 +614,33 @@ N       2.28178508   -0.42455356    0.14404399
 H       1.32677989   -0.80557411    0.33156013"""
         self.assertEqual(xyz9_str, expected_xyz_9)
 
+    def test_parse_geometry_from_a_gaussian_log_cut_inside_an_orientation_table(self):
+        """Test that a Gaussian log cut inside its last orientation table gives the last complete table"""
+        scratch_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        cases = [('Input orientation:', os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')),
+                 ('Standard orientation:', os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2102.out'))]
+        for header, source_path in cases:
+            with open(source_path, 'r') as f:
+                lines = f.readlines()
+            last_table = max(i for i, line in enumerate(lines) if header in line)
+            before_last_table_path = os.path.join(scratch_dir, 'before_last_table.out')
+            with open(before_last_table_path, 'w') as f:
+                f.writelines(lines[:last_table])
+            expected_xyz = parser.parse_geometry(log_file_path=before_last_table_path)
+            for extra_lines in [1, 5, 7]:
+                with self.subTest(header=header, extra_lines=extra_lines):
+                    cut_path = os.path.join(scratch_dir, 'cut.out')
+                    with open(cut_path, 'w') as f:
+                        f.writelines(lines[:last_table + extra_lines])
+                    self.assertEqual(parser.parse_geometry(log_file_path=cut_path), expected_xyz)
+            with self.subTest(header=header, cut='mid-row'):
+                cut_path = os.path.join(scratch_dir, 'cut.out')
+                with open(cut_path, 'w') as f:
+                    f.writelines(lines[:last_table + 6])
+                    f.write(lines[last_table + 6][:40])
+                self.assertEqual(parser.parse_geometry(log_file_path=cut_path), expected_xyz)
+
     def test_parse_geometry_1(self):
         """Test parsing geometry"""
         path1 = os.path.join(ARC_TESTING_PATH, 'xyz', 'CH3C(O)O.gjf')
