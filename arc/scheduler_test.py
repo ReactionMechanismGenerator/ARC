@@ -5,6 +5,7 @@
 This module contains unit tests for the arc.scheduler module
 """
 
+import contextlib
 import copy
 import csv
 import logging
@@ -10914,6 +10915,459 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIsNone(sched.output['TS_cc']['conformer_verified'])
         self.assertEqual(sched.output['TS_cc']['conformer_verified_cause'], '')
         self.assertIn('old guess cause.', sched.output['TS_cc']['warnings'])
+
+
+
+class TestTSScansWaitForTheFreqVerdict(unittest.TestCase):
+    """
+    A TS's rotor scans start only once its freq job passed and its NMD check passed or was deferred to the IRC.
+
+    Jobs are built by the real ``run_job()`` through the real adapters; only submission (``execute``), server-side
+    deletion (``delete``) and the queue admission are patched, so the scan jobs these tests count are the ones ARC
+    would have submitted.
+    """
+
+    ETHANOL_XYZ = """C      -0.96845149   -0.33371502    0.03350240
+C       0.52721260   -0.10829478   -0.02604897
+O       0.78601582    1.28740828    0.00019223
+H      -1.20347849   -1.40156057    0.01505084
+H      -1.38883338    0.10506628    0.94446333
+H      -1.46591137    0.15238573   -0.81227516
+H       1.02021845   -0.57433833    0.83232695
+H       0.94210166   -0.52637911   -0.94807560
+H       1.75112620    1.39942753   -0.03913601"""
+    ETHANOL_ROTATED_OH_XYZ = """C      -0.79371721    0.47398542    0.87096892
+C       0.40618049   -0.27395180    0.33040696
+O       0.36603374   -0.24892502   -1.08854210
+H      -0.79371721    0.47398542    1.96452854
+H      -0.79371721    1.51039627    0.51748265
+H      -1.72423078    0.01759519    0.51748279
+H       1.33511300    0.19738397    0.66505235
+H       0.39206426   -1.31552504    0.66505033
+H       0.38960032    0.68501885   -1.35822039"""
+    PASSING_TS_FREQ_LOG = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+    NO_IMAGINARY_FREQ_LOG = os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
+
+    def setUp(self):
+        """
+        Submit, delete and admit nothing for real. A submission only adds its row to a private initiated_jobs.csv,
+        which numbers the next job, so every spawned job keeps its own name.
+        """
+        arc_dir = tempfile.mkdtemp(prefix='arc_test_ts_scans_after_freq_home_')
+        self.addCleanup(shutil.rmtree, arc_dir, ignore_errors=True)
+
+        self.submitted = list()
+
+        def fake_execute(job):
+            self.submitted.append(job)
+            with open(os.path.join(arc_dir, 'initiated_jobs.csv'), 'a') as f:
+                f.write(f'{job.job_num},{job.job_name}\n')
+
+        for patcher in (patch('arc.job.adapter.local_arc_path', arc_dir),
+                        patch('arc.job.adapter.JobAdapter.execute', autospec=True, side_effect=fake_execute),
+                        patch('arc.job.adapter.JobAdapter.delete'),
+                        patch.object(Scheduler, 'check_max_simultaneous_jobs_limit', return_value=SUBMIT)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def make_ts(self, label='TS_scan'):
+        """
+        Make an ethanol-shaped TS (two rotors) with two distinct optimized TS guesses, the first of which is chosen.
+
+        Args:
+            label (str): The TS label.
+
+        Returns:
+            ARCSpecies: The TS.
+        """
+        xyz = str_to_xyz(self.ETHANOL_XYZ)
+        ts = ARCSpecies(label=label, is_ts=True, xyz=xyz, multiplicity=1, charge=0, compute_thermo=False)
+        ts.mol_from_xyz()
+        ts.ts_guesses = list()
+        for i, guess_xyz in enumerate([xyz, str_to_xyz(self.ETHANOL_ROTATED_OH_XYZ)]):
+            tsg = TSGuess(index=i, method='heuristics', success=True, energy=float(i), xyz=guess_xyz,
+                          execution_time='0:00:01')
+            tsg.opt_xyz = guess_xyz
+            ts.ts_guesses.append(tsg)
+        ts.chosen_ts = 0
+        ts.chosen_ts_list = [0]
+        ts.initial_xyz = xyz
+        return ts
+
+    def make_sched(self, species_list, irc=False, rotors=True, freq=True, opt=True, composite_method=None,
+                   testing=True, restart_dict=None, project_directory=None):
+        """
+        Make a Scheduler for the given species.
+
+        Args:
+            species_list (list): The species.
+            irc (bool): Whether IRC jobs are requested.
+            rotors (bool): Whether rotor scans are requested.
+            freq (bool): Whether freq jobs are requested.
+            opt (bool): Whether opt jobs are requested.
+            composite_method (Level, optional): The composite method.
+            testing (bool): The Scheduler's testing flag.
+            restart_dict (dict, optional): A restart dictionary.
+            project_directory (str, optional): The project directory, a fresh one by default.
+
+        Returns:
+            Scheduler: The Scheduler object.
+        """
+        if project_directory is None:
+            project_directory = tempfile.mkdtemp(prefix='arc_test_ts_scans_after_freq_')
+            self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job_types = initialize_job_types({'conf_opt': False, 'opt': opt, 'freq': freq, 'sp': True,
+                                          'rotors': rotors, 'irc': irc, 'fine': False})
+        return Scheduler(project='ts_scans_after_freq', ess_settings=self.ess_settings, species_list=species_list,
+                         composite_method=composite_method,
+                         conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                         opt_level=Level(repr=default_levels_of_theory['opt']),
+                         freq_level=Level(repr=default_levels_of_theory['freq']),
+                         sp_level=Level(repr=default_levels_of_theory['sp']),
+                         scan_level=Level(repr=default_levels_of_theory['scan']),
+                         ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                         orbitals_level=default_levels_of_theory['orbitals'],
+                         project_directory=project_directory, testing=testing, job_types=job_types,
+                         restart_dict=restart_dict, adaptive_levels=None)
+
+    def scan_jobs(self, sched, label, since=0):
+        """
+        The scan jobs submitted for a species, as ``(rotor_index, torsions)`` tuples sorted by rotor index.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The species label.
+            since (int): Count only the submissions after the first ``since`` ones.
+
+        Returns:
+            list: The submitted scan jobs.
+        """
+        return sorted((job.rotor_index, job.torsions) for job in self.submitted[since:]
+                      if job.species_label == label and job.job_type in ('scan', 'directed_scan')
+                      and job.project_directory == sched.project_directory)
+
+    @staticmethod
+    def expected_scans(sched, label):
+        """
+        One scan per rotor of the species, in the shape ``scan_jobs()`` reports them.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The species label.
+
+        Returns:
+            list: The expected scan jobs.
+        """
+        return sorted((i, nested_torsions(rotor['torsion']))
+                      for i, rotor in sched.species_dict[label].rotors_dict.items())
+
+    @staticmethod
+    def end_opt(sched, label):
+        """
+        End the TS optimization: spawn the post-opt jobs as the main loop does once an opt job converged.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The species label.
+        """
+        sched.species_dict[label].final_xyz = sched.species_dict[label].get_xyz()
+        sched.spawn_post_opt_jobs(label=label, job_name='opt_a1')
+
+    def freq_job(self, sched, label, log=None, done=True):
+        """
+        Build a freq job of a species with the real adapter.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The species label.
+            log (str, optional): The output file the job ended with.
+            done (bool): Whether the job ended successfully.
+
+        Returns:
+            JobAdapter: The freq job.
+        """
+        job = job_factory(job_adapter='gaussian', project=sched.project, ess_settings=self.ess_settings,
+                          species=[sched.species_dict[label]], job_type='freq',
+                          level=Level(repr=default_levels_of_theory['freq']),
+                          project_directory=sched.project_directory, job_num=301)
+        self.finish(job, log or self.PASSING_TS_FREQ_LOG, done=done)
+        return job
+
+    @staticmethod
+    def finish(job, log, done=True):
+        """
+        Mark a job as ended with the given output file.
+
+        Args:
+            job (JobAdapter): The job.
+            log (str): The output file.
+            done (bool): Whether the job ended successfully.
+        """
+        job.local_path_to_output_file = log
+        status = 'done' if done else 'errored'
+        job.job_status = ['done', {'status': status, 'keywords': list(), 'error': '', 'line': ''}]
+
+    @staticmethod
+    def nmd_verdict(sched, label, verdict, near_miss=False):
+        """
+        A context that makes the NMD check of a TS give ``verdict``, with a near-miss record if ``near_miss``.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The TS label.
+            verdict (bool | None): The NMD verdict.
+            near_miss (bool): Whether a failure is a near miss of the 5% reactive-bond gate.
+
+        Returns:
+            contextlib.ExitStack: The context.
+        """
+        ts = sched.species_dict[label]
+
+        def fake_check_ts(reaction, job=None, checks=None, **kwargs):
+            if checks == ['NMD']:
+                reaction.ts_species.ts_checks['NMD'] = verdict
+                if near_miss:
+                    reaction.ts_species.ts_checks[NMD_NEAR_MISS_KEY] = {
+                        'sub_gate_bonds': [{'atoms': [0, 1], 'symbols': 'C-C', 'percent': 3.0}]}
+
+        stack = contextlib.ExitStack()
+        stack.enter_context(patch.dict(sched.rxn_dict, {99: SimpleNamespace(ts_species=ts, label='rxn')}))
+        stack.enter_context(patch.object(ts, 'rxn_index', 99))
+        stack.enter_context(patch('arc.scheduler.check_ts', side_effect=fake_check_ts))
+        return stack
+
+    def pass_freq(self, sched, label, nmd=True, near_miss=False, log=None):
+        """
+        End a freq job of a TS with the given freq output and NMD verdict.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The TS label.
+            nmd (bool | None): The NMD verdict.
+            near_miss (bool): Whether an NMD failure is a near miss.
+            log (str, optional): The freq output file, one with a single imaginary frequency by default.
+        """
+        job = self.freq_job(sched, label, log=log)
+        with self.nmd_verdict(sched, label, nmd, near_miss=near_miss):
+            sched.check_freq_job(label=label, job=job)
+
+    def test_a_ts_launches_no_scan_when_its_opt_ends(self):
+        """(a) A TS whose optimization just ended has its freq enqueued, but no rotor scan yet"""
+        sched = self.make_sched([self.make_ts()])
+        self.end_opt(sched, 'TS_scan')
+        self.assertEqual(len(sched.species_dict['TS_scan'].rotors_dict), 2)
+        self.assertIn('TS_scan', sched._pending_pipe_freq)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+
+    def test_b_scans_launch_once_per_rotor_when_the_freq_and_nmd_pass(self):
+        """(b) The freq passes with NMD True: one scan per rotor is launched, at the verdict and only once"""
+        sched = self.make_sched([self.make_ts()])
+        self.end_opt(sched, 'TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+        self.pass_freq(sched, 'TS_scan', nmd=True)
+        self.assertTrue(sched.species_dict['TS_scan'].ts_checks['freq'])
+        expected = self.expected_scans(sched, 'TS_scan')
+        self.assertEqual(len(expected), 2)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), expected)
+        sched.run_scan_jobs('TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), expected)
+
+    def test_b_pipe_freq_route_launches_the_scans_too(self):
+        """(b) A freq computed by a pipe hands its verdict to post_freq_actions(), which launches the scans"""
+        sched = self.make_sched([self.make_ts()])
+        self.end_opt(sched, 'TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+        job = self.freq_job(sched, 'TS_scan')
+        with self.nmd_verdict(sched, 'TS_scan', True):
+            freq_ok, switched = sched.post_freq_actions(
+                label='TS_scan', job=job, vibfreqs=parser.parse_frequencies(job.local_path_to_output_file))
+        self.assertEqual((freq_ok, switched), (True, False))
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
+
+    def test_c_scans_launch_at_the_freq_verdict_when_nmd_is_deferred_to_the_irc(self):
+        """(c) A near-miss NMD failure deferred to the IRC does not hold the scans back"""
+        sched = self.make_sched([self.make_ts()], irc=True)
+        self.end_opt(sched, 'TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+        self.pass_freq(sched, 'TS_scan', nmd=False, near_miss=True)
+        self.assertTrue(sched.is_nmd_deferred('TS_scan'))
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
+
+    def test_d_a_guess_that_fails_nmd_never_scans(self):
+        """(d) A guess that fails the NMD check is switched before any of its rotors is scanned"""
+        sched = self.make_sched([self.make_ts()])
+        self.end_opt(sched, 'TS_scan')
+        self.pass_freq(sched, 'TS_scan', nmd=False)
+        self.assertEqual(sched.species_dict['TS_scan'].chosen_ts, 1)
+        self.assertEqual(len(sched.job_dict['TS_scan']['opt']), 1)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+        sched.run_scan_jobs('TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+
+    def test_d_a_guess_with_a_wrong_imaginary_frequency_count_never_scans(self):
+        """(d) A guess whose freq has no imaginary frequency is switched before any of its rotors is scanned"""
+        sched = self.make_sched([self.make_ts()])
+        self.end_opt(sched, 'TS_scan')
+        self.pass_freq(sched, 'TS_scan', log=self.NO_IMAGINARY_FREQ_LOG)
+        self.assertEqual(sched.species_dict['TS_scan'].chosen_ts, 1)
+        self.assertIsNone(sched.species_dict['TS_scan'].ts_checks['freq'])
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+
+    def restart(self, ts, freq_done, **kwargs):
+        """
+        Restart a project whose TS finished its optimization, with or without its freq job done.
+
+        The TS goes through ``as_dict()`` and back, as restart.yml carries it.
+
+        Args:
+            ts (ARCSpecies): The TS as the previous session left it.
+            freq_done (bool): Whether the previous session's freq job ended.
+            **kwargs: Passed to ``make_sched()``.
+
+        Returns:
+            Scheduler: The restarted Scheduler.
+        """
+        ts.final_xyz = ts.get_xyz()
+        ts.determine_rotors()
+        project_directory = tempfile.mkdtemp(prefix='arc_test_ts_scans_after_freq_restart_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        output = self.make_sched([ARCSpecies(species_dict=ts.as_dict())],
+                                 project_directory=project_directory, **kwargs).output
+        output[ts.label]['paths'].update({'geo': 'geo.out' if kwargs.get('opt', True) else '', 'sp': 'sp.out',
+                                          'freq': 'freq.out' if freq_done else ''})
+        output[ts.label]['job_types']['freq'] = freq_done
+        output[ts.label]['job_types']['composite'] = kwargs.get('composite_method') is not None
+        with patch.object(Scheduler, 'schedule_jobs'):
+            return self.make_sched([ARCSpecies(species_dict=ts.as_dict())], testing=False,
+                                   restart_dict={'output': output}, project_directory=project_directory, **kwargs)
+
+    def test_e_restart_scans_a_ts_whose_freq_and_nmd_passed(self):
+        """(e) Restart: a TS that passed its freq and NMD check but never started its scans gets them"""
+        ts = self.make_ts()
+        ts.ts_checks['freq'], ts.ts_checks['NMD'] = True, True
+        sched = self.restart(ts, freq_done=True)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
+        self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
+
+    def test_e_restart_scans_a_ts_accepted_on_its_irc_after_a_near_miss_nmd(self):
+        """(e) Restart: a near-miss TS that its IRC accepted is no longer deferred, and still gets its scans"""
+        ts = self.make_ts()
+        ts.ts_checks.update({'freq': True, 'NMD': False, 'IRC': True,
+                             NMD_NEAR_MISS_KEY: {'sub_gate_bonds': [{'atoms': [0, 1], 'symbols': 'C-C',
+                                                                     'percent': 3.0}],
+                                                 'accepted_on_irc': True}})
+        sched = self.restart(ts, freq_done=True)
+        self.assertTrue(sched.has_current_nmd_acceptance('TS_scan'))
+        self.assertFalse(sched.is_nmd_deferred('TS_scan'))
+        self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
+
+    def test_e_restart_does_not_scan_a_ts_whose_freq_has_not_passed(self):
+        """(e) Restart: a TS whose freq has not passed gets its freq job, but no scan"""
+        sched = self.restart(self.make_ts(), freq_done=False)
+        self.assertEqual(len(sched.job_dict['TS_scan'].get('freq', dict())), 1)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+
+    def test_e_restart_does_not_scan_a_ts_whose_freq_has_not_passed_without_opt_or_with_a_composite(self):
+        """(e) Restart: the no-opt and the composite restart branches spawn the freq job, but no scan"""
+        for name, kwargs in (('opt off', dict(opt=False)), ('composite', dict(composite_method=Level(repr='cbs-qb3')))):
+            with self.subTest(branch=name):
+                sched = self.restart(self.make_ts(), freq_done=False, **kwargs)
+                self.assertEqual(len(sched.job_dict['TS_scan'].get('freq', dict())), 1)
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+
+    def test_f_a_held_freq_job_holds_the_scans_until_it_passes(self):
+        """(f) A freq job held by a queue guard (deferred or stranded) holds the scans; its verdict releases them"""
+        for admission in (DEFER, REFUSE):
+            with self.subTest(admission=admission):
+                sched = self.make_sched([self.make_ts()])
+                self.end_opt(sched, 'TS_scan')
+                with patch.object(sched, 'check_max_simultaneous_jobs_limit', return_value=admission):
+                    sched.run_freq_job('TS_scan')
+                job = next(iter(sched.job_dict['TS_scan']['freq'].values()))
+                holder = sched.deferred_jobs if admission == DEFER else sched.stranded_jobs
+                self.assertEqual(holder['TS_scan'], [job.job_name])
+                sched.run_scan_jobs('TS_scan')
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+                if admission == DEFER:
+                    sched.submit_unsubmitted_jobs()
+                    self.assertNotIn('TS_scan', sched.deferred_jobs)
+                    self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+                self.finish(job, self.PASSING_TS_FREQ_LOG)
+                with self.nmd_verdict(sched, 'TS_scan', True):
+                    sched.check_freq_job(label='TS_scan', job=job)
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
+
+    def test_g_switch_ts_closes_the_gate_for_the_new_guess(self):
+        """(g) After a switch, the new guess scans only once its own freq passed"""
+        sched = self.make_sched([self.make_ts()])
+        self.end_opt(sched, 'TS_scan')
+        self.pass_freq(sched, 'TS_scan', nmd=True)
+        self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
+        sched.switch_ts('TS_scan')
+        self.assertEqual(sched.species_dict['TS_scan'].chosen_ts, 1)
+        self.assertIsNone(sched.species_dict['TS_scan'].ts_checks['freq'])
+        switched_at = len(self.submitted)
+        self.end_opt(sched, 'TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=switched_at), list())
+        sched.run_scan_jobs('TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=switched_at), list())
+        self.pass_freq(sched, 'TS_scan', nmd=True)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=switched_at),
+                         self.expected_scans(sched, 'TS_scan'))
+
+    def test_h_a_non_ts_species_scans_when_its_opt_ends(self):
+        """(h) Regression: a non-TS species launches its scans at opt end, before any freq verdict"""
+        spc = ARCSpecies(label='EtOH', smiles='CCO', xyz=str_to_xyz(self.ETHANOL_XYZ))
+        sched = self.make_sched([spc])
+        self.end_opt(sched, 'EtOH')
+        self.assertEqual(len(self.scan_jobs(sched, 'EtOH')), 2)
+        self.assertEqual(self.scan_jobs(sched, 'EtOH'), self.expected_scans(sched, 'EtOH'))
+
+    def test_i_a_ts_with_rotors_off_or_without_rotors_never_scans(self):
+        """(i) Regression: a TS with rotor scans off, marked to skip them, or with no rotor, never scans"""
+        cases = {'rotors off': dict(rotors=False), 'rotors_dict None': dict(rotors_dict=None),
+                 'no rotor': dict(xyz=str_to_xyz("""O       0.00000000    0.00000000    0.11726921
+H       0.00000000    0.75698224   -0.46907685
+H       0.00000000   -0.75698224   -0.46907685"""))}
+        for name, case in cases.items():
+            with self.subTest(case=name):
+                ts = self.make_ts()
+                if 'xyz' in case:
+                    ts = ARCSpecies(label='TS_scan', is_ts=True, xyz=case['xyz'], multiplicity=1, charge=0,
+                                    compute_thermo=False)
+                    ts.mol_from_xyz()
+                if 'rotors_dict' in case:
+                    ts.rotors_dict = None
+                sched = self.make_sched([ts], rotors=case.get('rotors', True))
+                self.end_opt(sched, 'TS_scan')
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+                job = self.freq_job(sched, 'TS_scan')
+                with self.nmd_verdict(sched, 'TS_scan', True):
+                    sched.check_freq_job(label='TS_scan', job=job)
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+
+    def test_scans_launch_when_the_nmd_check_could_not_be_performed(self):
+        """An NMD check that could not run (None) does not fail the TS, so it does not withhold its scans"""
+        sched = self.make_sched([self.make_ts()])
+        self.end_opt(sched, 'TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+        self.pass_freq(sched, 'TS_scan', nmd=None)
+        self.assertIsNone(sched.species_dict['TS_scan'].ts_checks['NMD'])
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
+
+    def test_a_ts_scans_at_opt_end_when_no_freq_job_is_requested(self):
+        """Without freq jobs no freq verdict ever comes, so a TS scans at opt end as before"""
+        sched = self.make_sched([self.make_ts()], freq=False)
+        self.end_opt(sched, 'TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
+        self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
 
 
 if __name__ == '__main__':
