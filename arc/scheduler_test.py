@@ -46,7 +46,7 @@ from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_stat
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status
 from arc.level import Level, get_freq_level_for_composite_method
-from arc.output import write_output_yml
+from arc.output import _statmech_to_dict, write_output_yml
 from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED,
                            CONFORMER_ISOMORPHISM_TRSH_NOTE,
@@ -66,6 +66,7 @@ from arc.species.conformers_test import (C2H5_XYZ, C2H6_XYZ, CH3_XYZ, CH4_XYZ, N
 from arc.species.conformers import find_internal_rotors
 from arc.species.converter import str_to_xyz
 from arc.species.species import REACTIVE_RING_INVALIDATION_REASON, ARCSpecies, TSGuess
+from arc.statmech.arkane import ROTOR_FALLBACK_SCAN_FAILED
 
 
 default_levels_of_theory = settings['default_levels_of_theory']
@@ -5168,6 +5169,114 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         sched.troubleshoot_ess(label='TS_trsh_tsg', job=job, level_of_theory=job.level)  # must not raise
         # The GCN guess, not a position, carries the error.
         self.assertIn('gcn', ts_spc.ts_guesses[0].method.lower())
+
+    def _make_ts_with_an_exhausted_job(self, label: str, job_type: str):
+        """
+        Build a TS with a chosen guess and one rotor, and a Gaussian job of ``job_type`` for that TS whose
+        job-level troubleshooting is exhausted. The job status is parsed from a real Gaussian TS rotor scan
+        that ended with "Number of steps exceeded" after every method trsh_ess_job offers for it was already used.
+
+        Returns:
+            tuple: The scheduler and the job.
+        """
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        ts_spc = ARCSpecies(label=label, is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, energy=100.0, xyz=ts_xyz,
+                                     execution_time='0:00:01'),
+                             TSGuess(index=1, method='heuristics', success=True, energy=110.0, xyz=ts_xyz,
+                                     execution_time='0:00:01'),
+                             ]
+        for tsg in ts_spc.ts_guesses:
+            tsg.opt_xyz = ts_xyz
+        ts_spc.chosen_ts, ts_spc.chosen_ts_list, ts_spc.ts_guesses_exhausted = 0, [0], False
+        ts_spc.final_xyz = ts_xyz
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'top': [2, 3], 'scan': [3, 1, 2, 4], 'torsion': [2, 0, 1, 3],
+                                  'number_of_running_jobs': 0, 'success': None, 'invalidation_reason': '',
+                                  'times_dihedral_set': 0, 'scan_path': '', 'trsh_counter': 0, 'trsh_methods': list(),
+                                  'symmetry': None, 'dimensions': 1, 'original_dihedrals': list(),
+                                  'cont_indices': list(), 'directed_scan_type': 'ess', 'directed_scan': dict()}}
+        ts_spc.number_of_rotors = 1
+        project_directory = os.path.join(ARC_PATH, 'Projects', f'arc_project_for_testing_delete_after_usage_{label}')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=f'project_test_{label}', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types2,  # rotors=True
+                          )
+        sched.job_dict[label] = {'opt': dict(), 'freq': dict(), 'scan': dict()}
+        sched.running_jobs[label] = list()
+        status, keywords, error, line = determine_ess_status(
+            output_path=os.path.join(ARC_TESTING_PATH, 'trsh', 'gaussian', 'ts_scan_maxsteps.out'),
+            species_label=label, job_type=job_type, software='gaussian')
+        job = MagicMock()
+        job.job_name, job.job_adapter, job.job_type = f'{job_type}_a100', 'gaussian', job_type
+        job.job_status = ['done', {'status': status, 'keywords': keywords, 'error': error, 'line': line}]
+        job.ess_trsh_methods = ['opt=(maxcycle=200)', 'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)', 'int=(Acc2E=14)']
+        job.fine, job.job_memory_gb, job.cpu_cores, job.checkfile = False, 8, 4, None
+        job.level = Level(repr=default_levels_of_theory['scan' if job_type == 'scan' else 'opt'])
+        job.times_rerun, job.job_id, job.server, job.conformer = 0, 1, 'server1', None
+        job.rotor_index = 0 if job_type == 'scan' else None
+        job.torsions = [ts_spc.rotors_dict[0]['torsion']] if job_type == 'scan' else None
+        job.dihedrals, job.directed_scan_type = None, 'ess' if job_type == 'scan' else None
+        return sched, job
+
+    @patch('arc.scheduler.Scheduler.run_job')
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_troubleshoot_ess_ts_scan_exhausted_leaves_the_rotor_harmonic(self, mock_switch_ts, mock_run_job):
+        """A TS rotor scan whose job-level troubleshooting ran out fails that rotor and keeps the TS guess.
+
+        A crashed scan says nothing about whether the saddle point is right. Switching the guess discards a TS
+        that may have passed freq, IRC and NMD, and empties rotors_dict so every torsion is scanned again.
+        """
+        label = 'TS_scan_crash'
+        sched, job = self._make_ts_with_an_exhausted_job(label=label, job_type='scan')
+        self.assertEqual(job.job_status[1]['line'], 'Number of steps exceeded')
+        sched.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+        mock_switch_ts.assert_not_called()
+        mock_run_job.assert_not_called()
+        rotors_dict = sched.species_dict[label].rotors_dict
+        self.assertEqual(list(rotors_dict.keys()), [0])
+        self.assertIs(rotors_dict[0]['success'], False)
+        reason = rotors_dict[0]['invalidation_reason']
+        self.assertIn('scan job', reason.lower())
+        self.assertIn(job.job_name, reason)
+        self.assertIn('Maximum optimization cycles reached', reason)
+        self.assertEqual(sched.species_dict[label].chosen_ts, 0)
+
+    @patch('arc.scheduler.Scheduler.run_job')
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_troubleshoot_ess_ts_opt_exhausted_still_switches_the_guess(self, mock_switch_ts, mock_run_job):
+        """A TS opt job whose job-level troubleshooting ran out still switches the TS guess."""
+        label = 'TS_opt_crash'
+        sched, job = self._make_ts_with_an_exhausted_job(label=label, job_type='opt')
+        sched.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+        mock_switch_ts.assert_called_once_with(label=label)
+        mock_run_job.assert_not_called()
+        self.assertIsNone(sched.species_dict[label].rotors_dict[0]['success'])
+        self.assertEqual(sched.species_dict[label].rotors_dict[0]['invalidation_reason'], '')
+
+    @patch('arc.scheduler.Scheduler.run_job')
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_ts_scan_exhausted_rotor_reaches_the_output_harmonic_fallback(self, mock_switch_ts, mock_run_job):
+        """The rotor of a TS scan that could not be troubleshot is listed in output.yml as a failed scan."""
+        label = 'TS_scan_crash_out'
+        sched, job = self._make_ts_with_an_exhausted_job(label=label, job_type='scan')
+        sched.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+        spc = sched.species_dict[label]
+        fallback = _statmech_to_dict(spc, sched.project_directory)['harmonic_fallback_torsions']
+        self.assertEqual(len(fallback), 1)
+        self.assertEqual(fallback[0]['pivot_atoms'], [1, 2])
+        self.assertEqual(fallback[0]['cause'], ROTOR_FALLBACK_SCAN_FAILED)
+        self.assertIn(job.job_name, fallback[0]['reason'])
+        self.assertIn('Maximum optimization cycles reached', fallback[0]['reason'])
 
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_run_ts_conformer_jobs_single_success_provenance(self, mock_run_opt):
