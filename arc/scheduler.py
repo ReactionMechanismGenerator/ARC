@@ -3807,15 +3807,15 @@ class Scheduler(object):
         """
         Store the electronic energy and the level signature of the opt (or composite) job whose geometry became
         the species ``final_xyz`` as ``geo_e_elect`` and ``geo_level`` in the output dict, which the restart file
-        keeps (it keeps no completed job). Both are ``None`` if the job's energy cannot be parsed.
+        keeps (it keeps no completed job). Both are ``None`` if the job's energy cannot be parsed, or if the job is
+        not of the type the baseline energy comes from (an opt troubleshooting a composite run).
 
         Args:
             label (str): The species label.
             job (JobAdapter): The converged opt or composite job.
         """
-        if job.job_type != ('composite' if self.composite_method else 'opt'):
-            return
-        e_elect = parse_job_e_elect(job)
+        e_elect = parse_job_e_elect(job) if job.job_type == ('composite' if self.composite_method else 'opt') \
+            else None
         self.output[label]['geo_e_elect'] = e_elect
         self.output[label]['geo_level'] = job_level_signature(job) if e_elect is not None else None
 
@@ -5134,6 +5134,7 @@ class Scheduler(object):
             if is_isomorphic:
                 self.species_dict[label].final_xyz = new_xyz
                 self.species_dict[label].initial_xyz = new_xyz
+                self.output[label]['geo_e_elect'], self.output[label]['geo_level'] = None, None
                 self.output[label]['conformer_verified'] = None
                 self.output[label]['conformer_verified_cause'] = ''
                 # Remove all completed rotor calculation information.
