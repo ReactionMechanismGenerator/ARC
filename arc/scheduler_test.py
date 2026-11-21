@@ -11369,6 +11369,90 @@ H       0.00000000   -0.75698224   -0.46907685"""))}
         self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
         self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
 
+    @staticmethod
+    def spawned_scans(sched, label):
+        """
+        Every scan job spawned for a species, submitted or held by a queue guard, sorted by rotor index.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The species label.
+
+        Returns:
+            list: The scan jobs.
+        """
+        return sorted([job for job_type in ('scan', 'directed_scan')
+                       for job in sched.job_dict[label].get(job_type, dict()).values()],
+                      key=lambda job: job.rotor_index)
+
+    def test_j_a_second_freq_verdict_launches_no_second_scan(self):
+        """(j) A second freq verdict for one guess spawns no scan for a rotor whose scan is live or ended"""
+        for admission in (SUBMIT, DEFER, REFUSE):
+            with self.subTest(admission=admission):
+                sched = self.make_sched([self.make_ts()])
+                self.end_opt(sched, 'TS_scan')
+                with patch.object(sched, 'check_max_simultaneous_jobs_limit', return_value=admission):
+                    self.pass_freq(sched, 'TS_scan', nmd=True)
+                ended, live = self.spawned_scans(sched, 'TS_scan')
+                self.assertEqual(sorted((job.rotor_index, job.torsions) for job in (ended, live)),
+                                 self.expected_scans(sched, 'TS_scan'))
+                for holder in (sched.running_jobs, sched.deferred_jobs, sched.stranded_jobs):
+                    if ended.job_name in holder.get('TS_scan', list()):
+                        holder['TS_scan'].remove(ended.job_name)
+                rotor = sched.species_dict['TS_scan'].rotors_dict[ended.rotor_index]
+                rotor['success'] = True
+                rotor['scan_path'] = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'TS_scan.out')
+                self.assertNotIn(ended.job_name, sched.unfinished_job_names('TS_scan'))
+                self.assertIn(live.job_name, sched.unfinished_job_names('TS_scan'))
+                submitted_at = len(self.submitted)
+                self.pass_freq(sched, 'TS_scan', nmd=True)
+                self.assertTrue(sched.ts_ready_for_scans('TS_scan'))
+                self.assertEqual(self.spawned_scans(sched, 'TS_scan'), [ended, live])
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at), list())
+
+    def test_k_an_e0_switch_at_the_freq_verdict_starts_no_scan(self):
+        """(k) An E0 check that switches the guess inside the freq verdict leaves the gate closed for both guesses"""
+        for case, n_guesses in (('next guess', 2), ('guesses exhausted', 1)):
+            with self.subTest(case=case):
+                ts = self.make_ts()
+                ts.ts_guesses = ts.ts_guesses[:n_guesses]
+                sched = self.make_sched([ts])
+                ts = sched.species_dict['TS_scan']
+                self.end_opt(sched, 'TS_scan')
+                self.assertEqual(len(ts.rotors_dict), 2)
+                sched.output['TS_scan']['paths'].update({'sp': 'sp.out', 'freq': 'freq.out'})
+                rxn = SimpleNamespace(label='rxn', ts_label='TS_scan', ts_species=ts, reactants=list(),
+                                      products=list())
+
+                def fake_check_ts(reaction, job=None, checks=None, **kwargs):
+                    if checks == ['NMD']:
+                        reaction.ts_species.ts_checks['NMD'] = True
+                    elif checks == ['energy']:
+                        reaction.ts_species.ts_checks['E0'] = False
+
+                gate, ts_ready_for_scans = list(), sched.ts_ready_for_scans
+
+                def spy_gate(label):
+                    gate.append(ts_ready_for_scans(label))
+                    return gate[-1]
+
+                job = self.freq_job(sched, 'TS_scan')
+                submitted_at = len(self.submitted)
+                with patch.dict(sched.rxn_dict, {99: rxn}), patch.object(ts, 'rxn_index', 99), \
+                        patch.object(sched, 'rxn_list', [rxn]), \
+                        patch('arc.scheduler.check_ts', side_effect=fake_check_ts), \
+                        patch.object(sched, 'ts_ready_for_scans', side_effect=spy_gate):
+                    freq_ok, switched = sched.post_freq_actions(
+                        label='TS_scan', job=job, vibfreqs=parser.parse_frequencies(job.local_path_to_output_file))
+                self.assertEqual(self.spawned_scans(sched, 'TS_scan'), list())
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at), list())
+                self.assertEqual(gate, [False])
+                self.assertEqual((freq_ok, switched), (True, False))
+                self.assertEqual(ts.chosen_ts, 1 if n_guesses == 2 else None)
+                self.assertIsNone(ts.ts_checks['freq'])
+                new_opt = [j for j in self.submitted[submitted_at:] if j.job_type == 'opt']
+                self.assertEqual(len(new_opt), 1 if n_guesses == 2 else 0)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
