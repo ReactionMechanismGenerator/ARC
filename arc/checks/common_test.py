@@ -108,7 +108,7 @@ class TestChecks(unittest.TestCase):
 
 
     def test_get_ts_validation_caution(self):
-        """Test that only a TS whose IRC is unverified because an IRC job failed gets a caution"""
+        """Test that, with no IRC requested for the run, only a TS whose IRC job failed gets a caution"""
         self.assertIsNone(common.get_ts_validation_caution(None))
         ts = ARCSpecies(label='TS0', is_ts=True)
         self.assertIsNone(common.get_ts_validation_caution(ts))
@@ -125,6 +125,33 @@ class TestChecks(unittest.TestCase):
         ts.ts_checks['warnings'] = None
         ts.ts_checks['IRC'] = None
         self.assertIsNone(common.get_ts_validation_caution(ts))
+
+    def test_get_ts_validation_caution_with_irc_requested(self):
+        """Test that, with IRC requested for the run, a TS with no IRC verdict gets a caution unless it has one"""
+        self.assertIsNone(common.get_ts_validation_caution(None, irc_requested=True))
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.ts_checks['warnings'] = 'NMD check could not run; '
+        caution = common.get_ts_validation_caution(ts, irc_requested=True)
+        self.assertTrue(caution.startswith(f'{common.TS_IRC_NOT_CONFIRMED_MARKER} ({common.IRC_CAUSE_NOT_COMPLETED})'))
+        ts.ts_checks['warnings'] += f'{common.IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
+        caution = common.get_ts_validation_caution(ts, irc_requested=True)
+        self.assertTrue(caution.startswith(f'{common.TS_IRC_NOT_CONFIRMED_MARKER} ({common.IRC_CAUSE_JOB_FAILED})'))
+        for verdict in [True, False]:
+            with self.subTest(irc=verdict):
+                ts.ts_checks['IRC'] = verdict
+                self.assertIsNone(common.get_ts_validation_caution(ts, irc_requested=True))
+
+    def test_get_ts_validation_caution_of_a_ts_loaded_from_an_arkane_yaml_file(self):
+        """Test that a TS loaded from an Arkane YAML file gets an IRC caution only if an IRC ran on it"""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.yml_path = 'TS0.yml'
+        self.assertIsNone(common.get_ts_validation_caution(ts, irc_requested=True))
+        ts.irc_label = 'IRC_TS0_1'
+        self.assertIn(common.IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED,
+                      common.get_ts_validation_caution(ts, irc_requested=True))
+        ts.irc_label = None
+        ts.ts_checks['warnings'] = f'{common.IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
+        self.assertIn(common.IRC_CAUSE_JOB_FAILED, common.get_ts_validation_caution(ts, irc_requested=True))
 
     def test_get_ts_validation_caution_names_its_cause(self):
         """Test that a TS whose requested IRC reached no verdict gets a caution naming why"""

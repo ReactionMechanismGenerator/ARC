@@ -15,6 +15,7 @@ import shutil
 import time
 from types import SimpleNamespace
 
+import numpy as np
 
 import arc.parser.parser as parser
 from arc.checks.common import (IRC_CAUSE_COMPARISON_INCONCLUSIVE, IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED,
@@ -48,7 +49,7 @@ from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, CONFORMER_ISOMORPHISM_TR
                            species_has_geo, species_has_sp, species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
-from arc.species.converter import str_to_xyz
+from arc.species.converter import str_to_xyz, xyz_to_dmat
 from arc.species.species import ARCSpecies, TSGuess
 
 
@@ -2929,13 +2930,13 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         Build a testing Scheduler holding a TS and one regular species, plus a forward IRC job of that TS.
 
         Args:
-            irc_file_name (str, optional): The IRC output in arc/testing/irc whose geometry the TS takes.
+            irc_file_name (str, optional): The IRC output in arc/testing/irc whose input geometry the TS takes.
             multiplicity (int, optional): The TS multiplicity, matching that IRC output.
 
         Returns:
             tuple: The scheduler, the TS label, and the IRC job.
         """
-        ts_xyz = parser.parse_geometry(log_file_path=os.path.join(ARC_TESTING_PATH, 'irc', irc_file_name))
+        ts_xyz = self._ts_xyz_of_irc_log(irc_file_name)
         ts = ARCSpecies(label='TS0', is_ts=True, xyz=ts_xyz, multiplicity=multiplicity, charge=0)
         sched = Scheduler(project='project_test_irc', ess_settings=self.ess_settings,
                           species_list=[ts, self.spc1], composite_method=None,
@@ -2953,6 +2954,38 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                           level=Level(repr={'method': 'wb97xd', 'basis': 'def2svp'}),
                           project_directory=self.project_directory, job_num=1587)
         return sched, ts.label, job
+
+    @staticmethod
+    def _irc_log_lines(file_name):
+        """
+        Read an IRC output in arc/testing/irc.
+
+        Args:
+            file_name (str): The file name.
+
+        Returns:
+            list[str]: The lines of the output.
+        """
+        with open(os.path.join(ARC_TESTING_PATH, 'irc', file_name), 'r') as f:
+            return f.readlines()
+
+    def _ts_xyz_of_irc_log(self, file_name):
+        """
+        Get the TS geometry an IRC output started from: its last orientation table before the first IRC point.
+
+        Args:
+            file_name (str): The IRC output in arc/testing/irc.
+
+        Returns:
+            dict: The TS geometry.
+        """
+        lines = self._irc_log_lines(file_name)
+        head = lines[:next(i for i, line in enumerate(lines) if 'Point Number:' in line and 'Path Number:' in line)]
+        os.makedirs(self.project_directory, exist_ok=True)
+        head_path = os.path.join(self.project_directory, f'ts_of_{file_name}')
+        with open(head_path, 'w') as f:
+            f.writelines(head)
+        return parser.parse_geometry(log_file_path=head_path)
 
     @staticmethod
     def _write_irc_output(job, content=''):
@@ -3043,13 +3076,17 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                 self._assert_failed_irc_left_no_trace(sched, label, job, before, cause=keyword)
 
     def test_an_irc_cut_after_its_first_points_is_recorded_as_failed(self):
-        """Test that an IRC log cut by a node fault after some points is a failed IRC, not a near-TS endpoint"""
-        with open(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'), 'r') as f:
-            lines = f.readlines()
+        """
+        Test that an IRC log cut by a node fault near the TS is a failed IRC, not a near-TS endpoint.
+
+        Cut at the header of point 1, the log holds no converged point. Cut after converged point 1, the largest
+        interatomic distance change from the TS is 0.037 Angstrom, too near the TS for an endpoint.
+        """
+        lines = self._irc_log_lines('rxn_1_irc_1.out')
         point_lines = [i for i, line in enumerate(lines) if 'Point Number:' in line and 'Path Number' in line]
         cuts = {'after point 1': point_lines[1] + 1,
-                'inside the last geometry table':
-                    max(i for i, line in enumerate(lines) if 'orientation:' in line) + 7}
+                'after converged point 1':
+                    next(i for i, line in enumerate(lines) if 'Point Number  2 in FORWARD path direction' in line)}
         for case, cut in cuts.items():
             with self.subTest(case=case):
                 sched, label, job = self._irc_scheduler()
@@ -3165,21 +3202,37 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertIn(IRC_JOB_FAILED_WARNING, sched.species_dict[label].ts_checks['warnings'])
 
     def test_irc_ended_usably(self):
-        """Test which server and ESS statuses of an IRC job allow its last geometry to be used"""
-        cases = [('done', {'status': 'done', 'keywords': list()}, True),
-                 ('done', {'status': 'errored', 'keywords': ['DeltaX', 'GL123']}, True),
-                 ('done', {'status': 'errored', 'keywords': ['DeltaX']}, True),
-                 ('done', {'status': 'errored', 'keywords': ['DeltaX', 'Memory']}, False),
-                 ('done', {'status': 'errored', 'keywords': list()}, False),
-                 ('done', {'status': 'errored', 'keywords': None}, False),
-                 ('done', {'status': 'errored', 'keywords': ['ServerTimeLimit']}, False),
-                 ('done', {'status': 'unconverged', 'keywords': list()}, False),
-                 ('done', dict(), False),
-                 ('errored', {'status': 'done', 'keywords': list()}, False),
-                 (None, {'status': 'done', 'keywords': list()}, False)]
-        for server_status, ess_status, expected in cases:
-            with self.subTest(server_status=server_status, ess_status=ess_status):
-                self.assertEqual(irc_ended_usably(server_status=server_status, ess_status=ess_status), expected)
+        """Test that an IRC job is usable when its ESS ended normally or its converged path moved off the TS"""
+        ts_xyz = self._ts_xyz_of_irc_log('rxn_1_irc_1.out')
+        lines = self._irc_log_lines('rxn_1_irc_1.out')
+        cut = next(i for i, line in enumerate(lines) if 'Point Number 37 in FORWARD path direction' in line)
+        cut_log = os.path.join(self.project_directory, 'irc_cut_after_point_36.out')
+        os.makedirs(self.project_directory, exist_ok=True)
+        with open(cut_log, 'w') as f:
+            f.writelines(lines[:cut])
+        far_points = parser.parse_irc_path(log_file_path=cut_log)
+        self.assertEqual(len(far_points), 36)
+        near_points = far_points[:1]
+        errored = {'status': 'errored', 'keywords': ['Unknown']}
+        cases = [('done', {'status': 'done', 'keywords': list()}, None, True),
+                 ('done', {'status': 'errored', 'keywords': ['DeltaX', 'GL123']}, None, False),
+                 ('done', {'status': 'errored', 'keywords': ['DeltaX', 'GL123']}, list(), False),
+                 ('done', {'status': 'errored', 'keywords': ['DeltaX', 'GL123']}, near_points, False),
+                 ('done', errored, far_points, True),
+                 ('done', {'status': 'errored', 'keywords': ['SCF', 'GL502', 'NoSymm']}, far_points, True),
+                 ('done', {'status': 'errored', 'keywords': ['GS2Opt', 'GL123']}, far_points, True),
+                 ('done', {'status': 'errored', 'keywords': ['ServerTimeLimit']}, near_points, False),
+                 ('done', {'status': 'unconverged', 'keywords': list()}, None, False),
+                 ('done', dict(), None, False),
+                 ('errored', {'status': 'done', 'keywords': list()}, far_points, False),
+                 ('errored', errored, far_points, False),
+                 (None, {'status': 'done', 'keywords': list()}, None, False)]
+        for server_status, ess_status, irc_points, expected in cases:
+            with self.subTest(server_status=server_status, ess_status=ess_status,
+                              n_points=None if irc_points is None else len(irc_points)):
+                self.assertEqual(irc_ended_usably(server_status=server_status, ess_status=ess_status,
+                                                  ts_xyz=ts_xyz, irc_points=irc_points), expected)
+        self.assertFalse(irc_ended_usably(server_status='done', ess_status=errored, ts_xyz=None, irc_points=far_points))
 
     def test_a_completed_irc_output_without_a_geometry_is_recorded_as_failed(self):
         """Test that an IRC whose status is not a failure but whose output holds no geometry is a failed IRC"""
@@ -3341,35 +3394,149 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         caution = self._caution_in_output_yml(sched, label)
         self.assertTrue(caution.startswith(f'{TS_IRC_NOT_CONFIRMED_MARKER} ({IRC_CAUSE_COMPARISON_INCONCLUSIVE})'))
 
-    def test_an_irc_with_a_parsable_output_spawns_its_species_and_opt(self):
+    def _assert_irc_spawned_its_endpoint(self, sched, label, job, run_job, expected_xyz=None):
         """
-        Test that a converged IRC spawns its species and opt, and that a Delta-x IRC still does.
+        Assert that an IRC job spawned one endpoint species from the expected geometry, and its opt.
 
-        ``irc_failed.out`` stopped with 'Delta-x Convergence NOT Met' (keywords ``DeltaX``, ``GL123``) and its last
-        geometry is about 0.007 Angstrom from the TS. Spawning it as an endpoint is pre-existing behaviour,
-        kept unchanged here: an ESS status of ``errored`` with only ``DeltaX`` and ``GL123`` still spawns.
+        Args:
+            sched (Scheduler): The scheduler.
+            label (str): The TS label.
+            job (JobAdapter): The IRC job.
+            run_job (MagicMock): The patched ``run_job``.
+            expected_xyz (dict, optional): The endpoint geometry; the last geometry of the output by default.
         """
-        cases = [('rxn_1_irc_1.out', 2, list()), ('irc_failed.out', 1, ['DeltaX', 'GL123'])]
-        for file_name, multiplicity, keywords in cases:
+        expected_xyz = expected_xyz or parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+        self.assertEqual(sched.output[label]['paths']['irc'], [job.local_path_to_output_file])
+        self.assertEqual(sched.output[label]['paths']['irc_directions'], ['forward'])
+        self.assertEqual(sched.species_dict[label].irc_label, 'IRC_TS0_1')
+        irc_spc = sched.species_dict['IRC_TS0_1']
+        self.assertEqual(irc_spc.irc_label, label)
+        self.assertTrue(almost_equal_coords_lists(irc_spc.get_xyz(), expected_xyz))
+        run_job.assert_called_once()
+        self.assertEqual(run_job.call_args.kwargs['label'], 'IRC_TS0_1')
+        self.assertEqual(run_job.call_args.kwargs['job_type'], 'opt')
+        self.assertEqual(sched.output[label]['errors'], '')
+
+    def test_an_irc_with_a_parsable_output_spawns_its_species_and_opt(self):
+        """Test that an IRC whose ESS ended normally spawns its endpoint species and opt"""
+        for file_name in ['rxn_1_irc_1.out', 'rxn_1_irc_2.out']:
             with self.subTest(file_name=file_name):
-                sched, label, job = self._irc_scheduler(irc_file_name=file_name, multiplicity=multiplicity)
-                with open(os.path.join(ARC_TESTING_PATH, 'irc', file_name), 'r') as f:
-                    self._write_irc_output(job, content=f.read())
+                sched, label, job = self._irc_scheduler(irc_file_name=file_name)
+                self._write_irc_output(job, content=''.join(self._irc_log_lines(file_name)))
                 self._set_ess_status_from_output(job)
-                self.assertEqual(job.job_status[1]['keywords'], keywords)
-                expected_xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+                self.assertEqual(job.job_status[1], {'status': 'done', 'keywords': list(), 'error': '', 'line': ''})
                 with patch.object(sched, 'run_job') as run_job:
                     sched.spawn_post_irc_jobs(label=label, job=job)
-                self.assertEqual(sched.output[label]['paths']['irc'], [job.local_path_to_output_file])
-                self.assertEqual(sched.output[label]['paths']['irc_directions'], ['forward'])
-                self.assertEqual(sched.species_dict[label].irc_label, 'IRC_TS0_1')
-                irc_spc = sched.species_dict['IRC_TS0_1']
-                self.assertEqual(irc_spc.irc_label, label)
-                self.assertTrue(almost_equal_coords_lists(irc_spc.get_xyz(), expected_xyz))
-                run_job.assert_called_once()
-                self.assertEqual(run_job.call_args.kwargs['label'], 'IRC_TS0_1')
-                self.assertEqual(run_job.call_args.kwargs['job_type'], 'opt')
-                self.assertEqual(sched.output[label]['errors'], '')
+                self._assert_irc_spawned_its_endpoint(sched, label, job, run_job)
+
+    def test_an_irc_stopped_on_delta_x_before_its_first_point_is_recorded_as_failed(self):
+        """
+        Test that an IRC that stopped on Delta-x before converging point 1 is a failed IRC.
+
+        ``irc_failed.out`` holds only point 0 and its last geometry is 0.007 Angstrom from the TS, so an endpoint
+        opt from it can end at the saddle point or in the other well.
+        """
+        sched, label, job = self._irc_scheduler(irc_file_name='irc_failed.out', multiplicity=1)
+        self._write_irc_output(job, content=''.join(self._irc_log_lines('irc_failed.out')))
+        self._set_ess_status_from_output(job)
+        self.assertEqual(job.job_status[1]['keywords'], ['DeltaX', 'GL123'])
+        before = self._irc_state(sched, label)
+        with patch.object(sched, 'run_job') as run_job:
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        self.assertFalse(run_job.called)
+        self._assert_failed_irc_left_no_trace(sched, label, job, before, cause='DeltaX')
+
+    def test_an_irc_cut_far_along_its_path_spawns_its_endpoint(self):
+        """
+        Test that an IRC log that ends on an error after its path moved off the TS spawns its endpoint.
+
+        Cut after converged point 36, the largest interatomic distance change from the TS is 0.90 Angstrom.
+        """
+        lines = self._irc_log_lines('rxn_1_irc_1.out')
+        cut_after_point_36 = ''.join(
+            lines[:next(i for i, line in enumerate(lines) if 'Point Number 37 in FORWARD path direction' in line)])
+        cut_inside_last_table = ''.join(lines[:max(i for i, line in enumerate(lines) if 'orientation:' in line) + 7])
+        cases = {'SCF failure': (cut_after_point_36, ['SCF', 'GL502', 'NoSymm']),
+                 'GS2 failure': (cut_after_point_36, ['GS2Opt', 'GL123']),
+                 'corrector failure': (cut_after_point_36, ['Unknown']),
+                 'cut inside the last geometry table': (cut_inside_last_table, None)}
+        for case, (content, keywords) in cases.items():
+            with self.subTest(case=case):
+                sched, label, job = self._irc_scheduler()
+                self._write_irc_output(job, content=content)
+                if keywords is None:
+                    self._set_ess_status_from_output(job)
+                    self.assertEqual(job.job_status[1]['keywords'], ['Unknown'])
+                else:
+                    job.job_status = ['done', {'status': 'errored', 'keywords': keywords, 'error': 'x', 'line': ''}]
+                with patch.object(sched, 'run_job') as run_job:
+                    sched.spawn_post_irc_jobs(label=label, job=job)
+                self._assert_irc_spawned_its_endpoint(sched, label, job, run_job)
+
+    def _irc_cut_inside_point_37(self):
+        """
+        Build an IRC scheduler whose forward IRC output is cut after the predictor geometry of point 37.
+
+        The last geometry of that output is the predictor step, 0.021 Angstrom (largest interatomic distance change)
+        off converged point 36.
+
+        Returns:
+            tuple: The scheduler, the TS label, the IRC job, the last converged IRC point,
+                   and the last geometry of the output.
+        """
+        lines = self._irc_log_lines('rxn_1_irc_1.out')
+        start = next(i for i, line in enumerate(lines) if 'Point Number 37 in FORWARD path direction' in line)
+        cut = next(i for i, line in enumerate(lines) if i > start and 'SCF Done' in line)
+        sched, label, job = self._irc_scheduler()
+        self._write_irc_output(job, content=''.join(lines[:cut]))
+        irc_points = parser.parse_irc_path(log_file_path=job.local_path_to_output_file)
+        last_geometry = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+        self.assertEqual([len(irc_points), irc_points[-1]['point_number']], [36, 36])
+        self.assertFalse(almost_equal_coords_lists(irc_points[-1]['xyz'], last_geometry))
+        return sched, label, job, irc_points[-1], last_geometry
+
+    def _irc_endpoint_warnings(self, logs, job):
+        """
+        Get the warnings about spawning an IRC endpoint from a converged point of an IRC that did not end normally.
+
+        Args:
+            logs: The ``assertLogs`` context of the ``arc`` logger.
+            job (JobAdapter): The IRC job.
+
+        Returns:
+            list[str]: The messages that name the job and its converged points.
+        """
+        return [record.getMessage() for record in logs.records
+                if record.levelno == logging.WARNING and job.job_name in record.getMessage()
+                and 'converged' in record.getMessage()]
+
+    def test_an_irc_that_did_not_end_normally_spawns_its_last_converged_point(self):
+        """Test that an IRC accepted by its path spawns its endpoint from its last converged point, with a warning"""
+        sched, label, job, last_point, last_geometry = self._irc_cut_inside_point_37()
+        self._set_ess_status_from_output(job)
+        self.assertEqual(job.job_status[1]['keywords'], ['Unknown'])
+        with patch.object(sched, 'run_job') as run_job, self.assertLogs('arc', level='WARNING') as logs:
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        self._assert_irc_spawned_its_endpoint(sched, label, job, run_job, expected_xyz=last_point['xyz'])
+        self.assertFalse(almost_equal_coords_lists(sched.species_dict['IRC_TS0_1'].get_xyz(), last_geometry))
+        warnings = self._irc_endpoint_warnings(logs, job)
+        self.assertEqual(len(warnings), 1)
+        ts_dmat = xyz_to_dmat(sched.species_dict[label].get_xyz())
+        displacement = float(np.max(np.abs(xyz_to_dmat(last_point['xyz']) - ts_dmat)))
+        self.assertAlmostEqual(displacement, 0.897, places=3)
+        for item in [label, job.job_name, "['Unknown']", '36 converged', f'{displacement:.3f} Angstrom']:
+            self.assertIn(item, warnings[0])
+
+    def test_an_irc_that_ended_normally_spawns_its_last_geometry(self):
+        """Test that an IRC whose ESS ended normally spawns its endpoint from its last geometry, without a warning"""
+        sched, label, job, last_point, last_geometry = self._irc_cut_inside_point_37()
+        job.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
+        with patch.object(sched, 'run_job') as run_job, self.assertLogs('arc', level='WARNING') as logs:
+            logging.getLogger('arc').warning('A sentinel, so that assertLogs holds a record.')
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        self._assert_irc_spawned_its_endpoint(sched, label, job, run_job, expected_xyz=last_geometry)
+        self.assertFalse(almost_equal_coords_lists(sched.species_dict['IRC_TS0_1'].get_xyz(), last_point['xyz']))
+        self.assertEqual(self._irc_endpoint_warnings(logs, job), list())
 
     def test_a_restored_irc_job_with_an_empty_output_does_not_crash(self):
         """Test that an IRC job restored from a restart file and found with an empty output does not crash"""

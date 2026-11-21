@@ -1823,12 +1823,13 @@ class TestRxnToDict(unittest.TestCase):
         self.assertEqual(result['kinetics']['Ea_units'], 'kJ/mol')
         self.assertEqual(result['kinetics']['n'], 0.5)
 
-    def _rxn_with_unconfirmed_ts(self, kinetics):
+    def _rxn_with_unconfirmed_ts(self, kinetics, yml_path=None):
         """
         Build a reaction whose TS has every ts_checks entry None and no irc_label.
 
         Args:
             kinetics (dict | None): The kinetics of the reaction.
+            yml_path (str, optional): The Arkane YAML file the TS was loaded from, if it was.
 
         Returns:
             MagicMock: The reaction.
@@ -1843,6 +1844,7 @@ class TestRxnToDict(unittest.TestCase):
         ts = ARCSpecies(label='TS0', is_ts=True)
         ts.ts_checks = {key: None for key in ts.ts_checks}
         ts.irc_label = None
+        ts.yml_path = yml_path
         rxn.ts_species = ts
         return rxn
 
@@ -1853,12 +1855,20 @@ class TestRxnToDict(unittest.TestCase):
         self.assertNotIn('ts_validation_caution', result)
 
     def test_a_kept_rate_with_an_unconfirmed_ts_carries_a_ts_validation_caution(self):
-        """Test that a kept rate whose TS IRC was requested but not confirmed carries the IRC caution"""
+        """Test that a kept rate whose TS ARC computed with IRC requested, but not confirmed, carries the IRC caution"""
         kinetics = {'A': (1.2e10, 's^-1'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')}
         result = _rxn_to_dict(self._rxn_with_unconfirmed_ts(kinetics=kinetics), irc_requested=True, output_dict=dict())
         self.assertIsNotNone(result['kinetics'])
         self.assertTrue(result['ts_validation_caution'].startswith(
             f'{TS_IRC_NOT_CONFIRMED_MARKER} ({IRC_CAUSE_NOT_COMPLETED})'))
+
+    def test_a_kept_rate_with_a_ts_loaded_from_an_arkane_yaml_file_carries_no_ts_validation_caution(self):
+        """Test that a kept rate whose TS was loaded from an Arkane YAML file, so no IRC ran on it, has no IRC caution"""
+        kinetics = {'A': (1.2e10, 's^-1'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')}
+        result = _rxn_to_dict(self._rxn_with_unconfirmed_ts(kinetics=kinetics, yml_path='TS0.yml'),
+                              irc_requested=True, output_dict=dict())
+        self.assertIsNotNone(result['kinetics'])
+        self.assertNotIn('ts_validation_caution', result)
 
 
 class TestSpcToDict(unittest.TestCase):
