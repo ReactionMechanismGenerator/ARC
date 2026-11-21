@@ -6239,6 +6239,19 @@ class Scheduler(object):
                          cpu_cores=cpu_cores,
                          shift=shift,
                          )
+        elif self.species_dict[label].is_ts and job.job_type == 'scan':
+            # A failed scan says nothing about whether the saddle point is right:
+            # keep the TS guess, and leave only this rotor as a harmonic mode.
+            rotor = (self.species_dict[label].rotors_dict or dict()).get(job.rotor_index)
+            if rotor is not None:
+                reason = f'Scan job {job.job_name} failed ({job.job_status[1]["error"]}) ' \
+                         f'and could not be troubleshot; '
+                rotor['success'] = False
+                if reason not in (rotor.get('invalidation_reason') or ''):
+                    rotor['invalidation_reason'] = (rotor.get('invalidation_reason') or '') + reason
+            logger.warning(f'Could not troubleshoot scan job {job.job_name} of TS {label} '
+                           f'(rotor {rotor["pivots"] if rotor is not None else job.rotor_index}). '
+                           f'Leaving this rotor as a harmonic mode; not switching the TS guess.')
         elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted \
                 and conformer is None:
             # Only switch TS guess when a full optimization fails, not when a single
