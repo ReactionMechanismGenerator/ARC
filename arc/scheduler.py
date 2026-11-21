@@ -2404,6 +2404,8 @@ class Scheduler(object):
         Args:
             label (str): The species label.
         """
+        if not self.ts_ready_for_scans(label):
+            return
         if self.job_types['rotors'] and isinstance(self.species_dict[label].rotors_dict, dict):
             ess_rotor_indices = []  # Collected for potential pipe batching below.
             for i, rotor in self.species_dict[label].rotors_dict.items():
@@ -2503,6 +2505,31 @@ class Scheduler(object):
                                  torsions=torsions,
                                  rotor_index=i,
                                  )
+
+    def ts_ready_for_scans(self, label: str) -> bool:
+        """
+        Whether the rotor scans of a species may start.
+
+        A TS's scans wait for the verdict on its current guess: its freq job passed (``ts_checks['freq']``) and its
+        NMD check did not fail, or failed as a near miss that waits for the IRC or was accepted on it. A failed check
+        makes ``switch_ts()`` discard the guess with every scan of it, and its reset of ``ts_checks`` closes this gate
+        for the next guess. An NMD check that could not be performed (``None``) fails no TS (see
+        ``ts_passed_checks()``), so it holds no scan back. Without freq jobs no verdict comes, so nothing is held.
+        ``post_freq_actions()`` launches the scans once the verdict is in. A non-TS species is always ready.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: Whether ``run_scan_jobs()`` may spawn the scans of this species now.
+        """
+        species = self.species_dict[label]
+        if not species.is_ts or not self.job_types['freq']:
+            return True
+        ts_checks = species.ts_checks or dict()
+        return ts_checks.get('freq') is True \
+            and (ts_checks.get('NMD') is not False
+                 or self.is_nmd_deferred(label) or self.has_current_nmd_acceptance(label))
 
     def run_irc_job(self, label, irc_direction='forward'):
         """
@@ -4826,6 +4853,8 @@ class Scheduler(object):
             self.save_restart_dict()
         if not switch_ts and species_has_sp(self.output[label], self.species_dict[label].yml_path):
             self.check_rxn_e0_by_spc(label)
+        if not switch_ts and self.species_dict[label].is_ts:
+            self.run_scan_jobs(label)
         return True, switch_ts
 
     def check_negative_freq(self,
