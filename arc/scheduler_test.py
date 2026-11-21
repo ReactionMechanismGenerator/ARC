@@ -9522,6 +9522,24 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
         job.as_dict.return_value = {'job_type': job_type, 'job_id': job_id}
         return job
 
+    def _scan_job(self, job_type: str, torsion: list[int]) -> JobAdapter:
+        """
+        A scan job built by the real Gaussian adapter, so its ``torsions`` have the shape real jobs store.
+
+        Args:
+            job_type (str): Either ``'scan'`` or ``'directed_scan'``.
+            torsion (list[int]): The rotor's flat torsion.
+
+        Returns:
+            JobAdapter: The job.
+        """
+        return job_factory(job_adapter='gaussian', project='tracked_work',
+                           project_directory=self.sched.project_directory, job_type=job_type,
+                           level=Level(method='wb97xd', basis='def2-tzvp'),
+                           species=[self.sched.species_dict[self.label]], rotor_index=0, torsions=torsion,
+                           directed_scan_type='brute_force_sp' if job_type == 'directed_scan' else None,
+                           execution_type='queue', testing=True)
+
     def _ending(self, *removed: str):
         """An end_job() that ends the named jobs: it drops them from running_jobs and reports success."""
         def end_job(job, label, job_name):
@@ -9625,10 +9643,13 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
         for directed_scan_type, job_type in (('brute_force_sp', 'directed_scan'), ('ess', 'scan')):
             for held_in in ('deferred_jobs', 'stranded_jobs', None):
                 with self.subTest(job_type=job_type, held_in=held_in):
+                    # initialize_directed_rotors() nests a directed rotor's torsion, scan and pivots, even in 1D.
+                    nest = (lambda value: [value]) if job_type == 'directed_scan' else (lambda value: value)
                     self.sched.species_dict[self.label].rotors_dict = {
-                        0: {'torsion': torsion, 'pivots': [1, 2], 'scan_path': '', 'success': None,
-                            'invalidation_reason': '', 'directed_scan_type': directed_scan_type}}
-                    job = self._job(job_type, 80, job_name=f'{job_type}_a80', torsions=torsion)
+                        0: {'torsion': nest(torsion), 'scan': nest([t + 1 for t in torsion]), 'pivots': nest([1, 2]),
+                            'scan_path': '', 'success': None, 'invalidation_reason': '',
+                            'directed_scan_type': directed_scan_type}}
+                    job = self._scan_job(job_type, torsion)
                     self.sched.job_dict[self.label] = {job_type: {job.job_name: job}}
                     self.sched.running_jobs[self.label] = list()
                     self.sched.deferred_jobs, self.sched.stranded_jobs = dict(), dict()
@@ -9651,10 +9672,10 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
         for held_in in ('running_jobs', 'deferred_jobs', 'stranded_jobs', None):
             with self.subTest(held_in=held_in):
                 self.sched.species_dict[self.label].rotors_dict = {
-                    i: {'torsion': torsion, 'pivots': [1, 2], 'scan_path': '', 'success': None,
-                        'invalidation_reason': '', 'directed_scan_type': 'ess'}
+                    i: {'torsion': torsion, 'scan': [t + 1 for t in torsion], 'pivots': [1, 2], 'scan_path': '',
+                        'success': None, 'invalidation_reason': '', 'directed_scan_type': 'ess'}
                     for i, torsion in enumerate((held_torsion, free_torsion))}
-                job = self._job('scan', 80, job_name='scan_a80', torsions=held_torsion)
+                job = self._scan_job('scan', held_torsion)
                 self.sched.job_dict[self.label] = {'scan': {job.job_name: job}}
                 self.sched.running_jobs[self.label] = list()
                 self.sched.deferred_jobs, self.sched.stranded_jobs = dict(), dict()
@@ -9668,6 +9689,29 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
                 piped = [i for c in try_pipe.call_args_list for i in c.args[1]]
                 self.assertEqual(piped, [1] if held_in else [0, 1])
                 self.assertEqual(run_job.call_count, 0)
+
+    def test_a_scan_restored_from_the_restart_file_keeps_a_second_scan_of_its_torsion_from_spawning(self):
+        """A scan job rebuilt from restart.yml by restore_running_jobs() is seen as a scan of its rotor's torsion."""
+        torsion = [2, 0, 1, 5]
+        self.sched.job_types['rotors'] = True
+        self.sched.species_dict[self.label].final_xyz = str_to_xyz(TestScheduler._METHYLAMINE_XYZ)
+        self.sched.species_dict[self.label].rotors_dict = {
+            0: {'torsion': torsion, 'scan': [t + 1 for t in torsion], 'pivots': [1, 2], 'scan_path': '',
+                'success': None, 'invalidation_reason': '', 'directed_scan_type': 'ess'}}
+        job = self._scan_job('scan', torsion)
+        restart_path = os.path.join(self.sched.project_directory, 'restart.yml')
+        save_yaml_file(path=restart_path, content={'running_jobs': {self.label: [job.as_dict()]}})
+        self.sched.restart_dict = read_yaml_file(restart_path)
+        self.sched.job_dict[self.label], self.sched.running_jobs = dict(), dict()
+        self.sched.restore_running_jobs()
+        self.assertEqual(self.sched.running_jobs[self.label], [job.job_name])
+        restored = self.sched.job_dict[self.label]['scan'][job.job_name]
+        self.assertIsNot(restored, job)
+        with patch.object(self.sched, 'run_job') as run_job, \
+                patch.object(self.sched, 'rotor_scan_owed_to_a_pipe_run', return_value=False), \
+                patch.object(self.sched.pipe_planner, 'try_pipe_rotor_scans_1d', return_value=set()):
+            self.sched.run_scan_jobs(self.label)
+        self.assertEqual(run_job.call_count, 0)
 
 
 class TestTsGuessPathProvenance(unittest.TestCase):
