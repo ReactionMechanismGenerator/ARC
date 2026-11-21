@@ -334,6 +334,19 @@ def irc_ended_usably(server_status: str | None, ess_status: dict) -> bool:
         and all(keyword in IRC_EARLY_STOP_KEYWORDS for keyword in keywords)
 
 
+def nested_torsions(torsions: list[int] | list[list[int]]) -> list[list[int]]:
+    """
+    Give torsions the nested shape a job adapter stores, e.g., ``[2, 0, 1, 5]`` -> ``[[2, 0, 1, 5]]``.
+
+    Args:
+        torsions (list[int] | list[list[int]]): One flat torsion, or a list of torsions.
+
+    Returns:
+        list[list[int]]: The torsions as a list of torsions.
+    """
+    return [torsions] if not isinstance(torsions[0], list) else torsions
+
+
 def get_conformer_isomorphism_trsh_history(conformers_note: str | None) -> list[str]:
     """
     Recover the conformer isomorphism troubleshooting levels already tried for a species from its
@@ -1503,8 +1516,7 @@ class Scheduler(object):
         memory = memory if memory is not None else self.memory
         checkfile = self.species_dict[label].checkfile if isinstance(label, str) else None
         if torsions is None and rotor_index is not None:
-            torsions = species.rotors_dict[rotor_index]['torsion']
-            torsions = [torsions] if not isinstance(torsions[0], list) else torsions
+            torsions = nested_torsions(species.rotors_dict[rotor_index]['torsion'])
         if label is not None:
             level_of_theory = self.get_job_level(label=label, level_of_theory=level_of_theory, job_type=job_type)
         job_adapter = job_adapter.lower() if job_adapter is not None else \
@@ -2437,7 +2449,7 @@ class Scheduler(object):
                         self.job_dict[label]['directed_scan'] = dict()
                     # Check that this job isn't already running on the server (from a restarted project).
                     for directed_scan_job in self.job_dict[label]['directed_scan'].values():
-                        if directed_scan_job.torsions == torsions \
+                        if directed_scan_job.torsions == nested_torsions(torsions) \
                                 and directed_scan_job.job_name in self.unfinished_job_names(label):
                             break
                     else:
@@ -2452,7 +2464,7 @@ class Scheduler(object):
                         else:
                             self.spawn_directed_scan_jobs(label, rotor_index=i)
                 elif not self.rotor_scan_owed_to_a_pipe_run(self.species_dict[label], i) \
-                        and not any(torsions == scan_job.torsions
+                        and not any(nested_torsions(torsions) == scan_job.torsions
                                     and scan_job.job_name in self.unfinished_job_names(label)
                                     for scan_job in self.job_dict[label].get('scan', dict()).values()):
                     # This is a "normal" ESS scan (not directed). Collect for potential pipe batching.
@@ -2473,7 +2485,8 @@ class Scheduler(object):
                 if 'scan' not in self.job_dict[label].keys():
                     self.job_dict[label]['scan'] = dict()
                 for scan_job in self.job_dict[label]['scan'].values():
-                    if torsions == scan_job.torsions and scan_job.job_name in self.unfinished_job_names(label):
+                    if nested_torsions(torsions) == scan_job.torsions \
+                            and scan_job.job_name in self.unfinished_job_names(label):
                         break
                 else:
                     job_label = label

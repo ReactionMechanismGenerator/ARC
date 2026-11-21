@@ -62,7 +62,7 @@ from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, CONFORMER_ISOMORPHISM_TR
                            UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE, Scheduler, SchedulerError,
                            exception_summary_line, get_conformer_isomorphism_trsh_history, get_conformer_trsh_levels,
                            get_respawned_conformer_trsh_methods, irc_ended_usably, is_same_conformer,
-                           job_level_signature, outage_record, parse_job_e_elect, species_has_freq,
+                           job_level_signature, nested_torsions, outage_record, parse_job_e_elect, species_has_freq,
                            species_has_geo, species_has_sp, species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
@@ -3295,6 +3295,14 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         for server_status, ess_status, expected in cases:
             with self.subTest(server_status=server_status, ess_status=ess_status):
                 self.assertEqual(irc_ended_usably(server_status=server_status, ess_status=ess_status), expected)
+
+    def test_nested_torsions(self):
+        """Test that torsions take the nested shape a job adapter stores"""
+        self.assertEqual(nested_torsions([2, 0, 1, 5]), [[2, 0, 1, 5]])
+        self.assertEqual(nested_torsions([[2, 0, 1, 5]]), [[2, 0, 1, 5]])
+        self.assertEqual(nested_torsions([[2, 0, 1, 5], [0, 1, 2, 8]]), [[2, 0, 1, 5], [0, 1, 2, 8]])
+        self.assertNotEqual(nested_torsions([2, 0, 1, 5]), [[2, 0, 1, 6]])
+        self.assertEqual(nested_torsions(nested_torsions([0, 1, 2, 3])), [[0, 1, 2, 3]])
 
     def test_a_completed_irc_output_without_a_geometry_is_recorded_as_failed(self):
         """Test that an IRC whose status is not a failure but whose output holds no geometry is a failed IRC"""
