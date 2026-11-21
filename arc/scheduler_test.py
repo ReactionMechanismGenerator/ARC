@@ -5241,6 +5241,25 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIs(record['verified'], False)
         self.assertIs(restarted.output[label]['conformer_verified'], False)
 
+    def test_stored_geo_energy_follows_the_geometry(self):
+        """The stored energy is dropped when the geometry moves to one without a comparable energy."""
+        label = 'cc_geo_e'
+        sched = self.make_sched(label, composite=True)
+        composite_job = self.geo_job('composite', 'composite_a1', Level(repr='cbs-qb3'))
+        sched.record_geo_job_e_elect(label=label, job=composite_job)
+        self.assertAlmostEqual(sched.get_latest_geo_job_e_elect(label)[0],
+                               parser.parse_e_elect(log_file_path=self.nc3h7_log))
+        # An opt troubleshooting the composite run sets final_xyz; the composite energy no longer belongs to it.
+        sched.record_geo_job_e_elect(label=label, job=self.geo_job('opt', 'opt_a2',
+                                                                   Level(repr=default_levels_of_theory['opt'])))
+        self.assertEqual(sched.get_latest_geo_job_e_elect(label), (None, None))
+        # A conformer change moves final_xyz to the scan's geometry, which no job computed yet.
+        sched.record_geo_job_e_elect(label=label, job=composite_job)
+        self.change_conformer(sched, label, self.new_xyz(sched, label))
+        record = sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]
+        self.assertIsNotNone(record['pre_e_elect'])
+        self.assertEqual(sched.get_latest_geo_job_e_elect(label), (None, None))
+
     def test_check_change_conformer_reopt_waits_for_the_baseline_job_type(self):
         """An opt that troubleshoots a composite run (or the reverse) is not compared with the other level's energy."""
         log = self.nc3h7_log
