@@ -140,6 +140,7 @@ def make_rich_species() -> ARCSpecies:
     spc.e0 = -105136.6
     spc.freqs = [1300.0, 1500.0, 3000.0]
     spc.optical_isomers = 1
+    spc.optical_isomers_cause = None
     spc.external_symmetry = 1
     spc._is_linear = False
     spc.conformers = [spc.get_xyz(), spc.get_xyz()]
@@ -180,6 +181,7 @@ def make_directed_rotor_species() -> ARCSpecies:
     spc.e0 = -105136.6
     spc.freqs = [1300.0, 1500.0, 3000.0]
     spc.optical_isomers = 1
+    spc.optical_isomers_cause = None
     spc.external_symmetry = 1
     spc._is_linear = False
     spc.rotors_dict = {
@@ -202,6 +204,7 @@ def make_transition_state() -> ARCSpecies:
     ts.e0 = -104900.0
     ts.freqs = [-1235.4, -18.2, 1300.0, 1500.0]
     ts.optical_isomers = 1
+    ts.optical_isomers_cause = None
     ts.external_symmetry = 1
     ts._is_linear = False
     ts.chosen_ts = 0
@@ -590,6 +593,7 @@ class TestOrcaRotorScanValidates(SchemaAssertionMixin, unittest.TestCase):
         spc.e0 = -539300.0
         spc.freqs = [640.0, 1265.0, 3590.0]
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc._is_linear = False
         spc.rotors_dict = {
@@ -611,6 +615,13 @@ class TestOrcaRotorScanValidates(SchemaAssertionMixin, unittest.TestCase):
     def test_document_validates(self):
         """The whole document satisfies the schema."""
         self.assert_valid(self.document)
+
+    def test_all_rotors_treated_has_no_harmonic_fallback(self):
+        """A species whose every rotor was treated reports a zero harmonic-fallback count."""
+        statmech = self.document['species'][0]['statmech']
+        self.assertEqual(statmech['harmonic_fallback_torsions'], [])
+        self.assertEqual(statmech['n_harmonic_fallback_torsions'], 0)
+        self.assertEqual(statmech['n_ring_torsions'], 0)
 
     def test_relative_energies_are_relative_and_in_kj_mol(self):
         """The published curve is zeroed and in kJ/mol, not raw Hartree.
@@ -863,6 +874,7 @@ class TestOnlyRejectedRotorsValidate(SchemaAssertionMixin, unittest.TestCase):
         spc.e0 = -105136.6
         spc.freqs = [1300.0, 1500.0]
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc._is_linear = False
         spc.rotors_dict = {
@@ -898,10 +910,97 @@ class TestOnlyRejectedRotorsValidate(SchemaAssertionMixin, unittest.TestCase):
         rejected = {entry['rotor_index']: entry for entry in self.species['statmech']['rejected_torsions']}
         self.assertEqual(rejected[1]['invalidation_reason'], '')
 
+    def test_harmonic_fallback_lists_failed_and_pending_rotors(self):
+        """Every rotor left harmonic is listed with its cause, and the count includes the pending one."""
+        statmech = self.species['statmech']
+        self.assertEqual([(e['pivot_atoms'], e['cause'], e['reason']) for e in statmech['harmonic_fallback_torsions']],
+                         [([2, 3], 'scan failed', 'rotor set too many (5) times'),
+                          ([3, 4], 'scan failed', ''),
+                          ([4, 5], 'scan not completed', '')])
+        self.assertEqual(statmech['n_harmonic_fallback_torsions'], 3)
+        self.assertEqual(statmech['n_ring_torsions'], 0)
+
     def test_pending_rotor_is_not_published_as_a_rejection(self):
         """``success is None`` means pending/never-attempted, not rejected -- it must not appear here."""
         rejected_indices = {entry['rotor_index'] for entry in self.species['statmech']['rejected_torsions']}
         self.assertNotIn(2, rejected_indices)
+
+
+class TestTSGraphFallbackValidates(SchemaAssertionMixin, unittest.TestCase):
+    """A TS rotor left harmonic because the TS graph contradicts the TS geometry carries its own cause."""
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        Build the output document of a TS with one such rotor once for the class.
+        """
+        cls.schema = load_output_schema()
+        cls.validator = Draft202012Validator(cls.schema)
+        cls.tmp_dir = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.tmp_dir, ignore_errors=True)
+        spc = ARCSpecies(label='TSgraph', smiles='CCO')
+        spc.initial_xyz = spc.get_xyz()
+        spc.final_xyz = spc.get_xyz()
+        spc.e_elect = -105236.6
+        spc.e0 = -105136.6
+        spc.freqs = [1300.0, 1500.0]
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc._is_linear = False
+        spc.rotors_dict = {0: {'success': False, 'scan': [1, 2, 3, 4], 'pivots': [2, 3], 'dimensions': 1,
+                               'invalidation_reason': 'TS graph contradicts the geometry (code: ts graph). '}}
+        cls.document = build_output_document(
+            project_directory=cls.tmp_dir,
+            species_dict={'TSgraph': spc},
+            output_dict={'TSgraph': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}},
+        )
+        cls.statmech = cls.document['species'][0]['statmech']
+
+    def test_document_validates(self):
+        """The TS graph cause is a valid harmonic-fallback cause."""
+        self.assertIn(([2, 3], 'TS graph contradicts the geometry'),
+                      [(e['pivot_atoms'], e['cause']) for e in self.statmech['harmonic_fallback_torsions']])
+        self.assert_valid(self.document)
+
+
+class TestRingTorsionWithoutDihedralValidates(SchemaAssertionMixin, unittest.TestCase):
+    """Dioxirane: its O-O ring bond has no dihedral with four distinct atoms, so its entry carries a null scan."""
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        Build the output document of a converged dioxirane once for the class.
+        """
+        cls.schema = load_output_schema()
+        cls.validator = Draft202012Validator(cls.schema)
+        cls.tmp_dir = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.tmp_dir, ignore_errors=True)
+        spc = ARCSpecies(label='dioxirane', smiles='C1OO1')
+        spc.initial_xyz = spc.get_xyz()
+        spc.final_xyz = spc.get_xyz()
+        spc.e_elect = -500000.0
+        spc.e0 = -499900.0
+        spc.freqs = [800.0, 1200.0]
+        spc.optical_isomers = 1
+        spc.external_symmetry = 2
+        spc._is_linear = False
+        cls.document = build_output_document(
+            project_directory=cls.tmp_dir,
+            species_dict={'dioxirane': spc},
+            output_dict={'dioxirane': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}},
+        )
+        cls.statmech = cls.document['species'][0]['statmech']
+
+    def test_document_validates(self):
+        """The null atom_indices of the O-O ring torsion is valid."""
+        self.assert_valid(self.document)
+
+    def test_ring_entry_is_kept_with_a_null_scan(self):
+        """The O-O ring torsion is listed, with no dihedral rather than one that repeats an atom."""
+        ring = {tuple(e['pivot_atoms']): e['atom_indices'] for e in self.statmech['harmonic_fallback_torsions']}
+        self.assertEqual(sorted(ring), [(1, 2), (1, 3), (2, 3)])
+        self.assertIsNone(ring[(2, 3)])
+        self.assertEqual(self.statmech['n_ring_torsions'], 3)
 
 
 class TestMeliusRunValidates(SchemaAssertionMixin, unittest.TestCase):
