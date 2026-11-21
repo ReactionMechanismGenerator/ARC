@@ -429,6 +429,7 @@ def process_rits_tsg(tsg_dict: dict,
                 and compare_confs(ts_xyz, other_tsg.initial_xyz):
             if 'rits' not in other_tsg.method.lower():
                 other_tsg.method += ' and RitS'
+            other_tsg.add_method_source('RitS')
             return False
 
     method_index = int(tsg_dict.get('method_index', 0))
