@@ -3602,6 +3602,7 @@ class Scheduler(object):
         freq_ok = False
         if job.job_status[1]['status'] == 'done':
             self.species_dict[label].final_xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+            self.record_geo_job_e_elect(label=label, job=job)
             self.output[label]['job_types']['composite'] = True
             self.output[label]['job_types']['opt'] = True
             self.output[label]['job_types']['sp'] = True
@@ -3732,6 +3733,7 @@ class Scheduler(object):
                 else:
                     self.species_dict[label].final_xyz = opt_xyz
                     self.post_opt_geo_work(label, job)
+                    self.record_geo_job_e_elect(label=label, job=job)
                 if 'optfreq' in job.job_name:
                     self.check_freq_job(label, job)
                 if not multi_species:
@@ -3801,9 +3803,26 @@ class Scheduler(object):
         return bool(self.job_types['freq'] and self.species_dict[label].number_of_atoms > 1
                     and self.species_dict[label].irc_label is None)
 
+    def record_geo_job_e_elect(self, label: str, job: JobAdapter) -> None:
+        """
+        Store the electronic energy and the level signature of the opt (or composite) job whose geometry became
+        the species ``final_xyz`` as ``geo_e_elect`` and ``geo_level`` in the output dict, which the restart file
+        keeps (it keeps no completed job). Both are ``None`` if the job's energy cannot be parsed.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The converged opt or composite job.
+        """
+        if job.job_type != ('composite' if self.composite_method else 'opt'):
+            return
+        e_elect = parse_job_e_elect(job)
+        self.output[label]['geo_e_elect'] = e_elect
+        self.output[label]['geo_level'] = job_level_signature(job) if e_elect is not None else None
+
     def get_latest_geo_job_e_elect(self, label: str) -> tuple[float | None, str | None]:
         """
         Get the electronic energy of the latest successful opt (or composite) job of a species, and its level.
+        After a restart, which restores no completed job, the values stored by ``record_geo_job_e_elect`` are used.
 
         Args:
             label (str): The species label.
@@ -3817,7 +3836,10 @@ class Scheduler(object):
                     for job in self.job_dict.get(label, dict()).get(job_type, dict()).values()
                     if job.job_status[1]['status'] == 'done']
         energies = [energy for energy in energies if energy[0] is not None]
-        return energies[-1] if energies else (None, None)
+        if energies:
+            return energies[-1]
+        entry = self.output.get(label) or dict()
+        return entry.get('geo_e_elect'), entry.get('geo_level')
 
     def pending_conformer_changes(self, label: str) -> list[dict]:
         """
