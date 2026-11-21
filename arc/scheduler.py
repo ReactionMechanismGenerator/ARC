@@ -169,18 +169,28 @@ def format_energy_gap(energy_gap: float | None) -> str:
     return f'{energy_gap:.2f} kJ/mol lower' if energy_gap is not None else 'lower by an unknown amount'
 
 
-def is_same_conformer(d_dihedral: float | None, d_energy: float | None) -> bool:
+def is_same_conformer(d_dihedral: float | None,
+                      d_energy: float | None,
+                      energy_gap: float | None = None,
+                      ) -> bool:
     """
-    Check whether a re-optimization returned to the geometry it started from before a conformer change.
-    A missing energy change counts as the same energy; a missing dihedral change never counts as the same dihedral.
+    Check whether a re-optimization returned to the conformer it started from before a conformer change,
+    or to a symmetry-equivalent copy of it (e.g., a methyl rotated by 120 degrees).
+    A known energy change decides: an unchanged energy means the lower conformer was not reached, whatever the
+    dihedral. When the energy is unknown, or the scan's energy gap is itself below the energy tolerance (a nearly
+    free rotor), the dihedral decides: a missing energy change counts as the same energy, and a missing dihedral
+    change never counts as the same dihedral.
 
     Args:
         d_dihedral (float, optional): The absolute change of the scanned dihedral angle in degrees.
         d_energy (float, optional): The absolute change of the electronic energy in kJ/mol.
+        energy_gap (float, optional): How much lower the scan found the conformer, in kJ/mol.
 
     Returns:
-        bool: Whether both the dihedral angle and the energy are unchanged.
+        bool: Whether the re-optimization returned to the same conformer.
     """
+    if d_energy is not None and (energy_gap is None or energy_gap >= 0.1):
+        return d_energy < 0.1
     return d_dihedral is not None and d_dihedral < 2.0 and (d_energy is None or d_energy < 0.1)
 
 
@@ -3850,8 +3860,9 @@ class Scheduler(object):
     def check_change_conformer_reopt(self, label: str, job: JobAdapter | None = None) -> None:
         """
         Check that a re-optimization started from a lower conformer found by a rotor scan reached a new geometry.
-        The same energy and the same scanned dihedral as before the change mean the lower conformer was not
-        reached, so the species is flagged as not verified. The latest change (by ``change_index``) is judged, and
+        The same energy as before the change (or, without a comparable energy, the same scanned dihedral) means the
+        lower conformer was not reached, so the species is flagged as not verified (see ``is_same_conformer``).
+        The latest change (by ``change_index``) is judged, and
         its verdict closes every older pending change, since a later scan already moved away from their geometry.
         A dihedral that cannot be computed (collinear atoms) counts as not compared. Only a job of the type the
         baseline energy came from (composite or opt) is compared; an opt troubleshooting a composite run is not.
@@ -3892,7 +3903,8 @@ class Scheduler(object):
             logger.warning(f'Could not compare the re-optimized geometry of {label} with the one before the '
                            f'conformer change; its conformer stays unverified.')
             return
-        same_conformer = is_same_conformer(d_dihedral=d_dihedral, d_energy=d_energy)
+        same_conformer = is_same_conformer(d_dihedral=d_dihedral, d_energy=d_energy,
+                                           energy_gap=record.get('energy_gap'))
         for method in pending:
             method['verified'] = not same_conformer
         if same_conformer:
@@ -3900,7 +3912,8 @@ class Scheduler(object):
             self.flag_conformer_not_verified(
                 label=label,
                 cause=f'Re-optimization of {label} from the lower conformer found by the scan of torsion '
-                      f'{record["torsion"]} returned to the previous geometry ({energy_txt}, dihedral change '
+                      f'{record["torsion"]} returned to the previous geometry or a symmetry-equivalent copy of it '
+                      f'({energy_txt}, dihedral change '
                       f'{d_dihedral:.1f} deg); the conformer {format_energy_gap(record.get("energy_gap"))} '
                       f'was not reached.')
 

@@ -5041,15 +5041,21 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIsNone(sched.output['cc_nocomp']['conformer_verified'])
 
     def test_is_same_conformer(self):
-        """Only an unchanged dihedral together with an unchanged or unknown energy is the same conformer."""
+        """A known, unchanged energy is the same conformer at any dihedral; without it, the dihedral decides."""
         self.assertFalse(is_same_conformer(d_dihedral=None, d_energy=None))
         self.assertTrue(is_same_conformer(d_dihedral=0.5, d_energy=0.01))
         self.assertTrue(is_same_conformer(d_dihedral=0.5, d_energy=None))
-        self.assertFalse(is_same_conformer(d_dihedral=None, d_energy=0.0))
-        self.assertFalse(is_same_conformer(d_dihedral=120.0, d_energy=0.0))
+        self.assertTrue(is_same_conformer(d_dihedral=None, d_energy=0.0))
+        self.assertTrue(is_same_conformer(d_dihedral=120.0, d_energy=0.0))
+        self.assertTrue(is_same_conformer(d_dihedral=120.0, d_energy=0.0, energy_gap=3.2))
         self.assertFalse(is_same_conformer(d_dihedral=0.5, d_energy=3.2))
-        self.assertFalse(is_same_conformer(d_dihedral=2.0, d_energy=0.0))
         self.assertFalse(is_same_conformer(d_dihedral=0.0, d_energy=0.1))
+        self.assertFalse(is_same_conformer(d_dihedral=2.0, d_energy=None))
+        # A gap below the energy tolerance (a nearly free rotor) cannot be told apart by energy; the dihedral decides.
+        self.assertFalse(is_same_conformer(d_dihedral=120.0, d_energy=0.0, energy_gap=0.05))
+        self.assertTrue(is_same_conformer(d_dihedral=0.5, d_energy=0.0, energy_gap=0.05))
+        self.assertFalse(is_same_conformer(d_dihedral=2.0, d_energy=0.0, energy_gap=0.05))
+        self.assertFalse(is_same_conformer(d_dihedral=None, d_energy=0.0, energy_gap=0.05))
 
     def test_unresolved_lower_conformer_without_trsh_records_not_verified(self):
         """A lower conformer that troubleshooting is not allowed to resolve flags the species."""
