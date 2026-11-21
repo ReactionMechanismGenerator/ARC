@@ -9,8 +9,9 @@ import numpy as np
 from typing import TYPE_CHECKING
 
 from arc.parser import parser
-from arc.checks.common import get_index_of_abs_largest_neg_freq, is_ts_check_exempt, record_ts_check_warning
-from arc.checks.nmd import DEFAULT_AMPLITUDE, analyze_ts_normal_mode_displacement
+from arc.checks.common import (NMD_NEAR_MISS_KEY, get_index_of_abs_largest_neg_freq, is_ts_check_exempt,
+                               record_ts_check_warning, remove_nmd_accepted_on_irc_warning)
+from arc.checks.nmd import DEFAULT_AMPLITUDE, evaluate_ts_normal_mode_displacement
 from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
                         extremum_list,
@@ -145,7 +146,7 @@ def ts_passed_checks(species: ARCSpecies,
     """
     exemptions = exemptions or list()
     for check, value in species.ts_checks.items():
-        if check in exemptions or (check in ['IRC', 'NMD'] and value is None):
+        if check in exemptions or check == NMD_NEAR_MISS_KEY or (check in ['IRC', 'NMD'] and value is None):
             continue
         if not value and not is_ts_check_exempt(check, species.ts_checks):
             if verbose:
@@ -327,6 +328,11 @@ def check_normal_mode_displacement(reaction: ARCReaction,
     Check the normal mode displacement by identifying bonds that break and form
     and comparing them to the expected RMG template, if available.
 
+    Sets ``ts_checks['NMD']`` to the verdict. When a failed TS is a near miss (see
+    ``nmd.evaluate_ts_normal_mode_displacement()``), its record is stored under ``ts_checks[NMD_NEAR_MISS_KEY]``;
+    otherwise that key is removed, so a re-check never leaves a stale record behind. An IRC acceptance warning of a
+    previous evaluation is removed from ``ts_checks['warnings']`` for the same reason.
+
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
         job (JobAdapter): The frequency job object instance.
@@ -338,10 +344,14 @@ def check_normal_mode_displacement(reaction: ARCReaction,
                                         leave no amplitude to probe.
     """
     amplitude = DEFAULT_AMPLITUDE if amplitude is None else amplitude
-    reaction.ts_species.ts_checks['NMD'] = analyze_ts_normal_mode_displacement(reaction=reaction,
-                                                                               job=job,
-                                                                               amplitude=amplitude,
-                                                                               )
+    verdict, near_miss = evaluate_ts_normal_mode_displacement(reaction=reaction, job=job, amplitude=amplitude)
+    reaction.ts_species.ts_checks['NMD'] = verdict
+    reaction.ts_species.ts_checks['warnings'] = \
+        remove_nmd_accepted_on_irc_warning(reaction.ts_species.ts_checks.get('warnings') or '')
+    if near_miss is not None:
+        reaction.ts_species.ts_checks[NMD_NEAR_MISS_KEY] = near_miss
+    else:
+        reaction.ts_species.ts_checks.pop(NMD_NEAR_MISS_KEY, None)
 
 
 def determine_changing_bond(bond: tuple[int, ...],

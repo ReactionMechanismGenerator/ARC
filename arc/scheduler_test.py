@@ -28,8 +28,9 @@ import arc.job.adapters.ts.xtb_gsm as xtb_gsm
 import arc.parser.parser as parser
 import arc.settings.settings as repo_settings
 from arc.checks.common import (IRC_CAUSE_COMPARISON_INCONCLUSIVE, IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED,
-                               IRC_CAUSE_JOB_FAILED, IRC_JOB_FAILED_WARNING, TS_IRC_NOT_CONFIRMED_MARKER,
-                               get_ts_validation_comment)
+                               IRC_CAUSE_JOB_FAILED, IRC_JOB_FAILED_WARNING, NMD_ACCEPTED_ON_IRC_WARNING,
+                               NMD_NEAR_MISS_KEY, TS_IRC_NOT_CONFIRMED_MARKER, get_ts_validation_comment)
+from arc.checks.nmd_test import make_c2h5cl_rxn
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file, \
     save_yaml_file
@@ -41,13 +42,14 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
+from arc.job.trsh import determine_ess_status
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_run import build_rotor_scan_1d_tasks
 from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_state
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status
 from arc.level import Level, get_freq_level_for_composite_method
-from arc.output import _statmech_to_dict, write_output_yml
+from arc.output import _statmech_to_dict, _ts_checks_to_dict, write_output_yml
 from arc.plotter import save_conformers_file
 from arc.processor import not_verified_causes
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED,
@@ -6006,6 +6008,535 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertIsNone(sched.species_dict[ts_label].irc_label)
         self.assertIsNone(sched.species_dict[ts_label].ts_checks['IRC'])
         mock_run_opt.assert_called_once()
+
+    NEAR_MISS_RECORD = {'amplitude': 0.9,
+                        'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': 4.55}]}
+
+    def make_deferred_scheduler(self,
+                                ts_label: str,
+                                project_directory_name: str,
+                                irc: bool = True,
+                                irc_jobs_running: bool = True,
+                                num_guesses: int = 2,
+                                ) -> Scheduler:
+        """
+        A helper for generating a Scheduler instance whose TS failed NMD as a near miss and waits for its IRC.
+
+        Args:
+            ts_label (str): The TS species label.
+            project_directory_name (str): The name of the testing project directory.
+            irc (bool, optional): Whether IRC jobs are enabled for the run.
+            irc_jobs_running (bool, optional): Whether the two IRC jobs of the TS are still running.
+            num_guesses (int, optional): The number of TS guesses to generate.
+
+        Returns:
+            Scheduler: The Scheduler instance.
+        """
+        sched = self.make_irc_scheduler(ts_label=ts_label, project_directory_name=project_directory_name,
+                                        num_guesses=num_guesses)
+        sched.job_types['irc'] = irc
+        sched.output[ts_label]['job_types'].setdefault('irc', False)
+        sched.output[ts_label]['convergence'] = None
+        ts_checks = sched.species_dict[ts_label].ts_checks
+        ts_checks['NMD'] = False
+        ts_checks['freq'] = True
+        ts_checks[NMD_NEAR_MISS_KEY] = {'amplitude': self.NEAR_MISS_RECORD['amplitude'],
+                                        'sub_gate_bonds': [dict(bond) for bond in
+                                                           self.NEAR_MISS_RECORD['sub_gate_bonds']]}
+        sched.job_dict[ts_label]['irc'] = dict()
+        if irc_jobs_running:
+            for job_name in ['irc_a1', 'irc_a2']:
+                sched.job_dict[ts_label]['irc'][job_name] = MagicMock(job_name=job_name, execution_type='queue')
+                sched.running_jobs[ts_label].append(job_name)
+        return sched
+
+    def make_irc_species(self, sched: Scheduler, ts_label: str, geo: bool = True) -> list[str]:
+        """
+        A helper that attaches two optimized IRC species to a TS in a Scheduler, as spawn_post_irc_jobs() does.
+
+        Args:
+            sched (Scheduler): The Scheduler instance.
+            ts_label (str): The TS species label.
+            geo (bool, optional): Whether the IRC species already have an optimized geometry.
+
+        Returns:
+            list[str]: The labels of the two IRC species.
+        """
+        ts_spc = sched.species_dict[ts_label]
+        irc_labels = [f'IRC_{ts_label}_1', f'IRC_{ts_label}_2']
+        for irc_label in irc_labels:
+            irc_spc = ARCSpecies(label=irc_label, xyz=ts_spc.get_xyz(), compute_thermo=False, irc_label=ts_label)
+            sched.species_dict[irc_label] = irc_spc
+            sched.species_list.append(irc_spc)
+            sched.unique_species_labels.append(irc_label)
+            sched.job_dict[irc_label] = {'opt': {}}
+            sched.running_jobs[irc_label] = list()
+            sched.initialize_output_dict(label=irc_label)
+            if geo:
+                sched.output[irc_label]['paths']['geo'] = f'{irc_label}_geo.out'
+        ts_spc.irc_label = ' '.join(irc_labels)
+        sched.output[ts_label]['paths']['irc'] = ['irc_f.out', 'irc_r.out']
+        return irc_labels
+
+    def make_near_miss_freq_scheduler(self,
+                                      project_directory_name: str,
+                                      irc: bool,
+                                      log_name: str = 'TS_C2H5Cl_guess7_near_miss.log',
+                                      ):
+        """
+        A helper for a Scheduler whose TS has just finished the freq job of a shipped near-miss C2H5Cl saddle.
+
+        Args:
+            project_directory_name (str): The name of the testing project directory.
+            irc (bool): Whether IRC jobs are enabled for the run.
+            log_name (str, optional): The freq log of the saddle, under ``ARC_TESTING_PATH/freq``.
+
+        Returns:
+            tuple[Scheduler, str, JobAdapter, list]: The Scheduler, the TS label, the freq job, and the two
+                                                     running IRC job mocks.
+        """
+        log_path = os.path.join(ARC_TESTING_PATH, 'freq', log_name)
+        ts_label = 'TS_near_miss'
+        ts_xyz = parser.parse_geometry(log_file_path=log_path)
+        rxn = make_c2h5cl_rxn()
+        ts_spc = ARCSpecies(label=ts_label, is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=i, method='heuristics', success=True, energy=float(i), xyz=ts_xyz,
+                                     execution_time='0:00:01') for i in range(2)]
+        for tsg in ts_spc.ts_guesses:
+            tsg.opt_xyz = ts_xyz
+        ts_spc.chosen_ts = 0
+        ts_spc.chosen_ts_list = [0]
+        ts_spc.rxn_index = 0
+        rxn.ts_species = ts_spc
+        rxn.ts_label = ts_label
+        project_directory = os.path.join(ARC_PATH, 'Projects', project_directory_name)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        job_types = dict(self.job_types1, irc=irc)
+        sched = Scheduler(project=project_directory_name, ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=job_types,
+                          )
+        sched.rxn_dict[0] = rxn
+        sched.job_dict[ts_label] = {'opt': {}, 'freq': {}, 'irc': {}}
+        sched.running_jobs[ts_label] = list()
+        irc_jobs = list()
+        for job_name in ['irc_a1', 'irc_a2']:
+            irc_job = MagicMock(job_name=job_name, execution_type='queue')
+            sched.job_dict[ts_label]['irc'][job_name] = irc_job
+            sched.running_jobs[ts_label].append(job_name)
+            irc_jobs.append(irc_job)
+        job = job_factory(job_adapter='gaussian', project=project_directory_name, ess_settings=self.ess_settings,
+                          species=[ts_spc], job_type='freq', level=Level(repr=default_levels_of_theory['freq']),
+                          project_directory=project_directory, job_num=106)
+        job.local_path_to_output_file = log_path
+        job.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
+        return sched, ts_label, job, irc_jobs
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_a_near_miss_nmd_failure_defers_to_the_irc_and_keeps_its_irc_jobs(self, mock_run_opt):
+        """Test that a TS failing NMD only on the 5% gate is not switched, and its IRC jobs keep running."""
+        sched, ts_label, job, irc_jobs = self.make_near_miss_freq_scheduler(
+            project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_1', irc=True)
+        sched.check_freq_job(label=ts_label, job=job)
+        ts_checks = sched.species_dict[ts_label].ts_checks
+        self.assertIs(ts_checks['NMD'], False)
+        self.assertEqual([bond['symbols'] for bond in ts_checks[NMD_NEAR_MISS_KEY]['sub_gate_bonds']], ['C-Cl'])
+        self.assertEqual(sched.running_jobs[ts_label], ['irc_a1', 'irc_a2'])
+        for irc_job in irc_jobs:
+            irc_job.delete.assert_not_called()
+        self.assertEqual(sched.species_dict[ts_label].chosen_ts, 0)
+        mock_run_opt.assert_not_called()
+        self.assertTrue(sched.is_nmd_deferred(ts_label))
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_a_deferred_ts_has_its_reaction_zone_rotors_invalidated_as_a_passing_ts_does(self, mock_run_opt):
+        """Test that a deferred TS loses its rotors with both pivots in the reaction zone, so an IRC acceptance
+        never lets such a scan into the kinetics."""
+        sched, ts_label, job, _ = self.make_near_miss_freq_scheduler(
+            project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_rotors', irc=True,
+            log_name='TS_C2H5Cl_four_centre_near_miss.log')
+        sched.species_dict[ts_label].rotors_dict = {
+            0: {'pivots': [1, 2], 'top': [1, 4, 5, 6], 'scan': [3, 1, 2, 7], 'success': None,
+                'invalidation_reason': '', 'times_dihedral_set': 0, 'scan_path': '', 'max_e': None,
+                'symmetry': None, 'dimensions': 1, 'original_dihedrals': [], 'cont_indices': [],
+                'directed_scan_type': 'ess', 'directed_scan': {}}}
+        with patch('arc.checks.ts.DEFAULT_AMPLITUDE', [0.9]):
+            sched.check_freq_job(label=ts_label, job=job)
+        self.assertTrue(sched.is_nmd_deferred(ts_label))
+        rotor = sched.species_dict[ts_label].rotors_dict[0]
+        self.assertIs(rotor['success'], False)
+        self.assertIn('pivTS', rotor['invalidation_reason'])
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_a_freq_recheck_drops_the_previous_irc_acceptance_warning_from_the_output(self, mock_run_opt):
+        """Test that a new NMD evaluation of a TS drops the IRC acceptance warning of the previous one from the
+        Scheduler output and keeps the other warnings."""
+        sched, ts_label, job, _ = self.make_near_miss_freq_scheduler(
+            project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_recheck', irc=True)
+        sched.output[ts_label]['warnings'] = f'Other; {NMD_ACCEPTED_ON_IRC_WARNING}C-Cl (1, 2) 4.55%; '
+        sched.check_freq_job(label=ts_label, job=job)
+        self.assertTrue(sched.is_nmd_deferred(ts_label))
+        self.assertEqual(sched.output[ts_label]['warnings'], 'Other; ')
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_a_freq_recheck_that_defers_an_accepted_ts_withholds_its_convergence(self, mock_run_opt):
+        """Test that an IRC-accepted TS deferred again by a new NMD evaluation, and a deferred TS restored as
+        converged, are not reported as converged while their IRC runs, and stay in the main loop."""
+        sched, ts_label, job, _ = self.make_near_miss_freq_scheduler(
+            project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_reenter', irc=True)
+        ts_spc = sched.species_dict[ts_label]
+        for job_type in sched.output[ts_label]['job_types']:
+            sched.output[ts_label]['job_types'][job_type] = True
+        sched.check_freq_job(label=ts_label, job=job)
+        ts_spc.ts_checks['IRC'] = True
+        sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        self.assertIs(sched.output[ts_label]['convergence'], True)
+        ts_spc.ts_checks['IRC'] = None
+        sched.check_freq_job(label=ts_label, job=job)
+        self.assertTrue(sched.is_nmd_deferred(ts_label))
+        self.assertNotIn('accepted_on_irc', ts_spc.ts_checks[NMD_NEAR_MISS_KEY])
+        self.assertIsNone(sched.output[ts_label]['convergence'])
+        sched.settle_nmd_deferrals()
+        self.assertIsNone(sched.output[ts_label]['convergence'])
+        self.assertEqual(ts_spc.chosen_ts, 0)
+        mock_run_opt.assert_not_called()
+        sched.output[ts_label]['convergence'] = True
+        sched.settle_nmd_deferrals()
+        self.assertTrue(sched.is_nmd_deferred(ts_label))
+        self.assertIsNone(sched.output[ts_label]['convergence'])
+
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_a_near_miss_nmd_failure_with_irc_off_switches_at_once(self, mock_switch_ts):
+        """Test that a near-miss NMD failure is switched at once when IRC jobs are not run."""
+        sched, ts_label, job, _ = self.make_near_miss_freq_scheduler(
+            project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_2', irc=False)
+        sched.check_freq_job(label=ts_label, job=job)
+        self.assertIsNotNone(sched.species_dict[ts_label].ts_checks.get(NMD_NEAR_MISS_KEY))
+        mock_switch_ts.assert_called_once_with(ts_label)
+
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_an_nmd_failure_that_is_not_a_near_miss_switches_at_once(self, mock_switch_ts):
+        """Test that an NMD failure without a near-miss record is switched at once, as before."""
+        sched, ts_label, job, _ = self.make_near_miss_freq_scheduler(
+            project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_3', irc=True)
+
+        def fail_nmd(reaction, **kwargs):
+            """Simulate an NMD failure that is not a near miss."""
+            reaction.ts_species.ts_checks['NMD'] = False
+
+        with patch('arc.scheduler.check_ts', side_effect=fail_nmd):
+            sched.check_freq_job(label=ts_label, job=job)
+        mock_switch_ts.assert_called_once_with(ts_label)
+
+    def test_a_deferred_ts_with_a_true_irc_verdict_is_accepted_and_records_both_facts(self):
+        """Test that IRC True accepts a deferred TS, which keeps NMD False and records the IRC acceptance."""
+        ts_label = 'TS_defer_true'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_4')
+        self.make_irc_species(sched, ts_label)
+        ts_spc = sched.species_dict[ts_label]
+        ts_spc.ts_checks['IRC'] = True
+        with patch.object(sched, 'switch_ts') as mock_switch_ts:
+            sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        mock_switch_ts.assert_not_called()
+        self.assertFalse(sched.is_nmd_deferred(ts_label))
+        self.assertIs(ts_spc.ts_checks['NMD'], False)
+        self.assertIs(ts_spc.ts_checks[NMD_NEAR_MISS_KEY]['accepted_on_irc'], True)
+        expected = f'{NMD_ACCEPTED_ON_IRC_WARNING}C-Cl (1, 2) 4.55%; '
+        self.assertIn(expected, ts_spc.ts_checks['warnings'])
+        self.assertIn(expected, sched.output[ts_label]['warnings'])
+        published = _ts_checks_to_dict(ts_spc)
+        self.assertIs(published['NMD'], False)
+        self.assertIs(published['IRC'], True)
+        self.assertIn(expected, published['warnings'])
+        self.assertTrue(sched.output[ts_label]['convergence'])
+        sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        self.assertEqual(ts_spc.ts_checks['warnings'].count(NMD_ACCEPTED_ON_IRC_WARNING), 1)
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_switching_an_irc_accepted_ts_drops_its_acceptance_warning_and_keeps_the_others(self, mock_run_opt):
+        """Test that a TS accepted on IRC and later switched (e.g., by the E0 check) does not hand its
+        acceptance warning to the next guess, while unrelated output warnings stay."""
+        ts_label = 'TS_defer_true_then_switched'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_14')
+        self.make_irc_species(sched, ts_label)
+        sched.output[ts_label]['warnings'] = 'Unrelated warning; '
+        sched.species_dict[ts_label].ts_checks['IRC'] = True
+        sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        self.assertIn(NMD_ACCEPTED_ON_IRC_WARNING, sched.output[ts_label]['warnings'])
+        sched.switch_ts(ts_label)
+        self.assertNotIn(NMD_ACCEPTED_ON_IRC_WARNING, sched.output[ts_label]['warnings'])
+        self.assertIn('Unrelated warning; ', sched.output[ts_label]['warnings'])
+
+    def test_is_irc_pending_ignores_terminal_irc_tasks_in_an_active_batch(self):
+        """Test that only an IRC task that can still yield a verdict keeps a TS's IRC work pending."""
+        ts_label = 'TS_defer_pipe'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_15')
+        pipe = MagicMock(pipe_root='pipe_root')
+        pipe.tasks = [MagicMock(owner_key=ts_label, task_family='irc', task_id='irc_task'),
+                      MagicMock(owner_key='other_species', task_family='species_sp', task_id='sp_task')]
+        sched.active_pipes = {'pipe_root': pipe}
+        expected = {TaskState.FAILED_TERMINAL: False, TaskState.CANCELLED: False, TaskState.PENDING: True,
+                    TaskState.RUNNING: True, TaskState.COMPLETED: True, TaskState.FAILED_ESS: True}
+        for status, pending in expected.items():
+            with self.subTest(status=status.value), \
+                    patch('arc.scheduler.read_task_state', return_value=MagicMock(status=status.value)):
+                self.assertIs(sched.is_irc_pending(ts_label), pending)
+        with patch('arc.scheduler.read_task_state', side_effect=FileNotFoundError):
+            self.assertTrue(sched.is_irc_pending(ts_label))
+
+    def test_an_irc_job_held_back_by_a_queue_guard_keeps_a_deferred_ts_waiting(self):
+        """Test that an IRC job of a deferred TS, or a job of its IRC species, that is unsubmitted, put off, or
+        stranded keeps the IRC pending, so the TS is not switched while that job is only held back."""
+        ts_label = 'TS_defer_held'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_held')
+        irc_label = self.make_irc_species(sched, ts_label)[0]
+        held_jobs = {(ts_label, 'irc_a1'): True, (irc_label, 'opt_a5'): True, (ts_label, 'sp_a3'): False}
+        for (label, job_name), pending in held_jobs.items():
+            for holder in ['unsubmitted', 'deferred', 'stranded']:
+                with self.subTest(label=label, job_name=job_name, holder=holder):
+                    sched.unsubmitted_jobs, sched.deferred_jobs, sched.stranded_jobs = list(), dict(), dict()
+                    if holder == 'unsubmitted':
+                        sched.unsubmitted_jobs.append((label, MagicMock(job_name=job_name,
+                                                                        job_type=job_name.split('_')[0])))
+                    else:
+                        getattr(sched, f'{holder}_jobs')[label] = [job_name]
+                    self.assertIs(sched.is_irc_pending(ts_label), pending)
+                    with patch.object(sched, 'switch_ts') as mock_switch_ts:
+                        sched.settle_nmd_deferrals()
+                    self.assertEqual(mock_switch_ts.call_count, 0 if pending else 1)
+                    self.assertTrue(sched.is_nmd_deferred(ts_label))
+
+    def test_a_stale_irc_acceptance_is_revoked_unless_irc_is_true(self):
+        """Test that an IRC-accepted near miss stays accepted only while its IRC verdict is True."""
+        for i, (irc, through_settle) in enumerate([(None, False), (None, True), (False, True), (True, True)]):
+            with self.subTest(irc=irc, through_settle=through_settle):
+                ts_label = f'TS_defer_stale_{i}'
+                sched = self.make_deferred_scheduler(
+                    ts_label=ts_label, irc_jobs_running=False,
+                    project_directory_name=f'arc_project_for_testing_delete_after_usage_nmd_defer_16_{i}')
+                self.make_irc_species(sched, ts_label)
+                ts_spc = sched.species_dict[ts_label]
+                ts_spc.ts_checks['IRC'] = True
+                sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+                self.assertTrue(sched.output[ts_label]['convergence'])
+                ts_spc.ts_checks['IRC'] = irc
+                with patch.object(sched, 'switch_ts') as mock_switch_ts, \
+                        patch.object(sched, 'is_irc_pending', return_value=False):
+                    if through_settle:
+                        sched.settle_nmd_deferrals()
+                    else:
+                        sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+                if irc is True:
+                    mock_switch_ts.assert_not_called()
+                    self.assertFalse(sched.is_nmd_deferred(ts_label))
+                    self.assertIs(ts_spc.ts_checks[NMD_NEAR_MISS_KEY]['accepted_on_irc'], True)
+                    self.assertEqual(ts_spc.ts_checks['warnings'].count(NMD_ACCEPTED_ON_IRC_WARNING), 1)
+                    self.assertTrue(sched.output[ts_label]['convergence'])
+                else:
+                    mock_switch_ts.assert_called_once_with(ts_label)
+                    self.assertNotIn('accepted_on_irc', ts_spc.ts_checks[NMD_NEAR_MISS_KEY])
+                    self.assertNotIn(NMD_ACCEPTED_ON_IRC_WARNING, ts_spc.ts_checks['warnings'])
+                    self.assertNotIn(NMD_ACCEPTED_ON_IRC_WARNING, sched.output[ts_label]['warnings'])
+                    self.assertFalse(sched.output[ts_label]['convergence'])
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_a_deferred_ts_with_a_false_irc_verdict_is_switched(self, mock_run_opt):
+        """Test that IRC False rejects a deferred TS through switch_ts, which clears the deferred state."""
+        ts_label = 'TS_defer_false'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_5')
+        self.make_irc_species(sched, ts_label)
+        sched.species_dict[ts_label].ts_checks['IRC'] = False
+        with self.assertLogs('arc', level='ERROR'):
+            sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        self.assertEqual(sched.species_dict[ts_label].chosen_ts, 1)
+        self.assertNotIn(NMD_NEAR_MISS_KEY, sched.species_dict[ts_label].ts_checks)
+        self.assertFalse(sched.is_nmd_deferred(ts_label))
+        mock_run_opt.assert_called_once()
+
+    def test_a_deferred_ts_with_an_undetermined_irc_verdict_is_switched(self):
+        """Test that an IRC verdict of None, once both IRC ends were checked, switches a deferred TS."""
+        ts_label = 'TS_defer_none'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_6')
+        irc_labels = self.make_irc_species(sched, ts_label)
+        with patch('arc.scheduler.check_irc_species_and_rxn') as mock_check, \
+                patch.object(sched, 'switch_ts') as mock_switch_ts:
+            sched.check_irc_species(label=irc_labels[0])
+        mock_check.assert_called_once()
+        self.assertIsNone(sched.species_dict[ts_label].ts_checks['IRC'])
+        mock_switch_ts.assert_called_once_with(ts_label)
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_a_deferred_ts_on_its_last_guess_stays_rejected_when_its_irc_gives_no_verdict(self, mock_run_opt):
+        """Test that a deferred TS whose guesses run out keeps NMD False, ends unconverged, and is not retried."""
+        for irc, name in [(True, 'nmd_defer_last_1'), (False, 'nmd_defer_last_2')]:
+            with self.subTest(irc=irc):
+                ts_label = f'TS_defer_last_{int(irc)}'
+                sched = self.make_deferred_scheduler(ts_label=ts_label, irc=irc, irc_jobs_running=False,
+                                                     num_guesses=1,
+                                                     project_directory_name=f'arc_project_for_testing_delete_after_usage_{name}')
+                if irc:
+                    sched.resolve_nmd_deferral(ts_label)
+                else:
+                    sched.settle_nmd_deferrals()
+                mock_run_opt.assert_not_called()
+                self.assertIs(sched.species_dict[ts_label].ts_checks['NMD'], False)
+                self.assertIs(sched.output[ts_label]['convergence'], False)
+                self.assertFalse(sched.is_nmd_deferred(ts_label))
+                with patch.object(sched, 'switch_ts') as mock_switch_ts:
+                    sched.settle_nmd_deferrals()
+                mock_switch_ts.assert_not_called()
+
+    def test_a_deferred_ts_whose_irc_jobs_ended_without_output_is_switched_once_nothing_is_pending(self):
+        """Test that a deferred TS waits while IRC work is pending, and is switched once none is left."""
+        ts_label = 'TS_defer_crash'
+        sched = self.make_deferred_scheduler(ts_label=ts_label,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_7')
+        with patch.object(sched, 'switch_ts') as mock_switch_ts:
+            sched.settle_nmd_deferrals()
+            mock_switch_ts.assert_not_called()
+            sched.running_jobs[ts_label] = ['irc_a2']
+            sched.settle_nmd_deferrals()
+            mock_switch_ts.assert_not_called()
+            sched.running_jobs[ts_label] = list()
+            sched._pending_pipe_irc.add((ts_label, 'reverse'))
+            sched.settle_nmd_deferrals()
+            mock_switch_ts.assert_not_called()
+            sched._pending_pipe_irc.clear()
+            sched.settle_nmd_deferrals()
+        mock_switch_ts.assert_called_once_with(ts_label)
+
+    def test_a_deferred_ts_waits_while_its_irc_species_are_optimized(self):
+        """Test that a deferred TS waits for the optimization of its IRC species, and is switched when it fails."""
+        ts_label = 'TS_defer_irc_opt'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_8')
+        irc_labels = self.make_irc_species(sched, ts_label, geo=False)
+        sched.running_jobs[irc_labels[1]] = ['opt_a3']
+        with patch.object(sched, 'switch_ts') as mock_switch_ts:
+            sched.settle_nmd_deferrals()
+            mock_switch_ts.assert_not_called()
+            sched.running_jobs[irc_labels[1]] = list()
+            sched.settle_nmd_deferrals()
+        mock_switch_ts.assert_called_once_with(ts_label)
+
+    @patch('arc.scheduler.Scheduler.run_job')
+    def test_a_deferred_ts_whose_irc_stopped_on_delta_x_spawns_its_end_optimization(self, mock_run_job):
+        """Test that an IRC that ended on the Gaussian DeltaX error is used, and the deferred TS waits for it."""
+        ts_label = 'TS_defer_deltax'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_9')
+        log_path = os.path.join(ARC_TESTING_PATH, 'irc', 'TS_C2H5Cl_irc_deltax.log')
+        status, keywords, error, line = determine_ess_status(output_path=log_path, species_label=ts_label,
+                                                             job_type='irc', software='gaussian')
+        self.assertEqual((status, keywords), ('errored', ['DeltaX', 'GL123']))
+        irc_job = MagicMock(job_name='irc_a1', job_type='irc', job_adapter='gaussian', execution_type='queue',
+                            local_path_to_output_file=log_path, irc_direction='forward', species=[
+                                sched.species_dict[ts_label]], directed_scan_type=None, ess_trsh_methods=list(),
+                            job_status=['done', {'status': status, 'keywords': keywords, 'error': error,
+                                                 'line': line}])
+        sched.job_dict[ts_label]['irc']['irc_a1'] = irc_job
+        sched.running_jobs[ts_label].append('irc_a1')
+
+        def queue_the_job(label, **kwargs):
+            """Record the queued end optimization as a running job, as run_job() does."""
+            sched.running_jobs.setdefault(label, list()).append('opt_a2')
+
+        mock_run_job.side_effect = queue_the_job
+        self.assertTrue(sched.end_job(job=irc_job, label=ts_label, job_name='irc_a1'))
+        sched.spawn_post_irc_jobs(label=ts_label, job=irc_job)
+        irc_label = f'IRC_{ts_label}_1'
+        self.assertIn(irc_label, sched.species_dict)
+        self.assertEqual(mock_run_job.call_args.kwargs['label'], irc_label)
+        self.assertEqual(sched.running_jobs[irc_label], ['opt_a2'])
+        with patch.object(sched, 'switch_ts') as mock_switch_ts:
+            sched.settle_nmd_deferrals()
+        mock_switch_ts.assert_not_called()
+        self.assertTrue(sched.is_nmd_deferred(ts_label))
+
+    def test_a_deferred_ts_is_not_marked_converged_before_its_irc_verdict(self):
+        """Test that check_all_done() does not converge a TS that waits for its IRC verdict."""
+        ts_label = 'TS_defer_converge'
+        sched = self.make_deferred_scheduler(ts_label=ts_label,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_10')
+        for job_type in sched.output[ts_label]['job_types']:
+            sched.output[ts_label]['job_types'][job_type] = True
+        sched.check_all_done(ts_label)
+        self.assertIsNone(sched.output[ts_label]['convergence'])
+        sched.species_dict[ts_label].ts_checks.pop(NMD_NEAR_MISS_KEY)
+        sched.species_dict[ts_label].ts_checks['NMD'] = True
+        sched.check_all_done(ts_label)
+        self.assertTrue(sched.output[ts_label]['convergence'])
+
+    @patch('arc.scheduler.Scheduler.generate_final_ts_guess_report')
+    @patch('arc.scheduler.Scheduler.spawn_ts_jobs')
+    @patch('arc.scheduler.Scheduler.run_conformer_jobs')
+    def test_a_restart_in_the_deferred_state_resumes_waiting_or_exits(self, *mocks):
+        """Test that a restarted deferred TS waits while its IRC jobs run, and is switched when none is left."""
+        ts_label = 'TS_defer_restart'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_11')
+        restored = ARCSpecies(species_dict=sched.species_dict[ts_label].as_dict())
+        self.assertEqual(restored.ts_checks[NMD_NEAR_MISS_KEY], self.NEAR_MISS_RECORD)
+        sched.species_dict[ts_label] = restored
+        sched.species_list = [restored]
+        with patch.object(sched, 'switch_ts') as mock_switch_ts:
+            sched.running_jobs[ts_label] = ['irc_a1']
+            sched.settle_nmd_deferrals()
+            mock_switch_ts.assert_not_called()
+            del sched.running_jobs[ts_label]
+            sched.schedule_jobs()
+        mock_switch_ts.assert_called_once_with(ts_label)
+
+        sched.job_types['irc'] = False
+        sched.running_jobs[ts_label] = ['irc_a1']
+        with patch.object(sched, 'switch_ts') as mock_switch_ts:
+            sched.settle_nmd_deferrals()
+        mock_switch_ts.assert_called_once_with(ts_label)
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_a_restarted_deferred_ts_with_a_false_irc_verdict_is_rejected_as_process_irc_verdict_does(self,
+                                                                                                  mock_run_opt):
+        """Test that a deferred TS restored with IRC False is rejected, and is unconverged once guesses run out."""
+        ts_label = 'TS_defer_restart_false'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_13')
+        ts_spc = sched.species_dict[ts_label]
+        ts_spc.ts_guesses = ts_spc.ts_guesses[:1]
+        ts_spc.chosen_ts, ts_spc.chosen_ts_list = 0, [0]
+        ts_spc.ts_checks['IRC'] = False
+        with self.assertLogs('arc', level='ERROR'):
+            sched.settle_nmd_deferrals()
+        mock_run_opt.assert_not_called()
+        self.assertFalse(sched.output[ts_label]['convergence'])
+        self.assertIs(sched.species_dict[ts_label].ts_checks['IRC'], False)
+        self.assertNotIn(NMD_NEAR_MISS_KEY, sched.species_dict[ts_label].ts_checks)
+
+    def test_a_restart_file_without_a_near_miss_record_behaves_as_before(self):
+        """Test that a TS restored without the near-miss key, or with a malformed one, is never deferred."""
+        ts_label = 'TS_defer_old_restart'
+        sched = self.make_deferred_scheduler(ts_label=ts_label,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_12')
+        ts_checks = sched.species_dict[ts_label].ts_checks
+        for bad in [None, 'C-Cl 4.55%', {}, {'sub_gate_bonds': []}]:
+            ts_checks[NMD_NEAR_MISS_KEY] = bad
+            self.assertFalse(sched.is_nmd_deferred(ts_label), msg=f'record {bad}')
+        ts_checks.pop(NMD_NEAR_MISS_KEY)
+        self.assertFalse(sched.is_nmd_deferred(ts_label))
+        with patch.object(sched, 'switch_ts') as mock_switch_ts:
+            sched.settle_nmd_deferrals()
+        mock_switch_ts.assert_not_called()
 
     @patch('arc.scheduler.Scheduler.generate_final_ts_guess_report')
     @patch('arc.scheduler.Scheduler.spawn_ts_jobs')

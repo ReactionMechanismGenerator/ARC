@@ -22,8 +22,9 @@ from typing import TYPE_CHECKING, Literal
 
 import arc.parser.parser as parser
 from arc import plotter
-from arc.checks.common import (IRC_JOB_FAILED_WARNING, get_conformer_job_name, get_i_from_job_name, is_conformer_job,
-                               record_ts_check_warning, sum_time_delta)
+from arc.checks.common import (IRC_JOB_FAILED_WARNING, NMD_ACCEPTED_ON_IRC_WARNING, get_conformer_job_name,
+                               get_i_from_job_name, get_nmd_near_miss, get_nmd_near_miss_summary, is_conformer_job,
+                               record_ts_check_warning, remove_nmd_accepted_on_irc_warning, sum_time_delta)
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (ARC_PATH,
                         extremum_list,
@@ -1123,6 +1124,7 @@ class Scheduler(object):
                         self.run_opt_job(species.label, fine=self.fine_only)
         self.run_conformer_jobs()
         self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
+        self.settle_nmd_deferrals()
         while self.running_jobs != {} or self.active_pipes or self.unsubmitted_jobs \
                 or self._pending_pipe_sp or self._pending_pipe_freq \
                 or self._pending_pipe_irc or self._pending_pipe_conf_sp:
@@ -1359,6 +1361,7 @@ class Scheduler(object):
             # Flush deferred pipe batches (SP, freq, IRC, conf_sp) after all
             # newly-ready work has been discovered and before the loop sleeps.
             self.flush_pending_pipe_batches()
+            self.settle_nmd_deferrals()
 
             should_sleep = (self.timer or self.job_query_failed) \
                 and (self.running_jobs or self.active_pipes or self.unsubmitted_jobs)
@@ -4774,12 +4777,21 @@ class Scheduler(object):
                          checks=['NMD'],
                          skip_nmd=self.skip_nmd,
                          )
+            self.output[label]['warnings'] = remove_nmd_accepted_on_irc_warning(self.output[label]['warnings'])
             if self.species_dict[label].ts_checks['NMD'] is False:
-                logger.info(f'TS {label} did not pass the normal mode displacement check. '
-                            f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                            f'Searching for a better TS conformer...')
-                self.switch_ts(label)
-                switch_ts = True
+                if self.is_nmd_deferred(label):
+                    summary = get_nmd_near_miss_summary(get_nmd_near_miss(self.species_dict[label].ts_checks))
+                    logger.info(f'TS {label} did not pass the normal mode displacement check only because some '
+                                f'reactive bonds change by less than 5% ({summary}). Keeping its IRC jobs, '
+                                f'which will decide whether this TS is accepted.')
+                    check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index], job=job, checks=['rotors'])
+                    self.withhold_nmd_deferred_convergence(label)
+                else:
+                    logger.info(f'TS {label} did not pass the normal mode displacement check. '
+                                f'Status is:\n{self.species_dict[label].ts_checks}\n'
+                                f'Searching for a better TS conformer...')
+                    self.switch_ts(label)
+                    switch_ts = True
         if WRONG_FREQ_MESSAGE in self.output[label]['warnings']:
             self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(WRONG_FREQ_MESSAGE))
         if not switch_ts and getattr(job, 'job_type', 'freq') != 'optfreq':
@@ -5066,6 +5078,8 @@ class Scheduler(object):
         if os.path.isfile(freq_path):
             os.remove(freq_path)
         self.species_dict[label].populate_ts_checks()  # Restart the TS checks dict.
+        if label in self.output:
+            self.output[label]['warnings'] = remove_nmd_accepted_on_irc_warning(self.output[label]['warnings'])
         if self.job_types['rotors'] and self.species_dict[label].rotors_dict is not None:
             # Reset rotors so they are re-determined from the new TS geometry.
             # rotors_dict=None is a sentinel meaning "skip rotor scans"; preserve it.
@@ -5367,6 +5381,8 @@ class Scheduler(object):
         performed or its result could not be determined (e.g., IRC jobs were not requested).
         Only a ``False`` verdict rejects the TS, in which case a different TS guess is sought.
         Once every guess was tried, the TS is marked unconverged and the verdict is restored.
+        A TS that waits for its IRC after a near-miss NMD failure is then settled by ``resolve_nmd_deferral()``:
+        accepted on ``True``, and switched on ``None`` once no IRC work of it is left.
 
         Args:
             ts_label (str): The label of the TS species the IRC check was performed for.
@@ -5379,10 +5395,12 @@ class Scheduler(object):
         if verdict is True:
             logger.info(f'The optimized IRC endpoints of TS {ts_label} correspond to the reactants and products '
                         f'of reaction {rxn_label}.')
+            self.resolve_nmd_deferral(label=ts_label)
             return
         if verdict is not False:
             logger.debug(f'The IRC check for TS {ts_label} of reaction {rxn_label} was not performed, '
                          f'or its result could not be determined.')
+            self.resolve_nmd_deferral(label=ts_label)
             return
         logger.error(f'The optimized IRC endpoints of TS {ts_label} do NOT correspond to the reactants and '
                      f'products of reaction {rxn_label}. This TS does not connect the requested wells, '
@@ -5395,6 +5413,221 @@ class Scheduler(object):
                          f'that passes the IRC check. Marking as unconverged.')
             self.output[ts_label]['convergence'] = False
             ts_species.ts_checks['IRC'] = False
+
+    def is_nmd_deferred(self, label: str) -> bool:
+        """
+        Whether a TS failed the NMD check as a near miss and waits for its IRC verdict.
+
+        A TS is deferred when its ``ts_checks`` carry a valid near-miss record beside an NMD verdict of ``False``
+        (see ``checks.common.get_nmd_near_miss()``), the TS holds no current IRC acceptance
+        (see ``has_current_nmd_acceptance()``), and IRC jobs are enabled for this run. A missing or malformed
+        record, or IRC jobs being disabled, means the TS is not deferred, and it is treated as any TS that
+        failed the NMD check.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: Whether the TS is deferred.
+        """
+        species = self.species_dict.get(label)
+        if species is None or not species.is_ts or not self.job_types.get('irc'):
+            return False
+        record = get_nmd_near_miss(getattr(species, 'ts_checks', None))
+        return record is not None and not self.has_current_nmd_acceptance(label)
+
+    def has_current_nmd_acceptance(self, label: str) -> bool:
+        """
+        Whether a TS that failed the NMD check as a near miss is accepted on a current positive IRC verdict.
+
+        The near-miss record must be marked ``accepted_on_irc`` and ``ts_checks['IRC']`` must be ``True``.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: Whether the TS holds a current IRC acceptance.
+        """
+        ts_checks = getattr(self.species_dict.get(label), 'ts_checks', None)
+        record = get_nmd_near_miss(ts_checks)
+        return record is not None and record.get('accepted_on_irc') is True and ts_checks.get('IRC') is True
+
+    def revoke_stale_nmd_acceptance(self, label: str):
+        """
+        Revoke the IRC acceptance of a near-miss TS whose IRC verdict is no longer ``True``.
+
+        The ``accepted_on_irc`` marker and its warning are removed, and a converged TS is returned to
+        an undetermined convergence, so the TS is deferred again. A current acceptance is left untouched.
+
+        Args:
+            label (str): The TS species label.
+        """
+        species = self.species_dict[label]
+        record = get_nmd_near_miss(species.ts_checks)
+        if record is None or 'accepted_on_irc' not in record or self.has_current_nmd_acceptance(label):
+            return
+        logger.info(f'TS {label} was accepted on its IRC despite a near-miss normal mode displacement failure, '
+                    f'but its IRC verdict is now {species.ts_checks.get("IRC")}. Revoking the acceptance.')
+        del record['accepted_on_irc']
+        species.ts_checks['warnings'] = remove_nmd_accepted_on_irc_warning(species.ts_checks.get('warnings') or '')
+        if label in self.output:
+            self.output[label]['warnings'] = remove_nmd_accepted_on_irc_warning(self.output[label]['warnings'])
+        self.withhold_nmd_deferred_convergence(label)
+
+    def withhold_nmd_deferred_convergence(self, label: str):
+        """
+        Return a converged TS that waits for its IRC verdict after a near-miss NMD failure to an undetermined
+        convergence. ``None`` is used rather than ``False``, which would drop the TS from the main loop.
+
+        Args:
+            label (str): The TS species label.
+        """
+        if label in self.output and self.output[label]['convergence'] is True:
+            self.output[label]['convergence'] = None
+
+    def is_irc_pending(self, label: str) -> bool:
+        """
+        Whether any IRC work of a TS is still queued or running, including the optimization of its IRC species.
+
+        Args:
+            label (str): The TS species label.
+
+        Returns:
+            bool: ``True`` if an IRC job of the TS is running, held back by a queue guard (see
+                  ``unfinished_job_names()`` and ``unsubmitted_jobs``) or pending a pipe batch, an active pipe run
+                  holds an open IRC task of the TS (see ``is_pipe_task_open()``), or any IRC species spawned from
+                  the TS still has running, held back or piped jobs.
+        """
+        if any('irc' in job_name for job_name in self.unfinished_job_names(label)) \
+                or any(job_label == label and job.job_type == 'irc' for job_label, job in self.unsubmitted_jobs):
+            return True
+        if any(pending_label == label for pending_label, _ in self._pending_pipe_irc):
+            return True
+        if any(task.owner_key == label and task.task_family == 'irc'
+               and self.is_pipe_task_open(pipe.pipe_root, task.task_id)
+               for pipe in self.active_pipes.values() for task in pipe.tasks):
+            return True
+        irc_labels = (self.species_dict[label].irc_label or '').split() if label in self.species_dict else list()
+        return any(self.unfinished_job_names(irc_label) or self.has_pending_pipe_work(irc_label)
+                   or any(job_label == irc_label for job_label, _ in self.unsubmitted_jobs)
+                   for irc_label in irc_labels)
+
+    @staticmethod
+    def is_pipe_task_open(pipe_root: str, task_id: str) -> bool:
+        """
+        Whether a task of an active pipe run can still yield results.
+
+        A task in ``FAILED_TERMINAL`` or ``CANCELLED`` cannot. Every other state can: a ``COMPLETED`` task is
+        ingested, and a ``FAILED_ESS`` task is handed to the Scheduler, only once its pipe run ends.
+        A task whose state cannot be read is considered open.
+
+        Args:
+            pipe_root (str): The root directory of the pipe run.
+            task_id (str): The task identifier.
+
+        Returns:
+            bool: Whether the task is open.
+        """
+        try:
+            status = read_task_state(pipe_root, task_id).status
+        except (OSError, ValueError, KeyError):
+            return True
+        return status not in (TaskState.FAILED_TERMINAL.value, TaskState.CANCELLED.value)
+
+    def resolve_nmd_deferral(self, label: str):
+        """
+        Decide the fate of a TS that waits for its IRC verdict after a near-miss NMD failure.
+
+        An IRC verdict of ``True`` accepts the TS (see ``accept_nmd_near_miss_on_irc()``). A verdict of ``False``
+        rejects it through ``process_irc_verdict()``, which also marks the TS unconverged once its guesses run out.
+        A verdict of ``None`` once no IRC work of the TS is pending switches the TS to its next guess, as a failed
+        NMD check always did, through ``switch_nmd_deferred_ts()``. While IRC work is pending, the TS keeps waiting.
+        A TS that is not deferred is left untouched.
+
+        Args:
+            label (str): The TS species label.
+        """
+        if not self.is_nmd_deferred(label):
+            return
+        self.revoke_stale_nmd_acceptance(label)
+        self.withhold_nmd_deferred_convergence(label)
+        verdict = self.species_dict[label].ts_checks.get('IRC')
+        if verdict is True:
+            self.accept_nmd_near_miss_on_irc(label)
+            return
+        if verdict is False:
+            self.process_irc_verdict(ts_label=label, rxn=self.rxn_dict.get(self.species_dict[label].rxn_index))
+            return
+        if self.is_irc_pending(label):
+            return
+        logger.info(f'TS {label} failed the normal mode displacement check as a near miss, and its IRC gave no '
+                    f'verdict. Searching for a better TS conformer...')
+        self.switch_nmd_deferred_ts(label)
+
+    def switch_nmd_deferred_ts(self, label: str):
+        """
+        Switch a TS that waited for its IRC after a near-miss NMD failure, and was not accepted, to its next guess.
+
+        Once every guess was tried, the TS is marked unconverged and its NMD verdict of ``False`` is restored.
+        Its near-miss record is not, so the TS is not deferred again.
+
+        Args:
+            label (str): The TS species label.
+        """
+        self.switch_ts(label)
+        species = self.species_dict[label]
+        if species.ts_guesses_exhausted or species.chosen_ts is None:
+            logger.error(f'Could not find a TS conformer for {label} that passes the normal mode displacement '
+                         f'check. Marking as unconverged.')
+            self.output[label]['convergence'] = False
+            species.ts_checks['NMD'] = False
+
+    def accept_nmd_near_miss_on_irc(self, label: str):
+        """
+        Accept a TS that failed the NMD check as a near miss and whose IRC endpoints match the reaction.
+
+        ``ts_checks['NMD']`` stays ``False`` and its near-miss record is kept and marked ``accepted_on_irc``. The
+        acceptance and the sub-gate bonds are written to ``ts_checks['warnings']`` and to the TS's output warnings
+        under ``NMD_ACCEPTED_ON_IRC_WARNING``, so output.yml reports both facts. The TS is then checked for
+        convergence, which a deferred TS is denied.
+
+        Args:
+            label (str): The TS species label.
+        """
+        species = self.species_dict[label]
+        record = get_nmd_near_miss(species.ts_checks)
+        record['accepted_on_irc'] = True
+        warning = f'{NMD_ACCEPTED_ON_IRC_WARNING}{get_nmd_near_miss_summary(record)}; '
+        record_ts_check_warning(species=species, warning=warning)
+        if label in self.output and warning not in self.output[label]['warnings']:
+            self.output[label]['warnings'] += warning
+        logger.info(f'TS {label} failed the normal mode displacement check only because some reactive bonds '
+                    f'change by less than 5% ({get_nmd_near_miss_summary(record)}), and its IRC endpoints '
+                    f'correspond to the reaction. Accepting this TS.')
+        self.check_all_done(label)
+
+    def settle_nmd_deferrals(self):
+        """
+        Give every TS that waits for its IRC after a near-miss NMD failure its exit, once one is due.
+
+        Called before the main loop starts, which is where a restarted run resumes, and once per main loop
+        iteration. A TS with a near-miss record whose run has IRC jobs disabled is switched at once. Every other
+        deferred TS goes through ``resolve_nmd_deferral()``, so no deferred TS waits once its IRC work is gone.
+        """
+        for label in list(self.species_dict.keys()):
+            species = self.species_dict.get(label)
+            if species is None or not species.is_ts or label not in self.output:
+                continue
+            record = get_nmd_near_miss(getattr(species, 'ts_checks', None))
+            if record is None or self.has_current_nmd_acceptance(label):
+                continue
+            self.revoke_stale_nmd_acceptance(label)
+            if not self.job_types.get('irc'):
+                logger.info(f'TS {label} failed the normal mode displacement check as a near miss, and IRC jobs are '
+                            f'not run. Searching for a better TS conformer...')
+                self.switch_nmd_deferred_ts(label)
+                continue
+            self.resolve_nmd_deferral(label)
 
     def check_scan_job(self,
                        label: str,
@@ -5651,6 +5884,7 @@ class Scheduler(object):
     def check_all_done(self, label: str):
         """
         Check that we have all required data for the species/TS.
+        A TS that waits for its IRC verdict after a near-miss NMD failure is not marked converged.
 
         Args:
             label (str): The species label.
@@ -5663,6 +5897,11 @@ class Scheduler(object):
         if self.deferred_jobs.get(label):
             logger.debug(f'Not judging the convergence of {label}: its jobs {self.deferred_jobs[label]} wait for an '
                          f'unreadable queue to answer before they are submitted.')
+            return
+        if self.is_nmd_deferred(label):
+            logger.debug(f'TS {label} waits for its IRC verdict and is not checked for convergence yet.')
+            self.withhold_nmd_deferred_convergence(label)
+            self.save_restart_dict()
             return
         all_converged = True
         if label in self.output and label in self.species_dict:

@@ -107,6 +107,46 @@ class TestChecks(unittest.TestCase):
         self.assertIn('E0', comment)
 
 
+    def test_get_nmd_near_miss(self):
+        """Test that the near-miss record is read only beside a False NMD verdict, and malformed records fail closed"""
+        record = {'amplitude': 0.9, 'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': 4.55}]}
+        ts_checks = {'NMD': False, common.NMD_NEAR_MISS_KEY: record, 'warnings': ''}
+        self.assertEqual(common.get_nmd_near_miss(ts_checks), record)
+        for nmd in [True, None]:
+            self.assertIsNone(common.get_nmd_near_miss({**ts_checks, 'NMD': nmd}), msg=f'NMD {nmd}')
+        for bad in [None, 'C-Cl 4.55%', [], {}, {'sub_gate_bonds': []}, {'sub_gate_bonds': 'C-Cl'},
+                    {'sub_gate_bonds': [None]}, {'sub_gate_bonds': [{'atoms': None}]},
+                    {'sub_gate_bonds': [{'atoms': [1], 'symbols': 'C-Cl', 'percent': 4.55}]},
+                    {'sub_gate_bonds': [{'atoms': [1, 'x'], 'symbols': 'C-Cl', 'percent': 4.55}]},
+                    {'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': None, 'percent': 4.55}]},
+                    {'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': '4.55'}]},
+                    {'sub_gate_bonds': [record['sub_gate_bonds'][0], None]},
+                    {'sub_gate_bonds': [{'atoms': [1, 1], 'symbols': 'C-Cl', 'percent': 4.55}]},
+                    {'sub_gate_bonds': [{'atoms': [-1, 2], 'symbols': 'C-Cl', 'percent': 4.55}]}] \
+                + [{'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': percent}]}
+                   for percent in [float('nan'), float('inf'), -0.5, 5.01, 100.0, 10 ** 100, -10 ** 100]]:
+            self.assertIsNone(common.get_nmd_near_miss({**ts_checks, common.NMD_NEAR_MISS_KEY: bad}), msg=f'{bad}')
+        for percent in [0, 0.0, 4.99, 5.0]:
+            good = {'sub_gate_bonds': [{'atoms': [0, 2], 'symbols': 'C-Cl', 'percent': percent}]}
+            self.assertEqual(common.get_nmd_near_miss({**ts_checks, common.NMD_NEAR_MISS_KEY: good}), good,
+                             msg=f'percent {percent}')
+        self.assertIsNone(common.get_nmd_near_miss({'NMD': False, 'warnings': ''}))
+        self.assertIsNone(common.get_nmd_near_miss(None))
+
+    def test_get_nmd_near_miss_summary(self):
+        """Test the one-line summary of the sub-gate bonds of a near-miss record"""
+        record = {'amplitude': 0.9, 'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': 4.55},
+                                                       {'atoms': [0, 3], 'symbols': 'C-H', 'percent': 3.1}]}
+        self.assertEqual(common.get_nmd_near_miss_summary(record), 'C-Cl (1, 2) 4.55%, C-H (0, 3) 3.1%')
+
+    def test_remove_nmd_accepted_on_irc_warning(self):
+        """Test that only the IRC acceptance warning of a near-miss TS is removed from a warnings string"""
+        accepted = f'{common.NMD_ACCEPTED_ON_IRC_WARNING}C-Cl (1, 2) 4.55%, C-H (0, 3) 3.1%; '
+        self.assertEqual(common.remove_nmd_accepted_on_irc_warning(f'First; {accepted}Last; '), 'First; Last; ')
+        self.assertEqual(common.remove_nmd_accepted_on_irc_warning(accepted), '')
+        self.assertEqual(common.remove_nmd_accepted_on_irc_warning('First; Last; '), 'First; Last; ')
+        self.assertEqual(common.remove_nmd_accepted_on_irc_warning(''), '')
+
     def test_get_ts_validation_caution(self):
         """Test that only a TS whose IRC is unverified because an IRC job failed gets a caution"""
         self.assertIsNone(common.get_ts_validation_caution(None))

@@ -1,0 +1,287 @@
+ Entering Gaussian System, Link 0=g16
+ Initial command:
+ /usr/local/g16/l1.exe "/scratch/user/g16/0000000.server/" -scrdir="/scratch/user/g16/0000000.server/"
+ Entering Link 1 = /usr/local/g16/l1.exe PID=   0000000.
+  
+ Copyright (c) 1988-2019, Gaussian, Inc.  All Rights Reserved.
+  
+ This is part of the Gaussian(R) 16 program.  It is based on
+ the Gaussian(R) 09 system (copyright 2009, Gaussian, Inc.),
+ the Gaussian(R) 03 system (copyright 2003, Gaussian, Inc.),
+ the Gaussian(R) 98 system (copyright 1998, Gaussian, Inc.),
+ the Gaussian(R) 94 system (copyright 1995, Gaussian, Inc.),
+ the Gaussian 92(TM) system (copyright 1992, Gaussian, Inc.),
+ the Gaussian 90(TM) system (copyright 1990, Gaussian, Inc.),
+ the Gaussian 88(TM) system (copyright 1988, Gaussian, Inc.),
+ the Gaussian 86(TM) system (copyright 1986, Carnegie Mellon
+ University), and the Gaussian 82(TM) system (copyright 1983,
+ Carnegie Mellon University). Gaussian is a federally registered
+ trademark of Gaussian, Inc.
+  
+ This software contains proprietary and confidential information,
+ including trade secrets, belonging to Gaussian, Inc.
+  
+ This software is provided under written license and may be
+ used, copied, transmitted, or stored only in accord with that
+ written license.
+  
+ The following legend is applicable only to US Government
+ contracts under FAR:
+  
+                    RESTRICTED RIGHTS LEGEND
+  
+ Use, reproduction and disclosure by the US Government is
+ subject to restrictions as set forth in subparagraphs (a)
+ and (c) of the Commercial Computer Software - Restricted
+ Rights clause in FAR 52.227-19.
+  
+ Gaussian, Inc.
+ 340 Quinnipiac St., Bldg. 40, Wallingford CT 06492
+  
+  
+ ---------------------------------------------------------------
+ Warning -- This program may not be used in any manner that
+ competes with the business of Gaussian, Inc. or will provide
+ assistance to any competitor of Gaussian, Inc.  The licensee
+ of this program is prohibited from giving any competitor of
+ Gaussian, Inc. access to this program.  By using this program,
+ the user acknowledges that Gaussian, Inc. is engaged in the
+ business of creating and licensing software in the field of
+ computational chemistry and represents and warrants to the
+ licensee that it is not a competitor of Gaussian, Inc. and that
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 16, Revision C.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, 
+ G. A. Petersson, H. Nakatsuji, X. Li, M. Caricato, A. V. Marenich, 
+ J. Bloino, B. G. Janesko, R. Gomperts, B. Mennucci, H. P. Hratchian, 
+ J. V. Ortiz, A. F. Izmaylov, J. L. Sonnenberg, D. Williams-Young, 
+ F. Ding, F. Lipparini, F. Egidi, J. Goings, B. Peng, A. Petrone, 
+ T. Henderson, D. Ranasinghe, V. G. Zakrzewski, J. Gao, N. Rega, 
+ G. Zheng, W. Liang, M. Hada, M. Ehara, K. Toyota, R. Fukuda, 
+ J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, H. Nakai, 
+ T. Vreven, K. Throssell, J. A. Montgomery, Jr., J. E. Peralta, 
+ F. Ogliaro, M. J. Bearpark, J. J. Heyd, E. N. Brothers, K. N. Kudin, 
+ V. N. Staroverov, T. A. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. P. Rendell, J. C. Burant, S. S. Iyengar, 
+ J. Tomasi, M. Cossi, J. M. Millam, M. Klene, C. Adamo, R. Cammi, 
+ J. W. Ochterski, R. L. Martin, K. Morokuma, O. Farkas, 
+ J. B. Foresman, and D. J. Fox, Gaussian, Inc., Wallingford CT, 2019.
+ 
+ ******************************************
+ Gaussian 16:  EM64L-G16RevC.01  3-Jul-2019
+                14-Nov-2026 
+ ******************************************
+ %chk=check.chk
+ %mem=32440mb
+ %NProcShared=16
+ Will use up to   16 processors via shared memory.
+ ----------------------------------------------------------------------
+ #P guess=read wb97xd/def2svp freq IOp(7/33=1) integral=(grid=ultrafine
+ , Acc2E=12) IOp(2/9=2000) scf=(direct,tight)
+ ----------------------------------------------------------------------
+ 1/10=4,30=1,38=1/1,3;
+ 2/9=2000,12=2,17=6,18=5,40=1/2;
+ 3/5=43,7=101,11=2,25=1,27=12,30=1,71=2,74=-58,75=-5,116=-2,140=1/1,2,3;
+ 4/5=1/1;
+ 5/5=2,32=2,38=6,87=12,98=1/2;
+ 8/6=4,10=90,11=11,87=12/1;
+ 11/6=1,8=1,9=11,15=111,16=1,87=12/1,2,10;
+ 10/6=1,87=12/2;
+ 6/7=2,8=2,9=2,10=2,28=1,87=12/1;
+ 7/8=1,10=1,25=1,33=1,87=12/1,2,3,16;
+ 1/10=4,30=1/3;
+ 99//99;
+ Leave Link    1 at Sat Nov 14 15:51:05 2026, MaxMem=  4251975680 cpu:               0.7 elap:               0.0
+ (Enter /usr/local/g16/l101.exe)
+ ---
+ TS5
+ ---
+ Symbolic Z-matrix:
+ Charge =  0 Multiplicity = 1
+ C                    -1.59874  -0.53049   0.00002 
+ C                    -1.08227   0.76484   0.00007 
+ Cl                    1.30454  -0.08051  -0.00002 
+ H                    -0.3292   -0.76283  -0.00058 
+ H                    -1.98454  -0.94678   0.93417 
+ H                    -1.98571  -0.94633  -0.93385 
+ H                    -0.89559   1.30926   0.92766 
+ H                    -0.8961    1.30929  -0.92762 
+ 
+ ITRead=  0  0  0  0  0  0  0  0
+ MicOpt= -1 -1 -1 -1 -1 -1 -1 -1
+ NAtoms=      8 NQM=        8 NQMF=       0 NMMI=      0 NMMIF=      0
+                NMic=       0 NMicF=      0.
+                    Isotopes and Nuclear Properties:
+ (Nuclear quadrupole moments (NQMom) in fm**2, nuclear magnetic moments (NMagM)
+  in nuclear magnetons)
+
+  Atom         1           2           3           4           5           6           7           8
+ IAtWgt=          12          12          35           1           1           1           1           1
+ AtmWgt=  12.0000000  12.0000000  34.9688527   1.0078250   1.0078250   1.0078250   1.0078250   1.0078250
+ NucSpn=           0           0           3           1           1           1           1           1
+ AtZEff=  -0.0000000  -0.0000000  -0.0000000  -0.0000000  -0.0000000  -0.0000000  -0.0000000  -0.0000000
+ NQMom=    0.0000000   0.0000000  -8.1650000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000
+ NMagM=    0.0000000   0.0000000   0.8218740   2.7928460   2.7928460   2.7928460   2.7928460   2.7928460
+ AtZNuc=   6.0000000   6.0000000  17.0000000   1.0000000   1.0000000   1.0000000   1.0000000   1.0000000
+ Leave Link  101 at Sat Nov 14 15:51:05 2026, MaxMem=  4251975680 cpu:               0.6 elap:               0.1
+ (Enter /usr/local/g16/l103.exe)
+
+ GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
+ Berny optimization.
+ Initialization pass.
+ Trust Radius=3.00D-01 FncErr=1.00D-07 GrdErr=1.00D-07 EigMax=2.50D+02 EigMin=1.00D-04
+ Number of steps in this run=      2 maximum allowed number of steps=      2.
+ GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
+
+ Leave Link  103 at Sat Nov 14 15:51:05 2026, MaxMem=  4251975680 cpu:               0.2 elap:               0.0
+ (Enter /usr/local/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0       -1.598736   -0.530494    0.000024
+      2          6           0       -1.082271    0.764840    0.000066
+      3         17           0        1.304540   -0.080511   -0.000019
+      4          1           0       -0.329202   -0.762833   -0.000578
+      5          1           0       -1.984537   -0.946782    0.934166
+      6          1           0       -1.985705   -0.946331   -0.933849
+      7          1           0       -0.895592    1.309255    0.927664
+      8          1           0       -0.896103    1.309294   -0.927615
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3          4          5
+     1  C    0.000000
+     2  C    1.394499   0.000000
+     3  Cl   2.937941   2.532091   0.000000
+     4  H    1.290619   1.703202   1.770502   0.000000
+     5  H    1.093050   2.148552   3.527202   1.909900   0.000000
+     6  H    1.093062   2.148603   3.528087   1.910149   1.868015
+     7  H    2.177063   1.091639   2.762721   2.340081   2.505104
+     8  H    2.176931   1.091641   2.763118   2.339762   3.121025
+                    6          7          8
+     6  H    0.000000
+     7  H    3.121097   0.000000
+     8  H    2.505018   1.855279   0.000000
+ Stoichiometry    C2H5Cl
+ Framework group  C1[X(C2H5Cl)]
+ Deg. of freedom    18
+ Full point group                 C1      NOp   1
+ Largest Abelian subgroup         C1      NOp   1
+ Largest concise Abelian subgroup C1      NOp   1
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0       -1.598736   -0.530494    0.000024
+      2          6           0       -1.082271    0.764840    0.000066
+      3         17           0        1.304540   -0.080511   -0.000019
+      4          1           0       -0.329202   -0.762833   -0.000578
+      5          1           0       -1.984537   -0.946782    0.934166
+      6          1           0       -1.985705   -0.946331   -0.933849
+      7          1           0       -0.895592    1.309255    0.927664
+      8          1           0       -0.896103    1.309294   -0.927615
+ ---------------------------------------------------------------------
+ Harmonic frequencies (cm**-1), IR intensities (KM/Mole), Raman scattering
+ activities (A**4/AMU), depolarization ratios for plane and unpolarized
+ incident light, reduced masses (AMU), force constants (mDyne/A),
+ and normal coordinates:
+                      1                      2                      3
+                      A                      A                      A
+ Frequencies --  -1702.8374               304.8279               350.8112
+ Red. masses --      1.1265                 4.7648                 4.6378
+ Frc consts  --      1.9246                 0.2609                 0.3363
+ IR Inten    --    238.5699                59.6431               106.6188
+  Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z
+     1   6    -0.03   0.06   0.00     0.46  -0.04  -0.00    -0.03   0.02   0.00
+     2   6    -0.07  -0.03  -0.00    -0.01   0.17  -0.00     0.43  -0.20   0.00
+     3  17     0.00  -0.02  -0.00    -0.18  -0.05   0.00    -0.17   0.07  -0.00
+     4   1     0.87   0.44   0.00     0.32  -0.29  -0.00     0.25   0.14   0.01
+     5   1     0.11  -0.06   0.01     0.41  -0.03  -0.01     0.01   0.02   0.01
+     6   1     0.11  -0.06  -0.01     0.40  -0.03   0.01     0.02   0.01  -0.01
+     7   1     0.03  -0.05  -0.00    -0.20   0.25  -0.00     0.52  -0.23  -0.01
+     8   1     0.03  -0.05   0.00    -0.20   0.25   0.00     0.53  -0.23   0.01
+                      4                      5                      6
+                      A                      A                      A
+ Frequencies --    372.1062               756.4685               830.4823
+ Red. masses --      1.0463                 1.0280                 1.0294
+ Frc consts  --      0.0854                 0.3466                 0.4183
+ IR Inten    --      3.2344                 6.8022                 0.2532
+  Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z
+     1   6    -0.00   0.00  -0.01    -0.00   0.00   0.02     0.00  -0.00   0.03
+     2   6     0.00  -0.00  -0.04     0.00  -0.00   0.04     0.00  -0.00   0.03
+     3  17    -0.00   0.00   0.03    -0.00  -0.00  -0.00     0.00   0.00   0.00
+     4   1     0.00   0.00  -0.45    -0.00   0.00  -0.43     0.00  -0.00   0.14
+     5   1     0.47  -0.15   0.12     0.15  -0.18  -0.01    -0.21  -0.37  -0.22
+     6   1    -0.47   0.15   0.12    -0.15   0.18  -0.01     0.21   0.37  -0.22
+     7   1     0.36  -0.09  -0.06    -0.44   0.38  -0.09     0.35   0.31  -0.22
+     8   1    -0.35   0.09  -0.06     0.44  -0.38  -0.09    -0.35  -0.31  -0.22
+                      7                      8                      9
+                      A                      A                      A
+ Frequencies --    922.4910              1037.6532              1186.8063
+ Red. masses --      1.1082                 1.2365                 1.1825
+ Frc consts  --      0.5556                 0.7844                 0.9813
+ IR Inten    --     28.4025                22.2152                 9.9458
+  Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z
+     1   6    -0.07   0.04   0.00     0.03  -0.03   0.00    -0.00  -0.00  -0.11
+     2   6     0.03   0.03  -0.00    -0.12   0.07   0.00     0.00   0.00   0.06
+     3  17    -0.00  -0.01  -0.00    -0.01   0.00   0.00     0.00   0.00  -0.00
+     4   1    -0.30   0.20   0.00    -0.13  -0.03  -0.00     0.00  -0.00   0.73
+     5   1     0.51  -0.41   0.03     0.04  -0.10  -0.02     0.41   0.02   0.07
+     6   1     0.51  -0.41  -0.03     0.04  -0.10   0.02    -0.41  -0.02   0.07
+     7   1    -0.06   0.04   0.01     0.66  -0.17  -0.01    -0.03   0.21  -0.05
+     8   1    -0.06   0.04  -0.01     0.66  -0.17   0.01     0.03  -0.21  -0.05
+                     10                     11                     12
+                      A                      A                      A
+ Frequencies --   1230.1749              1302.8578              1393.3947
+ Red. masses --      1.2509                 1.5596                 1.0897
+ Frc consts  --      1.1153                 1.5597                 1.2466
+ IR Inten    --      1.7727                46.8925               268.7941
+  Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z
+     1   6     0.00  -0.00  -0.09     0.04   0.17  -0.00     0.05  -0.06  -0.00
+     2   6     0.00  -0.00   0.12    -0.08  -0.12   0.00    -0.01  -0.02  -0.00
+     3  17    -0.00  -0.00   0.00     0.00   0.00  -0.00    -0.01  -0.01  -0.00
+     4   1    -0.00   0.00  -0.35    -0.11  -0.38   0.00    -0.34   0.79   0.00
+     5   1    -0.12   0.51   0.08     0.31   0.28   0.14     0.06   0.30   0.15
+     6   1     0.12  -0.51   0.08     0.31   0.28  -0.14     0.06   0.30  -0.15
+     7   1     0.23   0.30  -0.10    -0.06  -0.42   0.14    -0.02  -0.07   0.03
+     8   1    -0.24  -0.30  -0.10    -0.06  -0.42  -0.14    -0.02  -0.07  -0.03
+                     13                     14                     15
+                      A                      A                      A
+ Frequencies --   1446.3531              1592.9782              3154.8284
+ Red. masses --      1.1047                 1.9266                 1.0556
+ Frc consts  --      1.3616                 2.8804                 6.1900
+ IR Inten    --     25.9046               130.2524                 3.1543
+  Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z
+     1   6    -0.06  -0.04   0.00    -0.12  -0.16   0.00    -0.04  -0.05  -0.00
+     2   6    -0.02  -0.06   0.00     0.07   0.19   0.00    -0.00   0.00   0.00
+     3  17     0.00   0.00   0.00     0.00   0.00   0.00     0.00   0.00   0.00
+     4   1     0.08  -0.22  -0.00     0.30  -0.25  -0.00     0.01  -0.01  -0.00
+     5   1     0.25   0.26   0.26     0.19   0.20   0.32     0.24   0.26  -0.60
+     6   1     0.25   0.26  -0.26     0.19   0.20  -0.32     0.24   0.26   0.60
+     7   1     0.15   0.40  -0.29    -0.09  -0.29   0.34     0.01   0.03   0.06
+     8   1     0.15   0.40   0.29    -0.09  -0.29  -0.34     0.01   0.03  -0.06
+                     16                     17                     18
+                      A                      A                      A
+ Frequencies --   3198.4805              3266.1041              3315.0681
+ Red. masses --      1.0612                 1.1199                 1.1205
+ Frc consts  --      6.3966                 7.0385                 7.2553
+ IR Inten    --      3.6687                 0.0016                 4.3175
+  Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z
+     1   6    -0.01  -0.01  -0.00    -0.00   0.00  -0.10    -0.00   0.00  -0.02
+     2   6     0.02   0.07  -0.00     0.00   0.00   0.02    -0.00  -0.00  -0.10
+     3  17     0.00  -0.00  -0.00     0.00   0.00  -0.00    -0.00   0.00   0.00
+     4   1     0.02  -0.00  -0.00    -0.00   0.00  -0.01    -0.00   0.00  -0.00
+     5   1     0.02   0.02  -0.05    -0.25  -0.26   0.59    -0.04  -0.05   0.10
+     6   1     0.02   0.02   0.05     0.25   0.26   0.59     0.04   0.05   0.10
+     7   1    -0.12  -0.34  -0.60    -0.02  -0.05  -0.10     0.12   0.34   0.59
+     8   1    -0.12  -0.34   0.60     0.02   0.05  -0.10    -0.12  -0.34   0.59
+
+ -------------------
+ Normal termination of Gaussian 16 at Sat Nov 14 15:51:21 2026.
