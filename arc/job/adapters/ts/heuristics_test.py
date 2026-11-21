@@ -37,7 +37,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
-from arc.species.species import ARCSpecies
+from arc.species.species import ARCSpecies, TSGuess
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
 from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
@@ -554,6 +554,44 @@ H      -3.45360689    0.15275707   -0.76116277""")
                                    (-0.5075499920716767, 1.0297354786962867, 1.666119475718375e-08),
                                    (2.063927797423041, -2.798718649055232e-07, -1.7157539600187732e-07))}
         self.assertTrue(almost_equal_coords(rxn4.ts_species.ts_guesses[0].initial_xyz, expected_xyz))
+
+    def test_heuristics_duplicate_credits_heuristics_in_method_sources(self):
+        """A heuristics guess that matches an existing guess adds 'heuristics' to that guess's method_sources."""
+        rxn = ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh])
+        kwargs = dict(job_type='tsg', reactions=[rxn], testing=True, project='test',
+                      project_directory=os.path.join(self.scratch_dir, 'heuristics'), dihedral_increment=10)
+        HeuristicsAdapter(**kwargs).execute_incore()
+        n_guesses = len(rxn.ts_species.ts_guesses)
+        self.assertGreater(n_guesses, 0)
+        for tsg in rxn.ts_species.ts_guesses:
+            tsg.method, tsg.method_sources = 'GoFlow', ['goflow']
+        HeuristicsAdapter(**kwargs).execute_incore()
+        self.assertEqual(len(rxn.ts_species.ts_guesses), n_guesses)
+        for tsg in rxn.ts_species.ts_guesses:
+            self.assertEqual(tsg.method_sources, ['goflow', 'heuristics'])
+
+    def test_heuristics_skips_earlier_guess_without_coordinates(self):
+        """An earlier failed guess with no coordinates does not stop Heuristics from adding its guesses."""
+        rxn = ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, multiplicity=rxn.multiplicity, charge=rxn.charge)
+        rxn.ts_species.ts_guesses.append(TSGuess(method='RitS', index=0, success=False))
+        HeuristicsAdapter(job_type='tsg', reactions=[rxn], testing=True, project='test',
+                          project_directory=os.path.join(self.scratch_dir, 'heuristics'),
+                          dihedral_increment=10).execute_incore()
+        self.assertEqual(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), 2)
+
+    def test_heuristics_failed_guess_does_not_absorb_new_guess(self):
+        """A failed earlier guess that kept its coordinates does not absorb a successful Heuristics guess."""
+        rxn = ARCReaction(r_species=[self.h2, self.o], p_species=[self.h, self.oh])
+        kwargs = dict(job_type='tsg', reactions=[rxn], testing=True, project='test',
+                      project_directory=os.path.join(self.scratch_dir, 'heuristics'), dihedral_increment=10)
+        HeuristicsAdapter(**kwargs).execute_incore()
+        n_guesses = len(rxn.ts_species.ts_guesses)
+        for tsg in rxn.ts_species.ts_guesses:
+            tsg.success, tsg.method, tsg.method_sources = False, 'RitS', ['rits']
+        HeuristicsAdapter(**kwargs).execute_incore()
+        self.assertEqual(len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]), n_guesses)
+        self.assertTrue(all(tsg.method_sources == ['rits'] for tsg in rxn.ts_species.ts_guesses if not tsg.success))
 
     def test_h_abstraction_with_empty_product_dicts(self):
         """

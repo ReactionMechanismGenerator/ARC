@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import yaml
 
+from arc.checks.common import IRC_CAUSE_NOT_COMPLETED, TS_IRC_NOT_CONFIRMED_MARKER
 from arc.common import ARC_PATH, read_yaml_file
 from arc.constants import E_h_kJmol
 from arc.exceptions import InputError
@@ -519,10 +520,19 @@ class TestStatmechToDict(unittest.TestCase):
         spc.e0 = 100.5
         spc.multiplicity = 1
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 2
         spc.freqs = freqs
         spc.rotors_dict = None
         return spc
+
+    def test_optical_isomers_cause(self):
+        """Test that the optical-isomer cause ARC wrote into the Arkane file reaches output.yml verbatim"""
+        spc = self._make_spc(freqs=[100.0])
+        self.assertIsNone(_statmech_to_dict(spc, '/tmp/project')['optical_isomers_cause'])
+        spc.optical_isomers_cause = 'mirror well reached by the C2-C3 rotor (D = 8.7 deg)'
+        self.assertEqual(_statmech_to_dict(spc, '/tmp/project')['optical_isomers_cause'],
+                         'mirror well reached by the C2-C3 rotor (D = 8.7 deg)')
 
     def test_nonlinear_species(self):
         spc = self._make_spc(freqs=[100.0, 200.0, 300.0])
@@ -565,6 +575,17 @@ class TestStatmechToDict(unittest.TestCase):
         result = _statmech_to_dict(spc, '/tmp/project')
         self.assertEqual(result['rejected_torsions'], [])
 
+    def test_ring_check_dropped_bonds(self):
+        """Test that the TS graph bonds the reactive ring check dropped are listed once, from every rotor"""
+        spc = self._make_spc()
+        self.assertEqual(_statmech_to_dict(spc, '/tmp/project')['ring_check_dropped_bonds'], [])
+        bond = {'atoms': [7, 12], 'distance_angstrom': 2.925, 'ratio': 2.684}
+        spc.rotors_dict = {0: {'success': None, 'pivots': [6, 7], 'ring_check_dropped_bonds': [bond]},
+                           1: {'success': False, 'pivots': [3, 4], 'ring_check_dropped_bonds': [bond],
+                               'invalidation_reason': 'reactive ring'},
+                           2: {'success': False, 'pivots': [1, 2], 'invalidation_reason': 'scan failed'}}
+        self.assertEqual(_statmech_to_dict(spc, '/tmp/project')['ring_check_dropped_bonds'], [bond])
+
     def test_mixed_rotors_split_between_torsions_and_rejected_torsions(self):
         spc = self._make_spc()
         spc.rotors_dict = {
@@ -579,6 +600,68 @@ class TestStatmechToDict(unittest.TestCase):
         self.assertEqual(result['rejected_torsions'][0]['rotor_index'], 1)
         self.assertEqual(result['rejected_torsions'][0]['invalidation_reason'],
                          'rotor set too many (5) times')
+
+
+class TestHarmonicFallbackInStatmech(unittest.TestCase):
+    """Tests for the harmonic-fallback torsions in the statmech section of output.yml."""
+
+    def _species(self, is_ts: bool = False) -> ARCSpecies:
+        """
+        Make an ethanol species, or a TS with ethanol's geometry, with its rotors determined.
+
+        Args:
+            is_ts (bool): Whether to make a TS.
+
+        Returns:
+            ARCSpecies: The species.
+        """
+        xyz = ARCSpecies(label='EtOH_xyz', smiles='CCO').get_xyz()
+        spc = ARCSpecies(label='TS0', is_ts=True, xyz=xyz) if is_ts else ARCSpecies(label='EtOH', smiles='CCO')
+        spc.determine_rotors()
+        spc.freqs = [-1500.0, 300.0] if is_ts else [300.0]
+        return spc
+
+    def test_all_rotors_treated(self):
+        spc = self._species()
+        for rotor in spc.rotors_dict.values():
+            rotor['success'] = True
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertEqual(result['harmonic_fallback_torsions'], [])
+        self.assertEqual(result['n_harmonic_fallback_torsions'], 0)
+        self.assertEqual(result['n_ring_torsions'], 0)
+
+    def test_failed_and_stopped_rotors(self):
+        spc = self._species()
+        spc.rotors_dict[0]['success'] = False
+        spc.rotors_dict[0]['invalidation_reason'] = 'Bond (1, 2) broke during the scan.'
+        spc.rotors_dict[1]['trsh_methods'] = [{'change conformer': spc.get_xyz()}]
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertEqual(result['harmonic_fallback_torsions'], [
+            {'pivot_atoms': [1, 2], 'atom_indices': [4, 1, 2, 3], 'cause': 'scan failed',
+             'reason': 'Bond (1, 2) broke during the scan.'},
+            {'pivot_atoms': [2, 3], 'atom_indices': [1, 2, 3, 9], 'cause': 'scan stopped (lower conformer found)',
+             'reason': ''},
+        ])
+        self.assertEqual(result['n_harmonic_fallback_torsions'], 2)
+        self.assertEqual(result['n_ring_torsions'], 0)
+
+    def test_ts_with_all_rotors_failed(self):
+        ts = self._species(is_ts=True)
+        for rotor in ts.rotors_dict.values():
+            rotor['success'] = False
+            rotor['invalidation_reason'] = 'Pivots participate in the TS reaction zone (code: pivTS). '
+        result = _statmech_to_dict(ts, '/tmp/project')
+        self.assertEqual([(e['pivot_atoms'], e['cause']) for e in result['harmonic_fallback_torsions']],
+                         [([1, 2], 'TS reaction zone'), ([2, 3], 'TS reaction zone')])
+        self.assertEqual(result['n_harmonic_fallback_torsions'], 2)
+
+    def test_ring_torsions_counted_apart(self):
+        spc = ARCSpecies(label='cC6H12', smiles='C1CCCCC1')
+        spc.freqs = [300.0]
+        result = _statmech_to_dict(spc, '/tmp/project')
+        self.assertEqual(len(result['harmonic_fallback_torsions']), 6)
+        self.assertEqual(result['n_harmonic_fallback_torsions'], 0)
+        self.assertEqual(result['n_ring_torsions'], 6)
 
 
 class TestGetTorsions(unittest.TestCase):
@@ -1626,6 +1709,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e0 = -95.0
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1500.0, 100.0]
         spc.rotors_dict = None
@@ -1656,6 +1740,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e0 = -95.0
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1500.0, 100.0]
         spc.rotors_dict = None
@@ -1685,6 +1770,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e_elect = None
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1000.0, 100.0]
         spc.rotors_dict = None
@@ -1726,6 +1812,7 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.e_elect = None
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 1
         spc.freqs = [-1000.0, 100.0]
         spc.rotors_dict = None
@@ -1822,6 +1909,43 @@ class TestRxnToDict(unittest.TestCase):
         self.assertEqual(result['kinetics']['Ea_units'], 'kJ/mol')
         self.assertEqual(result['kinetics']['n'], 0.5)
 
+    def _rxn_with_unconfirmed_ts(self, kinetics):
+        """
+        Build a reaction whose TS has every ts_checks entry None and no irc_label.
+
+        Args:
+            kinetics (dict | None): The kinetics of the reaction.
+
+        Returns:
+            MagicMock: The reaction.
+        """
+        rxn = MagicMock()
+        rxn.label = 'CH4 + OH <=> CH3 + H2O'
+        rxn.reactants = ['CH4', 'OH']
+        rxn.products = ['CH3', 'H2O']
+        rxn.ts_label = 'TS0'
+        rxn.long_kinetic_description = None
+        rxn.kinetics = kinetics
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.ts_checks = {key: None for key in ts.ts_checks}
+        ts.irc_label = None
+        rxn.ts_species = ts
+        return rxn
+
+    def test_a_reaction_with_no_rate_carries_no_ts_validation_caution(self):
+        """Test that a reaction with no rate gets no IRC caution, though IRC was requested and its TS is unconfirmed"""
+        result = _rxn_to_dict(self._rxn_with_unconfirmed_ts(kinetics=None), irc_requested=True, output_dict=dict())
+        self.assertIsNone(result['kinetics'])
+        self.assertNotIn('ts_validation_caution', result)
+
+    def test_a_kept_rate_with_an_unconfirmed_ts_carries_a_ts_validation_caution(self):
+        """Test that a kept rate whose TS IRC was requested but not confirmed carries the IRC caution"""
+        kinetics = {'A': (1.2e10, 's^-1'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')}
+        result = _rxn_to_dict(self._rxn_with_unconfirmed_ts(kinetics=kinetics), irc_requested=True, output_dict=dict())
+        self.assertIsNotNone(result['kinetics'])
+        self.assertTrue(result['ts_validation_caution'].startswith(
+            f'{TS_IRC_NOT_CONFIRMED_MARKER} ({IRC_CAUSE_NOT_COMPLETED})'))
+
 
 class TestSpcToDict(unittest.TestCase):
     """Tests for _spc_to_dict."""
@@ -1854,6 +1978,7 @@ class TestSpcToDict(unittest.TestCase):
         spc.e0 = -105136.6      # kJ/mol (e_elect + ZPE in kJ/mol)
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 12
         spc.freqs = [1300.0, 1500.0, 3000.0, 3100.0]
         spc.rotors_dict = None
@@ -1865,6 +1990,31 @@ class TestSpcToDict(unittest.TestCase):
         spc.derived_stability_verdict = None
         spc.scf_references = dict()
         return spc
+
+    def test_conformer_verified_fields(self):
+        """conformer_verified and its cause are carried from the output dict; old dicts without them give None."""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True},
+                               'conformer_verified': False, 'conformer_verified_cause': 'a cause'}}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertFalse(result['conformer_verified'])
+        self.assertEqual(result['conformer_verified_cause'], 'a cause')
+        result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}}, '/abs')
+        self.assertIsNone(result['conformer_verified'])
+        self.assertIsNone(result['conformer_verified_cause'])
+
+    def test_conformer_change_pending_field(self):
+        """An unjudged conformer change, which keeps the entry out of the libraries, shows next to a null verdict."""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True},
+                               'conformer_verified': None, 'conformer_change_pending': 1}}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertIsNone(result['conformer_verified'])
+        self.assertEqual(result['conformer_change_pending'], 1)
+        output_dict['CH4']['conformer_change_pending'] = 0
+        self.assertEqual(_spc_to_dict(spc, output_dict, '/abs')['conformer_change_pending'], 0)
+        result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}}, '/abs')
+        self.assertIsNone(result['conformer_change_pending'])
 
     def test_converged_species(self):
         spc = self._make_spc_mock()
@@ -2339,6 +2489,7 @@ class TestWriteOutputYml(unittest.TestCase):
         spc.e0 = -105136.6
         spc._is_linear = False
         spc.optical_isomers = 1
+        spc.optical_isomers_cause = None
         spc.external_symmetry = 12
         spc.freqs = [1300.0, 1500.0, 3000.0]
         spc.rotors_dict = None
