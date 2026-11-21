@@ -1704,6 +1704,7 @@ def _spc_to_dict(spc, output_dict: dict, project_directory: str,
     # ── conformer verification ──────────────────────────────────────────────
     d['conformer_verified'] = entry.get('conformer_verified')
     d['conformer_verified_cause'] = entry.get('conformer_verified_cause') or None
+    d['conformer_change_pending'] = entry.get('conformer_change_pending')
 
     # ── molecular identity ───────────────────────────────────────────────────
     if spc.is_ts:
