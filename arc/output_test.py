@@ -1866,6 +1866,19 @@ class TestSpcToDict(unittest.TestCase):
         self.assertIsNone(result['conformer_verified'])
         self.assertIsNone(result['conformer_verified_cause'])
 
+    def test_conformer_change_pending_field(self):
+        """An unjudged conformer change, which keeps the entry out of the libraries, shows next to a null verdict."""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True},
+                               'conformer_verified': None, 'conformer_change_pending': 1}}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertIsNone(result['conformer_verified'])
+        self.assertEqual(result['conformer_change_pending'], 1)
+        output_dict['CH4']['conformer_change_pending'] = 0
+        self.assertEqual(_spc_to_dict(spc, output_dict, '/abs')['conformer_change_pending'], 0)
+        result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}}, '/abs')
+        self.assertIsNone(result['conformer_change_pending'])
+
     def test_converged_species(self):
         spc = self._make_spc_mock()
         output_dict = {'CH4': {'convergence': True, 'paths': {'freq': '/abs/freq.log', 'sp': '/abs/sp.log'},
