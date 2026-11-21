@@ -1,0 +1,55 @@
+
+                                 *****************
+                                 * O   R   C   A *
+                                 *****************
+
+...
+================================================================================
+                                       INPUT FILE
+================================================================================
+NAME = input.in
+|  1>
+|  2> !uHF wb97x-d3 def2-tzvp NEB-TS
+|  3> %maxcore 2048
+|  4> %pal nprocs 16 end
+|  5>
+|  6> %neb
+|  7>    Interpolation    IDPP
+|  8>    NImages  15
+|  9>    PrintLevel   3
+| 10>    PreOpt           true
+| 11>    NEB_END_XYZFILE "/home/alon/alon/runs/ARC_Projects/pilot_17_main/TS10/tsg3/product.xyz"
+| 12> END
+| 13>
+| 14> * XYZFILE 0 2 /home/alon/alon/runs/ARC_Projects/pilot_17_main/TS10/tsg3/reactant.xyz
+...
+--------------------------------------------------------------------------------
+                        Nudged Elastic Band Calculation
+--------------------------------------------------------------------------------
+...
+CARTESIAN COORDINATES (ANGSTROEM)
+---------------------------------
+  C      1.660490    1.020758   -0.044302
+  C      1.398409   -0.427987    0.136288
+  C      0.016971   -0.878014   -0.355765
+  C     -1.107105   -0.243881    0.403657
+  C     -2.051640    0.523146   -0.121925
+  H      0.842240    1.725159   -0.121784
+  H      2.666847    1.411222    0.027927
+  H      1.497053   -0.698552    1.201010
+  H      2.172800   -1.014533   -0.371006
+  H     -0.085023   -0.654619   -1.421591
+  H     -0.051914   -1.965881   -0.250824
+  H     -1.122581   -0.435679    1.475476
+  H     -2.837832    0.952342    0.486977
+  H     -2.072702    0.744821   -1.184083
+
+...
+Smallest eigenvalue                        ... 1.644e-04
+Time for diagonalization                   ...    0.005 sec
+Threshold for overlap eigenvalues          ... 1.000e-07
+Number of eigenvalues below threshold      ... 0
+Time for construction of square roots      ...    0.004 sec
+Total time needed                          ...    0.011 sec
+
+-------------------

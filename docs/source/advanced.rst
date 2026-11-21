@@ -778,6 +778,13 @@ you need strict no-resubmission behavior:
    trsh_ess_jobs: false
    trsh_rotors: false
 
+With either one disabled, ARC does not move to a lower conformer that a rotor scan
+finds. Such a species is marked ``conformer_verified: false`` in ``output.yml``,
+with the cause and the energy gap, and is left out of the RMG thermo library (as
+is any reaction it takes part in, from the kinetics library). Set
+``allow_not_verified_in_libraries: true`` to write these entries anyway, with the
+cause in their library comment.
+
 Use ``keep_checks: true`` when Gaussian checkfiles or other retained files are
 needed for manual diagnosis. Otherwise ARC deletes checkfiles when it terminates,
 both under the local project directory and under the project's directory on each
@@ -905,14 +912,12 @@ The above code generates the following input file::
       sp: true
 
     species:
-    - E0: null
-      arkane_file: null
+    - arkane_file: null
       bond_corrections:
         N=O: 1
       charge: 0
       external_symmetry: null
       force_field: MMFF94
-      generate_thermo: true
       is_ts: false
       label: 'NO'
       mol: |
@@ -921,8 +926,7 @@ The above code generates the following input file::
         2 O u0 p2 c0 {1,D}
       multiplicity: 2
       number_of_rotors: 0
-    - E0: null
-      arkane_file: null
+    - arkane_file: null
       bond_corrections:
         C-H: 3
         C-O: 1
@@ -944,7 +948,6 @@ The above code generates the following input file::
         H      -1.28488154    0.84437992   -0.22108130
         H       1.02953840    0.95815005   -0.41011413
       force_field: MMFF94
-      generate_thermo: true
       is_ts: false
       label: vinoxy
       mol: |

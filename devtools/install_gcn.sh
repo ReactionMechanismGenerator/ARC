@@ -138,13 +138,8 @@ else
 fi
 
 # Shell hook
-if [[ $COMMAND_PKG == micromamba ]]; then
-    eval "$(micromamba shell hook --shell bash)"
-else
-    BASE=$(conda info --base)
-    source "$BASE/etc/profile.d/conda.sh"
-    eval "$($COMMAND_PKG shell hook --shell bash)"
-fi
+source "$SCRIPT_DIR/shell_init.sh"
+arc_shell_init
 
 # ── clone or update TS-GCN ------------------------------------------------
 if [[ -d TS-GCN ]]; then

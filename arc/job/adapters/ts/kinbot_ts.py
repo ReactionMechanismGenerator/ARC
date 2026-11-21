@@ -17,7 +17,7 @@ from arc.common import ARC_PATH, almost_equal_coords, get_logger, read_yaml_file
 from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter
+from arc.job.adapters.common import _initialize_adapter, missing_engine_file_reason, order_product_guess_by_atom_map
 from arc.job.env_run import run_in_conda_env
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
@@ -35,6 +35,17 @@ KINBOT_UMA_SETTINGS = settings['kinbot_uma_settings']
 KINBOT_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'kinbot_script.py')
 
 logger = get_logger()
+
+
+def engine_unavailable_reason() -> str | None:
+    """
+    Report why KinBot cannot run on this machine.
+
+    Returns:
+        str | None: ``None`` if the kinbot_env python is found, otherwise the reason.
+    """
+    return missing_engine_file_reason(KINBOT_PYTHON, 'KINBOT_PYTHON', 'the python of the kinbot_env conda env '
+                                                                      '(run devtools/install_kinbot.sh)')
 
 
 class KinBotAdapter(JobAdapter):
@@ -250,11 +261,10 @@ class KinBotAdapter(JobAdapter):
         """
         Execute a job incore.
         """
-        if not KINBOT_PYTHON or not os.path.isfile(KINBOT_PYTHON):
-            raise DependencyError('The KinBot python executable was not found. '
-                                    'Make sure the kinbot_env exists and KINBOT_PYTHON is configured '
-                                    '(run devtools/install_kinbot.sh to create the environment). '
-                                    f'See {self.url} for more information.')
+        reason = engine_unavailable_reason()
+        if reason is not None:
+            raise DependencyError(f'The KinBot python executable was not found: {reason}. '
+                                  f'See {self.url} for more information.')
 
         self._log_job_execution()
         self.initial_time = self.initial_time if self.initial_time else datetime.datetime.now()
@@ -389,13 +399,23 @@ class KinBotAdapter(JobAdapter):
             if success:
                 ts_guess.success = True
                 xyz = xyz_from_data(coords=result['coords'], symbols=symbols)
+                if xyz is not None and method_direction == 'R':
+                    try:
+                        atom_map = rxn.atom_map
+                    except Exception as e:
+                        logger.warning(f'KinBot could not atom map {rxn.label}: {e} Discarding this guess.')
+                        xyz = None
+                    else:
+                        xyz = order_product_guess_by_atom_map(xyz=xyz, atom_map=atom_map, label=rxn.label)
                 if xyz is None or colliding_atoms(xyz):
                     success = False
                 else:
                     for other_tsg in rxn.ts_species.ts_guesses:
-                        if other_tsg.success and almost_equal_coords(xyz, other_tsg.initial_xyz):
+                        if other_tsg.success and other_tsg.initial_xyz is not None \
+                                and almost_equal_coords(xyz, other_tsg.initial_xyz):
                             if 'kinbot' not in other_tsg.method.lower():
                                 other_tsg.method += ' and KinBot'
+                            other_tsg.add_method_source(method)
                             unique = False
                             break
                     if unique:

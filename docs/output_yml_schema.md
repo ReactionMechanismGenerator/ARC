@@ -36,6 +36,7 @@ output.yml
 ├── freq_level?
 ├── sp_level?
 ├── neb_level (omitted unless the orca_neb TS adapter was configured)
+├── ts_adapters (omitted when the run built no scheduler): {adapters, source}
 ├── arkane_level_of_theory?
 ├── freq_scale_factor?
 ├── freq_scale_factor_key?
@@ -95,19 +96,24 @@ output.yml
 │       │   ├── nasa_low?: {tmin_k, tmax_k, coeffs}
 │       │   └── nasa_high?: {tmin_k, tmax_k, coeffs}
 │       └── statmech?
-│           ├── e0_kj_mol?, spin_multiplicity, optical_isomers
+│           ├── e0_kj_mol?, spin_multiplicity, optical_isomers, optical_isomers_cause?
 │           ├── is_linear, external_symmetry, point_group?
 │           ├── rigid_rotor_kind, harmonic_frequencies_cm1?
 │           ├── torsions: []
 │           │   └── symmetry_number, treatment, atom_indices, pivot_atoms,
 │           │       barrier_kj_mol?, source_scan_key?
-│           └── rejected_torsions?: []
-│               └── rotor_index, invalidation_reason, atom_indices, pivot_atoms,
-│                   dimension, source_log?
+│           ├── rejected_torsions?: []
+│           │   └── rotor_index, invalidation_reason, atom_indices, pivot_atoms,
+│           │       dimension, source_log?
+│           ├── ring_check_dropped_bonds?: []
+│           │   └── atoms, distance_angstrom, ratio
+│           ├── harmonic_fallback_torsions?: []
+│           │   └── pivot_atoms, atom_indices, cause, reason
+│           └── n_harmonic_fallback_torsions?, n_ring_torsions?
 │
 ├── transition_states: []
 │   └── (all species fields, plus:)
-│       ├── chosen_ts_method?, successful_ts_methods?
+│       ├── chosen_ts_method?, successful_ts_methods?, skipped_ts_methods?
 │       ├── ts_guesses: []
 │       ├── neb_log?, gsm_log?, irc_logs: [], irc_log_directions: [], irc_converged?
 │       ├── ts_checks: {E0?, e_elect?, IRC?, freq?, NMD?, warnings}
@@ -116,6 +122,8 @@ output.yml
 └── reactions: []
     └── label, reactant_labels, product_labels, family?, multiplicity, ts_label
         ├── long_kinetic_description   (omitted when empty)
+        ├── ts_validation_caution      (omitted when none)
+        ├── ts_adapter_failures: []    (adapter, exception_type, message)
         └── kinetics?
             └── A, A_units?, n, Ea, Ea_units?, Tmin_k, Tmax_k
                 dA?, dn?, dEa?, dEa_units?, n_data_points?, tunneling
@@ -138,7 +146,7 @@ TS entries share all species fields but add IRC/NEB/method fields and always hav
 
 | Field | Type | Description |
 |---|---|---|
-| `schema_version` | `str` | Output contract version. `1.1` adds the optional `parser_evidence` descriptor, renames the thermo block's `cp_data` to `thermo_points` (widened from Cp-only to Cp/H/S/G per temperature; there is no `cp_data` alias), renames the AEC `parameter_table` to `reference_atom_energies`, adds `imaginary_frequencies_cm1`, the per-correction `matched_arkane_key` and `freq_scale_factor_key`, adds `ess_software` so each `ess_versions` banner can be paired with the program that actually produced it, adds `arkane_version`, read together with `arkane_git_commit` from one install so the run carries an Arkane software identity even where there is no git repository to report a commit from, adds `freq_hessian_method`, whose three tokens are TCKDB's `HessianMethod` vocabulary and record the provenance of the frequency method ARC requested, adds the optional `statmech.rejected_torsions`, adds the TS-only `ts_checks`, adds `kinetics.T0_k` and the constraints' `target_value_units`, adds the thermo block's `standard_state_pressure_pa`, which names the standard state its entropy, free energy and NASA fit belong to, and adds the `rotor_scans` block, whose samples carry `angle_degrees` — the **absolute** dihedral measured on each sample's own geometry, never a displacement — and whose `requested_step_size` is signed, so a reversed scan records its direction instead of losing the whole requested grid. Emitted from a single constant shared with the evidence sidecar's `output_schema_version`, so the two cannot drift |
+| `schema_version` | `str` | Output contract version. `1.1` adds the optional `parser_evidence` descriptor, renames the thermo block's `cp_data` to `thermo_points` (widened from Cp-only to Cp/H/S/G per temperature; there is no `cp_data` alias), renames the AEC `parameter_table` to `reference_atom_energies`, adds `imaginary_frequencies_cm1`, the per-correction `matched_arkane_key` and `freq_scale_factor_key`, adds `ess_software` so each `ess_versions` banner can be paired with the program that actually produced it, adds `arkane_version`, read together with `arkane_git_commit` from one install so the run carries an Arkane software identity even where there is no git repository to report a commit from, adds `freq_hessian_method`, whose three tokens are TCKDB's `HessianMethod` vocabulary and record the provenance of the frequency method ARC requested, adds the optional `statmech.rejected_torsions`, `statmech.ring_check_dropped_bonds`, `statmech.harmonic_fallback_torsions`, `statmech.n_harmonic_fallback_torsions`, `statmech.n_ring_torsions` and `statmech.optical_isomers_cause`, adds the TS-only `ts_checks` and the reaction's optional `ts_validation_caution`, adds `kinetics.T0_k` and the constraints' `target_value_units`, adds the thermo block's `standard_state_pressure_pa`, which names the standard state its entropy, free energy and NASA fit belong to, adds the `rotor_scans` block, whose samples carry `angle_degrees` — the **absolute** dihedral measured on each sample's own geometry, never a displacement — and whose `requested_step_size` is signed, so a reversed scan records its direction instead of losing the whole requested grid, and adds the reactions' `ts_adapter_failures`. Emitted from a single constant shared with the evidence sidecar's `output_schema_version`, so the two cannot drift |
 | `project` | `str` | ARC project name |
 | `arc_version` | `str` | ARC version string |
 | `arc_git_commit` | `str?` | ARC repo HEAD commit hash |
@@ -315,6 +323,7 @@ one free-form value (arbitrary ESS keywords).
 | `freq_level` | `dict?` | Frequency calculation level |
 | `sp_level` | `dict?` | Single-point energy level |
 | `neb_level` | `dict` | NEB TS search level. **Omitted** (key absent) unless the `orca_neb` TS adapter was configured for the run and `orca_neb_settings['level']` is set — it does not indicate that an NEB job actually ran |
+| `ts_adapters` | `dict` | The TS search adapters the run used (`adapters`, lowercased) and where the list came from (`source`: `repo default`, `~/.arc/settings.py`, or `input file`). **Omitted** (key absent) when the run built no scheduler, or when its source is not one of these three. Optional in schema 1.1; it does not change `schema_version` |
 | `arkane_level_of_theory` | `dict?` | Composite level Arkane uses for energy corrections |
 | `freq_scale_factor` | `float?` | Harmonic frequency scaling factor |
 | `freq_scale_factor_key` | `str?` | The entry key in ARC's `data/freq_scale_factors.yml` that `freq_level` resolved to — e.g. `"wb97xd/def2tzvp, software: gaussian"`. This is the block the factor was read from, so a consumer can check the factor against its own copy of the file. `null` when the user supplied the factor, when `freq_level` has no entry in that file, or when the file cannot be read |
@@ -346,6 +355,7 @@ one-based-index, calculation-DAG, or payload nesting conversion.
 | `is_ts` | `false` | Always `false` for species |
 | `conformer_verified` | `bool?` | `true` once every rotor was scanned and checked and no lower conformer is pending or unresolved; `false` when a rotor scan found a lower conformer ARC could not reach (re-optimization returned to the previous geometry, or troubleshooting was exhausted or not applied); `null` when nothing checked it (e.g., no scanned rotors). A `false` entry is left out of the RMG libraries unless `allow_not_verified_in_libraries` is set |
 | `conformer_verified_cause` | `str?` | Why `conformer_verified` is `false`, including the energy gap; `null` otherwise |
+| `conformer_change_pending` | `int?` | How many conformer changes (a rotor scan found a lower conformer and ARC re-optimized from it) were never judged, counted at the end of the run; `null` in output from a run that did not count them. A nonzero count leaves the entry out of the RMG libraries unless `allow_not_verified_in_libraries` is set, even though `conformer_verified` stays `null` and `conformer_verified_cause` is empty |
 | `smiles` | `str?` | SMILES string |
 | `inchi` | `str?` | InChI identifier |
 | `inchi_key` | `str?` | InChI key |
@@ -734,6 +744,7 @@ One entry per parsed scan point, in the order the ESS reported them.
 | `e0_kj_mol` | `float?` | Ground-state energy (kJ/mol) |
 | `spin_multiplicity` | `int?` | Spin multiplicity |
 | `optical_isomers` | `int?` | Number of optical isomers |
+| `optical_isomers_cause` | `str?` | Optional. Why ARC wrote `optical_isomers` into the Arkane file: `n = 2` for a chiral optimised geometry, unless the treated rotors reach its mirror image (`1`). The rule is exact only within the independent 1D-rotor model. Each cause states D, the largest signed-torsion deviation (degrees) from the aligned mirror image, e.g. `mirror well reached by the C2-C3 rotor (D = 8.7 deg)` or `C2-C3 torsion harmonic: scan failed (...), mirror well counted by n (D = 131.4 deg)`. `not determined: <reason>` when ARC omitted the key and Arkane estimated it from the point group. `null` when no Arkane file was generated |
 | `is_linear` | `bool?` | Whether the molecule is linear |
 | `external_symmetry` | `int?` | External symmetry number |
 | `point_group` | `str?` | Point group (e.g. `C2v`) |
@@ -741,6 +752,10 @@ One entry per parsed scan point, in the order the ESS reported them.
 | `harmonic_frequencies_cm1` | `list[float]?` | Harmonic frequencies (cm-1) as parsed from the ESS, **unscaled** — `freq_scale_factor` has *not* been applied, although it has been applied to `statmech.e0_kj_mol`, so recomputing ZPE from this list will not reproduce `e0_kj_mol` unless you scale first. For TSs **every** negative (imaginary) frequency is dropped, not only the reaction mode — a TS that legitimately carries additional small imaginary modes (which `check_imaginary_frequencies` permits) loses those too, so the list can be shorter than the species' true mode count. Non-TS species are not filtered at all |
 | `torsions` | `list` | Internal rotation data (see below) |
 | `rejected_torsions` | `list` | Rotors ARC evaluated and rejected (see below). **Optional in the schema** — not in `statmech`'s `required` list — unlike every other field in this table. This version of the writer always emits it (`[]` when there is nothing to report, never omitted), but a consumer reading documents from other producers, or from before this key existed, must tolerate its absence rather than assuming `[]` |
+| `ring_check_dropped_bonds` | `list` | TS only: the TS 2D-graph bonds the reactive ring check dropped, each with 1-indexed `atoms`, `distance_angstrom` and `ratio` (distance over the single bond length). A bond is dropped when its ratio in the TS geometry exceeds the cut (1.8) and the reaction neither forms nor breaks it. `[]` for a well or when nothing was dropped. Optional in the schema; always emitted by this writer |
+| `harmonic_fallback_torsions` | `list` | Every torsion Arkane did **not** treat as a hindered rotor, so it stays a harmonic mode of the frequency calculation (see below). Unlike `rejected_torsions`, it also carries pending (`success is None`) rotors, ring torsions, and torsions skipped because rotor scans were turned off. Optional in the schema; always emitted by this writer |
+| `n_harmonic_fallback_torsions` | `int` | Number of `harmonic_fallback_torsions` entries whose `cause` is neither `"ring"` nor `"reactive ring"`: torsions that could have been hindered rotors and were not. `0` when every rotor was treated. Optional in the schema |
+| `n_ring_torsions` | `int` | Number of `harmonic_fallback_torsions` entries whose `cause` is `"ring"` or `"reactive ring"` (structural, not failures). Optional in the schema |
 
 **`torsions`** entries (only successful rotors):
 
@@ -753,6 +768,18 @@ One entry per parsed scan point, in the order the ESS reported them.
 | `pivot_atoms` | `list[int]?` | 2-atom rotation axis (1-indexed). For an ND rotor this is a **list of pairs**, one per dimension |
 | `barrier_kj_mol` | `float?` | Torsional barrier height (kJ/mol). `null` for an ND rotor (`dimension > 1`), whose barrier cannot be derived from a 1D scan parse |
 | `source_scan_key` | `str?` | The `rotor_scans[].key` (e.g. `"scan_rotor_3"`) this torsion was derived from. `null` when `rotor_scans` holds no record for that rotor, so the reference can never dangle |
+
+**`harmonic_fallback_torsions`** entries:
+
+| Field | Type | Description |
+|---|---|---|
+| `pivot_atoms` | `list[int]?` | 2-atom rotation axis (1-indexed), shaped as in `torsions` |
+| `atom_indices` | `list[int]?` | 4-atom dihedral (1-indexed), shaped as in `torsions`. `null` for a ring torsion whose bond has no dihedral with four distinct atoms (e.g., the O-O bond of dioxirane) |
+| `cause` | `str` | `"scan failed"` (`success is False`), `"scan stopped (lower conformer found)"` (`success is None` after a change-conformer troubleshooting), `"scan not completed"` (`success is None` otherwise), `"TS reaction zone"` (pivots in the TS reaction zone, code `pivTS`), `"reactive ring"` (torsion in the TS reactive ring), `"TS graph contradicts the geometry"` (the rotor top in the TS 2D graph differs from its top in the TS geometry, or the graph and the geometry are in different atom orders), `"ring"` (bond in a ring of the 2D graph; never a rotor candidate), `"user choice"` (rotor scans turned off), or `"not scanned (BDE fragment)"` (a bond-dissociation fragment, whose rotors ARC does not scan) |
+| `reason` | `str` | The recorded `invalidation_reason`, whitespace-normalized; `""` when none was recorded |
+
+The same list is written as a `# Harmonic fallback:` comment into each species and TS Arkane input file, logged, and
+added to that label's `warnings` in `output/status.yml`.
 
 **`rejected_torsions`** entries (rotors ARC evaluated and rejected, i.e. `rotors_dict` entries whose `success` is `False`):
 
@@ -820,6 +847,7 @@ substitute.
 | `imaginary_frequencies_cm1` | `list[float]?` | All imaginary frequencies (cm-1), including any additional small ones beyond the reaction mode |
 | `chosen_ts_method` | `str?` | The TS search method that was selected |
 | `successful_ts_methods` | `list[str]?` | All TS methods that succeeded |
+| `skipped_ts_methods` | `dict[str, str]?` | TS adapters that never ran because their engine is not available, each mapped to the cause. A skip is not a failure. Null when none was skipped. Always written from this version on; optional in the schema only so older records validate. A project restarted from a record written before this field keeps such adapters among its unsuccessful methods |
 | `ts_guesses` | `list[dict]` | Sanitized provenance for the chosen guess: `index`, `chosen`, `method`, and merged `method_sources` |
 | `neb_log` | `str?` | Run-relative path to the NEB log. Taken from the run's `neb` path slot, falling back to the chosen TS guess's log when that guess's method is `orca_neb` |
 | `gsm_log` | `str?` | Run-relative path to the selected GSM stringfile. Taken from the run's `gsm` path slot, falling back to the chosen TS guess's log when that guess's method is `xtb_gsm` |
@@ -862,6 +890,8 @@ all `null` has not been shown to be wrong, only left unvalidated.
 | `ts_label` | `str?` | Label of the associated transition state |
 | `kinetics` | `dict?` | Fitted kinetics (see below); `null` if not computed |
 | `long_kinetic_description` | `str` | ARC's verbose description of how the rate coefficient was obtained. **Omitted** (key absent) when the reaction carries no such description |
+| `ts_validation_caution` | `str` | A non-blocking caution: an IRC was requested for the TS and `ts_checks.IRC` of the TS is `null`, so the TS was not confirmed to connect this reaction's reactants and products. The rate is kept. Always starts with `IRC NOT CONFIRMED (<cause>)`, so a consumer can match on that prefix. The cause is `IRC job failed` (an IRC job did not end normally; its cause is in the TS's `ts_checks.warnings`), `endpoint opt not converged` (an IRC endpoint has no optimized geometry, so the endpoints were never compared), `comparison inconclusive` (both endpoints were optimized but could not be compared with the wells), or `IRC not completed` (no other cause applies). **Omitted** (key absent) when `kinetics` is `null`, when no IRC was requested, or when `ts_checks.IRC` is `true` or `false` |
+| `ts_adapter_failures` | `list[dict]` | TS search adapters that raised an exception for this reaction. ARC logged each one's traceback at ERROR and went on with the other adapters; an adapter whose job had already reached a queue keeps that job tracked, any other is skipped. Each entry has `adapter`, `exception_type` and `message` (the first line of the exception message, or the type name when it is empty). `[]` when no adapter raised |
 
 **`kinetics`**:
 
