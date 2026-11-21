@@ -2451,7 +2451,10 @@ class Scheduler(object):
                                 self.spawn_directed_scan_jobs(label, rotor_index=i)
                         else:
                             self.spawn_directed_scan_jobs(label, rotor_index=i)
-                elif not self.rotor_scan_owed_to_a_pipe_run(self.species_dict[label], i):
+                elif not self.rotor_scan_owed_to_a_pipe_run(self.species_dict[label], i) \
+                        and not any(torsions == scan_job.torsions
+                                    and scan_job.job_name in self.unfinished_job_names(label)
+                                    for scan_job in self.job_dict[label].get('scan', dict()).values()):
                     # This is a "normal" ESS scan (not directed). Collect for potential pipe batching.
                     ess_rotor_indices.append(i)
 
