@@ -9643,6 +9643,32 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
                     self.assertEqual(spawned.call_count, 0 if held_in else 1)
                     self.assertEqual(spawn_directed_scan_jobs.call_count + run_job.call_count, 0 if held_in else 1)
 
+    def test_a_held_scan_of_a_torsion_keeps_the_rotor_out_of_a_pipe_batch(self):
+        """A rotor whose ESS scan is running or held is not handed to a pipe planner that would accept it."""
+        held_torsion, free_torsion = [2, 0, 1, 5], [2, 0, 1, 6]
+        self.sched.job_types['rotors'] = True
+        self.sched.species_dict[self.label].final_xyz = str_to_xyz(TestScheduler._METHYLAMINE_XYZ)
+        for held_in in ('running_jobs', 'deferred_jobs', 'stranded_jobs', None):
+            with self.subTest(held_in=held_in):
+                self.sched.species_dict[self.label].rotors_dict = {
+                    i: {'torsion': torsion, 'pivots': [1, 2], 'scan_path': '', 'success': None,
+                        'invalidation_reason': '', 'directed_scan_type': 'ess'}
+                    for i, torsion in enumerate((held_torsion, free_torsion))}
+                job = self._job('scan', 80, job_name='scan_a80', torsions=held_torsion)
+                self.sched.job_dict[self.label] = {'scan': {job.job_name: job}}
+                self.sched.running_jobs[self.label] = list()
+                self.sched.deferred_jobs, self.sched.stranded_jobs = dict(), dict()
+                if held_in is not None:
+                    getattr(self.sched, held_in)[self.label] = [job.job_name]
+                with patch.object(self.sched, 'run_job') as run_job, \
+                        patch.object(self.sched, 'rotor_scan_owed_to_a_pipe_run', return_value=False), \
+                        patch.object(self.sched.pipe_planner, 'try_pipe_rotor_scans_1d',
+                                     side_effect=lambda label, rotor_indices: set(rotor_indices)) as try_pipe:
+                    self.sched.run_scan_jobs(self.label)
+                piped = [i for c in try_pipe.call_args_list for i in c.args[1]]
+                self.assertEqual(piped, [1] if held_in else [0, 1])
+                self.assertEqual(run_job.call_count, 0)
+
 
 class TestTsGuessPathProvenance(unittest.TestCase):
     """Tests method-specific routing of TS path-search artifacts."""
