@@ -60,7 +60,9 @@ def _thermo_lib_has_isomorph(spc: 'ARCSpecies', species_list: list) -> bool:
 def not_verified_causes(label: str, output_dict: dict) -> list[str]:
     """
     The reasons why a species or TS result is not verified. This is the single not-verified predicate that gates
-    the RMG libraries ARC writes; a new cause joins here.
+    the RMG libraries ARC writes; a new cause joins here. A species is not verified if its ``conformer_verified`` is
+    ``False``, if a conformer change of it was never judged, or if a conformer change of it was judged but its rotor
+    rescans left ``conformer_verified`` at ``None``. A ``None`` without any conformer change passes.
 
     Args:
         label (str): The species or TS label.
@@ -76,6 +78,8 @@ def not_verified_causes(label: str, output_dict: dict) -> list[str]:
                       or f'{label} is not verified to be at the lowest conformer found')
     if entry.get('conformer_change_pending'):
         causes.append(f'{label}: conformer change not judged')
+    if entry.get('conformer_verified') is None and entry.get('conformer_change_judged'):
+        causes.append(f'{label}: conformer change not confirmed by a rotor rescan')
     return causes
 
 

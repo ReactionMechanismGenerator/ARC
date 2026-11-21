@@ -2016,6 +2016,19 @@ class TestSpcToDict(unittest.TestCase):
         result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}}, '/abs')
         self.assertIsNone(result['conformer_change_pending'])
 
+    def test_conformer_change_judged_field(self):
+        """A judged conformer change, which keeps a null verdict out of the libraries, shows next to that verdict."""
+        spc = self._make_spc_mock()
+        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True},
+                               'conformer_verified': None, 'conformer_change_judged': 2}}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertIsNone(result['conformer_verified'])
+        self.assertEqual(result['conformer_change_judged'], 2)
+        output_dict['CH4']['conformer_change_judged'] = 0
+        self.assertEqual(_spc_to_dict(spc, output_dict, '/abs')['conformer_change_judged'], 0)
+        result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}}, '/abs')
+        self.assertIsNone(result['conformer_change_judged'])
+
     def test_converged_species(self):
         spc = self._make_spc_mock()
         output_dict = {'CH4': {'convergence': True, 'paths': {'freq': '/abs/freq.log', 'sp': '/abs/sp.log'},
