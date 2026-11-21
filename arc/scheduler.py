@@ -72,6 +72,7 @@ from arc.species.species import (ARCSpecies,
 from arc.species.converter import (check_isomorphism,
                                    compare_confs,
                                    xyz_to_coords_list,
+                                   xyz_to_dmat,
                                    xyz_to_str,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz
@@ -147,7 +148,7 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
 
 MAX_S_SQUARED_DEVIATION = 0.1
 
-IRC_EARLY_STOP_KEYWORDS = ('DeltaX', 'GL123')
+IRC_MIN_ENDPOINT_DISPLACEMENT = 0.3  # Angstrom, the largest change of an interatomic distance from the TS
 
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
@@ -214,27 +215,40 @@ def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> b
     return normalize(job_adapter) in normalize(method)
 
 
-def irc_ended_usably(server_status: str | None, ess_status: dict) -> bool:
+def irc_ended_usably(server_status: str | None,
+                     ess_status: dict,
+                     ts_xyz: dict | None = None,
+                     irc_points: list[dict] | None = None,
+                     ) -> bool:
     """
     Determine whether an IRC job ended in a way its last geometry may be used as an IRC endpoint.
 
-    It did when the server status is ``done`` and the ESS status is ``done``, or ``errored`` with a non-empty
-    list of keywords that are all in ``IRC_EARLY_STOP_KEYWORDS``.
+    It did when the server status is ``done`` and either the ESS status is ``done``, or the job's path moved off
+    the TS: a converged IRC point changes some interatomic distance of the TS by more than
+    ``IRC_MIN_ENDPOINT_DISPLACEMENT`` (Angstrom). The ESS termination keywords are not considered.
 
     Args:
         server_status (str, optional): The server status of the job, ``job.job_status[0]``.
         ess_status (dict): The ESS status of the job, ``job.job_status[1]``.
+        ts_xyz (dict, optional): The TS geometry the IRC started from.
+        irc_points (list[dict], optional): The converged IRC points, as ``parser.parse_irc_path()`` returns them.
 
     Returns:
         bool: Whether the IRC job ended usably.
     """
     if server_status != 'done':
         return False
-    status, keywords = ess_status.get('status'), ess_status.get('keywords')
-    if status == 'done':
+    if ess_status.get('status') == 'done':
         return True
-    return status == 'errored' and isinstance(keywords, list) and bool(keywords) \
-        and all(keyword in IRC_EARLY_STOP_KEYWORDS for keyword in keywords)
+    ts_dmat = xyz_to_dmat(ts_xyz) if ts_xyz is not None else None
+    if ts_dmat is None:
+        return False
+    for point in irc_points or list():
+        point_dmat = xyz_to_dmat(point.get('xyz'))
+        if point_dmat is not None and point_dmat.shape == ts_dmat.shape \
+                and np.max(np.abs(point_dmat - ts_dmat)) > IRC_MIN_ENDPOINT_DISPLACEMENT:
+            return True
+    return False
 
 
 def get_conformer_isomorphism_trsh_history(conformers_note: str | None) -> list[str]:
@@ -4637,10 +4651,11 @@ class Scheduler(object):
         """
         Spawn the jobs that follow an IRC job, or record it as a failed IRC.
 
-        The last geometry of the IRC output becomes a new IRC species, which is then optimized.
-        Only an IRC job whose server status is ``done`` and whose ESS status is ``done``, or ``errored`` with
-        every keyword in ``IRC_EARLY_STOP_KEYWORDS`` (an IRC that stopped early on Delta-x), spawns.
-        Any other status, e.g., a server time limit, a memory kill, a cut output, or an absent status,
+        The last geometry of the IRC output becomes a new IRC species, which is then optimized. If the ESS status
+        is not ``done``, the last converged IRC point is used instead, and a warning is logged.
+        Only an IRC job ``irc_ended_usably()`` accepts spawns: its server status is ``done``, and its ESS status
+        is ``done`` or its converged path moved more than ``IRC_MIN_ENDPOINT_DISPLACEMENT`` off the TS.
+        Any other job, e.g., one the server errored, or one that stopped near the TS on whatever ESS error,
         is recorded as a failed IRC (see ``record_failed_irc()``) and nothing is spawned.
         So is an output that holds no complete geometry, or one whose parsing raises ``IndexError`` or ``ValueError``.
 
@@ -4650,16 +4665,30 @@ class Scheduler(object):
         """
         job_status = job.job_status if isinstance(job.job_status, list) else list()
         ess_status = job_status[1] if len(job_status) > 1 and isinstance(job_status[1], dict) else dict()
-        if not irc_ended_usably(server_status=job_status[0] if job_status else None, ess_status=ess_status):
-            self.record_failed_irc(label=label, job=job, ess_status=ess_status,
-                                   server_status=job_status[0] if job_status else None)
-            return
+        server_status = job_status[0] if job_status else None
+        ended_normally = ess_status.get('status') == 'done'
+        ts_xyz = getattr(job, 'xyz', None) or self.species_dict[label].get_xyz(generate=False)
         try:
-            xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+            irc_points = parser.parse_irc_path(log_file_path=job.local_path_to_output_file) \
+                if server_status == 'done' and not ended_normally else None
+            usable = irc_ended_usably(server_status=server_status, ess_status=ess_status,
+                                      ts_xyz=ts_xyz, irc_points=irc_points)
+            xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file) \
+                if usable and ended_normally else None
         except (IndexError, ValueError) as e:
             self.record_failed_irc(label=label, job=job, ess_status=ess_status,
                                    parse_error=f'{type(e).__name__}: {e}')
             return
+        if not usable:
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status, server_status=server_status)
+            return
+        if not ended_normally:
+            xyz = irc_points[-1]['xyz']
+            displacement = np.max(np.abs(xyz_to_dmat(xyz) - xyz_to_dmat(ts_xyz)))
+            logger.warning(f'IRC job {job.job_name} of {label} did not end normally (ESS keywords: '
+                           f'{ess_status.get("keywords")}) after {len(irc_points)} converged points. Its endpoint '
+                           f'is its last converged point, {displacement:.3f} Angstrom (largest interatomic distance '
+                           f'change) off the TS.')
         if xyz is None:
             self.record_failed_irc(label=label, job=job, ess_status=ess_status)
             return
