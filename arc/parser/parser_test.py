@@ -1177,6 +1177,57 @@ H      -1.69381305    0.40788834    0.90078104"""
         path = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
         self.assertIsNone(parser.parse_s_squared(path))
 
+    def test_parse_neb_ts_failure(self):
+        """Test reading why an ORCA NEB-TS run did not finish, phase by phase"""
+        cases = {'neb_killed_preopt_reactant.log': 'during the endpoint pre-optimization',
+                 'neb_killed_preopt_product.log': 'during the endpoint pre-optimization',
+                 'neb_killed_neb_iterations.log': 'during the NEB iterations',
+                 'neb_killed_ts_opt.log': 'during the TS optimization',
+                 'neb_killed_after_ts_opt.log': 'after the TS optimization',
+                 }
+        for file_name, phase in cases.items():
+            with self.subTest(file_name=file_name):
+                cause = parser.parse_neb_ts_failure(os.path.join(ARC_TESTING_PATH, 'neb', 'killed', file_name))
+                self.assertTrue(cause.startswith('orca_neb did not finish:'))
+                self.assertIn(phase, cause)
+        self.assertIsNone(parser.parse_neb_ts_failure(os.path.join(ARC_TESTING_PATH, 'neb', 'killed', 'neb_finished.log')))
+        self.assertIsNone(parser.parse_neb_ts_failure(os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')))
+
+    def test_parse_neb_ts_failure_needs_every_marker(self):
+        """Test that normal termination alone, or convergence without it, is not a finished NEB-TS run"""
+        with open(os.path.join(ARC_TESTING_PATH, 'neb', 'killed', 'neb_finished.log'), 'r') as f:
+            finished = f.read()
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        cases = {'no_neb': ('THE NEB OPTIMIZATION HAS CONVERGED', 'the NEB did not converge'),
+                 'no_ts': ('THE TS OPTIMIZATION HAS CONVERGED', 'the TS did not converge'),
+                 'no_termination': ('ORCA TERMINATED NORMALLY', 'after the TS optimization'),
+                 }
+        for name, (marker, phase) in cases.items():
+            with self.subTest(name=name):
+                path = os.path.join(tmp_dir, f'{name}.log')
+                with open(path, 'w') as f:
+                    f.write(finished.replace(marker, 'X'))
+                self.assertIn(phase, parser.parse_neb_ts_failure(path))
+        path = os.path.join(tmp_dir, 'error.log')
+        with open(path, 'w') as f:
+            f.write(finished.replace('****ORCA TERMINATED NORMALLY****',
+                                     'ORCA finished by error termination in SCF gradient'))
+        self.assertIn('ORCA finished by error termination in SCF gradient', parser.parse_neb_ts_failure(path))
+        path = os.path.join(tmp_dir, 'empty.log')
+        open(path, 'w').close()
+        self.assertIn('before the NEB calculation started', parser.parse_neb_ts_failure(path))
+        with open(os.path.join(ARC_TESTING_PATH, 'neb', 'killed', 'neb_killed_neb_iterations.log'), 'r') as f:
+            killed = f.read()
+        path = os.path.join(tmp_dir, 'finished_then_killed.log')
+        with open(path, 'w') as f:
+            f.write(finished + killed)
+        self.assertIn('during the NEB iterations', parser.parse_neb_ts_failure(path))
+        path = os.path.join(tmp_dir, 'killed_then_finished.log')
+        with open(path, 'w') as f:
+            f.write(killed + finished)
+        self.assertIsNone(parser.parse_neb_ts_failure(path))
+
     def test_parse_s_squared_orca(self):
         """Test parsing the S**2 diagnostic of an ORCA open-shell doublet"""
         path = os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')
