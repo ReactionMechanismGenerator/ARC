@@ -201,6 +201,7 @@ class Species(BaseModel):
     rxn_label: str | None = None
     rxn_zone_atom_indices: list | None = None
     scf_references: dict | None = None
+    skipped_methods: dict[str, str] | None = None
     smiles: str | None = None
     stability_analysis_ran: Flag = False
     stability_pending_opt_job: str | None = None
@@ -348,6 +349,7 @@ class ARCInput(BaseModel):
     project: str
     adaptive_levels: list | dict | None = None
     allow_nonisomorphic_2d: Flag = False
+    allow_not_verified_in_libraries: Flag = False
     arc_version: str | None = None
     arkane_level_of_theory: str | dict | None = None
     bac_type: BACTypeEnum | None = 'p'

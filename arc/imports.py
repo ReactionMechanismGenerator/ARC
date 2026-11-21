@@ -2,6 +2,7 @@
 This module contains functionality to import user settings and fill in default values from ARC's settings.
 """
 
+import copy
 import logging
 import os
 import sys
@@ -59,6 +60,34 @@ def resolve_overridden_dependents(settings: dict, local_settings_dict: dict) -> 
 _UNUSABLE_OVERLAYS_REPORTED = set()
 
 
+def overridden_setting_names(local_settings_dict: dict, default_settings: dict) -> frozenset:
+    """
+    Get the names a local settings overlay overrides: those it adds, and those whose value differs from the default.
+    A name the overlay re-exports unchanged (e.g., by ``from arc.settings.settings import *``) is not overridden.
+
+    Args:
+        local_settings_dict (dict): The overlay's settings.
+        default_settings (dict): ARC's default settings, as a snapshot taken before the overlay was imported.
+
+    Returns:
+        frozenset: The overridden setting names. A value that cannot be compared counts as overridden.
+    """
+    overridden = set()
+    for key, value in local_settings_dict.items():
+        if key not in default_settings:
+            overridden.add(key)
+            continue
+        default = default_settings[key]
+        if value is default:
+            continue
+        try:
+            if bool(value != default):
+                overridden.add(key)
+        except Exception:
+            overridden.add(key)
+    return frozenset(overridden)
+
+
 def _report_unusable_overlay(path: str, module: str, error: ImportError, what: str = '') -> None:
     """
     Report that a local ~/.arc overlay could not supply a setting, so ARC's default is used.
@@ -105,7 +134,17 @@ local_arc_path = os.path.join(home, '.arc')
 
 local_arc_settings_path = os.path.join(local_arc_path, 'settings.py')
 settings = {key: val for key, val in vars(arc_settings).items() if '__' not in key}
+# ARC's default ts_adapters, kept before an overlay can edit the shared list in place.
+repo_default_ts_adapters = list(arc_settings.ts_adapters)
+# The setting names ~/.arc/settings.py overrides, so a caller can tell a user override from ARC's default.
+local_settings_keys = frozenset()
 if os.path.isfile(local_arc_settings_path):
+    default_settings_snapshot = dict()
+    for key, val in settings.items():
+        try:
+            default_settings_snapshot[key] = copy.deepcopy(val)
+        except Exception:
+            default_settings_snapshot[key] = val
     local_settings = dict()
     if local_arc_path not in sys.path:
         sys.path.insert(1, local_arc_path)
@@ -115,6 +154,7 @@ if os.path.isfile(local_arc_settings_path):
         _report_unusable_overlay(local_arc_settings_path, 'settings', e)
     if local_settings:
         local_settings_dict = {key: val for key, val in vars(local_settings).items() if '__' not in key}
+        local_settings_keys = overridden_setting_names(local_settings_dict, default_settings_snapshot)
         settings.update(local_settings_dict)
         resolve_overridden_dependents(settings, local_settings_dict)
         # Set global_ess_settings to None if using a local settings file (ARC's defaults are dummies)

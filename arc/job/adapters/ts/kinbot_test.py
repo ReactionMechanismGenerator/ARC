@@ -13,11 +13,15 @@ import tempfile
 import unittest
 import unittest.mock as mock
 
-from arc.common import read_yaml_file, save_yaml_file
+import numpy as np
+
+from arc.common import ARC_TESTING_PATH, get_single_bond_length, read_yaml_file, save_yaml_file
 from arc.exceptions import DependencyError
 import arc.job.adapters.ts.kinbot_ts as kinbot_ts
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
+from arc.species.converter import order_xyz_by_atom_map, xyz_from_data, xyz_to_str
+from arc.species.species import TSGuess
 
 
 def kinbot_list_to_coords(structure: list) -> list:
@@ -26,6 +30,48 @@ def kinbot_list_to_coords(structure: list) -> list:
     for i in range(0, len(structure), 4):
         coords.append([float(structure[i + 1]), float(structure[i + 2]), float(structure[i + 3])])
     return coords
+
+
+def species_from_fixture(entry: dict) -> ARCSpecies:
+    """
+    Build an ARCSpecies from a fixture entry.
+
+    Args:
+        entry (dict): A species entry with ``label``, ``smiles``, ``multiplicity``, ``symbols`` and ``coords``.
+
+    Returns:
+        ARCSpecies: The species.
+    """
+    xyz = {'symbols': tuple(entry['symbols']), 'isotopes': None, 'coords': tuple(tuple(c) for c in entry['coords'])}
+    return ARCSpecies(label=entry['label'], smiles=entry['smiles'], multiplicity=entry['multiplicity'], xyz=xyz)
+
+
+def stretched_reactant_bonds(rxn: ARCReaction, xyz: dict) -> list:
+    """
+    Get the reactant bonds that are neither broken in the reaction nor kept at a bonded length in ``xyz``.
+
+    A bond is counted as stretched above 1.3 times its single-bond length, or 1.5 times if it involves an H atom.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+        xyz (dict): A TS guess, read in reactant atom order.
+
+    Returns:
+        list: The stretched reactant bonds.
+    """
+    r_symbols = rxn.get_reactants_xyz(return_format='dict')['symbols']
+    r_bonds, _ = rxn.get_bonds(r_bonds_only=True)
+    _, broken = rxn.get_formed_and_broken_bonds()
+    broken = {tuple(sorted(bond)) for bond in broken}
+    stretched = list()
+    for i, j in r_bonds:
+        if tuple(sorted((i, j))) in broken:
+            continue
+        limit = 1.5 if 'H' in (r_symbols[i], r_symbols[j]) else 1.3
+        distance = float(np.linalg.norm(np.array(xyz['coords'][i]) - np.array(xyz['coords'][j])))
+        if distance / get_single_bond_length(r_symbols[i], r_symbols[j]) > limit:
+            stretched.append((i, j))
+    return stretched
 
 
 class TestKinBotAdapter(unittest.TestCase):
@@ -186,6 +232,124 @@ class TestKinBotAdapter(unittest.TestCase):
         self.assertFalse(ts_guesses[1].success)
         self.assertEqual(ts_guesses[1].method_direction, 'R')
         self.assertEqual(ts_guesses[1].method_index, 1)
+
+    def ts13_reaction(self) -> ARCReaction:
+        """
+        Build the pentyl1 <=> pentyl2 reaction of the fixture, with the atom map of the original run.
+
+        Returns:
+            ARCReaction: The reaction, with an empty TS species.
+        """
+        entry = read_yaml_file(os.path.join(ARC_TESTING_PATH, 'reactions', 'ts_guess_reactant_order.yml'))['ts13']
+        rxn = ARCReaction(r_species=[species_from_fixture(spc) for spc in entry['reactants']],
+                          p_species=[species_from_fixture(spc) for spc in entry['products']])
+        rxn.family = entry['family']
+        rxn.atom_map = list(entry['atom_map'])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, charge=0, multiplicity=2)
+        self.ts13_guess = entry['kinbot_r_guess']
+        return rxn
+
+    def test_reverse_guess_remapped_to_reactant_order(self):
+        """
+        Test that a KinBot guess built from the product ('R') is stored in reactant atom order.
+
+        Here the product and the reactant list their elements in the same sequence, so the element sequence alone
+        cannot tell the two orders apart; the guess must be the atom-map permutation of KinBot's output and must
+        keep every non-reacting reactant bond.
+        """
+        rxn = self.ts13_reaction()
+        adapter = self.get_adapter(dir_name='tst_reverse_order')
+        product_order = xyz_from_data(coords=self.ts13_guess['coords'], symbols=self.ts13_guess['symbols'])
+        self.assertNotEqual(stretched_reactant_bonds(rxn, product_order), [])
+        results = [{'direction': 'R', 'success': True, 'coords': self.ts13_guess['coords'], 'execution_time': '0:00:01'}]
+        adapter.parse_kinbot_results(rxn=rxn, results=results, species_to_explore={'R': rxn.p_species[0]})
+        tsg = rxn.ts_species.ts_guesses[0]
+        self.assertTrue(tsg.success)
+        self.assertEqual(xyz_to_str(tsg.initial_xyz),
+                         xyz_to_str(order_xyz_by_atom_map(xyz=product_order, atom_map=rxn.atom_map)))
+        self.assertEqual(stretched_reactant_bonds(rxn, tsg.initial_xyz), [])
+
+    def test_reverse_guess_without_atom_map_is_unsuccessful(self):
+        """Test that a KinBot 'R' guess is kept as unsuccessful, with a warning, when the reaction has no atom map."""
+        rxn = self.ts13_reaction()
+        adapter = self.get_adapter(dir_name='tst_reverse_no_map')
+        results = [{'direction': 'R', 'success': True, 'coords': self.ts13_guess['coords'], 'execution_time': '0:00:01'}]
+        with mock.patch.object(ARCReaction, 'atom_map', new_callable=mock.PropertyMock, return_value=None), \
+                self.assertLogs(logger='arc', level='WARNING') as cm:
+            adapter.parse_kinbot_results(rxn=rxn, results=results, species_to_explore={'R': rxn.p_species[0]})
+        self.assertEqual(len(rxn.ts_species.ts_guesses), 1)
+        self.assertFalse(rxn.ts_species.ts_guesses[0].success)
+        self.assertIsNone(rxn.ts_species.ts_guesses[0].initial_xyz)
+        self.assertTrue(any('atom map' in line for line in cm.output))
+
+    def test_reverse_guess_with_failing_atom_map_is_unsuccessful(self):
+        """
+        Test that a KinBot 'R' guess is kept as unsuccessful, with a warning naming the reaction, when computing
+        the atom map raises, and that the next guess of the same result set is still processed.
+        """
+        rxn = self.ts13_reaction()
+        rxn.label = 'map_crash_rxn'
+        adapter = self.get_adapter(dir_name='tst_reverse_map_crash')
+        reactant_xyz = rxn.r_species[0].get_xyz()
+        results = [{'direction': 'R', 'success': True, 'coords': self.ts13_guess['coords'], 'execution_time': '0:00:01'},
+                   {'direction': 'F', 'success': True, 'coords': [list(c) for c in reactant_xyz['coords']],
+                    'execution_time': '0:00:01'}]
+        with mock.patch.object(ARCReaction, 'atom_map', new_callable=mock.PropertyMock,
+                               side_effect=ValueError('map crash')), \
+                self.assertLogs(logger='arc', level='WARNING') as cm:
+            adapter.parse_kinbot_results(rxn=rxn, results=results,
+                                         species_to_explore={'R': rxn.p_species[0], 'F': rxn.r_species[0]})
+        ts_guesses = rxn.ts_species.ts_guesses
+        self.assertEqual(len(ts_guesses), 2)
+        self.assertEqual(ts_guesses[0].method_direction, 'R')
+        self.assertFalse(ts_guesses[0].success)
+        self.assertIsNone(ts_guesses[0].initial_xyz)
+        self.assertEqual(ts_guesses[1].method_direction, 'F')
+        self.assertTrue(ts_guesses[1].success)
+        self.assertEqual(xyz_to_str(ts_guesses[1].initial_xyz), xyz_to_str(reactant_xyz))
+        self.assertTrue(any('map_crash_rxn' in line and 'map crash' in line for line in cm.output))
+
+    def test_reactant_order_guess_unchanged(self):
+        """
+        Test that a KinBot guess built from the reactant ('F') is stored exactly as KinBot returned it.
+
+        The guess is already in reactant order. This guards a no-op and passes before the fix too; it fails if the
+        reordering is applied regardless of the direction.
+        """
+        rxn = self.ts13_reaction()
+        adapter = self.get_adapter(dir_name='tst_forward_order')
+        reactant_xyz = rxn.r_species[0].get_xyz()
+        results = [{'direction': 'F', 'success': True, 'coords': [list(c) for c in reactant_xyz['coords']],
+                    'execution_time': '0:00:01'}]
+        adapter.parse_kinbot_results(rxn=rxn, results=results, species_to_explore={'F': rxn.r_species[0]})
+        tsg = rxn.ts_species.ts_guesses[0]
+        self.assertTrue(tsg.success)
+        self.assertEqual(xyz_to_str(tsg.initial_xyz), xyz_to_str(reactant_xyz))
+
+    def test_parse_kinbot_results_duplicate_credits_kinbot_in_method_sources(self):
+        """A KinBot result that matches an existing guess adds 'kinbot' to that guess's method_sources."""
+        adapter = self.get_adapter(dir_name='tst5')
+        self.rxn_1.ts_species = ARCSpecies(label='TS', is_ts=True, charge=0, multiplicity=2)
+        existing = TSGuess(method='GoFlow', method_direction='F', index=0, success=True,
+                           xyz=self.rxn_1.r_species[0].get_xyz())
+        self.rxn_1.ts_species.ts_guesses.append(existing)
+        species_to_explore = {'F': self.rxn_1.r_species[0], 'R': self.rxn_1.p_species[0]}
+        coords_f = [list(coord) for coord in self.rxn_1.r_species[0].get_xyz()['coords']]
+        results = [{'direction': 'F', 'success': True, 'coords': coords_f, 'execution_time': '0:00:00.05'}]
+        adapter.parse_kinbot_results(rxn=self.rxn_1, results=results, species_to_explore=species_to_explore)
+        self.assertEqual(len(self.rxn_1.ts_species.ts_guesses), 1)
+        self.assertEqual(self.rxn_1.ts_species.ts_guesses[0].method_sources, ['goflow', 'kinbot'])
+
+    def test_parse_kinbot_results_skips_earlier_guess_without_coordinates(self):
+        """An earlier successful guess with no coordinates does not stop KinBot from adding its guess."""
+        adapter = self.get_adapter(dir_name='tst6')
+        self.rxn_1.ts_species = ARCSpecies(label='TS', is_ts=True, charge=0, multiplicity=2)
+        self.rxn_1.ts_species.ts_guesses.append(TSGuess(method='GoFlow', index=0, success=True))
+        species_to_explore = {'F': self.rxn_1.r_species[0], 'R': self.rxn_1.p_species[0]}
+        coords_f = [list(coord) for coord in self.rxn_1.r_species[0].get_xyz()['coords']]
+        results = [{'direction': 'F', 'success': True, 'coords': coords_f, 'execution_time': '0:00:00.05'}]
+        adapter.parse_kinbot_results(rxn=self.rxn_1, results=results, species_to_explore=species_to_explore)
+        self.assertEqual(len(self.rxn_1.ts_species.ts_guesses), 2)
 
     def test_uma_refinement_flag(self):
         """Test that the UMA settings cross the boundary and that refined guesses are marked in the method."""

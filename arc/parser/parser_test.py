@@ -614,6 +614,33 @@ N       2.28178508   -0.42455356    0.14404399
 H       1.32677989   -0.80557411    0.33156013"""
         self.assertEqual(xyz9_str, expected_xyz_9)
 
+    def test_parse_geometry_from_a_gaussian_log_cut_inside_an_orientation_table(self):
+        """Test that a Gaussian log cut inside its last orientation table gives the last complete table"""
+        scratch_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        cases = [('Input orientation:', os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')),
+                 ('Standard orientation:', os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2102.out'))]
+        for header, source_path in cases:
+            with open(source_path, 'r') as f:
+                lines = f.readlines()
+            last_table = max(i for i, line in enumerate(lines) if header in line)
+            before_last_table_path = os.path.join(scratch_dir, 'before_last_table.out')
+            with open(before_last_table_path, 'w') as f:
+                f.writelines(lines[:last_table])
+            expected_xyz = parser.parse_geometry(log_file_path=before_last_table_path)
+            for extra_lines in [1, 5, 7]:
+                with self.subTest(header=header, extra_lines=extra_lines):
+                    cut_path = os.path.join(scratch_dir, 'cut.out')
+                    with open(cut_path, 'w') as f:
+                        f.writelines(lines[:last_table + extra_lines])
+                    self.assertEqual(parser.parse_geometry(log_file_path=cut_path), expected_xyz)
+            with self.subTest(header=header, cut='mid-row'):
+                cut_path = os.path.join(scratch_dir, 'cut.out')
+                with open(cut_path, 'w') as f:
+                    f.writelines(lines[:last_table + 6])
+                    f.write(lines[last_table + 6][:40])
+                self.assertEqual(parser.parse_geometry(log_file_path=cut_path), expected_xyz)
+
     def test_parse_geometry_1(self):
         """Test parsing geometry"""
         path1 = os.path.join(ARC_TESTING_PATH, 'xyz', 'CH3C(O)O.gjf')
@@ -1149,6 +1176,57 @@ H      -1.69381305    0.40788834    0.90078104"""
         """Test that a restricted Gaussian log, which prints no <S**2>, yields None"""
         path = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
         self.assertIsNone(parser.parse_s_squared(path))
+
+    def test_parse_neb_ts_failure(self):
+        """Test reading why an ORCA NEB-TS run did not finish, phase by phase"""
+        cases = {'neb_killed_preopt_reactant.log': 'during the endpoint pre-optimization',
+                 'neb_killed_preopt_product.log': 'during the endpoint pre-optimization',
+                 'neb_killed_neb_iterations.log': 'during the NEB iterations',
+                 'neb_killed_ts_opt.log': 'during the TS optimization',
+                 'neb_killed_after_ts_opt.log': 'after the TS optimization',
+                 }
+        for file_name, phase in cases.items():
+            with self.subTest(file_name=file_name):
+                cause = parser.parse_neb_ts_failure(os.path.join(ARC_TESTING_PATH, 'neb', 'killed', file_name))
+                self.assertTrue(cause.startswith('orca_neb did not finish:'))
+                self.assertIn(phase, cause)
+        self.assertIsNone(parser.parse_neb_ts_failure(os.path.join(ARC_TESTING_PATH, 'neb', 'killed', 'neb_finished.log')))
+        self.assertIsNone(parser.parse_neb_ts_failure(os.path.join(ARC_TESTING_PATH, 'neb', 'neb_res.out')))
+
+    def test_parse_neb_ts_failure_needs_every_marker(self):
+        """Test that normal termination alone, or convergence without it, is not a finished NEB-TS run"""
+        with open(os.path.join(ARC_TESTING_PATH, 'neb', 'killed', 'neb_finished.log'), 'r') as f:
+            finished = f.read()
+        tmp_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        cases = {'no_neb': ('THE NEB OPTIMIZATION HAS CONVERGED', 'the NEB did not converge'),
+                 'no_ts': ('THE TS OPTIMIZATION HAS CONVERGED', 'the TS did not converge'),
+                 'no_termination': ('ORCA TERMINATED NORMALLY', 'after the TS optimization'),
+                 }
+        for name, (marker, phase) in cases.items():
+            with self.subTest(name=name):
+                path = os.path.join(tmp_dir, f'{name}.log')
+                with open(path, 'w') as f:
+                    f.write(finished.replace(marker, 'X'))
+                self.assertIn(phase, parser.parse_neb_ts_failure(path))
+        path = os.path.join(tmp_dir, 'error.log')
+        with open(path, 'w') as f:
+            f.write(finished.replace('****ORCA TERMINATED NORMALLY****',
+                                     'ORCA finished by error termination in SCF gradient'))
+        self.assertIn('ORCA finished by error termination in SCF gradient', parser.parse_neb_ts_failure(path))
+        path = os.path.join(tmp_dir, 'empty.log')
+        open(path, 'w').close()
+        self.assertIn('before the NEB calculation started', parser.parse_neb_ts_failure(path))
+        with open(os.path.join(ARC_TESTING_PATH, 'neb', 'killed', 'neb_killed_neb_iterations.log'), 'r') as f:
+            killed = f.read()
+        path = os.path.join(tmp_dir, 'finished_then_killed.log')
+        with open(path, 'w') as f:
+            f.write(finished + killed)
+        self.assertIn('during the NEB iterations', parser.parse_neb_ts_failure(path))
+        path = os.path.join(tmp_dir, 'killed_then_finished.log')
+        with open(path, 'w') as f:
+            f.write(killed + finished)
+        self.assertIsNone(parser.parse_neb_ts_failure(path))
 
     def test_parse_s_squared_orca(self):
         """Test parsing the S**2 diagnostic of an ORCA open-shell doublet"""

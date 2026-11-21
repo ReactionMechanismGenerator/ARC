@@ -757,6 +757,64 @@ def parse_gsm_stringfile_energies(path: str) -> list[float] | None:
     return energies or None
 
 
+def parse_neb_ts_failure(log_file_path: str) -> str | None:
+    """
+    Determine whether an ORCA NEB-TS run finished, from the markers ORCA prints in its log.
+
+    A run finished only if the log reports that the NEB converged, that the TS optimization after
+    the NEB converged, and that ORCA terminated normally. The geometry in the log is not used.
+    Otherwise the returned cause names the furthest phase the log reached:
+    before the NEB calculation started, the endpoint pre-optimization (before the NEB iterations),
+    the NEB iterations, the TS optimization, or the steps after the TS optimization.
+    An ORCA error-termination line, if present, is appended to the cause.
+    If the file holds several ORCA runs, only the last one is judged.
+
+    Args:
+        log_file_path (str): The path to the ORCA NEB-TS output file.
+
+    Raises:
+        InputError: If the file could not be found.
+
+    Returns: str | None
+        ``None`` if the run finished, otherwise a cause starting with ``'orca_neb did not finish:'``.
+    """
+    neb_setup = neb_started = neb_converged = ts_converged = terminated_normally = False
+    error_line = None
+    for line in _get_lines_from_file(log_file_path):
+        if '* O   R   C   A *' in line:
+            neb_setup = neb_started = neb_converged = ts_converged = terminated_normally = False
+            error_line = None
+        elif 'Nudged Elastic Band Calculation' in line:
+            neb_setup = True
+        elif line.strip() == 'NEB OPTIMIZATION':
+            neb_started = True
+        elif 'THE NEB OPTIMIZATION HAS CONVERGED' in line:
+            neb_started = neb_converged = True
+        elif 'THE TS OPTIMIZATION HAS CONVERGED' in line:
+            ts_converged = True
+        elif 'ORCA TERMINATED NORMALLY' in line:
+            terminated_normally = True
+        elif 'ORCA finished by error termination' in line:
+            error_line = line.strip()
+    if neb_converged and ts_converged and terminated_normally:
+        return None
+    if not neb_setup and not neb_started:
+        cause = 'it stopped before the NEB iterations, before the NEB calculation started'
+    elif not neb_started:
+        cause = 'it stopped before the NEB iterations, during the endpoint pre-optimization'
+    elif not neb_converged:
+        cause = 'it stopped during the NEB iterations; the NEB did not converge'
+    elif not ts_converged:
+        cause = 'it stopped during the TS optimization after the NEB; the TS did not converge'
+    else:
+        cause = 'it stopped after the TS optimization, before ORCA terminated normally'
+    if terminated_normally:
+        cause = f'ORCA terminated normally, but {cause}'
+    if error_line is not None:
+        cause += f' ({error_line})'
+    return f'orca_neb did not finish: {cause}'
+
+
 def _get_lines_from_file(path: str) -> list[str]:
     """
     A helper function for getting a list of lines from a file.

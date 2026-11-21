@@ -10,19 +10,24 @@ import glob
 import itertools
 import os
 import pprint
+import re
+import shlex
 import shutil
+import sys
 import time
+import traceback
 
 import numpy as np
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import arc.parser.parser as parser
 from arc import plotter
-from arc.checks.common import (NMD_ACCEPTED_ON_IRC_WARNING, get_conformer_job_name, get_i_from_job_name,
-                               get_nmd_near_miss, get_nmd_near_miss_summary, is_conformer_job,
+from arc.checks.common import (IRC_JOB_FAILED_WARNING, NMD_ACCEPTED_ON_IRC_WARNING, get_conformer_job_name,
+                               get_i_from_job_name, get_nmd_near_miss, get_nmd_near_miss_summary, is_conformer_job,
                                record_ts_check_warning, remove_nmd_accepted_on_irc_warning, sum_time_delta)
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
-from arc.common import (extremum_list,
+from arc.common import (ARC_PATH,
+                        extremum_list,
                         get_angle_in_180_range,
                         get_logger,
                         get_number_with_ordinal_indicator,
@@ -35,11 +40,13 @@ from arc.common import (extremum_list,
                         )
 from arc.exceptions import (DependencyError,
                             InputError,
+                            QueueQueryError,
                             SchedulerError,
+                            SettingsError,
                             SpeciesError,
                             TrshError,
                             )
-from arc.imports import settings
+from arc.imports import local_settings_keys, repo_default_ts_adapters, settings
 from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       all_families_ts_adapters,
                                       default_incore_adapters,
@@ -47,14 +54,19 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       job_scf_reference_is_restricted,
                                       level_admits_a_broken_symmetry_reference,
                                       REFERENCE_CHANGE_AVAILABLE_KEY,
+                                      resolve_ts_adapters,
+                                      ts_adapter_install_targets,
                                       ts_adapters_by_rmg_family,
                                       ts_adapters_for_unknown_unimolecular)
+from arc.job.adapters.ts.availability import ts_adapter_unavailable_reason
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
 from arc.job.pipe.pipe_run import rotor_scan_1d_task_id
 from arc.job.pipe.pipe_state import ROTOR_SCAN_1D_TASK_FAMILY, TaskState, read_task_state
+from arc.job.queue_status import MISSING_COMMAND_EXIT_STATUS, queue_outage_limit
+from arc.job.ssh import queue_query_connection
 from arc.job.ssh_pool import borrow_ssh_client
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
@@ -63,10 +75,12 @@ from arc.job.trsh import (scan_quality_check,
                           trsh_scan_job,
                           )
 from arc.level import Level
+from arc.reaction import check_unique_reaction_labels
 from arc.species.species import (ARCSpecies,
                                  are_coords_compliant_with_graph,
                                  check_label,
                                  determine_rotor_symmetry,
+                                 is_reactive_ring_rejection,
                                  TSGuess)
 from arc.species.converter import (check_isomorphism,
                                    compare_confs,
@@ -118,6 +132,17 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
 
 WRONG_FREQ_MESSAGE = 'wrong number of negative frequencies; '
 
+# Written to output[label]['conformers'] (which restart.yml keeps) for each conformer isomorphism troubleshooting level,
+# so that a restart does not repeat a level that was already tried.
+CONFORMER_ISOMORPHISM_TRSH_NOTE = 'Troubleshooting conformer isomorphism at {level}; '
+CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED = 'Error: No conformer was found to be isomorphic with the 2D graph representation!; '
+CONFORMER_SET_REPLACED_NOTE = 'Conformers replaced after a negative frequency; '
+UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE = 'a restart found running conformer jobs with no conformer isomorphism ' \
+                                          'troubleshooting level recorded; conformers with no energy and no ' \
+                                          'running job, if any, are resubmitted at the conformer level; '
+REFUSED_CONFORMER_TRSH_RECOVERY_MESSAGE = 'a restart did not continue the conformer isomorphism troubleshooting, ' \
+                                          'which is disabled or exhausted; no conformer was resubmitted; '
+
 MIXED_SCF_REFERENCE_MESSAGE = 'the electronic energy and the ZPE were computed with different SCF references; '
 SCF_REFERENCE_JOB_TYPES = {'sp': 'sp', 'freq': 'freq', 'optfreq': 'freq'}
 
@@ -134,6 +159,20 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
                                 'reference followed by MRCI or CASPT2) is what this species calls for; '
 
 MAX_S_SQUARED_DEVIATION = 0.1
+CONFORMER_ENERGY_TOLERANCE = 0.1  # kJ/mol
+
+IRC_EARLY_STOP_KEYWORDS = ('DeltaX', 'GL123')
+
+QUEUE_QUERY_COOLDOWN = 60
+QUEUE_OUTAGE_WARNING_INTERVAL = 600
+UNREADABLE_QUEUE_ERROR = 'The queue on {server} was unreadable past the outage limit, ' \
+                         'jobs {job_names} were left running for a restart; '
+HELD_BACK_JOB_ERROR = 'Job {job_name} was not submitted to {server}, whose queue was unreadable; '
+SUBMIT, DEFER, REFUSE = 'submit', 'defer', 'refuse'
+SHELL_ASSIGNMENT = r'[A-Za-z_]\w*=(?:"[^"]*"|\'[^\']*\'|[^\s;|&\'"])*'
+SHELL_ASSIGNMENTS = rf'(?:export\s+)?{SHELL_ASSIGNMENT}(?:\s+{SHELL_ASSIGNMENT})*'
+HIDDEN_FAILURE_PATTERNS = (('a pipe', r'(?<!\|)\|(?!\|)'), ('an OR-list (||)', r'\|\|'),
+                           ('a ";"', rf'^(?!(?:\s*{SHELL_ASSIGNMENTS}\s*;)+[^;]*$).*;'))
 
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
@@ -156,6 +195,95 @@ the orbitals a ``ROTATE`` would mix needs their index and irreducible representa
 that adapter has neither at the point it writes its input nor a ``nosym`` geometry to make
 unambiguous.
 """
+
+
+def format_energy_gap(energy_gap: float | None) -> str:
+    """
+    Describe how much lower a conformer found by a rotor scan is.
+
+    Args:
+        energy_gap (float, optional): The energy gap in kJ/mol.
+
+    Returns:
+        str: A phrase such as '3.20 kJ/mol lower'.
+    """
+    return f'{energy_gap:.2f} kJ/mol lower' if energy_gap is not None else 'lower by an unknown amount'
+
+
+def is_same_conformer(d_dihedral: float | None,
+                      d_energy: float | None,
+                      energy_gap: float | None = None,
+                      ) -> bool:
+    """
+    Check whether a re-optimization returned to the conformer it started from before a conformer change,
+    or to a symmetry-equivalent copy of it (e.g., a methyl rotated by 120 degrees).
+    A known energy change decides: an unchanged energy means the lower conformer was not reached, whatever the
+    dihedral. When the energy is unknown, or the scan's energy gap is itself below the energy tolerance (a nearly
+    free rotor), the dihedral decides: a missing energy change counts as the same energy, and a missing dihedral
+    change never counts as the same dihedral.
+
+    Args:
+        d_dihedral (float, optional): The absolute change of the scanned dihedral angle in degrees.
+        d_energy (float, optional): The absolute change of the electronic energy in kJ/mol.
+        energy_gap (float, optional): How much lower the scan found the conformer, in kJ/mol.
+
+    Returns:
+        bool: Whether the re-optimization returned to the same conformer.
+    """
+    if d_energy is not None and (energy_gap is None or energy_gap >= CONFORMER_ENERGY_TOLERANCE):
+        return d_energy < CONFORMER_ENERGY_TOLERANCE
+    return d_dihedral is not None and d_dihedral < 2.0 \
+        and (d_energy is None or d_energy < CONFORMER_ENERGY_TOLERANCE)
+
+
+def job_level_signature(job: JobAdapter) -> str:
+    """
+    A signature of the effective level a job ran at: its level of theory and its ESS troubleshooting arguments
+    (e.g., Molpro's 'vdz' replaces the basis set). Energies of jobs with different signatures are not comparable.
+
+    Args:
+        job (JobAdapter): The job.
+
+    Returns:
+        str: The signature.
+    """
+    trsh = (job.args or dict()).get('trsh') or dict()
+    return f'{job.level} | {sorted(trsh.items()) if isinstance(trsh, dict) else trsh}'
+
+
+def parse_job_e_elect(job: JobAdapter) -> float | None:
+    """
+    Parse the electronic energy of a job, from its output file first, then from its xyz file.
+
+    Args:
+        job (JobAdapter): The job.
+
+    Returns:
+        float | None: The electronic energy in kJ/mol, ``None`` if no existing file of the job gives it.
+    """
+    for path in (job.local_path_to_output_file, job.local_path_to_xyz):
+        if path and os.path.isfile(path):
+            e_elect = parser.parse_e_elect(log_file_path=path)
+            if e_elect is not None:
+                return e_elect
+    return None
+
+
+def exception_summary_line(exception: BaseException, max_length: int = 300) -> str:
+    """
+    Summarize an exception in one line for a record: the first non-empty line of its message,
+    or its type name when the message is empty, cut to ``max_length`` characters.
+
+    Args:
+        exception (BaseException): The exception to summarize.
+        max_length (int, optional): The maximal length of the line.
+
+    Returns:
+        str: The one-line summary.
+    """
+    lines = [line.strip() for line in str(exception).splitlines() if line.strip()]
+    line = lines[0] if lines else type(exception).__name__
+    return line if len(line) <= max_length else line[:max_length - 3] + '...'
 
 
 def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> bool:
@@ -181,6 +309,88 @@ def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> b
         return text.lower().replace('-', '').replace('_', '')
 
     return normalize(job_adapter) in normalize(method)
+
+
+def irc_ended_usably(server_status: str | None, ess_status: dict) -> bool:
+    """
+    Determine whether an IRC job ended in a way its last geometry may be used as an IRC endpoint.
+
+    It did when the server status is ``done`` and the ESS status is ``done``, or ``errored`` with a non-empty
+    list of keywords that are all in ``IRC_EARLY_STOP_KEYWORDS``.
+
+    Args:
+        server_status (str, optional): The server status of the job, ``job.job_status[0]``.
+        ess_status (dict): The ESS status of the job, ``job.job_status[1]``.
+
+    Returns:
+        bool: Whether the IRC job ended usably.
+    """
+    if server_status != 'done':
+        return False
+    status, keywords = ess_status.get('status'), ess_status.get('keywords')
+    if status == 'done':
+        return True
+    return status == 'errored' and isinstance(keywords, list) and bool(keywords) \
+        and all(keyword in IRC_EARLY_STOP_KEYWORDS for keyword in keywords)
+
+
+def get_conformer_isomorphism_trsh_history(conformers_note: str | None) -> list[str]:
+    """
+    Recover the conformer isomorphism troubleshooting levels already tried for a species from its
+    ``output[label]['conformers']`` entry, in the ``ess_trsh_methods`` form ``trsh_conformer_isomorphism`` reads.
+    Only the levels noted after the last replacement of the conformer set count.
+
+    Args:
+        conformers_note (str, optional): The species' ``output[label]['conformers']`` entry.
+
+    Returns:
+        list[str]: The tried levels, each as ``'conformer <level>'``, in the order they were tried.
+    """
+    if not isinstance(conformers_note, str):
+        return list()
+    conformers_note = conformers_note.rsplit(CONFORMER_SET_REPLACED_NOTE, 1)[-1]
+    prefix, suffix = CONFORMER_ISOMORPHISM_TRSH_NOTE.split('{level}')
+    return [f'conformer {level}' for level in re.findall(f'{re.escape(prefix)}(.+?){re.escape(suffix)}', conformers_note)]
+
+
+def get_conformer_trsh_levels(jobs) -> list[str]:
+    """
+    Read the conformer isomorphism troubleshooting levels named by the ``'conformer <level>'`` and
+    ``'conf_opt: <level>'`` tags in the ``ess_trsh_methods`` of conformer jobs.
+
+    Args:
+        jobs (Iterable[JobAdapter]): The conf_opt jobs.
+
+    Returns:
+        list[str]: The levels, de-duplicated, in the order the jobs' tags name them.
+    """
+    levels = list()
+    for job in jobs:
+        for method in job.ess_trsh_methods or list():
+            if method.startswith(('conformer ', 'conf_opt: ')):
+                level = method.split(' ', 1)[1]
+                if level not in levels:
+                    levels.append(level)
+    return levels
+
+
+def get_respawned_conformer_trsh_methods(ess_trsh_methods: list[str], level: str) -> list[str]:
+    """
+    Build the ``ess_trsh_methods`` of a conformer that a conformer isomorphism troubleshooting respawn submits
+    with no job of its own: the species' troubleshooting history plus the tags of the respawn level.
+
+    Args:
+        ess_trsh_methods (list[str]): The species' conformer isomorphism troubleshooting history.
+        level (str): The respawn level.
+
+    Returns:
+        list[str]: A new list of the tags.
+    """
+    methods = list(ess_trsh_methods)
+    for tag in (f'conformer {level}', f'conf_opt: {level}'):
+        if tag not in methods:
+            methods.append(tag)
+    return methods
 
 
 class Scheduler(object):
@@ -395,6 +605,16 @@ class Scheduler(object):
         self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
         self.job_dict = dict()
         self.server_job_ids = list()
+        self.queue_query_failures = dict()
+        self.job_query_failures = dict()
+        self.job_query_failed = False
+        self.answered_queue_servers = set()
+        self.queue_clock = time.monotonic
+        self.queue_outage_limit = queue_outage_limit(settings.get('queue_outage_limit_hrs'))
+        self.unreadable_queue_servers = dict()
+        self.stranded_jobs = dict()
+        self.deferred_jobs = dict()
+        self.unsubmitted_jobs = list()
         self.completed_incore_jobs = list()
         self.running_jobs = dict()
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
@@ -412,8 +632,7 @@ class Scheduler(object):
         self.rotor_scan_resolution = rotor_scan_resolution
         self.kinetics_adapter = kinetics_adapter
         self.freq_scale_factor = freq_scale_factor
-        self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
-        self.ts_adapters = [ts_adapter.lower() for ts_adapter in self.ts_adapters]
+        self.ts_adapters, self.ts_adapters_source, self.absent_ts_adapters = list(), None, dict()
         self.output = output or dict()
         self.output_multi_spc = dict()
         self.report_e_elect = report_e_elect
@@ -430,12 +649,23 @@ class Scheduler(object):
             if 'running_jobs' in self.restart_dict:
                 self.restore_running_jobs()
         self.initialize_output_dict()
+        for species_output in self.output.values():
+            if isinstance(species_output, dict):
+                species_output.pop('unreadable_queue', None)
+                if isinstance(species_output.get('errors'), str):
+                    species_output['errors'] = strip_unreadable_queue_errors(species_output['errors'])
 
         self.restart_path = os.path.join(self.project_directory, 'restart.yml')
         self.running_jobs_snapshot_path = os.path.join(self.project_directory, 'running_jobs.yml')
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self._last_status_payload: dict | None = None
         self.servers = list()
+        for jobs in self.job_dict.values():
+            for typed_jobs in jobs.values():
+                for job in typed_jobs.values() if isinstance(typed_jobs, dict) else list():
+                    if getattr(job, 'execution_type', 'incore') != 'incore' and job.server is not None \
+                            and job.server not in self.servers:
+                        self.servers.append(job.server)
         self.remote_project_paths = dict()
         self.composite_method = composite_method
         self.conformer_opt_level = conformer_opt_level
@@ -453,8 +683,10 @@ class Scheduler(object):
         self.save_restart = False
 
         if len(self.rxn_list):
+            check_unique_reaction_labels(self.rxn_list)
             if self.adaptive_levels is not None:
                 self._apply_adaptive_reaction_levels()
+                check_unique_reaction_labels(self.rxn_list)
             rxn_info_path = self.make_reaction_labels_info_file()
             for rxn in self.rxn_list:
                 logger.info('\n\n')
@@ -523,6 +755,7 @@ class Scheduler(object):
                 rxn.check_atom_balance()
                 rxn.check_done_opt_r_n_p()
             logger.info('\n\n')
+        self.resolve_ts_adapters(ts_adapters)
 
         for species in self.species_list:
             if not isinstance(species, ARCSpecies):
@@ -547,9 +780,12 @@ class Scheduler(object):
                 # Evaluated before determine_rotors(), which adds never-scanned rotors to any species whose
                 # restored number_of_rotors is 0; asking afterwards would re-scan every converged species.
                 restored_rotor_scans_owed = self.rotor_scans_pending_on_restart(species, include_failed=False)
-                if self.job_types['rotors'] and not species.number_of_rotors and species.rotors_dict is not None:
+                if self.job_types['rotors'] and (not species.number_of_rotors or species.is_ts) \
+                        and species.rotors_dict is not None:
                     # if species.rotors_dict is None, it means the species is marked to not spawn rotor scans
-                    species.determine_rotors()
+                    species.determine_rotors(reaction=self.rxn_dict.get(species.rxn_index))
+                    if species.is_ts:
+                        self.cancel_reactive_ring_scan_jobs(label=species.label)
                 if not self.job_types['opt'] and species.final_xyz is not None:
                     # opt wasn't asked for, and it's not needed, declare it as converged
                     self.output[species.label]['job_types']['opt'] = True
@@ -651,8 +887,35 @@ class Scheduler(object):
 
         self.save_restart = True
         self.timer = True
+        self.warn_on_piped_queue_commands()
         if not self.testing:
             self.schedule_jobs()
+
+    def cancel_reactive_ring_scan_jobs(self, label: str) -> None:
+        """
+        Cancel the running scan and directed scan jobs of a TS whose rotor is a reactive-ring rejection,
+        e.g., jobs restored from a restart file whose rotor the reactive-ring check rejected after the restart.
+        Each such job is deleted from the server (unless it runs incore) and removed from
+        ``running_jobs`` and ``job_dict``.
+
+        Args:
+            label (str): The TS label.
+        """
+        rotors_dict = self.species_dict[label].rotors_dict or dict()
+        for job_type in ['scan', 'directed_scan']:
+            jobs = self.job_dict.get(label, dict()).get(job_type, dict())
+            for job_name, job in list(jobs.items()):
+                if job_name not in self.running_jobs.get(label, list()):
+                    continue
+                rotor = rotors_dict.get(job.rotor_index)
+                if rotor is None or not is_reactive_ring_rejection(rotor):
+                    continue
+                logger.info(f"Cancelling job {job_name} of {label}: the torsion of rotor {rotor.get('pivots')} "
+                            f"lies in the reactive ring of the TS.")
+                if job.execution_type != 'incore':
+                    job.delete()
+                self.running_jobs[label].remove(job_name)
+                del jobs[job_name]
 
     def rotor_scans_pending_on_restart(self, species: ARCSpecies, include_failed: bool = True) -> bool:
         """
@@ -710,6 +973,46 @@ class Scheduler(object):
                             f'{pipe_root}; not spawning a standalone scan for it on restart.')
                 return True
         return False
+
+    def warn_on_piped_queue_commands(self) -> None:
+        """
+        Log one warning per server this run uses whose ``check_status_command`` can hide the queue command's exit
+        status.
+
+        ARC judges a queue query by the exit status of the whole command. The check warns on three forms:
+
+        - a pipe (``|``): a pipeline exits with its last command's status. A filter such as ``grep`` exits non-zero on
+          an empty queue, which ARC reads as an unreadable queue. A command such as ``tail`` or ``awk`` exits 0 when
+          the queue command failed, which ARC reads as an empty queue.
+        - an OR-list (``||``), e.g., ``squeue -u $USER || true`` or ``... || echo``: it exits 0 when the queue command
+          failed.
+        - a ``;`` after anything but variable assignments, e.g., ``qstat -u $USER; true`` or ``cd dir; squeue``: the
+          command exits with the status of the last command in the list. A ``;`` that only ends assignments, as in
+          ``export SGE_ROOT=/opt/sge; qstat -u $USER``, leaves the queue command last and is not warned about.
+
+        The check matches these characters in the command string and does not parse shell. It does not catch a
+        failure hidden elsewhere: in a wrapper script, a shell function or alias, a command substitution, a newline,
+        or an ``exit 0``. An ``&&``-list is not warned about, since it exits non-zero once the queue command fails.
+        """
+        servers = list(self.servers)
+        for server_list in self.ess_settings.values():
+            for server in [server_list] if isinstance(server_list, str) else server_list:
+                if server not in servers:
+                    servers.append(server)
+        for server in servers:
+            cluster_soft = settings['servers'].get(server, dict()).get('cluster_soft')
+            command = settings['check_status_command'].get(cluster_soft) or ''
+            forms = [form for form, pattern in HIDDEN_FAILURE_PATTERNS if re.search(pattern, command)]
+            if forms:
+                logger.warning(f'The check_status_command of server {server} contains {" and ".join(forms)}: '
+                               f'{command}\n'
+                               f'ARC reads the exit status of the whole command, which is that of its last command. '
+                               f'A filter such as grep exits non-zero on an empty queue, which reads as an outage, '
+                               f'so finished jobs stay running until queue_outage_limit_hrs and are then stranded. '
+                               f'A pipe into tail or awk, "|| true", "|| echo" or "; true" exits 0 when the queue '
+                               f'command fails, which reads as an empty queue, so ARC ends every job it tracks '
+                               f'there. Use a bare queue command, preceded only by variable assignments '
+                               f'such as "export SGE_ROOT=/opt/sge;".')
 
     def has_pending_pipe_work(self, label: str) -> bool:
         """
@@ -806,10 +1109,13 @@ class Scheduler(object):
         release does, and one that never arrived releases the held jobs unchanged.
         """
         self.release_held_stability_work()
+        self.submit_unsubmitted_jobs()
         for species in self.species_dict.values():
             if species.initial_xyz is None and species.final_xyz is None and species.conformers \
-                    and any([e is not None for e in species.conformer_energies]):
+                    and any([e is not None for e in species.conformer_energies]) \
+                    and not self.has_running_conformer_jobs(species.label):
                 # The species has no xyz, but has conformers and at least one of the conformers has energy.
+                # A species with conformer jobs still running is decided by the main loop once they all terminate.
                 self.determine_most_stable_conformer(species.label)
                 if species.initial_xyz is not None:
                     if self.composite_method:
@@ -819,10 +1125,13 @@ class Scheduler(object):
         self.run_conformer_jobs()
         self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
         self.settle_nmd_deferrals()
-        while self.running_jobs != {} or self.active_pipes \
+        while self.running_jobs != {} or self.active_pipes or self.unsubmitted_jobs \
                 or self._pending_pipe_sp or self._pending_pipe_freq \
                 or self._pending_pipe_irc or self._pending_pipe_conf_sp:
             self.timer = True
+            self.job_query_failed = False
+            self.strand_unreadable_queue_jobs()
+            self.submit_unsubmitted_jobs()
             for label in self.unique_species_labels:
                 if label in self.output and self.output[label]['convergence'] is False:
                     # Skip unconverged species.
@@ -855,14 +1164,13 @@ class Scheduler(object):
                                     # below so it can call determine_most_likely_ts_conformer
                                     # on the conformers that already succeeded — otherwise ARC
                                     # mistakenly concludes no TS guess converged.
-                                    if any(is_conformer_job(j)
-                                           for j in self.running_jobs.get(label, [])):
+                                    if any(is_conformer_job(j) for j in self.unfinished_job_names(label)):
                                         break
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
                             # Note: end_job already removed the current job from running_jobs,
                             # so we don't need to exclude job_name.
-                            for spec_jobs in job_list:
+                            for spec_jobs in self.unfinished_job_names(label):
                                 if 'conf_opt' in spec_jobs or 'conf_sp' in spec_jobs:
                                     break
                             else:
@@ -891,7 +1199,7 @@ class Scheduler(object):
                                     rxn.ts_species.process_completed_tsg_queue_jobs(path=job.local_path_to_output_file)
                             # Just terminated a tsg job.
                             # Are there additional tsg jobs currently running for this species?
-                            for spec_jobs in job_list:
+                            for spec_jobs in self.unfinished_job_names(label):
                                 if 'tsg' in spec_jobs:
                                     break
                             else:
@@ -954,6 +1262,9 @@ class Scheduler(object):
                         job = self.job_dict[label]['directed_scan'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                            if not successful_server_termination and job_name in self.running_jobs.get(label, list()):
+                                self.timer = False
+                                break
                             if successful_server_termination:
                                 self.check_directed_scan_job(label=label, job=job)
                                 if 'cont' in job.directed_scan_type and job.job_status[1]['status'] == 'done':
@@ -987,9 +1298,7 @@ class Scheduler(object):
                     elif 'irc' in job_name:
                         job = self.job_dict[label]['irc'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
-                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            if successful_server_termination:
-                                self.spawn_post_irc_jobs(label=label, job=job)
+                            self.end_irc_job(label=label, job=job)
                             self.timer = False
                             break
                     elif 'orbitals' in job_name:
@@ -1054,7 +1363,8 @@ class Scheduler(object):
             self.flush_pending_pipe_batches()
             self.settle_nmd_deferrals()
 
-            should_sleep = self.timer and (self.running_jobs or self.active_pipes)
+            should_sleep = (self.timer or self.job_query_failed) \
+                and (self.running_jobs or self.active_pipes or self.unsubmitted_jobs)
             if should_sleep:
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
             t = time.time() - self.report_time
@@ -1062,6 +1372,7 @@ class Scheduler(object):
                 self.report_time = time.time()
                 self.report_running_jobs_snapshot()
 
+        self.record_pending_conformer_changes()
         # Generate a TS report:
         self.generate_final_ts_guess_report()
 
@@ -1175,6 +1486,12 @@ class Scheduler(object):
             tsg (int, optional): TSGuess number if optimizing TS guesses.
             xyz (dict | list[dict], optional): The 3D coordinates for the species.
         """
+        if job_type in ['scan', 'directed_scan'] and isinstance(label, str) and rotor_index is not None:
+            rotor = (self.species_dict[label].rotors_dict or dict()).get(rotor_index)
+            if rotor is not None and is_reactive_ring_rejection(rotor):
+                logger.info(f"Not submitting a {job_type} job for rotor {rotor.get('pivots')} of {label}: "
+                            f"its torsion lies in the reactive ring of the TS.")
+                return
         max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
         species = None
@@ -1188,11 +1505,8 @@ class Scheduler(object):
         if torsions is None and rotor_index is not None:
             torsions = species.rotors_dict[rotor_index]['torsion']
             torsions = [torsions] if not isinstance(torsions[0], list) else torsions
-        if self.adaptive_levels is not None and label is not None:
-            spc = self.species_dict[label]
-            heavy_atoms = spc.adaptive_lot_n_heavy if spc.adaptive_lot_n_heavy is not None else spc.number_of_heavy_atoms
-            level_of_theory = self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
-                                                            heavy_atoms=heavy_atoms)
+        if label is not None:
+            level_of_theory = self.get_job_level(label=label, level_of_theory=level_of_theory, job_type=job_type)
         job_adapter = job_adapter.lower() if job_adapter is not None else \
             self.deduce_job_adapter(level=Level(repr=level_of_theory), job_type=job_type)
         args = {'keyword': {}, 'block': {}}
@@ -1281,7 +1595,14 @@ class Scheduler(object):
                 self.servers.append(job.server)
             if job.remote_project_path and not self.remote_project_paths.get(job.server):
                 self.remote_project_paths[job.server] = job.remote_project_path
-        self.check_max_simultaneous_jobs_limit(job.server)
+        if job.execution_type != 'incore':
+            admission = self.check_max_simultaneous_jobs_limit(job.server)
+            if admission == REFUSE:
+                self.refuse_job_on_unreadable_queue(label=label, job=job)
+                return
+            if admission == DEFER:
+                self.defer_job_on_unreadable_queue(label=label, job=job)
+                return
         job.execute()
         self.warn_on_collapsible_unrestricted_reference(label=label, job=job)
         self.save_restart_dict()
@@ -1308,6 +1629,30 @@ class Scheduler(object):
                 and 'scan_res' not in args.get('trsh', dict()):
             args.setdefault('trsh', dict())['scan_res'] = self.rotor_scan_resolution
         return args
+
+    def get_job_level(self,
+                      label: str | list[str],
+                      level_of_theory: Level | dict | str | None,
+                      job_type: str,
+                      ) -> Level | dict | str | None:
+        """
+        Get the level of theory a job of a species runs at: the adaptive level for the job type if one applies,
+        otherwise the given level.
+
+        Args:
+            label (str | list[str]): The species label.
+            level_of_theory (Level | dict | str): The level of theory requested for the job.
+            job_type (str): The job's type.
+
+        Returns:
+            Level | dict | str | None: The level of theory the job runs at.
+        """
+        if self.adaptive_levels is None:
+            return level_of_theory
+        spc = self.species_dict[label]
+        heavy_atoms = spc.adaptive_lot_n_heavy if spc.adaptive_lot_n_heavy is not None else spc.number_of_heavy_atoms
+        return self.determine_adaptive_level(original_level_of_theory=level_of_theory, job_type=job_type,
+                                             heavy_atoms=heavy_atoms)
 
     def deduce_job_adapter(self, level: Level, job_type: str) -> str:
         """
@@ -1369,7 +1714,12 @@ class Scheduler(object):
         """
         if job.job_status[0] != 'done' or job.job_status[1]['status'] != 'done':
             try:
-                job.determine_job_status()  # Also downloads the output file.
+                if not job.determine_job_status():
+                    self.record_job_query_failure(job)
+                    return False
+                self.clear_job_query_failure(job)
+                if job.job_status[0] == 'running':
+                    return False
             except IOError:
                 if job.job_type not in ['orbitals', 'stability']:
                     logger.warning(f'Tried to determine status of job {job.job_name}, '
@@ -1503,6 +1853,180 @@ class Scheduler(object):
                      xyz=job.xyz,
                      )
 
+    def has_running_conformer_jobs(self, label: str) -> bool:
+        """
+        Check whether a species has a conformer job (conf_opt or conf_sp) that has not finished: one that is running,
+        one left on an unreadable queue, or one held back from an unreadable queue.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: ``True`` if a conformer job of the species has not finished.
+        """
+        return any(is_conformer_job(job_name) for job_name in self.unfinished_job_names(label))
+
+    def get_conformer_isomorphism_trsh_basis(self, label: str) -> tuple[str, list[str]]:
+        """
+        Get the job adapter and the troubleshooting history a conformer isomorphism troubleshooting respawn starts
+        from: the history recorded in the species' conformers note, kept only for the levels a tracked conf_opt
+        job is tagged with.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            tuple[str, list[str]]: The job adapter, and the history as ``'conformer <level>'`` entries.
+        """
+        conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
+        ess_trsh_methods = get_conformer_isomorphism_trsh_history(self.output[label]['conformers'])
+        if conf_opt_jobs:
+            job_adapter = conf_opt_jobs[min(conf_opt_jobs)].job_adapter
+            tracked_levels = set(get_conformer_trsh_levels(conf_opt_jobs.values()))
+            ess_trsh_methods = [method for method in ess_trsh_methods if method.split(' ', 1)[1] in tracked_levels]
+        else:
+            level = self.get_job_level(label=label, level_of_theory=self.conformer_opt_level, job_type='conf_opt')
+            job_adapter = self.deduce_job_adapter(level=Level(repr=level), job_type='conf_opt')
+            if not ess_trsh_methods:
+                logger.warning(f'No conf_opt job of species {label} is tracked and no conformer isomorphism '
+                               f'troubleshooting level is recorded; starting from the first troubleshooting level.')
+        return job_adapter, ess_trsh_methods
+
+    def refuse_conformer_isomorphism_trsh_recovery(self, label: str) -> bool:
+        """
+        Check whether a restart may not continue the conformer isomorphism troubleshooting of a species, because
+        troubleshooting is disabled or exhausted for it. If so, warn naming the species, and record the warning
+        once in the species' output warnings.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: Whether the recovery is refused.
+        """
+        if self.trsh_ess_jobs and CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED not in self.output[label]['conformers']:
+            return False
+        logger.warning(f'Species {label}: {REFUSED_CONFORMER_TRSH_RECOVERY_MESSAGE}')
+        if REFUSED_CONFORMER_TRSH_RECOVERY_MESSAGE not in self.output[label]['warnings']:
+            self.output[label]['warnings'] += REFUSED_CONFORMER_TRSH_RECOVERY_MESSAGE
+        return True
+
+    def respawn_conformers(self, label: str, level_of_theory: str, conformers: list[int]):
+        """
+        Submit conf_opt jobs at a conformer isomorphism troubleshooting level for conformers that have no job,
+        from their geometries before optimization, clearing their energies.
+
+        Args:
+            label (str): The species label.
+            level_of_theory (str): The troubleshooting level.
+            conformers (list[int]): The conformer indices to submit.
+        """
+        species = self.species_dict[label]
+        job_adapter, ess_trsh_methods = self.get_conformer_isomorphism_trsh_basis(label)
+        xyzs = species.conformers_before_opt if species.conformers_before_opt is not None else species.conformers
+        for i in conformers:
+            if i < len(species.conformer_energies):
+                species.conformer_energies[i] = None
+            self.run_job(label=label,
+                         xyz=xyzs[i],
+                         level_of_theory=level_of_theory,
+                         job_adapter=job_adapter,
+                         job_type='conf_opt',
+                         ess_trsh_methods=get_respawned_conformer_trsh_methods(ess_trsh_methods, level_of_theory),
+                         conformer=i,
+                         )
+
+    def resume_conformer_isomorphism_trsh(self, label: str) -> bool:
+        """
+        Continue a conformer isomorphism troubleshooting round on restart. If a running conf_opt job is tagged
+        with a level that the species' troubleshooting note does not record yet, the respawn was caught midway:
+        every conformer without a running job is resubmitted at that level and the note for the level is written.
+        If the running conf_opt jobs are at the last noted level, or a conf_sp job is running after a noted level,
+        conformers with no energy and no running job are resubmitted at that level.
+        If troubleshooting is disabled or exhausted, nothing is submitted, and a respawn caught midway clears the
+        energies of the conformers without a running job.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: Whether the conformers of the species were handled at a troubleshooting level.
+        """
+        species = self.species_dict[label]
+        conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
+        conformers_note = self.output[label]['conformers']
+        history = get_conformer_isomorphism_trsh_history(conformers_note)
+        tagged_levels = get_conformer_trsh_levels(conf_opt_jobs.values())
+        pending_levels = [level for level in tagged_levels if f'conformer {level}' not in history]
+        running_conf_sp = [get_i_from_job_name(job_name) for job_name in self.running_jobs.get(label, [])
+                           if 'conf_sp' in job_name]
+        xyzs = species.conformers_before_opt if species.conformers_before_opt is not None else species.conformers
+        num_of_conformers = min(len(species.conformers), len(xyzs))
+        if not pending_levels:
+            noted_level = history[-1].split(' ', 1)[1] if history else None
+            if noted_level is not None and (noted_level in tagged_levels or running_conf_sp):
+                energies = species.conformer_energies
+                conformers = [i for i in range(num_of_conformers)
+                              if i not in conf_opt_jobs and i not in running_conf_sp
+                              and (i >= len(energies) or energies[i] is None)]
+                if conformers and not self.refuse_conformer_isomorphism_trsh_recovery(label):
+                    self.respawn_conformers(label=label, level_of_theory=noted_level, conformers=conformers)
+                return True
+            if conf_opt_jobs and not tagged_levels and not history:
+                logger.warning(f'No conformer isomorphism troubleshooting level is recorded for species {label}; '
+                               f'conformers with no energy and no running job, if any, are resubmitted at the '
+                               f'conformer level.')
+                if UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE not in self.output[label]['warnings']:
+                    self.output[label]['warnings'] += UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE
+            return False
+        level_of_theory = pending_levels[-1]
+        if self.refuse_conformer_isomorphism_trsh_recovery(label):
+            for i in range(len(species.conformer_energies)):
+                if i not in conf_opt_jobs:
+                    species.conformer_energies[i] = None
+            return True
+        logger.info(f'Completing the conformer isomorphism troubleshooting respawn of species {label} '
+                    f'at {level_of_theory}')
+        self.respawn_conformers(label=label,
+                                level_of_theory=level_of_theory,
+                                conformers=[i for i in range(num_of_conformers) if i not in conf_opt_jobs])
+        self.output[label]['conformers'] += CONFORMER_ISOMORPHISM_TRSH_NOTE.format(level=level_of_theory)
+        self.save_restart_dict()
+        return True
+
+    def resume_idle_conformer_isomorphism_trsh(self, label: str) -> bool:
+        """
+        Continue a conformer isomorphism troubleshooting round on restart when no conformer job of the species is
+        running and none of its conformers has an energy: every conformer is resubmitted at the last noted
+        troubleshooting level instead of generating new conformers. If troubleshooting is disabled or exhausted,
+        nothing is submitted.
+
+        Args:
+            label (str): The species label (not a TS).
+
+        Returns:
+            bool: Whether the conformers of the species were handled at a troubleshooting level.
+        """
+        species = self.species_dict[label]
+        history = get_conformer_isomorphism_trsh_history(self.output[label].get('conformers'))
+        if not history or not species.conformers \
+                or species.initial_xyz is not None or species.final_xyz is not None \
+                or any(e is not None for e in species.conformer_energies) \
+                or self.has_running_conformer_jobs(label) or self.output[label]['job_types']['opt'] \
+                or 'opt' in self.job_dict[label] or 'composite' in self.job_dict[label] \
+                or self.output[label]['convergence']:
+            return False
+        if self.refuse_conformer_isomorphism_trsh_recovery(label):
+            return True
+        xyzs = species.conformers_before_opt if species.conformers_before_opt is not None else species.conformers
+        level_of_theory = history[-1].split(' ', 1)[1]
+        logger.info(f'Resubmitting the conformers of species {label}, none of which has an energy, at the last '
+                    f'conformer isomorphism troubleshooting level {level_of_theory}')
+        self.respawn_conformers(label=label,
+                                level_of_theory=level_of_theory,
+                                conformers=list(range(min(len(species.conformers), len(xyzs)))))
+        return True
+
     def run_conformer_jobs(self, labels: list[str] | None = None):
         """
         Select the most stable conformer for each species using molecular dynamics (force fields) and subsequently
@@ -1516,6 +2040,36 @@ class Scheduler(object):
         labels_to_consider = labels if labels is not None else [spc.label for spc in self.species_list]
         log_info_printed = False
         for label in labels_to_consider:
+            if not self.species_dict[label].is_ts and self.has_running_conformer_jobs(label):
+                # Conformer jobs restored on restart are still running; the main loop decides once they terminate.
+                species = self.species_dict[label]
+                conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
+                conformers_note = self.output[label]['conformers']
+                first_round = bool(conf_opt_jobs) \
+                    and not get_conformer_isomorphism_trsh_history(conformers_note) \
+                    and CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED not in conformers_note \
+                    and not get_conformer_trsh_levels(conf_opt_jobs.values())
+                if first_round:
+                    # The energies may be force-field ones; resubmit every conformer that is not running.
+                    species.conformer_energies = [None] * len(species.conformers)
+                    xyzs = species.conformers_before_opt if species.conformers_before_opt is not None \
+                        else species.conformers
+                elif self.resume_conformer_isomorphism_trsh(label):
+                    continue
+                else:
+                    xyzs = species.conformers
+                energies = species.conformer_energies
+                for i, xyz in enumerate(xyzs):
+                    if i not in conf_opt_jobs and (i >= len(energies) or energies[i] is None):
+                        self.run_job(label=label,
+                                     xyz=xyz,
+                                     job_type='conf_opt',
+                                     level_of_theory=self.conformer_opt_level,
+                                     conformer=i,
+                                     )
+                continue
+            if not self.species_dict[label].is_ts and self.resume_idle_conformer_isomorphism_trsh(label):
+                continue
             if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
@@ -1830,6 +2384,8 @@ class Scheduler(object):
         if self.job_types['rotors'] and isinstance(self.species_dict[label].rotors_dict, dict):
             ess_rotor_indices = []  # Collected for potential pipe batching below.
             for i, rotor in self.species_dict[label].rotors_dict.items():
+                if is_reactive_ring_rejection(rotor):
+                    continue
                 if rotor['scan_path'] and os.path.isfile(rotor['scan_path']):
                     continue
                 # Since this function is relevant for in multiple cases, all cases are listed for debugging
@@ -2738,8 +3294,7 @@ class Scheduler(object):
 
         # Spawn scan jobs.
         if self.job_types['rotors'] and self.species_dict[label].irc_label is None:
-            if not self.species_dict[label].rotors_dict:
-                self.species_dict[label].determine_rotors()
+            self.species_dict[label].determine_rotors(reaction=self.rxn_dict.get(self.species_dict[label].rxn_index))
             self.run_scan_jobs(label)
 
         # Spawn post sp actions if this is a composite job.
@@ -2783,6 +3338,65 @@ class Scheduler(object):
         if label in self.output.keys() and not self.species_dict[label].is_ts:
             self.spawn_ts_jobs()
 
+    def resolve_ts_adapters(self, ts_adapters: list[str] | None) -> None:
+        """
+        Resolve the TS adapters of this run, log them with their source, and list the absent engines once.
+
+        Args:
+            ts_adapters (list, optional): The input file's ``ts_adapters``, ``None`` if it sets none.
+        """
+        self.ts_adapters, self.ts_adapters_source, removed = resolve_ts_adapters(
+            input_ts_adapters=ts_adapters, settings_ts_adapters=default_ts_adapters,
+            local_settings_keys=local_settings_keys, repo_default=repo_default_ts_adapters)
+        logger.info(f'TS adapters for this run (from the {self.ts_adapters_source}): {self.ts_adapters}')
+        if removed and self.ts_adapters_source != 'repo default':
+            logger.warning(f'ts_adapters from the {self.ts_adapters_source} leaves out ARC\'s default '
+                           f'adapter(s) {removed}; they will not run for any reaction.')
+        self.absent_ts_adapters = dict()
+        if not self.rxn_list:
+            return
+        for adapter in self.ts_adapters:
+            if not any(self.ts_adapter_admission(adapter, rxn) for rxn in self.rxn_list):
+                continue
+            reason = ts_adapter_unavailable_reason(adapter, ess_settings=self.ess_settings)
+            if reason is not None:
+                self.absent_ts_adapters[adapter] = reason
+        if self.absent_ts_adapters:
+            lines = list()
+            for adapter, reason in self.absent_ts_adapters.items():
+                targets = ts_adapter_install_targets.get(adapter)
+                if targets:
+                    install = f'Install: make {targets[0]}' + ''.join(f' (or make {target})' for target in targets[1:])
+                elif adapter == 'orca_neb':
+                    install = "No make target: map 'orca' to a server that runs Orca in the ESS settings"
+                else:
+                    install = 'No make target'
+                lines.append(f'  {adapter!r}: {reason}. {install}')
+            logger.warning('TS search engines not available on this machine; ARC skips these adapters for '
+                           'every reaction in this run that could use them:\n' + '\n'.join(lines))
+
+    @staticmethod
+    def ts_adapter_admission(method: str, rxn: 'ARCReaction') -> str | None:
+        """
+        Report whether a TS adapter may run for a reaction, and by which rule.
+
+        Args:
+            method (str): The lowercased TS adapter name.
+            rxn (ARCReaction): The reaction.
+
+        Returns:
+            str | None: ``'unknown family'`` if admitted by the unknown-unimolecular rule, ``'admitted'`` if
+                        admitted otherwise, and ``None`` if the adapter may not run for this reaction.
+        """
+        family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
+        if method in all_families_ts_adapters \
+                or (family_known and method in ts_adapters_by_rmg_family[rxn.family]) \
+                or 'mock' in method:
+            return 'admitted'
+        if not family_known and method in ts_adapters_for_unknown_unimolecular and rxn.is_unimolecular():
+            return 'unknown family'
+        return None
+
     def spawn_ts_jobs(self):
         """
         Check if any new reaction has all of its reactants and products optimized,
@@ -2796,21 +3410,25 @@ class Scheduler(object):
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
                 else:
                     rxn.ts_species.tsg_spawned = True
-                    tsg_index, eligible_methods = 0, list()
+                    tsg_index, eligible_methods, unavailable = 0, list(), dict()
                     family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
                     for method in self.ts_adapters:
-                        admit_unknown_family = (not family_known
-                                                and method in ts_adapters_for_unknown_unimolecular
-                                                and rxn.is_unimolecular())
-                        if method in all_families_ts_adapters \
-                                or (family_known and method in ts_adapters_by_rmg_family[rxn.family]) \
-                                or admit_unknown_family \
-                                or 'mock' in method:
-                            if admit_unknown_family:
+                        admission = self.ts_adapter_admission(method, rxn)
+                        if admission is not None:
+                            if admission == 'unknown family':
                                 logger.info(f'Admitting TS adapter {method!r} for reaction {rxn.label} '
                                             f'via ts_adapters_for_unknown_unimolecular '
                                             f'(RMG family is {rxn.family!r}).')
                             eligible_methods.append(method)
+                            unavailable_reason = ts_adapter_unavailable_reason(method, ess_settings=self.ess_settings)
+                            if unavailable_reason is not None:
+                                unavailable[method] = unavailable_reason
+                                if self.absent_ts_adapters.get(method) != unavailable_reason:
+                                    # The run-start report did not give this cause, so the engine changed since.
+                                    logger.warning(f'TS search adapter {method!r} skipped for reaction {rxn.label}: '
+                                                   f'{unavailable_reason}.')
+                                rxn.ts_species.skipped_methods[method] = unavailable_reason
+                                continue
                             try:
                                 self.run_job(job_type='tsg',
                                              job_adapter=method,
@@ -2822,22 +3440,47 @@ class Scheduler(object):
                                 # record it and carry on so one missing dependency can't abort the run.
                                 logger.error(f'The {method!r} TS search adapter is not available and '
                                              f'was skipped for reaction {rxn.label}: {e}')
-                                if method not in rxn.ts_species.unsuccessful_methods:
-                                    rxn.ts_species.unsuccessful_methods.append(method)
-                                # Roll back the job run_job() registered before it raised, so a
-                                # never-run 'tsg<i>' entry isn't serialized and parsed as completed.
-                                if f'tsg{tsg_index}' in self.running_jobs.get(rxn.ts_label, list()):
-                                    self.running_jobs[rxn.ts_label].remove(f'tsg{tsg_index}')
-                                self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).pop(tsg_index, None)
+                                unavailable[method] = str(e)
+                                rxn.ts_species.skipped_methods[method] = str(e)
+                                self._roll_back_tsg_job(rxn=rxn, tsg_index=tsg_index)
                                 continue
+                            except Exception as e:
+                                # The one boundary between the Scheduler and a TS search adapter: a bug in
+                                # one adapter costs that adapter for this reaction, never the whole run.
+                                submitted = self._tsg_job_was_submitted(rxn=rxn, tsg_index=tsg_index)
+                                consequence = 'its submitted job stays tracked' if submitted else 'skipping it'
+                                logger.error(f'The {method!r} TS search adapter raised {type(e).__name__} '
+                                             f'for reaction {rxn.label}; {consequence}, and continuing with '
+                                             f'the other adapters.\n{traceback.format_exc()}')
+                                rxn.ts_species.ts_adapter_failures.append(
+                                    {'adapter': method,
+                                     'exception_type': type(e).__name__,
+                                     'message': exception_summary_line(e)})
+                                if not submitted:
+                                    self._roll_back_failed_tsg_job(rxn=rxn, method=method, tsg_index=tsg_index)
+                                    continue
                             tsg_index += 1
-                    if not tsg_index and not rxn.ts_species.ts_guesses:
+                    if unavailable:
+                        # run_job() saved before these skips were recorded; persist them with tsg_spawned.
+                        self.save_restart_dict()
+                    if eligible_methods:
+                        running = [method for method in eligible_methods if method not in unavailable]
+                        logger.info(f'TS search for reaction {rxn.label}: running {running}'
+                                    + (f'; skipped (engine absent): {list(unavailable)}' if unavailable else ''))
+                    if not tsg_index and not rxn.ts_species.ts_guesses and rxn.ts_species.yml_path is None:
                         # No adapter ran and no user guess was given, and tsg_spawned is already
                         # latched True, so warn explicitly rather than fail silently much later.
                         eligible = ts_adapters_by_rmg_family.get(rxn.family) if family_known else None
-                        if eligible_methods:
+                        raised = [failure['adapter'] for failure in rxn.ts_species.ts_adapter_failures]
+                        causes = '; '.join(f'{method!r}: {cause}' for method, cause in unavailable.items())
+                        if raised:
+                            reason = (f'its eligible adapters {raised} raised an exception (see the errors '
+                                      f'above)' + (f' and {list(unavailable)} are unavailable on this machine '
+                                                   f'({causes})' if unavailable else '')
+                                      + '. Fix the reported error, or add another eligible adapter')
+                        elif eligible_methods:
                             reason = (f'all of its eligible adapters {eligible_methods} are unavailable '
-                                      f'on this machine (see the errors above). Install one of them, or add '
+                                      f'on this machine ({causes}). Install one of them, or add '
                                       f'an eligible adapter that is installed')
                         else:
                             reason = (f'none of the configured ts_adapters {self.ts_adapters} is eligible for it. '
@@ -2847,13 +3490,75 @@ class Scheduler(object):
                                          f'and it did not qualify for {ts_adapters_for_unknown_unimolecular} '
                                          f'(is_unimolecular={rxn.is_unimolecular()}).')
                                       + ' Add an eligible adapter to ts_adapters')
-                        logger.warning(f'Not spawning any TS search job for reaction {rxn.label}: {reason} '
-                                       f'(in the input file or in ~/.arc/settings.py) to compute this TS. '
-                                       f'No TS guess will be generated and this reaction will be reported '
-                                       f'as not converged.')
+                        message = (f'Not spawning any TS search job for reaction {rxn.label}: {reason} '
+                                   f'(in the input file or in ~/.arc/settings.py) to compute this TS. '
+                                   f'No TS guess will be generated and this reaction will be reported '
+                                   f'as not converged.')
+                        logger.error(message)
+                        self.end_ts_search_without_guesses(label=rxn.ts_label, message=message)
+                    elif not tsg_index and not all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
+                        # An adapter saved guesses and then raised, so its job was rolled back. No tracked
+                        # job is left whose completion would start the TS conformer jobs, so start them here.
+                        self.run_conformer_jobs(labels=[rxn.ts_label])
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
+
+    def end_ts_search_without_guesses(self, label: str, message: str) -> None:
+        """
+        End the TS search of a TS species that no adapter could run for, recording why in its output.
+
+        Args:
+            label (str): The TS species label.
+            message (str): The reason, naming the reaction and its adapters.
+        """
+        if label in self.species_dict:
+            self.species_dict[label].ts_guesses_exhausted = True
+        if label in self.output:
+            self.output[label]['convergence'] = False
+            self.output[label]['errors'] = f"{self.output[label].get('errors') or ''}{message}; "
+        self.save_restart_dict()
+
+    def _tsg_job_was_submitted(self, rxn: ARCReaction, tsg_index: int) -> bool:
+        """
+        Whether a TS guess job reached a server queue (it is not incore and has a job ID).
+
+        Args:
+            rxn (ARCReaction): The reaction of the job.
+            tsg_index (int): The index of the TS guess job.
+
+        Returns:
+            bool: Whether the job was submitted.
+        """
+        job = self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).get(tsg_index)
+        return job is not None and getattr(job, 'execution_type', 'incore') != 'incore' \
+            and getattr(job, 'job_id', None) is not None
+
+    def _roll_back_failed_tsg_job(self, rxn: ARCReaction, method: str, tsg_index: int) -> None:
+        """
+        Mark a TS search adapter that raised for a reaction as unsuccessful, and roll back its job.
+
+        Args:
+            rxn (ARCReaction): The reaction the adapter failed for.
+            method (str): The TS search adapter.
+            tsg_index (int): The index of the TS guess job that failed.
+        """
+        if method not in rxn.ts_species.unsuccessful_methods:
+            rxn.ts_species.unsuccessful_methods.append(method)
+        self._roll_back_tsg_job(rxn=rxn, tsg_index=tsg_index)
+
+    def _roll_back_tsg_job(self, rxn: ARCReaction, tsg_index: int) -> None:
+        """
+        Roll back the job ``run_job()`` registered before it raised, so a never-run 'tsg<i>' entry
+        isn't serialized and parsed as completed.
+
+        Args:
+            rxn (ARCReaction): The reaction of the job.
+            tsg_index (int): The index of the TS guess job to roll back.
+        """
+        if f'tsg{tsg_index}' in self.running_jobs.get(rxn.ts_label, list()):
+            self.running_jobs[rxn.ts_label].remove(f'tsg{tsg_index}')
+        self.job_dict.get(rxn.ts_label, dict()).get('tsg', dict()).pop(tsg_index, None)
 
     def spawn_directed_scan_jobs(self,
                                  label: str,
@@ -2877,6 +3582,11 @@ class Scheduler(object):
                         or if ``xyz`` wasn't given for a cont_opt job.
             SchedulerError: If the rotor scan resolution as defined in settings.py is illegal.
         """
+        if is_reactive_ring_rejection(self.species_dict[label].rotors_dict[rotor_index]):
+            logger.info(f"Not spawning directed scan jobs for rotor "
+                        f"{self.species_dict[label].rotors_dict[rotor_index]['pivots']} of {label}: "
+                        f"its torsion lies in the reactive ring of the TS.")
+            return
         increment = rotor_scan_resolution
         if divmod(360, increment)[1]:
             raise SchedulerError(f'The directed scan got an illegal scan resolution of {increment}')
@@ -3261,6 +3971,11 @@ class Scheduler(object):
             logger.error(f'No conformer converged for species {label}! Trying to troubleshoot conformer jobs...')
             for i, job in self.job_dict[label]['conf_opt'].items():
                 self.troubleshoot_ess(label, job, level_of_theory=job.level, conformer=job.conformer)
+            if not self.has_running_conformer_jobs(label) \
+                    and get_conformer_isomorphism_trsh_history(self.output[label]['conformers']):
+                logger.warning(f'No conformer of species {label} converged at the current conformer isomorphism '
+                               f'troubleshooting level. Trying the next level.')
+                self.troubleshoot_conformer_isomorphism(label=label)
         else:
             conformer_xyz = None
             xyzs = list()
@@ -3534,6 +4249,7 @@ class Scheduler(object):
         freq_ok = False
         if job.job_status[1]['status'] == 'done':
             self.species_dict[label].final_xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+            self.record_geo_job_e_elect(label=label, job=job)
             self.output[label]['job_types']['composite'] = True
             self.output[label]['job_types']['opt'] = True
             self.output[label]['job_types']['sp'] = True
@@ -3560,8 +4276,6 @@ class Scheduler(object):
             frequencies = parser.parse_frequencies(job.local_path_to_output_file, job.job_adapter)
             freq_ok, _ = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
             if freq_ok:
-                # Update restart dictionary and save a restart file:
-                self.save_restart_dict()
                 success = True  # run freq / scan jobs on this optimized geometry
                 if not self.species_dict[label].is_ts:
                     is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
@@ -3571,6 +4285,10 @@ class Scheduler(object):
                     else:
                         self.output[label]['isomorphism'] += 'composite did not pass isomorphism check; '
                     success &= is_isomorphic
+                if success:
+                    self.check_change_conformer_reopt(label=label, job=job)
+                # Update restart dictionary and save a restart file:
+                self.save_restart_dict()
                 return success
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
                 self.troubleshoot_negative_freq(label=label, job=job)
@@ -3662,13 +4380,14 @@ class Scheduler(object):
                 else:
                     self.species_dict[label].final_xyz = opt_xyz
                     self.post_opt_geo_work(label, job)
+                    self.record_geo_job_e_elect(label=label, job=job)
                 if 'optfreq' in job.job_name:
                     self.check_freq_job(label, job)
-                self.save_restart_dict()
                 if not multi_species:
                     if not self.species_dict[label].is_ts:
                         plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
                         if self.species_dict[label].irc_label is not None:
+                            self.save_restart_dict()
                             self.check_irc_species(label=label)
                             return False
                         is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
@@ -3684,6 +4403,12 @@ class Scheduler(object):
                         plotter.draw_structure(species=self.species_dict[label],
                                                project_directory=self.project_directory,
                                                method='draw_3d')
+                    if success:
+                        if self.runs_separate_freq_job(label):
+                            self.stage_change_conformer_reopt(label=label, job=job)
+                        else:
+                            self.check_change_conformer_reopt(label=label, job=job)
+                self.save_restart_dict()
         elif self.trsh_ess_jobs:
             self.troubleshoot_opt_jobs(label=label)
         return success
@@ -3711,6 +4436,229 @@ class Scheduler(object):
         logger.info(f'\nOptimized geometry for {spc_label}{rxn_str} at {job.level.simple()}:\n'
                     f'{xyz_to_str(self.species_dict[spc_label].final_xyz)}\n')
         self.output[spc_label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
+
+    def runs_separate_freq_job(self, label: str) -> bool:
+        """
+        Whether a converged opt of the species is followed by a separate freq job (see ``spawn_post_opt_jobs``).
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: ``True`` if a freq job will check the optimized geometry.
+        """
+        return bool(self.job_types['freq'] and self.species_dict[label].number_of_atoms > 1
+                    and self.species_dict[label].irc_label is None)
+
+    def record_geo_job_e_elect(self, label: str, job: JobAdapter) -> None:
+        """
+        Store the electronic energy and the level signature of the opt (or composite) job whose geometry became
+        the species ``final_xyz`` as ``geo_e_elect`` and ``geo_level`` in the output dict, which the restart file
+        keeps (it keeps no completed job). Both are ``None`` if the job's energy cannot be parsed, or if the job is
+        not of the type the baseline energy comes from (an opt troubleshooting a composite run).
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The converged opt or composite job.
+        """
+        e_elect = parse_job_e_elect(job) if job.job_type == ('composite' if self.composite_method else 'opt') \
+            else None
+        self.output[label]['geo_e_elect'] = e_elect
+        self.output[label]['geo_level'] = job_level_signature(job) if e_elect is not None else None
+
+    def get_latest_geo_job_e_elect(self, label: str) -> tuple[float | None, str | None]:
+        """
+        Get the electronic energy of the latest successful opt (or composite) job of a species, and its level.
+        After a restart, which restores no completed job, the values stored by ``record_geo_job_e_elect`` are used.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            tuple[float | None, str | None]: The electronic energy in kJ/mol and the job's level signature
+                (see ``job_level_signature``), both ``None`` if no such job output is available.
+        """
+        job_type = 'composite' if self.composite_method else 'opt'
+        energies = [(parse_job_e_elect(job), job_level_signature(job))
+                    for job in self.job_dict.get(label, dict()).get(job_type, dict()).values()
+                    if job.job_status[1]['status'] == 'done']
+        energies = [energy for energy in energies if energy[0] is not None]
+        if energies:
+            return energies[-1]
+        entry = self.output.get(label) or dict()
+        return entry.get('geo_e_elect'), entry.get('geo_level')
+
+    def pending_conformer_changes(self, label: str) -> list[dict]:
+        """
+        Get the 'change conformer' records of a species that were not judged yet.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            list[dict]: The pending records.
+        """
+        rotors_dict = self.species_dict[label].rotors_dict or dict()
+        return [method for rotor in rotors_dict.values() for method in rotor.get('trsh_methods', list())
+                if 'change conformer' in method and 'verified' in method and method['verified'] is None]
+
+    def record_pending_conformer_changes(self) -> None:
+        """
+        Record in the output dict how many 'change conformer' records of each species were never judged
+        (``conformer_change_pending``) and how many were judged (``conformer_change_judged``).
+        Records written before the judgement existed (no ``'verified'`` key) are counted in neither.
+        Called at the end of the run (also a restarted one), so the RMG library gate sees an unjudged change, and a
+        judged change whose species was not confirmed by its rotor rescans, as not verified.
+        """
+        for label in self.species_dict:
+            if label in self.output:
+                self.output[label]['conformer_change_pending'] = len(self.pending_conformer_changes(label))
+                self.output[label]['conformer_change_judged'] = sum(
+                    1 for rotor in (self.species_dict[label].rotors_dict or dict()).values()
+                    for method in rotor.get('trsh_methods', list())
+                    if 'change conformer' in method and method.get('verified') is not None)
+
+    def stage_change_conformer_reopt(self, label: str, job: JobAdapter) -> None:
+        """
+        Store the energy and level of a re-opt on its pending records, to be judged once its freq job passes.
+        The records are saved in the restart file, which keeps no completed job.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The converged opt job.
+        """
+        if job.job_type != ('composite' if self.composite_method else 'opt'):
+            return
+        e_elect, level = parse_job_e_elect(job), job_level_signature(job)
+        for method in self.pending_conformer_changes(label):
+            method['reopt_e_elect'], method['reopt_level'] = e_elect, level
+
+    def check_change_conformer_reopt(self, label: str, job: JobAdapter | None = None) -> None:
+        """
+        Check that a re-optimization started from a lower conformer found by a rotor scan reached a new geometry.
+        The same energy as before the change (or, without a comparable energy, the same scanned dihedral) means the
+        lower conformer was not reached, so the species is flagged as not verified (see ``is_same_conformer``).
+        An electronic energy higher than before the change by ``CONFORMER_ENERGY_TOLERANCE`` or more also means it
+        was not reached, whatever the dihedral.
+        The latest change (by ``change_index``) is judged, and its verdict closes every older pending change, since a
+        later scan already moved away from their geometry.
+        A dihedral that cannot be computed (collinear atoms) counts as not compared. Only a job of the type the
+        baseline energy came from (composite or opt) is compared; an opt troubleshooting a composite run is not.
+        The energies are not compared when the jobs ran at different effective levels (``job_level_signature``).
+        Records written before this check existed (no ``'verified'`` key) are not re-judged.
+        Without a job, the energy and level staged by ``stage_change_conformer_reopt`` are used.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter, optional): The converged opt or composite job.
+        """
+        pending = self.pending_conformer_changes(label)
+        if not pending:
+            return
+        record = max(enumerate(pending), key=lambda item: (item[1].get('change_index', -1), item[0]))[1]
+        if job is not None:
+            if job.job_type != ('composite' if self.composite_method else 'opt'):
+                return
+            new_e_elect = parse_job_e_elect(job)
+            new_level = job_level_signature(job) if record.get('pre_level') is not None else None
+        elif 'reopt_level' in record:
+            new_e_elect, new_level = record['reopt_e_elect'], record['reopt_level']
+        else:
+            return
+        new_xyz = self.species_dict[label].final_xyz
+        pre_e_elect = record.get('pre_e_elect')
+        d_dihedral = None
+        if record.get('pre_xyz') is not None and new_xyz is not None:
+            d_dihedral = abs(get_angle_in_180_range(
+                calculate_dihedral_angle(coords=new_xyz, torsion=record['torsion'], index=1)
+                - calculate_dihedral_angle(coords=record['pre_xyz'], torsion=record['torsion'], index=1)))
+            if not np.isfinite(d_dihedral):
+                d_dihedral = None
+        if record.get('pre_level') is not None and record['pre_level'] != new_level:
+            new_e_elect = None
+        e_rise = new_e_elect - pre_e_elect if new_e_elect is not None and pre_e_elect is not None else None
+        d_energy = abs(e_rise) if e_rise is not None else None
+        if d_dihedral is None and (d_energy is None or d_energy < CONFORMER_ENERGY_TOLERANCE):
+            logger.warning(f'Could not compare the re-optimized geometry of {label} with the one before the '
+                           f'conformer change; its conformer stays unverified.')
+            return
+        same_conformer = is_same_conformer(d_dihedral=d_dihedral, d_energy=d_energy,
+                                           energy_gap=record.get('energy_gap'))
+        energy_rose = e_rise is not None and e_rise >= CONFORMER_ENERGY_TOLERANCE
+        for method in pending:
+            method['verified'] = not same_conformer and not energy_rose
+        if energy_rose:
+            self.flag_conformer_not_verified(
+                label=label,
+                cause=f'Re-optimization of {label} from the lower conformer found by the scan of torsion '
+                      f'{record["torsion"]} ended {e_rise:.2f} kJ/mol above the energy before the conformer '
+                      f'change; the conformer {format_energy_gap(record.get("energy_gap"))} was not reached.')
+        elif same_conformer:
+            energy_txt = f'energy change {d_energy:.2f} kJ/mol' if d_energy is not None else 'energy not compared'
+            self.flag_conformer_not_verified(
+                label=label,
+                cause=f'Re-optimization of {label} from the lower conformer found by the scan of torsion '
+                      f'{record["torsion"]} returned to the previous geometry or a symmetry-equivalent copy of it '
+                      f'({energy_txt}, dihedral change '
+                      f'{d_dihedral:.1f} deg); the conformer {format_energy_gap(record.get("energy_gap"))} '
+                      f'was not reached.')
+
+    def flag_unresolved_lower_conformer(self,
+                                        label: str,
+                                        rotor_index: int,
+                                        energy_gap: float | None,
+                                        reason: str,
+                                        ) -> None:
+        """
+        Flag a species whose rotor scan found a lower conformer that ARC will not move to.
+
+        Args:
+            label (str): The species label.
+            rotor_index (int): The rotor index in the species rotors_dict.
+            energy_gap (float, optional): How much lower the conformer is in kJ/mol.
+            reason (str): Why the lower conformer is left unresolved.
+        """
+        scan = self.species_dict[label].rotors_dict[rotor_index]['scan']
+        self.flag_conformer_not_verified(
+            label=label,
+            cause=f'Rotor scan of torsion {scan} of {label} still finds a conformer {format_energy_gap(energy_gap)}, '
+                  f'and {reason}; the geometry used is not the lowest conformer found.')
+
+    def flag_conformer_not_verified(self, label: str, cause: str) -> None:
+        """
+        Mark a species as not verified to be at the lowest conformer found, and record the cause.
+
+        Args:
+            label (str): The species label.
+            cause (str): The reason.
+        """
+        logger.warning(f'\n\nSPECIES {label} IS NOT VERIFIED: {cause}\n')
+        previous_cause = self.output[label].get('conformer_verified_cause') or '' \
+            if self.output[label].get('conformer_verified') is False else ''
+        if cause not in previous_cause:
+            self.output[label]['conformer_verified_cause'] = f'{previous_cause} {cause}'.strip()
+        self.output[label]['conformer_verified'] = False
+        self.output[label]['warnings'] += f'{cause}; '
+
+    def set_conformer_verified(self, label: str) -> None:
+        """
+        Set ``conformer_verified`` to ``True`` once every rotor of the species was scanned and passed the scan check
+        (each has a scan output and ``success`` is ``True``), and no lower conformer is pending or unresolved. A ``False`` value is kept. A species without scanned rotors keeps
+        ``None``, since nothing checked that its geometry is the lowest conformer.
+
+        Args:
+            label (str): The species label.
+        """
+        if self.output[label].get('conformer_verified') is False:
+            return
+        self.output[label]['conformer_verified'] = None
+        rotors = list((self.species_dict[label].rotors_dict or dict()).values())
+        if not rotors or any(rotor['success'] is not True or not rotor.get('scan_path') for rotor in rotors):
+            return
+        if any('change conformer' in method and 'verified' in method and method['verified'] is None
+               for rotor in rotors for method in rotor.get('trsh_methods', list())):
+            return
+        self.output[label]['conformer_verified'] = True
 
     def get_chosen_tsg(self, label: str) -> TSGuess | None:
         """
@@ -3846,6 +4794,9 @@ class Scheduler(object):
                     switch_ts = True
         if WRONG_FREQ_MESSAGE in self.output[label]['warnings']:
             self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(WRONG_FREQ_MESSAGE))
+        if not switch_ts and getattr(job, 'job_type', 'freq') != 'optfreq':
+            self.check_change_conformer_reopt(label=label)
+            self.save_restart_dict()
         if not switch_ts and species_has_sp(self.output[label], self.species_dict[label].yml_path):
             self.check_rxn_e0_by_spc(label)
         return True, switch_ts
@@ -4137,6 +5088,8 @@ class Scheduler(object):
         if not self.species_dict[label].ts_guesses_exhausted and self.species_dict[label].chosen_ts is not None:
             logger.info(f'Optimizing species {label} again using a different TS guess: '
                         f'conformer {self.species_dict[label].chosen_ts}')
+            self.output[label]['conformer_verified'] = None
+            self.output[label]['conformer_verified_cause'] = ''
             if not self.composite_method:
                 self.run_opt_job(label, fine=self.fine_only)
             else:
@@ -4254,12 +5207,34 @@ class Scheduler(object):
                             job: JobAdapter,
                             ):
         """
-        Spawn additional jobs after IRC has converged.
+        Spawn the jobs that follow an IRC job, or record it as a failed IRC.
+
+        The last geometry of the IRC output becomes a new IRC species, which is then optimized.
+        Only an IRC job whose server status is ``done`` and whose ESS status is ``done``, or ``errored`` with
+        every keyword in ``IRC_EARLY_STOP_KEYWORDS`` (an IRC that stopped early on Delta-x), spawns.
+        Any other status, e.g., a server time limit, a memory kill, a cut output, or an absent status,
+        is recorded as a failed IRC (see ``record_failed_irc()``) and nothing is spawned.
+        So is an output that holds no complete geometry, or one whose parsing raises ``IndexError`` or ``ValueError``.
 
         Args:
             label (str): The species label.
             job (JobAdapter): The IRC job object.
         """
+        job_status = job.job_status if isinstance(job.job_status, list) else list()
+        ess_status = job_status[1] if len(job_status) > 1 and isinstance(job_status[1], dict) else dict()
+        if not irc_ended_usably(server_status=job_status[0] if job_status else None, ess_status=ess_status):
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status,
+                                   server_status=job_status[0] if job_status else None)
+            return
+        try:
+            xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+        except (IndexError, ValueError) as e:
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status,
+                                   parse_error=f'{type(e).__name__}: {e}')
+            return
+        if xyz is None:
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status)
+            return
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
         self.output[label]['paths'].setdefault('irc_directions', list()).append(
             getattr(job, 'irc_direction', None)
@@ -4274,7 +5249,7 @@ class Scheduler(object):
                                                                   'rxns', label, 'irc_traj.gjf'))
         irc_label = self.add_label_to_unique_species_labels(label=f'IRC_{label}_{index}')
         irc_spc = ARCSpecies(label=irc_label,
-                             xyz=parser.parse_geometry(log_file_path=job.local_path_to_output_file),
+                             xyz=xyz,
                              irc_label=label,
                              compute_thermo=False,
                              multiplicity=job.species[0].multiplicity,
@@ -4293,6 +5268,69 @@ class Scheduler(object):
                      job_type='opt',
                      fine=False,
                      )
+
+    def end_irc_job(self,
+                    label: str,
+                    job: JobAdapter,
+                    ) -> None:
+        """
+        End an IRC job, then spawn the jobs that follow it or record it as a failed IRC.
+
+        A job that ``end_job()`` ended is passed to ``spawn_post_irc_jobs()``, and so is a job the server reports
+        as ``errored``, for which ``end_job()`` does not return ``True``. A job ``end_job()`` reran is left alone,
+        whatever its server status: ``end_job()`` reran it if it added a new job of the TS to ``running_jobs``.
+
+        Args:
+            label (str): The TS species label.
+            job (JobAdapter): The IRC job object.
+        """
+        jobs_before = set(self.running_jobs.get(label, list()))
+        successful_server_termination = self.end_job(job=job, label=label, job_name=job.job_name)
+        if set(self.running_jobs.get(label, list())) - jobs_before:
+            return
+        if successful_server_termination or job.job_status[0] == 'errored':
+            self.spawn_post_irc_jobs(label=label, job=job)
+
+    def record_failed_irc(self,
+                          label: str,
+                          job: JobAdapter,
+                          ess_status: dict,
+                          parse_error: str | None = None,
+                          server_status: str | None = None,
+                          ) -> None:
+        """
+        Record an IRC job that gave no usable endpoint as a failed IRC of its TS.
+
+        Nothing is spawned and no IRC path is stored, so the IRC check of the TS is never performed
+        and its verdict stays ``None`` (not verified). The cause goes to the TS's ``errors`` output entry
+        and to its ``ts_checks['warnings']``, which output.yml publishes. The job's files are left on disk.
+
+        Args:
+            label (str): The TS species label.
+            job (JobAdapter): The failed IRC job object.
+            ess_status (dict): The ESS status of the job, with optional ``error`` and ``keywords`` entries.
+            parse_error (str, optional): The error the geometry parser raised, if it raised one.
+            server_status (str, optional): The server status of the job.
+        """
+        if server_status not in (None, 'done'):
+            reason = ess_status.get('error') or f'server status: {server_status}'
+        else:
+            reason = ess_status.get('error') or 'no geometry could be parsed from its output'
+        if ess_status.get('keywords'):
+            reason += f' (keywords: {", ".join(ess_status["keywords"])})'
+        if parse_error:
+            reason += f'; parsing raised {parse_error}'
+        direction = getattr(job, 'irc_direction', None)
+        job_description = f'IRC job {job.job_name} ({direction})' if direction else f'IRC job {job.job_name}'
+        logger.error(f'{job_description} of TS {label} gave no usable endpoint in '
+                     f'{job.local_path_to_output_file}: {reason}. The IRC of {label} is not verified; '
+                     f'continuing with the other jobs.')
+        self.output[label]['errors'] += f'Error: {job_description} failed: {reason}; '
+        ts_species = self.species_dict[label]
+        if isinstance(ts_species.ts_checks, dict):
+            ts_species.ts_checks.setdefault('warnings', '')
+            record_ts_check_warning(ts_species, f'{IRC_JOB_FAILED_WARNING}{job_description} failed: {reason}; ')
+        self.save_restart_dict()
 
     def add_label_to_unique_species_labels(self, label: str) -> str:
         """
@@ -4600,10 +5638,15 @@ class Scheduler(object):
             label (str): The species label.
             job (JobAdapter): The rotor scan job object.
         """
+        rotor = self.species_dict[label].rotors_dict.get(job.rotor_index)
+        if rotor is not None and is_reactive_ring_rejection(rotor):
+            logger.info(f"Not using the scan of rotor {rotor.get('pivots')} of {label}: "
+                        f"its torsion lies in the reactive ring of the TS.")
+            return
         # An 'Internal coordinate error' cannot be handled by troubleshooting, so we don't even try.
         # It is usually related to bond or angle changes which mess up the internal coordinates during the scan.
         invalidate, actions, energies, angles = False, list(), list(), list()
-        invalidation_reason, message = '', ''
+        invalidation_reason, message, conformer_changed = '', '', False
         if job.job_status[1]['status'] != 'done':
             if job.job_status[1]['error'] == 'Internal coordinate error':
                 invalidate = True
@@ -4652,6 +5695,8 @@ class Scheduler(object):
                     original_xyz=self.species_dict[label].final_xyz,
                 )
 
+                if 'change conformer' in actions:
+                    actions['energy_gap'] = float(energies[0] - np.min(energies))
                 if len(list(actions.keys())) \
                         and 'pivTS' not in self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] \
                         and self.trsh_ess_jobs and self.trsh_rotors:
@@ -4668,12 +5713,20 @@ class Scheduler(object):
                         # Detailed reasons are logged in the troubleshoot_scan_job().
                         invalidation_reason += ' But unable to propose troubleshooting methods.'
                     else:
-                        # Record actions, only if the method is valid.
-                        self.species_dict[label].rotors_dict[job.rotor_index]['trsh_methods'].append(actions)
+                        # Record actions, only if the method is valid; a conformer change records itself.
+                        conformer_changed = 'change conformer' in actions
+                        if not conformer_changed:
+                            self.species_dict[label].rotors_dict[job.rotor_index]['trsh_methods'].append(actions)
+                elif 'change conformer' in actions \
+                        and 'pivTS' not in self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason']:
+                    self.flag_unresolved_lower_conformer(label=label, rotor_index=job.rotor_index,
+                                                         energy_gap=actions['energy_gap'],
+                                                         reason='rotor troubleshooting was not applied')
 
             if invalidate:
                 self.species_dict[label].rotors_dict[job.rotor_index]['success'] = False
-                self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] = invalidation_reason
+                if not conformer_changed:
+                    self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] = invalidation_reason
             else:
                 self.species_dict[label].rotors_dict[job.rotor_index]['success'] = True
                 self.species_dict[label].rotors_dict[job.rotor_index]['symmetry'] = determine_rotor_symmetry(
@@ -4693,9 +5746,11 @@ class Scheduler(object):
 
         # Save the path and invalidation reason for debugging and tracking the file.
         # If ``success`` is None, it means that the job is being troubleshooted.
-        self.species_dict[label].rotors_dict[job.rotor_index]['scan_path'] = job.local_path_to_output_file
-        self.species_dict[label].rotors_dict[job.rotor_index]['scan_software'] = job.job_adapter
-        self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] += invalidation_reason
+        # After a conformer change the rotor was reset, and is scanned again from the new geometry.
+        if not conformer_changed:
+            self.species_dict[label].rotors_dict[job.rotor_index]['scan_path'] = job.local_path_to_output_file
+            self.species_dict[label].rotors_dict[job.rotor_index]['scan_software'] = job.job_adapter
+            self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] += invalidation_reason
 
         # If energies were obtained, draw the scan curve.
         if energies is not None and len(energies) and angles is not None and len(angles):
@@ -4831,12 +5886,23 @@ class Scheduler(object):
         Args:
             label (str): The species label.
         """
+        if self.stranded_jobs.get(label):
+            logger.info(f'Not judging the convergence of {label}: its jobs {self.stranded_jobs[label]} were left on an '
+                        f'unreadable queue, and a restart picks them up.')
+            self.save_restart_dict()
+            return
+        if self.deferred_jobs.get(label):
+            logger.debug(f'Not judging the convergence of {label}: its jobs {self.deferred_jobs[label]} wait for an '
+                         f'unreadable queue to answer before they are submitted.')
+            return
         if self.is_nmd_deferred(label):
             logger.debug(f'TS {label} waits for its IRC verdict and is not checked for convergence yet.')
             self.withhold_nmd_deferred_convergence(label)
             self.save_restart_dict()
             return
         all_converged = True
+        if label in self.output and label in self.species_dict:
+            self.set_conformer_verified(label)
         if label in self.output and not self.output[label]['convergence']:
             # A TS that failed the E0 or the IRC check should stay unconverged even if all jobs succeeded.
             if self.species_dict[label].is_ts \
@@ -4904,17 +5970,415 @@ class Scheduler(object):
         """
         Check job status on a specific server or on all active servers, get a list of relevant running job IDs.
 
+        A server whose queue cannot be read reports the queue jobs ARC tracks there as still running, so none of
+        them is ended on a failed query, and it is not queried again for ``QUEUE_QUERY_COOLDOWN`` seconds. The
+        outage is timed from its first failure, and warned about at most every ``QUEUE_OUTAGE_WARNING_INTERVAL``
+        seconds. A server past the outage limit is not queried at all (see ``strand_unreadable_queue_jobs()``).
+
+        A check of all servers skips a server where ARC tracks no queue job, since no job of its can end. A check of a
+        specific server (the job limit check before a submission) queries it anyway. A check of all servers also lists
+        as running each job whose own status query failed less than ``QUEUE_QUERY_COOLDOWN`` seconds ago, so the
+        main loop does not query it again before then (see ``record_job_query_failure()``).
+
+        A missing queue command (exit status 127) on a server whose queue has not answered once in this run is a
+        configuration error, not an outage, so ARC stops at once. Once a server has answered, a later 127 is an
+        outage like any other failure. On the local machine a 127 reads as an empty queue only while ARC tracks no
+        queue job there and the local server sets no ``max_simultaneous_jobs``; such a reading does not count as an
+        answer, while a real answer in that mode does.
+
         Args:
             specific_server (str, optional): The server to check. If ``None``, check all active servers.
+
+        Raises:
+            SettingsError: If the queue command is missing on a server whose queue has not answered in this run.
         """
         self.server_job_ids = list()
         for server in self.servers:
-            if specific_server is None or server == specific_server:
+            if specific_server is not None and server != specific_server or server in self.unreadable_queue_servers:
+                continue
+            if specific_server is None and not tracked_queue_job_ids(self.job_dict, self.running_jobs, server):
+                continue
+            failure, now = self.queue_query_failures.get(server), self.queue_clock()
+            if failure is not None and now - failure['last_attempt'] < QUEUE_QUERY_COOLDOWN:
+                logger.debug(f'The queue on {server} failed to answer recently, keeping its tracked jobs running.')
+                self.server_job_ids.extend(tracked_queue_job_ids(self.job_dict, self.running_jobs, server))
+                continue
+            exempt_127 = list()
+            missing_command_reads_empty = server == 'local' \
+                and not tracked_queue_job_ids(self.job_dict, self.running_jobs, server) \
+                and 'max_simultaneous_jobs' not in servers_dict.get(server, dict())
+            try:
                 if server != 'local':
-                    with borrow_ssh_client(server) as ssh:
-                        self.server_job_ids.extend(ssh.check_running_jobs_ids())
+                    with queue_query_connection(server), borrow_ssh_client(server) as ssh:
+                        server_job_ids = ssh.check_running_jobs_ids()
                 else:
-                    self.server_job_ids.extend(check_running_jobs_ids())
+                    server_job_ids = check_running_jobs_ids(missing_command_reads_empty=missing_command_reads_empty,
+                                                            on_missing_command=lambda: exempt_127.append(server))
+            except QueueQueryError as e:
+                if e.exit_status == MISSING_COMMAND_EXIT_STATUS and server not in self.answered_queue_servers:
+                    cluster_soft = servers_dict.get(server, dict()).get('cluster_soft')
+                    raise SettingsError(f'The queue status command of server {server} was not found (exit status '
+                                        f'{MISSING_COMMAND_EXIT_STATUS}): {e.output}\nCheck '
+                                        f'check_status_command[{cluster_soft!r}] in your settings: '
+                                        f'{settings["check_status_command"].get(cluster_soft)}')
+                failure = failure or outage_record(now)
+                failure.update(last_attempt=now, output=e.output, exit_status=e.exit_status)
+                self.queue_query_failures[server] = failure
+                tracked = tracked_queue_job_ids(self.job_dict, self.running_jobs, server)
+                elapsed, left = now - failure['since'], max(self.queue_outage_limit - (now - failure['since']), 0)
+                message = (f'Could not read the job queue on {server} for {format_duration(elapsed)} '
+                           f'(exit status {e.exit_status}: {e.output}). ARC keeps the {len(tracked)} jobs it tracks '
+                           f'there as running (and puts off new submissions there if max_simultaneous_jobs is set); '
+                           f'it stops polling {server} in '
+                           f'{format_duration(left)} (queue_outage_limit_hrs).')
+                if failure['last_warning'] is None or now - failure['last_warning'] >= QUEUE_OUTAGE_WARNING_INTERVAL:
+                    logger.warning(message)
+                    failure['last_warning'] = now
+                else:
+                    logger.debug(message)
+                self.server_job_ids.extend(tracked)
+                continue
+            self.queue_query_failures.pop(server, None)
+            if not exempt_127:
+                self.answered_queue_servers.add(server)
+            self.clear_job_query_failures_seen_running(server, server_job_ids)
+            self.server_job_ids.extend(server_job_ids)
+        if specific_server is None:
+            self.server_job_ids.extend(self.job_ids_in_query_cooldown())
+
+    def job_ids_in_query_cooldown(self) -> list:
+        """
+        Get the IDs of the tracked queue jobs whose own status query failed less than ``QUEUE_QUERY_COOLDOWN`` seconds
+        ago.
+
+        The per-job outage record of a server (``job_query_failures``) holds the IDs of the jobs whose status query
+        failed there and, per job, the time of its last failed query. While that time is within the cooldown, the
+        job is not queried again. A server past the outage limit is left out, and so is a job ARC no longer tracks.
+        The main loop matches job IDs without their server, so an ID that a tracked queue job on another server also
+        holds is left out too: that job may have ended, and the ID must not hide it. The job in cooldown is then
+        queried as usual.
+
+        Returns:
+            list: The job IDs, as the job objects hold them.
+        """
+        now = self.queue_clock()
+        tracked = {server: tracked_queue_job_ids(self.job_dict, self.running_jobs, server)
+                   for server in set(self.servers) | set(self.job_query_failures)}
+        job_ids = list()
+        for server, failure in self.job_query_failures.items():
+            if server in self.unreadable_queue_servers:
+                continue
+            attempts = failure.get('job_last_attempts', dict())
+            elsewhere = {str(job_id) for other, ids in tracked.items() if other != server for job_id in ids}
+            job_ids.extend(job_id for job_id in tracked.get(server, list())
+                           if str(job_id) in failure.get('job_ids', set()) and str(job_id) not in elsewhere
+                           and now - attempts.get(str(job_id), failure['last_attempt']) < QUEUE_QUERY_COOLDOWN)
+        return job_ids
+
+    def strand_unreadable_queue_jobs(self):
+        """
+        Leave the jobs of every server whose queue stayed unreadable past the outage limit for a restart.
+
+        Two clocks lead here: the bulk queue query (``queue_query_failures``) and the per-job status query
+        (``job_query_failures``), which a good bulk answer does not reset. A per-job clock forgets each failing job
+        ARC no longer tracks, e.g., a cancelled one, and is dropped once none is left, so a stale one never strands
+        a server. Their jobs are neither ended nor deleted. They move from ``running_jobs`` to ``stranded_jobs``, which
+        restart.yml still lists as running, so the run can finish its other work and a restart polls them again.
+        The server is not queried any more, one ERROR names it, and status.yml records it per species.
+
+        A job queue outage on a server where ARC tracks no queue job strands nothing. It is dropped once no job waits
+        for that server either; while a put-off job waits, its clock runs on, and the job limit check holds the job
+        back at the outage limit (see ``check_max_simultaneous_jobs_limit()``).
+        """
+        outages = [(server, failure, 'job queue') for server, failure in self.queue_query_failures.items()] \
+            + [(server, failure, 'per-job status query') for server, failure in self.job_query_failures.items()]
+        for server, failure, what in outages:
+            if server in self.unreadable_queue_servers:
+                continue
+            jobs = tracked_queue_jobs(self.job_dict, self.running_jobs, server)
+            if what == 'job queue' and not jobs:
+                if all(job.server != server for _, job in self.unsubmitted_jobs):
+                    self.queue_query_failures.pop(server, None)
+                continue
+            if what == 'per-job status query':
+                self.prune_job_query_failure(server, failure.get('job_ids', set())
+                                             & {str(job_id) for _, _, job_id in jobs})
+                if server not in self.job_query_failures:
+                    continue
+            elapsed = self.queue_clock() - failure['since']
+            if elapsed < self.queue_outage_limit:
+                continue
+            for label, job_name, _ in jobs:
+                self.running_jobs[label].remove(job_name)
+                self.stranded_jobs.setdefault(label, list()).append(job_name)
+            job_ids = [job_id for _, _, job_id in jobs]
+            record = {'server': server, 'job_ids': job_ids, 'since': failure['since_wall'],
+                      'last_output': failure['output'], 'exit_status': failure['exit_status']}
+            self.unreadable_queue_servers[server] = record
+            self.queue_query_failures.pop(server, None)
+            self.job_query_failures.pop(server, None)
+            logger.error(f'The {what} on {server} has been unreadable for {format_duration(elapsed)}, past the '
+                         f'{format_duration(self.queue_outage_limit)} limit (queue_outage_limit_hrs). ARC stops '
+                         f'polling {server}. No job was ended or deleted: the {len(job_ids)} jobs ARC tracked there '
+                         f'{job_ids} stay listed as running in {self.restart_path}. Once the queue answers, restart '
+                         f'ARC to pick them up: {self.restart_command()}\n'
+                         f'Last error (exit status {failure["exit_status"]}): {failure["output"]}')
+            for label in {label for label, _, _ in jobs}:
+                if label in self.output:
+                    names = [job_name for job_label, job_name, _ in jobs if job_label == label]
+                    self.output[label].setdefault('unreadable_queue', dict())[server] = \
+                        dict(record, job_ids=[job_id for job_label, _, job_id in jobs if job_label == label])
+                    self.output[label]['errors'] += UNREADABLE_QUEUE_ERROR.format(server=server, job_names=names)
+            self.save_restart_dict()
+
+    def unfinished_job_names(self, label: str) -> list[str]:
+        """
+        Get the names of a species' jobs that have not finished: those ARC polls, those left on an unreadable queue,
+        and those waiting for an unreadable queue to answer before they are submitted.
+
+        A family of jobs (e.g., conformers or TS guesses) is done only when none of its members is in this list.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            list[str]: The job names.
+        """
+        return list(self.running_jobs.get(label, list())) + list(self.stranded_jobs.get(label, list())) \
+            + list(self.deferred_jobs.get(label, list()))
+
+    def keeps_local_check_files(self) -> bool:
+        """
+        Whether the local check files must outlive the run.
+
+        A job left on an unreadable queue, or held back from one, may read a check file from the local ``calcs``
+        tree after a restart, e.g., as the initial guess its restart uploads.
+
+        Returns:
+            bool: ``True`` if any queue was left unreadable or any job was left for a restart.
+        """
+        return bool(self.unreadable_queue_servers or self.stranded_jobs)
+
+    def restart_command(self) -> str:
+        """
+        Get the command that restarts this project from its restart file.
+
+        Returns:
+            str: The command.
+        """
+        return shlex.join([sys.executable, os.path.join(ARC_PATH, 'ARC.py'), self.restart_path])
+
+    def cleanable_remote_project_paths(self) -> dict:
+        """
+        Get the remote project paths whose check files may be deleted once the run ends.
+
+        A server whose queue was unreadable past the outage limit still runs the jobs ARC left there for a restart,
+        so its check files are kept.
+
+        Returns:
+            dict: Keys are server names, values are the respective remote paths of the project's directory.
+        """
+        return {server: path for server, path in self.remote_project_paths.items()
+                if server not in self.unreadable_queue_servers}
+
+    def refuse_job_on_unreadable_queue(self, label: str, job: JobAdapter):
+        """
+        Hold back a job that was about to be submitted to a server whose queue stayed unreadable past the outage limit.
+
+        The job is not submitted. It moves from ``running_jobs`` to ``stranded_jobs`` and stays in restart.yml with
+        no job ID, and a restart submits it (see ``submit_unsubmitted_jobs()``). A new job gets its row in
+        initiated_jobs.csv with no job ID and is marked ``restarted``; a restored job already has its row.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The job that was not submitted.
+        """
+        if not job.restarted:
+            job.write_initiated_job_to_csv_file()
+            job.restarted = True
+        for tracked in (self.running_jobs, self.deferred_jobs):
+            if job.job_name in tracked.get(label, list()):
+                tracked[label].remove(job.job_name)
+        self.stranded_jobs.setdefault(label, list()).append(job.job_name)
+        logger.error(f'Did not submit job {job.job_name} of {label} to {job.server}: its queue has been unreadable '
+                     f'past the outage limit, so ARC could not track the job. Nothing was submitted; the job stays '
+                     f'in {self.restart_path} and a restart submits it: {self.restart_command()}')
+        if label in self.output:
+            self.output[label]['errors'] += HELD_BACK_JOB_ERROR.format(job_name=job.job_name, server=job.server)
+        self.save_restart_dict()
+
+    def record_job_query_failure(self, job: JobAdapter):
+        """
+        Time a failed per-job status query on the job's server.
+
+        A per-job query can keep failing while the bulk query of the same server answers, so it has its own outage
+        clock in ``job_query_failures``, started at its first failure, with the IDs of the jobs whose query
+        failed (job names repeat across species, IDs on one server do not) and the time of each one's last failed
+        query. A bulk answer does not stop it; it stops once each of those jobs has answered a per-job query (see
+        ``clear_job_query_failure()``). The record keeps the output and exit status of the job's last failed query,
+        which the outage ERROR and status.yml report. Past the outage limit ``strand_unreadable_queue_jobs()`` leaves
+        the server's jobs for a restart, as it does for an unreadable queue. Each failed job is not queried again for
+        ``QUEUE_QUERY_COOLDOWN`` seconds after its own last failure (see ``job_ids_in_query_cooldown()``), and the
+        main loop sleeps after this pass as though no job ended.
+
+        Args:
+            job (JobAdapter): The job whose status query failed.
+        """
+        if job.execution_type == 'incore' or job.server is None:
+            return
+        self.job_query_failed = True
+        failure = self.job_query_failures.setdefault(job.server, outage_record(self.queue_clock()))
+        failure.setdefault('job_ids', set()).add(str(job.job_id))
+        failure.setdefault('job_last_attempts', dict())[str(job.job_id)] = self.queue_clock()
+        failure.setdefault('job_since', dict()).setdefault(
+            str(job.job_id), (self.queue_clock(), datetime.datetime.now().isoformat(timespec='seconds')))
+        error = getattr(job, 'last_queue_query_error', None)
+        failure.update(last_attempt=self.queue_clock(),
+                       exit_status=error.exit_status if error is not None else None,
+                       output=error.output if error is not None
+                       else f'the status query of job {job.job_name} ({job.job_id}) failed')
+
+    def clear_job_query_failure(self, job: JobAdapter):
+        """
+        Note that a job's per-job status query answered.
+
+        The server's per-job outage clock keeps running while any other job whose query failed there is still
+        unresolved, so a job that answers does not restart the clock of one that keeps failing. The clock stops
+        once no such job is left.
+
+        Args:
+            job (JobAdapter): The job whose status query answered.
+        """
+        failure = self.job_query_failures.get(job.server)
+        if failure is None or job.execution_type == 'incore':
+            return
+        self.prune_job_query_failure(job.server, failure.get('job_ids', set()) - {str(job.job_id)})
+
+    def clear_job_query_failures_seen_running(self, server: str, server_job_ids: list):
+        """
+        Resolve the per-job query failures of the jobs a good bulk answer lists as running.
+
+        A job the bulk query lists is not queried on its own, so its earlier per-job failure would never clear and
+        would strand the server later. The bulk answer settles its status, so its ID leaves the server's per-job
+        outage record, as does the ID of a failing job ARC no longer tracks (e.g., a cancelled one). The record
+        goes once no failing job is left in it.
+
+        Args:
+            server (str): The server name.
+            server_job_ids (list): The job IDs the server's bulk query listed.
+        """
+        failure = self.job_query_failures.get(server)
+        if failure is None:
+            return
+        tracked = {str(job_id) for _, _, job_id in tracked_queue_jobs(self.job_dict, self.running_jobs, server)}
+        self.prune_job_query_failure(server, (failure.get('job_ids', set()) & tracked)
+                                     - {str(job_id) for job_id in server_job_ids})
+
+    def prune_job_query_failure(self, server: str, job_ids: set):
+        """
+        Keep only the given unresolved jobs in a server's per-job outage record, and time the outage from them.
+
+        The outage starts at the earliest first failure of the jobs still unresolved, so a job that answers does not
+        pass its start on to a job that began failing later. The record goes once no job is left.
+
+        Args:
+            server (str): The server name.
+            job_ids (set): The IDs (as strings) of the jobs whose status query is still unresolved there.
+        """
+        failure = self.job_query_failures.get(server)
+        if failure is None:
+            return
+        if not job_ids:
+            del self.job_query_failures[server]
+            return
+        failure['job_ids'] = set(job_ids)
+        for key in ('job_since', 'job_last_attempts'):
+            failure[key] = {job_id: value for job_id, value in failure.get(key, dict()).items() if job_id in job_ids}
+        if failure['job_since']:
+            failure['since'], failure['since_wall'] = min(failure['job_since'].values())
+
+    def defer_job_on_unreadable_queue(self, label: str, job: JobAdapter):
+        """
+        Put off a job that was about to be submitted to a server whose queue cannot be read right now.
+
+        The server sets ``max_simultaneous_jobs``, so ARC must count its jobs before it submits more, and the count
+        is unknown. The call does not wait for the queue: the job moves from ``running_jobs`` to ``deferred_jobs``
+        and joins ``unsubmitted_jobs``, which the main loop tries again on each pass (see
+        ``submit_unsubmitted_jobs()``). Other servers, incore jobs, pipes, reports and restart saves go on
+        meanwhile. restart.yml lists the job with no job ID, so a restart submits it. A new job gets its row in
+        initiated_jobs.csv with no job ID and is marked ``restarted``, since the row count numbers the next job.
+        A job already put off is only queued again for the next pass, with no log line and no restart save.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The job that was not submitted yet.
+        """
+        if not job.restarted:
+            job.write_initiated_job_to_csv_file()
+            job.restarted = True
+        changed = False
+        if job.job_name in self.running_jobs.get(label, list()):
+            self.running_jobs[label].remove(job.job_name)
+            changed = True
+        if job.job_name not in self.deferred_jobs.get(label, list()):
+            self.deferred_jobs.setdefault(label, list()).append(job.job_name)
+            changed = True
+        if all(queued is not job for _, queued in self.unsubmitted_jobs):
+            self.unsubmitted_jobs.append((label, job))
+        if not changed:
+            return
+        logger.info(f'Put off job {job.job_name} of {label}: the queue on {job.server} cannot be read now, so the '
+                    f'number of jobs there is unknown. ARC submits it once the queue answers.')
+        self.save_restart_dict()
+
+    def submit_unsubmitted_jobs(self):
+        """
+        Submit the queue jobs that were put off or never submitted, as ``run_job()`` would.
+
+        These are jobs restored from restart.yml with no job ID, held back on a server whose queue was unreadable
+        past the outage limit (see ``refuse_job_on_unreadable_queue()``), and jobs put off while a server's queue
+        could not be read (see ``defer_job_on_unreadable_queue()``). Each job is submitted once, put off again while
+        its queue stays unreadable, or held back for a restart once the outage limit passes. A submitted job moves
+        to ``running_jobs`` and gets one more row in initiated_jobs.csv, now with its job ID. A job of a species
+        marked unconverged meanwhile is dropped, not submitted, since the main loop no longer tracks that species.
+        """
+        pending, self.unsubmitted_jobs = self.unsubmitted_jobs, list()
+        dropped = False
+        for label, job in pending:
+            if label in self.output and self.output[label]['convergence'] is False:
+                for tracked in (self.running_jobs, self.deferred_jobs):
+                    if job.job_name in tracked.get(label, list()):
+                        tracked[label].remove(job.job_name)
+                if label in self.deferred_jobs and not self.deferred_jobs[label]:
+                    del self.deferred_jobs[label]
+                logger.info(f'Dropped job {job.job_name} of {label}, which was held back: {label} did not converge.')
+                dropped = True
+                continue
+            if job.server is not None:
+                if job.server not in self.servers:
+                    self.servers.append(job.server)
+                if job.remote_project_path and not self.remote_project_paths.get(job.server):
+                    self.remote_project_paths[job.server] = job.remote_project_path
+            admission = self.check_max_simultaneous_jobs_limit(job.server)
+            if admission == REFUSE:
+                self.refuse_job_on_unreadable_queue(label=label, job=job)
+                continue
+            if admission == DEFER:
+                self.defer_job_on_unreadable_queue(label=label, job=job)
+                continue
+            if job.job_name in self.deferred_jobs.get(label, list()):
+                self.deferred_jobs[label].remove(job.job_name)
+                if not self.deferred_jobs[label]:
+                    del self.deferred_jobs[label]
+            if job.job_name not in self.running_jobs.get(label, list()):
+                self.running_jobs.setdefault(label, list()).append(job.job_name)
+            logger.info(f'Submitting job {job.job_name} of {label}, which was held back.')
+            job.execute()
+            job.write_initiated_job_to_csv_file()
+            self.warn_on_collapsible_unrestricted_reference(label=label, job=job)
+            self.save_restart_dict()
+        if dropped:
+            self.save_restart_dict()
 
     def get_completed_incore_jobs(self):
         """
@@ -4975,7 +6439,9 @@ class Scheduler(object):
             logger.info(f'conformers:')
             self.delete_all_species_jobs(label)
             self.species_dict[label].conformers = confs
+            self.species_dict[label].conformers_before_opt = tuple(confs)
             self.species_dict[label].conformer_energies = [None] * len(confs)
+            self.output[label]['conformers'] += CONFORMER_SET_REPLACED_NOTE
             self.job_dict[label]['conf_opt'] = dict()  # initialize the conformer job dictionary
             for i, xyz in enumerate(self.species_dict[label].conformers):
                 self.run_job(label=label,
@@ -5026,62 +6492,81 @@ class Scheduler(object):
                          f"{label} was troubleshooted for "
                          f"{self.species_dict[label].rotors_dict[job.rotor_index]['trsh_counter']} times, "
                          f"will not troubleshoot for the {next_with_ordinal} time.")
+            if 'change conformer' in methods:
+                self.flag_unresolved_lower_conformer(
+                    label=label, rotor_index=job.rotor_index, energy_gap=methods.get('energy_gap'),
+                    reason=f'the rotor was already troubleshot {max_rotor_trsh} times (max_rotor_trsh)')
             return trsh_success, actual_actions
         # Increase the trsh_counter.
         self.species_dict[label].rotors_dict[job.rotor_index]['trsh_counter'] += 1
 
         # A lower conformation was found.
         if 'change conformer' in methods:
-            # We will delete all of the jobs no matter we can successfully change to the conformer.
-            # If success, we have to cancel jobs to avoid conflicts
-            # If not succeed, we are in a situation that we find a lower conformer, but either
-            # this is an incorrect conformer or we have applied this troubleshooting before, but it
-            # didn't yield a good result.
-            self.delete_all_species_jobs(label)
-
+            # A conformer already tried is not tried again, and the current results are kept (flagged).
+            # Otherwise, all jobs are deleted to avoid conflicts, even if the new conformer is not isomorphic.
             new_xyz = methods['change conformer']
-            # Check if the same conformer is used in previous troubleshooting
-            for used_trsh_method in used_trsh_methods:
-                if 'change conformer' in used_trsh_method \
-                        and compare_confs(new_xyz, used_trsh_method['change conformer']):
-                    # Find we have used this conformer for troubleshooting. Invalid the troubleshooting.
-                    logger.error(f'The change conformer method for {label} is invalid. '
-                                 f'ARC will not change to the same conformer twice.')
-                    break
+            if any('change conformer' in used_trsh_method
+                   and compare_confs(new_xyz, used_trsh_method['change conformer'])
+                   for used_trsh_method in used_trsh_methods):
+                logger.error(f'The change conformer method for {label} is invalid. '
+                             f'ARC will not change to the same conformer twice.')
+                self.flag_unresolved_lower_conformer(
+                    label=label, rotor_index=job.rotor_index, energy_gap=methods.get('energy_gap'),
+                    reason='the scan proposed the same lower conformer that was already tried')
+                return trsh_success, actual_actions
+            pre_e_elect, pre_level = self.get_latest_geo_job_e_elect(label)
+            pre_xyz = self.species_dict[label].final_xyz
+            change_index = 1 + sum('change conformer' in method
+                                   for rotor in self.species_dict[label].rotors_dict.values()
+                                   for method in rotor['trsh_methods'])
+            self.delete_all_species_jobs(label)
+            # If 'change conformer' is not used, check for isomorphism.
+            if self.species_dict[label].is_ts:
+                is_isomorphic = True
             else:
-                # If 'change conformer' is not used, check for isomorphism.
-                if self.species_dict[label].is_ts:
-                    is_isomorphic = True
+                is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
+                    allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
+                    xyz=new_xyz)
+            if is_isomorphic:
+                self.species_dict[label].final_xyz = new_xyz
+                self.species_dict[label].initial_xyz = new_xyz
+                self.output[label]['geo_e_elect'], self.output[label]['geo_level'] = None, None
+                self.output[label]['conformer_verified'] = None
+                self.output[label]['conformer_verified_cause'] = ''
+                # Remove all completed rotor calculation information.
+                for rotor in self.species_dict[label].rotors_dict.values():
+                    # Don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is.
+                    rotor['scan_path'] = ''
+                    rotor['invalidation_reason'] = ''
+                    rotor['success'] = None
+                    rotor['symmetry'] = None
+                    if rotor['scan'] == torsions_to_scans(job.torsions)[0]:
+                        rotor['times_dihedral_set'] += 1
+                    # We can save the change conformer trsh info, but other trsh methods like
+                    # freezing or increasing scan resolution can be cleaned, otherwise, they may
+                    # not be troubleshot.
+                    rotor['trsh_methods'] = [trsh_method for trsh_method in rotor['trsh_methods']
+                                             if 'change conformer' in trsh_method]
+                trsh_success = True
+                actual_actions = {'change conformer': new_xyz,
+                                  'energy_gap': methods.get('energy_gap'),
+                                  'pre_xyz': pre_xyz,
+                                  'pre_e_elect': pre_e_elect,
+                                  'pre_level': pre_level,
+                                  'torsion': torsions_to_scans(job.torsions)[0],
+                                  'verified': None,
+                                  'change_index': change_index,
+                                  }
+                # Attached before the re-opt is spawned, so the restart file the re-opt saves holds the baseline.
+                self.species_dict[label].rotors_dict[job.rotor_index]['trsh_methods'].append(actual_actions)
+                # Re-run opt (or composite) on the new initial_xyz with the desired dihedral.
+                if not self.composite_method:
+                    self.run_opt_job(label)
                 else:
-                    is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
-                        allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
-                        xyz=new_xyz)
-                if is_isomorphic:
-                    self.species_dict[label].final_xyz = new_xyz
-                    # Remove all completed rotor calculation information.
-                    for rotor in self.species_dict[label].rotors_dict.values():
-                        # Don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is.
-                        rotor['scan_path'] = ''
-                        rotor['invalidation_reason'] = ''
-                        rotor['success'] = None
-                        rotor['symmetry'] = None
-                        if rotor['scan'] == torsions_to_scans(job.torsions)[0]:
-                            rotor['times_dihedral_set'] += 1
-                        # We can save the change conformer trsh info, but other trsh methods like
-                        # freezing or increasing scan resolution can be cleaned, otherwise, they may
-                        # not be troubleshot.
-                        rotor['trsh_methods'] = [trsh_method for trsh_method in rotor['trsh_methods']
-                                                 if 'change conformer' in trsh_method]
-                    # Re-run opt (or composite) on the new initial_xyz with the desired dihedral.
-                    if not self.composite_method:
-                        self.run_opt_job(label)
-                    else:
-                        self.run_composite_job(label)
-                    trsh_success = True
-                    actual_actions = methods
-                    return trsh_success, actual_actions
+                    self.run_composite_job(label)
+                return trsh_success, actual_actions
 
-            # The conformer is wrong, or we are in a loop changing to the same conformers again.
+            # The conformer is not isomorphic with the species.
             self.output[label]['errors'] += \
                 f'A lower conformer was found for {label} via a torsion mode, ' \
                 f'but it is not isomorphic with the 2D graph representation ' \
@@ -5338,6 +6823,19 @@ class Scheduler(object):
                          cpu_cores=cpu_cores,
                          shift=shift,
                          )
+        elif self.species_dict[label].is_ts and job.job_type == 'scan':
+            # A failed scan says nothing about whether the saddle point is right:
+            # keep the TS guess, and leave only this rotor as a harmonic mode.
+            rotor = (self.species_dict[label].rotors_dict or dict()).get(job.rotor_index)
+            if rotor is not None:
+                reason = f'Scan job {job.job_name} failed ({job.job_status[1]["error"]}) ' \
+                         f'and could not be troubleshot; '
+                rotor['success'] = False
+                if reason not in (rotor.get('invalidation_reason') or ''):
+                    rotor['invalidation_reason'] = (rotor.get('invalidation_reason') or '') + reason
+            logger.warning(f'Could not troubleshoot scan job {job.job_name} of TS {label} '
+                           f'(rotor {rotor["pivots"] if rotor is not None else job.rotor_index}). '
+                           f'Leaving this rotor as a harmonic mode; not switching the TS guess.')
         elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted \
                 and conformer is None:
             # Only switch TS guess when a full optimization fails, not when a single
@@ -5372,49 +6870,93 @@ class Scheduler(object):
         if not num_of_conformers:
             raise SchedulerError('The troubleshoot_conformer_isomorphism() method got zero conformers.')
 
-        # use the first conformer of a species to determine applicable troubleshooting method
-        job = self.job_dict[label]['conf_opt'][0]
+        if CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED in self.output[label]['conformers']:
+            logger.error(f'ARC already attempted all built-in conformer isomorphism troubleshoot methods for species '
+                         f'{label}. NOT optimizing this species.')
+            return None
 
-        level_of_theory = trsh_conformer_isomorphism(software=job.job_adapter, ess_trsh_methods=job.ess_trsh_methods)
+        # A restart restores only the conformer jobs that were still running, so conformer 0 may have no job.
+        conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
+        job_adapter, ess_trsh_methods = self.get_conformer_isomorphism_trsh_basis(label)
+
+        level_of_theory = trsh_conformer_isomorphism(software=job_adapter, ess_trsh_methods=ess_trsh_methods)
 
         if level_of_theory is None:
             logger.error(f'ARC has attempted all built-in conformer isomorphism troubleshoot methods for species '
                          f'{label}. No conformer for this species was found to be isomorphic with the 2D graph '
                          f'representation {self.species_dict[label].mol.copy(deep=True).to_smiles()}. '
                          f'NOT optimizing this species.')
-            self.output[label]['conformers'] += 'Error: No conformer was found to be isomorphic with the 2D ' \
-                                                'graph representation!; '
+            self.output[label]['conformers'] += CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED
         else:
-            logger.info(f'Troubleshooting conformer job in {job.job_adapter} using {level_of_theory} for species {label}')
+            logger.info(f'Troubleshooting conformer job in {job_adapter} using {level_of_theory} for species {label}')
+            species = self.species_dict[label]
+            xyzs = species.conformers_before_opt if species.conformers_before_opt is not None else species.conformers
 
             # rerun conformer job at higher level for all conformers
-            for conformer in range(0, num_of_conformers):
-                if conformer >= len(self.species_dict[label].conformers_before_opt):
-                    break
-                # initial xyz before troubleshooting
-                xyz = self.species_dict[label].conformers_before_opt[conformer]
-
-                job = self.job_dict[label]['conf_opt'][conformer]
-                if 'conf_opt: ' + level_of_theory not in job.ess_trsh_methods:
-                    job.ess_trsh_methods.append('conf_opt: ' + level_of_theory)
+            for conformer in range(min(num_of_conformers, len(xyzs))):
+                job = conf_opt_jobs.get(conformer)
+                if job is not None:
+                    conformer_job_adapter, conformer_trsh_methods = job.job_adapter, job.ess_trsh_methods
+                    if 'conformer ' + level_of_theory not in conformer_trsh_methods:
+                        conformer_trsh_methods.append('conformer ' + level_of_theory)
+                    if 'conf_opt: ' + level_of_theory not in conformer_trsh_methods:
+                        conformer_trsh_methods.append('conf_opt: ' + level_of_theory)
+                else:
+                    conformer_job_adapter = job_adapter
+                    conformer_trsh_methods = get_respawned_conformer_trsh_methods(ess_trsh_methods, level_of_theory)
+                if conformer < len(species.conformer_energies):
+                    species.conformer_energies[conformer] = None
 
                 self.run_job(label=label,
-                             xyz=xyz,
+                             xyz=xyzs[conformer],
                              level_of_theory=level_of_theory,
-                             job_adapter=job.job_adapter,
+                             job_adapter=conformer_job_adapter,
                              job_type='conf_opt',
-                             ess_trsh_methods=job.ess_trsh_methods,
+                             ess_trsh_methods=conformer_trsh_methods,
                              conformer=conformer,
                              )
+            self.output[label]['conformers'] += CONFORMER_ISOMORPHISM_TRSH_NOTE.format(level=level_of_theory)
+            self.save_restart_dict()
+
+    def delete_stranded_job(self, label: str, job: JobAdapter):
+        """
+        Delete a submitted job that was left on a queue which stayed unreadable past the outage limit.
+
+        The server may still be unreachable, so a failure to delete the job does not stop the caller. Nor can a
+        delete command that did not fail confirm that the job ended: the queue that would show it could not be read,
+        and ``JobAdapter.delete()`` does not report a command that the server rejected. Either way one warning names
+        the job, its ID and its server, says whether the delete command failed or was only sent, and that the job
+        may still be running there.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The stranded job.
+        """
+        try:
+            job.delete()
+        except Exception as e:
+            outcome = f'the delete command failed: {e}'
+        else:
+            outcome = 'ARC sent the delete command but cannot confirm that the job ended'
+        logger.warning(f'Stopped tracking job {job.job_name} ({job.job_id}) of {label} on {job.server}, which was '
+                       f'left on a queue that could not be read; {outcome}. It may still be running there.')
 
     def delete_all_species_jobs(self, label: str):
         """
         Delete all jobs of a species/TS.
 
+        Jobs put off while a queue could not be read are dropped too, so none of them is submitted later.
+        Jobs left on a queue that stayed unreadable past the outage limit (``stranded_jobs``) are dropped as well,
+        so restart.yml no longer lists them and a restart neither polls nor submits them. A stranded job that was
+        submitted is deleted on its server like a running job; if that fails, e.g., because the server still cannot
+        be reached, a warning names the job and its ID, which may still run there, and the job is dropped anyway.
+        A stranded job that was never submitted has nothing to delete on a server.
+
         Args:
             label (str): The species label.
         """
         logger.debug(f'Deleting all jobs for species {label}')
+        stranded = self.stranded_jobs.get(label, list())
         for value in self.job_dict[label].values():
             if value in ['conf_opt', 'tsg']:
                 for job_name, job in self.job_dict[label][value].items():
@@ -5427,7 +6969,12 @@ class Scheduler(object):
                         and job.execution_type != 'incore':
                     logger.info(f'Deleted job {job_name}')
                     job.delete()
+                elif job.job_name in stranded and job.execution_type != 'incore' and job.job_id is not None:
+                    self.delete_stranded_job(label=label, job=job)
         self.running_jobs[label] = list()
+        self.deferred_jobs.pop(label, None)
+        self.stranded_jobs.pop(label, None)
+        self.unsubmitted_jobs = [(job_label, job) for job_label, job in self.unsubmitted_jobs if job_label != label]
         self.output[label]['paths'] = {
             key: list() if key in ('irc', 'irc_directions') else ''
             for key in self.output[label]['paths'].keys()
@@ -5459,7 +7006,7 @@ class Scheduler(object):
                     if irc_label in self.output:
                         del self.output[irc_label]
                     if irc_label in self.species_dict:
-                        self.species_list = [spc for spc in self.species_list if spc.label != irc_label]
+                        self.species_list[:] = [spc for spc in self.species_list if spc.label != irc_label]
                         del self.species_dict[irc_label]
                     if irc_label in self.unique_species_labels:
                         self.unique_species_labels.remove(irc_label)
@@ -5528,6 +7075,10 @@ class Scheduler(object):
                     job = job_factory(**job_description)
                     if isinstance(restricted_used, (bool, list)):
                         job.restricted_used = restricted_used
+                    unsubmitted = job.execution_type != 'incore' and job.job_id is None \
+                        and job.job_status[0] == 'initializing'
+                    if unsubmitted:
+                        self.unsubmitted_jobs.append((spc_label, job))
                     if spc_label not in self.job_dict.keys():
                         self.job_dict[spc_label] = dict()
                     if ('conformer' not in job_description or job_description['conformer'] is None) \
@@ -5555,7 +7106,8 @@ class Scheduler(object):
                         if 'tsg' not in self.job_dict[spc_label].keys():
                             self.job_dict[spc_label]['tsg'] = dict()
                         self.job_dict[spc_label]['tsg'][int(job_description['tsg'])] = job
-                    self.server_job_ids.append(job.job_id)
+                    if not unsubmitted:
+                        self.server_job_ids.append(job.job_id)
             if self.job_dict:
                 content = 'Restarting ARC, tracking the following jobs spawned in a previous session:'
                 for spc_label in self.job_dict.keys():
@@ -5583,8 +7135,12 @@ class Scheduler(object):
             self.restart_dict['output_multi_spc'] = self.output_multi_spc
             self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
             self.restart_dict['running_jobs'] = dict()
+            running_jobs = {label: list(job_names) for label, job_names in self.running_jobs.items()}
+            for held in (self.stranded_jobs, self.deferred_jobs):
+                for label, job_names in held.items():
+                    running_jobs.setdefault(label, list()).extend(job_names)
             for spc in self.species_dict.values():
-                if spc.label in self.running_jobs:
+                if spc.label in running_jobs:
                     # A conformer or TS-guess name in running_jobs whose job object is not in job_dict
                     # cannot be serialized or polled. Raising here would kill the run over one untracked
                     # job, so warn and drop it from both the restart file and running_jobs.
@@ -5595,19 +7151,21 @@ class Scheduler(object):
                             if job is None:
                                 logger.warning(f'Job {job_name} of species {spc.label} is listed as running '
                                                f'but has no {key} entry in job_dict; dropping it.')
-                                self.running_jobs[spc.label].remove(job_name)
+                                for tracked in (self.running_jobs, self.stranded_jobs, self.deferred_jobs):
+                                    if job_name in tracked.get(spc.label, list()):
+                                        tracked[spc.label].remove(job_name)
                                 continue
                             dicts.append(job.as_dict())
                         return dicts
                     self.restart_dict['running_jobs'][spc.label] = \
                         [self.job_dict[spc.label][job_name.rsplit('_', 1)[0]][job_name].as_dict()
-                         for job_name in self.running_jobs[spc.label]
+                         for job_name in running_jobs[spc.label]
                          if not is_conformer_job(job_name) and 'tsg' not in job_name] \
-                        + _conformer_job_dicts('conf_opt', [n for n in self.running_jobs[spc.label]
+                        + _conformer_job_dicts('conf_opt', [n for n in running_jobs[spc.label]
                                                             if 'conf_opt' in n]) \
-                        + _conformer_job_dicts('conf_sp', [n for n in self.running_jobs[spc.label]
+                        + _conformer_job_dicts('conf_sp', [n for n in running_jobs[spc.label]
                                                            if 'conf_sp' in n]) \
-                        + _conformer_job_dicts('tsg', [n for n in self.running_jobs[spc.label] if 'tsg' in n])
+                        + _conformer_job_dicts('tsg', [n for n in running_jobs[spc.label] if 'tsg' in n])
             save_yaml_file(path=self.restart_path, content=self.restart_dict)    
     
     def make_reaction_labels_info_file(self):
@@ -5782,6 +7340,10 @@ class Scheduler(object):
                                 self.output[species.label][key] = None
                             else:
                                 self.output[species.label][key] = ''
+                    if 'conformer_verified' not in self.output[species.label]:
+                        self.output[species.label]['conformer_verified'] = None
+                    if 'conformer_verified_cause' not in self.output[species.label]:
+                        self.output[species.label]['conformer_verified_cause'] = ''
 
     def _does_output_dict_contain_info(self):
         """
@@ -5816,6 +7378,7 @@ class Scheduler(object):
                 ts_dict['run_time'] = str(species.run_time)
                 ts_dict['successful_methods'] = species.successful_methods
                 ts_dict['unsuccessful_methods'] = species.unsuccessful_methods
+                ts_dict['skipped_methods'] = species.skipped_methods
                 ts_dict['chosen_ts'] = species.chosen_ts
                 ts_dict['chosen_ts_list'] = species.chosen_ts_list
                 ts_dict['ts_guesses_exhausted'] = species.ts_guesses_exhausted
@@ -5851,22 +7414,129 @@ class Scheduler(object):
         content[label] = self.species_dict[label].e_elect
         save_yaml_file(path=path, content=content)
 
-    def check_max_simultaneous_jobs_limit(self, server: str | None):
+    def check_max_simultaneous_jobs_limit(self, server: str | None) -> Literal['submit', 'defer', 'refuse']:
         """
         Check if the number of running jobs on the server is not above the set server limit.
 
+        While the server's queue answers and is full, ARC waits for a slot, as before. While the queue cannot be
+        read the count is unknown, as it holds only the jobs ARC tracks there, so ARC does not wait: the job is put
+        off and the main loop goes on. Once the queue has been unreadable past the outage limit, the job is held
+        back for a restart.
+
         Args:
             server (str): The server name.
+
+        Returns:
+            Literal['submit', 'defer', 'refuse']: ``SUBMIT`` if a job may be submitted to the server now, ``DEFER``
+                while its queue cannot be read, and ``REFUSE`` once its queue was unreadable past the outage limit.
         """
+        if server is not None and server in self.unreadable_queue_servers:
+            return REFUSE
         if server is not None and 'max_simultaneous_jobs' in servers_dict[server]:
             continue_lopping = True
             while continue_lopping:
                 self.get_server_job_ids(specific_server=server)
+                failure = self.queue_query_failures.get(server)
+                if failure is not None:
+                    self.get_server_job_ids()
+                    return REFUSE if self.queue_clock() - failure['since'] >= self.queue_outage_limit else DEFER
                 if len(self.server_job_ids) >= servers_dict[server]['max_simultaneous_jobs']:
                     time.sleep(90)
                 else:
                     continue_lopping = False
             self.get_server_job_ids()
+        return SUBMIT
+
+
+def tracked_queue_jobs(job_dict: dict,
+                       running_jobs: dict,
+                       server: str,
+                       ) -> list[tuple[str, str, int | str]]:
+    """
+    Get the queue jobs ARC tracks as running on a server.
+
+    Args:
+        job_dict (dict): The scheduler's job objects, keyed by label, then job type, then job name or index.
+        running_jobs (dict): The names of the running jobs, keyed by label.
+        server (str): The server name.
+
+    Returns:
+        list[tuple[str, str, int | str]]: The (label, job name, job ID) of each job. Incore jobs and jobs without an
+                                          ID are left out.
+    """
+    jobs = list()
+    for label, job_names in running_jobs.items():
+        for typed_jobs in job_dict.get(label, dict()).values():
+            if not isinstance(typed_jobs, dict):
+                continue
+            for job in typed_jobs.values():
+                if getattr(job, 'job_name', None) in job_names and job.server == server \
+                        and job.execution_type != 'incore' and job.job_id is not None:
+                    jobs.append((label, job.job_name, job.job_id))
+    return jobs
+
+
+def tracked_queue_job_ids(job_dict: dict,
+                          running_jobs: dict,
+                          server: str,
+                          ) -> list:
+    """
+    Get the IDs of the queue jobs ARC tracks as running on a server.
+
+    Args:
+        job_dict (dict): The scheduler's job objects, keyed by label, then job type, then job name or index.
+        running_jobs (dict): The names of the running jobs, keyed by label.
+        server (str): The server name.
+
+    Returns:
+        list: The job IDs. Incore jobs and jobs without an ID are left out.
+    """
+    return [job_id for _, _, job_id in tracked_queue_jobs(job_dict, running_jobs, server)]
+
+
+def outage_record(now: float) -> dict:
+    """
+    Start the record of a server's queue outage.
+
+    Args:
+        now (float): The scheduler's queue clock reading at the outage's first failure.
+
+    Returns:
+        dict: The record: when the outage began (clock and wall time), the last attempt and warning, and the last
+              error.
+    """
+    return {'since': now, 'since_wall': datetime.datetime.now().isoformat(timespec='seconds'), 'last_attempt': now,
+            'last_warning': None, 'output': '', 'exit_status': None}
+
+
+def strip_unreadable_queue_errors(errors: str) -> str:
+    """
+    Remove the errors an unreadable queue wrote into a species' status, which a restart makes stale.
+
+    Args:
+        errors (str): The species' ``errors`` entry in the output dict.
+
+    Returns:
+        str: The errors without those of ``UNREADABLE_QUEUE_ERROR`` and ``HELD_BACK_JOB_ERROR``.
+    """
+    for template in (UNREADABLE_QUEUE_ERROR, HELD_BACK_JOB_ERROR):
+        pattern = re.sub(r'\\\{\w+\\\}', '[^;]+?', re.escape(template))
+        errors = re.sub(pattern, '', errors)
+    return errors
+
+
+def format_duration(seconds: float) -> str:
+    """
+    Format a duration in whole hours and minutes.
+
+    Args:
+        seconds (float): The duration in seconds.
+
+    Returns:
+        str: E.g., ``'3 h 49 min'`` or ``'21 min'``.
+    """
+    hours, minutes = divmod(int(max(seconds, 0) // 60), 60)
+    return f'{hours} h {minutes} min' if hours else f'{minutes} min'
 
 
 def species_has_freq(species_output_dict: dict,

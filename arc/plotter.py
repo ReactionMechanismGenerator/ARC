@@ -801,10 +801,24 @@ def _get_thermo_lib_duplicate(adjlist: str,
     return None
 
 
+def library_comment_text(text: str) -> str:
+    """
+    Make free text safe to place inside a quoted string of a generated RMG library file.
+
+    Args:
+        text (str): The text.
+
+    Returns:
+        str: The text on one line, without double quotes or backslashes.
+    """
+    return ' '.join(text.replace('\\', '/').replace('"', "'").split())
+
+
 def save_thermo_lib(species_list: list,
                     path: str,
                     name: str,
                     lib_long_desc: str,
+                    not_verified: dict[str, str] | None = None,
                     ) -> None:
     """
     Save an RMG thermo library of all species.
@@ -822,7 +836,10 @@ def save_thermo_lib(species_list: list,
         path (str): The file path where the library should be created.
         name (str): The library's name (or project's name).
         lib_long_desc (str): A multiline string with level of theory description.
+        not_verified (dict[str, str], optional): Keys are labels of not verified species, values are the text
+                                                 stated in their entry comment.
     """
+    not_verified = {label: library_comment_text(text) for label, text in (not_verified or dict()).items()}
     thermo_txt = f"""#!/usr/bin/env python
 # encoding: utf-8
 
@@ -854,13 +871,17 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
                 f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
             )
             comment = spc.thermo.comment or ''
+            long_desc = spc.long_thermo_description
+            if spc.label in not_verified:
+                comment = f'{not_verified[spc.label]} {comment}'.strip()
+                long_desc = f'{not_verified[spc.label]}\n{long_desc}'
             thermo_txt += f"""entry(
     index = {i + 1},
     label = "{spc.label}",
     molecule = \"\"\"\n{species_dict[spc.label]}\n\"\"\",
     thermo = {spc.thermo.data},
     shortDesc = u\"\"\"{comment}\"\"\",
-    longDesc = u\"\"\"\n{spc.long_thermo_description}\n\"\"\",
+    longDesc = u\"\"\"\n{long_desc}\n\"\"\",
 )
 
 """
@@ -923,6 +944,7 @@ def save_kinetics_lib(rxn_list: list,
                       lib_long_desc: str,
                       T_min: float = 300,
                       T_max: float = 3000,
+                      not_verified: dict[str, str] | None = None,
                       ) -> None:
     """
     Save a valid RMG kinetics library of all reactions in `rxn_list` in the supplied `path`.
@@ -934,7 +956,10 @@ def save_kinetics_lib(rxn_list: list,
         lib_long_desc (str): A multiline string with level of theory description.
         T_min (float, optional): The minimum temperature for the kinetics fit.
         T_max (float, optional): The maximum temperature for the kinetics fit.
+        not_verified (dict[str, str], optional): Keys are labels of not verified reactions, values are the text
+                                                 stated in their entry comment.
     """
+    not_verified = {label: library_comment_text(text) for label, text in (not_verified or dict()).items()}
     reactions_txt = f"""
 #!/usr/bin/env python
 # encoding: utf-8
@@ -980,6 +1005,10 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
             arrhenius_comment = f",\n                         comment=\"{ts_validation}\""
             logger.error(f'Saving a rate coefficient for reaction {rxn.label} in the kinetics library although its '
                          f'TS failed the IRC check. {ts_validation}')
+        if rxn.label in not_verified:
+            long_desc = f'{not_verified[rxn.label]}\n\n{long_desc}'
+            comment = ' '.join(text for text in [not_verified[rxn.label], ts_validation] if text)
+            arrhenius_comment = f",\n                         comment=\"{comment}\""
         rxn_txt = f"""entry(
     index = {i},
     label = "{rxn.label}",
