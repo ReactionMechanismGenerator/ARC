@@ -4952,6 +4952,29 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIsNone(sched.output[label]['conformer_verified'])
         self.assertEqual(sched.output[label]['warnings'], '')
 
+    def test_check_change_conformer_reopt_symmetry_equivalent_copy_is_not_verified(self):
+        """A re-opt that lands on the old minimum with its methyl rotated by 120 deg did not reach the lower conformer."""
+        sched = self.make_sched('cc_methyl')
+        label = 'cc_methyl'
+        log = self.nc3h7_log
+        xyz = parser.parse_geometry(log_file_path=log)
+        old_spc = ARCSpecies(label='nC3H7_old', smiles='[CH2]CC', xyz=xyz)
+        old_spc.determine_rotors()
+        methyl_torsion = old_spc.rotors_dict[1]['scan']  # C-C-C-H, referenced to a methyl H
+        self.assertEqual(len(old_spc.rotors_dict[1]['top']), 4)
+        old_spc.final_xyz = xyz
+        old_spc.set_dihedral(scan=methyl_torsion, index=1, deg_increment=120.0, count=False)
+        sched.species_dict[label].final_xyz = xyz
+        record = {'change conformer': xyz, 'pre_xyz': old_spc.initial_xyz,
+                  'pre_e_elect': parser.parse_e_elect(log_file_path=log), 'torsion': methyl_torsion,
+                  'energy_gap': 3.2, 'verified': None}
+        sched.species_dict[label].rotors_dict[0]['trsh_methods'] = [record]
+        sched.check_change_conformer_reopt(label=label, job=SimpleNamespace(job_type='opt', local_path_to_xyz=None,
+                                                                            local_path_to_output_file=log))
+        self.assertIs(record['verified'], False)
+        self.assertIs(sched.output[label]['conformer_verified'], False)
+        self.assertIn('dihedral change 120.0 deg', sched.output[label]['conformer_verified_cause'])
+
     def test_check_change_conformer_reopt_ignores_legacy_records(self):
         """A 'change conformer' record written before the check existed (no 'verified' key) is not re-judged."""
         sched = self.make_sched('cc_legacy')
