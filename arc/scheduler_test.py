@@ -6293,6 +6293,29 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         with patch('arc.scheduler.read_task_state', side_effect=FileNotFoundError):
             self.assertTrue(sched.is_irc_pending(ts_label))
 
+    def test_an_irc_job_held_back_by_a_queue_guard_keeps_a_deferred_ts_waiting(self):
+        """Test that an IRC job of a deferred TS, or a job of its IRC species, that is unsubmitted, put off, or
+        stranded keeps the IRC pending, so the TS is not switched while that job is only held back."""
+        ts_label = 'TS_defer_held'
+        sched = self.make_deferred_scheduler(ts_label=ts_label, irc_jobs_running=False,
+                                             project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_held')
+        irc_label = self.make_irc_species(sched, ts_label)[0]
+        held_jobs = {(ts_label, 'irc_a1'): True, (irc_label, 'opt_a5'): True, (ts_label, 'sp_a3'): False}
+        for (label, job_name), pending in held_jobs.items():
+            for holder in ['unsubmitted', 'deferred', 'stranded']:
+                with self.subTest(label=label, job_name=job_name, holder=holder):
+                    sched.unsubmitted_jobs, sched.deferred_jobs, sched.stranded_jobs = list(), dict(), dict()
+                    if holder == 'unsubmitted':
+                        sched.unsubmitted_jobs.append((label, MagicMock(job_name=job_name,
+                                                                        job_type=job_name.split('_')[0])))
+                    else:
+                        getattr(sched, f'{holder}_jobs')[label] = [job_name]
+                    self.assertIs(sched.is_irc_pending(ts_label), pending)
+                    with patch.object(sched, 'switch_ts') as mock_switch_ts:
+                        sched.settle_nmd_deferrals()
+                    self.assertEqual(mock_switch_ts.call_count, 0 if pending else 1)
+                    self.assertTrue(sched.is_nmd_deferred(ts_label))
+
     def test_a_stale_irc_acceptance_is_revoked_unless_irc_is_true(self):
         """Test that an IRC-accepted near miss stays accepted only while its IRC verdict is True."""
         for i, (irc, through_settle) in enumerate([(None, False), (None, True), (False, True), (True, True)]):
