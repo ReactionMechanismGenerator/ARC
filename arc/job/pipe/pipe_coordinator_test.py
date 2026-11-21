@@ -14,7 +14,7 @@ import time
 import unittest
 from unittest.mock import MagicMock, PropertyMock, patch
 
-from arc.job.pipe.pipe_coordinator import SUBMIT_FALLBACK_DELAY, PipeCoordinator
+from arc.job.pipe.pipe_coordinator import SUBMIT_FALLBACK_DELAY, PipeCoordinator, pipe_settings
 from arc.job.pipe.pipe_run import PipeRun, get_task_attempt_dir
 from arc.job.pipe.pipe_state import (
     PipeRunState,
@@ -73,6 +73,7 @@ def _make_mock_sched(project_directory, ess_settings=None):
     sched = MagicMock()
     sched.project_directory = project_directory
     sched.server_job_ids = list()
+    sched.servers = list()
     sched.ess_settings = ess_settings if ess_settings is not None else {'mockter': ['local']}
     spc = ARCSpecies(label='H2O', smiles='O')
     spc.conformers = [None] * 5
@@ -377,7 +378,7 @@ class TestPollPipes(unittest.TestCase):
         """Resubmitted pipe job ID is added to server_job_ids."""
         pipe = self.coord.submit_pipe_run('run_resub', [_make_spec('t_resub')])
 
-        def fake_reconcile():
+        def fake_reconcile(scheduler_job_alive=True):
             pipe._needs_resubmission = True
             return {TaskState.PENDING.value: 1}
 
@@ -385,6 +386,118 @@ class TestPollPipes(unittest.TestCase):
              patch.object(pipe, 'submit_to_scheduler', return_value=('submitted', '77777[]')):
             self.coord.poll_pipes()
         self.assertIn('77777[]', self.coord.sched.server_job_ids)
+
+
+class TestIsSchedulerJobAlive(unittest.TestCase):
+    """Tests for PipeCoordinator._is_scheduler_job_alive()."""
+
+    def test_is_scheduler_job_alive(self):
+        for job_id, queue, submitted_ago, cluster_software, expected in [
+                ('12345[]', None, None, 'pbs', True),
+                (None, ['12345[0]'], None, 'pbs', True),
+                ('4018898[]', ['4018898[2]', '9999'], None, 'pbs', True),
+                ('12345', ['12345_7', '9999'], None, 'slurm', True),
+                ('12345', ['12345', '9999'], None, 'slurm', True),
+                ('12345', ['123456[0]'], None, 'pbs', False),
+                ('12345[]', [], None, 'pbs', False),
+                ('12345[]', [], 10, 'pbs', True),
+                ('4242', [], 3600, 'local', True),
+        ]:
+            with self.subTest(job_id=job_id, queue=queue, submitted_ago=submitted_ago,
+                              cluster_software=cluster_software):
+                pipe = MagicMock(scheduler_job_id=job_id, cluster_software=cluster_software,
+                                 submitted_at=None if submitted_ago is None else time.time() - submitted_ago)
+                self.assertIs(PipeCoordinator._is_scheduler_job_alive(pipe, queue), expected)
+
+
+class TestPollPipesJobGone(unittest.TestCase):
+    """Tests for detecting a pipe run's scheduler job leaving the queue through ``server_job_ids`` and for handing its gone tasks to the Scheduler, a bounded number of passes."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='pipe_coord_gone_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        submit = patch.object(PipeRun, 'submit_to_scheduler', return_value=('submitted', '4242[]'))
+        submit.start()
+        self.addCleanup(submit.stop)
+        self.coord = PipeCoordinator(_make_mock_sched(self.tmpdir))
+
+    def test_poll_with_server_job_ids_cleans_stuck_pipe(self):
+        """A pipe whose scheduler job left the queue has its running and pending tasks ejected to the Scheduler."""
+        pipe = self.coord.submit_pipe_run('run_stuck', [_make_spec('t0'), _make_spec('t1')])
+        pipe.scheduler_job_id = '99999[]'
+        now = time.time()
+        pipe.submitted_at = now - 3600
+        update_task_state(pipe.pipe_root, 't0', new_status=TaskState.CLAIMED,
+                          claimed_by='w', claim_token='tok',
+                          claimed_at=now - 100, lease_expires_at=now - 10)
+        update_task_state(pipe.pipe_root, 't0', new_status=TaskState.RUNNING, started_at=now)
+        self.coord.poll_pipes(server_job_ids=[])
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
+        self.assertEqual(self.coord.sched.run_job.call_count, 2)
+
+    def _submit_gone_pipe(self, run_id, specs):
+        """Submit a pipe run whose scheduler job was submitted an hour ago and is no longer queued."""
+        pipe = self.coord.submit_pipe_run(run_id, specs)
+        pipe.submitted_at = time.time() - 3600
+        self.coord.sched.running_jobs = dict()
+        return pipe
+
+    def test_a_gone_task_the_scheduler_did_not_take_is_offered_again(self):
+        """A task whose hand-off failed keeps the run active and is the only task offered on the next poll."""
+        self.coord.sched.run_job.side_effect = [OSError('submit failed'), None, None]
+        pipe = self._submit_gone_pipe('run_gone_retry', [_make_spec('t0'), _make_spec('t1', conformer_index=1)])
+        self.coord.poll_pipes(server_job_ids=[])
+        self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+        self.assertEqual(self.coord.sched.run_job.call_count, 2)
+        self.coord.poll_pipes(server_job_ids=[])
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
+        self.assertEqual(self.coord.sched.run_job.call_count, 3)
+        self.assertEqual([call.kwargs['conformer'] for call in self.coord.sched.run_job.call_args_list],
+                         [0, 1, 0])
+
+    def test_gone_hand_off_passes_are_bounded(self):
+        """A task the Scheduler never takes is offered ``3 * max_attempts`` times, then left FAILED_TERMINAL."""
+        self.coord.sched.run_job.side_effect = OSError('submit failed')
+        pipe = self._submit_gone_pipe('run_gone_bounded', [_make_spec('t0')])
+        for _ in range(12):
+            self.coord.poll_pipes(server_job_ids=[])
+        self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
+        self.assertEqual(self.coord.sched.run_job.call_count, 3 * max(1, pipe_settings['max_attempts']))
+        self.assertEqual(read_task_state(pipe.pipe_root, 't0').status, TaskState.FAILED_TERMINAL.value)
+
+    def test_a_completed_task_is_ingested_once_while_a_gone_task_is_offered_again(self):
+        """A COMPLETED task is ingested once, on the poll that ends the run, and not while a gone task is still being offered. A task that failed terminally for another reason is not offered to the Scheduler."""
+        self.coord.sched.run_job.side_effect = [OSError('submit failed'), None]
+        pipe = self._submit_gone_pipe('run_gone_mixed', [_make_spec('t0'), _make_spec('t1', conformer_index=1),
+                                                          _make_spec('t2', conformer_index=2)])
+        _complete_task(pipe.pipe_root, 't0')
+        now = time.time()
+        update_task_state(pipe.pipe_root, 't2', new_status=TaskState.CLAIMED, claimed_by='w', claim_token='tok',
+                          claimed_at=now, lease_expires_at=now + 300)
+        update_task_state(pipe.pipe_root, 't2', new_status=TaskState.RUNNING, started_at=now)
+        update_task_state(pipe.pipe_root, 't2', new_status=TaskState.FAILED_TERMINAL, ended_at=now,
+                          failure_class='ess_error')
+        with patch('arc.job.pipe.pipe_coordinator.ingest_completed_task') as mock_ingest, \
+                patch.object(PipeCoordinator, '_post_ingest_pipe_run') as mock_post:
+            self.coord.poll_pipes(server_job_ids=[])
+            mock_ingest.assert_not_called()
+            self.assertIn(pipe.pipe_root, self.coord.active_pipes)
+            self.coord.poll_pipes(server_job_ids=[])
+            self.assertNotIn(pipe.pipe_root, self.coord.active_pipes)
+            self.assertEqual(mock_ingest.call_count, 1)
+            self.assertEqual(mock_ingest.call_args.args[2].task_id, 't0')
+            mock_post.assert_not_called()
+        self.assertEqual([call.kwargs['conformer'] for call in self.coord.sched.run_job.call_args_list], [1, 1])
+
+    def test_a_submitted_pipe_is_seen_in_the_queue_of_a_scheduler_with_no_other_job(self):
+        """A pipe submitted by a Scheduler that has no other job is listed in the queue snapshot it takes."""
+        sched = self.coord.sched
+        pipe = self.coord.submit_pipe_run('run_only', [_make_spec('t_only')])
+        pipe.submitted_at = time.time() - 3600
+        with patch('arc.scheduler.check_running_jobs_ids', return_value=['4242[0]']):
+            Scheduler.get_server_job_ids(sched)
+        self.assertEqual(sched.servers, ['local'])
+        self.assertTrue(PipeCoordinator._is_scheduler_job_alive(pipe, sched.server_job_ids))
 
 
 class TestUnsubmittedPipeRun(unittest.TestCase):
