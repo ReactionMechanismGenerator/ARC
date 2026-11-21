@@ -1958,7 +1958,7 @@ class Scheduler(object):
         history = get_conformer_isomorphism_trsh_history(conformers_note)
         tagged_levels = get_conformer_trsh_levels(conf_opt_jobs.values())
         pending_levels = [level for level in tagged_levels if f'conformer {level}' not in history]
-        running_conf_sp = [get_i_from_job_name(job_name) for job_name in self.running_jobs.get(label, [])
+        running_conf_sp = [get_i_from_job_name(job_name) for job_name in self.unfinished_job_names(label)
                            if 'conf_sp' in job_name]
         xyzs = species.conformers_before_opt if species.conformers_before_opt is not None else species.conformers
         num_of_conformers = min(len(species.conformers), len(xyzs))
@@ -2148,14 +2148,25 @@ class Scheduler(object):
         if len(successful_tsgs) > 1:
             xyzs = [tsg.initial_xyz for tsg in successful_tsgs]
             piped_indices = self.pipe_planner.try_pipe_ts_opt(label, xyzs, self.ts_guess_level)
-            # conf_opt jobs still running (e.g., restored from a previous session) are superseded by the
-            # conformers spawned below: cancel them and stop tracking them.
+            # conf_opt jobs not finished yet (e.g., restored from a previous session, or held by a queue guard) are
+            # superseded by the conformers spawned below: cancel them and stop tracking them.
             conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
             for job_name in [name for name in self.running_jobs.get(label, list()) if 'conf_opt' in name]:
                 job = conf_opt_jobs.pop(get_i_from_job_name(job_name), None)
                 if job is not None:
                     job.delete()
                 self.running_jobs[label].remove(job_name)
+            for held in (self.deferred_jobs, self.stranded_jobs):
+                for job_name in [name for name in held.get(label, list()) if 'conf_opt' in name]:
+                    job = conf_opt_jobs.pop(get_i_from_job_name(job_name), None)
+                    if held is self.stranded_jobs and job is not None and job.job_id is not None \
+                            and job.execution_type != 'incore':
+                        self.delete_stranded_job(label=label, job=job)
+                    held[label].remove(job_name)
+                    self.unsubmitted_jobs = [(job_label, queued) for job_label, queued in self.unsubmitted_jobs
+                                             if not (job_label == label and queued.job_name == job_name)]
+                if label in held and not held[label]:
+                    del held[label]
             if not piped_indices:
                 self.job_dict[label]['conf_opt'] = dict()
             for i, tsg in enumerate(successful_tsgs):
@@ -2427,7 +2438,7 @@ class Scheduler(object):
                     # Check that this job isn't already running on the server (from a restarted project).
                     for directed_scan_job in self.job_dict[label]['directed_scan'].values():
                         if directed_scan_job.torsions == torsions \
-                                and directed_scan_job.job_name in self.running_jobs[label]:
+                                and directed_scan_job.job_name in self.unfinished_job_names(label):
                             break
                     else:
                         if 'cont' in directed_scan_type:
@@ -2459,7 +2470,7 @@ class Scheduler(object):
                 if 'scan' not in self.job_dict[label].keys():
                     self.job_dict[label]['scan'] = dict()
                 for scan_job in self.job_dict[label]['scan'].values():
-                    if torsions == scan_job.torsions and scan_job.job_name in self.running_jobs[label]:
+                    if torsions == scan_job.torsions and scan_job.job_name in self.unfinished_job_names(label):
                         break
                 else:
                     job_label = label
