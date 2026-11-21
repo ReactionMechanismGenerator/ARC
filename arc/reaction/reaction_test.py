@@ -355,6 +355,44 @@ class TestARCReaction(unittest.TestCase):
         self.assertNotIn('charge', neutral_dict)
         self.assertEqual(ARCReaction(reaction_dict=neutral_dict).charge, 0)
 
+    def test_extensions_round_trip(self):
+        """Test that a reaction's extensions block is kept verbatim through as_dict(), from_dict() and copy()"""
+        extensions = {'t3': {'t3_index': 3, 'reactant_keys': [1, 2], 'is_pressure_dependent': False}}
+        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='O2', smiles='[O][O]')],
+                          p_species=[ARCSpecies(label='HO2', smiles='O[O]')], extensions=extensions)
+        reaction_dict = rxn.as_dict()
+        self.assertEqual(reaction_dict['extensions'], extensions)
+        self.assertEqual(ARCReaction(reaction_dict=reaction_dict).extensions, extensions)
+        self.assertEqual(rxn.copy().extensions, extensions)
+        self.assertNotIn('extensions', ARCReaction(label='H + O2 <=> HO2').as_dict())
+
+    def test_malformed_extensions_raise_input_error(self):
+        """Test that a malformed reaction extensions block raises InputError from the constructor and from a dict"""
+        for bad in (5, 'abc', ['t3'], {'t3': 5}):
+            with self.assertRaises(InputError):
+                ARCReaction(label='H + O2 <=> HO2', extensions=bad)
+            with self.assertRaises(InputError):
+                ARCReaction(reaction_dict={'label': 'H + O2 <=> HO2', 'extensions': bad})
+
+    def test_copy_of_a_subclass_is_a_plain_arc_reaction(self):
+        """Test that copy() of an ARCReaction subclass returns a plain ARCReaction without the subclass's keys.
+        T3 relies on this: it hands ARC reaction.copy(), so T3Reaction's flat keys never reach restart.yml"""
+        class DownstreamReaction(ARCReaction):
+            """A subclass that adds a flat key to its dictionary representation"""
+            def as_dict(self, *args, **kwargs) -> dict:
+                """Return the ARCReaction dictionary plus a flat downstream key"""
+                reaction_dict = super().as_dict(*args, **kwargs)
+                reaction_dict['t3_index'] = 3
+                return reaction_dict
+
+        rxn = DownstreamReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                            ARCSpecies(label='O2', smiles='[O][O]')],
+                                 p_species=[ARCSpecies(label='HO2', smiles='O[O]')])
+        self.assertIn('t3_index', rxn.as_dict())
+        rxn_copy = rxn.copy()
+        self.assertIs(type(rxn_copy), ARCReaction)
+        self.assertNotIn('t3_index', rxn_copy.as_dict())
+
     def test_copy(self):
         """Test the copy() method."""
         rxn_copy = self.rxn1.copy()

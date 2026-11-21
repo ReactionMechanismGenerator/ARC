@@ -33,6 +33,7 @@ import unittest.mock as mock
 from collections import Counter
 
 from arc.common import read_yaml_file
+from arc.exceptions import DependencyError
 from arc.job.adapters.common import (all_families_ts_adapters,
                                      ts_adapters_by_rmg_family,
                                      ts_adapters_for_unknown_unimolecular,
@@ -481,6 +482,26 @@ H    0.0 -1.0  0.0"""
         self.assertIn('rits', merged)
         self.assertIn('gcn', merged)
 
+    def test_process_rits_tsg_dedup_credits_rits_in_method_sources(self):
+        """A RitS guess that matches an existing guess adds 'rits' to that guess's method_sources."""
+        ts_species = ARCSpecies(label='TS', is_ts=True)
+        xyz_str = """C    0.0  0.0  0.0
+H    1.0  0.0  0.0
+H   -1.0  0.0  0.0
+H    0.0  1.0  0.0
+H    0.0 -1.0  0.0"""
+        existing = TSGuess(method='GCN', method_direction='F', method_index=0, index=0, success=True)
+        existing.process_xyz(str_to_xyz(xyz_str))
+        ts_species.ts_guesses.append(existing)
+        added = process_rits_tsg(
+            tsg_dict={'method': 'RitS', 'method_direction': 'F', 'method_index': 0,
+                      'initial_xyz': xyz_str, 'success': True, 'execution_time': '0:00:01.0'},
+            local_path=self.tmp_dir,
+            ts_species=ts_species,
+        )
+        self.assertFalse(added)
+        self.assertEqual(ts_species.ts_guesses[0].method_sources, ['gcn', 'rits'])
+
     def test_process_rits_tsg_unique_guess_appended(self):
         """A unique non-colliding guess should be appended."""
         ts_species = ARCSpecies(label='TS', is_ts=True)
@@ -693,7 +714,7 @@ class TestRitSGracefulSkip(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.output_dir, ignore_errors=True)
 
-    def test_missing_python_logs_and_returns(self):
+    def test_missing_python_raises_dependency_error(self):
         rxn = _build_rxn_isomerization_propyl()
         adapter = RitSAdapter(
             job_type='tsg',
@@ -706,8 +727,8 @@ class TestRitSGracefulSkip(unittest.TestCase):
         with mock.patch('arc.job.adapters.ts.rits_ts.RITS_PYTHON', None), \
              mock.patch('arc.job.adapters.ts.rits_ts.RITS_REPO_PATH', '/nonexistent/RitS'), \
              mock.patch('arc.job.adapters.ts.rits_ts.RITS_CKPT_PATH', '/nonexistent/rits.ckpt'):
-            # Should not raise
-            adapter.execute_incore()
+            with self.assertRaisesRegex(DependencyError, 'RITS_PYTHON'):
+                adapter.execute_incore()
         # No TS guesses should have been created
         if rxn.ts_species is not None:
             self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
@@ -728,7 +749,7 @@ class TestRitSGracefulSkip(unittest.TestCase):
             project='test_rits',
             project_directory=os.path.join(self.output_dir, 'bimolecular'),
         )
-        with mock.patch('arc.job.adapters.ts.rits_ts._rits_environment_ready', return_value=True), \
+        with mock.patch('arc.job.adapters.ts.rits_ts.engine_unavailable_reason', return_value=None), \
              mock.patch('arc.job.adapters.ts.rits_ts.subprocess.run') as run_mock:
             adapter.execute_incore()
         run_mock.assert_not_called()
@@ -753,7 +774,7 @@ class TestRitSGracefulSkip(unittest.TestCase):
             seen_timeouts.append(kwargs.get('timeout'))
             raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get('timeout', 1))
 
-        with mock.patch('arc.job.adapters.ts.rits_ts._rits_environment_ready', return_value=True), \
+        with mock.patch('arc.job.adapters.ts.rits_ts.engine_unavailable_reason', return_value=None), \
              mock.patch('arc.job.adapters.ts.rits_ts.RITS_PYTHON', '/fake/python'), \
              mock.patch('arc.job.adapters.ts.rits_ts.RITS_REPO_PATH', '/fake/RitS'), \
              mock.patch('arc.job.adapters.ts.rits_ts.RITS_CKPT_PATH', '/fake/rits.ckpt'), \
@@ -764,7 +785,23 @@ class TestRitSGracefulSkip(unittest.TestCase):
         self.assertEqual(seen_timeouts, [1])
         self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
 
-    def test_missing_checkpoint_logs_and_returns(self):
+    def test_guard_reports_the_reason_it_checked(self):
+        """The guard judges the engine once, so the reason it raises with is the one it checked."""
+        rxn = _build_rxn_isomerization_propyl()
+        adapter = RitSAdapter(
+            job_type='tsg',
+            reactions=[rxn],
+            testing=True,
+            project='test_rits',
+            project_directory=os.path.join(self.output_dir, 'reason_once'),
+        )
+        with mock.patch('arc.job.adapters.ts.rits_ts.engine_unavailable_reason',
+                        side_effect=['the checkpoint vanished', None]) as reason_mock:
+            with self.assertRaisesRegex(DependencyError, 'RitS is not available: the checkpoint vanished'):
+                adapter.execute_incore()
+        self.assertEqual(reason_mock.call_count, 1)
+
+    def test_missing_checkpoint_raises_dependency_error(self):
         rxn = _build_rxn_isomerization_propyl()
         adapter = RitSAdapter(
             job_type='tsg',
@@ -774,7 +811,8 @@ class TestRitSGracefulSkip(unittest.TestCase):
             project_directory=os.path.join(self.output_dir, 'no_ckpt'),
         )
         with mock.patch('arc.job.adapters.ts.rits_ts.RITS_CKPT_PATH', '/nonexistent/ckpt'):
-            adapter.execute_incore()
+            with self.assertRaisesRegex(DependencyError, 'ARC_RITS_CKPT'):
+                adapter.execute_incore()
         if rxn.ts_species is not None:
             self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
 
@@ -809,7 +847,7 @@ class TestRitSInputYamlWritten(unittest.TestCase):
         # never actually invoke RitS — we only care about input.yml + the
         # mapped reactant.xyz / product.xyz files we wrote.
         fake_completed = mock.Mock(returncode=0)
-        with mock.patch('arc.job.adapters.ts.rits_ts._rits_environment_ready', return_value=True), \
+        with mock.patch('arc.job.adapters.ts.rits_ts.engine_unavailable_reason', return_value=None), \
              mock.patch('arc.job.adapters.ts.rits_ts.RITS_PYTHON', '/fake/python'), \
              mock.patch('arc.job.adapters.ts.rits_ts.RITS_REPO_PATH', '/fake/RitS'), \
              mock.patch('arc.job.adapters.ts.rits_ts.RITS_CKPT_PATH', '/fake/rits.ckpt'), \

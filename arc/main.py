@@ -15,7 +15,8 @@ import shutil
 import time
 from IPython.display import display
 
-from arc.common import (VERSION,
+from arc.common import (ARC_INPUT_SCHEMA_VERSION,
+                        VERSION,
                         ARC_PATH,
                         check_ess_settings,
                         delete_check_files,
@@ -30,7 +31,8 @@ from arc.common import (VERSION,
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.level import Level, assign_frequency_scale_factor, get_freq_level_for_composite_method
-from arc.job.factory import _registered_job_adapters
+from arc.job.adapters.common import ts_adapters_used_by_the_map
+from arc.job.factory import get_registered_job_adapters
 from arc.job.ssh import check_servers_known_hosts, delete_check_files_on_servers
 from arc.job.ssh_pool import borrow_ssh_client, reset_default_pool
 from arc.output import write_output_yml
@@ -40,7 +42,7 @@ from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
-from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs
+from arc.statmech.arkane import check_arkane_aec, check_arkane_bacs, record_harmonic_fallback_warnings
 from arc.utils.scale import determine_scaling_factors
 
 
@@ -148,6 +150,10 @@ class ARC(object):
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
         skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
+        schema_version (int, optional): The input schema version read from a restart file.
+                                        Accepted for restart compatibility and ignored.
+        arc_version (str, optional): The ARC version that wrote a restart file.
+                                     Accepted for restart compatibility and ignored.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -271,6 +277,8 @@ class ARC(object):
                  verbose=logging.INFO,
                  report_e_elect: bool | None = False,
                  skip_nmd: bool | None = False,
+                 schema_version: int | None = None,
+                 arc_version: str | None = None,
                  ):
 
         if project is None:
@@ -329,8 +337,10 @@ class ARC(object):
         self.ts_adapters = ts_adapters
         self.report_e_elect = report_e_elect
         self.skip_nmd = skip_nmd
+        registered_job_adapters = get_registered_job_adapters()
+        mapped_ts_adapters = ts_adapters_used_by_the_map(registered=None)
         for ts_adapter in self.ts_adapters or list():
-            if ts_adapter.lower() not in _registered_job_adapters.keys():
+            if ts_adapter.lower() not in registered_job_adapters.keys() and ts_adapter.lower() not in mapped_ts_adapters:
                 raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
 
         # attributes related to level of theory specifications
@@ -436,6 +446,8 @@ class ARC(object):
         A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.
         """
         restart_dict = dict()
+        restart_dict['schema_version'] = ARC_INPUT_SCHEMA_VERSION
+        restart_dict['arc_version'] = VERSION
         if self.adaptive_levels is not None:
             restart_dict['adaptive_levels'] = [
                 {'atom_range': [atom_range[0], atom_range[1]],
@@ -634,9 +646,11 @@ class ARC(object):
                                    )
 
         self.output = self.scheduler.output
+        record_harmonic_fallback_warnings(self.output, self.scheduler.species_dict)
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.output)
 
-        self.clean_check_files(remote_project_paths=self.scheduler.remote_project_paths)
+        self.clean_check_files(remote_project_paths=self.scheduler.cleanable_remote_project_paths(),
+                               keep_local=self.scheduler.keeps_local_check_files())
         self.delete_leftovers()
 
         self.save_project_info_file()
@@ -668,7 +682,7 @@ class ARC(object):
         _yml_scale = assign_frequency_scale_factor(level=_freq_level_for_lookup) if _freq_level_for_lookup is not None else None
         _user_provided_scale = (_yml_scale is None or _yml_scale != self.freq_scale_factor)
 
-        neb_level = resolve_neb_level(self.ts_adapters)
+        neb_level = resolve_neb_level(self.scheduler.ts_adapters)
 
         try:
             write_output_yml(
@@ -689,6 +703,8 @@ class ARC(object):
                 arkane_level_of_theory=self.arkane_level_of_theory,
                 irc_requested=self.job_types.get('irc', True),
                 t0=self.t0,
+                ts_adapters=self.scheduler.ts_adapters,
+                ts_adapters_source=self.scheduler.ts_adapters_source,
             )
         except Exception as e:
             logger.error(f'Could not write output.yml: {e}')
@@ -806,6 +822,10 @@ class ARC(object):
                 if 'errors' in output and output['errors']:
                     logger.info(f'  and errors: {output["errors"]}')
                 logger.info('\n')
+        failure_lines = ts_adapter_failure_lines(self.reactions)
+        if failure_lines:
+            logger.error('TS search adapters raised an exception (tracebacks are logged above):\n  '
+                         + '\n  '.join(failure_lines) + '\n')
         return status_dict
 
     def determine_ess_settings(self, diagnostics=False):
@@ -970,7 +990,7 @@ class ARC(object):
         logger.info(f'Using harmonic frequencies scaling factor: {self.freq_scale_factor} '
                     f'(source: {factor_source}).')
 
-    def clean_check_files(self, remote_project_paths: dict | None = None) -> None:
+    def clean_check_files(self, remote_project_paths: dict | None = None, keep_local: bool = False) -> None:
         """
         Delete ESS checkfiles, both locally and on the servers this project ran jobs on.
         Pass ``True`` to the ``keep_checks`` flag in ARC to avoid deleting check files.
@@ -978,10 +998,13 @@ class ARC(object):
         Args:
             remote_project_paths (dict, optional): Keys are server names, values are the respective remote
                                                    paths of the project's directory on that server.
+            keep_local (bool, optional): Whether to keep the local check files, e.g., while jobs are left on an
+                                         unreadable queue or held back from one for a restart.
         """
         if self.keep_checks:
             return
-        delete_check_files(self.project_directory)
+        if not keep_local:
+            delete_check_files(self.project_directory)
         delete_check_files_on_servers(remote_project_paths or dict())
 
     def delete_leftovers(self):
@@ -1348,6 +1371,24 @@ def check_rotor_scan_resolution(rotor_scan_resolution: float | None) -> float | 
                          f'number of steps. Got: {rotor_scan_resolution}, which leaves a remainder of '
                          f'{divmod(360, rotor_scan_resolution)[1]}.')
     return rotor_scan_resolution
+
+
+def ts_adapter_failure_lines(reactions: list) -> list[str]:
+    """
+    List every TS search adapter exception the Scheduler caught, one line per failure, for the run summary.
+
+    Args:
+        reactions (list): The ARCReaction objects of the run.
+
+    Returns:
+        list[str]: Lines naming the reaction, the adapter, the exception type and its message.
+    """
+    lines = list()
+    for rxn in reactions:
+        for failure in getattr(getattr(rxn, 'ts_species', None), 'ts_adapter_failures', None) or []:
+            lines.append(f"{rxn.label}: TS adapter {failure['adapter']!r} raised "
+                         f"{failure['exception_type']}: {failure['message']}")
+    return lines
 
 
 def process_adaptive_levels(adaptive_levels: list | None) -> dict | None:

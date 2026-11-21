@@ -90,6 +90,30 @@
       "description": "Omitted (key absent, never null) unless the orca_neb TS adapter was configured with a level.",
       "$ref": "#/$defs/level_dict"
     },
+    "ts_adapters": {
+      "description": "The TS search adapters the run used, lowercased, and where the list came from: ARC's repository default, the user's ~/.arc/settings.py, or the input file. An adapter in the list may still have been skipped for a reaction whose family does not admit it, or because its engine is absent (see each transition state's skipped_ts_methods). Omitted (key absent, never null) when the run built no scheduler, or when the source is not one of these three.",
+      "type": "object",
+      "required": [
+        "adapters",
+        "source"
+      ],
+      "properties": {
+        "adapters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "enum": [
+            "repo default",
+            "~/.arc/settings.py",
+            "input file"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "arkane_level_of_theory": {
       "$ref": "#/$defs/nullable_level_dict"
     },
@@ -1029,6 +1053,46 @@
       },
       "additionalProperties": false
     },
+    "harmonic_fallback_torsion": {
+      "description": "A torsion that stays a harmonic mode because Arkane did not receive it as a hindered rotor.",
+      "type": "object",
+      "required": [
+        "pivot_atoms",
+        "atom_indices",
+        "cause",
+        "reason"
+      ],
+      "properties": {
+        "pivot_atoms": {
+          "description": "The torsion's 1-indexed rotation axis, as in rejected_torsion.",
+          "$ref": "#/$defs/one_or_multi_dimensional_indices"
+        },
+        "atom_indices": {
+          "description": "The torsion's 1-indexed dihedral, as in rejected_torsion.",
+          "$ref": "#/$defs/one_or_multi_dimensional_indices"
+        },
+        "cause": {
+          "type": "string",
+          "enum": [
+            "scan failed",
+            "scan stopped (lower conformer found)",
+            "scan not completed",
+            "TS reaction zone",
+            "ring",
+            "reactive ring",
+            "TS graph contradicts the geometry",
+            "user choice",
+            "not scanned (BDE fragment)"
+          ],
+          "description": "Why the torsion is not a hindered rotor."
+        },
+        "reason": {
+          "type": "string",
+          "description": "ARC's recorded invalidation reason, whitespace-normalized; empty when none was recorded."
+        }
+      },
+      "additionalProperties": false
+    },
     "rejected_torsion": {
       "description": "A rotor ARC evaluated and genuinely rejected (rotors_dict entry whose 'success' is False), carried so a consumer can tell 'no rotors' from 'rotors found and rejected, for these reasons' rather than losing the rejected rotor entirely. Pending or never-attempted rotors ('success' is None) are not carried here -- ARC has not decided their fate yet. This rotor never contributes a rotor_scans record -- rejected rotors are excluded from rotor_scans entirely -- so source_log records the raw scan-log path directly rather than referencing a rotor_scans key.",
       "type": "object",
@@ -1068,6 +1132,35 @@
       },
       "additionalProperties": false
     },
+    "dropped_ts_graph_bond": {
+      "type": "object",
+      "required": [
+        "atoms",
+        "distance_angstrom",
+        "ratio"
+      ],
+      "properties": {
+        "atoms": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "The 1-indexed atoms of the bond."
+        },
+        "distance_angstrom": {
+          "type": "number",
+          "description": "The distance between the two atoms in the TS geometry."
+        },
+        "ratio": {
+          "type": "number",
+          "description": "The distance divided by the single bond length of the two elements."
+        }
+      },
+      "additionalProperties": false
+    },
     "statmech": {
       "type": "object",
       "required": [
@@ -1099,6 +1192,13 @@
             "integer",
             "null"
           ]
+        },
+        "optical_isomers_cause": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why ARC wrote optical_isomers into the Arkane file (ARC issue #413), e.g. 'mirror well reached by the C2-C3 rotor (D = 8.7 deg)'; 'not determined: <reason>' when ARC left it to Arkane's point-group estimate. Optional: absent from output.yml files written before this field existed, null when no Arkane file was generated."
         },
         "is_linear": {
           "type": [
@@ -1145,6 +1245,30 @@
           "items": {
             "$ref": "#/$defs/rejected_torsion"
           }
+        },
+        "ring_check_dropped_bonds": {
+          "type": "array",
+          "description": "TS only: the TS 2D-graph bonds that the reactive ring check dropped because the TS geometry puts the two atoms farther apart than the cut and the reaction neither forms nor breaks the bond. Empty for a well, or when no bond was dropped.",
+          "items": {
+            "$ref": "#/$defs/dropped_ts_graph_bond"
+          }
+        },
+        "harmonic_fallback_torsions": {
+          "type": "array",
+          "description": "Every torsion Arkane did not treat as a hindered rotor, so it stays a harmonic mode of the frequency calculation, with its cause. Includes ring torsions, which are structural rather than failures.",
+          "items": {
+            "$ref": "#/$defs/harmonic_fallback_torsion"
+          }
+        },
+        "n_harmonic_fallback_torsions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The number of harmonic_fallback_torsions entries whose cause is neither 'ring' nor 'reactive ring': torsions that could have been hindered rotors but were not."
+        },
+        "n_ring_torsions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The number of harmonic_fallback_torsions entries whose cause is 'ring' or 'reactive ring'."
         }
       },
       "additionalProperties": false
@@ -1765,6 +1889,17 @@
           },
           "minItems": 1
         },
+        "skipped_ts_methods": {
+          "description": "TS adapters that did not run for this transition state because their engine is not available, each mapped to the cause. A skipped adapter never ran, so it is not a failed one. Null when none was skipped. ARC writes this key for every transition state from this schema version on; it is optional only so that a record written before it still validates. A project restarted from a record written before this field existed keeps such adapters among its unsuccessful methods instead.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          },
+          "minProperties": 1
+        },
         "neb_log": {
           "type": [
             "string",
@@ -2000,7 +2135,8 @@
         "family",
         "multiplicity",
         "ts_label",
-        "kinetics"
+        "kinetics",
+        "ts_adapter_failures"
       ],
       "properties": {
         "label": {
@@ -2050,6 +2186,39 @@
           "description": "Omitted (key absent, never null) when the reaction carries no description.",
           "type": "string",
           "minLength": 1
+        },
+        "ts_validation_caution": {
+          "description": "Non-blocking caution: an IRC was requested for the TS and its IRC verdict is null, so the TS was not confirmed by IRC. Starts with 'IRC NOT CONFIRMED (<cause>)', the cause being one of 'IRC job failed', 'endpoint opt not converged', 'comparison inconclusive' or 'IRC not completed'. Omitted (key absent, never null) when kinetics is null or no caution applies.",
+          "type": "string",
+          "pattern": "^IRC NOT CONFIRMED \\((IRC job failed|endpoint opt not converged|comparison inconclusive|IRC not completed)\\)"
+        },
+        "ts_adapter_failures": {
+          "description": "TS search adapters that raised an exception for this reaction and were skipped. Empty when none did.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "adapter",
+              "exception_type",
+              "message"
+            ],
+            "properties": {
+              "adapter": {
+                "type": "string",
+                "minLength": 1
+              },
+              "exception_type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "description": "The first line of the exception message, or the exception type when the message is empty.",
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false
