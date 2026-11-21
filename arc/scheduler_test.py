@@ -17,7 +17,8 @@ from types import SimpleNamespace
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
-from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file, \
+    save_yaml_file
 from arc.exceptions import DependencyError, ReactionError
 from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_incore_adapters,
                                       derived_instability_breaks_spin_symmetry, is_restricted,
@@ -5193,6 +5194,52 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertTrue(saved)
         self.assertTrue(all(len(checkpoint) == 1 and checkpoint[0]['verified'] is None
                             and 'pre_xyz' in checkpoint[0] for checkpoint in saved))
+
+    def test_restart_between_the_opt_and_the_scan_keeps_the_energy_before_the_change(self):
+        """A restart after the opt finished but before the scan found a lower conformer keeps the opt's energy and level."""
+        label = 'cc_restart_e'
+        sched = self.make_sched(label)
+        level = Level(repr=default_levels_of_theory['opt'])
+        opt_job = self.geo_job('opt', 'opt_a1', level)
+        sched.job_dict[label]['opt'] = {'opt_a1': opt_job}
+        old_xyz = sched.species_dict[label].final_xyz
+        e_elect = parser.parse_e_elect(log_file_path=self.nc3h7_log)
+        with patch('arc.scheduler.parser.parse_geometry', return_value=old_xyz), \
+                patch('arc.scheduler.plotter'), \
+                patch('arc.species.species.ARCSpecies.check_xyz_isomorphism', return_value=True):
+            self.assertTrue(sched.parse_opt_geo(label=label, job=opt_job))
+        self.assertEqual(sched.get_latest_geo_job_e_elect(label), (e_elect, job_level_signature(opt_job)))
+
+        # restart.yml holds the output dict and the species, and only the running jobs (here, the rotor scans).
+        restart_path = os.path.join(sched.project_directory, 'restart_before_scan.yml')
+        save_yaml_file(path=restart_path,
+                       content={'output': sched.output,
+                                'species': [spc.as_dict() for spc in sched.species_dict.values()],
+                                'running_jobs': dict()})
+        restart_dict = read_yaml_file(path=restart_path)
+        restarted = Scheduler(project=label, ess_settings=self.ess_settings,
+                              species_list=[ARCSpecies(species_dict=restart_dict['species'][0])],
+                              opt_level=Level(repr=default_levels_of_theory['opt']),
+                              freq_level=Level(repr=default_levels_of_theory['freq']),
+                              sp_level=Level(repr=default_levels_of_theory['sp']),
+                              scan_level=Level(repr=default_levels_of_theory['scan']),
+                              project_directory=sched.project_directory, testing=True, job_types=self.job_types,
+                              restart_dict={'output': restart_dict['output']})
+        restarted.trsh_ess_jobs, restarted.trsh_rotors = True, True
+        self.assertFalse(restarted.job_dict[label].get('opt'))
+
+        new_xyz = self.new_xyz(restarted, label)
+        self.change_conformer(restarted, label, new_xyz)
+        record = restarted.species_dict[label].rotors_dict[0]['trsh_methods'][-1]
+        self.assertIsNotNone(record['pre_e_elect'], 'the restart lost the energy before the conformer change')
+        self.assertAlmostEqual(record['pre_e_elect'], e_elect)
+        self.assertEqual(record['pre_level'], job_level_signature(opt_job))
+
+        # The re-opt moved the dihedral 60 deg but kept the energy: judged by energy, the change was not reached.
+        restarted.species_dict[label].final_xyz = new_xyz
+        restarted.check_change_conformer_reopt(label=label, job=self.geo_job('opt', 'opt_a2', level))
+        self.assertIs(record['verified'], False)
+        self.assertIs(restarted.output[label]['conformer_verified'], False)
 
     def test_check_change_conformer_reopt_waits_for_the_baseline_job_type(self):
         """An opt that troubleshoots a composite run (or the reverse) is not compared with the other level's energy."""
