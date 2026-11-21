@@ -778,6 +778,13 @@ you need strict no-resubmission behavior:
    trsh_ess_jobs: false
    trsh_rotors: false
 
+With either one disabled, ARC does not move to a lower conformer that a rotor scan
+finds. Such a species is marked ``conformer_verified: false`` in ``output.yml``,
+with the cause and the energy gap, and is left out of the RMG thermo library (as
+is any reaction it takes part in, from the kinetics library). Set
+``allow_not_verified_in_libraries: true`` to write these entries anyway, with the
+cause in their library comment.
+
 Use ``keep_checks: true`` when Gaussian checkfiles or other retained files are
 needed for manual diagnosis. Otherwise ARC deletes checkfiles when it terminates,
 both under the local project directory and under the project's directory on each

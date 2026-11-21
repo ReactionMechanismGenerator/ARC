@@ -73,7 +73,9 @@ Job selection and resources:
 * ``max_job_time`` - wall-time limit in hours.
 * ``keep_checks`` - keep ESS checkfiles, both locally and on the servers.
 * ``trsh_ess_jobs`` - troubleshoot failed ESS jobs. Default: ``true``.
-* ``trsh_rotors`` - troubleshoot failed rotor scans. Default: ``true``.
+* ``trsh_rotors`` - troubleshoot failed rotor scans. Default: ``true``. With either one ``false``, a lower conformer
+  that a rotor scan finds is not re-optimized: the species is marked ``conformer_verified: false`` and left out of
+  the RMG libraries unless ``allow_not_verified_in_libraries`` is set.
 * ``skip_nmd`` - skip normal-mode-displacement checks.
 * ``allow_not_verified_in_libraries`` - write not verified species and reactions (``conformer_verified: false``
   in ``output.yml``) to the RMG libraries, with the cause in their comment. Default ``False``: they are left out.
