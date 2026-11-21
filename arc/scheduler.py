@@ -5493,11 +5493,13 @@ class Scheduler(object):
             label (str): The TS species label.
 
         Returns:
-            bool: ``True`` if an IRC job of the TS is running or pending a pipe batch, an active pipe run holds an
-                  open IRC task of the TS (see ``is_pipe_task_open()``), or any IRC species spawned from the TS
-                  still has running or piped jobs.
+            bool: ``True`` if an IRC job of the TS is running, held back by a queue guard (see
+                  ``unfinished_job_names()`` and ``unsubmitted_jobs``) or pending a pipe batch, an active pipe run
+                  holds an open IRC task of the TS (see ``is_pipe_task_open()``), or any IRC species spawned from
+                  the TS still has running, held back or piped jobs.
         """
-        if any('irc' in job_name for job_name in self.running_jobs.get(label, list())):
+        if any('irc' in job_name for job_name in self.unfinished_job_names(label)) \
+                or any(job_label == label and job.job_type == 'irc' for job_label, job in self.unsubmitted_jobs):
             return True
         if any(pending_label == label for pending_label, _ in self._pending_pipe_irc):
             return True
@@ -5506,7 +5508,8 @@ class Scheduler(object):
                for pipe in self.active_pipes.values() for task in pipe.tasks):
             return True
         irc_labels = (self.species_dict[label].irc_label or '').split() if label in self.species_dict else list()
-        return any(self.running_jobs.get(irc_label) or self.has_pending_pipe_work(irc_label)
+        return any(self.unfinished_job_names(irc_label) or self.has_pending_pipe_work(irc_label)
+                   or any(job_label == irc_label for job_label, _ in self.unsubmitted_jobs)
                    for irc_label in irc_labels)
 
     @staticmethod
