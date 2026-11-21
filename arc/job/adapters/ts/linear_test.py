@@ -27,15 +27,18 @@ respective implementations under
 """
 
 import math
+import os
 import shutil
 import tempfile
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import PropertyMock, patch
 
 import numpy as np
 import pytest
 
-from arc.common import almost_equal_coords, get_single_bond_length
+from arc.checks.nmd import analyze_ts_normal_mode_displacement
+from arc.common import ARC_TESTING_PATH, almost_equal_coords, get_single_bond_length, read_yaml_file
 from arc.job.adapters.ts.linear import (GuessRecord,
                                         LinearAdapter,
                                         build_ring_scission_ts,
@@ -74,7 +77,7 @@ from arc.job.adapters.ts.linear_utils.postprocess import (FAMILY_POSTPROCESSORS,
 from arc.mapping.driver import map_rxn
 from arc.molecule import Molecule
 from arc.reaction import ARCReaction
-from arc.species.converter import compare_zmats, order_mol_by_atom_map, order_xyz_by_atom_map, str_to_xyz, xyz_to_str, zmat_from_xyz
+from arc.species.converter import compare_zmats, order_mol_by_atom_map, order_xyz_by_atom_map, str_to_xyz, xyz_from_data, xyz_to_str, zmat_from_xyz
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
 
@@ -6319,6 +6322,181 @@ class TestPostprocessIsomerizationRecords(unittest.TestCase):
         )
         self.assertEqual(len(out), 1)
         self.assertIs(out[0], rec)
+
+
+def _species_from_fixture(entry: dict) -> ARCSpecies:
+    """
+    Build an ARCSpecies from a fixture entry.
+
+    Args:
+        entry (dict): A species entry with ``label``, ``smiles``, ``multiplicity``, ``symbols`` and ``coords``.
+
+    Returns:
+        ARCSpecies: The species.
+    """
+    xyz = {'symbols': tuple(entry['symbols']), 'isotopes': None, 'coords': tuple(tuple(c) for c in entry['coords'])}
+    return ARCSpecies(label=entry['label'], smiles=entry['smiles'], multiplicity=entry['multiplicity'], xyz=xyz)
+
+
+def _reaction_from_fixture(entry: dict) -> ARCReaction:
+    """
+    Build an ARCReaction from a fixture entry, with the atom map of the original run.
+
+    Args:
+        entry (dict): A reaction entry with ``reactants``, ``products``, ``family`` and ``atom_map``.
+
+    Returns:
+        ARCReaction: The reaction.
+    """
+    r_species = [_species_from_fixture(spc) for spc in entry['reactants']]
+    p_species = [_species_from_fixture(spc) for spc in entry['products']]
+    rxn = ARCReaction(r_species=r_species, p_species=p_species)
+    rxn.family = entry['family']
+    rxn.atom_map = list(entry['atom_map'])
+    return rxn
+
+
+def _stretched_reactant_bonds(rxn: ARCReaction, xyz: dict) -> list[tuple[int, int]]:
+    """
+    Get the reactant bonds that are neither broken in the reaction nor kept at a bonded length in ``xyz``.
+
+    A bond is counted as stretched above 1.3 times its single-bond length, or 1.5 times if it involves an H atom.
+
+    Args:
+        rxn (ARCReaction): The reaction.
+        xyz (dict): A TS guess, read in reactant atom order.
+
+    Returns:
+        list[tuple[int, int]]: The stretched reactant bonds.
+    """
+    r_symbols = rxn.get_reactants_xyz(return_format='dict')['symbols']
+    r_bonds, _ = rxn.get_bonds(r_bonds_only=True)
+    _, broken = rxn.get_formed_and_broken_bonds()
+    broken = {tuple(sorted(bond)) for bond in broken}
+    stretched = list()
+    for i, j in r_bonds:
+        if tuple(sorted((i, j))) in broken:
+            continue
+        limit = 1.5 if 'H' in (r_symbols[i], r_symbols[j]) else 1.3
+        distance = float(np.linalg.norm(np.array(xyz['coords'][i]) - np.array(xyz['coords'][j])))
+        if distance / get_single_bond_length(r_symbols[i], r_symbols[j]) > limit:
+            stretched.append((i, j))
+    return stretched
+
+
+class TestTSGuessReactantOrder(unittest.TestCase):
+    """
+    Contains tests of the atom order of the TS guesses LinearAdapter returns.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.fixture = read_yaml_file(os.path.join(ARC_TESTING_PATH, 'reactions', 'ts_guess_reactant_order.yml'))
+
+    def run_linear(self, rxn: ARCReaction) -> list:
+        """
+        Run LinearAdapter incore on a reaction.
+
+        Args:
+            rxn (ARCReaction): The reaction.
+
+        Returns:
+            list: The TS guesses of the reaction.
+        """
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        LinearAdapter(job_type='tsg', reactions=[rxn], testing=True, project='test',
+                      project_directory=project_directory).execute()
+        return rxn.ts_species.ts_guesses
+
+    def nmd_on_freq_geometry(self, rxn: ARCReaction, freq: dict, order: list[int] | None) -> bool | None:
+        """
+        Run the NMD check on a frequency geometry and its imaginary mode, optionally reordered first.
+
+        Args:
+            rxn (ARCReaction): The reaction.
+            freq (dict): The fixture entry with ``symbols``, ``coords``, ``imaginary_frequency`` and ``imaginary_mode``.
+            order (list[int], optional): ``new[i] = old[order[i]]`` for the geometry and the mode.
+
+        Returns:
+            bool | None: The NMD verdict.
+        """
+        xyz = xyz_from_data(coords=freq['coords'], symbols=freq['symbols'])
+        mode = np.array(freq['imaginary_mode'], dtype=float)
+        if order is not None:
+            xyz = order_xyz_by_atom_map(xyz=xyz, atom_map=order)
+            mode = mode[order, :]
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, multiplicity=rxn.multiplicity, charge=rxn.charge)
+        job = SimpleNamespace(local_path_to_output_file='freq.log')
+        with patch('arc.checks.nmd.get_ts_xyz_in_normal_mode_frame', return_value=xyz), \
+                patch('arc.checks.nmd.parser.get_normal_mode_displacement',
+                      return_value=(np.array([freq['imaginary_frequency']]), np.array([mode]))):
+            return analyze_ts_normal_mode_displacement(reaction=rxn, job=job)
+
+    def test_addition_guesses_in_reactant_order(self):
+        """
+        Test that Linear returns B + C <=> A guesses in reactant atom order, which the NMD check can then verify.
+
+        The guesses are built from the unimolecular product. Each must leave the adapter with the reactants'
+        element sequence and keep every non-reacting reactant bond. The same atom map that reorders the guess
+        turns the NMD verdict on the run's frequency geometry from None (product order) to True.
+        """
+        for key in ('ts4', 'ts7'):
+            entry = self.fixture[key]
+            rxn = _reaction_from_fixture(entry)
+            r_symbols = rxn.get_reactants_xyz(return_format='dict')['symbols']
+            guesses = [tsg for tsg in self.run_linear(rxn) if tsg.success]
+            self.assertGreater(len(guesses), 0, key)
+            for tsg in guesses:
+                self.assertEqual(tsg.initial_xyz['symbols'], r_symbols, f'{key}: {tsg.method}')
+                self.assertEqual(_stretched_reactant_bonds(rxn, tsg.initial_xyz), [], f'{key}: {tsg.method}')
+            self.assertIsNone(self.nmd_on_freq_geometry(_reaction_from_fixture(entry), entry['freq'], None), key)
+            self.assertTrue(self.nmd_on_freq_geometry(_reaction_from_fixture(entry), entry['freq'],
+                                                      entry['atom_map']), key)
+
+    def test_reactant_order_guess_unchanged(self):
+        """
+        Test that Linear stores an A <=> B + C guess exactly as interpolate() built it.
+
+        The unimolecular species is the reactant here, so the guess is already in reactant order. This guards a
+        no-op and passes before the fix too; it fails if the reordering is applied regardless of the direction.
+        """
+        entry = self.fixture['ts4']
+        reverse_entry = {'reactants': entry['products'], 'products': entry['reactants'],
+                         'family': entry['family'], 'atom_map': [0, 4, 5, 1, 2, 3]}
+        expected = [xyz_to_str(xyz) for xyz in interpolate(rxn=_reaction_from_fixture(reverse_entry), weight=0.5)]
+        self.assertGreater(len(expected), 0)
+        rxn = _reaction_from_fixture(reverse_entry)
+        with patch('arc.job.adapters.ts.linear.get_weight_grid', return_value=[0.5]):
+            stored = [xyz_to_str(tsg.initial_xyz) for tsg in self.run_linear(rxn) if tsg.success]
+        self.assertEqual(stored, expected)
+
+    def test_addition_without_atom_map_stores_no_guess(self):
+        """Test that Linear stores no B + C <=> A guess, and warns, when the reaction has no atom map to reorder it."""
+        rxn = _reaction_from_fixture(self.fixture['ts4'])
+        with patch.object(ARCReaction, 'atom_map', new_callable=PropertyMock, return_value=None), \
+                self.assertLogs(logger='arc', level='WARNING') as cm:
+            project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+            self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+            LinearAdapter(job_type='tsg', reactions=[rxn], testing=True, project='test',
+                          project_directory=project_directory).execute()
+        self.assertTrue(rxn.ts_species is None or not rxn.ts_species.ts_guesses)
+        self.assertTrue(any('reactant atom order' in line for line in cm.output))
+
+    def test_addition_atom_map_error_is_isolated(self):
+        """Test that an error raised while atom mapping a B + C <=> A reaction is logged, and stores no guess."""
+        rxn = _reaction_from_fixture(self.fixture['ts4'])
+        with patch.object(ARCReaction, 'atom_map', new_callable=PropertyMock, side_effect=RuntimeError('map crash')), \
+                self.assertLogs(logger='arc', level='ERROR') as cm:
+            project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+            self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+            LinearAdapter(job_type='tsg', reactions=[rxn], testing=True, project='test',
+                          project_directory=project_directory).execute()
+        self.assertTrue(rxn.ts_species is None or not rxn.ts_species.ts_guesses)
+        self.assertTrue(any('could not atom map' in line and 'map crash' in line for line in cm.output))
 
 
 if __name__ == '__main__':
