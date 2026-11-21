@@ -43,9 +43,10 @@ import subprocess
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from arc.common import ARC_PATH, get_logger, save_yaml_file, read_yaml_file
+from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter
+from arc.job.adapters.common import _initialize_adapter, engine_path, missing_engine_file_reason
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import compare_confs, str_to_xyz, xyz_to_str
@@ -282,8 +283,9 @@ class RitSAdapter(JobAdapter):
             exe_type (str, optional): Either ``'incore'`` (run locally now) or
                 ``'queue'`` (just stage the input.yml + submit script).
         """
-        if not _rits_environment_ready():
-            return
+        reason = engine_unavailable_reason()
+        if reason:
+            raise DependencyError(f'RitS is not available: {reason}.')
         rxn = self.reactions[0]
         if not rxn.is_unimolecular():
             logger.warning(f'The RitS TS search adapter requires a unimolecular reaction; skipping {rxn}.')
@@ -429,6 +431,7 @@ def process_rits_tsg(tsg_dict: dict,
                 and compare_confs(ts_xyz, other_tsg.initial_xyz):
             if 'rits' not in other_tsg.method.lower():
                 other_tsg.method += ' and RitS'
+            other_tsg.add_method_source('RitS')
             return False
 
     method_index = int(tsg_dict.get('method_index', 0))
@@ -448,36 +451,48 @@ def process_rits_tsg(tsg_dict: dict,
     return True
 
 
+def engine_unavailable_reason() -> str | None:
+    """
+    Report what RitS is missing at runtime, every missing piece in one sentence.
+
+    Returns:
+        str | None: ``None`` if RitS can run, otherwise the reason.
+    """
+    missing = list()
+    python_reason = missing_engine_file_reason(RITS_PYTHON, 'RITS_PYTHON',
+                                               'the python of the rits_env conda env (run `make install-rits`)')
+    if python_reason:
+        missing.append(python_reason)
+    repo_path = engine_path(RITS_REPO_PATH)
+    if repo_path is None or not os.path.isdir(repo_path):
+        missing.append('RitS source checkout not found (set ARC_RITS_REPO or run `make install-rits`)')
+    ckpt_reason = missing_engine_file_reason(RITS_CKPT_PATH, 'ARC_RITS_CKPT',
+                                             'the pretrained RitS checkpoint (run `make install-rits`)')
+    if ckpt_reason:
+        missing.append(ckpt_reason)
+    return '; '.join(missing) if missing else None
+
+
 def _rits_environment_ready(log: bool = True) -> bool:
     """
     Check that everything RitS needs at runtime is in place. Returns ``False``
-    if anything is missing so the adapter (or a test guard) can skip cleanly
-    without raising.
+    if anything is missing so a caller (e.g. a test guard) can skip cleanly.
+    The adapter itself raises a ``DependencyError`` instead.
 
     Args:
-        log (bool): When ``True`` (default), emit one warning per missing
+        log (bool): When ``True`` (default), emit one warning naming every missing
             piece. Pass ``False`` to silence — useful at pytest collection
             time, where the same check is invoked just to set a skip flag
             and warnings would otherwise spam every run on hosts without
             the RitS stack installed.
+
+    Returns:
+        bool: Whether RitS can run.
     """
-    ok = True
-    if not RITS_PYTHON or not os.path.isfile(RITS_PYTHON):
-        if log:
-            logger.warning('RitS adapter: rits_env python not found '
-                           '(set RITS_PYTHON or run `make install-rits`). Skipping RitS TS guesses.')
-        ok = False
-    if not RITS_REPO_PATH or not os.path.isdir(RITS_REPO_PATH):
-        if log:
-            logger.warning('RitS adapter: RitS source checkout not found '
-                           '(set ARC_RITS_REPO or run `make install-rits`). Skipping RitS TS guesses.')
-        ok = False
-    if not RITS_CKPT_PATH or not os.path.isfile(RITS_CKPT_PATH):
-        if log:
-            logger.warning('RitS adapter: pretrained checkpoint not found '
-                           '(set ARC_RITS_CKPT or run `make install-rits`). Skipping RitS TS guesses.')
-        ok = False
-    return ok
+    reason = engine_unavailable_reason()
+    if reason is not None and log:
+        logger.warning(f'RitS adapter: {reason}. Skipping RitS TS guesses.')
+    return reason is None
 
 
 register_job_adapter('rits', RitSAdapter)

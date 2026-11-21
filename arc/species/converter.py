@@ -48,6 +48,9 @@ logger = get_logger()
 
 DIST_PRECISION = 0.01  # Angstrom
 ANGL_PRECISION = 0.1  # rad (for both bond angle and dihedral)
+COLLINEAR_SIN_TOLERANCE = math.sin(math.radians(1.0))  # Three dihedral reference atoms within 1 degree of a line
+OFF_AXIS_MIN_DISTANCE = 0.1  # Angstrom, the least distance from the axis for an atom to define a dihedral plane
+NEAREST_ATOM_TIE_TOLERANCE = 1e-4  # Angstrom
 
 
 def str_to_xyz(xyz_str: str,
@@ -1999,6 +2002,152 @@ def compare_confs(xyz1: dict,
         return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
 
 
+def compare_confs_by_graph_maps(xyz1: dict,
+                                xyz2: dict,
+                                rtol: float = 0.01,
+                                atol: float = 0.1,
+                                ) -> bool:
+    """
+    Compare two conformers whose atoms may be numbered differently.
+
+    The conformers are the same when some atom map keeps each atom's element, isotope and bonded
+    neighbours (bonds from ``s_bonds_mol_from_xyz``) and makes ``compare_confs`` pass on ``xyz2``
+    re-ordered by that map. A map that is not a bond-graph isomorphism is never accepted, so two
+    geometries whose distances agree but whose bonds differ are reported as different.
+    Before any map is searched, the sorted distances of each element pair must agree within the same
+    tolerances; this is a necessary condition for any map to pass, so it only saves time.
+
+    Args:
+        xyz1 (dict): Conformer 1.
+        xyz2 (dict): Conformer 2.
+        rtol (float): The relative tolerance passed to ``compare_confs``.
+        atol (float): The absolute tolerance passed to ``compare_confs``.
+
+    Returns:
+        bool: Whether some bond-preserving atom map makes the two conformers almost equal.
+    """
+    xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(xyz2)
+    if sorted(zip(xyz1['symbols'], xyz1['isotopes'])) != sorted(zip(xyz2['symbols'], xyz2['isotopes'])):
+        return False
+    if not almost_equal_lists(sorted_distances_by_element_pair(xyz1),
+                              sorted_distances_by_element_pair(xyz2),
+                              rtol=rtol, atol=atol):
+        return False
+    order = map_atoms_by_bonds_and_distances(xyz1, xyz2, rtol=rtol, atol=atol)
+    return order is not None and compare_confs(xyz1, sort_xyz_using_indices(xyz2, order), rtol=rtol, atol=atol)
+
+
+def map_atoms_by_bonds_and_distances(xyz1: dict,
+                                     xyz2: dict,
+                                     rtol: float = 0.01,
+                                     atol: float = 0.1,
+                                     ) -> list[int] | None:
+    """
+    Find an atom map from ``xyz1`` onto ``xyz2`` that keeps elements, isotopes, bonds and distances.
+
+    Atoms of ``xyz1`` are mapped one at a time, in breadth-first order over its bond graph (bonds from
+    ``s_bonds_mol_from_xyz``). An atom of ``xyz2`` is a candidate only if it has the same element,
+    isotope and number of bonds, if it is bonded to the images of exactly the already-mapped atoms
+    that the mapped atom is bonded to, and if its distance to each of those images agrees with the
+    ``xyz1`` distance within ``compare_confs``' tolerance (``np.isclose`` with ``rtol`` and ``atol``).
+    The search backtracks on a dead end (with an explicit stack, so its depth is not bound by Python's
+    recursion limit) and stops at the first complete map, so it never lists every symmetry-equivalent map.
+
+    Args:
+        xyz1 (dict): Conformer 1.
+        xyz2 (dict): Conformer 2.
+        rtol (float): The relative distance tolerance.
+        atol (float): The absolute distance tolerance in Angstrom.
+
+    Returns:
+        list[int] | None: ``order`` such that atom ``i`` of ``xyz1`` corresponds to atom ``order[i]`` of
+        ``xyz2`` (pass it to ``sort_xyz_using_indices(xyz2, order)``), or ``None`` if no such map exists.
+    """
+    xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(xyz2)
+    n = len(xyz1['symbols'])
+    if len(xyz2['symbols']) != n:
+        return None
+    dmat1, dmat2 = xyz_to_dmat(xyz1), xyz_to_dmat(xyz2)
+    bonds1, bonds2 = bonded_atom_indices(xyz1), bonded_atom_indices(xyz2)
+    keys1 = [(s, i, len(b)) for s, i, b in zip(xyz1['symbols'], xyz1['isotopes'], bonds1)]
+    keys2 = [(s, i, len(b)) for s, i, b in zip(xyz2['symbols'], xyz2['isotopes'], bonds2)]
+    visit = list()
+    for root in sorted(range(n), key=lambda i: (keys1.count(keys1[i]), i)):
+        if root in visit:
+            continue
+        queue = [root]
+        visit.append(root)
+        while queue:
+            atom = queue.pop(0)
+            for neighbor in sorted(bonds1[atom]):
+                if neighbor not in visit:
+                    visit.append(neighbor)
+                    queue.append(neighbor)
+    order, used = [None] * n, [False] * n
+
+    def fits(i: int, candidate: int) -> bool:
+        """Return whether atom ``i`` of ``xyz1`` may map onto ``candidate`` of ``xyz2`` given the partial map."""
+        if used[candidate] or keys1[i] != keys2[candidate]:
+            return False
+        for j in visit:
+            if order[j] is None:
+                break
+            if (j in bonds1[i]) != (order[j] in bonds2[candidate]) \
+                    or not np.isclose(dmat1[i][j], dmat2[candidate][order[j]], rtol=rtol, atol=atol):
+                return False
+        return True
+
+    next_candidate, depth = [0] * (n + 1), 0
+    while 0 <= depth < n:
+        i = visit[depth]
+        if order[i] is not None:
+            used[order[i]], order[i] = False, None
+        candidate = next((c for c in range(next_candidate[depth], n) if fits(i, c)), None)
+        if candidate is None:
+            next_candidate[depth] = 0
+            depth -= 1
+            continue
+        order[i], used[candidate] = candidate, True
+        next_candidate[depth] = candidate + 1
+        depth += 1
+    return list(order) if depth == n else None
+
+
+def bonded_atom_indices(xyz: dict) -> list[set[int]]:
+    """
+    List the bonded neighbours of each atom, with bonds perceived by ``s_bonds_mol_from_xyz``.
+
+    Args:
+        xyz (dict): The Cartesian coordinates.
+
+    Returns:
+        list[set[int]]: The indices of the atoms bonded to each atom, in atom order.
+    """
+    mol = s_bonds_mol_from_xyz(xyz)
+    indices = {atom: i for i, atom in enumerate(mol.atoms)}
+    return [{indices[neighbor] for neighbor in atom.edges} for atom in mol.atoms]
+
+
+def sorted_distances_by_element_pair(xyz: dict) -> list[list[float]]:
+    """
+    List the interatomic distances of a geometry grouped by element pair, each group sorted.
+
+    The result does not depend on the atom order.
+
+    Args:
+        xyz (dict): The Cartesian coordinates.
+
+    Returns:
+        list[list[float]]: One sorted list of distances per element pair, the pairs in sorted order.
+    """
+    dmat, symbols = xyz_to_dmat(xyz), xyz['symbols']
+    groups = dict()
+    for i in range(len(symbols)):
+        for j in range(i + 1, len(symbols)):
+            groups.setdefault(tuple(sorted((symbols[i], symbols[j]))), list()).append(float(dmat[i][j]))
+    return [sorted(groups[pair]) for pair in sorted(groups)]
+
+
 def cluster_confs_by_rmsd(xyzs: Iterable[dict[str, tuple]],
                           rmsd_threshold: float = 1e-2,
                           ) -> tuple[dict[str, tuple]]:
@@ -2095,12 +2244,15 @@ def add_atom_to_xyz_using_internal_coords(xyz: dict | str,
     xyz = check_xyz_dict(xyz)
     opt_methods = [opt_methods] if isinstance(opt_methods, str) else opt_methods
     opt_methods = opt_methods or ['SLSQP', 'Nelder-Mead', 'BFGS']
+    d_indices, substitute_coord_l = resolve_dihedral_reference(coords=xyz['coords'], d_indices=d_indices)
+    dihedral_is_defined = substitute_coord_l is None
 
     def calculate_errors(result_coords):
         """Calculate constraint errors for distance, angle, and dihedral"""
         r_error = np.abs(np.linalg.norm(np.array(result_coords) - np.array(xyz['coords'][r_index])) - r_value)
         a_error = np.abs(angle_constraint(xyz['coords'][a_indices[0]], xyz['coords'][a_indices[1]], a_value)(*result_coords))
-        d_error = np.abs(dihedral_constraint(xyz['coords'][d_indices[0]], xyz['coords'][d_indices[1]], xyz['coords'][d_indices[2]], d_value)(*result_coords))
+        d_error = np.abs(dihedral_constraint(xyz['coords'][d_indices[0]], xyz['coords'][d_indices[1]], xyz['coords'][d_indices[2]], d_value)(*result_coords)) \
+            if dihedral_is_defined else 0.0
         return r_error, a_error, d_error
 
     def meets_precision(result_coords):
@@ -2141,7 +2293,8 @@ def add_atom_to_xyz_using_internal_coords(xyz: dict | str,
 
             try:
                 updated_xyz = _add_atom_to_xyz_using_internal_coords(
-                    xyz, element, r_index, a_indices, d_indices, r_value, a_value, d_value, initial_guess, opt_method)
+                    xyz, element, r_index, a_indices, d_indices, r_value, a_value, d_value, initial_guess, opt_method,
+                    substitute_coord_l=substitute_coord_l)
                 new_coord = updated_xyz['coords'][-1]
                 r_error, a_error, d_error = calculate_errors(new_coord)
                 total_error = r_error + a_error + d_error
@@ -2160,12 +2313,13 @@ def add_atom_to_xyz_using_internal_coords(xyz: dict | str,
                 print(f"Optimization failed with {guess_func.__name__}: {e}")
         best_guesses.append(best_guess)
 
+    if not best_guess_and_errors:
+        raise ValueError(f'Could not add a {element} atom with r({r_index}) = {r_value}, '
+                         f'a({a_indices[0]}, {a_indices[1]}) = {a_value} and '
+                         f'd({d_indices[0]}, {d_indices[1]}, {d_indices[2]}) = {d_value}: '
+                         f'no optimizer produced a candidate.')
     print("No valid solution was found, returning the closest solution after brute force modifications.")
-    lowest_key = None
-    for key, val in best_guess_and_errors.items():
-        if lowest_key is None or key < lowest_key:
-            lowest_key = key
-    xyz = best_guess_and_errors[lowest_key]
+    xyz = best_guess_and_errors[min(best_guess_and_errors)]
     xyz = modify_coords(coords=xyz,
                         indices=[r_index, len(xyz['coords']) - 1],
                         new_value=r_value,
@@ -2178,13 +2332,63 @@ def add_atom_to_xyz_using_internal_coords(xyz: dict | str,
                         modification_type='atom',
                         index=0,
                         )
-    xyz = modify_coords(coords=xyz,
-                        indices=[d_indices[0], d_indices[1], d_indices[2], len(xyz['coords']) - 1],
-                        new_value=d_value,
-                        modification_type='atom',
-                        index=0,
-                        )
+    if dihedral_is_defined:
+        xyz = modify_coords(coords=xyz,
+                            indices=[d_indices[0], d_indices[1], d_indices[2], len(xyz['coords']) - 1],
+                            new_value=d_value,
+                            modification_type='atom',
+                            index=0,
+                            )
     return xyz
+
+
+def resolve_dihedral_reference(coords: tuple | list,
+                               d_indices: tuple | list,
+                               ) -> tuple[list[int], tuple | None]:
+    """
+    Give a dihedral L-M-N-X whose reference atoms L, M and N are collinear a reference plane.
+
+    When L, M and N lie on one line (within 1 degree), the dihedral is undefined. L is then replaced by
+    the atom off that line which is nearest to L (the lowest index on a tie), so that the dihedral is
+    defined against a real atom. When no atom is off the line (a linear molecule), L is kept and a fixed
+    point perpendicular to the line at M is returned instead. The line is then an axis of cylindrical
+    symmetry, so any such point gives an equivalent geometry, and the dihedral carries no information.
+
+    Args:
+        coords (tuple | list): The Cartesian coordinates of the atoms.
+        d_indices (tuple | list): The indices of L, M and N.
+
+    Returns:
+        tuple[list[int], tuple | None]:
+            - The indices of the dihedral's reference atoms.
+            - The substitute coordinates for L, given only for a linear molecule, otherwise ``None``.
+    """
+    d_indices = list(d_indices)
+    coord_l, coord_m, coord_n = (np.asarray(coords[i], dtype=np.float64) for i in d_indices)
+    axis = coord_n - coord_m
+    axis_length = np.linalg.norm(axis)
+    ml_length = np.linalg.norm(coord_l - coord_m)
+    if axis_length == 0 or ml_length == 0:
+        return d_indices, None
+    axis = axis / axis_length
+    if np.linalg.norm(np.cross(coord_l - coord_m, axis)) / ml_length >= COLLINEAR_SIN_TOLERANCE:
+        return d_indices, None
+    candidates = list()
+    for i, coord in enumerate(coords):
+        if i in d_indices:
+            continue
+        coord = np.asarray(coord, dtype=np.float64)
+        if np.linalg.norm(np.cross(coord - coord_m, axis)) > OFF_AXIS_MIN_DISTANCE:
+            candidates.append((float(np.linalg.norm(coord - coord_l)), i))
+    if candidates:
+        nearest_distance = min(distance for distance, _ in candidates)
+        nearest = min(i for distance, i in candidates if distance - nearest_distance < NEAREST_ATOM_TIE_TOLERANCE)
+        return [nearest, d_indices[1], d_indices[2]], None
+    trial = np.zeros(3)
+    trial[int(np.argmin(np.abs(axis)))] = 1.0
+    perpendicular = np.cross(axis, trial)
+    perpendicular /= np.linalg.norm(perpendicular)
+    return d_indices, tuple((coord_m + perpendicular).tolist())
 
 
 def _place_atom_nerf(coord_l: tuple,
@@ -2342,6 +2546,7 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
                                            d_value: float,
                                            initial_guess: np.ndarray,
                                            opt_method: str = 'SLSQP',
+                                           substitute_coord_l: tuple | None = None,
                                            ) -> dict:
     """
     Optimize the placement of a new atom in an XYZ structure while satisfying
@@ -2363,6 +2568,10 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
         initial_guess (np.ndarray): The initial guess for the new atom's coordinates.
         opt_method (str, optional): The optimization method to use for finding the new atom's coordinates.
                                     Additional options include 'Nelder-Mead', 'trust-constr' and 'BFGS'.
+        substitute_coord_l (tuple, optional): Coordinates that replace atom L's for a linear molecule, as given by
+                                              ``resolve_dihedral_reference()``. The analytic placement then uses
+                                              them as its reference plane, and the optimizer leaves the dihedral
+                                              unconstrained.
 
     Returns:
         dict: The updated xyz coordinates.
@@ -2380,9 +2589,10 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
     # over them. Either helper returns None if its construction is degenerate, in which
     # case we fall through to the optimizer below.
     new_coord = None
+    coord_l = substitute_coord_l if substitute_coord_l is not None else coords[d_indices[0]]
     if a_indices[1] == r_index and d_indices[2] == r_index:
         if d_indices[1] == a_indices[0]:
-            new_coord = _place_atom_nerf(coord_l=coords[d_indices[0]],
+            new_coord = _place_atom_nerf(coord_l=coord_l,
                                          coord_m=coords[d_indices[1]],
                                          coord_r=coords[r_index],
                                          r_value=r_value,
@@ -2390,7 +2600,7 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
                                          d_value=d_value,
                                          )
         else:
-            arc_coord, exact = _place_atom_on_dihedral_arc(coord_l=coords[d_indices[0]],
+            arc_coord, exact = _place_atom_on_dihedral_arc(coord_l=coord_l,
                                                            coord_m=coords[d_indices[1]],
                                                            coord_r=coords[r_index],
                                                            coord_a=coords[a_indices[0]],
@@ -2414,13 +2624,13 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
     atom_r_coord = coords[r_index]
     atom_a_coord = coords[a_indices[0]]
     atom_b_coord = coords[a_indices[1]]
-    atom_l_coord = coords[d_indices[0]]
     atom_m_coord = coords[d_indices[1]]
     atom_n_coord = coords[d_indices[2]]
 
     sphere_eq = distance_constraint(reference_coord=atom_r_coord, distance=r_value)
     angle_eq = angle_constraint(atom_a=atom_a_coord, atom_b=atom_b_coord, angle=a_value)
-    dihedral_eq = dihedral_constraint(atom_a=atom_l_coord, atom_b=atom_m_coord, atom_c=atom_n_coord, dihedral=d_value)
+    dihedral_eq = dihedral_constraint(atom_a=coord_l, atom_b=atom_m_coord, atom_c=atom_n_coord, dihedral=d_value) \
+        if substitute_coord_l is None else None
 
     def objective_func(coord: tuple[float, float, float]) -> float:
         """
@@ -2435,7 +2645,7 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
         x, y, z = coord
         d_err = sphere_eq(x, y, z) / r_value
         a_err = angle_eq(x, y, z) / math.radians(a_value)
-        t_err = dihedral_eq(x, y, z) / math.radians(d_value)
+        t_err = dihedral_eq(x, y, z) / math.radians(d_value) if dihedral_eq is not None else 0.0
         return d_err ** 2 + a_err ** 2 + t_err ** 2
 
     result = minimize(objective_func, initial_guess, method=opt_method,

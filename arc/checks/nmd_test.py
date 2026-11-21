@@ -654,27 +654,13 @@ class TestNMD(unittest.TestCase):
         self.assertNotIn('frame of the normal modes', warning)
 
     def test_get_ts_xyz_in_normal_mode_frame_falls_back_when_parsing_raises(self):
-        """Test that a log file whose geometry parser raises falls back to the species geometry.
-
-        The log is a Gaussian frequency output truncated in the middle of its 'Input orientation:'
-        block, as a job killed while writing one leaves behind.
-        """
-        scratch_dir = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
-        log_path = os.path.join(scratch_dir, 'truncated_freq.log')
-        with open(log_path, 'w') as f:
-            f.write(' Entering Gaussian System, Link 0=g16\n'
-                    '                          Input orientation:\n'
-                    ' ---------------------------------------------------------------------\n'
-                    ' Center     Atomic      Atomic             Coordinates (Angstroms)\n'
-                    ' Number     Number       Type             X           Y           Z\n'
-                    ' ---------------------------------------------------------------------\n'
-                    '      1          6           0        0.000000    0.000000    0.000000\n')
-        with self.assertRaises(IndexError):
-            parse_geometry(log_file_path=log_path)
+        """Test that a log file whose geometry parser raises falls back to the species geometry."""
+        log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')
         self.generic_job.local_path_to_output_file = log_path
         rxn = self.make_ch4_oh_rxn(ts_xyz=self.ts_1_xyz)
-        with self.assertLogs('arc', level='WARNING') as captured:
+        with self.assertLogs('arc', level='WARNING') as captured, \
+                patch('arc.checks.nmd.parser.parse_geometry_in_normal_mode_frame',
+                      side_effect=IndexError('list index out of range')):
             frame_xyz = nmd.get_ts_xyz_in_normal_mode_frame(reaction=rxn, job=self.generic_job)
         self.assertEqual(frame_xyz['symbols'], self.ts_1_xyz['symbols'])
         np.testing.assert_allclose(np.array(frame_xyz['coords']),
@@ -1135,11 +1121,11 @@ class TestNMD(unittest.TestCase):
                                                             amplitude=nmd.DEFAULT_AMPLITUDE)
             self.assertEqual(valid, expected, msg=f'{label} at amplitude {nmd.DEFAULT_AMPLITUDE}')
 
-    def test_the_shipped_amplitude_sits_inside_the_band_that_separates_these_structures(self):
-        """Test that the shipped amplitude is not on the edge of the range that classifies these structures.
+    def test_the_shipped_amplitudes_sit_inside_the_band_that_separates_these_structures(self):
+        """Test that every default amplitude lies inside (0.5, 1.5), and that the C3H7 verdicts hold across it.
 
-        The amplitude and the 5%-of-bond-length reactive gate set the same first order threshold, so the
-        value that ships matters only through the range over which every verdict is the one expected.
+        C3H7 TS3 is accepted and the wrong saddles TS4 and TS7 are rejected at 0.5, at the default list,
+        and at 1.5.
         """
         base_path = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7')
         rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C',
@@ -1147,8 +1133,8 @@ class TestNMD(unittest.TestCase):
                           p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC',
                                                 xyz=os.path.join(base_path, 'nC3H7.gjf'))])
         band = (0.5, 1.5)
-        self.assertGreater(nmd.DEFAULT_AMPLITUDE, band[0])
-        self.assertLess(nmd.DEFAULT_AMPLITUDE, band[1])
+        self.assertGreater(min(nmd.DEFAULT_AMPLITUDE), band[0])
+        self.assertLess(max(nmd.DEFAULT_AMPLITUDE), band[1])
         for amplitude in [band[0], nmd.DEFAULT_AMPLITUDE, band[1]]:
             for label, expected in [('TS3', True), ('TS4', False), ('TS7', False)]:
                 log_path = os.path.join(base_path, f'{label}.log')
@@ -1158,6 +1144,163 @@ class TestNMD(unittest.TestCase):
                                                                 job=self.generic_job,
                                                                 amplitude=amplitude)
                 self.assertEqual(valid, expected, msg=f'{label} at amplitude {amplitude}')
+
+    def test_an_explicit_amplitude_reaches_the_displacement_unscaled(self):
+        """Test that an explicit amplitude is used as given, and the wrong C3H7 saddles keep their verdict at it.
+
+        C3H7 TS4 and TS7 are saddle points of a different reaction. At the explicit amplitude 1.5 they are
+        rejected, and only 1.5 is used to displace the TS, so a default list never widens an explicit request.
+        """
+        base_path = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C',
+                                                xyz=os.path.join(base_path, 'iC3H7.gjf'))],
+                          p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC',
+                                                xyz=os.path.join(base_path, 'nC3H7.gjf'))])
+        for label in ['TS4', 'TS7']:
+            log_path = os.path.join(base_path, f'{label}.log')
+            self.generic_job.local_path_to_output_file = log_path
+            rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+            with patch('arc.checks.nmd.get_displaced_xyzs', wraps=nmd.get_displaced_xyzs) as displace:
+                valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn,
+                                                                job=self.generic_job,
+                                                                amplitude=1.5)
+            self.assertIs(valid, False, msg=f'{label} at the explicit amplitude 1.5')
+            self.assertEqual({call.kwargs['amplitude'] for call in displace.call_args_list}, {1.5})
+
+    def test_the_default_amplitudes_try_0_9_first_and_pass_on_it(self):
+        """Test that the default amplitudes start with 0.9 and that a pass at 0.9 alone passes the check.
+
+        The per-amplitude check is mocked to pass only at 0.9, so the result is True only when 0.9 is
+        tried and a pass at any one amplitude passes the TS.
+        """
+        rxn = self.get_c2h5cl_hcl_elimination_reaction()
+        log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5Cl_HCl_elimination.log')
+        self.generic_job.local_path_to_output_file = log_path
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+        with patch('arc.checks.nmd.is_nmd_correct_for_any_mapping',
+                   side_effect=lambda **kwargs: kwargs['amplitude'] == 0.9) as check:
+            valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job)
+        self.assertIs(valid, True)
+        self.assertEqual(check.call_args_list[0].kwargs['amplitude'], 0.9)
+
+    def test_the_default_amplitudes_accept_the_irc_verified_c2h5cl_hcl_elimination_saddle(self):
+        """Test that the default amplitudes accept the IRC-verified four-center saddle of C2H5Cl <=> C2H4 + HCl.
+
+        The saddle (-1703 cm^-1) has a C-Cl bond that is already long at the TS, so it changes by 4.55% at
+        amplitude 0.9, below the 5% reactive-bond gate. An IRC with optimized ends connects it to C2H5Cl and
+        to C2H4 + HCl.
+        """
+        rxn = self.get_c2h5cl_hcl_elimination_reaction()
+        log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5Cl_HCl_elimination.log')
+        self.generic_job.local_path_to_output_file = log_path
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+        self.assertTrue(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job))
+
+    def test_the_default_amplitudes_reject_the_second_c2h5cl_saddle_whose_reactive_c_cl_bond_is_already_broken(self):
+        """Test that the default amplitudes reject a higher, weak saddle of C2H5Cl <=> C2H4 + HCl.
+
+        This saddle lies about 94 kJ/mol above the four-center saddle, and its reactive C-Cl bond is already
+        2.96 A long at the TS. Its normal mode changes that bond by too little for the default amplitudes,
+        and it passes only at an amplitude of 1.2 or more.
+        """
+        rxn = self.get_c2h5cl_hcl_elimination_reaction()
+        log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5Cl_HCl_elimination_second_saddle.log')
+        self.generic_job.local_path_to_output_file = log_path
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+        self.assertIs(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job), False)
+        self.assertIs(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=1.2),
+                      True)
+
+    def test_the_default_amplitudes_reject_a_heptadiene_saddle_whose_irc_reaches_methylcyclohexene(self):
+        """Test that the default amplitudes reject a saddle point that belongs to a different reaction.
+
+        The reaction is hepta-1,6-diene <=> C3H6 + butadiene, but the IRC of this saddle point connects
+        hepta-1,6-diene to 4-methylcyclohexene. It is a wrong TS and is rejected at every amplitude up to 2.5,
+        so it does not bound the amplitude from above.
+        """
+        rxn = self.get_heptadiene_retro_ene_reaction()
+        log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_heptadiene_wrong_saddle_to_methylcyclohexene.log')
+        self.generic_job.local_path_to_output_file = log_path
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=log_path)
+        self.assertIs(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job), False)
+
+    @staticmethod
+    def get_c2h5cl_hcl_elimination_reaction() -> ARCReaction:
+        """
+        Build the C2H5Cl <=> C2H4 + HCl reaction with optimized reactant and product geometries.
+
+        Returns:
+            ARCReaction: The reaction, without a TS species.
+        """
+        c2h5cl_xyz = """C      -1.60806700   -0.35450900    0.00000700
+C      -0.47885600    0.65358100    0.00000600
+Cl      1.13159900   -0.15086600   -0.00000100
+H      -1.56320100   -0.99682200    0.89093200
+H      -2.57517400    0.17202800    0.00032400
+H      -1.56358800   -0.99632000   -0.89130300
+H      -0.50684300    1.29572900    0.89010200
+H      -0.50684000    1.29568100   -0.89012500"""
+        c2h4_xyz = """C       0.00000000    0.00000000    0.66496000
+C       0.00000000    0.00000000   -0.66496000
+H       0.00000000    0.93095500    1.23885200
+H      -0.00000000   -0.93095500    1.23885200
+H       0.00000000    0.93095500   -1.23885200
+H      -0.00000000   -0.93095500   -1.23885200"""
+        hcl_xyz = """Cl      0.00000000    0.00000000    0.07138300
+H       0.00000000    0.00000000   -1.21350700"""
+        return ARCReaction(r_species=[ARCSpecies(label='C2H5Cl', smiles='CCCl', xyz=c2h5cl_xyz)],
+                           p_species=[ARCSpecies(label='C2H4', smiles='C=C', xyz=c2h4_xyz),
+                                      ARCSpecies(label='HCl', smiles='Cl', xyz=hcl_xyz)])
+
+    @staticmethod
+    def get_heptadiene_retro_ene_reaction() -> ARCReaction:
+        """
+        Build the hepta-1,6-diene <=> C3H6 + butadiene reaction with optimized reactant and product geometries.
+
+        Returns:
+            ARCReaction: The reaction, without a TS species.
+        """
+        heptadiene_xyz = """C       3.34521400   -0.39769500   -0.26251900
+C       2.23557200   -0.23075200    0.45652800
+C       0.83446300   -0.30149200   -0.07462500
+C       0.06776200    1.01341000    0.09528800
+C      -1.38053500    0.94560800   -0.40554300
+C      -2.23814900    0.00086200    0.38561400
+C      -2.86030600   -1.07342000   -0.09939800
+H       4.33716200   -0.32639700    0.19061200
+H       3.30239100   -0.61721700   -1.33442300
+H       2.32916700   -0.00892500    1.52787500
+H       0.28593800   -1.10398400    0.44958900
+H       0.85203600   -0.58348900   -1.14109700
+H       0.60115100    1.81402000   -0.44272200
+H       0.07259000    1.30643800    1.16053000
+H      -1.39345200    0.65698900   -1.47013100
+H      -1.81847600    1.95703800   -0.34804200
+H      -2.33649600    0.23048800    1.45504100
+H      -2.78707400   -1.34484100   -1.15762500
+H      -3.46906900   -1.71924300    0.53832300"""
+        c3h6_xyz = """C       1.28228000   -0.22047500    0.00000000
+C       0.13224000    0.45288700   -0.00000000
+C      -1.23350000   -0.16258800    0.00000000
+H       1.30396600   -1.31497300   -0.00000000
+H       2.24557000    0.29531800    0.00000000
+H       0.16627600    1.54928300    0.00000000
+H      -1.80903100    0.15633100    0.88389100
+H      -1.80903100    0.15633300   -0.88389000
+H      -1.18387300   -1.26123700   -0.00000100"""
+        butadiene_xyz = """C       0.60502200    1.74848200   -0.00000000
+C       0.60502200    0.41084800   -0.00000000
+C      -0.60502200   -0.41084800    0.00000000
+C      -0.60502200   -1.74848200   -0.00000000
+H      -0.33017200    2.31698300   -0.00000000
+H       1.53553200    2.32029300   -0.00000000
+H       1.55999700   -0.12791800   -0.00000000
+H      -1.55999700    0.12791800    0.00000000
+H      -1.53553200   -2.32029300   -0.00000000
+H       0.33017200   -2.31698300   -0.00000000"""
+        return ARCReaction(r_species=[ARCSpecies(label='hepta16diene', smiles='C=CCCCC=C', xyz=heptadiene_xyz)],
+                           p_species=[ARCSpecies(label='C3H6', smiles='C=CC', xyz=c3h6_xyz),
+                                      ARCSpecies(label='butadiene', smiles='C=CC=C', xyz=butadiene_xyz)])
 
     def test_the_shipped_amplitude_accepts_saddle_points_of_third_row_reaction_coordinates(self):
         """Test that the shipped amplitude accepts an S-H abstraction and a Cl abstraction TS.
@@ -1183,8 +1326,8 @@ class TestNMD(unittest.TestCase):
         self.assertEqual(cl_rxn.family, 'Cl_Abstraction')
 
         band, below_band = (0.3, 3.0), 0.1
-        self.assertGreater(nmd.DEFAULT_AMPLITUDE, band[0])
-        self.assertLess(nmd.DEFAULT_AMPLITUDE, band[1])
+        self.assertGreater(min(nmd.DEFAULT_AMPLITUDE), band[0])
+        self.assertLess(max(nmd.DEFAULT_AMPLITUDE), band[1])
         for label, rxn, log_name in [('CH3SH + OH', s_rxn, 'TS_CH3SH_OH.log'),
                                      ('CH3Cl + H', cl_rxn, 'TS_CH3Cl_H.log')]:
             log_path = os.path.join(base_path, log_name)

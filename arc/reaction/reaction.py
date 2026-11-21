@@ -2,6 +2,8 @@
 A module for representing a reaction.
 """
 
+import copy
+
 from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
@@ -14,7 +16,7 @@ from arc.species.converter import (check_xyz_dict,
                                    )
 from arc.mapping.cluster import map_reaction_clusters
 from arc.mapping.driver import map_reaction
-from arc.species.species import ARCSpecies, check_atom_balance, check_label
+from arc.species.species import ARCSpecies, check_atom_balance, check_extensions, check_label
 
 
 logger = get_logger()
@@ -53,6 +55,8 @@ class ARCReaction(object):
         kinetics (dict[str, float | tuple[float, str]], optional): The high pressure limit rate coefficient
                                                                          calculated by ARC. Keys are 'A' (value, unit),
                                                                          n (value), and Ea (value, unit).
+        extensions (dict, optional): Data owned by a downstream tool, keyed by the tool's name (e.g., ``'t3'``).
+                                     ARC does not read it, and writes it back to the restart file verbatim.
 
     Attributes:
         label (str): The reaction's label in the format `r1 + r2 <=> p1 + p2`
@@ -68,6 +72,7 @@ class ARCReaction(object):
         kinetics (dict[str, float | tuple[float, str]]): The high pressure limit rate coefficient
                                                                calculated by ARC. Keys are 'A' (value, unit),
                                                                n (value), and Ea (value, unit).
+        extensions (dict): Data owned by a downstream tool, keyed by the tool's name, kept verbatim.
         rmg_kinetics (list[dict[str, float]]): The Arrhenius kinetics from RMG's libraries and families.
                                                Each dict has 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol as keys,
                                                and a 'comment' key with a description of the source of the kinetics.
@@ -102,12 +107,14 @@ class ARCReaction(object):
                  species_list: list[ARCSpecies] | None = None,
                  preserve_param_in_scan: list | None = None,
                  kinetics: dict[str, float | tuple[float, str]] = None,
+                 extensions: dict[str, dict] | None = None,
                  ):
         self.arrow = ' <=> '
         self.plus = ' + '
         self.r_species = r_species or list()
         self.p_species = p_species or list()
         self.kinetics = kinetics
+        self.extensions = check_extensions(extensions)
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
         self._family = None
@@ -243,7 +250,7 @@ class ARCReaction(object):
             self._multiplicity = self.get_rxn_multiplicity()
             if self._multiplicity is not None:
                 logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
-            else:
+            elif len(self.r_species) and len(self.p_species):
                 logger.error(f'Could not determine multiplicity for the reaction: {self.label}')
         return self._multiplicity
 
@@ -345,6 +352,8 @@ class ARCReaction(object):
         if len(self.ts_xyz_guess):
             reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
         reaction_dict['label'] = self.label
+        if self.extensions:
+            reaction_dict['extensions'] = copy.deepcopy(self.extensions)
         if self.ts_label is not None:
             reaction_dict['ts_label'] = self.ts_label
         return reaction_dict
@@ -357,6 +366,7 @@ class ARCReaction(object):
         A helper function for loading this object from a dictionary in a YAML file for restarting ARC.
         """
         self.index = reaction_dict['index'] if 'index' in reaction_dict else None
+        self.extensions = copy.deepcopy(check_extensions(reaction_dict.get('extensions'))) or None
         self.label = reaction_dict['label'] if 'label' in reaction_dict else ''
         self.multiplicity = reaction_dict['multiplicity'] if 'multiplicity' in reaction_dict else None
         self.charge = reaction_dict.get('charge')
@@ -522,18 +532,26 @@ class ARCReaction(object):
             return sum(r.charge * self.get_species_count(species=r, well=0) for r in self.r_species)
         return None
 
-    def get_rxn_multiplicity(self):
-        """A helper function for determining the surface multiplicity"""
+    def get_rxn_multiplicity(self) -> int | None:
+        """
+        Determine the surface multiplicity from the multiplicities of the reactant and product species.
+
+        Returns:
+            int | None: The reaction multiplicity, ``None`` if it cannot be determined, e.g., if the
+                        species needed to determine it are not attached yet.
+        """
         reactants, products = self.get_reactants_and_products()
         multiplicity = None
-        ordered_r_mult_list, ordered_p_mult_list = list(), list()
-        if len(reactants):
-            if len(reactants) == 1:
-                return reactants[0].multiplicity
-            if len(products) == 1:
-                return products[0].multiplicity
-            ordered_r_mult_list = sorted([r_spc.multiplicity for r_spc in reactants])
-            ordered_p_mult_list = sorted([p_spc.multiplicity for p_spc in products])
+        if not len(reactants):
+            return None
+        if len(reactants) == 1:
+            return reactants[0].multiplicity
+        if len(products) == 1:
+            return products[0].multiplicity
+        if not len(products):
+            return None
+        ordered_r_mult_list = sorted([r_spc.multiplicity for r_spc in reactants])
+        ordered_p_mult_list = sorted([p_spc.multiplicity for p_spc in products])
 
         for list_1, list_2 in [(ordered_r_mult_list, ordered_p_mult_list),
                                (ordered_p_mult_list, ordered_r_mult_list)]:
@@ -1340,3 +1358,28 @@ def remove_dup_species(species_list: list[ARCSpecies]) -> list[ARCSpecies]:
         if species.label not in [spc.label for spc in new_species_list]:
             new_species_list.append(species)
     return new_species_list
+
+
+def check_unique_reaction_labels(reactions: list[ARCReaction]) -> None:
+    """
+    Check that no two reactions share a label.
+    Arkane identifies a reaction by its label, so a reaction sharing a label with another one
+    silently gets the other reaction's rate coefficient.
+
+    Args:
+        reactions (list[ARCReaction]): The reactions to check.
+
+    Raises:
+        InputError: If two reactions share a label.
+    """
+    seen = dict()
+    for index, rxn in enumerate(reactions):
+        if rxn.label in seen:
+            raise InputError(f"Reaction label '{rxn.label}' is not unique: it is used by the reaction at index "
+                             f"{seen[rxn.label]} and by the reaction at index {index}. Arkane identifies reactions "
+                             f"by label, so the second reaction would silently get the rate coefficient of the first.\n"
+                             f"Remove the duplicate reaction. To compute another TS for the same reaction, define a "
+                             f"copy of one participant species under a new label with the same structure, and use it "
+                             f"in the second reaction. For example, add a species 'H2O_b' with smiles 'O', and label "
+                             f"the second reaction 'CH4 + OH <=> CH3 + H2O_b'.")
+        seen[rxn.label] = index

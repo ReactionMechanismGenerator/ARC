@@ -11,7 +11,7 @@ import re
 
 from arc.common import SYMBOL_BY_NUMBER, get_logger, is_same_pivot, is_str_int
 from arc.constants import E_h_kJmol, bohr_to_angstrom
-from arc.species.converter import str_to_xyz, xyz_from_data
+from arc.species.converter import xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
 from arc.parser.parser import (_get_lines_from_file,
@@ -43,13 +43,17 @@ def _find_force_constants_header(lines: list[str]) -> int | None:
     return None
 
 
-def _read_irc_geometry_table(lines: list[str], start: int) -> tuple[dict | None, int]:
+def _read_irc_geometry_table(lines: list[str],
+                             start: int,
+                             x_column: int = 2,
+                             ) -> tuple[dict | None, int]:
     """
-    Read one Gaussian IRC Cartesian geometry table.
+    Read one Gaussian Cartesian geometry table.
 
     Skips forward from ``start`` past the two dashed separator lines that head
-    the table, then reads ``center, atomic number, x, y, z`` rows until the
-    closing dashed line.
+    the table, then reads rows until the closing dashed line. IRC tables have
+    ``center, atomic number, x, y, z`` rows; orientation tables have an extra
+    atomic type column, ``center, atomic number, type, x, y, z``.
 
     Reads the table as all-or-nothing. A table that does not open with both
     separators, a row that is not a numeric ``center, atomic number, x, y, z``
@@ -62,6 +66,8 @@ def _read_irc_geometry_table(lines: list[str], start: int) -> tuple[dict | None,
     Args:
         lines (list[str]): The log file lines.
         start (int): The index of the line introducing the table.
+        x_column (int, optional): The index of the x coordinate in a row, 2 for IRC tables
+                                  and 3 for orientation tables.
 
     Returns: tuple[dict | None, int]
         The geometry as an ARC xyz dict, or ``None`` when the table is absent,
@@ -84,7 +90,7 @@ def _read_irc_geometry_table(lines: list[str], start: int) -> tuple[dict | None,
         parts = lines[i].split()
         try:
             atomic_number = int(parts[1])
-            coordinates = [float(parts[2]), float(parts[3]), float(parts[4])]
+            coordinates = [float(parts[x_column]), float(parts[x_column + 1]), float(parts[x_column + 2])]
         except (IndexError, ValueError):
             logger.warning('Discarding a Gaussian geometry table with a malformed row: %s',
                            lines[i].rstrip())
@@ -158,43 +164,21 @@ class GaussianParser(ESSAdapter, ABC):
     def parse_geometry(self) -> dict[str, tuple] | None:
         """
         Parse the xyz geometry from an ESS log file.
-        Try to find the 'Standard orientation:' first, and if not found, fall back to the 'Input orientation:'.
+
+        Takes the last complete 'Standard orientation:' table, and if there is none, the last complete
+        'Input orientation:' table. A table cut by the end of the file, or holding a malformed row,
+        is skipped in favour of the table before it.
 
         Returns: dict[str, tuple] | None
-            The cartesian geometry.
+            The cartesian geometry, or ``None`` if the log holds no complete orientation table.
         """
         lines = _get_lines_from_file(self.log_file_path)
-        for i in range(len(lines) - 1, -1, -1):  # Search for the latest 'Standard orientation:' from the end
-            if 'Standard orientation:' in lines[i]:
-                j = i + 5  # Usually 5 lines after 'Standard orientation:' is the table start
-                xyz_str = ''
-                while j < len(lines) and lines[j].strip() and not lines[j].startswith(' ---'):
-                    splits = lines[j].split()
-                    if splits and splits[0].isdigit():
-                        xyz_str += f'{SYMBOL_BY_NUMBER[int(splits[1])]}  {splits[3]}  {splits[4]}  {splits[5]}\n'
-                    j += 1
-                if xyz_str:
-                    return str_to_xyz(xyz_str)
-                break
-
-        numbers, coords, = list(), list()
-        with open(self.log_file_path, 'r') as f:
-            line = f.readline()
-            while line != '':
-                if 'Input orientation:' in line:
-                    numbers, coords = list(), list()
-                    for i in range(5):
-                        line = f.readline()
-                    while '---------------------------------------------------------------------' not in line:
-                        data = line.split()
-                        numbers.append(int(data[1]))
-                        coords.append([float(data[3]), float(data[4]), float(data[5])])
-                        line = f.readline()
-                line = f.readline()
-        coords = np.array(coords, float)
-        numbers = np.array(numbers, int)
-        if len(numbers) != 0 and len(coords) != 0:
-            return xyz_from_data(coords=coords, numbers=numbers)
+        for header in ['Standard orientation:', 'Input orientation:']:
+            for i in range(len(lines) - 1, -1, -1):
+                if header in lines[i]:
+                    xyz = _read_irc_geometry_table(lines, i, x_column=3)[0]
+                    if xyz is not None:
+                        return xyz
         return None
 
     def parse_frequencies(self) -> np.ndarray | None:

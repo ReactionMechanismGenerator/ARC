@@ -3,6 +3,7 @@ A module for representing stationary points (chemical species and transition sta
 If the species is a transition state (TS), its ``ts_guesses`` attribute will have one or more ``TSGuess`` objects.
 """
 
+import copy
 import datetime
 import numpy as np
 import os
@@ -33,6 +34,7 @@ from arc.molecule.resonance import generate_aromatic_resonance_structure, genera
 from arc.parser.parser import (parse_1d_scan_energies,
                                parse_dipole_moment,
                                parse_geometry,
+                               parse_neb_ts_failure,
                                parse_polarizability,
                                process_conformers_file,
                                )
@@ -41,6 +43,7 @@ from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
                                    check_zmat_dict,
                                    compare_confs,
+                                   compare_confs_by_graph_maps,
                                    get_xyz_radius,
                                    modify_coords,
                                    order_atoms,
@@ -60,6 +63,37 @@ from arc.species.vectors import calculate_angle, calculate_distance, calculate_d
 logger = get_logger()
 
 valid_chars, minimum_barrier = settings['valid_chars'], settings['minimum_barrier']
+
+# Frozen: keys T3 wrote flat into species dicts before it nested them under ``extensions['t3']``.
+# Never add to this list; new downstream metadata belongs in ``extensions`` only.
+LEGACY_FLAT_EXTENSION_KEYS = {'t3': ('key', 'qm_label', 'rmg_label', 'thermo_method', 'thermo_source',
+                                     'thermo_comment', 't3_status', 'created_at_iteration', 'reasons')}
+
+# The optical_isomers_cause of a value the user gave (see arc.species.optical_isomers).
+USER_OPTICAL_ISOMERS_CAUSE = 'given by the user'
+
+REACTIVE_RING_INVALIDATION_REASON = 'Torsion lies in the TS reactive ring (code: reactive ring). '
+TS_GRAPH_INVALIDATION_REASON = 'TS graph contradicts the geometry (code: ts graph). '
+
+
+def is_reactive_ring_rejection(rotor: dict, sole_reason: bool = False) -> bool:
+    """
+    Determine whether a rotor was rejected by a TS rotor check (see ``ARCSpecies.check_reactive_ring_rotors``):
+    its torsion lies in the reactive ring of its TS, or the TS graph contradicts the TS geometry,
+    so no scan of it may be submitted, continued, or used.
+
+    Args:
+        rotor (dict): A ``rotors_dict`` entry.
+        sole_reason (bool, optional): Whether a TS rotor check must be the only recorded invalidation reason.
+
+    Returns:
+        bool: Whether the rotor carries a TS rotor check rejection (as its only reason, if ``sole_reason``).
+    """
+    reason = rotor.get('invalidation_reason') or ''
+    if rotor.get('success') is not False:
+        return False
+    reasons = (REACTIVE_RING_INVALIDATION_REASON, TS_GRAPH_INVALIDATION_REASON)
+    return reason in reasons if sole_reason else any(check_reason in reason for check_reason in reasons)
 
 
 class ARCSpecies(object):
@@ -87,6 +121,10 @@ class ARCSpecies(object):
                               'directed_scan_type': ``str``,
                               'directed_scan': ``dict``,  # keys: tuples of dihedrals as strings,
                                                           # values: dicts of energy, xyz, is_isomorphic, trsh
+                              'ring_check': ``str``,  # TSs only: the sources of the reactive ring check,
+                                                      # or 'unverified: <reason>'
+                              'ring_check_dropped_bonds': ``list[dict]``,  # TSs only: the TS 2D-graph bonds
+                                                      # the reactive ring check dropped, see ``get_ts_bonds``
                              }
                           1: {}, ...
                          }
@@ -118,6 +156,8 @@ class ARCSpecies(object):
             reaction-consistent (coarser) level and no copy is made.
         include_in_thermo_lib (bool, optional): Whether to include in the output RMG library.
         e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.
+        extensions (dict, optional): Data owned by a downstream tool, keyed by the tool's name (e.g., ``'t3'``).
+                                     ARC does not read it, and writes it back to the restart file verbatim.
         species_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
         yml_path (str, optional): Path to an Arkane YAML file representing a species (for loading the object).
         ts_number (int, optional): An auto-generated number associating the TS ARCSpecies object with the corresponding
@@ -268,12 +308,17 @@ class ARCSpecies(object):
             ``None`` means use the species' own heavy-atom count.
         include_in_thermo_lib (bool): Whether to include in the output RMG library.
         e0_only (bool): Whether to only run statmech (w/o thermo) to compute E0.
+        extensions (dict): Data owned by a downstream tool, keyed by the tool's name, kept verbatim.
         thermo (ThermoData): The thermo data calculated by ARC with 'H298' in kJ/mol and 'S298' in J/mol*K.
         rmg_thermo (ThermoData): The thermo data estimated by RMG with 'H298' in kJ/mol and 'S298' in J/mol*K for comparison.
         long_thermo_description (str): A description for the species entry in the thermo library outputted.
         ts_guesses (list): A list of TSGuess objects for each of the specified methods.
         successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.
         unsuccessful_methods (list): Methods used to generate a TS guess that were unsuccessfully.
+        skipped_methods (dict): TS adapters that did not run because their engine is not available, keyed by
+                                adapter, with the cause as value. Never also in ``unsuccessful_methods``.
+        ts_adapter_failures (list[dict]): TS adapters that raised an exception for this TS, each recorded
+                                          by its ``adapter``, ``exception_type`` and one-line ``message``.
         chosen_ts (int): The TSGuess index corresponding to the chosen TS conformer used for optimization.
         chosen_ts_list (list[int]): The TSGuess index corresponding to the TS guesses that were tried out.
         chosen_ts_method (str): The TS method that was actually used for optimization.
@@ -295,6 +340,7 @@ class ARCSpecies(object):
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
         external_symmetry (int): The external symmetry of the species (not including rotor symmetries).
         optical_isomers (int): Whether (=2) or not (=1) the species has chiral center/s.
+        optical_isomers_cause (str): Why ARC wrote its number of optical isomers into the Arkane file, if it did.
         transport_data (TransportData): A placeholder for updating transport properties after Lennard-Jones
                                         calculation (using OneDMin).
         force_field (str): The force field to be used for conformer screening. The default is MMFF94s.
@@ -348,6 +394,7 @@ class ARCSpecies(object):
                  consider_all_diastereomers: bool = True,
                  directed_rotors: dict | None = None,
                  e0_only: bool = False,
+                 extensions: dict[str, dict] | None = None,
                  external_symmetry: int | None = None,
                  fragments: list[list[int]] | None = None,
                  force_field: str = 'MMFF94s',
@@ -399,11 +446,13 @@ class ARCSpecies(object):
         self.irc_label = irc_label
         self.active = active
         self.optical_isomers = optical_isomers
+        self.optical_isomers_cause = None
         self.charge = charge
         self.run_time = process_run_time(run_time)
         self.checkfile = checkfile
         self.transport_data = TransportData()
         self.yml_path = yml_path
+        self.extensions = check_extensions(extensions)
         self.keep_mol = keep_mol
         self.fragments = fragments
         self.original_label = None
@@ -449,6 +498,8 @@ class ARCSpecies(object):
             self.rxn_index = rxn_index
             self.successful_methods = list()
             self.unsuccessful_methods = list()
+            self.skipped_methods = dict()
+            self.ts_adapter_failures = list()
             self.chosen_ts_method = None
             self.chosen_ts_list = list()
             self.compute_thermo = compute_thermo if compute_thermo is not None else not self.is_ts
@@ -583,7 +634,7 @@ class ARCSpecies(object):
 
         self.set_mol_list()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
-            self.populate_ts_checks()
+            self.populate_ts_checks(keep_warnings=True)
         self._set_final_xyz_for_monoatomic()
 
     def __str__(self) -> str:
@@ -695,6 +746,16 @@ class ARCSpecies(object):
         """Allow setting the is_linear property"""
         self._is_linear = value
 
+    def has_user_optical_isomers(self) -> bool:
+        """
+        Check whether the stored optical_isomers value came from the user rather than from an ARC decision.
+
+        Returns:
+            bool: Whether the value is set and has no ARC cause other than ``USER_OPTICAL_ISOMERS_CAUSE``.
+        """
+        return self.optical_isomers is not None \
+            and self.optical_isomers_cause in (None, USER_OPTICAL_ISOMERS_CAUSE)
+
     def copy(self):
         """
         Get a copy of this object instance.
@@ -765,7 +826,7 @@ class ARCSpecies(object):
             species_dict['adjlist'] = '\n'.join(line.strip() for line in self.adjlist.splitlines() if line.strip())
         if self.irc_label is not None:
             species_dict['irc_label'] = self.irc_label
-        if self.optical_isomers is not None:
+        if self.has_user_optical_isomers():
             species_dict['optical_isomers'] = self.optical_isomers
         if self.neg_freqs_trshed:
             species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed.tolist() \
@@ -795,6 +856,10 @@ class ARCSpecies(object):
                 species_dict['successful_methods'] = self.successful_methods
             if len(self.unsuccessful_methods):
                 species_dict['unsuccessful_methods'] = self.unsuccessful_methods
+            if self.skipped_methods:
+                species_dict['skipped_methods'] = self.skipped_methods
+            if len(self.ts_adapter_failures):
+                species_dict['ts_adapter_failures'] = self.ts_adapter_failures
             if self.chosen_ts_method is not None:
                 species_dict['chosen_ts_method'] = self.chosen_ts_method
             if self.chosen_ts is not None:
@@ -821,6 +886,8 @@ class ARCSpecies(object):
             species_dict['tsg_spawned'] = self.tsg_spawned
         if self.yml_path is not None:
             species_dict['yml_path'] = self.yml_path
+        if self.extensions:
+            species_dict['extensions'] = copy.deepcopy(self.extensions)
         if self.run_time is not None:
             species_dict['run_time'] = self.run_time.total_seconds()
         if self.number_of_radicals is not None:
@@ -907,10 +974,12 @@ class ARCSpecies(object):
         The 2D graph is taken from the dictionary as-is whenever it was serialized by ``as_dict()``
         (see ``dict_repr_is_authoritative()``), and is otherwise perceived from the coordinates.
         """
+        species_dict = lift_legacy_extension_keys(species_dict)
         try:
             self.label = species_dict['label']
         except KeyError:
             raise InputError('All species must have a label')
+        self.extensions = copy.deepcopy(check_extensions(species_dict.get('extensions'))) or None
         self.run_time = process_run_time(species_dict.get('run_time'))
         self.original_label = species_dict['original_label'] if 'original_label' in species_dict else None
         self.t1 = species_dict['t1'] if 't1' in species_dict else None
@@ -952,6 +1021,9 @@ class ARCSpecies(object):
                 if 'successful_methods' in species_dict else list()
             self.unsuccessful_methods = species_dict['unsuccessful_methods'] \
                 if 'unsuccessful_methods' in species_dict else list()
+            self.skipped_methods = dict(species_dict['skipped_methods']) \
+                if isinstance(species_dict.get('skipped_methods'), dict) else dict()
+            self.ts_adapter_failures = species_dict.get('ts_adapter_failures', list())
             self.chosen_ts_method = species_dict['chosen_ts_method'] if 'chosen_ts_method' in species_dict else None
             self.chosen_ts = species_dict['chosen_ts'] if 'chosen_ts' in species_dict else None
             self.rxn_zone_atom_indices = species_dict['rxn_zone_atom_indices'] \
@@ -1340,15 +1412,26 @@ class ARCSpecies(object):
             xyz = xyz_to_str(xyz)
         return xyz
 
-    def determine_rotors(self, verbose: bool = False) -> None:
+    def determine_rotors(self,
+                         verbose: bool = False,
+                         reaction: 'ARCReaction | None' = None,
+                         ) -> None:
         """
         Determine possible unique rotors in the species to be treated as hindered rotors,
         taking into account all localized structures.
         The resulting rotors are saved in a ``{'pivots': [1, 3], 'top': [3, 7], 'scan': [2, 1, 3, 7]}`` format
         in ``self.rotors_dict``. Also updates ``self.number_of_rotors``.
+        For a TS, rotors in the reactive ring are invalidated (see ``check_reactive_ring_rotors``),
+        also when the rotors dictionary already exists.
+
+        Args:
+            verbose (bool, optional): Whether to log the rotors found.
+            reaction (ARCReaction, optional): The reaction of a TS, used to find its reactive ring.
         """
         if self.rotors_dict != {}:
             # This species was marked to skip rotor scans (when ``rotors_dict`` is ``None``), or a rotors dictionary already exist.
+            if self.rotors_dict is not None:
+                self.check_reactive_ring_rotors(reaction=reaction)
             return
         mol_list = self.mol_list or [self.mol]
         if mol_list is None or not len(mol_list) or all([mol is None for mol in mol_list]):
@@ -1375,6 +1458,108 @@ class ARCSpecies(object):
                 logger.info(f'Pivot list(s) for {self.label}: '
                             f'{[self.rotors_dict[i]["pivots"] for i in range(self.number_of_rotors)]}\n')
         self.initialize_directed_rotors()
+        self.check_reactive_ring_rotors(reaction=reaction)
+
+    def check_reactive_ring_rotors(self, reaction: 'ARCReaction | None' = None) -> None:
+        """
+        Invalidate the rotors of a TS whose pivot bond lies in a ring of the TS graph, e.g., the reactive ring of an
+        intra-molecular H migration, which the TS 2D graph lacks. Scanning such a torsion breaks the ring.
+        Also invalidate the rotors of a TS whose 2D graph the TS geometry contradicts, since their tops come from
+        that graph: all rotors if the graph and the geometry are in different atom orders, and, if a graph bond was
+        dropped (see ``conformers.get_ts_bonds``), each rotor whose top differs from its top in the TS bonds.
+        Rotors that were not scanned yet are judged, and so are rotors that only this check invalidated (judged on an
+        earlier geometry, e.g. a TS guess), which are restored if no longer invalid, and rotors with a successful
+        scan (e.g., restored from a run before this check existed), which are rejected with a warning if invalid.
+        Rotors with a failed scan are not judged.
+        The sources used are recorded in each rotor's ``ring_check``.
+        If neither the reaction nor the TS geometry is available, the rotors are kept, marked as unverified,
+        and judged on the next call.
+
+        Args:
+            reaction (ARCReaction, optional): The reaction of the TS.
+        """
+        if not self.is_ts or not self.rotors_dict:
+            return
+        rotors = [rotor for rotor in self.rotors_dict.values()
+                  if rotor.get('success') is None or rotor.get('success') is True
+                  or (is_reactive_ring_rejection(rotor, sole_reason=True) and not rotor.get('scan_path'))]
+        if not rotors:
+            return
+        xyz = self.get_xyz(generate=False)
+
+        def reject(rotor: dict, reason: str, cause: str) -> None:
+            """
+            Invalidate a rotor by a TS rotor check, replacing an earlier verdict of these checks.
+
+            Args:
+                rotor (dict): The ``rotors_dict`` entry.
+                reason (str): The invalidation reason to record.
+                cause (str): Why the rotor is invalid, for the log.
+            """
+            if rotor.get('success') is True:
+                logger.warning(f"Rejecting the hindered rotor with pivots {rotor['pivots']} of TS {self.label}, "
+                               f"restored with a successful scan: {reason.strip()}")
+            else:
+                logger.info(f"Not considering rotor with pivots {rotor['pivots']} in TS {self.label}: {cause}.")
+            invalidation_reason = '' if is_reactive_ring_rejection(rotor, sole_reason=True) \
+                else rotor.get('invalidation_reason') or ''
+            rotor['success'] = False
+            if reason not in invalidation_reason:
+                rotor['invalidation_reason'] = invalidation_reason + reason
+
+        if conformers.is_ts_graph_out_of_order(mol=self.mol, xyz=xyz):
+            logger.warning(f'The 2D graph of TS {self.label} is not in the atom order of its geometry, '
+                           f'so none of its {len(rotors)} rotor(s) is scanned.')
+            for rotor in rotors:
+                rotor['ring_check'] = 'not run: the TS geometry is not in the atom order of the TS 2D graph'
+                reject(rotor, TS_GRAPH_INVALIDATION_REASON,
+                       'the TS 2D graph is not in the atom order of the TS geometry')
+            return
+        bonds, sources, reason, dropped = conformers.get_ts_bonds(mol=self.mol, xyz=xyz, reaction=reaction)
+        if not sources:
+            unjudged_rotors = [rotor for rotor in rotors if rotor.get('success') is None]
+            if unjudged_rotors:
+                logger.warning(f'Could not check whether {len(unjudged_rotors)} rotor(s) of TS {self.label} lie in '
+                               f'its reactive ring ({reason}). They are kept as rotors, marked unverified, and will '
+                               f'be checked again once a reaction or a TS geometry is available.')
+            for rotor in unjudged_rotors:
+                rotor['ring_check'] = f'unverified: {reason}'
+            return
+        if reaction is not None and 'reaction' not in sources:
+            logger.warning(f'The reactive ring of TS {self.label} was found from its geometry alone, '
+                           f'since its reaction could not be used: {reason}')
+        dropped_bonds = [{'atoms': [i + 1, j + 1], 'distance_angstrom': round(distance, 3), 'ratio': round(ratio, 3)}
+                         for i, j, distance, ratio in dropped]
+        if dropped_bonds and any(rotor.get('ring_check_dropped_bonds') != dropped_bonds for rotor in rotors):
+            logger.warning(f'The reactive ring check of TS {self.label} dropped 2D-graph bonds that its geometry '
+                           f'contradicts: ' + ', '.join(f"{xyz['symbols'][i]}{i + 1}-{xyz['symbols'][j]}{j + 1} "
+                                                       f"({distance:.3f} A, {ratio:.2f} times the single bond)"
+                                                       for i, j, distance, ratio in dropped))
+        for rotor in rotors:
+            rotor['ring_check'] = ', '.join(sources) + (f' ({reason})' if reason else '')
+            rotor['ring_check_dropped_bonds'] = dropped_bonds
+            nested = isinstance(rotor['pivots'][0], list)
+            pivots_list = rotor['pivots'] if nested else [rotor['pivots']]
+            if any(conformers.is_ring_twist(bonds=bonds, pivots=(pivots[0] - 1, pivots[1] - 1))
+                   for pivots in pivots_list):
+                reject(rotor, REACTIVE_RING_INVALIDATION_REASON, 'its torsion lies in the reactive ring')
+                continue
+            if dropped and rotor.get('top'):
+                tops = rotor['top'] if nested else [rotor['top']]
+                differing = [(top, sorted(i + 1 for i in conformers.get_top_from_bonds(
+                                 bonds=bonds, pivots=(pivots[0] - 1, pivots[1] - 1) if pivots[0] in top
+                                 else (pivots[1] - 1, pivots[0] - 1))))
+                             for pivots, top in zip(pivots_list, tops)]
+                differing = [(top, bond_top) for top, bond_top in differing if sorted(top) != bond_top]
+                if differing:
+                    reject(rotor, TS_GRAPH_INVALIDATION_REASON,
+                           'its top in the TS 2D graph differs from its top in the TS geometry ('
+                           + '; '.join(f'{sorted(top)} vs. {bond_top}' for top, bond_top in differing) + ')')
+                    continue
+            if rotor.get('success') is False:
+                rotor['success'], rotor['invalidation_reason'] = None, ''
+                logger.info(f"Considering rotor with pivots {rotor['pivots']} in TS {self.label} again: "
+                            f"its torsion is no longer in a ring and its top agrees with the TS geometry.")
 
     def initialize_directed_rotors(self):
         """
@@ -1732,6 +1917,9 @@ class ARCSpecies(object):
                 self.ts_report += '\nMethods that were unsuccessfully in generating a TS guess:\n'
                 for unsuccessful_method in self.unsuccessful_methods:
                     self.ts_report += unsuccessful_method + ','
+            if self.skipped_methods:
+                self.ts_report += '\nMethods skipped because their engine is not available:\n'
+                self.ts_report += ', '.join(f'{method} ({cause})' for method, cause in self.skipped_methods.items())
             if not self.ts_guesses_exhausted:
                 self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
                                   f'optimization: {self.chosen_ts_method}\n'
@@ -1858,7 +2046,14 @@ class ARCSpecies(object):
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """
-        Process YAML files which are the output of running a TS guess job in the queue.
+        Process the output of a TS guess job that ran in the queue, and add the resulting TS guesses.
+
+        A ``.yml``/``.yaml`` file holds a list of TSGuess dictionaries; each guess with a usable
+        geometry is added. A ``.log`` file is an ORCA NEB-TS (orca_neb) output. If the run did not
+        finish (see ``parse_neb_ts_failure``), a failed, coordinate-less ``orca_neb`` guess is added,
+        with the cause in its ``errors`` attribute. Otherwise the last geometry in the log is added
+        as a successful guess, or the guess is marked failed and not added if that geometry is
+        missing or has colliding atoms. The guesses are then clustered.
 
         Args:
             path (str): The path to the output file.
@@ -1866,6 +2061,14 @@ class ARCSpecies(object):
         if not isinstance(path, str) or not os.path.isfile(path):
             return None
         if path.endswith('.log'):
+            failure = parse_neb_ts_failure(path)
+            if failure is not None:
+                tsg = TSGuess(method='orca_neb', success=False, log_path=path)
+                tsg.errors = failure
+                self.append_ts_guess(tsg)
+                logger.warning(f'The orca_neb TS-guess job at {path} is a failed guess: {failure}')
+                self.cluster_tsgs()
+                return None
             xyz = parse_geometry(path)
             tsg = TSGuess(method='orca_neb',
                           success=True,
@@ -2388,12 +2591,20 @@ class ARCSpecies(object):
                     raise SpeciesError(f'Could not figure out which atom should gain a radical '
                                        f'due to scission in {self.label}')
 
-    def populate_ts_checks(self):
-        """Populate (or restart) the .ts_checks attribute with default (``None``) values."""
+    def populate_ts_checks(self, keep_warnings: bool = False):
+        """
+        Populate (or restart) the .ts_checks attribute with default (``None``) values.
+
+        Args:
+            keep_warnings (bool, optional): Whether to keep an existing ``warnings`` string, as when the TS is
+                                            restored, instead of resetting it to an empty string, as when a new
+                                            TS guess replaces the previous one.
+        """
         if self.is_ts:
+            warnings = self.ts_checks.get('warnings') if keep_warnings and isinstance(self.ts_checks, dict) else None
             keys = ['E0', 'e_elect', 'IRC', 'freq', 'NMD']
             self.ts_checks = {key: None for key in keys}
-            self.ts_checks['warnings'] = ''
+            self.ts_checks['warnings'] = warnings if isinstance(warnings, str) else ''
 
     def get_symmetry_number(self):
         """
@@ -2672,6 +2883,18 @@ class TSGuess(object):
                 normalized.append(method)
         return normalized
 
+    def add_method_source(self, method: str) -> None:
+        """
+        Record that another method produced this guess's geometry.
+
+        The method is added to ``method_sources`` in the normalized form (lowercase, unique, in order
+        of addition) that ``ARCSpecies.cluster_tsgs`` uses when it folds two guesses.
+
+        Args:
+            method (str): The name of the method, e.g., ``'GoFlow'`` or ``'Linear (w=0.35, 1)'``.
+        """
+        self.method_sources = self._normalize_method_sources((self.method_sources or []) + [method])
+
     def as_dict(self, for_report: bool = False) -> dict:
         """
         A helper function for dumping this object as a dictionary.
@@ -2808,6 +3031,12 @@ class TSGuess(object):
         """
         Determine whether two TSGuess object instances represent the same geometry.
 
+        The two guesses must agree on ``success``, on the energy within 0.1 kJ/mol (when both are set),
+        and on the imaginary frequencies (when both are set). Their geometries (``get_xyz()``) are then
+        compared in the given atom order, and, if that fails, under every atom map that keeps each atom's
+        element and bonded neighbours (``compare_confs_by_graph_maps``), so the same structure numbered
+        differently still counts as the same geometry.
+
         Args:
             other (TSGuess): The other TSGuess object instance to compare to.
 
@@ -2829,10 +3058,9 @@ class TSGuess(object):
             # parseable geometry) can never be a geometric duplicate. Comparing it would pass None
             # into almost_equal_coords and crash clustering (TypeError), so treat it as not-equal.
             return False
-        if almost_equal_coords(xyz1=self_xyz, xyz2=other_xyz) \
-                or compare_confs(xyz1=self_xyz, xyz2=other_xyz, rmsd_score=False):
-            return True
-        return False
+        return almost_equal_coords(xyz1=self_xyz, xyz2=other_xyz) \
+            or compare_confs(xyz1=self_xyz, xyz2=other_xyz, rmsd_score=False) \
+            or compare_confs_by_graph_maps(xyz1=self_xyz, xyz2=other_xyz)
 
     def tic(self):
         """
@@ -3015,6 +3243,58 @@ class TransportData(object):
         """
         return (TransportData, (self.shapeIndex, self.epsilon, self.sigma, self.dipoleMoment,
                                 self.polarizability, self.rotrelaxcollnum, self.comment))
+
+
+def check_extensions(extensions: dict | None) -> dict | None:
+    """
+    Check that an ``extensions`` block maps tool names to dictionaries.
+
+    Args:
+        extensions (dict | None): The block to check.
+
+    Raises:
+        InputError: If the block is neither ``None`` nor a dict of string keys to dict values.
+
+    Returns:
+        dict | None: The block, unchanged.
+    """
+    if extensions is None:
+        return None
+    if not isinstance(extensions, dict) \
+            or not all(isinstance(tool, str) and isinstance(block, dict) for tool, block in extensions.items()):
+        raise InputError(f'extensions must map tool names to dictionaries, got: {extensions!r}')
+    return extensions
+
+
+def lift_legacy_extension_keys(species_dict: dict) -> dict:
+    """
+    Move the flat legacy downstream keys listed in ``LEGACY_FLAT_EXTENSION_KEYS`` into ``extensions``.
+
+    Args:
+        species_dict (dict): A species dictionary. It is not modified.
+
+    Raises:
+        InputError: If a flat key and the same key in ``extensions`` carry different values.
+
+    Returns:
+        dict: A copy of the dictionary with the legacy keys moved, or the original if it has none.
+    """
+    if not any(key in species_dict for keys in LEGACY_FLAT_EXTENSION_KEYS.values() for key in keys):
+        return species_dict
+    species_dict = dict(species_dict)
+    extensions = copy.deepcopy(check_extensions(species_dict.get('extensions')) or dict())
+    for tool, keys in LEGACY_FLAT_EXTENSION_KEYS.items():
+        for key in keys:
+            if key not in species_dict:
+                continue
+            value = species_dict.pop(key)
+            tool_block = extensions.setdefault(tool, dict())
+            if key in tool_block and tool_block[key] != value:
+                raise InputError(f"Species {species_dict.get('label')} carries '{key}' both flat ({value}) and in "
+                                 f"extensions['{tool}'] ({tool_block[key]}) with different values.")
+            tool_block[key] = value
+    species_dict['extensions'] = extensions
+    return species_dict
 
 
 def process_run_time(run_time: datetime.timedelta | int | float | None,

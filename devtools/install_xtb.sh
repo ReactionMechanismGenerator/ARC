@@ -15,12 +15,8 @@ else
     exit 1
 fi
 
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    eval "$(micromamba shell hook --shell=bash)"
-elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then
-    BASE=$(conda info --base)
-    source "$BASE/etc/profile.d/conda.sh"
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/shell_init.sh"
+arc_shell_init
 
 
 ENV_FILE="devtools/xtb_environment.yml"
@@ -39,11 +35,7 @@ else
 fi
 
 # Activate environment temporarily for the check
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    micromamba activate xtb_env
-else
-    conda activate xtb_env
-fi
+$COMMAND_PKG activate xtb_env
 
 echo ">>> Checking xTB installation..."
 

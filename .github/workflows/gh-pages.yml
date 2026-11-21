@@ -21,12 +21,20 @@ jobs:
           fetch-depth: 1
 
       # ── rmg_env for Arkane/database availability ───────────────
+      # the pin lives in devtools/install_rmg.sh; read it rather than repeat it
+      - name: Read the rmg_env spec
+        id: rmg_spec
+        run: |
+          spec=$(bash ARC/devtools/install_rmg.sh --print-spec)
+          mapfile -t SPEC <<<"$spec"
+          printf '%s\n' "${SPEC[@]}" | grep -qx 'rmg=.*'
+          echo "args=${SPEC[*]}" >> "$GITHUB_OUTPUT"
+
       - name: Set up micromamba (rmg_env)
         uses: mamba-org/setup-micromamba@v3.1.0
         with:
           environment-name: rmg_env
-          create-args: >-
-            -c rmg -c conda-forge python=3.9 numpy<2 rmg=3.3.0 connie::symmetry
+          create-args: ${{ steps.rmg_spec.outputs.args }}
           cache-environment: true
           cache-downloads: true
           generate-run-shell: false

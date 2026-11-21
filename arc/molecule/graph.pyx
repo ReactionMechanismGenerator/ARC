@@ -219,17 +219,27 @@ cdef class Graph(object):
     cpdef list get_all_edges(self):
         """
         Returns a list of all edges in the graph.
+
+        The order is deterministic: edges appear in the order their first incident vertex is
+        reached while iterating ``self.vertices``, and within a vertex in that vertex's own
+        ``edges`` insertion order. Callers may rely on it being a pure function of the graph.
+
+        The deduplication is unchanged; only the iteration order is now fixed.
         """
-        cdef set edge_set
+        cdef list edges
+        cdef set seen
         cdef Vertex vertex
         cdef Edge edge
 
-        edge_set = set()
+        edges = []
+        seen = set()
         for vertex in self.vertices:
             for edge in vertex.edges.values():
-                edge_set.add(edge)
+                if edge not in seen:
+                    seen.add(edge)
+                    edges.append(edge)
 
-        return list(edge_set)
+        return edges
 
     cpdef dict get_edges(self, Vertex vertex):
         """

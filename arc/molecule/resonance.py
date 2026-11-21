@@ -271,6 +271,8 @@ def _generate_resonance_structures(mol_list, method_list, keep_isomorphic=False,
                          if True, only remove structures that give is_identical=True
         copy: if False, append new resonance structures to the input list (default)
               if True, make a new list with all the resonance structures
+        save_order: if True, the atom order is maintained; it is forwarded to every method in
+                    ``method_list`` that is listed in ``_SAVE_ORDER_METHODS``
     """
     cython.declare(index=cython.int, molecule=Graph, new_mol_list=list, new_mol=Graph, mol=Graph,
                    input_charge=cython.int, x=Vertex)
@@ -296,7 +298,10 @@ def _generate_resonance_structures(mol_list, method_list, keep_isomorphic=False,
         charge_span = molecule.get_charge_span()
         if octet_deviation <= min_octet_deviation + 2 and charge_span <= min_charge_span + 1:
             for method in method_list:
-                new_mol_list.extend(method(molecule))
+                if method in _SAVE_ORDER_METHODS:
+                    new_mol_list.extend(method(molecule, save_order=save_order))
+                else:
+                    new_mol_list.extend(method(molecule))
             if octet_deviation < min_octet_deviation:
                 # update min_octet_deviation to make this criterion tighter
                 min_octet_deviation = octet_deviation
@@ -958,6 +963,13 @@ def generate_clar_structures(mol, save_order=False):
             mol_list.append(new_mol)
 
     return mol_list
+
+
+_SAVE_ORDER_METHODS = (
+    generate_optimal_aromatic_resonance_structures,
+    generate_aromatic_resonance_structure,
+    generate_clar_structures,
+)
 
 
 # Define this helper function at the module level (outside the cpdef method):
