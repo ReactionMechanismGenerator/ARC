@@ -98,6 +98,15 @@ class TestChecks(unittest.TestCase):
         comment = common.get_ts_validation_comment(ts)
         self.assertIn(common.TS_IRC_FAILED_MARKER, comment)
         self.assertNotIn('NMD', comment)
+
+    def test_get_ts_validation_comment_does_not_report_the_nmd_verdict_marker(self):
+        """A False NMD-verdict marker of the scan gate is no failed TS check, so the IRC caution does not name it."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.ts_checks.update({'IRC': False, 'NMD': True, common.NMD_VERDICT_IN_KEY: False})
+        comment = common.get_ts_validation_comment(ts)
+        self.assertIn(common.TS_IRC_FAILED_MARKER, comment)
+        self.assertNotIn('Additional TS checks that failed', comment)
+        self.assertNotIn(common.NMD_VERDICT_IN_KEY, comment)
         ts.ts_checks['e_elect'] = False
         ts.ts_checks['E0'] = True
         self.assertNotIn('e_elect', common.get_ts_validation_comment(ts))

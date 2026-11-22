@@ -22,7 +22,7 @@ from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
 from arc.reaction import ARCReaction
 from arc.species.converter import xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess
-from arc.checks.common import NMD_ACCEPTED_ON_IRC_WARNING, NMD_NEAR_MISS_KEY
+from arc.checks.common import NMD_ACCEPTED_ON_IRC_WARNING, NMD_NEAR_MISS_KEY, NMD_VERDICT_IN_KEY
 from arc.checks.nmd_test import make_c2h5cl_rxn, make_retroene_rxn
 
 
@@ -845,6 +845,16 @@ class TestTSChecks(unittest.TestCase):
         for record in [None, {}, {'sub_gate_bonds': []}]:
             spc.ts_checks[NMD_NEAR_MISS_KEY] = record
             self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']), msg=f'record {record}')
+
+    def test_ts_passed_checks_ignores_the_nmd_verdict_marker(self):
+        """Test that the NMD-verdict marker of the scan gate is not treated as a TS check by ts_passed_checks()."""
+        spc = ARCSpecies(label='TS', is_ts=True)
+        spc.populate_ts_checks()
+        for key in ['E0', 'e_elect', 'IRC', 'freq', 'NMD']:
+            spc.ts_checks[key] = True
+        for marker in [False, None, True]:
+            spc.ts_checks[NMD_VERDICT_IN_KEY] = marker
+            self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']), msg=f'marker {marker}')
 
     def test_check_irc_species_and_rxn_on_the_errored_irc_ends_of_a_saddle_and_a_wrong_saddle(self):
         """Test the IRC verdict on the last points of DeltaX-stopped IRCs: True for the saddle, False for TS4."""

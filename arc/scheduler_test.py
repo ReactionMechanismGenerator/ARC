@@ -30,7 +30,8 @@ import arc.parser.parser as parser
 import arc.settings.settings as repo_settings
 from arc.checks.common import (IRC_CAUSE_COMPARISON_INCONCLUSIVE, IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED,
                                IRC_CAUSE_JOB_FAILED, IRC_JOB_FAILED_WARNING, NMD_ACCEPTED_ON_IRC_WARNING,
-                               NMD_NEAR_MISS_KEY, TS_IRC_NOT_CONFIRMED_MARKER, get_ts_validation_comment)
+                               NMD_NEAR_MISS_KEY, NMD_VERDICT_IN_KEY, TS_IRC_NOT_CONFIRMED_MARKER,
+                               get_ts_validation_comment)
 from arc.checks.nmd_test import make_c2h5cl_rxn
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file, \
@@ -11220,7 +11221,7 @@ H       0.38960032    0.68501885   -1.35822039"""
         self.assertIsNone(sched.species_dict['TS_scan'].ts_checks['freq'])
         self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
 
-    def restart(self, ts, freq_done, **kwargs):
+    def restart(self, ts, freq_done, paths=None, converged=False, **kwargs):
         """
         Restart a project whose TS finished its optimization, with or without its freq job done.
 
@@ -11229,6 +11230,8 @@ H       0.38960032    0.68501885   -1.35822039"""
         Args:
             ts (ARCSpecies): The TS as the previous session left it.
             freq_done (bool): Whether the previous session's freq job ended.
+            paths (dict, optional): Output paths that override the default ones.
+            converged (bool): Whether the previous session marked the TS converged.
             **kwargs: Passed to ``make_sched()``.
 
         Returns:
@@ -11242,8 +11245,11 @@ H       0.38960032    0.68501885   -1.35822039"""
                                  project_directory=project_directory, **kwargs).output
         output[ts.label]['paths'].update({'geo': 'geo.out' if kwargs.get('opt', True) else '', 'sp': 'sp.out',
                                           'freq': 'freq.out' if freq_done else ''})
+        output[ts.label]['paths'].update(paths or dict())
         output[ts.label]['job_types']['freq'] = freq_done
         output[ts.label]['job_types']['composite'] = kwargs.get('composite_method') is not None
+        if converged:
+            output[ts.label]['convergence'] = True
         with patch.object(Scheduler, 'schedule_jobs'):
             return self.make_sched([ARCSpecies(species_dict=ts.as_dict())], testing=False,
                                    restart_dict={'output': output}, project_directory=project_directory, **kwargs)
@@ -11452,6 +11458,84 @@ H       0.00000000   -0.75698224   -0.46907685"""))}
                 self.assertIsNone(ts.ts_checks['freq'])
                 new_opt = [j for j in self.submitted[submitted_at:] if j.job_type == 'opt']
                 self.assertEqual(len(new_opt), 1 if n_guesses == 2 else 0)
+
+    def end_composite(self, sched, label):
+        """
+        End the composite job of a TS with one imaginary frequency, as the main loop does once it converged.
+
+        The job is spawned by the real ``run_composite_job()``; only its parsed geometry is pinned to the TS's own.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The TS label.
+        """
+        sched.run_composite_job(label)
+        job = next(iter(sched.job_dict[label]['composite'].values()))
+        self.finish(job, self.PASSING_TS_FREQ_LOG)
+        with patch('arc.scheduler.parser.parse_geometry', return_value=sched.species_dict[label].get_xyz()), \
+                patch('arc.scheduler.parse_job_e_elect', return_value=None), \
+                patch('arc.scheduler.plotter'), \
+                patch.object(sched, 'post_sp_actions'):
+            self.assertTrue(sched.parse_composite_geo(label=label, job=job))
+            sched.spawn_post_opt_jobs(label=label, job_name=job.job_name)
+
+    def test_l_a_composite_ts_scans_at_its_freq_verdict_not_at_its_composite_end(self):
+        """(l) Composite: the composite job's frequency check opens no scan; the freq job's NMD verdict does, once"""
+        sched = self.make_sched([self.make_ts()], composite_method=Level(repr='cbs-qb3'))
+        ts = sched.species_dict['TS_scan']
+        self.end_composite(sched, 'TS_scan')
+        self.assertTrue(ts.ts_checks['freq'])
+        self.assertIsNone(ts.ts_checks['NMD'])
+        self.assertEqual(len(ts.rotors_dict), 2)
+        self.assertIn('TS_scan', sched._pending_pipe_freq)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+        self.pass_freq(sched, 'TS_scan', nmd=True)
+        self.assertIs(ts.ts_checks[NMD_VERDICT_IN_KEY], True)
+        expected = self.expected_scans(sched, 'TS_scan')
+        self.assertEqual(len(expected), 2)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), expected)
+        sched.run_scan_jobs('TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), expected)
+
+    def test_m_a_composite_restart_scans_only_at_the_freq_verdict(self):
+        """(m) Composite restart, freq passed on the composite job only, NMD not run: the freq job runs, then scans"""
+        for case in ('no marker (written before the marker)', 'marker False'):
+            with self.subTest(case=case):
+                ts = self.make_ts()
+                ts.ts_checks.update({'freq': True, 'NMD': None})
+                if case.startswith('no marker'):
+                    ts.ts_checks.pop(NMD_VERDICT_IN_KEY, None)
+                else:
+                    ts.ts_checks[NMD_VERDICT_IN_KEY] = False
+                sched = self.restart(ts, freq_done=True, composite_method=Level(repr='cbs-qb3'),
+                                     paths={'composite': 'composite.out', 'freq': 'composite.out'})
+                self.assertFalse(sched.species_dict['TS_scan'].ts_checks.get(NMD_VERDICT_IN_KEY))
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan'), list())
+                freq_jobs = list(sched.job_dict['TS_scan'].get('freq', dict()).values())
+                self.assertEqual(len(freq_jobs), 1)
+                self.finish(freq_jobs[0], self.PASSING_TS_FREQ_LOG)
+                with self.nmd_verdict(sched, 'TS_scan', True):
+                    sched.check_freq_job(label='TS_scan', job=freq_jobs[0])
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
+                self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
+
+    def test_n_a_restart_file_without_the_marker_scans_a_ts_whose_freq_job_passed(self):
+        """(n) A restart file written before the marker: a TS whose freq job passed, or a converged TS, scans"""
+        cases = {'NMD passed': dict(nmd=True),
+                 'NMD could not run': dict(nmd=None),
+                 'composite, then its freq job passed': dict(nmd=True, composite_method=Level(repr='cbs-qb3'),
+                                                             paths={'composite': 'composite.out'}),
+                 'converged': dict(nmd=True, converged=True)}
+        for name, case in cases.items():
+            with self.subTest(case=name):
+                ts = self.make_ts()
+                ts.ts_checks.update({'freq': True, 'NMD': case.pop('nmd')})
+                ts.ts_checks.pop(NMD_VERDICT_IN_KEY, None)
+                self.assertNotIn(NMD_VERDICT_IN_KEY, ts.as_dict()['ts_checks'])
+                sched = self.restart(ts, freq_done=True, **case)
+                self.assertIs(sched.species_dict['TS_scan'].ts_checks.get(NMD_VERDICT_IN_KEY), True)
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
+                self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
 
 
 if __name__ == '__main__':

@@ -14,6 +14,7 @@ from unittest import mock
 
 import numpy as np
 
+from arc.checks.common import NMD_VERDICT_IN_KEY
 from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
                         almost_equal_coords,
@@ -1263,6 +1264,25 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         species_dict = ts.as_dict()
         species_dict['ts_checks'] = {'IRC': None}
         self.assertEqual(ARCSpecies(species_dict=species_dict).ts_checks['warnings'], '')
+
+    def test_the_nmd_verdict_marker_is_reset_with_the_ts_checks_and_restored_with_them(self):
+        """Test that populate_ts_checks() closes the scan-gate marker and that as_dict() / from_dict() carry it"""
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=self.spc2.get_xyz(), multiplicity=2)
+        self.assertIs(ts.ts_checks[NMD_VERDICT_IN_KEY], False)
+        ts.ts_checks.update({'freq': True, 'NMD': True, NMD_VERDICT_IN_KEY: True})
+        self.assertIs(ARCSpecies(species_dict=ts.as_dict()).ts_checks[NMD_VERDICT_IN_KEY], True)
+        ts.populate_ts_checks()
+        self.assertIs(ts.ts_checks[NMD_VERDICT_IN_KEY], False)
+
+    def test_restoring_a_ts_whose_only_value_is_the_closed_marker_populates_its_checks(self):
+        """Test that a closed scan-gate marker is no verdict, so a TS restored with only it gets every check key"""
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz=self.spc2.get_xyz(), multiplicity=2)
+        warning = 'IRC not verified: IRC job irc_a1 (forward) failed: Log file could not be read; '
+        species_dict = ts.as_dict()
+        species_dict['ts_checks'] = {NMD_VERDICT_IN_KEY: False, 'warnings': warning}
+        restored = ARCSpecies(species_dict=species_dict)
+        self.assertEqual(restored.ts_checks, {'E0': None, 'e_elect': None, 'IRC': None, 'freq': None, 'NMD': None,
+                                              NMD_VERDICT_IN_KEY: False, 'warnings': warning})
 
     def test_from_dict(self):
         """Test Species.from_dict()"""
