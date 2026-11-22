@@ -32,7 +32,7 @@ EVIDENCE_SCHEMA_VERSION = "1.0"
 # reverse would be circular), and stated once so the sidecar's
 # ``output_schema_version`` cannot drift from the value output.yml actually
 # carries -- a consumer gating on it would otherwise mis-gate after a bump.
-OUTPUT_SCHEMA_VERSION = "1.1"
+OUTPUT_SCHEMA_VERSION = "1.3"
 HESSIAN_PARSER_VERSION = "arc-hessian-1"
 IRC_PARSER_VERSION = "arc-irc-path-1"
 GSM_PARSER_VERSION = "arc-gsm-stringfile-1"

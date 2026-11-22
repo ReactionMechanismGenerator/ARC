@@ -7,13 +7,21 @@ This module contains unit tests for the arc.lot module
 
 import os
 import unittest
-from unittest import mock
+import unittest.mock
+
+import yaml
 
 from arc.common import ARC_PATH, read_yaml_file
 from arc.level import (Level,
+                       adaptive_levels_as_list,
+                       append_irc_log_entry,
                        assign_frequency_scale_factor,
                        get_freq_level_for_composite_method,
                        get_freq_scale_factor_key,
+                       level_as_plain_dict,
+                       set_recorded_irc_level,
+                       set_recorded_irc_log_level,
+                       set_recorded_level,
                        )
 from arc.settings.settings import default_levels_of_theory as repo_default_levels_of_theory
 
@@ -88,6 +96,17 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level.solvation_method, 'smd')
         self.assertEqual(level.solvent, 'water')
         self.assertEqual(level.args, {'keyword': {'general': 'iop(99/33=1)'}, 'block': {}})
+
+    def test_set_args_from_string_list_and_invalid(self):
+        """Test that string and list args are normalized and that unsupported args raise"""
+        level = Level(method='wb97xd', basis='def2tzvp', args='IOP(99/33=1)')
+        self.assertEqual(level.args, {'keyword': {'general': 'iop(99/33=1)'}, 'block': {}})
+        level = Level(method='wb97xd', basis='def2tzvp', args=['Int=DKH2', 'TightPNO'])
+        self.assertEqual(level.args, {'keyword': {'general': 'int=dkh2 tightpno'}, 'block': {}})
+        with self.assertRaises(ValueError):
+            Level(method='wb97xd', basis='def2tzvp', args=5)
+        with self.assertRaises(ValueError):
+            Level(method='wb97xd', basis='def2tzvp', args=['ok', 5])
 
     def test_lower_preserves_case_sensitive_block_args(self):
         """Test that Level.lower() keeps the case of the ASE execution block args (paths, commands, queues)"""
@@ -446,7 +465,7 @@ class TestLevel(unittest.TestCase):
 
     def test_get_freq_level_for_composite_method(self):
         """Test that each composite method resolves to the frequency level it prescribes."""
-        with mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': self.MAPPING}):
+        with unittest.mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': self.MAPPING}):
             # G4 prescribes B3LYP/6-31G(2df,p); its scale factor (0.9854 * 1.014) is defined against it.
             self.assertEqual(get_freq_level_for_composite_method('g4'), 'B3LYP/6-31G(2df,p)')
             # CBS-QB3 prescribes B3LYP/CBSB7, unchanged by this mapping.
@@ -468,7 +487,7 @@ class TestLevel(unittest.TestCase):
         self.assertIsInstance(shipped, dict)
         self.assertEqual(shipped['g4'], 'B3LYP/6-31G(2df,p)')
         self.assertEqual(shipped['cbs-qb3'], 'B3LYP/CBSB7')
-        with mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': shipped}):
+        with unittest.mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': shipped}):
             self.assertEqual(get_freq_level_for_composite_method('g4'), 'B3LYP/6-31G(2df,p)')
         # The factor is keyed on the composite itself; the prescribed level carries none of its own.
         self.assertEqual(assign_frequency_scale_factor('g4'), 0.9992)
@@ -480,14 +499,14 @@ class TestLevel(unittest.TestCase):
         Falling back would pair the composite's own ZPE-derived scale factor with another
         protocol's frequencies -- wrong, and silent, since such a job converges normally.
         """
-        with mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': self.MAPPING}):
+        with unittest.mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': self.MAPPING}):
             for method in ['g3', 'cbs-4m', 'w1bd']:
                 with self.assertRaises(ValueError):
                     get_freq_level_for_composite_method(method)
 
     def test_get_freq_level_for_composite_method_legacy_str(self):
         """Test that a pre-mapping local settings override is honored, with a warning, not a crash."""
-        with mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': 'B3LYP/CBSB7'}):
+        with unittest.mock.patch.dict('arc.level.default_levels_of_theory', {'freq_for_composite': 'B3LYP/CBSB7'}):
             with self.assertLogs('arc', level='WARNING') as cm:
                 self.assertEqual(get_freq_level_for_composite_method('g4'), 'B3LYP/CBSB7')
             self.assertIn('predates per-composite frequency levels', ' '.join(cm.output))
@@ -503,6 +522,109 @@ class TestLevel(unittest.TestCase):
                                                            'block': {'general': '%scf MaxIter 500 end'}})), 0.988)
         self.assertEqual(assign_frequency_scale_factor(
             Level(method='CBS-QB3', args={'keyword': {'general': 'IOp(99/33=1)'}})), 1.004)
+
+
+class TestLevelRecordingHelpers(unittest.TestCase):
+    """Tests for the plain-dict level helpers shared by the scheduler, the pipe ingest, main and output."""
+
+    def test_the_plain_dict_of_an_object_that_is_not_a_level_is_none(self):
+        """An object whose as_dict() does not return a dictionary, such as a mock job's level, gives None."""
+        self.assertIsNone(level_as_plain_dict(unittest.mock.MagicMock()))
+        self.assertIsNone(level_as_plain_dict(unittest.mock.MagicMock(), strip=('solvation_scheme_level',)))
+        self.assertIsNone(level_as_plain_dict('b3lyp/def2tzvp'))
+
+    def test_the_plain_dict_is_an_independent_copy_without_yaml_aliases(self):
+        """Test that mutating the result leaves the level intact, and that a dump has no anchors or aliases"""
+        level = Level(method='wb97xd', basis='def2-svp', args={'keyword': {'opt': 'tight'}})
+        plain = level_as_plain_dict(level)
+        plain['args']['keyword']['opt'] = 'loose'
+        self.assertEqual(level.args['keyword']['opt'], 'tight')
+        two = [level_as_plain_dict(level), level_as_plain_dict(level)]
+        self.assertNotIn('&id', yaml.safe_dump({'a': two[0], 'b': two[1]}))
+        stored = {'method': 'a', 'args': {'keyword': {}}}
+        copied = level_as_plain_dict(stored)
+        copied['args']['keyword']['x'] = 1
+        self.assertEqual(stored['args']['keyword'], {})
+
+    def test_the_plain_dict_strips_keys_at_every_depth_and_handles_empty_input(self):
+        """Test the strip argument, the recursion into solvation_scheme_level, and the None cases"""
+        level = Level(method='wb97xd', basis='def2-svp', solvation_method='smd', solvent='water',
+                      solvation_scheme_level=Level(method='b3lyp', basis='6-31g'))
+        plain = level_as_plain_dict(level, strip=('repr', 'compatible_ess'))
+        self.assertNotIn('repr', plain)
+        self.assertNotIn('repr', plain['solvation_scheme_level'])
+        self.assertEqual(plain['solvation_scheme_level']['method'], 'b3lyp')
+        self.assertNotIn('solvation_scheme_level', level_as_plain_dict(level, strip=('solvation_scheme_level',)))
+        for empty in (None, dict(), 'wb97xd/def2-svp', 5):
+            self.assertIsNone(level_as_plain_dict(empty))
+
+    def test_a_recorded_level_drops_the_solvation_scheme_and_none_removes_it(self):
+        """Test set_recorded_level"""
+        levels = dict()
+        set_recorded_level(levels, 'sp', Level(method='wb97xd', basis='def2-svp', solvation_method='smd',
+                                              solvent='water', solvation_scheme_level=Level(method='b3lyp')))
+        self.assertEqual(levels['sp']['solvation_method'], 'smd')
+        self.assertNotIn('solvation_scheme_level', levels['sp'])
+        set_recorded_level(levels, 'sp', None)
+        self.assertEqual(levels, dict())
+
+    def test_the_irc_pair_rule(self):
+        """Test that the first IRC log records its level, and a second at another level unrecords it"""
+        levels, a, b = dict(), Level(method='wb97xd', basis='def2-svp'), Level(method='b3lyp', basis='6-31g')
+        set_recorded_irc_level(levels, a, 1)
+        set_recorded_irc_level(levels, a, 2)
+        self.assertEqual(levels['irc']['method'], 'wb97xd')
+        set_recorded_irc_level(levels, b, 2)
+        self.assertNotIn('irc', levels)
+
+    def test_the_irc_pair_rule_ignores_fields_the_output_does_not_state(self):
+        """Test that levels differing only in software or the solvation scheme are one level"""
+        levels = dict()
+        a = Level(method='wb97xd', basis='def2-svp', software='gaussian')
+        b = Level(method='wb97xd', basis='def2-svp', software='orca',
+                  solvation_scheme_level=Level(method='b3lyp', basis='6-31g'))
+        set_recorded_irc_level(levels, a, 1)
+        set_recorded_irc_level(levels, b, 2)
+        self.assertEqual(levels['irc']['method'], 'wb97xd')
+
+    def test_adaptive_levels_as_list(self):
+        """Test the shared restart and output serializer"""
+        levels = {(1, 5): {('opt', 'freq'): Level(method='wb97xd', basis='def2-svp')},
+                  (6, 'inf'): {('opt', 'freq'): Level(method='b3lyp', basis='6-31g')}}
+        result = adaptive_levels_as_list(levels)
+        self.assertEqual([entry['atom_range'] for entry in result], [[1, 5], [6, 'inf']])
+        self.assertIn('compatible_ess', result[0]['levels']['opt freq'])
+        stripped = adaptive_levels_as_list(levels, strip=('compatible_ess',))
+        self.assertNotIn('compatible_ess', stripped[0]['levels']['opt freq'])
+        self.assertIsNone(adaptive_levels_as_list(None))
+
+
+    def test_an_irc_log_entry_stays_in_lockstep_with_the_irc_logs(self):
+        """Each entry lands at the index of its log: stale entries are dropped and missing ones padded"""
+        paths = {'irc': ['f.log']}
+        append_irc_log_entry(paths, 'irc_directions', 'forward')
+        self.assertEqual(paths['irc_directions'], ['forward'])
+        paths['irc'].append('r.log')
+        append_irc_log_entry(paths, 'irc_directions', 'reverse')
+        self.assertEqual(paths['irc_directions'], ['forward', 'reverse'])
+        stale = {'irc': ['f.log', 'r.log'], 'irc_directions': ['forward', 'reverse', 'forward']}
+        append_irc_log_entry(stale, 'irc_directions', 'reverse')
+        self.assertEqual(stale['irc_directions'], ['forward', 'reverse'])
+        late = {'irc': ['f.log', 'r.log']}
+        append_irc_log_entry(late, 'irc_input_options', '#P irc=(calcfc,reverse)')
+        self.assertEqual(late['irc_input_options'], [None, '#P irc=(calcfc,reverse)'])
+        empty = dict()
+        append_irc_log_entry(empty, 'irc_levels', None)
+        self.assertEqual(empty['irc_levels'], [None])
+
+    def test_the_irc_log_level_is_recorded_in_lockstep(self):
+        """set_recorded_irc_log_level appends the plain level of the log just recorded, without the scheme"""
+        paths = {'irc': ['f.log', 'r.log']}
+        set_recorded_irc_log_level(paths, Level(method='b3lyp', basis='6-31g',
+                                                solvation_scheme_level=Level(method='hf', basis='sto-3g')))
+        self.assertIsNone(paths['irc_levels'][0])
+        self.assertEqual(paths['irc_levels'][1]['method'], 'b3lyp')
+        self.assertNotIn('solvation_scheme_level', paths['irc_levels'][1])
 
 
 if __name__ == '__main__':

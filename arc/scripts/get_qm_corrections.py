@@ -35,6 +35,8 @@ Output YAML format, Melius (``bac_type: m``)::
         bond_corr_neighbor: {C: -0.027, H: -0.011}
         mol_corr: 0.306
 
+The output also carries ``quantum_corrections_path``, the ``quantum_corrections/data.py`` Arkane loaded.
+
 The two sections are looked up independently: a failure in one is reported on
 stderr and leaves that section null, while the other section is still written.
 """
@@ -43,7 +45,7 @@ import sys
 import traceback
 from typing import Any, Optional
 
-from arkane.encorr.data import atom_energies, pbac, mbac
+from arkane.encorr.data import atom_energies, pbac, mbac, quantum_corrections_path
 
 from arkane_levels import lot_from_string
 from common import read_yaml_file, save_yaml_file
@@ -78,7 +80,7 @@ def main(input_path: str, output_path: str) -> None:
     params = read_yaml_file(input_path) or {}
     bac_type = params.get('bac_type')
 
-    result = {'aec': None, 'bac': None}
+    result = {'aec': None, 'bac': None, 'quantum_corrections_path': str(quantum_corrections_path)}
 
     aec_key = params.get('aec_key') or params.get('matched_key')
     bac_key = params.get('bac_key') or params.get('matched_key')

@@ -14,6 +14,7 @@ import time
 import unittest
 from unittest.mock import MagicMock, PropertyMock, patch
 
+from arc.job.input_options import job_input_options
 from arc.job.pipe.pipe_coordinator import SUBMIT_FALLBACK_DELAY, PipeCoordinator
 from arc.job.pipe.pipe_run import PipeRun, get_task_attempt_dir
 from arc.job.pipe.pipe_state import (
@@ -631,8 +632,8 @@ class TestFinalizeSpeciesLeafTask(unittest.TestCase):
         self.mock_convergence = convergence_patch.start()
         self.addCleanup(convergence_patch.stop)
 
-    def _stage_completed(self, task_id, task_family):
-        """Stage a single-task pipe run, complete it, and give it a canonical output file."""
+    def _stage_completed(self, task_id, task_family, input_options=None):
+        """Stage a single-task pipe run, complete it, and give it a canonical output file and input options."""
         task = _make_spec(task_id, task_family=task_family)
         pipe = self.coord.submit_pipe_run(f'run_{task_id}', [task])
         _complete_task(pipe.pipe_root, task_id)
@@ -642,7 +643,7 @@ class TestFinalizeSpeciesLeafTask(unittest.TestCase):
         with open(output_file, 'w') as f:
             f.write('mock output\n')
         with open(os.path.join(attempt_dir, 'result.json'), 'w') as f:
-            json.dump({'canonical_output_path': output_file}, f)
+            json.dump({'canonical_output_path': output_file, 'input_options': input_options}, f)
         return pipe, output_file
 
     def test_species_sp_is_finalized(self):
@@ -665,6 +666,19 @@ class TestFinalizeSpeciesLeafTask(unittest.TestCase):
         self.assertEqual(kwargs['label'], 'H2O')
         self.assertEqual(kwargs['vibfreqs'], [1500.0, 3000.0])
         self.assertEqual(kwargs['job'].local_path_to_output_file, output_file)
+
+    def test_the_task_input_options_reach_the_scheduler(self):
+        """The options the worker stored in result.json are handed to post_sp_actions and on the freq job view"""
+        pipe, _ = self._stage_completed('t_sp_options', 'species_sp', input_options={'H2O': '#P sp b3lyp/6-31g'})
+        self.coord.ingest_pipe_results(pipe)
+        self.assertEqual(self.sched.post_sp_actions.call_args.kwargs['input_options'], '#P sp b3lyp/6-31g')
+        pipe, _ = self._stage_completed('t_sp_no_options', 'species_sp')
+        self.coord.ingest_pipe_results(pipe)
+        self.assertIsNone(self.sched.post_sp_actions.call_args.kwargs['input_options'])
+        pipe, _ = self._stage_completed('t_freq_options', 'species_freq', input_options={'H2O': '#P freq'})
+        with patch('arc.job.pipe.pipe_coordinator.parser.parse_frequencies', return_value=[1500.0]):
+            self.coord.ingest_pipe_results(pipe)
+        self.assertEqual(job_input_options(self.sched.post_freq_actions.call_args.kwargs['job'], 'H2O'), '#P freq')
 
     def test_other_families_are_not_finalized(self):
         """conf_opt has its own post-ingestion handler and must not be finalized here."""
@@ -750,7 +764,7 @@ class TestPipedFreqArtifacts(unittest.TestCase):
         ingest_patch.start()
         self.addCleanup(ingest_patch.stop)
 
-    def _ingest_freq_task(self, task_id, vibfreqs):
+    def _ingest_freq_task(self, task_id, vibfreqs, input_options=None):
         """Stage, complete and ingest a single species_freq task yielding ``vibfreqs``."""
         task = _make_spec(task_id, task_family='species_freq')
         pipe = self.coord.submit_pipe_run(f'run_{task_id}', [task])
@@ -761,7 +775,7 @@ class TestPipedFreqArtifacts(unittest.TestCase):
         with open(output_file, 'w') as f:
             f.write('mock freq output\n')
         with open(os.path.join(attempt_dir, 'result.json'), 'w') as f:
-            json.dump({'canonical_output_path': output_file}, f)
+            json.dump({'canonical_output_path': output_file, 'input_options': input_options}, f)
         with patch('arc.job.pipe.pipe_coordinator.parser.parse_frequencies', return_value=vibfreqs):
             self.coord.ingest_pipe_results(pipe)
 
@@ -774,6 +788,12 @@ class TestPipedFreqArtifacts(unittest.TestCase):
                         f'Expected the freq output to be copied to {self.freq_out}')
         with open(self.freq_out, 'r') as f:
             self.assertIn('mock freq output', f.read())
+
+    def test_converged_freq_records_the_options_the_task_wrote(self):
+        """The real post_freq_actions records the piped freq job's input options beside its level"""
+        self._ingest_freq_task('t_freq_options', [1500.0, 3000.0, 3700.0],
+                               input_options={'H2O': '#P freq wb97xd/def2tzvp'})
+        self.assertEqual(self.sched.output['H2O']['input_options'], {'freq': '#P freq wb97xd/def2tzvp'})
 
     def test_imaginary_freq_leaves_no_artifacts(self):
         """

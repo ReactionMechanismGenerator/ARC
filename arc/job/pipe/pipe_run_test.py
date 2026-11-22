@@ -13,12 +13,12 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest import mock
+import unittest.mock
 
 import arc.job.local as local_module
-import arc.job.pipe.pipe_run as pipe_run_module
 from arc.job.ssh import SUBMISSION_CAP_WAIT_SECONDS
 from arc.job.adapters.mockter import MockAdapter
+from arc.job.pipe import pipe_run as pipe_run_module
 from arc.job.pipe.pipe_state import (TaskState, TaskStateRecord, PipeRunState, TaskSpec, get_task_attempt_dir,
                                      read_task_state, update_task_state)
 from arc.job.pipe.pipe_run import (PipeRun, build_rotor_scan_1d_tasks, local_cpu_budget,
@@ -226,8 +226,8 @@ class TestPipeRunWriteSubmitScript(unittest.TestCase):
         run.stage()
         servers = {'local': {'cluster_soft': 'local', 'cpus': 4}}
         pipe = {'local_max_workers': None}
-        with mock.patch.object(pipe_run_module, 'servers_dict', servers), \
-                mock.patch.dict(pipe_run_module.settings, {'pipe_settings': pipe, 'servers': servers}):
+        with unittest.mock.patch.object(pipe_run_module, 'servers_dict', servers), \
+                unittest.mock.patch.dict(pipe_run_module.settings, {'pipe_settings': pipe, 'servers': servers}):
             cpus, _, array_size = run._submission_resources()
         self.assertEqual(cpus, 4)                  # capped from 8 down to the 4-core budget
         self.assertLessEqual(cpus * array_size, 4)  # workers x cores stays within the budget
@@ -306,10 +306,9 @@ class TestPipeRunEnvPreamble(unittest.TestCase):
 
     def test_pre_cmd_injected(self):
         """User-configured pre_cmd appears in the submit script."""
-        from unittest.mock import patch
         run = self._make_run('slurm')
         patched = {'pre_cmd': 'module load openbabel/3.1'}
-        with patch.dict('arc.job.pipe.pipe_run.pipe_settings', patched):
+        with unittest.mock.patch.dict('arc.job.pipe.pipe_run.pipe_settings', patched):
             path = run.write_submit_script()
         with open(path) as f:
             content = f.read()
@@ -319,7 +318,7 @@ class TestPipeRunEnvPreamble(unittest.TestCase):
     def test_local_scratch_follows_pipe_root_under_calcs(self):
         """Local runs scratch under scratch_base using pipe_root relative to <project>/calcs."""
         run = self._make_run('local')
-        with mock.patch.dict('arc.job.pipe.pipe_run.pipe_settings', {'scratch_base': '/scratch'}):
+        with unittest.mock.patch.dict('arc.job.pipe.pipe_run.pipe_settings', {'scratch_base': '/scratch'}):
             preamble = run._build_env_preamble()
         rel_root = os.path.relpath(run.pipe_root, os.path.join(self.tmpdir, 'calcs'))
         self.assertIn(f'export TMPDIR="/scratch/{rel_root}/$WORKER_ID"', preamble)
@@ -330,7 +329,7 @@ class TestPipeRunEnvPreamble(unittest.TestCase):
         moved = tempfile.mkdtemp(prefix='pipe_env_moved_')
         self.addCleanup(shutil.rmtree, moved, ignore_errors=True)
         run.project_directory = moved
-        with mock.patch.dict('arc.job.pipe.pipe_run.pipe_settings', {'scratch_base': '/scratch'}):
+        with unittest.mock.patch.dict('arc.job.pipe.pipe_run.pipe_settings', {'scratch_base': '/scratch'}):
             preamble = run._build_env_preamble()
         self.assertIn('export TMPDIR="/scratch/env_test/$WORKER_ID"', preamble)
         self.assertNotIn('..', preamble)
@@ -349,12 +348,12 @@ class TestPipeRunQueueLimit(unittest.TestCase):
         self.sleeps = list()
         self.free = None
         self.allowance = None
-        for patcher in (mock.patch('arc.job.local.submit_job', side_effect=self._fake_submit_job),
-                        mock.patch.object(pipe_run_module, 'discover_job_allowance',
+        for patcher in (unittest.mock.patch('arc.job.local.submit_job', side_effect=self._fake_submit_job),
+                        unittest.mock.patch.object(pipe_run_module, 'discover_job_allowance',
                                           side_effect=lambda **kwargs: self.allowance),
-                        mock.patch.object(pipe_run_module.time, 'sleep', side_effect=self.sleeps.append),
-                        mock.patch.dict(pipe_run_module.settings['submit_command'], {'PBS': sys.executable}),
-                        mock.patch.dict(pipe_run_module.pipe_settings, {'max_queued_jobs': None})):
+                        unittest.mock.patch.object(pipe_run_module.time, 'sleep', side_effect=self.sleeps.append),
+                        unittest.mock.patch.dict(pipe_run_module.settings['submit_command'], {'PBS': sys.executable}),
+                        unittest.mock.patch.dict(pipe_run_module.pipe_settings, {'max_queued_jobs': None})):
             patcher.start()
             self.addCleanup(patcher.stop)
 
@@ -427,15 +426,15 @@ class TestPipeRunQueueLimit(unittest.TestCase):
 
     def test_override_setting_is_passed_to_the_discovery(self):
         run = self._make_run(n_tasks=3)
-        with mock.patch.dict(pipe_run_module.pipe_settings, {'max_queued_jobs': 25}), \
-                mock.patch.object(pipe_run_module, 'discover_job_allowance', return_value=None) as discover:
+        with unittest.mock.patch.dict(pipe_run_module.pipe_settings, {'max_queued_jobs': 25}), \
+                unittest.mock.patch.object(pipe_run_module, 'discover_job_allowance', return_value=None) as discover:
             run.submit_to_scheduler()
         self.assertEqual(discover.call_args.kwargs['limit_override'], 25)
         self.assertEqual(discover.call_args.kwargs['cluster_software'], 'PBS')
 
     def test_non_cap_failure_is_returned_without_shrinking(self):
         run = self._make_run()
-        with mock.patch('arc.job.local.submit_job', return_value=(None, None)) as submit:
+        with unittest.mock.patch('arc.job.local.submit_job', return_value=(None, None)) as submit:
             self.assertEqual(run.submit_to_scheduler(), (None, None))
         self.assertEqual(submit.call_count, 1)
 
@@ -785,32 +784,32 @@ class TestLocalCpuBudget(unittest.TestCase):
     def test_local_cpu_budget_reads_local_server_cpus(self):
         """The budget is the 'cpus' of the server whose cluster_soft is 'local'."""
         servers = {'local': {'cluster_soft': 'local', 'cpus': 12, 'memory': 32}}
-        with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+        with unittest.mock.patch.object(pipe_run_module, 'servers_dict', servers):
             self.assertEqual(local_cpu_budget(), 12)
 
     def test_local_cpu_budget_falls_back_to_machine_cores(self):
         """Without a local server 'cpus', the budget falls back to the physical core count."""
         servers = {'zeus': {'cluster_soft': 'pbs', 'cpus': 24}}
-        with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+        with unittest.mock.patch.object(pipe_run_module, 'servers_dict', servers):
             self.assertEqual(local_cpu_budget(), max(1, os.cpu_count() or 1))
 
     def test_local_cpu_budget_prefers_server_named_local(self):
         """When several servers are 'local', the one named 'local' wins (matches the submit script)."""
         servers = {'workstation': {'cluster_soft': 'local', 'cpus': 64},
                    'local': {'cluster_soft': 'local', 'cpus': 12}}
-        with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+        with unittest.mock.patch.object(pipe_run_module, 'servers_dict', servers):
             self.assertEqual(local_cpu_budget(), 12)
 
     def test_local_cpu_budget_uses_first_local_when_none_named_local(self):
         """If no server is named 'local', the first server with cluster_soft 'local' is used."""
         servers = {'workstation': {'cluster_soft': 'local', 'cpus': 16}}
-        with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+        with unittest.mock.patch.object(pipe_run_module, 'servers_dict', servers):
             self.assertEqual(local_cpu_budget(), 16)
 
     def test_local_cpu_budget_tolerates_whitespace_and_case(self):
         """'cluster_soft' matching ignores surrounding whitespace and case."""
         servers = {'local': {'cluster_soft': '  Local ', 'cpus': 8}}
-        with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+        with unittest.mock.patch.object(pipe_run_module, 'servers_dict', servers):
             self.assertEqual(local_cpu_budget(), 8)
 
     def test_local_cpu_budget_rejects_invalid_cpus(self):
@@ -818,15 +817,15 @@ class TestLocalCpuBudget(unittest.TestCase):
         fallback = max(1, os.cpu_count() or 1)
         for bad in (0, None, -8, 'local'):
             servers = {'local': {'cluster_soft': 'local', 'cpus': bad}}
-            with mock.patch.object(pipe_run_module, 'servers_dict', servers):
+            with unittest.mock.patch.object(pipe_run_module, 'servers_dict', servers):
                 self.assertEqual(local_cpu_budget(), fallback)
 
     def test_local_worker_limit_bounded_by_cpu_budget(self):
         """The derived worker count is the CPU budget divided by the cores each worker needs."""
         servers = {'local': {'cluster_soft': 'local', 'cpus': 12}}
         pipe = {'local_max_workers': None}
-        with mock.patch.object(pipe_run_module, 'servers_dict', servers), \
-                mock.patch.dict(pipe_run_module.settings, {'pipe_settings': pipe, 'servers': servers}):
+        with unittest.mock.patch.object(pipe_run_module, 'servers_dict', servers), \
+                unittest.mock.patch.dict(pipe_run_module.settings, {'pipe_settings': pipe, 'servers': servers}):
             self.assertEqual(local_worker_limit(cpus_per_worker=1, memory_mb_per_worker=0), 12)
             self.assertEqual(local_worker_limit(cpus_per_worker=4, memory_mb_per_worker=0), 3)
 
@@ -834,8 +833,8 @@ class TestLocalCpuBudget(unittest.TestCase):
         """An explicit local_max_workers wins over the derived CPU budget."""
         servers = {'local': {'cluster_soft': 'local', 'cpus': 12}}
         pipe = {'local_max_workers': 4}
-        with mock.patch.object(pipe_run_module, 'servers_dict', servers), \
-                mock.patch.dict(pipe_run_module.settings, {'pipe_settings': pipe, 'servers': servers}):
+        with unittest.mock.patch.object(pipe_run_module, 'servers_dict', servers), \
+                unittest.mock.patch.dict(pipe_run_module.settings, {'pipe_settings': pipe, 'servers': servers}):
             self.assertEqual(local_worker_limit(cpus_per_worker=1, memory_mb_per_worker=0), 4)
 
     def test_worker_cpu_cores_reads_dedicated_env(self):
@@ -925,6 +924,235 @@ class TestIngestTsOpt(unittest.TestCase):
             self.assertIsNone(tsg.energy)
         self.assertEqual(sorted(tsg.index for tsg in self.ts_species.ts_guesses), [3, 7])
 
+
+class TestIngestConformerProvenance(unittest.TestCase):
+    """Test that ingesting completed pipe conf_opt and conf_sp tasks records the task's level and energy source."""
+
+    CONF_OPT = {'method': 'wb97xd', 'basis': 'def2-svp', 'software': 'gaussian'}
+    CONF_SP = {'method': 'dlpno-ccsd(t)', 'basis': 'cc-pvtz', 'software': 'orca'}
+
+    def setUp(self):
+        self.species = ARCSpecies(label='methylamine', smiles='CN')
+        xyz = self.species.get_xyz()
+        self.species.conformers = [xyz, xyz]
+        self.species.conformer_energies = [1.5, 0.0]
+        self.species.conformer_levels = [None, None]
+        self.species.conformer_energy_sources = [{'kind': 'force_field_kcal_mol', 'level': None}] * 2
+        self.pipe_root = tempfile.mkdtemp(prefix='pipe_ingest_conf_')
+        self.addCleanup(shutil.rmtree, self.pipe_root, ignore_errors=True)
+        self.log = os.path.join(ARC_TESTING_PATH, 'TS_confs', 'TS0_conf_1.out')
+
+    def ingest(self, ingest_function, family, level, conformer_index, log=None, input_options=None):
+        """Run a conformer ingest function against a real attempt directory holding a real ESS log."""
+        task_id = f't_{family}_{conformer_index}'
+        spec = _make_spec(task_id, label='methylamine', task_family=family, engine='gaussian', level=level)
+        spec.ingestion_metadata = {'conformer_index': conformer_index}
+        state = TaskStateRecord(status=TaskState.COMPLETED.value, attempt_index=0)
+        attempt_dir = get_task_attempt_dir(self.pipe_root, task_id, state.attempt_index)
+        os.makedirs(attempt_dir, exist_ok=True)
+        with open(os.path.join(attempt_dir, 'result.json'), 'w') as f:
+            json.dump({'canonical_output_path': log or self.log, 'input_options': input_options}, f)
+        ingest_function('run_0', self.pipe_root, spec, state, {'methylamine': self.species}, 'methylamine',
+                        conformer_index)
+
+    def test_conformer_tasks_record_the_options_their_worker_reported(self):
+        """Test that a piped conf_opt states its options for the geometry and energy, a conf_sp for the energy only"""
+        opt, sp = '#P opt=(calcfc) wb97xd/def2svp', '!uHF dlpno-ccsd(t) cc-pvtz\n!sp'
+        self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 1,
+                    input_options={'methylamine': opt})
+        self.assertEqual(self.species.conformer_input_options, [None, opt])
+        self.assertEqual(self.species.conformer_energy_sources[1]['input_options'], opt)
+        self.ingest(pipe_run_module._ingest_conf_sp, 'conf_sp', self.CONF_SP, 1, input_options={'methylamine': sp})
+        self.assertEqual(self.species.conformer_input_options, [None, opt])
+        self.assertEqual(self.species.conformer_energy_sources[1]['input_options'], sp)
+        self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 0)
+        self.assertEqual(self.species.conformer_input_options, [None, opt])
+        self.assertNotIn('input_options', self.species.conformer_energy_sources[0])
+
+    def test_a_conf_opt_task_records_its_level_as_geometry_and_energy_level(self):
+        """Test that a piped conformer optimization is recorded exactly as a scheduler-run one is"""
+        self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 1)
+        self.assertEqual(self.species.conformer_levels, [None, Level(repr=self.CONF_OPT).as_dict()])
+        self.assertEqual(self.species.conformer_energy_sources,
+                         [{'kind': 'force_field_kcal_mol', 'level': None},
+                          {'kind': 'electronic_kj_mol', 'level': Level(repr=self.CONF_OPT).as_dict()}])
+        self.assertAlmostEqual(self.species.conformer_energies[1], parser.parse_e_elect(log_file_path=self.log), 5)
+
+    def test_a_conf_opt_task_records_its_log_and_a_conf_sp_or_failed_task_does_not(self):
+        """Test that the log of the ingested optimization is recorded for its conformer only"""
+        self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 1)
+        self.assertEqual(self.species.conformer_logs, [None, self.log])
+        self.ingest(pipe_run_module._ingest_conf_sp, 'conf_sp', self.CONF_SP, 0)
+        self.assertEqual(self.species.conformer_logs, [None, self.log])
+        with unittest.mock.patch.object(pipe_run_module.parser, 'parse_geometry', return_value=None):
+            self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 0)
+        self.assertEqual(self.species.conformer_logs, [None, self.log])
+
+    def test_a_conf_sp_task_records_the_energy_level_and_keeps_the_geometry_level(self):
+        """Test that a piped conformer single point names the energy's level and leaves the geometry's level"""
+        self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 1)
+        self.ingest(pipe_run_module._ingest_conf_sp, 'conf_sp', self.CONF_SP, 1)
+        self.assertEqual(self.species.conformer_levels[1], Level(repr=self.CONF_OPT).as_dict())
+        self.assertEqual(self.species.conformer_energy_sources[1],
+                         {'kind': 'electronic_kj_mol', 'level': Level(repr=self.CONF_SP).as_dict()})
+
+    def test_a_conf_opt_task_without_a_parsed_geometry_records_neither_energy_nor_level(self):
+        """Test that an energy is not recorded against the force-field geometry when the optimized one is unread"""
+        with unittest.mock.patch.object(pipe_run_module.parser, 'parse_geometry', return_value=None):
+            self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 1)
+        self.assertEqual(self.species.conformer_levels, [None, None])
+        self.assertEqual(self.species.conformer_energies, [1.5, 0.0])
+        self.assertEqual(self.species.conformer_energy_sources[1], {'kind': 'force_field_kcal_mol', 'level': None})
+
+    def test_a_conf_opt_task_with_a_geometry_but_no_energy_stores_no_energy_as_the_scheduler_does(self):
+        """Test that the old force-field energy and its source are not kept next to the new optimized geometry"""
+        with unittest.mock.patch.object(pipe_run_module.parser, 'parse_e_elect', return_value=None):
+            self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 1)
+        self.assertEqual(self.species.conformer_levels, [None, Level(repr=self.CONF_OPT).as_dict()])
+        self.assertEqual(self.species.conformer_energies, [1.5, None])
+        self.assertEqual(self.species.conformer_energy_sources, [{'kind': 'force_field_kcal_mol', 'level': None}, None])
+
+    def test_an_unparsed_task_leaves_the_force_field_record(self):
+        """Test that a task whose output has no convergence leaves both the energy and its record untouched"""
+        log = os.path.join(self.pipe_root, 'empty.out')
+        with open(log, 'w') as f:
+            f.write('not an ESS output\n')
+        self.ingest(pipe_run_module._ingest_conf_opt, 'conf_opt', self.CONF_OPT, 0, log=log)
+        self.assertEqual(self.species.conformer_levels, [None, None])
+        self.assertEqual(self.species.conformer_energies, [1.5, 0.0])
+        self.assertEqual(self.species.conformer_energy_sources[0], {'kind': 'force_field_kcal_mol', 'level': None})
+
+
+class TestIngestRecordsLevels(unittest.TestCase):
+    """Test that piped freq and IRC tasks record their level next to the log path they store."""
+
+    FREQ = {'method': 'wb97xd', 'basis': 'def2-svp', 'software': 'gaussian'}
+    IRC = {'method': 'b3lyp', 'basis': '6-31g', 'software': 'gaussian'}
+
+    def ingest(self, ingest_function, family, level, output, ingestion_metadata=None):
+        """Run a freq or IRC ingest function on a task whose log is found and converged."""
+        spec = _make_spec(f't_{family}', label='H2O', task_family=family, engine='gaussian', level=level)
+        spec.ingestion_metadata = ingestion_metadata
+        state = TaskStateRecord(status=TaskState.COMPLETED.value, attempt_index=0)
+        with unittest.mock.patch.object(pipe_run_module, 'find_output_file', return_value='/x/output.out'), \
+                unittest.mock.patch.object(pipe_run_module, 'check_ess_convergence', return_value=True):
+            ingest_function('run_0', '/pipe', spec, state, {'H2O': object()}, 'H2O', output)
+
+    def test_a_freq_task_records_its_level(self):
+        """Test that the freq log path and its level are recorded together"""
+        output = dict()
+        self.ingest(pipe_run_module._ingest_species_freq, 'species_freq', self.FREQ, output)
+        self.assertEqual(output['H2O']['paths']['freq'], '/x/output.out')
+        self.assertEqual(output['H2O']['levels']['freq']['method'], 'wb97xd')
+
+    def test_irc_tasks_record_their_direction_next_to_their_log(self):
+        """Test that a piped IRC log is followed by its direction, so a later scheduler log is not mislabeled"""
+        output = {'H2O': {'paths': {'irc': ['/x/scheduler_irc.out'], 'irc_directions': ['forward']}}}
+        self.ingest(pipe_run_module._ingest_irc, 'irc', self.IRC, output,
+                    ingestion_metadata={'irc_direction': 'reverse'})
+        self.assertEqual(output['H2O']['paths']['irc'], ['/x/scheduler_irc.out', '/x/output.out'])
+        self.assertEqual(output['H2O']['paths']['irc_directions'], ['forward', 'reverse'])
+        output = dict()
+        self.ingest(pipe_run_module._ingest_irc, 'irc', self.IRC, output)
+        self.assertEqual(output['H2O']['paths']['irc_directions'], [None])
+
+    def test_irc_directions_stay_in_lockstep_with_the_irc_logs(self):
+        """Test that stale directions beyond the recorded IRC logs are dropped, as the IRC levels are"""
+        output = {'H2O': {'paths': {'irc': ['/x/scheduler_irc.out'], 'irc_directions': ['forward', 'reverse', None]}}}
+        self.ingest(pipe_run_module._ingest_irc, 'irc', self.IRC, output,
+                    ingestion_metadata={'irc_direction': 'reverse'})
+        self.assertEqual(output['H2O']['paths']['irc'], ['/x/scheduler_irc.out', '/x/output.out'])
+        self.assertEqual(output['H2O']['paths']['irc_directions'], ['forward', 'reverse'])
+        self.assertEqual(len(output['H2O']['paths']['irc_levels']), 2)
+
+    def test_irc_tasks_record_each_log_level_in_lockstep(self):
+        """Test that each piped IRC log's own level is recorded, padding a scheduler log recorded without one"""
+        output = {'H2O': {'paths': {'irc': ['/x/scheduler_irc.out'], 'irc_directions': ['forward']}}}
+        self.ingest(pipe_run_module._ingest_irc, 'irc', self.IRC, output,
+                    ingestion_metadata={'irc_direction': 'reverse'})
+        irc_levels = output['H2O']['paths']['irc_levels']
+        self.assertEqual(len(irc_levels), 2)
+        self.assertIsNone(irc_levels[0])
+        self.assertEqual(irc_levels[1]['method'], 'b3lyp')
+        self.ingest(pipe_run_module._ingest_irc, 'irc', self.FREQ, output)
+        self.assertEqual([level['method'] if level else None for level in output['H2O']['paths']['irc_levels']],
+                         [None, 'b3lyp', 'wb97xd'])
+
+    def test_irc_tasks_at_levels_differing_only_in_deduced_fields_keep_the_level(self):
+        """Test that the pair rule ignores the software, which ARC deduces and the record does not state"""
+        output = dict()
+        self.ingest(pipe_run_module._ingest_irc, 'irc', self.IRC, output)
+        self.ingest(pipe_run_module._ingest_irc, 'irc', dict(self.IRC, software='orca'), output)
+        self.assertEqual(output['H2O']['levels']['irc']['method'], 'b3lyp')
+
+    def test_irc_tasks_record_their_level_by_the_pair_rule(self):
+        """Test that two IRC tasks at one level record it, and a pair at different levels records none"""
+        output = dict()
+        for _ in range(2):
+            self.ingest(pipe_run_module._ingest_irc, 'irc', self.IRC, output)
+        self.assertEqual(output['H2O']['levels']['irc']['method'], 'b3lyp')
+        self.ingest(pipe_run_module._ingest_irc, 'irc', self.FREQ, output)
+        self.assertNotIn('irc', output['H2O']['levels'])
+
+
+class TestIngestRecordsInputOptions(unittest.TestCase):
+    """Test that piped freq and IRC tasks record the input options their worker captured, beside their level."""
+
+    LEVEL = {'method': 'b3lyp', 'basis': '6-31g', 'software': 'gaussian'}
+
+    def setUp(self):
+        self.pipe_root = tempfile.mkdtemp(prefix='pipe_ingest_options_')
+        self.addCleanup(shutil.rmtree, self.pipe_root, ignore_errors=True)
+        self.n_tasks = 0
+
+    def ingest(self, ingest_function, family, output, result=None, ingestion_metadata=None):
+        """Run a freq or IRC ingest function on a task whose attempt holds ``result`` as its result.json."""
+        self.n_tasks += 1
+        task_id = f't_{family}_{self.n_tasks}'
+        spec = _make_spec(task_id, label='H2O', task_family=family, engine='gaussian', level=self.LEVEL)
+        spec.ingestion_metadata = ingestion_metadata
+        state = TaskStateRecord(status=TaskState.COMPLETED.value, attempt_index=0)
+        attempt_dir = get_task_attempt_dir(self.pipe_root, task_id, state.attempt_index)
+        os.makedirs(attempt_dir, exist_ok=True)
+        if result is not None:
+            with open(os.path.join(attempt_dir, 'result.json'), 'w') as f:
+                f.write(result if isinstance(result, str) else json.dumps(result))
+        with unittest.mock.patch.object(pipe_run_module, 'find_output_file', return_value='/x/output.out'), \
+                unittest.mock.patch.object(pipe_run_module, 'check_ess_convergence', return_value=True):
+            ingest_function('run_0', self.pipe_root, spec, state, {'H2O': object()}, 'H2O', output)
+
+    def test_a_freq_task_records_the_options_its_worker_captured(self):
+        """Test that the freq options are read from the attempt's result.json for the task's species"""
+        output = dict()
+        self.ingest(pipe_run_module._ingest_species_freq, 'species_freq', output,
+                    result={'input_options': {'H2O': '#P freq b3lyp/6-31g', 'CH4': '#P other'}})
+        self.assertEqual(output['H2O']['input_options'], {'freq': '#P freq b3lyp/6-31g'})
+        self.assertEqual(output['H2O']['levels']['freq']['method'], 'b3lyp')
+
+    def test_a_task_without_recorded_options_states_none(self):
+        """Test that a missing, unreadable or older result.json, or one without the species, records no options"""
+        for result in (None, '{not json', {'canonical_output_path': '/x/output.out'}, {'input_options': None},
+                       {'input_options': {'CH4': '#P freq'}}, {'input_options': {'H2O': ''}}):
+            with self.subTest(result=result):
+                output = {'H2O': {'paths': {}, 'input_options': {'freq': '#P stale'}}}
+                self.ingest(pipe_run_module._ingest_species_freq, 'species_freq', output, result=result)
+                self.assertEqual(output['H2O']['input_options'], dict())
+
+    def test_irc_tasks_record_their_options_per_log_in_lockstep(self):
+        """Test that each IRC log keeps its own options beside it, padding a log recorded without any"""
+        forward = '#P irc=(CalcAll,forward,maxpoints=50,stepsize=7) b3lyp/6-31g'
+        reverse = '#P irc=(CalcAll,reverse,maxpoints=50,stepsize=7) b3lyp/6-31g'
+        output = {'H2O': {'paths': {'irc': ['/x/scheduler_irc.out'], 'irc_directions': ['forward']}}}
+        self.ingest(pipe_run_module._ingest_irc, 'irc', output, result={'input_options': {'H2O': reverse}},
+                    ingestion_metadata={'irc_direction': 'reverse'})
+        self.assertEqual(output['H2O']['paths']['irc_input_options'], [None, reverse])
+        self.assertEqual(output['H2O']['paths']['irc_directions'], ['forward', 'reverse'])
+        output = dict()
+        for options, direction in ((forward, 'forward'), (reverse, 'reverse')):
+            self.ingest(pipe_run_module._ingest_irc, 'irc', output, result={'input_options': {'H2O': options}},
+                        ingestion_metadata={'irc_direction': direction})
+        self.assertEqual(output['H2O']['paths']['irc_input_options'], [forward, reverse])
+        self.assertNotIn('input_options', output['H2O'])
 
 class TestBuildRotorScan1dTasks(unittest.TestCase):
     """Unit tests for build_rotor_scan_1d_tasks: one task per rotor and scan_res propagation."""

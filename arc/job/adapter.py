@@ -165,10 +165,15 @@ class JobAdapter(ABC):
     this job's initial guess; the two are equal for an ESS that reads and writes one file, as
     Gaussian does with its checkfile. A subclass whose ESS names these files differently
     overrides them, as ``OrcaAdapter`` does.
+
+    ``input_options`` holds, per species label, the options the job wrote into its ESS input deck, in the
+    program's own syntax (see ``arc.job.input_options.get_input_options``). It is set when the deck is written
+    and is ``None`` for a job that wrote no deck or whose adapter does not record them.
     """
 
     check_file_name = 'check.chk'
     guess_file_name = 'check.chk'
+    input_options = None
 
     @abstractmethod
     def write_input_file(self) -> None:
@@ -807,10 +812,11 @@ class JobAdapter(ABC):
         """
         A helper function for dumping this object as a dictionary, used for saving in the restart file.
 
-        ``restricted_used``, the SCF reference this job's input declared, is included when the job
-        composed an input file. It is the one entry that cannot be recomputed on restore: rebuilding
-        the adapter re-composes the input from the species' current state, so a job queued before a
-        reference decision changed would otherwise come back describing a reference it never ran.
+        ``restricted_used``, the SCF reference this job's input declared, and ``input_options``, the options
+        it wrote into its input deck, are included when the job composed an input file. Neither can be
+        recomputed on restore: rebuilding the adapter re-composes the input from the species' current state,
+        so a job queued before a reference decision changed would otherwise come back describing a reference
+        it never ran, and a job would come back stating options from the current state, not the ones it ran with.
         """
         job_dict = dict()
         job_dict['job_adapter'] = self.job_adapter
@@ -858,6 +864,8 @@ class JobAdapter(ABC):
         restricted_used = getattr(self, 'restricted_used', None)
         if isinstance(restricted_used, (bool, list)):
             job_dict['restricted_used'] = restricted_used
+        if isinstance(self.input_options, dict):
+            job_dict['input_options'] = dict(self.input_options)
         if self.species is not None:
             job_dict['species_labels'] = [species.label for species in self.species]
         if self.torsions is not None:

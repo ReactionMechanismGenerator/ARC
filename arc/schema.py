@@ -147,6 +147,7 @@ class Species(BaseModel):
     adjlist: str | None = None
     adaptive_lot_n_heavy: StrictInt | None = None
     arkane_file: str | None = None
+    arkane_rotor_modes: list[str] | None = None
     bdes: list | None = None
     bond_corrections: dict | None = None
     charge: StrictInt | None = None
@@ -158,12 +159,19 @@ class Species(BaseModel):
     compute_thermo: Flag | None = None
     conf_is_isomorphic: Flag | None = None
     conformer_energies: list | None = None
+    conformer_energy_sources: list | None = None
+    conformer_input_options: list | None = None
+    conformer_levels: list | None = None
+    conformer_logs: list | None = None
     conformers: list | None = None
     conformers_before_opt: list | None = None
     consider_all_diastereomers: Flag = True
     derived_stability_verdict: dict | None = None
     directed_rotors: dict | None = None
     e0: Number | None = None
+    e0_aec_yml_sha256: str | None = None
+    e0_atom_corrections_applied: Flag | None = None
+    e0_bond_corrections_applied: Flag | None = None
     e0_only: Flag = False
     e_elect: Number | None = None
     extensions: dict[str, dict] | None = None
@@ -177,6 +185,7 @@ class Species(BaseModel):
     index: StrictInt | None = None
     initial_xyz: dict | str | None = None
     irc_label: str | None = None
+    irc_participant_mapping: dict | None = None
     is_ts: Flag = False
     keep_mol: Flag = False
     long_thermo_description: str | None = None
@@ -186,6 +195,7 @@ class Species(BaseModel):
     multi_species: str | None = None
     multiplicity: Annotated[int, Field(ge=1, strict=True)] | None = None
     neg_freqs_trshed: list | None = None
+    nmd_record: dict | None = None
     number_of_radicals: Annotated[int, Field(ge=0, strict=True)] | None = None
     number_of_rotors: StrictInt | None = None
     opt_level: str | None = None
@@ -208,6 +218,8 @@ class Species(BaseModel):
     successful_methods: list | None = None
     t1: Number | None = None
     thermo_at_own_level: Flag = False
+    ts_atom_map: dict | None = None
+    ts_atom_map_unavailable_reason: str | None = None
     ts_checks: dict | None = None
     ts_conf_spawned: Flag | None = None
     ts_guesses: list | None = None
@@ -300,6 +312,8 @@ class Reaction(BaseModel):
     """
     label: str = ''
     atom_map: list | None = None
+    atom_map_method: str | None = None
+    atom_map_source: str | None = None
     charge: StrictInt | None = None
     done_opt_r_n_p: Flag | None = None
     extensions: dict[str, dict] | None = None

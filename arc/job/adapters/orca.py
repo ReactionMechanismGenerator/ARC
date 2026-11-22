@@ -7,6 +7,7 @@ https://orcaforum.kofo.mpg.de/app.php/portal
 import datetime
 import math
 import os
+import re
 from typing import TYPE_CHECKING
 
 from mako.template import Template
@@ -24,6 +25,7 @@ from arc.job.adapters.common import (_initialize_adapter,
                                      which,
                                      )
 from arc.job.factory import register_job_adapter
+from arc.job.input_options import capture_input_options
 from arc.job.local import execute_command
 from arc.level import Level
 from arc.settings.settings import orca_default_options_dict
@@ -36,6 +38,29 @@ if TYPE_CHECKING:
 
 
 logger = get_logger()
+
+ORCA_PNO_THRESHOLD_TOKENS = ('loosepno', 'normalpno', 'tightpno')
+
+
+def _keywords_carry_pno_threshold(keywords: dict) -> bool:
+    """
+    Whether any keyword value already carries a DLPNO accuracy keyword (LoosePNO, NormalPNO or TightPNO).
+    The match is case-insensitive and on whole whitespace-separated tokens, ignoring non-alphanumeric characters
+    around and within a token (so ``!TightPNO`` matches). Values which are not strings, and a ``keywords`` which is
+    not a dictionary, carry no threshold.
+
+    Args:
+        keywords (dict): The ``keyword`` entry of the job args.
+
+    Returns:
+        bool: Whether a PNO threshold keyword is present.
+    """
+    if not isinstance(keywords, dict):
+        return False
+    return any(re.sub(r'[^a-z0-9]', '', token) in ORCA_PNO_THRESHOLD_TOKENS
+               for val in keywords.values() if isinstance(val, str)
+               for token in val.lower().split())
+
 
 ORCA_METHOD_ALIASES = {
     'wb97xd3': 'wb97x-d3',
@@ -474,10 +499,11 @@ class OrcaAdapter(JobAdapter):
         elif self.level.method_type == 'wavefunction':
             input_dict['method_class'] = 'HF'
             if 'dlpno' in self.level.method:
-                self.args['keyword'].setdefault(
-                    'dlpno_threshold',
-                    orca_default_options_dict['global']['keyword'].get('dlpno_threshold', '').lower())
-                if not self.args['keyword']['dlpno_threshold']:
+                if 'dlpno_threshold' not in self.args['keyword'] \
+                        and not _keywords_carry_pno_threshold(self.args['keyword']):
+                    self.args['keyword']['dlpno_threshold'] = \
+                        orca_default_options_dict['global']['keyword'].get('dlpno_threshold', '').lower()
+                if not self.args['keyword'].get('dlpno_threshold', True):
                     raise ValueError('Orca DLPNO threshold is not specified. Please specify this variable either in '
                                      'settings.py as default or in the input file as additional options.')
         else:
@@ -584,8 +610,10 @@ end
 
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
 
+        input_file = Template(input_template).render(**input_dict)
+        capture_input_options(self, input_file)
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
-            f.write(Template(input_template).render(**input_dict))
+            f.write(input_file)
 
     def set_files(self) -> None:
         """

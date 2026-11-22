@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from arc.common import ARC_INPUT_SCHEMA_VERSION, ARC_PATH, VERSION, get_logger, read_yaml_file
 from arc.exceptions import InputError
 from arc.imports import settings
+from arc.level import Level
 from arc.main import ARC, check_rotor_scan_resolution
 from arc.reaction import ARCReaction
 from arc.schema import (ARCInput, BACTypeEnum, JobTypes, Reaction, Species, get_arc_input_keys,
@@ -933,6 +934,45 @@ class TestSchemaDrift(unittest.TestCase):
         self.assertTrue(emitted_keys.issubset(set(Reaction.model_fields)),
                         (f'ARC writes a reaction key the schema does not model — add it to arc/schema.py or '
                          f'restarts will break. Unmodeled: {sorted(emitted_keys - set(Reaction.model_fields))}'))
+
+    def test_provenance_and_correction_keys_are_modeled_and_validate(self):
+        """Drift guard: the conformer provenance, E0 correction, NMD, IRC and atom map keys that ARCSpecies and
+        ARCReaction write once populated are modeled, and a populated restart entry validates"""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        spc.conformers, spc.conformer_energies = [spc.get_xyz()], [-100.0]
+        spc.record_conformer_geometry_level(0, Level(method='wb97xd', basis='def2svp'), log_path='/calcs/conf0.out',
+                                            input_options='opt freq')
+        spc.record_conformer_energy_source(0, 'electronic_kj_mol', Level(method='wb97xd', basis='def2svp'))
+        spc.e0, spc.e0_atom_corrections_applied, spc.e0_bond_corrections_applied = -50.0, True, False
+        spc.e0_aec_yml_sha256 = 'a' * 64
+        spc.arkane_rotor_modes = ['HinderedRotor']
+        ts = ARCSpecies(label='TS0', is_ts=True, xyz='O 0 0 0\nH 0 0 1\nH 0 1 0')
+        ts.nmd_record = {'mode_index': 1, 'n_modes': 3}
+        ts.irc_participant_mapping = {'reactants': None, 'products': None}
+        ts.ts_atom_map = {'ts_label': 'TS0', 'reactants': [0, 1, 2], 'products': [0, 1, 2]}
+        ts.ts_atom_map_unavailable_reason = 'not_recorded'
+        spc_dict, ts_dict = spc.as_dict(), ts.as_dict()
+        for key in ('conformer_levels', 'conformer_logs', 'conformer_input_options', 'conformer_energy_sources',
+                    'e0_atom_corrections_applied', 'e0_bond_corrections_applied', 'e0_aec_yml_sha256',
+                    'arkane_rotor_modes'):
+            self.assertIn(key, spc_dict)
+        for key in ('nmd_record', 'irc_participant_mapping', 'ts_atom_map', 'ts_atom_map_unavailable_reason'):
+            self.assertIn(key, ts_dict)
+        emitted_keys = set(spc_dict) | set(ts_dict)
+        self.assertEqual(emitted_keys - set(Species.model_fields), set())
+        validated = Species(**spc_dict)
+        self.assertIs(validated.e0_atom_corrections_applied, True)
+        self.assertEqual(validated.conformer_logs, ['/calcs/conf0.out'])
+        self.assertEqual(Species(**ts_dict).nmd_record, {'mode_index': 1, 'n_modes': 3})
+
+        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='O2', smiles='[O][O]')],
+                          p_species=[ARCSpecies(label='HO2', smiles='O[O]')])
+        rxn._set_atom_map([0, 1, 2], 'inferred', 'arc.mapping.driver.map_reaction')
+        rxn_dict = rxn.as_dict()
+        self.assertEqual((rxn_dict['atom_map_source'], rxn_dict['atom_map_method']),
+                         ('inferred', 'arc.mapping.driver.map_reaction'))
+        self.assertEqual(set(rxn_dict) - set(Reaction.model_fields), set())
+        self.assertEqual(Reaction(**rxn_dict).atom_map_source, 'inferred')
 
     def test_rotor_scan_resolution_schema_matches_arcs_own_check(self):
         """Test that the schema and arc.main.check_rotor_scan_resolution() agree on every value, incl. non-numbers"""

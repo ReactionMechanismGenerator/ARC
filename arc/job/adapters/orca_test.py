@@ -21,6 +21,7 @@ from arc.job.adapters.orca import (MULTIREFERENCE_METHOD_TOKENS,
                                    _format_orca_basis,
                                    _format_orca_basis_token,
                                    _format_orca_method,
+                                   _keywords_carry_pno_threshold,
                                    )
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames
@@ -235,6 +236,76 @@ end
                                             xyz='O 0.0 0.0 0.0')],
                         testing=True,
                         )
+
+    def _write_dlpno_sp_bang_line(self, project: str, args: dict | None = None) -> str:
+        """Write a DLPNO sp input with the given level args and return its keyword (!) line."""
+        job = OrcaAdapter(execution_type='queue',
+                          job_type='sp',
+                          level=Level(method='DLPNO-CCSD(T)', basis='def2-tzvp', auxiliary_basis='def2-tzvp/c',
+                                      args=args),
+                          project=project,
+                          project_directory=os.path.join(self.scratch_dir, 'test_OrcaAdapter'),
+                          species=[ARCSpecies(label='O_atom', smiles='[O]', xyz='O 0.0 0.0 0.0')],
+                          testing=True,
+                          )
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return f.read().splitlines()[0].lower().lstrip('!')
+
+    def test_input_options_state_the_keyword_lines_and_blocks_as_written(self):
+        """The recorded options are the deck's ! lines and % blocks, without coordinates, %maxcore and %pal"""
+        for project, args, threshold in (('test_options_default', None, 'normalpno'),
+                                         ('test_options_tight', {'keyword': {'general': 'TightPNO'}}, 'tightpno')):
+            with self.subTest(project=project):
+                job = OrcaAdapter(execution_type='queue',
+                                  job_type='sp',
+                                  level=Level(method='DLPNO-CCSD(T)', basis='def2-tzvp',
+                                              auxiliary_basis='def2-tzvp/c', args=args),
+                                  project=project,
+                                  project_directory=os.path.join(self.scratch_dir, 'test_OrcaAdapter'),
+                                  species=[ARCSpecies(label='O_atom', smiles='[O]', xyz='O 0.0 0.0 0.0')],
+                                  testing=True,
+                                  )
+                options = job.input_options['O_atom']
+                lines = options.splitlines()
+                self.assertTrue(lines[0].startswith('!'))
+                self.assertEqual(sum(token.endswith('pno') for token in lines[0].lower().split()), 1)
+                self.assertIn(threshold, lines[0].lower().split())
+                self.assertEqual(lines[1:], ['!sp', '%scf', 'MaxIter 999', 'end'])
+                with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+                    deck = [line.strip() for line in f.read().splitlines()]
+                self.assertEqual(lines[0], deck[0])
+                self.assertNotIn('%maxcore', options)
+                self.assertNotIn('%pal', options)
+                self.assertNotIn('* xyz', options)
+
+    def test_dlpno_default_threshold_added_when_user_gives_none(self):
+        """The default PNO threshold is added when no keyword carries one."""
+        tokens = self._write_dlpno_sp_bang_line('test_pno_default', {'keyword': {'general': 'tightscf'}}).split()
+        self.assertEqual(tokens.count('normalpno'), 1)
+        self.assertNotIn('tightpno', tokens)
+
+    def test_dlpno_user_threshold_not_duplicated(self):
+        """A user's PNO threshold in any keyword entry suppresses the default one."""
+        for project, args in [('test_pno_general', {'keyword': {'general': 'TightSCF TightPNO'}}),
+                              ('test_pno_other_key', {'keyword': {'dlpno_threshold': 'LoosePNO'}}),
+                              ('test_pno_other_name', {'keyword': {'accuracy': 'tightpno'}})]:
+            tokens = self._write_dlpno_sp_bang_line(project, args).split()
+            self.assertNotIn('normalpno', tokens)
+            self.assertEqual(sum(token.endswith('pno') for token in tokens), 1)
+
+    def test_dlpno_threshold_detection_ignores_punctuation_and_non_string_entries(self):
+        """A '!'-prefixed threshold counts, an explicit dlpno_threshold value is kept, other entries are skipped."""
+        tokens = self._write_dlpno_sp_bang_line('test_pno_bang', {'keyword': {'general': '!TightPNO tightscf'}}).split()
+        self.assertNotIn('normalpno', tokens)
+        tokens = self._write_dlpno_sp_bang_line('test_pno_explicit',
+                                                {'keyword': {'dlpno_threshold': 'MyPNO'}}).split()
+        self.assertIn('mypno', tokens)
+        self.assertNotIn('normalpno', tokens)
+        self.assertTrue(_keywords_carry_pno_threshold({'use_num_freq': True, 'n': 3, 'none': None,
+                                                       'general': 'LoosePNO'}))
+        self.assertFalse(_keywords_carry_pno_threshold({'use_num_freq': True, 'general': 'tightscf'}))
+        self.assertFalse(_keywords_carry_pno_threshold('tightpno'))
 
     def test_format_orca_method(self):
         """Test ORCA method formatting helper."""

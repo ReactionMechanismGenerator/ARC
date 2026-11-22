@@ -17,6 +17,7 @@ from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
+from arc.job.input_options import capture_input_options
 from arc.job.local import execute_command
 from arc.level import Level
 from arc.species.converter import species_to_sdf_file, xyz_from_data, xyz_to_coords_and_element_numbers
@@ -278,12 +279,14 @@ class xTBAdapter(JobAdapter):
         uhf_charge = f'--uhf {uhf} --chrg {self.charge}'
         self.long_command = f'{self.command} mol.sdf{directives} {uhf_charge} > {output_filenames[self.job_adapter]}\n'
         
+        self.input_options = None
         if self.species[0].mol is None:
             self.species[0].mol_from_xyz()
         if not self.is_opt_ts_job() and self.species[0].mol is not None:
             species_to_sdf_file(species=self.species[0], path=self.sdf_path)
             with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
                 f.write(self.long_command)
+            capture_input_options(self, f'{self.long_command}{block}')
 
     def is_opt_ts_job(self) -> bool:
         """

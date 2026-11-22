@@ -31,6 +31,11 @@ from arc.imports import pipe_submit, settings
 from arc.job.local import SUBMISSION_CAP_REACHED
 from arc.job.pipe.queue_limit import discover_job_allowance, next_array_size
 from arc.job.ssh import SUBMISSION_CAP_WAIT_SECONDS
+from arc.job.input_options import set_recorded_input_options
+from arc.level import (Level, append_irc_log_entry, set_recorded_irc_level, set_recorded_irc_log_level,
+                       set_recorded_level)
+from arc.species.species import CONFORMER_ENERGY_KIND_ELECTRONIC
+
 from arc.job.pipe.pipe_state import (
     PipeRunState,
     ROTOR_SCAN_1D_TASK_FAMILY,
@@ -673,8 +678,37 @@ def ingest_completed_task(pipe_run_id: str, pipe_root: str, spec: TaskSpec,
         _ingest_rotor_scan_1d(pipe_run_id, pipe_root, spec, state, species_dict, label)
 
 
+def _task_level(spec) -> Level | None:
+    """The level a pipe task requested, as a ``Level``, or ``None`` if the task states none."""
+    return Level(repr=spec.level) if spec.level else None
+
+
+def task_input_options(attempt_dir: str, label: str) -> str | None:
+    """
+    The options a pipe task's job wrote into the input deck of a species, as the worker stored them in the
+    attempt's ``result.json`` (``input_options``, keyed by species label). ``None`` when the file is missing or
+    unreadable, or states no options for the species (e.g., a result written before the worker stored them).
+    """
+    result_path = os.path.join(attempt_dir, 'result.json')
+    if not os.path.isfile(result_path):
+        return None
+    try:
+        with open(result_path) as f:
+            result_data = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f'Could not read the input options in {result_path}: {type(e).__name__}: {e}')
+        return None
+    options = result_data.get('input_options') if isinstance(result_data, dict) else None
+    value = options.get(label) if isinstance(options, dict) else None
+    return value if isinstance(value, str) and value else None
+
+
 def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, conformer_index):
-    """Ingest a completed conf_opt task: update geometry and opt-level energy."""
+    """
+    Ingest a completed conf_opt task: update the geometry and the opt-level energy, and record the task's level, log
+    and the input options its worker reported.
+    Where the optimized geometry parses but the energy does not, the energy is ``None`` with no recorded kind.
+    """
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
     species = species_dict[label]
     try:
@@ -690,13 +724,22 @@ def _ingest_conf_opt(run_id, pipe_root, spec, state, species_dict, label, confor
                      f'parsing failed for {attempt_dir}: {type(e).__name__}: {e}')
         return
     if conformer_index < len(species.conformers) and xyz is not None:
+        input_options = task_input_options(attempt_dir, label)
         species.conformers[conformer_index] = xyz
-    if conformer_index < len(species.conformer_energies) and e_elect is not None:
-        species.conformer_energies[conformer_index] = e_elect
+        species.record_conformer_geometry_level(conformer_index, _task_level(spec), log_path=str(output_file),
+                                                input_options=input_options)
+        if conformer_index < len(species.conformer_energies):
+            species.conformer_energies[conformer_index] = e_elect
+            species.record_conformer_energy_source(
+                conformer_index, CONFORMER_ENERGY_KIND_ELECTRONIC if e_elect is not None else None,
+                _task_level(spec), input_options=input_options if e_elect is not None else None)
 
 
 def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conformer_index):
-    """Ingest a completed conf_sp task: update energy only."""
+    """
+    Ingest a completed conf_sp task: update the energy and record the task's level and the input options its worker
+    reported as its source.
+    """
     attempt_dir = get_task_attempt_dir(pipe_root, spec.task_id, state.attempt_index)
     species = species_dict[label]
     try:
@@ -712,6 +755,8 @@ def _ingest_conf_sp(run_id, pipe_root, spec, state, species_dict, label, conform
         return
     if conformer_index < len(species.conformer_energies) and e_elect is not None:
         species.conformer_energies[conformer_index] = e_elect
+        species.record_conformer_energy_source(conformer_index, CONFORMER_ENERGY_KIND_ELECTRONIC, _task_level(spec),
+                                               input_options=task_input_options(attempt_dir, label))
 
 
 def _ingest_ts_guess_batch(run_id, pipe_root, spec, state, species_dict, label):
@@ -813,6 +858,8 @@ def _ingest_species_freq(run_id, pipe_root, spec, state, species_dict, label, ou
         elif 'paths' not in output[label]:
             output[label]['paths'] = {}
         output[label]['paths']['freq'] = output_file
+        set_recorded_level(output[label].setdefault('levels', dict()), 'freq', _task_level(spec))
+        set_recorded_input_options(output[label], 'freq', task_input_options(attempt_dir, label))
 
 
 def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
@@ -835,6 +882,11 @@ def _ingest_irc(run_id, pipe_root, spec, state, species_dict, label, output):
         irc_paths = output[label]['paths'].get('irc', [])
         irc_paths.append(output_file)
         output[label]['paths']['irc'] = irc_paths
+        append_irc_log_entry(output[label]['paths'], 'irc_directions',
+                             (spec.ingestion_metadata or dict()).get('irc_direction'))
+        set_recorded_irc_level(output[label].setdefault('levels', dict()), _task_level(spec), len(irc_paths))
+        set_recorded_irc_log_level(output[label]['paths'], _task_level(spec))
+        append_irc_log_entry(output[label]['paths'], 'irc_input_options', task_input_options(attempt_dir, label))
 
 
 def _ingest_rotor_scan_1d(run_id, pipe_root, spec, state, species_dict, label):

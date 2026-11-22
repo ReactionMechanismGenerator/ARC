@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from arc.job.pipe.pipe_state import (
@@ -23,7 +24,7 @@ from arc.job.pipe.pipe_state import (
     update_task_state,
 )
 from arc.scripts.pipe_worker import (claim_task, run_task, main, logger as worker_logger,
-                                     _get_family_extra_kwargs)
+                                     _dispatch_execution, _get_family_extra_kwargs)
 from arc.species import ARCSpecies
 
 
@@ -321,6 +322,44 @@ class TestRunTask(unittest.TestCase):
             run_task(self.tmpdir, 'io_fail', state, 'test-worker', token)
         final = read_task_state(self.tmpdir, 'io_fail')
         self.assertIn(final.status, ('FAILED_RETRYABLE', 'FAILED_TERMINAL'))
+
+    def _result(self, task_id):
+        """Read the result.json of a task's first attempt."""
+        with open(os.path.join(get_task_attempt_dir(self.tmpdir, task_id, 0), 'result.json')) as f:
+            return json.load(f)
+
+    def test_result_json_carries_the_input_options_the_job_wrote(self):
+        """The options the job captured when it wrote its deck are stored in result.json for ingestion"""
+        spec = _make_h2o_spec('sp_options', task_family='species_freq')
+        initialize_task(self.tmpdir, spec)
+        state, token = self._claim('sp_options')
+        with patch('arc.scripts.pipe_worker._dispatch_execution', return_value={'H2O': '#P freq b3lyp/6-31g'}):
+            run_task(self.tmpdir, 'sp_options', state, 'test-worker', token)
+        self.assertEqual(read_task_state(self.tmpdir, 'sp_options').status, 'COMPLETED')
+        self.assertEqual(self._result('sp_options')['input_options'], {'H2O': '#P freq b3lyp/6-31g'})
+
+    def test_result_json_states_no_input_options_for_an_adapter_that_writes_no_deck(self):
+        """The mock adapter writes no ESS deck, so the result states null options"""
+        spec = _make_h2o_spec('sp_no_options')
+        initialize_task(self.tmpdir, spec)
+        state, token = self._claim('sp_no_options')
+        run_task(self.tmpdir, 'sp_no_options', state, 'test-worker', token)
+        self.assertIn('input_options', self._result('sp_no_options'))
+        self.assertIsNone(self._result('sp_no_options')['input_options'])
+
+    def test_the_dispatched_job_returns_its_input_options(self):
+        """_dispatch_execution returns the options the reconstructed job recorded, as an independent dict"""
+        spec = _make_h2o_spec('freq_dispatch', task_family='species_freq')
+        options = {'H2O': '#P freq b3lyp/6-31g'}
+        for job_options, expected in ((options, options), (None, None)):
+            with self.subTest(job_options=job_options):
+                job = SimpleNamespace(local_path=self.tmpdir, local_path_to_output_file=None,
+                                      input_options=job_options, execute=lambda: None)
+                with patch('arc.scripts.pipe_worker.job_factory', return_value=job):
+                    returned = _dispatch_execution(spec, self.tmpdir)
+                self.assertEqual(returned, expected)
+                if expected is not None:
+                    self.assertIsNot(returned, job_options)
 
 
 class TestWorkerLoop(unittest.TestCase):
