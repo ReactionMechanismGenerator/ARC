@@ -853,11 +853,10 @@ class Scheduler(object):
                         elif 'composite' not in list(self.job_dict[species.label].keys()) \
                                 and species.irc_label is None:
                             # composite is done; do other jobs
-                            if (not self.output[species.label]['job_types']['freq']
-                                    or species.is_ts and self.job_types['freq']
-                                    and not species.ts_checks.get(NMD_VERDICT_IN_KEY)) \
+                            if not self.output[species.label]['job_types']['freq'] \
                                     and 'freq' not in list(self.job_dict[species.label].keys()) \
-                                    and (species.is_ts or species.number_of_atoms > 1):
+                                    and (species.is_ts or species.number_of_atoms > 1) \
+                                    or self.freq_verdict_owed_on_restart(species):
                                 self.run_freq_job(species.label)
                             if self.job_types['rotors']:
                                 self.run_scan_jobs(species.label)
@@ -874,9 +873,11 @@ class Scheduler(object):
                                 and not self.output[species.label]['paths']['sp'] and self.job_types['sp'] \
                                 and species.irc_label is None:
                             self.run_sp_job(species.label)
-                        if self.output[species.label]['paths']['geo'] and 'freq' not in self.job_dict[species.label].keys() \
-                                and not self.output[species.label]['paths']['freq'] and self.job_types['freq'] \
-                                and (species.is_ts or species.number_of_atoms > 1) and species.irc_label is None:
+                        if self.output[species.label]['paths']['geo'] \
+                                and ('freq' not in self.job_dict[species.label].keys()
+                                     and not self.output[species.label]['paths']['freq'] and self.job_types['freq']
+                                     and (species.is_ts or species.number_of_atoms > 1) and species.irc_label is None
+                                     or self.freq_verdict_owed_on_restart(species)):
                             self.run_freq_job(species.label)
                         if self.rotor_scans_pending_on_restart(species):
                             # Additional restart-related checks are performed within run_scan_jobs().
@@ -2539,25 +2540,49 @@ class Scheduler(object):
 
     def restore_nmd_verdict_marker(self, label: str):
         """
-        Re-derive the NMD-verdict marker of a restored TS that does not hold it as ``True``.
+        Derive the NMD-verdict marker of a restored TS whose restart file was written before the marker existed.
 
         ``post_freq_actions()`` sets the marker once the NMD verdict of the freq job is in, and a restart file written
         before the marker existed does not carry it. The verdict is in when the TS converged, or when its freq check
         passed on a freq job output, i.e. one that is not the composite job's output: a composite job passes the
         frequency check before the freq job that runs the NMD check has ended.
 
+        A marker the restart file carries is kept, ``False`` included: ``check_negative_freq()`` saves the restart file
+        after a freq pass and before the NMD verdict, so a saved ``False`` may follow a passed freq job whose verdict
+        never came. ``freq_verdict_owed_on_restart()`` has the freq job run again for it.
+
         Args:
             label (str): The species label.
         """
         species = self.species_dict[label]
-        if not species.is_ts or not isinstance(species.ts_checks, dict) \
-                or species.ts_checks.get(NMD_VERDICT_IN_KEY) is True:
+        if not species.is_ts or not isinstance(species.ts_checks, dict) or NMD_VERDICT_IN_KEY in species.ts_checks:
             return
         output = self.output.get(label, dict())
         paths = output.get('paths', dict())
         freq_job_passed = species.ts_checks.get('freq') is True and bool(paths.get('freq')) \
             and paths.get('freq') != paths.get('composite')
         species.ts_checks[NMD_VERDICT_IN_KEY] = bool(output.get('convergence')) or freq_job_passed
+
+    def freq_verdict_owed_on_restart(self, species: ARCSpecies) -> bool:
+        """
+        Whether the restart loop owes a restored TS a freq job, since the NMD verdict that opens its scans never came.
+
+        The caller checks that the opt or composite job of the current guess ended; ``switch_ts()`` clears the output
+        paths and job types of a discarded guess. No freq job of the TS may be live (running, deferred or stranded),
+        so a restart adds no twin. When the freq job ends, ``post_freq_actions()`` either sets the marker or switches
+        the guess.
+
+        Args:
+            species (ARCSpecies): The restored species.
+
+        Returns:
+            bool: Whether ``run_freq_job()`` should be called for this species.
+        """
+        if not species.is_ts or not self.job_types['freq'] or not isinstance(species.ts_checks, dict) \
+                or species.ts_checks.get(NMD_VERDICT_IN_KEY) is not False:
+            return False
+        freq_job_names = self.job_dict.get(species.label, dict()).get('freq', dict())
+        return not any(job_name in self.unfinished_job_names(species.label) for job_name in freq_job_names)
 
     def run_irc_job(self, label, irc_direction='forward'):
         """

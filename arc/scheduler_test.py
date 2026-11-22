@@ -11243,7 +11243,7 @@ H       0.38960032    0.68501885   -1.35822039"""
         ts.determine_rotors()
         project_directory = tempfile.mkdtemp(prefix='arc_test_ts_scans_after_freq_restart_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
-        output = self.make_sched([ARCSpecies(species_dict=ts.as_dict())],
+        output = self.make_sched([ARCSpecies(species_dict=copy.deepcopy(ts.as_dict()))],
                                  project_directory=project_directory, **kwargs).output
         output[ts.label]['paths'].update({'geo': 'geo.out' if kwargs.get('opt', True) else '', 'sp': 'sp.out',
                                           'freq': 'freq.out' if freq_done else ''})
@@ -11259,7 +11259,7 @@ H       0.38960032    0.68501885   -1.35822039"""
     def test_e_restart_scans_a_ts_whose_freq_and_nmd_passed(self):
         """(e) Restart: a TS that passed its freq and NMD check but never started its scans gets them"""
         ts = self.make_ts()
-        ts.ts_checks['freq'], ts.ts_checks['NMD'] = True, True
+        ts.ts_checks.update({'freq': True, 'NMD': True, NMD_VERDICT_IN_KEY: True})
         sched = self.restart(ts, freq_done=True)
         self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
         self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
@@ -11267,7 +11267,7 @@ H       0.38960032    0.68501885   -1.35822039"""
     def test_e_restart_scans_a_ts_accepted_on_its_irc_after_a_near_miss_nmd(self):
         """(e) Restart: a near-miss TS that its IRC accepted is no longer deferred, and still gets its scans"""
         ts = self.make_ts()
-        ts.ts_checks.update({'freq': True, 'NMD': False, 'IRC': True,
+        ts.ts_checks.update({'freq': True, 'NMD': False, 'IRC': True, NMD_VERDICT_IN_KEY: True,
                              NMD_NEAR_MISS_KEY: {'sub_gate_bonds': [{'atoms': [0, 1], 'symbols': 'C-C',
                                                                      'percent': 3.0}],
                                                  'accepted_on_irc': True}})
@@ -11559,6 +11559,8 @@ H       0.00000000   -0.75698224   -0.46907685"""))}
         sched = self.make_sched([ts], restart_dict=dict(), **kwargs)
         if composite:
             self.end_composite(sched, 'TS_scan')
+            sched.running_jobs['TS_scan'] = [job_name for job_name in sched.running_jobs['TS_scan']
+                                             if job_name not in sched.job_dict['TS_scan']['composite']]
         else:
             sched.output['TS_scan']['job_types']['opt'] = True
             sched.output['TS_scan']['paths']['geo'] = os.path.join(sched.project_directory, 'opt.log')
