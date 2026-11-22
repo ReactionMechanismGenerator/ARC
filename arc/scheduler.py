@@ -885,7 +885,9 @@ class Scheduler(object):
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
                                 troubleshooting_conformer = self.parse_conformer(job=job, label=label, i=i)
-                                if 'conf_opt' in job_name and self.job_types['conf_sp'] and not troubleshooting_conformer:
+                                if 'conf_opt' in job_name and self.job_types['conf_sp'] \
+                                        and self.conformer_sp_level != self.conformer_opt_level \
+                                        and not troubleshooting_conformer:
                                     # Accumulate for deferred pipe batching of conf_sp.
                                     self._pending_pipe_conf_sp.setdefault(label, set()).add(i)
                                 if troubleshooting_conformer:
@@ -911,7 +913,8 @@ class Scheduler(object):
                                 logger.info(f'\nConformer jobs for {label} successfully terminated.\n')
                                 if self.species_dict[label].is_ts:
                                     self.determine_most_likely_ts_conformer(label)
-                                else:
+                                elif label not in self._pending_pipe_conf_sp:
+                                    # A conf_sp still owed would be ranked at the conf_opt level; decide once it ends.
                                     self.determine_most_stable_conformer(label, sp_flag=True if self.job_types['conf_sp'] else False)  # also checks isomorphism
                                 if self.species_dict[label].initial_xyz is not None:
                                     # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
@@ -1571,9 +1574,9 @@ class Scheduler(object):
                 # Conformer jobs restored on restart are still running; the main loop decides once they terminate.
                 species = self.species_dict[label]
                 conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
+                conf_sp_jobs = self.job_dict[label].get('conf_sp', dict())
                 conformers_note = self.output[label]['conformers']
-                first_round = bool(conf_opt_jobs) \
-                    and not get_conformer_isomorphism_trsh_history(conformers_note) \
+                first_round = not get_conformer_isomorphism_trsh_history(conformers_note) \
                     and CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED not in conformers_note \
                     and not any(method.startswith(('conformer ', 'conf_opt: '))
                                 for job in conf_opt_jobs.values() for method in job.ess_trsh_methods or list())
@@ -1585,14 +1588,20 @@ class Scheduler(object):
                 else:
                     xyzs = species.conformers
                 energies = species.conformer_energies
+                conf_sp_on = self.job_types['conf_sp'] and self.conformer_sp_level != self.conformer_opt_level
                 for i, xyz in enumerate(xyzs):
-                    if i not in conf_opt_jobs and (i >= len(energies) or energies[i] is None):
+                    if i in conf_opt_jobs or i in conf_sp_jobs or (i < len(energies) and energies[i] is not None):
+                        continue
+                    if first_round and conf_sp_on and i < len(species.conformers) and species.conformers[i] != xyz:
+                        # This conformer's conf_opt finished before the restart; only its conf_sp is owed.
+                        self.run_sp_job(label=label, level=self.conformer_sp_level, conformer=i)
+                    else:
                         self.run_job(label=label,
-                                     xyz=xyz,
-                                     job_type='conf_opt',
-                                     level_of_theory=self.conformer_opt_level,
-                                     conformer=i,
-                                     )
+                                         xyz=xyz,
+                                         job_type='conf_opt',
+                                         level_of_theory=self.conformer_opt_level,
+                                         conformer=i,
+                                         )
                 continue
             if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
