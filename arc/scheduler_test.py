@@ -11539,6 +11539,29 @@ H       0.00000000   -0.75698224   -0.46907685"""))}
                 self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
                 self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
 
+    def test_n_a_converged_ts_whose_restart_file_holds_a_false_marker_scans(self):
+        """
+        (n) A converged TS restored with all five checks None (``ARCSpecies`` init sets the marker False) gets the
+        marker and a passed freq check, so its owed scans launch. The restart loop's converged branch ``continue``s
+        before ``freq_verdict_owed_on_restart()``, so no freq job is respawned. A saved False freq is kept.
+        """
+        ts = self.make_ts()
+        self.assertTrue(all(ts.ts_checks[key] is None for key in ('E0', 'e_elect', 'IRC', 'freq', 'NMD')))
+        self.assertIs(ts.ts_checks[NMD_VERDICT_IN_KEY], False)
+        sched = self.restart(ts, freq_done=True, converged=True)
+        restored = sched.species_dict['TS_scan']
+        self.assertIs(restored.ts_checks[NMD_VERDICT_IN_KEY], True)
+        self.assertIs(restored.ts_checks['freq'], True)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
+        self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
+        self.assertEqual(sched.job_dict['TS_scan'].get('freq', dict()), dict())
+        self.assertEqual([job for job in self.submitted if job.job_type == 'freq'], list())
+
+        ts = self.make_ts()
+        ts.ts_checks['freq'] = False
+        sched = self.restart(ts, freq_done=True, converged=True)
+        self.assertIs(sched.species_dict['TS_scan'].ts_checks['freq'], False)
+
     class SimulatedCrash(Exception):
         """The process died right after it saved a restart file."""
 
