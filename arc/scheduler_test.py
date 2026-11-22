@@ -11539,6 +11539,189 @@ H       0.00000000   -0.75698224   -0.46907685"""))}
                 self.assertEqual(self.scan_jobs(sched, 'TS_scan'), self.expected_scans(sched, 'TS_scan'))
                 self.assertEqual(len(self.scan_jobs(sched, 'TS_scan')), 2)
 
+    class SimulatedCrash(Exception):
+        """The process died right after it saved a restart file."""
+
+    def first_session(self, composite=False, n_guesses=2):
+        """
+        Start a project whose TS finished its optimization (or its composite job), in a session that saves restart.yml.
+
+        Args:
+            composite (bool): Whether the project runs a composite method.
+            n_guesses (int): The number of optimized TS guesses.
+
+        Returns:
+            Scheduler: The Scheduler of the session.
+        """
+        ts = self.make_ts()
+        ts.ts_guesses = ts.ts_guesses[:n_guesses]
+        kwargs = dict(composite_method=Level(repr='cbs-qb3')) if composite else dict()
+        sched = self.make_sched([ts], restart_dict=dict(), **kwargs)
+        if composite:
+            self.end_composite(sched, 'TS_scan')
+        else:
+            sched.output['TS_scan']['job_types']['opt'] = True
+            sched.output['TS_scan']['paths']['geo'] = os.path.join(sched.project_directory, 'opt.log')
+            self.end_opt(sched, 'TS_scan')
+        return sched
+
+    def crash_at_the_freq_pass(self, sched, label='TS_scan'):
+        """
+        End a freq job of a TS with one imaginary frequency, and kill the session at the restart save that
+        ``check_negative_freq()`` makes before it records the pass in ``ts_checks`` and before the NMD check runs.
+
+        The freq job writes its own output file, so its path differs from a composite job's.
+
+        Args:
+            sched (Scheduler): The Scheduler of the session.
+            label (str): The TS label.
+
+        Returns:
+            dict: The restart dictionary, read back from the restart.yml the session left.
+        """
+        log = os.path.join(sched.project_directory, 'freq_job.log')
+        shutil.copyfile(self.PASSING_TS_FREQ_LOG, log)
+        save = sched.save_restart_dict
+
+        def save_then_crash():
+            save()
+            raise self.SimulatedCrash()
+
+        with patch.object(sched, 'testing', False), \
+                patch.object(sched, 'save_restart_dict', side_effect=save_then_crash), \
+                self.assertRaises(self.SimulatedCrash):
+            self.pass_freq(sched, label, nmd=True, log=log)
+        restart_dict = read_yaml_file(sched.restart_path)
+        self.assertEqual(restart_dict['output'][label]['paths']['freq'], log)
+        self.assertIs(restart_dict['species'][0]['ts_checks'][NMD_VERDICT_IN_KEY], False)
+        return restart_dict
+
+    def restart_from(self, sched, restart_dict, admission=SUBMIT):
+        """
+        Restart from a restart dictionary in the project folder of a previous session, as ``ARC.py restart.yml`` would.
+
+        Args:
+            sched (Scheduler): The Scheduler of the previous session.
+            restart_dict (dict): The restart dictionary.
+            admission (str): The queue admission of the jobs the restart spawns.
+
+        Returns:
+            Scheduler: The restarted Scheduler, with ``schedule_jobs`` not called.
+        """
+        species = [ARCSpecies(species_dict=species_dict) for species_dict in restart_dict['species']]
+        with patch.object(Scheduler, 'schedule_jobs'), \
+                patch.object(Scheduler, 'check_max_simultaneous_jobs_limit', return_value=admission):
+            return self.make_sched(species, testing=False, restart_dict=restart_dict,
+                                   project_directory=sched.project_directory, composite_method=sched.composite_method)
+
+    @staticmethod
+    def freq_jobs(sched, label='TS_scan'):
+        """
+        The freq jobs a Scheduler tracks for a species.
+
+        Args:
+            sched (Scheduler): The Scheduler object.
+            label (str): The species label.
+
+        Returns:
+            list: The freq jobs.
+        """
+        return list(sched.job_dict[label].get('freq', dict()).values())
+
+    def end_respawned_freq_job(self, sched, nmd, label='TS_scan'):
+        """
+        End the one freq job a restart respawned, with one imaginary frequency and the given NMD verdict.
+
+        Args:
+            sched (Scheduler): The restarted Scheduler.
+            nmd (bool): The NMD verdict.
+            label (str): The TS label.
+        """
+        freq_jobs = self.freq_jobs(sched, label)
+        self.assertEqual(len(freq_jobs), 1)
+        self.finish(freq_jobs[0], self.PASSING_TS_FREQ_LOG)
+        with self.nmd_verdict(sched, label, nmd):
+            sched.check_freq_job(label=label, job=freq_jobs[0])
+
+    def test_o_a_ts_saved_inside_the_freq_pass_gets_its_freq_job_again_on_restart(self):
+        """(o) Killed between the freq pass save and the NMD verdict: the restart respawns the freq job, then scans"""
+        sched = self.first_session()
+        restart_dict = self.crash_at_the_freq_pass(sched)
+        self.assertIsNone(restart_dict['species'][0]['ts_checks']['freq'])
+        submitted_at = len(self.submitted)
+        sched = self.restart_from(sched, restart_dict)
+        self.assertIs(sched.species_dict['TS_scan'].ts_checks[NMD_VERDICT_IN_KEY], False)
+        self.assertEqual(len(self.freq_jobs(sched)), 1)
+        self.assertIn(self.freq_jobs(sched)[0].job_name, sched.unfinished_job_names('TS_scan'))
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at), list())
+        self.end_respawned_freq_job(sched, nmd=True)
+        expected = self.expected_scans(sched, 'TS_scan')
+        self.assertEqual(len(expected), 2)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at), expected)
+        sched.run_scan_jobs('TS_scan')
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at), expected)
+
+    def test_p_a_composite_ts_saved_inside_the_freq_pass_keeps_its_gate_closed_on_restart(self):
+        """(p) Composite, killed between the freq pass save and the NMD verdict: no scan until the respawned freq's"""
+        sched = self.first_session(composite=True)
+        restart_dict = self.crash_at_the_freq_pass(sched)
+        self.assertIs(restart_dict['species'][0]['ts_checks']['freq'], True)
+        self.assertNotEqual(restart_dict['output']['TS_scan']['paths']['freq'],
+                            restart_dict['output']['TS_scan']['paths']['composite'])
+        submitted_at = len(self.submitted)
+        sched = self.restart_from(sched, restart_dict)
+        self.assertIs(sched.species_dict['TS_scan'].ts_checks[NMD_VERDICT_IN_KEY], False)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at), list())
+        self.assertEqual(len(self.freq_jobs(sched)), 1)
+        self.end_respawned_freq_job(sched, nmd=True)
+        self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at), self.expected_scans(sched, 'TS_scan'))
+        self.assertEqual(len(self.scan_jobs(sched, 'TS_scan', since=submitted_at)), 2)
+
+    def test_q_a_restart_spawns_no_second_freq_job_while_one_is_live(self):
+        """(q) A respawned freq job still running, deferred or stranded at the next restart gets no twin, nor scans"""
+        holders = {SUBMIT: 'running_jobs', DEFER: 'deferred_jobs', REFUSE: 'stranded_jobs'}
+        for composite in (False, True):
+            for admission, holder in holders.items():
+                with self.subTest(composite=composite, admission=admission):
+                    sched = self.first_session(composite=composite)
+                    sched = self.restart_from(sched, self.crash_at_the_freq_pass(sched), admission=admission)
+                    self.assertEqual(len(self.freq_jobs(sched)), 1)
+                    live = self.freq_jobs(sched)[0]
+                    self.assertIn(live.job_name, getattr(sched, holder)['TS_scan'])
+                    sched.save_restart_dict()
+                    submitted_at = len(self.submitted)
+                    sched = self.restart_from(sched, read_yaml_file(sched.restart_path))
+                    self.assertEqual([job.job_name for job in self.freq_jobs(sched)], [live.job_name])
+                    self.assertIn(live.job_name, sched.unfinished_job_names('TS_scan'))
+                    self.assertEqual([job for job in self.submitted[submitted_at:] if job.job_type == 'freq'], list())
+                    self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at), list())
+
+    def test_r_a_respawned_freq_job_that_fails_nmd_switches_the_guess_and_respawns_nothing(self):
+        """(r) No loop: a respawned freq that fails NMD switches the guess; the next restart respawns no freq job"""
+        for case, n_guesses in (('next guess', 2), ('guesses exhausted', 1)):
+            with self.subTest(case=case):
+                sched = self.first_session(n_guesses=n_guesses)
+                submitted_at = len(self.submitted)
+                sched = self.restart_from(sched, self.crash_at_the_freq_pass(sched))
+                self.end_respawned_freq_job(sched, nmd=False)
+                ts = sched.species_dict['TS_scan']
+                self.assertEqual(ts.chosen_ts, 1 if n_guesses == 2 else None)
+                self.assertIs(ts.ts_checks[NMD_VERDICT_IN_KEY], False)
+                self.assertIsNone(ts.ts_checks['freq'])
+                sched.run_scan_jobs('TS_scan')
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at), list())
+                sched.save_restart_dict()
+                restarted_at = len(self.submitted)
+                sched = self.restart_from(sched, read_yaml_file(sched.restart_path))
+                self.assertEqual(self.freq_jobs(sched), list())
+                self.assertEqual([job for job in self.submitted[restarted_at:] if job.job_type == 'freq'], list())
+                self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at), list())
+                if n_guesses == 2:
+                    self.assertEqual(len(sched.job_dict['TS_scan'].get('opt', dict())), 1)
+                    self.pass_freq(sched, 'TS_scan', nmd=True)
+                    self.assertEqual(self.scan_jobs(sched, 'TS_scan', since=submitted_at),
+                                     self.expected_scans(sched, 'TS_scan'))
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
