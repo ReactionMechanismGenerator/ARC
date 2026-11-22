@@ -2522,7 +2522,9 @@ class Scheduler(object):
         A failed check makes ``switch_ts()`` discard the guess with every scan of it, and its reset of ``ts_checks``
         closes this gate for the next guess. An NMD check that could not be performed (``None``) fails no TS (see
         ``ts_passed_checks()``), so it holds no scan back. Without freq jobs no verdict comes, so nothing is held.
-        ``post_freq_actions()`` launches the scans once the verdict is in. A non-TS species is always ready.
+        ``post_freq_actions()`` launches the scans once the verdict is in. A converged TS is ready whatever its
+        ``ts_checks`` carry: it has no guess left to switch, since ``switch_ts()`` clears the convergence of the guess
+        it discards. A non-TS species is always ready.
 
         Args:
             label (str): The species label.
@@ -2532,6 +2534,8 @@ class Scheduler(object):
         """
         species = self.species_dict[label]
         if not species.is_ts or not self.job_types['freq']:
+            return True
+        if self.output.get(label, dict()).get('convergence'):
             return True
         ts_checks = species.ts_checks or dict()
         return ts_checks.get('freq') is True and ts_checks.get(NMD_VERDICT_IN_KEY) is True \
@@ -2547,31 +2551,21 @@ class Scheduler(object):
         passed on a freq job output, i.e. one that is not the composite job's output: a composite job passes the
         frequency check before the freq job that runs the NMD check has ended.
 
-        A converged TS gets the marker ``True`` whatever the restart file carries, and a ``None`` freq check becomes
-        ``True``: ``ARCSpecies`` sets the marker ``False`` when it restores a TS whose checks are all ``None``. A saved
-        ``False`` freq check is kept. For any other TS, a marker the restart file carries is kept, ``False`` included:
-        ``check_negative_freq()`` saves the restart file after a freq pass and before the NMD verdict, so a saved
-        ``False`` may follow a passed freq job whose verdict never came. ``freq_verdict_owed_on_restart()`` has the
-        freq job run again for it.
+        A marker the restart file carries is kept, ``False`` included: ``check_negative_freq()`` saves the restart file
+        after a freq pass and before the NMD verdict, so a saved ``False`` may follow a passed freq job whose verdict
+        never came. ``freq_verdict_owed_on_restart()`` has the freq job run again for it.
 
         Args:
             label (str): The species label.
         """
         species = self.species_dict[label]
-        if not species.is_ts or not isinstance(species.ts_checks, dict):
+        if not species.is_ts or not isinstance(species.ts_checks, dict) or NMD_VERDICT_IN_KEY in species.ts_checks:
             return
         output = self.output.get(label, dict())
-        if output.get('convergence'):
-            species.ts_checks[NMD_VERDICT_IN_KEY] = True
-            if species.ts_checks.get('freq') is None:
-                species.ts_checks['freq'] = True
-            return
-        if NMD_VERDICT_IN_KEY in species.ts_checks:
-            return
         paths = output.get('paths', dict())
         freq_job_passed = species.ts_checks.get('freq') is True and bool(paths.get('freq')) \
             and paths.get('freq') != paths.get('composite')
-        species.ts_checks[NMD_VERDICT_IN_KEY] = freq_job_passed
+        species.ts_checks[NMD_VERDICT_IN_KEY] = bool(output.get('convergence')) or freq_job_passed
 
     def freq_verdict_owed_on_restart(self, species: ARCSpecies) -> bool:
         """
