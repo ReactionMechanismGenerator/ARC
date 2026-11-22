@@ -22,8 +22,9 @@ from typing import TYPE_CHECKING, Literal
 
 import arc.parser.parser as parser
 from arc import plotter
-from arc.checks.common import (IRC_JOB_FAILED_WARNING, NMD_ACCEPTED_ON_IRC_WARNING, get_conformer_job_name,
-                               get_i_from_job_name, get_nmd_near_miss, get_nmd_near_miss_summary, is_conformer_job,
+from arc.checks.common import (IRC_JOB_FAILED_WARNING, NMD_ACCEPTED_ON_IRC_WARNING, NMD_VERDICT_IN_KEY,
+                               get_conformer_job_name, get_i_from_job_name, get_nmd_near_miss,
+                               get_nmd_near_miss_summary, is_conformer_job,
                                record_ts_check_warning, remove_nmd_accepted_on_irc_warning, sum_time_delta)
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (ARC_PATH,
@@ -790,6 +791,7 @@ class Scheduler(object):
             if species.label not in self.job_dict:
                 self.job_dict[species.label] = dict()
             if species.yml_path is None:
+                self.restore_nmd_verdict_marker(species.label)
                 # Evaluated before determine_rotors(), which adds never-scanned rotors to any species whose
                 # restored number_of_rotors is 0; asking afterwards would re-scan every converged species.
                 restored_rotor_scans_owed = self.rotor_scans_pending_on_restart(species, include_failed=False)
@@ -851,7 +853,9 @@ class Scheduler(object):
                         elif 'composite' not in list(self.job_dict[species.label].keys()) \
                                 and species.irc_label is None:
                             # composite is done; do other jobs
-                            if not self.output[species.label]['job_types']['freq'] \
+                            if (not self.output[species.label]['job_types']['freq']
+                                    or species.is_ts and self.job_types['freq']
+                                    and not species.ts_checks.get(NMD_VERDICT_IN_KEY)) \
                                     and 'freq' not in list(self.job_dict[species.label].keys()) \
                                     and (species.is_ts or species.number_of_atoms > 1):
                                 self.run_freq_job(species.label)
@@ -2510,10 +2514,12 @@ class Scheduler(object):
         """
         Whether the rotor scans of a species may start.
 
-        A TS's scans wait for the verdict on its current guess: its freq job passed (``ts_checks['freq']``) and its
-        NMD check did not fail, or failed as a near miss that waits for the IRC or was accepted on it. A failed check
-        makes ``switch_ts()`` discard the guess with every scan of it, and its reset of ``ts_checks`` closes this gate
-        for the next guess. An NMD check that could not be performed (``None``) fails no TS (see
+        A TS's scans wait for the verdict on its current guess: its freq job passed (``ts_checks['freq']``), its NMD
+        verdict is in (``ts_checks[NMD_VERDICT_IN_KEY]``, set only by ``post_freq_actions()``), and its NMD check did
+        not fail, or failed as a near miss that waits for the IRC or was accepted on it. The marker is needed because
+        a composite job also passes the frequency check, before the freq job that runs the NMD check has ended.
+        A failed check makes ``switch_ts()`` discard the guess with every scan of it, and its reset of ``ts_checks``
+        closes this gate for the next guess. An NMD check that could not be performed (``None``) fails no TS (see
         ``ts_passed_checks()``), so it holds no scan back. Without freq jobs no verdict comes, so nothing is held.
         ``post_freq_actions()`` launches the scans once the verdict is in. A non-TS species is always ready.
 
@@ -2527,9 +2533,31 @@ class Scheduler(object):
         if not species.is_ts or not self.job_types['freq']:
             return True
         ts_checks = species.ts_checks or dict()
-        return ts_checks.get('freq') is True \
+        return ts_checks.get('freq') is True and ts_checks.get(NMD_VERDICT_IN_KEY) is True \
             and (ts_checks.get('NMD') is not False
                  or self.is_nmd_deferred(label) or self.has_current_nmd_acceptance(label))
+
+    def restore_nmd_verdict_marker(self, label: str):
+        """
+        Re-derive the NMD-verdict marker of a restored TS that does not hold it as ``True``.
+
+        ``post_freq_actions()`` sets the marker once the NMD verdict of the freq job is in, and a restart file written
+        before the marker existed does not carry it. The verdict is in when the TS converged, or when its freq check
+        passed on a freq job output, i.e. one that is not the composite job's output: a composite job passes the
+        frequency check before the freq job that runs the NMD check has ended.
+
+        Args:
+            label (str): The species label.
+        """
+        species = self.species_dict[label]
+        if not species.is_ts or not isinstance(species.ts_checks, dict) \
+                or species.ts_checks.get(NMD_VERDICT_IN_KEY) is True:
+            return
+        output = self.output.get(label, dict())
+        paths = output.get('paths', dict())
+        freq_job_passed = species.ts_checks.get('freq') is True and bool(paths.get('freq')) \
+            and paths.get('freq') != paths.get('composite')
+        species.ts_checks[NMD_VERDICT_IN_KEY] = bool(output.get('convergence')) or freq_job_passed
 
     def run_irc_job(self, label, irc_direction='forward'):
         """
@@ -4846,6 +4874,8 @@ class Scheduler(object):
                                 f'Searching for a better TS conformer...')
                     self.switch_ts(label)
                     switch_ts = True
+            if not switch_ts:
+                self.species_dict[label].ts_checks[NMD_VERDICT_IN_KEY] = True
         if WRONG_FREQ_MESSAGE in self.output[label]['warnings']:
             self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(WRONG_FREQ_MESSAGE))
         if not switch_ts and getattr(job, 'job_type', 'freq') != 'optfreq':

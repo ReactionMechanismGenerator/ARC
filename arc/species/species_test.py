@@ -1258,7 +1258,9 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         ts.ts_checks['warnings'] = warning
         restored = ARCSpecies(species_dict=ts.as_dict())
         self.assertEqual(restored.ts_checks['warnings'], warning)
-        self.assertTrue(all(value is None for key, value in restored.ts_checks.items() if key != 'warnings'))
+        self.assertTrue(all(value is None for key, value in restored.ts_checks.items()
+                            if key not in ['warnings', NMD_VERDICT_IN_KEY]))
+        self.assertIs(restored.ts_checks[NMD_VERDICT_IN_KEY], False)
         restored.populate_ts_checks()
         self.assertEqual(restored.ts_checks['warnings'], '')
         species_dict = ts.as_dict()

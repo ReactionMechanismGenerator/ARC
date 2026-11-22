@@ -9,8 +9,8 @@ import numpy as np
 from typing import TYPE_CHECKING
 
 from arc.parser import parser
-from arc.checks.common import (NMD_NEAR_MISS_KEY, get_index_of_abs_largest_neg_freq, is_ts_check_exempt,
-                               record_ts_check_warning, remove_nmd_accepted_on_irc_warning)
+from arc.checks.common import (NMD_NEAR_MISS_KEY, NMD_VERDICT_IN_KEY, get_index_of_abs_largest_neg_freq,
+                               is_ts_check_exempt, record_ts_check_warning, remove_nmd_accepted_on_irc_warning)
 from arc.checks.nmd import DEFAULT_AMPLITUDE, evaluate_ts_normal_mode_displacement
 from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
@@ -134,7 +134,8 @@ def ts_passed_checks(species: ARCSpecies,
     that a check which could not run does not silently withhold the actions a passing TS receives.
 
     A failed 'e_elect' check is excused once 'E0' passed, as determined by
-    ``checks.common.is_ts_check_exempt()``.
+    ``checks.common.is_ts_check_exempt()``. The NMD near-miss record and the scan gate's NMD-verdict marker
+    (``NMD_VERDICT_IN_KEY``) are bookkeeping, not checks, so they are skipped.
 
     Args:
         species (ARCSpecies): The TS species.
@@ -146,7 +147,8 @@ def ts_passed_checks(species: ARCSpecies,
     """
     exemptions = exemptions or list()
     for check, value in species.ts_checks.items():
-        if check in exemptions or check == NMD_NEAR_MISS_KEY or (check in ['IRC', 'NMD'] and value is None):
+        if check in exemptions or check in (NMD_NEAR_MISS_KEY, NMD_VERDICT_IN_KEY) \
+                or (check in ['IRC', 'NMD'] and value is None):
             continue
         if not value and not is_ts_check_exempt(check, species.ts_checks):
             if verbose:

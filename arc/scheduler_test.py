@@ -5009,7 +5009,8 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                           restart_dict={'output': output},
                           )
         self.assertEqual(rxn.ts_species.ts_checks,
-                         {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': None, 'warnings': ''})
+                         {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': None, 'warnings': '',
+                          NMD_VERDICT_IN_KEY: True})
 
         job_1 = job_factory(job_adapter='gaussian',
                             species=[ARCSpecies(label='SPC', smiles='C')],
@@ -5020,7 +5021,8 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                             )
         job_1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out')
         check_ts(reaction=rxn, verbose=True, job=job_1, checks=['NMD'])
-        self.assertEqual(rxn.ts_species.ts_checks, {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': True, 'warnings': ''})
+        self.assertEqual(rxn.ts_species.ts_checks, {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': True,
+                                                    'warnings': '', NMD_VERDICT_IN_KEY: True})
 
     def test_save_e_elect(self):
         """Test the save_e_elect() method."""

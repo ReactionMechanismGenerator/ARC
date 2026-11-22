@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 CONFORMER_JOB_TYPES = ('conf_opt', 'conf_sp')
 TS_IRC_FAILED_MARKER = 'INVALID TS (failed IRC validation)'
 NMD_NEAR_MISS_KEY = 'NMD_near_miss'
+NMD_VERDICT_IN_KEY = 'NMD_verdict_in'
 NMD_ACCEPTED_ON_IRC_WARNING = 'NMD below the 5% gate, accepted on IRC: '
 TS_IRC_NOT_CONFIRMED_MARKER = 'IRC NOT CONFIRMED'
 IRC_CAUSE_JOB_FAILED = 'IRC job failed'
@@ -176,7 +177,7 @@ def get_ts_validation_comment(ts_species: 'ARCSpecies | None') -> str | None:
               f'reactants and products of this reaction, therefore this rate coefficient does not describe ' \
               f'this reaction and must not be used.'
     other_failed_checks = sorted(key for key, val in ts_checks.items()
-                                 if key not in ['IRC', 'warnings'] and val is False
+                                 if key not in ['IRC', 'warnings', NMD_VERDICT_IN_KEY] and val is False
                                  and not is_ts_check_exempt(key, ts_checks))
     if other_failed_checks:
         comment += f' Additional TS checks that failed: {", ".join(other_failed_checks)}.'

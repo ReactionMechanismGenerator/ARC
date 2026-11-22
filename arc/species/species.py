@@ -11,6 +11,7 @@ from math import isclose, isfinite
 from typing import Any
 
 import arc.molecule.element as elements
+from arc.checks.common import NMD_VERDICT_IN_KEY
 from arc.common import (almost_equal_coords,
                         convert_list_index_0_to_1,
                         count_electrons,
@@ -324,7 +325,9 @@ class ARCSpecies(object):
         chosen_ts_method (str): The TS method that was actually used for optimization.
         ts_checks (dict[str, bool]): Checks that a TS species went through. A TS whose NMD check failed only on
                                      the 5% reactive-bond gate also carries its near-miss record under
-                                     ``'NMD_near_miss'``.
+                                     ``'NMD_near_miss'``. ``'NMD_verdict_in'`` is not a check: it tells
+                                     whether the freq job's NMD verdict on the current guess is in, which
+                                     opens the TS's rotor scans.
         rxn_zone_atom_indices (list[int]): 0-indexed atom indices of the active reaction zone.
         ts_conf_spawned (bool): Whether conformers were already spawned for the Species (representing a TS) based on its
                                 TSGuess objects.
@@ -635,7 +638,8 @@ class ARCSpecies(object):
                                        f'Expected tuples of two 1-indexed atoms, got:\n{self.bdes}')
 
         self.set_mol_list()
-        if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
+        if self.is_ts and not any(value is not None for key, value in self.ts_checks.items()
+                                  if key not in ['warnings', NMD_VERDICT_IN_KEY]):
             self.populate_ts_checks(keep_warnings=True)
         self._set_final_xyz_for_monoatomic()
 
@@ -2596,6 +2600,7 @@ class ARCSpecies(object):
     def populate_ts_checks(self, keep_warnings: bool = False):
         """
         Populate (or restart) the .ts_checks attribute with default (``None``) values.
+        The NMD-verdict marker is set to ``False``, which closes the rotor-scan gate for the new guess.
 
         Args:
             keep_warnings (bool, optional): Whether to keep an existing ``warnings`` string, as when the TS is
@@ -2606,6 +2611,7 @@ class ARCSpecies(object):
             warnings = self.ts_checks.get('warnings') if keep_warnings and isinstance(self.ts_checks, dict) else None
             keys = ['E0', 'e_elect', 'IRC', 'freq', 'NMD']
             self.ts_checks = {key: None for key in keys}
+            self.ts_checks[NMD_VERDICT_IN_KEY] = False
             self.ts_checks['warnings'] = warnings if isinstance(warnings, str) else ''
 
     def get_symmetry_number(self):
