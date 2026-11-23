@@ -5303,19 +5303,18 @@ class Scheduler(object):
         """
         Check job status on a specific server or on all active servers, get a list of relevant running job IDs.
 
-        A server whose queue cannot be read reports the queue jobs ARC tracks there as still running, so none of
-        them is ended on a failed query, and it is not queried again for ``QUEUE_QUERY_COOLDOWN`` seconds after the
-        failed query round ends. The outage is timed from the start of its first failed round, and warned about at
+        A server whose queue cannot be read reports the queue jobs ARC tracks there as still running, and it is not
+        queried again for ``QUEUE_QUERY_COOLDOWN`` seconds after the failed query round ends. The outage is timed from the start of its first failed round, and warned about at
         most every ``QUEUE_OUTAGE_WARNING_INTERVAL`` seconds. A server past the outage limit is not queried at all
         (see ``strand_unreadable_queue_jobs()``).
 
-        A check of all servers skips a server where ARC tracks no queue job, since no job of its can end. A check of a
-        specific server (the job limit check before a submission) queries it anyway. A check of all servers also lists
-        as running each job whose own status query failed less than ``QUEUE_QUERY_COOLDOWN`` seconds ago, so the
-        main loop does not query it again before then (see ``record_job_query_failure()``).
+        A check of all servers skips a server where ARC tracks no queue job. A check of a specific server (the job
+        limit check before a submission) queries it anyway. A check of all servers also lists as running each job
+        whose own status query failed less than ``QUEUE_QUERY_COOLDOWN`` seconds ago
+        (see ``record_job_query_failure()``).
 
-        A missing queue command (exit status 127) on a server whose queue has not answered once in this run is a
-        configuration error, not an outage, so ARC stops at once. Once a server has answered, a later 127 is an
+        A missing queue command (exit status 127) on a server whose queue has not answered once in this run stops ARC
+        at once. Once a server has answered, a later 127 is an
         outage like any other failure. On the local machine a 127 reads as an empty queue only while ARC tracks no
         queue job there and the local server sets no ``max_simultaneous_jobs``; such a reading does not count as an
         answer, while a real answer in that mode does.
@@ -5388,8 +5387,7 @@ class Scheduler(object):
         The per-job outage record of a server (``job_query_failures``) holds the IDs of the jobs whose status query
         failed there and, per job, the time of its last failed query. While that time is within the cooldown, the
         job is not queried again. A server past the outage limit is left out, and so is a job ARC no longer tracks. An
-        ID that a tracked queue job on another server also holds is left out too, so the job in cooldown is then
-        queried as usual.
+        ID that a tracked queue job on another server also holds is left out too, and that job is queried as usual.
 
         Returns:
             list: The job IDs, as the job objects hold them.
@@ -5414,9 +5412,9 @@ class Scheduler(object):
 
         Two clocks lead here: the bulk queue query (``queue_query_failures``) and the per-job status query
         (``job_query_failures``), which a good bulk answer does not reset. A per-job clock forgets each failing job
-        ARC no longer tracks, e.g., a cancelled one, and is dropped once none is left, so a stale one never strands
-        a server. Their jobs are neither ended nor deleted. They move from ``running_jobs`` to ``stranded_jobs``, which
-        restart.yml still lists as running, so the run can finish its other work and a restart polls them again.
+        ARC no longer tracks, e.g., a cancelled one, and is dropped once none is left. Their jobs are neither ended
+        nor deleted. They move from ``running_jobs`` to ``stranded_jobs``, which restart.yml still lists as running.
+        The run finishes its other work, and a restart polls them again.
         The server is not queried any more, one ERROR names it, and status.yml records it per species.
 
         A job queue outage on a server where ARC tracks no queue job strands nothing. It is dropped once no job waits
@@ -5482,7 +5480,7 @@ class Scheduler(object):
 
     def keeps_local_check_files(self) -> bool:
         """
-        Whether the local check files must outlive the run.
+        Whether the local check files are kept after the run.
 
         A job left on an unreadable queue, or held back from one, may read a check file from the local ``calcs``
         tree after a restart, e.g., as the initial guess its restart uploads.
@@ -5544,9 +5542,8 @@ class Scheduler(object):
         """
         Time a failed per-job status query on the job's server.
 
-        A per-job query can keep failing while the bulk query of the same server answers, so it has its own outage
-        clock in ``job_query_failures``, started at its first failure, with the IDs of the jobs whose query
-        failed (job names repeat across species, IDs on one server do not) and the time of each one's last failed
+        A per-job query has its own outage clock in ``job_query_failures``, separate from the bulk query of the same
+        server, started at its first failure, with the IDs of the jobs whose query failed and the time of each one's last failed
         query. A bulk answer does not stop it; it stops once each of those jobs has answered a per-job query (see
         ``clear_job_query_failure()``). The record keeps the output and exit status of the job's last failed query,
         which the outage ERROR and status.yml report. Past the outage limit ``strand_unreadable_queue_jobs()`` leaves
@@ -5576,8 +5573,7 @@ class Scheduler(object):
         Note that a job's per-job status query answered.
 
         The server's per-job outage clock keeps running while any other job whose query failed there is still
-        unresolved, so a job that answers does not restart the clock of one that keeps failing. The clock stops
-        once no such job is left.
+        unresolved. The clock stops once no such job is left.
 
         Args:
             job (JobAdapter): The job whose status query answered.
@@ -5610,8 +5606,8 @@ class Scheduler(object):
         """
         Keep only the given unresolved jobs in a server's per-job outage record, and time the outage from them.
 
-        The outage starts at the earliest first failure of the jobs still unresolved, so a job that answers does not
-        pass its start on to a job that began failing later. The record goes once no job is left.
+        The outage starts at the earliest first failure of the jobs still unresolved. The record goes once no job is
+        left.
 
         Args:
             server (str): The server name.
@@ -5633,12 +5629,11 @@ class Scheduler(object):
         """
         Put off a job that was about to be submitted to a server whose queue cannot be read right now.
 
-        The server sets ``max_simultaneous_jobs``, so ARC must count its jobs before it submits more, and the count
-        is unknown. The call does not wait for the queue: the job moves from ``running_jobs`` to ``deferred_jobs``
+        The server sets ``max_simultaneous_jobs`` and its job count is unknown. The call does not wait for the queue: the job moves from ``running_jobs`` to ``deferred_jobs``
         and joins ``unsubmitted_jobs``, which the main loop tries again on each pass (see
         ``submit_unsubmitted_jobs()``). Other servers, incore jobs, pipes, reports and restart saves go on
         meanwhile. restart.yml lists the job with no job ID, so a restart submits it. A new job gets its row in
-        initiated_jobs.csv with no job ID and is marked ``restarted``, since the row count numbers the next job.
+        initiated_jobs.csv with no job ID and is marked ``restarted``.
         A job already put off is only queued again for the next pass, with no log line and no restart save.
 
         Args:
@@ -6222,9 +6217,8 @@ class Scheduler(object):
         """
         Delete a submitted job that was left on a queue which stayed unreadable past the outage limit.
 
-        The server may still be unreachable, so a failure to delete the job does not stop the caller. Nor can a
-        delete command that did not fail confirm that the job ended: the queue that would show it could not be read,
-        and ``JobAdapter.delete()`` does not report a command that the server rejected. Either way one warning names
+        A failure to delete the job does not stop the caller. A delete command that did not fail is reported as sent,
+        not as confirmed. Either way one warning names
         the job, its ID and its server, says whether the delete command failed or was only sent, and that the job
         may still be running there.
 
@@ -6245,9 +6239,9 @@ class Scheduler(object):
         """
         Delete all jobs of a species/TS.
 
-        Jobs put off while a queue could not be read are dropped too, so none of them is submitted later.
+        Jobs put off while a queue could not be read are dropped too, and are not submitted later.
         Jobs left on a queue that stayed unreadable past the outage limit (``stranded_jobs``) are dropped as well,
-        so restart.yml no longer lists them and a restart neither polls nor submits them. A stranded job that was
+        and restart.yml no longer lists them. A stranded job that was
         submitted is deleted on its server like a running job; if that fails, e.g., because the server still cannot
         be reached, a warning names the job and its ID, which may still run there, and the job is dropped anyway.
         A stranded job that was never submitted has nothing to delete on a server.
@@ -6713,9 +6707,8 @@ class Scheduler(object):
         """
         Check if the number of running jobs on the server is not above the set server limit.
 
-        While the server's queue answers and is full, ARC waits for a slot, as before. While the queue cannot be
-        read the count is unknown, as it holds only the jobs ARC tracks there, so ARC does not wait: the job is put
-        off and the main loop goes on. Once the queue has been unreadable past the outage limit, the job is held
+        While the server's queue answers and is full, ARC waits for a slot. While the queue cannot be read, ARC does
+        not wait: the job is put off and the main loop goes on. Once the queue has been unreadable past the outage limit, the job is held
         back for a restart. A job put off or held back leaves ``server_job_ids`` as the check found it, with no
         query of the other servers.
 

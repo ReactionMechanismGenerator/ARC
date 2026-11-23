@@ -43,7 +43,7 @@ class TestQueueQueryFailed(unittest.TestCase):
             self.assertTrue(queue_query_failed(list(), list(), exit_status=exit_status), exit_status)
 
     def test_exit_127_is_a_missing_command_in_any_wording(self):
-        """The exit status decides, so a message in another language or an empty stderr still counts"""
+        """Exit status 127 is a missing command with a message in another language or an empty stderr"""
         for stderr in (['/bin/sh: 1: squeue: introuvable\n'], list(), ['whatever the shell says']):
             self.assertFalse(queue_query_failed(list(), stderr, exit_status=127, missing_command_reads_empty=True))
             self.assertTrue(queue_query_failed(list(), stderr, exit_status=127))
@@ -81,7 +81,7 @@ class TestQueueOutageLimit(unittest.TestCase):
         self.assertEqual(queue_outage_limit(0.5), 1800)
 
     def test_a_malformed_setting_warns_and_uses_the_default(self):
-        """It never fails open to an unbounded wait"""
+        """A malformed setting logs a warning and gives the default"""
         for value in ('4', True, False, 0, -1, float('nan'), float('inf'), 1e308, 10 ** 400, [4], dict()):
             with self.assertLogs('arc', level='WARNING') as logged:
                 self.assertEqual(queue_outage_limit(value), QUEUE_OUTAGE_LIMIT_HRS * 3600, value)
@@ -110,7 +110,7 @@ class TestQueueQueryTimeout(unittest.TestCase):
         self.assertEqual(queue_query_timeout(0.5), 0.5)
 
     def test_a_malformed_setting_warns_and_uses_the_default(self):
-        """It never fails open to an unbounded wait"""
+        """A malformed setting logs a warning and gives the default"""
         for value in ('120', True, 0, -1, float('nan'), float('inf'), 10 ** 400, [120]):
             with self.assertLogs('arc', level='WARNING') as logged:
                 self.assertEqual(queue_query_timeout(value), QUEUE_QUERY_TIMEOUT, value)
@@ -177,7 +177,7 @@ class TestRunQueueQuery(unittest.TestCase):
         self.assertIn('Socket timed out', cm.exception.output)
 
     def test_an_oserror_is_a_failed_attempt(self):
-        """A failed fork (EAGAIN, ENOMEM) is retried, then raised as QueueQueryError, never as an OSError"""
+        """A failed fork (EAGAIN, ENOMEM) is retried, then raised as QueueQueryError"""
         replies = [OSError(11, 'Resource temporarily unavailable'), (SLURM_LISTING, list(), 0)]
 
         def run():
@@ -193,7 +193,7 @@ class TestRunQueueQuery(unittest.TestCase):
         self.assertEqual(self.sleep.call_count, 1 + len(QUEUE_QUERY_RETRY_DELAYS))
 
     def test_a_failure_reported_on_stdout_is_kept(self):
-        """A wrapper may print its error on stdout; the diagnostic must not come out empty"""
+        """An error a wrapper prints on stdout is in the diagnostic"""
         run, _ = self._run(*[(['queue wrapper: scheduler unreachable'], BANNER, 1)] * 3)
         with self.assertRaises(QueueQueryError) as cm:
             run_queue_query(run, server='srv')

@@ -194,13 +194,13 @@ class TestQueueQueryFailure(unittest.TestCase):
         return patch.object(self.client, '_send_command_to_server', side_effect=list(replies))
 
     def test_check_job_status_does_not_read_a_socket_timeout_as_finished(self):
-        """A running job must not read as done or errored because the queue did not answer."""
+        """A running job whose queue did not answer raises QueueQueryError, not done or errored."""
         with self._replies(*[([], SOCKET_TIMEOUT, 1)] * 3):
             with self.assertRaises(ServerError):
                 self.client.check_job_status(4242)
 
     def test_check_running_jobs_ids_does_not_read_a_socket_timeout_as_no_jobs(self):
-        """An unanswered queue must not report an empty job list."""
+        """An unanswered queue raises QueueQueryError, not an empty job list."""
         with self._replies(*[([], SOCKET_TIMEOUT, 1)] * 3):
             with self.assertRaises(ServerError):
                 self.client.check_running_jobs_ids()
@@ -212,7 +212,7 @@ class TestQueueQueryFailure(unittest.TestCase):
                 self.client.check_running_jobs_ids()
 
     def test_a_missing_queue_command_on_the_server_is_a_failed_query(self):
-        """A remote queue server always has a queue command, so a missing one is not an empty queue."""
+        """A missing queue command on a remote server is a failure, not an empty queue."""
         with self._replies(*[([], ['bash: squeue: command not found\n'], 127)] * 3):
             with self.assertRaises(ServerError):
                 self.client.check_job_status(4242)

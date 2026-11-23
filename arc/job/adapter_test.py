@@ -357,7 +357,7 @@ class TestJobAdapter(unittest.TestCase):
 
 
 class TestDirectedScanSurvivesTheRestartFile(unittest.TestCase):
-    """A job rebuilt from restart.yml keeps what its resubmission or its end reads: scan type and queue (#394)."""
+    """A job rebuilt from restart.yml keeps what its resubmission or its end reads: scan type and queue."""
 
     def test_as_dict_round_trips_the_directed_scan_type(self):
         project_directory = tempfile.mkdtemp()

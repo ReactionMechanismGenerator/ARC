@@ -1189,7 +1189,7 @@ def queue_query_connection(server: str) -> Iterator[None]:
 
     A ``ServerError`` (e.g., connecting gave up or was refused), a paramiko ``SSHException`` or an ``OSError`` raised
     in the block becomes a ``QueueQueryError`` for ``server`` with no exit status, whose output names the original
-    error, so the caller records an outage and keeps its jobs. A ``QueueQueryError`` passes through unchanged.
+    error. A ``QueueQueryError`` passes through unchanged.
 
     Args:
         server (str): The server name.

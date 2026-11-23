@@ -1022,8 +1022,8 @@ class JobAdapter(ABC):
         """
         Possible statuses: ``initializing``, ``running``, ``errored on node xx``, ``done``.
 
-        A queue job with no job ID was submitted without an acknowledgement, so no queue query can find it. It reads
-        as ``done`` without a query, which is what any answer of the queue gives it, and its output decides the rest.
+        A queue job with no job ID was submitted without an acknowledgement. It reads as ``done`` without a queue
+        query, and its output decides the rest.
         """
         if self.job_id is None and self.execution_type != 'incore':
             logger.warning(f'Job {self.job_name} of {self.species_label} has no job ID: its submission to '

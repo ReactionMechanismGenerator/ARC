@@ -6809,7 +6809,7 @@ class TestGetServerJobIds(unittest.TestCase):
 
 
 class TestGetServerJobIdsWhenTheQueueCannotBeRead(unittest.TestCase):
-    """A queue that does not answer keeps every tracked job running instead of ending them all (#394)."""
+    """A queue that does not answer keeps every tracked job running."""
 
     SOCKET_TIMEOUT = ['squeue: error: slurm_receive_msg: Socket timed out on send/recv operation\n',
                       'slurm_load_jobs error: Socket timed out on send/recv operation\n']
@@ -6880,7 +6880,7 @@ class TestGetServerJobIdsWhenTheQueueCannotBeRead(unittest.TestCase):
         self.assertEqual(sched.server_job_ids, [11])
 
     def test_a_real_local_answer_counts_while_a_missing_command_would_read_as_no_jobs(self):
-        """A real answer from an idle local queue counts as an answer, so a later missing command is an outage."""
+        """After a real answer from an idle local queue, a missing command is an outage."""
         sched = self._sched()
         sched.servers = ['local']
         with patch.dict('arc.job.local.servers', {'local': {'cluster_soft': 'Slurm'}}), \
@@ -6958,7 +6958,7 @@ class TestGetServerJobIdsWhenTheQueueCannotBeRead(unittest.TestCase):
 
 
 class TestJobLimitWhenTheQueueCannotBeRead(unittest.TestCase):
-    """The tracked-jobs fallback undercounts the user's queue, so it must not open the job limit."""
+    """A submission to an unreadable queue with a job limit is put off or held back."""
 
     def test_submission_is_put_off_without_waiting_while_the_queue_cannot_be_read(self):
         """A put-off job leaves the pass's job IDs as they were, and queries no other server to restore them."""
@@ -7053,7 +7053,7 @@ class _QueueOutageServer(object):
 
 
 class TestQueueOutageBound(unittest.TestCase):
-    """An unreadable queue is waited for up to a time bound, then its jobs are left for a restart (#394)."""
+    """An unreadable queue is waited for up to a time bound, then its jobs are left for a restart."""
 
     HOUR = 3600.0
     JOB_TYPES = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False, 'freq': True, 'sp': True,
@@ -7149,8 +7149,7 @@ H       1.27889520   -0.81548721   -0.22940984"""
         """
         A pipe, an OR-list (``||``) or any ``;`` in ``check_status_command`` gets one warning per server at start.
 
-        Each of these can make the command exit with another command's status, so a failed queue query can read as
-        an empty queue. A bare command and an ``&&``-list get no warning.
+        A bare command and an ``&&``-list get no warning.
         """
         self.ess_settings = {'gaussian': ['server1'], 'molpro': ['server1']}
         for command, form in (('qstat -u $USER | grep queue_outage', 'a pipe'),
@@ -7177,8 +7176,7 @@ H       1.27889520   -0.81548721   -0.22940984"""
 
     def test_a_semicolon_list_that_ends_with_the_queue_command_is_not_warned_about(self):
         """
-        A ``;`` list whose last command is the queue command exits with the queue command's status, so it is not
-        warned about, whatever runs before it. A ``|`` or ``;`` inside quotes is part of an argument, not a pipe or a
+        A ``;`` list whose last command is the queue command is not warned about, whatever runs before it. A ``|`` or ``;`` inside quotes is part of an argument, not a pipe or a
         list. A list that ends with another command, a pipe, and an OR-list are still warned about.
         """
         for command, warns in ((settings['check_status_command']['OGE'], False),
@@ -7478,10 +7476,9 @@ H       1.27889520   -0.81548721   -0.22940984"""
 
     def test_a_restart_submits_a_refused_job_once_and_does_not_re_derive_it(self):
         """
-        A restart submits the restored job itself instead of spawning it again.
+        A restart submits the restored job itself, without spawning it again.
 
-        A caller may latch a flag once its job is spawned (e.g., ``ts_conf_spawned``), so re-deriving the job is not
-        enough. Once the queue answers again under the limit, the restored job is submitted once.
+        Once the queue answers again under the limit, the restored job is submitted once.
         """
         sched = self._scheduler()
         self._refuse_an_opt_job(sched)
@@ -7725,7 +7722,7 @@ H       1.27889520   -0.81548721   -0.22940984"""
             self.assertIn(second.job_name, sched.stranded_jobs['methylamine'], resolve)
 
     def test_a_running_per_job_answer_after_an_empty_bulk_answer_keeps_the_job(self):
-        """The per-job answer says the job still runs, so it is neither rerun nor ended though its output is absent"""
+        """A job whose per-job answer is running is neither rerun nor ended, though its output is absent"""
         sched = self._scheduler()
         job = self._running(sched)
         self.server.answer = list()
@@ -7769,7 +7766,7 @@ H       1.27889520   -0.81548721   -0.22940984"""
         self.assertEqual(sched.job_query_failures, dict())
 
     def test_a_job_put_off_on_many_passes_is_logged_and_saved_once(self):
-        """Putting off an already put-off job changes nothing, so it logs no line and saves no restart file."""
+        """Putting off an already put-off job logs no line and saves no restart file."""
         sched = self._scheduler()
         sched.servers = ['server1']
         server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
@@ -7905,7 +7902,7 @@ H       1.27889520   -0.81548721   -0.22940984"""
     def test_the_main_loop_sleeps_while_a_job_the_bulk_query_omits_answers_running(self):
         """
         Over 40 main-loop passes with the bulk query not listing a job and the job's own status query answering
-        ``running``, every pass sleeps 30 s, so the server is not queried back to back.
+        ``running``, every pass sleeps 30 s.
         """
         sched = self._scheduler()
         job = self._running(sched)
@@ -7937,7 +7934,7 @@ H       1.27889520   -0.81548721   -0.22940984"""
 
     def test_a_failed_round_longer_than_the_cooldown_is_not_repeated_at_once(self):
         """
-        The cooldown runs from the end of a failed query round, so a round that takes longer than the cooldown is
+        The cooldown runs from the end of a failed query round: a round that takes longer than the cooldown is
         followed by one round per cooldown, not by a new round on every call.
         """
         sched = self._scheduler()
@@ -7994,7 +7991,7 @@ H       1.27889520   -0.81548721   -0.22940984"""
         self.assertEqual(queries, {0: 40, 3: 40})
 
     def test_a_server_with_no_tracked_jobs_is_not_queried(self):
-        """A check of all servers skips a server where ARC tracks no queue job, so its outage never starts."""
+        """A check of all servers skips a server where ARC tracks no queue job, and starts no outage there."""
         sched = self._scheduler()
         sched.servers = ['server1']
         with self.assertNoLogs('arc', level='WARNING'):
@@ -8019,7 +8016,7 @@ H       1.27889520   -0.81548721   -0.22940984"""
 
     def test_a_put_off_job_keeps_its_queue_outage_running_until_it_is_held_back(self):
         """
-        A job put off on an idle server whose queue cannot be read keeps that outage's clock running, so the job is
+        A job put off on an idle server whose queue cannot be read keeps that outage's clock running. The job is
         held back for a restart at the bound, with one ERROR naming it, and no ERROR strands the idle server.
         """
         sched = self._scheduler()
@@ -8191,7 +8188,7 @@ class _StopLoop(Exception):
 
 
 class TestTrackedWorkInTheMainLoop(unittest.TestCase):
-    """A job whose status is unknown, or that was left on an unreadable queue, is not treated as finished (#394)."""
+    """A job whose status is unknown, or that was left on an unreadable queue, is not treated as finished."""
 
     JOB_TYPES = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False, 'freq': True, 'sp': True,
                  'rotors': False, 'orbitals': False, 'lennard_jones': False, 'irc': False, 'bde': False}
@@ -8311,7 +8308,7 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
             self.sched.schedule_jobs()
         self.assertEqual([c.kwargs['job_name'] for c in end_job.call_args_list], ['tsg0'])
         self.assertNotIn(([], {'labels': [self.label]}), [(list(c.args), c.kwargs)
-                                                           for c in self.run_conformer_jobs.call_args_list])
+                                                          for c in self.run_conformer_jobs.call_args_list])
 
     def test_check_all_done_does_not_converge_a_species_with_a_stranded_job(self):
         for job_type, spawned in self.JOB_TYPES.items():
