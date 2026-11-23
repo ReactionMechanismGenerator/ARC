@@ -1677,8 +1677,7 @@ def get_addition_sides(rxn: ARCReaction) -> tuple[ARCSpecies, list[ARCSpecies], 
     """
     Get the single species and the multiple species of an addition or a dissociation reaction.
 
-    Species are counted stoichiometrically, so that symmetric dissociations like C2H6 <=> CH3 + CH3
-    are classified correctly.
+    Species are counted stoichiometrically: C2H6 <=> CH3 + CH3 is a dissociation.
 
     Args:
         rxn (ARCReaction): The reaction.

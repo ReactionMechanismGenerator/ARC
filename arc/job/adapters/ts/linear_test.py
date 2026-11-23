@@ -6438,11 +6438,11 @@ class TestTSGuessReactantOrder(unittest.TestCase):
 
     def test_addition_guesses_in_reactant_order(self):
         """
-        Test that Linear returns B + C <=> A guesses in reactant atom order, which the NMD check can then verify.
+        Test that Linear returns B + C <=> A guesses in reactant atom order.
 
-        The guesses are built from the unimolecular product. Each must leave the adapter with the reactants'
-        element sequence and keep every non-reacting reactant bond. The same atom map that reorders the guess
-        turns the NMD verdict on the run's frequency geometry from None (product order) to True.
+        The guesses are built from the unimolecular product. Each leaves the adapter with the reactants' element
+        sequence and keeps every non-reacting reactant bond. On the run's frequency geometry, the NMD verdict is
+        None in product order and True after reordering by the same atom map.
         """
         for key in ('ts4', 'ts7'):
             entry = self.fixture[key]
@@ -6459,10 +6459,9 @@ class TestTSGuessReactantOrder(unittest.TestCase):
 
     def test_reactant_order_guess_unchanged(self):
         """
-        Test that Linear stores an A <=> B + C guess exactly as interpolate() built it.
+        Test that Linear stores an A <=> B + C guess exactly as interpolate() built it, with no reordering.
 
-        The unimolecular species is the reactant here, so the guess is already in reactant order. This guards a
-        no-op and passes before the fix too; it fails if the reordering is applied regardless of the direction.
+        The unimolecular species is the reactant here.
         """
         entry = self.fixture['ts4']
         reverse_entry = {'reactants': entry['products'], 'products': entry['reactants'],
