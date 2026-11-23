@@ -62,7 +62,7 @@ from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, CONFORMER_ISOMORPHISM_TR
                            UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE, Scheduler, SchedulerError,
                            exception_summary_line, get_conformer_isomorphism_trsh_history, get_conformer_trsh_levels,
                            get_respawned_conformer_trsh_methods, irc_ended_usably, is_same_conformer,
-                           job_level_signature, nested_torsions, outage_record, parse_job_e_elect, species_has_freq,
+                           job_level_signature, outage_record, parse_job_e_elect, species_has_freq,
                            species_has_geo, species_has_sp, species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
@@ -3296,14 +3296,6 @@ H      -0.38158795    1.01273118   -0.02607927""")),
             with self.subTest(server_status=server_status, ess_status=ess_status):
                 self.assertEqual(irc_ended_usably(server_status=server_status, ess_status=ess_status), expected)
 
-    def test_nested_torsions(self):
-        """Test that torsions take the nested shape a job adapter stores"""
-        self.assertEqual(nested_torsions([2, 0, 1, 5]), [[2, 0, 1, 5]])
-        self.assertEqual(nested_torsions([[2, 0, 1, 5]]), [[2, 0, 1, 5]])
-        self.assertEqual(nested_torsions([[2, 0, 1, 5], [0, 1, 2, 8]]), [[2, 0, 1, 5], [0, 1, 2, 8]])
-        self.assertNotEqual(nested_torsions([2, 0, 1, 5]), [[2, 0, 1, 6]])
-        self.assertEqual(nested_torsions(nested_torsions([0, 1, 2, 3])), [[0, 1, 2, 3]])
-
     def test_a_completed_irc_output_without_a_geometry_is_recorded_as_failed(self):
         """Test that an IRC whose status is not a failure but whose output holds no geometry is a failed IRC"""
         sched, label, job = self._irc_scheduler()
@@ -5409,9 +5401,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         ts_spc = ARCSpecies(label=label, is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
         ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, xyz=xyz_a),
                              TSGuess(index=1, method='heuristics', success=True, xyz=xyz_b)]
-        project_directory = os.path.join(ARC_PATH, 'Projects',
-                                         'arc_project_for_testing_delete_after_usage_ts_respawn_held')
-        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        project_directory = self.make_project_directory('arc_project_for_testing_delete_after_usage_ts_respawn_held')
         sched = Scheduler(project='project_test_ts_respawn_held', ess_settings=self.ess_settings,
                           species_list=[ts_spc],
                           opt_level=Level(repr=default_levels_of_theory['opt']),
@@ -9644,14 +9634,17 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
         self.assertNotEqual(self.sched.output[self.label]['convergence'], True)
 
     def test_a_held_scan_of_a_torsion_keeps_a_second_scan_of_it_from_spawning(self):
-        """A directed or ordinary scan put off or held back by a queue guard counts as already running."""
+        """
+        A directed or ordinary scan put off or held back by a queue guard counts as already running.
+        A directed rotor's torsion, scan and pivots are nested even in 1D, as ``initialize_directed_rotors()``
+        stores them.
+        """
         torsion = [2, 0, 1, 5]
         self.sched.job_types['rotors'] = True
         self.sched.species_dict[self.label].final_xyz = str_to_xyz(TestScheduler._METHYLAMINE_XYZ)
         for directed_scan_type, job_type in (('brute_force_sp', 'directed_scan'), ('ess', 'scan')):
             for held_in in ('deferred_jobs', 'stranded_jobs', None):
                 with self.subTest(job_type=job_type, held_in=held_in):
-                    # initialize_directed_rotors() nests a directed rotor's torsion, scan and pivots, even in 1D.
                     nest = (lambda value: [value]) if job_type == 'directed_scan' else (lambda value: value)
                     self.sched.species_dict[self.label].rotors_dict = {
                         0: {'torsion': nest(torsion), 'scan': nest([t + 1 for t in torsion]), 'pivots': nest([1, 2]),

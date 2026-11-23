@@ -424,6 +424,26 @@ H      0.00000000   -0.76336400   -0.47261500"""
         """Test the method types whose reference ARC does not prefix"""
         self.assertEqual(common.REFERENCE_AGNOSTIC_METHOD_TYPES, ['force_field', 'composite', 'semiempirical'])
 
+    def test_nested_torsions(self):
+        """Test that torsions take the nested shape a job adapter stores"""
+        self.assertEqual(common.nested_torsions([2, 0, 1, 5]), [[2, 0, 1, 5]])
+        self.assertEqual(common.nested_torsions([[2, 0, 1, 5]]), [[2, 0, 1, 5]])
+        self.assertEqual(common.nested_torsions([[2, 0, 1, 5], [0, 1, 2, 8]]), [[2, 0, 1, 5], [0, 1, 2, 8]])
+        self.assertNotEqual(common.nested_torsions([2, 0, 1, 5]), [[2, 0, 1, 6]])
+        self.assertEqual(common.nested_torsions(common.nested_torsions([0, 1, 2, 3])), [[0, 1, 2, 3]])
+        self.assertIsNone(common.nested_torsions(None))
+
+    def test_an_adapter_stores_torsions_in_the_nested_torsions_shape(self):
+        """A job adapter stores a flat or nested torsion exactly as ``nested_torsions()`` shapes it."""
+        for torsions in ([2, 0, 1, 5], [[2, 0, 1, 5]], [[2, 0, 1, 5], [0, 1, 2, 8]]):
+            with self.subTest(torsions=torsions):
+                job = GaussianAdapter(execution_type='queue', job_type='scan',
+                                      level=Level(method='wb97xd', basis='def2-tzvp'),
+                                      project='test', project_directory=self.project_directory,
+                                      species=[ARCSpecies(label='methylamine', smiles='CN')],
+                                      torsions=torsions, testing=True)
+                self.assertEqual(job.torsions, common.nested_torsions(torsions))
+
     def test_check_argument_consistency(self):
         """Test the check_argument_consistency() function"""
         common.check_argument_consistency(self.job_1)

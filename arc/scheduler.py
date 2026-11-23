@@ -53,6 +53,7 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       derived_reference_is_unrestricted,
                                       job_scf_reference_is_restricted,
                                       level_admits_a_broken_symmetry_reference,
+                                      nested_torsions,
                                       REFERENCE_CHANGE_AVAILABLE_KEY,
                                       resolve_ts_adapters,
                                       ts_adapter_install_targets,
@@ -332,19 +333,6 @@ def irc_ended_usably(server_status: str | None, ess_status: dict) -> bool:
         return True
     return status == 'errored' and isinstance(keywords, list) and bool(keywords) \
         and all(keyword in IRC_EARLY_STOP_KEYWORDS for keyword in keywords)
-
-
-def nested_torsions(torsions: list[int] | list[list[int]]) -> list[list[int]]:
-    """
-    Give torsions the nested shape a job adapter stores, e.g., ``[2, 0, 1, 5]`` -> ``[[2, 0, 1, 5]]``.
-
-    Args:
-        torsions (list[int] | list[list[int]]): One flat torsion, or a list of torsions.
-
-    Returns:
-        list[list[int]]: The torsions as a list of torsions.
-    """
-    return [torsions] if not isinstance(torsions[0], list) else torsions
 
 
 def get_conformer_isomorphism_trsh_history(conformers_note: str | None) -> list[str]:
@@ -2138,6 +2126,10 @@ class Scheduler(object):
         adapters append ``success=False`` guesses, so the first entry of ``ts_guesses`` is not
         necessarily the guess whose coordinates are being optimized.
 
+        When several guesses succeeded, the conformers spawned for them supersede any conf_opt job
+        not finished yet (restored from a previous session, or held by a queue guard): those jobs
+        are cancelled and no longer tracked.
+
         Args:
             label (str): The TS species label.
         """
@@ -2160,8 +2152,6 @@ class Scheduler(object):
         if len(successful_tsgs) > 1:
             xyzs = [tsg.initial_xyz for tsg in successful_tsgs]
             piped_indices = self.pipe_planner.try_pipe_ts_opt(label, xyzs, self.ts_guess_level)
-            # conf_opt jobs not finished yet (e.g., restored from a previous session, or held by a queue guard) are
-            # superseded by the conformers spawned below: cancel them and stop tracking them.
             conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
             for job_name in [name for name in self.running_jobs.get(label, list()) if 'conf_opt' in name]:
                 job = conf_opt_jobs.pop(get_i_from_job_name(job_name), None)
@@ -2482,27 +2472,20 @@ class Scheduler(object):
                     continue
                 rotor = self.species_dict[label].rotors_dict[i]
                 torsions = rotor['torsion']
-                if 'scan' not in self.job_dict[label].keys():
-                    self.job_dict[label]['scan'] = dict()
-                for scan_job in self.job_dict[label]['scan'].values():
-                    if nested_torsions(torsions) == scan_job.torsions \
-                            and scan_job.job_name in self.unfinished_job_names(label):
-                        break
-                else:
-                    job_label = label
-                    if self.species_dict[label].multi_species:
-                        if self.output_multi_spc[self.species_dict[label].multi_species].get('scan', False):
-                            return
-                        self.output_multi_spc[self.species_dict[label].multi_species]['scan'] = True
-                        job_label = [species.label for species in self.species_list
-                                     if species.multi_species == self.species_dict[label].multi_species]
-                    self.run_job(label=job_label,
-                                 xyz=self.species_dict[label].get_xyz(generate=False),
-                                 level_of_theory=self.scan_level,
-                                 job_type='scan',
-                                 torsions=torsions,
-                                 rotor_index=i,
-                                 )
+                job_label = label
+                if self.species_dict[label].multi_species:
+                    if self.output_multi_spc[self.species_dict[label].multi_species].get('scan', False):
+                        return
+                    self.output_multi_spc[self.species_dict[label].multi_species]['scan'] = True
+                    job_label = [species.label for species in self.species_list
+                                 if species.multi_species == self.species_dict[label].multi_species]
+                self.run_job(label=job_label,
+                             xyz=self.species_dict[label].get_xyz(generate=False),
+                             level_of_theory=self.scan_level,
+                             job_type='scan',
+                             torsions=torsions,
+                             rotor_index=i,
+                             )
 
     def run_irc_job(self, label, irc_direction='forward'):
         """
