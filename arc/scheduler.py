@@ -48,17 +48,17 @@ from arc.exceptions import (DependencyError,
                             )
 from arc.imports import local_settings_keys, repo_default_ts_adapters, settings
 from arc.job.adapters.common import (adopted_reference_is_unrestricted,
-                                      all_families_ts_adapters,
-                                      default_incore_adapters,
-                                      derived_reference_is_unrestricted,
-                                      job_scf_reference_is_restricted,
-                                      level_admits_a_broken_symmetry_reference,
-                                      nested_torsions,
-                                      REFERENCE_CHANGE_AVAILABLE_KEY,
-                                      resolve_ts_adapters,
-                                      ts_adapter_install_targets,
-                                      ts_adapters_by_rmg_family,
-                                      ts_adapters_for_unknown_unimolecular)
+                                     all_families_ts_adapters,
+                                     default_incore_adapters,
+                                     derived_reference_is_unrestricted,
+                                     job_scf_reference_is_restricted,
+                                     level_admits_a_broken_symmetry_reference,
+                                     nested_torsions,
+                                     REFERENCE_CHANGE_AVAILABLE_KEY,
+                                     resolve_ts_adapters,
+                                     ts_adapter_install_targets,
+                                     ts_adapters_by_rmg_family,
+                                     ts_adapters_for_unknown_unimolecular)
 from arc.job.adapters.ts.availability import ts_adapter_unavailable_reason
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids

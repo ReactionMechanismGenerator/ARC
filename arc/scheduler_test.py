@@ -2107,7 +2107,7 @@ H       4.27889520   -0.81548721   -0.22940984"""
 
     def test_a_held_conf_sp_job_resumes_the_troubleshooting_round_as_a_running_one_does(self):
         """
-        A restored conf_sp job that the restart puts off or holds back, since its queue cannot be read, still counts
+        A restored conf_sp job that the restart puts off or holds back on an unreadable queue still counts
         as unfinished: its conformer is not resubmitted, and its sibling is resubmitted at the noted level only.
         """
         label = 'methylamine'
@@ -5387,7 +5387,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
     def test_run_ts_conformer_jobs_cancels_held_superseded_conf_opt_jobs(self):
         """
         Respawning the TS conformers also cancels the superseded conf_opt jobs that a queue guard put off or held
-        back, so none of them is submitted later and read into the slot of the new TS guess with its index.
+        back, and drops them from their holder and from the unsubmitted jobs.
         """
         xyz_a = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
         H       1.81402049    1.03819414    0.00000000
@@ -5401,7 +5401,8 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         ts_spc = ARCSpecies(label=label, is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
         ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, xyz=xyz_a),
                              TSGuess(index=1, method='heuristics', success=True, xyz=xyz_b)]
-        project_directory = self.make_project_directory('arc_project_for_testing_delete_after_usage_ts_respawn_held')
+        project_directory = tempfile.mkdtemp(prefix='ts_respawn_held_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='project_test_ts_respawn_held', ess_settings=self.ess_settings,
                           species_list=[ts_spc],
                           opt_level=Level(repr=default_levels_of_theory['opt']),
@@ -9522,7 +9523,7 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
 
     def _scan_job(self, job_type: str, torsion: list[int]) -> JobAdapter:
         """
-        A scan job built by the real Gaussian adapter, so its ``torsions`` have the shape real jobs store.
+        A scan job built by the real Gaussian adapter, with ``torsions`` in the shape the adapter stores.
 
         Args:
             job_type (str): Either ``'scan'`` or ``'directed_scan'``.
@@ -9666,7 +9667,7 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
                     self.assertEqual(spawn_directed_scan_jobs.call_count + run_job.call_count, 0 if held_in else 1)
 
     def test_a_held_scan_of_a_torsion_keeps_the_rotor_out_of_a_pipe_batch(self):
-        """A rotor whose ESS scan is running or held is not handed to a pipe planner that would accept it."""
+        """A rotor whose ESS scan is running or held is not handed to the pipe planner."""
         held_torsion, free_torsion = [2, 0, 1, 5], [2, 0, 1, 6]
         self.sched.job_types['rotors'] = True
         self.sched.species_dict[self.label].final_xyz = str_to_xyz(TestScheduler._METHYLAMINE_XYZ)
