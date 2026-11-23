@@ -6240,8 +6240,6 @@ class Scheduler(object):
                          shift=shift,
                          )
         elif self.species_dict[label].is_ts and job.job_type == 'scan':
-            # A failed scan says nothing about whether the saddle point is right:
-            # keep the TS guess, and leave only this rotor as a harmonic mode.
             rotor = (self.species_dict[label].rotors_dict or dict()).get(job.rotor_index)
             if rotor is not None:
                 reason = f'Scan job {job.job_name} failed ({job.job_status[1]["error"]}) ' \

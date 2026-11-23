@@ -5199,7 +5199,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                                   'symmetry': None, 'dimensions': 1, 'original_dihedrals': list(),
                                   'cont_indices': list(), 'directed_scan_type': 'ess', 'directed_scan': dict()}}
         ts_spc.number_of_rotors = 1
-        project_directory = os.path.join(ARC_PATH, 'Projects', f'arc_project_for_testing_delete_after_usage_{label}')
+        project_directory = tempfile.mkdtemp(prefix=f'arc_test_{label}_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project=f'project_test_{label}', ess_settings=self.ess_settings,
                           species_list=[ts_spc],
@@ -5209,7 +5209,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                           ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
                           project_directory=project_directory,
                           testing=True,
-                          job_types=self.job_types2,  # rotors=True
+                          job_types=self.job_types2,
                           )
         sched.job_dict[label] = {'opt': dict(), 'freq': dict(), 'scan': dict()}
         sched.running_jobs[label] = list()
@@ -5231,11 +5231,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
     @patch('arc.scheduler.Scheduler.run_job')
     @patch('arc.scheduler.Scheduler.switch_ts')
     def test_troubleshoot_ess_ts_scan_exhausted_leaves_the_rotor_harmonic(self, mock_switch_ts, mock_run_job):
-        """A TS rotor scan whose job-level troubleshooting ran out fails that rotor and keeps the TS guess.
-
-        A crashed scan says nothing about whether the saddle point is right. Switching the guess discards a TS
-        that may have passed freq, IRC and NMD, and empties rotors_dict so every torsion is scanned again.
-        """
+        """A TS rotor scan whose job-level troubleshooting ran out fails that rotor and keeps the TS guess."""
         label = 'TS_scan_crash'
         sched, job = self._make_ts_with_an_exhausted_job(label=label, job_type='scan')
         self.assertEqual(job.job_status[1]['line'], 'Number of steps exceeded')
