@@ -190,8 +190,7 @@ def get_nmd_near_miss(ts_checks: dict | None) -> dict | None:
     The record is the one ``check_normal_mode_displacement()`` stores under ``NMD_NEAR_MISS_KEY``. It is returned
     only beside an NMD verdict of ``False``, and only when it is a dict with a non-empty ``sub_gate_bonds`` list
     whose every entry passes ``is_sub_gate_bond()``.
-    Anything else (no record, a malformed one, or an NMD verdict other than ``False``) reads as "not a near miss",
-    so that a TS is never kept on a record that cannot be relied upon.
+    Anything else (no record, a malformed one, or an NMD verdict other than ``False``) returns ``None``.
 
     Args:
         ts_checks (dict, optional): The ``ts_checks`` dictionary of a TS species.
@@ -217,8 +216,7 @@ def is_sub_gate_bond(bond) -> bool:
 
     Returns:
         bool: Whether the entry is a dict with ``atoms`` (two distinct non-negative integers), ``symbols`` (a
-              string) and ``percent`` (a finite number from 0 to 5, since a change just under the 5% gate is
-              stored rounded and can read 5.0).
+              string) and ``percent`` (a number from 0 to 5.0).
     """
     if not isinstance(bond, dict):
         return False
@@ -239,19 +237,20 @@ def get_nmd_near_miss_summary(record: dict) -> str:
         record (dict): A near-miss record, as returned by ``get_nmd_near_miss()``.
 
     Returns:
-        str: The element symbols, 0-indexed atoms and percent change of each sub-gate bond, e.g.,
-             ``'C-Cl (1, 2) 4.55%'``.
+        str: The element symbols, 0-indexed atoms and percent change of each sub-gate bond, and the normal mode
+             displacement amplitude the percent changes were measured at,
+             e.g., ``'C-Cl (1, 2) 4.55% at amplitude 0.9'``.
     """
-    return ', '.join(f"{bond['symbols']} ({bond['atoms'][0]}, {bond['atoms'][1]}) {bond['percent']}%"
-                     for bond in record['sub_gate_bonds'])
+    bonds = ', '.join(f"{bond['symbols']} ({bond['atoms'][0]}, {bond['atoms'][1]}) {bond['percent']}%"
+                      for bond in record['sub_gate_bonds'])
+    return f"{bonds} at amplitude {record.get('amplitude')}"
 
 
 def remove_nmd_accepted_on_irc_warning(warnings: str) -> str:
     """
     Remove the warning that a TS was accepted on IRC despite a near-miss NMD failure.
 
-    The warning describes one TS geometry, so it must not outlive a switch to another TS guess. Every other
-    warning in ``warnings`` is kept as is.
+    Every other warning in ``warnings`` is kept as is.
 
     Args:
         warnings (str): Warnings separated by ``'; '``, as stored in the Scheduler output dict.

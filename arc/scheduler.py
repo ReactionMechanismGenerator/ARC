@@ -4780,6 +4780,8 @@ class Scheduler(object):
             self.output[label]['warnings'] = remove_nmd_accepted_on_irc_warning(self.output[label]['warnings'])
             if self.species_dict[label].ts_checks['NMD'] is False:
                 if self.is_nmd_deferred(label):
+                    if self.is_irc_pending(label):
+                        self.species_dict[label].ts_checks['IRC'] = None
                     summary = get_nmd_near_miss_summary(get_nmd_near_miss(self.species_dict[label].ts_checks))
                     logger.info(f'TS {label} did not pass the normal mode displacement check only because some '
                                 f'reactive bonds change by less than 5% ({summary}). Keeping its IRC jobs, '
@@ -5476,8 +5478,8 @@ class Scheduler(object):
 
     def withhold_nmd_deferred_convergence(self, label: str):
         """
-        Return a converged TS that waits for its IRC verdict after a near-miss NMD failure to an undetermined
-        convergence. ``None`` is used rather than ``False``, which would drop the TS from the main loop.
+        Set the convergence of a converged TS that waits for its IRC verdict after a near-miss NMD failure
+        to ``None``.
 
         Args:
             label (str): The TS species label.
@@ -5540,14 +5542,14 @@ class Scheduler(object):
 
         An IRC verdict of ``True`` accepts the TS (see ``accept_nmd_near_miss_on_irc()``). A verdict of ``False``
         rejects it through ``process_irc_verdict()``, which also marks the TS unconverged once its guesses run out.
-        A verdict of ``None`` once no IRC work of the TS is pending switches the TS to its next guess, as a failed
-        NMD check always did, through ``switch_nmd_deferred_ts()``. While IRC work is pending, the TS keeps waiting.
-        A TS that is not deferred is left untouched.
+        A verdict of ``None`` once no IRC work of the TS is pending switches the TS to its next guess through
+        ``switch_nmd_deferred_ts()``. While IRC work is pending, the TS keeps waiting.
+        A TS that is not deferred, or whose convergence is ``False``, is left untouched.
 
         Args:
             label (str): The TS species label.
         """
-        if not self.is_nmd_deferred(label):
+        if not self.is_nmd_deferred(label) or self.output.get(label, dict()).get('convergence') is False:
             return
         self.revoke_stale_nmd_acceptance(label)
         self.withhold_nmd_deferred_convergence(label)
@@ -5610,13 +5612,14 @@ class Scheduler(object):
         """
         Give every TS that waits for its IRC after a near-miss NMD failure its exit, once one is due.
 
-        Called before the main loop starts, which is where a restarted run resumes, and once per main loop
-        iteration. A TS with a near-miss record whose run has IRC jobs disabled is switched at once. Every other
-        deferred TS goes through ``resolve_nmd_deferral()``, so no deferred TS waits once its IRC work is gone.
+        Called before the main loop starts and once per main loop iteration. A TS whose convergence is ``False``
+        is skipped. A TS with a near-miss record whose run has IRC jobs disabled is switched at once. Every other
+        deferred TS goes through ``resolve_nmd_deferral()``.
         """
         for label in list(self.species_dict.keys()):
             species = self.species_dict.get(label)
-            if species is None or not species.is_ts or label not in self.output:
+            if species is None or not species.is_ts or label not in self.output \
+                    or self.output[label]['convergence'] is False:
                 continue
             record = get_nmd_near_miss(getattr(species, 'ts_checks', None))
             if record is None or self.has_current_nmd_acceptance(label):

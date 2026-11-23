@@ -330,8 +330,7 @@ def check_normal_mode_displacement(reaction: ARCReaction,
 
     Sets ``ts_checks['NMD']`` to the verdict. When a failed TS is a near miss (see
     ``nmd.evaluate_ts_normal_mode_displacement()``), its record is stored under ``ts_checks[NMD_NEAR_MISS_KEY]``;
-    otherwise that key is removed, so a re-check never leaves a stale record behind. An IRC acceptance warning of a
-    previous evaluation is removed from ``ts_checks['warnings']`` for the same reason.
+    otherwise that key is removed. Any IRC acceptance warning is removed from ``ts_checks['warnings']``.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.

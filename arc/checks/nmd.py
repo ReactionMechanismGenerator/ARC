@@ -501,9 +501,8 @@ def get_near_miss_for_any_mapping(reaction: ARCReaction,
     A mapping is a near miss when its formed and broken bonds pass ``check_bond_directionality()``, it has at
     least one formed and at least one broken bond, at least one formed and at least one broken bond clear the
     5% gate of ``is_bond_change_significant()``, and all its formed and broken bonds, those under the gate
-    included, pass ``do_reactive_bonds_stand_out()``. It is only asked about a mapping that failed the NMD check, so at least
-    one of its formed or broken bonds is then under the gate: were none, the same bonds would have passed the
-    same test there. An isomerization, which has no formed or broken bonds, is never a near miss.
+    included, pass ``do_reactive_bonds_stand_out()`` both on mass-weighted and on unweighted bond length changes.
+    An isomerization, which has no formed or broken bonds, is never a near miss.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
@@ -541,15 +540,18 @@ def get_near_miss_for_any_mapping(reaction: ARCReaction,
         sub_gate = [(bond, fraction) for bond, fraction, significant in formed_changes + broken_changes
                     if not significant]
         check_bonds = [bond for bond, _, _ in formed_changes + broken_changes]
-        check_diffs, _ = get_bond_length_changes(bonds=check_bonds, xyzs=xyzs, weights=weights, amplitude=amplitude)
         reactive_bonds = set(eq_formed_bonds) | set(eq_broken_bonds) | set(eq_changed_bonds)
-        if do_reactive_bonds_stand_out(reaction=reaction,
-                                       xyzs=xyzs,
-                                       check_bonds=check_bonds,
-                                       check_diffs=check_diffs,
-                                       reactive_bonds=reactive_bonds,
-                                       weights=weights,
-                                       amplitude=amplitude):
+        if all(do_reactive_bonds_stand_out(reaction=reaction,
+                                           xyzs=xyzs,
+                                           check_bonds=check_bonds,
+                                           check_diffs=get_bond_length_changes(bonds=check_bonds,
+                                                                               xyzs=xyzs,
+                                                                               weights=standout_weights,
+                                                                               amplitude=amplitude)[0],
+                                           reactive_bonds=reactive_bonds,
+                                           weights=standout_weights,
+                                           amplitude=amplitude)
+               for standout_weights in (weights, None)):
             return {'amplitude': float(amplitude),
                     'sub_gate_bonds': [{'atoms': [int(bond[0]), int(bond[1])],
                                         'symbols': f'{symbols[bond[0]]}-{symbols[bond[1]]}',

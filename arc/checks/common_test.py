@@ -137,7 +137,8 @@ class TestChecks(unittest.TestCase):
         """Test the one-line summary of the sub-gate bonds of a near-miss record"""
         record = {'amplitude': 0.9, 'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': 4.55},
                                                        {'atoms': [0, 3], 'symbols': 'C-H', 'percent': 3.1}]}
-        self.assertEqual(common.get_nmd_near_miss_summary(record), 'C-Cl (1, 2) 4.55%, C-H (0, 3) 3.1%')
+        self.assertEqual(common.get_nmd_near_miss_summary(record),
+                         'C-Cl (1, 2) 4.55%, C-H (0, 3) 3.1% at amplitude 0.9')
 
     def test_remove_nmd_accepted_on_irc_warning(self):
         """Test that only the IRC acceptance warning of a near-miss TS is removed from a warnings string"""
