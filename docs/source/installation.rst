@@ -180,10 +180,9 @@ configuration:
 Most users should keep a short ``~/.arc/settings.py`` containing only changed
 values, such as ``servers``, ``global_ess_settings``, ``levels_ess``, and job
 defaults. Missing values fall back to ARC's repository defaults.
-For ``default_job_types``, ``default_levels_of_theory``, ``orca_default_options_dict``,
-``preserve_params_in_scan``, ``pipe_settings`` and ``ob_default_settings``, a key that the
-local file leaves out takes ARC's default; every other setting in the local file replaces
-ARC's whole.
+For ``default_job_types``, ``default_levels_of_theory`` and ``preserve_params_in_scan``,
+a key that the local file leaves out takes ARC's default; every other setting in the local
+file replaces ARC's whole.
 
 Remote Servers and SSH
 ----------------------

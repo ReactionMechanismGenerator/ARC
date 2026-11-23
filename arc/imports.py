@@ -27,8 +27,7 @@ _OVERRIDDEN_DEPENDENTS = (
     ('RITS_REPO_PATH', 'RITS_CKPT_PATH', find_rits_ckpt),
 )
 
-SETTINGS_MERGED_ONTO_DEFAULTS = ('default_job_types', 'default_levels_of_theory', 'orca_default_options_dict',
-                                 'preserve_params_in_scan', 'pipe_settings', 'ob_default_settings')
+SETTINGS_MERGED_ONTO_DEFAULTS = ('default_job_types', 'default_levels_of_theory', 'preserve_params_in_scan')
 
 
 def resolve_overridden_dependents(settings: dict, local_settings_dict: dict) -> None:

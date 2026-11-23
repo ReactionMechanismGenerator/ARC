@@ -11,8 +11,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import arc.imports
 import arc.settings.settings as arc_settings
+from arc import imports as arc_imports
 from arc.common import settings as common_settings
 from arc.imports import _report_unusable_overlay, resolve_overridden_dependents
 from arc.settings import external_paths
@@ -196,26 +196,26 @@ class TestReportUnusableOverlay(unittest.TestCase):
         self.queued.assert_not_called()
 
 
-MERGED_DICTS = ('default_job_types', 'default_levels_of_theory', 'orca_default_options_dict',
-                'preserve_params_in_scan', 'pipe_settings', 'ob_default_settings')
+MERGED_DICTS = ('default_job_types', 'default_levels_of_theory', 'preserve_params_in_scan')
+REPLACED_DICTS = ('orca_default_options_dict', 'pipe_settings', 'ob_default_settings')
 
 
 class TestLocalSettingsMergedOntoDefaults(unittest.TestCase):
     """A local ~/.arc/settings.py that leaves a key out of a fixed-key settings dict must still load."""
 
     def setUp(self):
-        """Keep the arc.imports namespace and settings object so every reload can be undone."""
+        """Keep the arc_imports namespace and settings object so every reload can be undone."""
         self.tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmpdir.cleanup)
-        self.original_namespace = dict(vars(arc.imports))
-        self.original_settings = arc.imports.settings
+        self.original_namespace = dict(vars(arc_imports))
+        self.original_settings = arc_imports.settings
         self.original_sys_path = list(sys.path)
         self.original_modules = {name: sys.modules.get(name) for name in ('settings', 'submit', 'inputs')}
         self.addCleanup(self._restore)
 
     def _restore(self):
         """Put back the module namespace, sys.path, sys.modules and HOME as they were before the test."""
-        namespace = vars(arc.imports)
+        namespace = vars(arc_imports)
         namespace.clear()
         namespace.update(self.original_namespace)
         sys.path[:] = self.original_sys_path
@@ -232,7 +232,7 @@ class TestLocalSettingsMergedOntoDefaults(unittest.TestCase):
             local_settings (dict): The top-level names and values the local settings.py defines.
 
         Returns:
-            dict: A shallow copy of the resulting ``arc.imports.settings``.
+            dict: A shallow copy of the resulting ``arc_imports.settings``.
         """
         arc_dir = os.path.join(self.tmpdir.name, '.arc')
         os.makedirs(arc_dir, exist_ok=True)
@@ -242,8 +242,8 @@ class TestLocalSettingsMergedOntoDefaults(unittest.TestCase):
         for name in self.original_modules:
             sys.modules.pop(name, None)
         with patch.dict(os.environ, {'HOME': self.tmpdir.name}):
-            importlib.reload(arc.imports)
-        return dict(arc.imports.settings)
+            importlib.reload(arc_imports)
+        return dict(arc_imports.settings)
 
     def test_a_missing_key_takes_the_default(self):
         """A key the local dict leaves out takes ARC's default value."""
@@ -260,10 +260,7 @@ class TestLocalSettingsMergedOntoDefaults(unittest.TestCase):
         """A key the local dict sets keeps the user's value whole, with no merge inside it."""
         user_values = {'default_job_types': ('conf_opt', False),
                        'default_levels_of_theory': ('opt', {'method': 'user-method', 'basis': 'user-basis'}),
-                       'orca_default_options_dict': ('opt', {'keyword': {'opt_convergence': 'LooseOpt'}}),
-                       'preserve_params_in_scan': ('bond', 0.5),
-                       'pipe_settings': ('min_tasks', 3),
-                       'ob_default_settings': ('opt_gradient_settings', {'steps': 7})}
+                       'preserve_params_in_scan': ('bond', 0.5)}
         for name in MERGED_DICTS:
             with self.subTest(name=name):
                 key, value = user_values[name]
@@ -290,6 +287,16 @@ class TestLocalSettingsMergedOntoDefaults(unittest.TestCase):
         settings = self._load({'servers': server})
         self.assertEqual(settings['servers'], server)
 
+    def test_unmerged_dicts_are_still_replaced_whole(self):
+        """A local pipe_settings, orca_default_options_dict or ob_default_settings gives exactly the local dict."""
+        for name in REPLACED_DICTS:
+            with self.subTest(name=name):
+                default = getattr(arc_settings, name)
+                missing = next(iter(default))
+                local = {key: val for key, val in default.items() if key != missing}
+                settings = self._load({name: local})
+                self.assertEqual(settings[name], local)
+
     def test_a_non_dict_value_is_still_replaced_whole(self):
         """A local value that is not a dict replaces ARC's default as before."""
         settings = self._load({'pipe_settings': None})
@@ -299,8 +306,8 @@ class TestLocalSettingsMergedOntoDefaults(unittest.TestCase):
         """Undoing a reload gives back the settings object other modules imported."""
         self._load({'pipe_settings': {'min_tasks': 3}})
         self._restore()
-        self.assertIs(arc.imports.settings, self.original_settings)
-        self.assertIs(arc.imports.settings, common_settings)
+        self.assertIs(arc_imports.settings, self.original_settings)
+        self.assertIs(arc_imports.settings, common_settings)
 
 
 if __name__ == '__main__':
