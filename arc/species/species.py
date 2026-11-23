@@ -923,6 +923,12 @@ class ARCSpecies(object):
 
         The 2D graph is taken from the dictionary as-is whenever it was serialized by ``as_dict()``
         (see ``dict_repr_is_authoritative()``), and is otherwise perceived from the coordinates.
+
+        A missing multiplicity is read off the structure the dictionary gives (``mol``, ``adjlist``,
+        ``inchi`` or ``smiles``) before any graph is perceived from the coordinates, and off the
+        perceived graph when the dictionary gives no structure. A missing charge is read off a given
+        ``adjlist``, ``inchi`` or ``smiles`` when the dictionary has no ``mol`` key, and is 0 for any
+        other dictionary.
         """
         species_dict = lift_legacy_extension_keys(species_dict)
         try:
@@ -987,12 +993,6 @@ class ARCSpecies(object):
         if 'charge' in species_dict:
             self.charge = species_dict['charge']
         elif 'mol' not in species_dict and any(key in species_dict for key in ('smiles', 'inchi', 'adjlist')):
-            # A hand-written dict (no 'mol'): left None so the structure-derived charge below can be
-            # applied, as the keyword constructor does; __init__ turns a charge still unset by then
-            # into 0. A dict carrying a 'mol' was written by as_dict(), which before it always wrote
-            # the charge omitted a zero one, so it keeps that zero: ARC stores bi-radical singlets and
-            # carbenes as charge-separated structures ('[CH+2][CH-]C=C[CH2-]'), whose net charge
-            # would contradict it.
             self.charge = None
         else:
             self.charge = 0
@@ -1042,19 +1042,8 @@ class ARCSpecies(object):
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
                 self.mol = Molecule(smiles=smiles)
-        # Read the multiplicity and charge implied by the structure the user actually GAVE (a `mol`
-        # in the dict, or an adjacency list / InChI / SMILES) BEFORE mol_from_xyz() replaces self.mol
-        # with one perceived from the coordinates. Perception routinely lands on a different
-        # electronic state for an open-shell species -- `C[C]C#N` (multiplicity 3) perceives as
-        # `C[C][C][N]` (multiplicity 1) -- and reading the multiplicity off the perceived molecule
-        # afterwards silently runs the entire job on that other state, with no warning anywhere.
-        # ARCSpecies.__init__ already reads both here, before its own (guarded) mol_from_xyz call;
-        # from_dict differed from it by statement order alone, so the same input gave the two
-        # constructors different answers.
         structure_multiplicity = self.mol.multiplicity if self.mol is not None else None
         structure_charge = self.mol.get_net_charge() if self.mol is not None else None
-        # Perceive the molecule from the coordinates so xyz and mol share an atom order, unless the dict
-        # carries a graph serialized by as_dict() (see dict_repr_is_authoritative()).
         if not dict_repr_is_authoritative(species_dict, mol=self.mol) \
                 and (self.final_xyz or self.initial_xyz or self.most_stable_conformer
                      or self.conformers or self.ts_guesses):

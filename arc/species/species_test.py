@@ -50,7 +50,6 @@ from arc.species.species import (ARCSpecies,
                                  split_mol,
                                  )
 
-# The bi-rad singlet [CH2]C=CCC[CH]C=C as ARC stores it: charge-separated, with net charge +2.
 BIRAD_SINGLET_DOUBLY_CATIONIC_ADJLIST = """1  C u0 p0 c0 {2,D} {9,S} {10,S}
 2  C u0 p0 c0 {1,D} {3,S} {11,S}
 3  C u0 p0 c+1 {2,S} {4,S} {12,S}
@@ -889,7 +888,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc_dict['mol']['atoms'][0]['atomtype'], 'Cs')
 
     def test_as_dict_emits_charge(self):
-        """Test that as_dict() always writes the charge, zero included, so from_dict() reads it back"""
+        """Test that as_dict() writes the charge, zero included, and from_dict() restores it"""
         neutral_dict = ARCSpecies(label='ethane', smiles='CC').as_dict()
         self.assertEqual(neutral_dict['charge'], 0)
 
@@ -897,8 +896,6 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(cation_dict['charge'], 1)
         self.assertEqual(ARCSpecies(species_dict=cation_dict).charge, 1)
 
-        # A bi-rad singlet given as a charge-separated adjlist with net charge +2. Its dict carries
-        # that 'adjlist', so a missing charge would be re-derived from it on restart as 2.
         birad = ARCSpecies(label='birad', adjlist=BIRAD_SINGLET_DOUBLY_CATIONIC_ADJLIST,
                            charge=0, multiplicity=1, number_of_radicals=2)
         birad_dict = birad.as_dict()
@@ -910,7 +907,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(restored.number_of_radicals, 2)
 
     def test_from_dict_legacy_restart_keeps_zero_charge(self):
-        """Test that a restart dict written before as_dict() emitted a zero charge still restores charge 0"""
+        """Test that from_dict() restores charge 0 from a dict with a charged 'mol' and no 'charge' key"""
         birad = ARCSpecies(label='birad', adjlist=BIRAD_SINGLET_DOUBLY_CATIONIC_ADJLIST,
                            charge=0, multiplicity=1, number_of_radicals=2)
         legacy_dict = birad.as_dict()
@@ -921,7 +918,6 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(restored.charge, 0)
         self.assertEqual(restored.multiplicity, 1)
 
-        # A legacy dict of a charged species always carried its charge, so it is unaffected.
         cation_dict = ARCSpecies(label='NH4+', smiles='[NH4+]').as_dict()
         self.assertEqual(ARCSpecies(species_dict=cation_dict).charge, 1)
 
@@ -1039,14 +1035,10 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertTrue(restored.stability_reoptimized)
 
     def test_from_dict_reads_multiplicity_from_the_given_structure(self):
-        """Test that from_dict() and the keyword constructor agree on multiplicity and charge.
+        """Test that from_dict() and the keyword constructor give the same multiplicity and charge.
 
-        Both constructors replace .mol with a molecule perceived from the coordinates so that atom
-        orders match, and neither may read the multiplicity off that perceived molecule: perception
-        picks an electronic state, and for an open-shell species it routinely picks a different one
-        from the structure that was given. 'C[C]C#N' is a triplet, and these same atoms perceive as
-        the closed-shell 'C[C][C][N]'. Reading the multiplicity after the override therefore ran a
-        triplet as a singlet with no warning anywhere - a wrong answer rather than a failure.
+        The triplet 'C[C]C#N' is given with coordinates that perceive as the singlet 'C[C][C][N]'.
+        A declared multiplicity is kept.
         """
         xyz = """C       1.83783800   -0.00006500   -0.00024000
                  C       0.39175700    0.00019900    0.00069900
@@ -1061,24 +1053,15 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(dict_spc.multiplicity, kwargs_spc.multiplicity)
         self.assertEqual(dict_spc.charge, kwargs_spc.charge)
 
-        # An explicitly declared multiplicity still wins over the structure.
         explicit = ARCSpecies(species_dict={'label': 'CCCN_triplet', 'smiles': 'C[C]C#N',
                                             'xyz': xyz, 'multiplicity': 3})
         self.assertEqual(explicit.multiplicity, 3)
 
     def test_from_dict_reads_charge_from_the_given_structure(self):
-        """Test that from_dict() derives a missing charge from the structure, as the constructor does.
+        """Test that from_dict() reads a missing charge off a given SMILES, as the keyword constructor does.
 
-        The charge case needs a CHARGED species to say anything: on a neutral one both constructors
-        return 0 whether or not the structure is consulted. A missing 'charge' key must stay None
-        through from_dict() so the structure-derived value can be applied, with __init__'s shared
-        final default supplying the 0 when there is no structure to read.
-
-        Only a hand-written dict (a 2D spec and no 'mol') counts as the structure. The mol case below
-        is why: a restart file written before as_dict() always emitted the charge omits a zero charge
-        and carries a 'mol', and ARC writes a bi-radical singlet as a charge-separated structure, so
-        deriving the charge from that mol would invent a net charge the species does not have and
-        break reaction charge balance.
+        A declared charge is kept. A dict with no structure, or with a charged 'mol' and no
+        'charge' key, gives charge 0.
         """
         xyz = """N      0.00000000    0.00000000    0.11476900
                  H      0.00000000    0.93800000   -0.26800000
@@ -1091,16 +1074,9 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(dict_spc.charge, kwargs_spc.charge)
         self.assertEqual(dict_spc.multiplicity, kwargs_spc.multiplicity)
 
-        # An explicitly declared charge still wins, and a structureless species still defaults to 0.
         explicit = ARCSpecies(species_dict={'label': 'NH4+', 'smiles': '[NH4+]', 'xyz': xyz, 'charge': 1})
         self.assertEqual(explicit.charge, 1)
 
-        # A dict carrying a 'mol' keeps its zero charge instead of taking one from that
-        # structure. This was the shape ARCReaction.as_dict(reset_atom_ids=True) produced while
-        # determining a family before as_dict() always emitted the charge, and older restart files
-        # still carry it. For the bi-rad singlet '[CH2]C=CCC[CH]C=C' the stored structure
-        # is the doubly cationic 'C=C[CH+]CCC=C[CH2+]' - deriving charge 2 from it there broke
-        # reaction charge balance in the linear TS interpolation tests.
         round_tripped = ARCSpecies(species_dict={'label': 'birad', 'multiplicity': 1,
                                                  'mol': BIRAD_SINGLET_DOUBLY_CATIONIC_ADJLIST})
         self.assertEqual(round_tripped.mol.get_net_charge(), 2)
