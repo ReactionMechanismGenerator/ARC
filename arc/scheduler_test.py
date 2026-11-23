@@ -1220,6 +1220,25 @@ H       1.27889520   -0.81548721   -0.12940984"""
         self.assertNotIn(label, sched._pending_pipe_conf_sp)
         self.assertNotIn(label, sched.running_jobs)
 
+    def test_issue622_fresh_round_falls_back_to_a_conf_sp_job_when_the_pipe_planner_raises(self):
+        """
+        A conf_sp pipe planner that raises does not abort the run: a warning names the species and the error, the
+        owed conf_sp is submitted as its own job, and the single decision sees conf_sp energies only.
+        """
+        label = 'methylamine'
+        with self.assertLogs('arc', level='WARNING') as logs:
+            sched, energies_at_decision, run_job_calls = self._issue622_fresh_conf_sp_round(
+                try_pipe_conf_sp=MagicMock(side_effect=RuntimeError('pipe down\nsecond line')))
+        warnings = [line for line in logs.output if line.startswith('WARNING') and 'pipe mode' in line]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn(label, warnings[0])
+        self.assertIn('pipe down', warnings[0])
+        self.assertNotIn('second line', warnings[0])
+        self.assertEqual([(c['job_type'], c['conformer']) for c in run_job_calls], [('conf_sp', 1)])
+        self.assertEqual(energies_at_decision, [[-300000.0, -300001.0]])
+        self.assertNotIn(label, sched._pending_pipe_conf_sp)
+        self.assertNotIn(label, sched.running_jobs)
+
     def test_issue622_fresh_round_leaves_a_piped_conf_sp_decision_to_the_pipe(self):
         """
         An owed conf_sp that the planner routes to a pipe is ranked by the pipe's own ingestion, so the main loop

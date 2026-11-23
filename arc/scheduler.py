@@ -827,7 +827,13 @@ class Scheduler(object):
         self._pending_pipe_conf_sp.clear()
         for label in sorted(pending):
             conformer_indices = pending[label]
-            piped = self.pipe_planner.try_pipe_conf_sp(label, sorted(conformer_indices))
+            try:
+                piped = self.pipe_planner.try_pipe_conf_sp(label, sorted(conformer_indices))
+            except Exception as e:
+                error = str(e).splitlines()[0] if str(e) else type(e).__name__
+                logger.warning(f'Could not route the conf_sp jobs of {label} to pipe mode ({error}); '
+                               f'submitting them as individual jobs.')
+                piped = set()
             for i in sorted(conformer_indices - piped):
                 self.run_sp_job(label=label, level=self.conformer_sp_level, conformer=i)
 
