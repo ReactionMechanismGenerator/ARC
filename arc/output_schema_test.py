@@ -1141,7 +1141,7 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.assert_valid(self.document)
 
     def test_an_unknown_ts_adapters_source_is_rejected(self):
-        """The ts_adapters source vocabulary is closed, so a consumer can tell a user override from the default."""
+        """The ts_adapters source vocabulary is closed."""
         self.document['ts_adapters'] = {'adapters': ['linear'], 'source': 'somewhere'}
         self.assert_invalid(self.document, 'somewhere')
 

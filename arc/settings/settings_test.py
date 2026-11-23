@@ -27,7 +27,7 @@ class TestExternalAdapterSettingsExposed(unittest.TestCase):
             self.assertTrue(hasattr(settings_mod, name), f"settings module missing attribute {name}")
 
     def test_default_ts_adapters_list(self):
-        """The default ``ts_adapters`` list is pinned, so a change to it is deliberate."""
+        """The default ``ts_adapters`` list is pinned."""
         self.assertEqual(settings_mod.ts_adapters, ['heuristics', 'linear', 'autotst', 'gcn', 'xtb_gsm', 'orca_neb',
                                                     'kinbot', 'goflow'])
 

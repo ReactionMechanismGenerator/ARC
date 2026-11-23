@@ -476,7 +476,7 @@ def engine_unavailable_reason() -> str | None:
 def _rits_environment_ready(log: bool = True) -> bool:
     """
     Check that everything RitS needs at runtime is in place. Returns ``False``
-    if anything is missing so a caller (e.g. a test guard) can skip cleanly.
+    if anything is missing.
     The adapter itself raises a ``DependencyError`` instead.
 
     Args:

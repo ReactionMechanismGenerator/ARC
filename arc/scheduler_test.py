@@ -6407,7 +6407,6 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
             return StubJob(job_type=job_type, job_adapter=job_adapter,
                            unavailable=job_adapter in unavailable_adapters)
 
-        # These tests drive the DependencyError backstop, so the engine check before it must pass on any host.
         for patcher in [patch('arc.scheduler.job_factory', new=stub_job_factory),
                         patch.object(kinbot_ts, 'KINBOT_PYTHON', __file__)]:
             patcher.start()
@@ -6548,15 +6547,15 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         every adapter is reported available at start, and the engines go missing afterwards.
 
         Engine-free adapters ('heuristics', 'linear') get a ``StubJob``; any other adapter that reaches
-        ``job_factory()`` gets the real adapter, so a missing engine meets the adapter's real code.
+        ``job_factory()`` gets the real adapter.
         The engine of every engine-backed adapter is made absent by pointing its executable setting to
         ``None``, and Orca NEB has no server in the ESS settings. xTB-GSM's command runner fails the
-        test if called, since an absent engine must never be executed.
+        test if called.
 
         Args:
             rxns (list): The ARCReaction objects; their wells are marked as optimized.
             ts_adapters (list): The TS adapters to configure the Scheduler with.
-            project (str): The project name, also the project directory name.
+            project (str): The project name.
             absent_at_start (bool, optional): Whether the engines are already absent when the Scheduler starts.
 
         Returns:
@@ -6566,7 +6565,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         for spc in species:
             spc.final_xyz = spc.get_xyz()
         for index, rxn in enumerate(rxns):
-            rxn.index = index  # As ARC does, so that each reaction gets its own TS label.
+            rxn.index = index
         spawned = list()
 
         def hybrid_job_factory(job_type, job_adapter=None, **kwargs):
@@ -6607,7 +6606,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         Make a testing Scheduler for TS search tests.
 
         Args:
-            project (str): The project name, also the project directory name.
+            project (str): The project name.
             species (list): The ARCSpecies objects.
             rxns (list): The ARCReaction objects.
             ts_adapters (list): The TS adapters to configure the Scheduler with.
@@ -6615,11 +6614,13 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         Returns:
             Scheduler: The Scheduler.
         """
+        project_directory = tempfile.mkdtemp(prefix=f'{project}_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         return Scheduler(project=project,
                          ess_settings=self.ess_settings,
                          species_list=species,
                          rxn_list=rxns,
-                         project_directory=os.path.join(ARC_PATH, 'Projects', project),
+                         project_directory=project_directory,
                          ts_adapters=ts_adapters,
                          job_types=initialize_job_types(),
                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
@@ -6631,8 +6632,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         """Test that an adapter whose engine went missing after the run started is dropped with one named warning.
 
         Covers every engine-backed adapter in the family map, and an adapter the map lists that has
-        no module in this ARC build (as 'crest' had). The latter is injected into the map here, so the
-        test does not depend on which unregistered names the map happens to carry.
+        no module in this ARC build (as 'crest' had), injected into the map here.
         """
         unregistered = 'absent_unregistered_ts_adapter'
         cases = [('autotst', 'AUTOTST_PYTHON', 'intra_H_migration'),
@@ -6700,7 +6700,6 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         self.assertFalse(sched.output[rxn_a.ts_label]['convergence'])
         self.assertTrue(sched.species_dict[rxn_a.ts_label].ts_guesses_exhausted)
         self.assertEqual(sched.job_dict[rxn_a.ts_label].get('tsg', dict()), dict())
-        # The other reaction goes on: its only available adapter ran, and it carries no error.
         self.assertEqual({k: v.job_adapter for k, v in sched.job_dict[rxn_b.ts_label]['tsg'].items()}, {0: 'linear'})
         self.assertEqual(list(rxn_b.ts_species.skipped_methods), ['autotst'])
         self.assertEqual(rxn_b.ts_species.unsuccessful_methods, list())
@@ -7030,8 +7029,8 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         self.assertFalse(sched.species_dict[rxn_1.ts_label].ts_guesses_exhausted)
 
     def test_spawn_ts_jobs_does_not_end_a_search_while_an_adapter_job_is_tracked(self):
-        """Test that an adapter that ran without raising keeps its job tracked, so the no-search message never
-        fires for it; whether it found a guess is settled when its job completes."""
+        """Test that an adapter that ran without raising keeps its job tracked, with no no-search message for it;
+        whether it found a guess is settled when its job completes."""
         sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
             project='arc_project_for_testing_delete_after_usage_tsg_24',
             raising={('kinbot', 'HOCHO'): RuntimeError('kinbot failed')})
@@ -7057,14 +7056,14 @@ class TestSchedulerTsAdaptersSource(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.projects = [f'arc_project_for_testing_delete_after_usage_ts_source_{i}' for i in range(4)]
+        cls.project_root = tempfile.mkdtemp(prefix='arc_ts_source_')
 
     @classmethod
     def tearDownClass(cls):
         """
         A method that is run after all unit tests in this class, deleting the project directories.
         """
-        for project in cls.projects:
-            shutil.rmtree(os.path.join(ARC_PATH, 'Projects', project), ignore_errors=True)
+        shutil.rmtree(cls.project_root, ignore_errors=True)
 
     def make_scheduler(self, index: int, ts_adapters: list | None) -> Scheduler:
         """
@@ -7080,7 +7079,7 @@ class TestSchedulerTsAdaptersSource(unittest.TestCase):
         return Scheduler(project=self.projects[index],
                          ess_settings={'gaussian': ['server1']},
                          species_list=[ARCSpecies(label='H2O', smiles='O')],
-                         project_directory=os.path.join(ARC_PATH, 'Projects', self.projects[index]),
+                         project_directory=os.path.join(self.project_root, self.projects[index]),
                          ts_adapters=ts_adapters,
                          job_types=initialize_job_types(),
                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),

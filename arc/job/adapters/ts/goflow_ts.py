@@ -672,7 +672,7 @@ def _is_file_of_min_size(path: object, min_size: int) -> bool:
     Check whether ``path`` is an existing file of at least ``min_size`` bytes.
 
     Args:
-        path (object): The path, a value that is not a path is never a file.
+        path (object): The path. A value that is not a path is not a file.
         min_size (int): The minimal file size in bytes.
 
     Returns:
@@ -714,7 +714,7 @@ def engine_unavailable_reason() -> str | None:
 def _goflow_environment_ready(log: bool = True) -> bool:
     """
     Verify that everything GoFlow needs at runtime is in place. Returns ``False``
-    if anything is missing so a caller (e.g. a test guard) can skip cleanly.
+    if anything is missing.
     The adapter itself raises a ``DependencyError`` instead.
 
     Args:

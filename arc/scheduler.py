@@ -47,16 +47,16 @@ from arc.exceptions import (DependencyError,
                             )
 from arc.imports import local_settings_keys, repo_default_ts_adapters, settings
 from arc.job.adapters.common import (adopted_reference_is_unrestricted,
-                                      all_families_ts_adapters,
-                                      default_incore_adapters,
-                                      derived_reference_is_unrestricted,
-                                      job_scf_reference_is_restricted,
-                                      level_admits_a_broken_symmetry_reference,
-                                      REFERENCE_CHANGE_AVAILABLE_KEY,
-                                      resolve_ts_adapters,
-                                      ts_adapter_install_targets,
-                                      ts_adapters_by_rmg_family,
-                                      ts_adapters_for_unknown_unimolecular)
+                                     all_families_ts_adapters,
+                                     default_incore_adapters,
+                                     derived_reference_is_unrestricted,
+                                     job_scf_reference_is_restricted,
+                                     level_admits_a_broken_symmetry_reference,
+                                     REFERENCE_CHANGE_AVAILABLE_KEY,
+                                     resolve_ts_adapters,
+                                     ts_adapter_install_targets,
+                                     ts_adapters_by_rmg_family,
+                                     ts_adapters_for_unknown_unimolecular)
 from arc.job.adapters.ts.availability import ts_adapter_unavailable_reason
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
@@ -3344,7 +3344,6 @@ class Scheduler(object):
                             if unavailable_reason is not None:
                                 unavailable[method] = unavailable_reason
                                 if self.absent_ts_adapters.get(method) != unavailable_reason:
-                                    # The run-start report did not give this cause, so the engine changed since.
                                     logger.warning(f'TS search adapter {method!r} skipped for reaction {rxn.label}: '
                                                    f'{unavailable_reason}.')
                                 rxn.ts_species.skipped_methods[method] = unavailable_reason
@@ -3381,7 +3380,6 @@ class Scheduler(object):
                                     continue
                             tsg_index += 1
                     if unavailable:
-                        # run_job() saved before these skips were recorded; persist them with tsg_spawned.
                         self.save_restart_dict()
                     if eligible_methods:
                         running = [method for method in eligible_methods if method not in unavailable]
@@ -3469,8 +3467,7 @@ class Scheduler(object):
 
     def _roll_back_tsg_job(self, rxn: ARCReaction, tsg_index: int) -> None:
         """
-        Roll back the job ``run_job()`` registered before it raised, so a never-run 'tsg<i>' entry
-        isn't serialized and parsed as completed.
+        Roll back the job ``run_job()`` registered before it raised, and remove its 'tsg<i>' entry.
 
         Args:
             rxn (ARCReaction): The reaction of the job.

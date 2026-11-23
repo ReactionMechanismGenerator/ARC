@@ -71,9 +71,9 @@ class TestTSAdapterAvailability(unittest.TestCase):
                     self.assertIn(env, reason)
                 with patch.object(module, attr, os.path.join(self.tmp_dir, 'missing')):
                     self.assertIn(attr, ts_adapter_unavailable_reason(adapter, ess_settings=None))
-                with patch.object(module, attr, pathlib.Path(self.exe)):  # A PathLike setting is a path.
+                with patch.object(module, attr, pathlib.Path(self.exe)):
                     self.assertIsNone(ts_adapter_unavailable_reason(adapter, ess_settings=None))
-                with patch.object(module, attr, 42):  # A wrong type refuses rather than raising.
+                with patch.object(module, attr, 42):
                     self.assertIn(attr, ts_adapter_unavailable_reason(adapter, ess_settings=None))
 
     def test_goflow(self):
@@ -88,7 +88,6 @@ class TestTSAdapterAvailability(unittest.TestCase):
                 patch.object(goflow_ts, 'GOFLOW_CKPT_PATH', self.big_file), \
                 patch.object(goflow_ts, 'GOFLOW_FEAT_DICT_PATH', self.big_file), \
                 patch('arc.job.adapters.ts.goflow_ts.os.path.getsize', side_effect=FileNotFoundError):
-            # A file removed between the existence and the size checks is reported, not raised.
             reason = ts_adapter_unavailable_reason('goflow', ess_settings=None)
         self.assertIn('ARC_GOFLOW_CKPT', reason)
         self.assertNotIn('GOFLOW_PYTHON', reason)
@@ -127,7 +126,6 @@ class TestTSAdapterAvailability(unittest.TestCase):
         self.assertIsNone(ts_adapter_unavailable_reason('orca_neb', ess_settings={'orca': [server]}))
         self.assertIsNone(ts_adapter_unavailable_reason('orca_neb', ess_settings={'orca': server}))
         with patch('arc.job.adapters.ts.availability.global_ess_settings', {'orca': [server]}):
-            # Empty ESS settings fall back to the global ones, as the job does.
             self.assertIsNone(ts_adapter_unavailable_reason('orca_neb', ess_settings=dict()))
             self.assertIsNotNone(ts_adapter_unavailable_reason('orca_neb', ess_settings={'gaussian': [server]}))
         with patch('arc.job.adapters.ts.availability.global_ess_settings', {'gaussian': [server]}):
@@ -159,8 +157,8 @@ class TestTSAdapterAvailability(unittest.TestCase):
     def test_every_mapped_adapter_is_classified(self):
         """Test that every TS adapter ARC may pick is engine-free, has an engine check, or is unregistered.
 
-        A new engine-backed adapter added to the family map (or to the default ``ts_adapters``)
-        without an entry in ENGINE_REASON_FUNCTIONS or SERVER_REASON_FUNCTIONS would otherwise skip the check and fail open.
+        Each adapter in the family map or the default ``ts_adapters`` is in ENGINE_REASON_FUNCTIONS,
+        SERVER_REASON_FUNCTIONS, or the engine-free adapters, or is not a registered adapter.
         """
         adapters = {adapter.lower() for adapters in ts_adapters_by_rmg_family.values() for adapter in adapters}
         adapters |= {adapter.lower() for adapter in settings['ts_adapters']}
