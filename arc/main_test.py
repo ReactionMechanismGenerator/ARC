@@ -1180,7 +1180,7 @@ class TestProjectInfoAfterAFailedIrcCheck(unittest.TestCase):
         return sched
 
     def test_save_project_info_file_reports_a_species_without_output_as_failed(self):
-        """Test that a species or TS without an output entry is reported as failed, rather than raising"""
+        """Test that a species or TS without an output entry is reported as failed"""
         arc0 = self.make_arc()
         arc0.output = {'TS1': {'convergence': True}}
         rxn = ARCReaction(r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
@@ -1198,7 +1198,7 @@ class TestProjectInfoAfterAFailedIrcCheck(unittest.TestCase):
         self.assertIs(info['reactions'][0]['success'], False)
 
     def test_a_failed_irc_check_still_reaches_processing(self):
-        """Test that a run whose IRC check failed writes its project info and reaches processing (issue #1067)"""
+        """Test that a run whose IRC check failed writes its project info and reaches processing"""
         arc0 = self.make_arc()
         with patch('arc.main.Scheduler', side_effect=self.run_a_failed_irc_check), \
                 patch('arc.main.process_arc_project', side_effect=stop_at_processing):

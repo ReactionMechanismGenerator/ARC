@@ -5469,7 +5469,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertTrue(sched.output[ts_label]['job_types']['rotors'])
 
     def test_deleting_a_ts_irc_species_keeps_the_shared_species_list(self):
-        """Test that cleaning up a TS's IRC species edits the species list ARC shares, rather than replacing it"""
+        """Test that cleaning up a TS's IRC species edits the species list ARC shares in place"""
         ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
         H       1.81402049    1.03819414    0.00000000
         H       0.00000000    0.00000000    0.00000000
@@ -5477,7 +5477,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         spc = ARCSpecies(label='NH3', smiles='N', compute_thermo=False)
         ts_spc = ARCSpecies(label='TS_shared', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0, compute_thermo=False)
         species = [spc, ts_spc]
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_shared_list')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_shared_species_list_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='test_shared_species_list', ess_settings=self.ess_settings,
                           species_list=species,
@@ -7374,12 +7374,12 @@ class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):
             self.assertTrue(original.compute_thermo)
 
     def test_duplicate_reaction_labels_are_rejected_before_adaptive_relabel(self):
-        """Test that duplicate reactions are refused even though the adaptive relabel would make their labels distinct"""
+        """Test that duplicate reactions are refused when the adaptive relabel makes their labels distinct"""
         species = [ARCSpecies(label=label, smiles=smiles, thermo_at_own_level=True)
                    for label, smiles in [('CH4', 'C'), ('OH', '[OH]'), ('CH3', '[CH3]'), ('H2O', 'O')]]
         rxn_1 = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=species[:2], p_species=species[2:])
         rxn_2 = ARCReaction(label='CH4 + OH <=> CH3 + H2O', r_species=species[:2], p_species=species[2:])
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'adaptive_duplicate_labels_delete')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_adaptive_duplicate_labels_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         with self.assertRaises(InputError) as cm:
             Scheduler(project='adaptive_duplicate_labels',

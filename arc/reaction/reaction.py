@@ -1363,8 +1363,7 @@ def remove_dup_species(species_list: list[ARCSpecies]) -> list[ARCSpecies]:
 def check_unique_reaction_labels(reactions: list[ARCReaction]) -> None:
     """
     Check that no two reactions share a label.
-    Arkane identifies a reaction by its label, so a reaction sharing a label with another one
-    silently gets the other reaction's rate coefficient.
+    Arkane identifies a reaction by its label.
 
     Args:
         reactions (list[ARCReaction]): The reactions to check.
