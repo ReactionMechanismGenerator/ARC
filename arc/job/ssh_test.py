@@ -78,6 +78,28 @@ class TestSSH(unittest.TestCase):
         status1 = ssh.check_job_status_in_stdout(job_id=4000, stdout=stdout_2, server='local')
         self.assertEqual(status1, 'done')
 
+    def test_the_job_id_is_matched_on_the_job_id_field_only(self):
+        """A job ID that appears inside another column of another job's status line does not read as that job"""
+        stdout = ['zeus-m:\n',
+                  "                                                            Req'd  Req'd   Elap\n",
+                  'Job ID          Username Queue    Jobname    SessID NDS TSK Memory Time  S Time\n',
+                  '--------------- -------- -------- ---------- ------ --- --- ------ ----- - -----\n',
+                  '7654321.zeus-m  user     alon_q   a12345     384521   1   8    8gb 24:00 R 01:10\n']
+        with patch.dict(ssh.servers, {'pbs_server': {'cluster_soft': 'PBS'}}):
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id=8452, stdout=stdout, server='pbs_server'), 'done')
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id=765432, stdout=stdout, server='pbs_server'),
+                             'done')
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id=7654321, stdout=stdout, server='pbs_server'),
+                             'running')
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id='7654321', stdout=stdout, server='pbs_server'),
+                             'running')
+        slurm = ['             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)\n',
+                 '             14428     short   a14428     user  R       0:01      1 node01\n']
+        with patch.dict(ssh.servers, {'slurm_server': {'cluster_soft': 'Slurm'}}):
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id=1442, stdout=slurm, server='slurm_server'), 'done')
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id=14428, stdout=slurm, server='slurm_server'),
+                             'running')
+
 
 
 class TestSSHConnectHardening(unittest.TestCase):

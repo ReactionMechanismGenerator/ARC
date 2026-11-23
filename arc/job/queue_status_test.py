@@ -9,7 +9,6 @@ import unittest
 from unittest.mock import patch
 
 from arc.exceptions import QueueQueryError, ServerError
-import arc.job.queue_status as queue_status
 from arc.job.queue_status import (QUEUE_OUTAGE_LIMIT_HRS, QUEUE_QUERY_RETRY_DELAYS, QUEUE_QUERY_TIMEOUT,
                                   configured_queue_query_timeout, queue_outage_limit, queue_query_failed,
                                   queue_query_timeout, run_queue_query)
@@ -95,8 +94,9 @@ class TestQueueQueryTimeout(unittest.TestCase):
     """
 
     def setUp(self):
-        queue_status._resolved_query_timeout.clear()
-        self.addCleanup(queue_status._resolved_query_timeout.clear)
+        resolved = patch.dict('arc.job.queue_status._resolved_query_timeout', clear=True)
+        resolved.start()
+        self.addCleanup(resolved.stop)
 
     def test_the_default_is_two_minutes(self):
         self.assertEqual(QUEUE_QUERY_TIMEOUT, 120)
@@ -117,13 +117,13 @@ class TestQueueQueryTimeout(unittest.TestCase):
             self.assertIn('queue_query_timeout', logged.output[0])
 
     def test_the_configured_timeout_is_read_from_the_settings(self):
-        with patch.dict(queue_status.settings, {'queue_query_timeout': 30}):
+        with patch.dict('arc.job.queue_status.settings', {'queue_query_timeout': 30}):
             self.assertEqual(configured_queue_query_timeout(), 30)
-        with patch.dict(queue_status.settings, {'queue_query_timeout': None}):
+        with patch.dict('arc.job.queue_status.settings', {'queue_query_timeout': None}):
             self.assertEqual(configured_queue_query_timeout(), QUEUE_QUERY_TIMEOUT)
 
     def test_a_malformed_configured_timeout_warns_once(self):
-        with patch.dict(queue_status.settings, {'queue_query_timeout': 'soon'}):
+        with patch.dict('arc.job.queue_status.settings', {'queue_query_timeout': 'soon'}):
             with self.assertLogs('arc', level='WARNING') as logged:
                 for _ in range(3):
                     self.assertEqual(configured_queue_query_timeout(), QUEUE_QUERY_TIMEOUT)

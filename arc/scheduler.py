@@ -162,10 +162,8 @@ UNREADABLE_QUEUE_ERROR = 'The queue on {server} was unreadable past the outage l
                          'jobs {job_names} were left running for a restart; '
 HELD_BACK_JOB_ERROR = 'Job {job_name} was not submitted to {server}, whose queue was unreadable; '
 SUBMIT, DEFER, REFUSE = 'submit', 'defer', 'refuse'
-SHELL_ASSIGNMENT = r'[A-Za-z_]\w*=(?:"[^"]*"|\'[^\']*\'|[^\s;|&\'"])*'
-SHELL_ASSIGNMENTS = rf'(?:export\s+)?{SHELL_ASSIGNMENT}(?:\s+{SHELL_ASSIGNMENT})*'
-HIDDEN_FAILURE_PATTERNS = (('a pipe', r'(?<!\|)\|(?!\|)'), ('an OR-list (||)', r'\|\|'),
-                           ('a ";"', rf'^(?!(?:\s*{SHELL_ASSIGNMENTS}\s*;)+[^;]*$).*;'))
+QUEUE_COMMANDS = ('squeue', 'qstat', 'condor_q')
+SHELL_OPERATOR_CHARS = ';|&'
 
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
@@ -188,6 +186,47 @@ the orbitals a ``ROTATE`` would mix needs their index and irreducible representa
 that adapter has neither at the point it writes its input nor a ``nosym`` geometry to make
 unambiguous.
 """
+
+
+def hidden_failure_forms(command: str) -> list[str]:
+    """
+    Find the shell forms in a queue status command that can make it exit with another command's status.
+
+    The command is split into words and operators as the shell splits it, so a ``|`` or ``;`` inside a quoted
+    argument is part of that argument. A pipe (``|`` or ``|&``) and an OR-list (``||``) are found anywhere. A ``;``
+    is found when the last command of the ``;`` list does not run a queue command (``QUEUE_COMMANDS``, by base name,
+    after any variable assignments), as in ``qstat -u $USER; true``. A list that ends with the queue command, as in
+    ``module load slurm; squeue -u $USER``, exits with its status and is not found. A word that is only operator
+    characters in quotes, e.g., ``';'``, reads as an operator. A command that cannot be split, e.g., one with an
+    unbalanced quote, has no forms.
+
+    Args:
+        command (str): The queue status command.
+
+    Returns:
+        list[str]: The forms found, of ``'a pipe'``, ``'an OR-list (||)'`` and ``'a ";"'``, in that order.
+    """
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=SHELL_OPERATOR_CHARS)
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return list()
+    operators = [token for token in tokens if not token.strip(SHELL_OPERATOR_CHARS)]
+    forms = list()
+    if any(operator in ('|', '|&') for operator in operators):
+        forms.append('a pipe')
+    if '||' in operators:
+        forms.append('an OR-list (||)')
+    while tokens and tokens[-1] == ';':
+        tokens.pop()
+    if ';' in tokens:
+        last = tokens[len(tokens) - tokens[::-1].index(';'):]
+        words = list(itertools.takewhile(lambda token: token not in operators, last))
+        words = list(itertools.dropwhile(lambda word: re.match(r'[A-Za-z_]\w*=', word), words))
+        if not words or os.path.basename(words[0]) not in QUEUE_COMMANDS:
+            forms.append('a ";"')
+    return forms
 
 
 def exception_summary_line(exception: BaseException, max_length: int = 300) -> str:
@@ -529,6 +568,7 @@ class Scheduler(object):
         self.queue_query_failures = dict()
         self.job_query_failures = dict()
         self.job_query_failed = False
+        self.unlisted_job_running = False
         self.answered_queue_servers = set()
         self.queue_clock = time.monotonic
         self.queue_outage_limit = queue_outage_limit(settings.get('queue_outage_limit_hrs'))
@@ -876,13 +916,14 @@ class Scheduler(object):
           the queue command failed, which ARC reads as an empty queue.
         - an OR-list (``||``), e.g., ``squeue -u $USER || true`` or ``... || echo``: it exits 0 when the queue command
           failed.
-        - a ``;`` after anything but variable assignments, e.g., ``qstat -u $USER; true`` or ``cd dir; squeue``: the
-          command exits with the status of the last command in the list. A ``;`` that only ends assignments, as in
-          ``export SGE_ROOT=/opt/sge; qstat -u $USER``, leaves the queue command last and is not warned about.
+        - a ``;`` list whose last command is not the queue command, e.g., ``qstat -u $USER; true``: the list exits
+          with the status of its last command. A list that ends with the queue command, as in
+          ``export SGE_ROOT=/opt/sge; qstat -u $USER`` or ``module load slurm; squeue -u $USER``, is not warned about.
 
-        The check matches these characters in the command string and does not parse shell. It does not catch a
-        failure hidden elsewhere: in a wrapper script, a shell function or alias, a command substitution, a newline,
-        or an ``exit 0``. An ``&&``-list is not warned about, since it exits non-zero once the queue command fails.
+        The check splits the command into words and operators as the shell does (see ``hidden_failure_forms()``), so
+        a ``|`` or ``;`` inside a quoted argument is not warned about. It does not catch a failure hidden elsewhere:
+        in a wrapper script, a shell function or alias, a command substitution, a newline, or an ``exit 0``. An
+        ``&&``-list is not warned about, since it exits non-zero once the queue command fails.
         """
         servers = list(self.servers)
         for server_list in self.ess_settings.values():
@@ -892,7 +933,7 @@ class Scheduler(object):
         for server in servers:
             cluster_soft = settings['servers'].get(server, dict()).get('cluster_soft')
             command = settings['check_status_command'].get(cluster_soft) or ''
-            forms = [form for form, pattern in HIDDEN_FAILURE_PATTERNS if re.search(pattern, command)]
+            forms = hidden_failure_forms(command)
             if forms:
                 logger.warning(f'The check_status_command of server {server} contains {" and ".join(forms)}: '
                                f'{command}\n'
@@ -901,8 +942,8 @@ class Scheduler(object):
                                f'so finished jobs stay running until queue_outage_limit_hrs and are then stranded. '
                                f'A pipe into tail or awk, "|| true", "|| echo" or "; true" exits 0 when the queue '
                                f'command fails, which reads as an empty queue, so ARC ends every job it tracks '
-                               f'there. Use a bare queue command, preceded only by variable assignments '
-                               f'such as "export SGE_ROOT=/opt/sge;".')
+                               f'there. Use a bare queue command, or a ";" list that ends with it, such as '
+                               f'"export SGE_ROOT=/opt/sge; qstat -u $USER".')
 
     def has_pending_pipe_work(self, label: str) -> bool:
         """
@@ -1019,6 +1060,7 @@ class Scheduler(object):
                 or self._pending_pipe_irc or self._pending_pipe_conf_sp:
             self.timer = True
             self.job_query_failed = False
+            self.unlisted_job_running = False
             self.strand_unreadable_queue_jobs()
             self.submit_unsubmitted_jobs()
             for label in self.unique_species_labels:
@@ -1251,7 +1293,7 @@ class Scheduler(object):
             # newly-ready work has been discovered and before the loop sleeps.
             self.flush_pending_pipe_batches()
 
-            should_sleep = (self.timer or self.job_query_failed) \
+            should_sleep = (self.timer or self.job_query_failed or self.unlisted_job_running) \
                 and (self.running_jobs or self.active_pipes or self.unsubmitted_jobs)
             if should_sleep:
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
@@ -1585,6 +1627,9 @@ class Scheduler(object):
         one, so a download that failed leaves an empty file behind that ``os.path.isfile`` cannot
         tell from a real one, and adopting it would hand every subsequent job an unreadable guess.
 
+        A job the bulk queue query did not list, but whose own status query answers ``running``, stays running, and
+        the main loop sleeps after this pass as though no job ended.
+
         Args:
             job (JobAdapter): The job object.
             label (str): The species label.
@@ -1600,6 +1645,7 @@ class Scheduler(object):
                     return False
                 self.clear_job_query_failure(job)
                 if job.job_status[0] == 'running':
+                    self.unlisted_job_running = True
                     return False
             except IOError:
                 if job.job_type not in ['orbitals', 'stability']:
@@ -5258,9 +5304,10 @@ class Scheduler(object):
         Check job status on a specific server or on all active servers, get a list of relevant running job IDs.
 
         A server whose queue cannot be read reports the queue jobs ARC tracks there as still running, so none of
-        them is ended on a failed query, and it is not queried again for ``QUEUE_QUERY_COOLDOWN`` seconds. The
-        outage is timed from its first failure, and warned about at most every ``QUEUE_OUTAGE_WARNING_INTERVAL``
-        seconds. A server past the outage limit is not queried at all (see ``strand_unreadable_queue_jobs()``).
+        them is ended on a failed query, and it is not queried again for ``QUEUE_QUERY_COOLDOWN`` seconds after the
+        failed query round ends. The outage is timed from the start of its first failed round, and warned about at
+        most every ``QUEUE_OUTAGE_WARNING_INTERVAL`` seconds. A server past the outage limit is not queried at all
+        (see ``strand_unreadable_queue_jobs()``).
 
         A check of all servers skips a server where ARC tracks no queue job, since no job of its can end. A check of a
         specific server (the job limit check before a submission) queries it anyway. A check of all servers also lists
@@ -5308,19 +5355,19 @@ class Scheduler(object):
                                         f'{MISSING_COMMAND_EXIT_STATUS}): {e.output}\nCheck '
                                         f'check_status_command[{cluster_soft!r}] in your settings: '
                                         f'{settings["check_status_command"].get(cluster_soft)}')
-                failure = failure or outage_record(now)
-                failure.update(last_attempt=now, output=e.output, exit_status=e.exit_status)
+                failure, ended = failure or outage_record(now), self.queue_clock()
+                failure.update(last_attempt=ended, output=e.output, exit_status=e.exit_status)
                 self.queue_query_failures[server] = failure
                 tracked = tracked_queue_job_ids(self.job_dict, self.running_jobs, server)
-                elapsed, left = now - failure['since'], max(self.queue_outage_limit - (now - failure['since']), 0)
+                elapsed, left = ended - failure['since'], max(self.queue_outage_limit - (ended - failure['since']), 0)
                 message = (f'Could not read the job queue on {server} for {format_duration(elapsed)} '
                            f'(exit status {e.exit_status}: {e.output}). ARC keeps the {len(tracked)} jobs it tracks '
                            f'there as running (and puts off new submissions there if max_simultaneous_jobs is set); '
                            f'it stops polling {server} in '
                            f'{format_duration(left)} (queue_outage_limit_hrs).')
-                if failure['last_warning'] is None or now - failure['last_warning'] >= QUEUE_OUTAGE_WARNING_INTERVAL:
+                if failure['last_warning'] is None or ended - failure['last_warning'] >= QUEUE_OUTAGE_WARNING_INTERVAL:
                     logger.warning(message)
-                    failure['last_warning'] = now
+                    failure['last_warning'] = ended
                 else:
                     logger.debug(message)
                 self.server_job_ids.extend(tracked)
@@ -5340,9 +5387,8 @@ class Scheduler(object):
 
         The per-job outage record of a server (``job_query_failures``) holds the IDs of the jobs whose status query
         failed there and, per job, the time of its last failed query. While that time is within the cooldown, the
-        job is not queried again. A server past the outage limit is left out, and so is a job ARC no longer tracks.
-        The main loop matches job IDs without their server, so an ID that a tracked queue job on another server also
-        holds is left out too: that job may have ended, and the ID must not hide it. The job in cooldown is then
+        job is not queried again. A server past the outage limit is left out, and so is a job ARC no longer tracks. An
+        ID that a tracked queue job on another server also holds is left out too, so the job in cooldown is then
         queried as usual.
 
         Returns:
@@ -5545,10 +5591,9 @@ class Scheduler(object):
         """
         Resolve the per-job query failures of the jobs a good bulk answer lists as running.
 
-        A job the bulk query lists is not queried on its own, so its earlier per-job failure would never clear and
-        would strand the server later. The bulk answer settles its status, so its ID leaves the server's per-job
-        outage record, as does the ID of a failing job ARC no longer tracks (e.g., a cancelled one). The record
-        goes once no failing job is left in it.
+        The ID of each job the server's bulk answer lists leaves the server's per-job outage record, as does the ID
+        of a failing job ARC no longer tracks (e.g., a cancelled one). The record goes once no failing job is left
+        in it.
 
         Args:
             server (str): The server name.
@@ -6671,7 +6716,8 @@ class Scheduler(object):
         While the server's queue answers and is full, ARC waits for a slot, as before. While the queue cannot be
         read the count is unknown, as it holds only the jobs ARC tracks there, so ARC does not wait: the job is put
         off and the main loop goes on. Once the queue has been unreadable past the outage limit, the job is held
-        back for a restart.
+        back for a restart. A job put off or held back leaves ``server_job_ids`` as the check found it, with no
+        query of the other servers.
 
         Args:
             server (str): The server name.
@@ -6683,12 +6729,13 @@ class Scheduler(object):
         if server is not None and server in self.unreadable_queue_servers:
             return REFUSE
         if server is not None and 'max_simultaneous_jobs' in servers_dict[server]:
+            pass_job_ids = list(self.server_job_ids)
             continue_lopping = True
             while continue_lopping:
                 self.get_server_job_ids(specific_server=server)
                 failure = self.queue_query_failures.get(server)
                 if failure is not None:
-                    self.get_server_job_ids()
+                    self.server_job_ids = pass_job_ids
                     return REFUSE if self.queue_clock() - failure['since'] >= self.queue_outage_limit else DEFER
                 if len(self.server_job_ids) >= servers_dict[server]['max_simultaneous_jobs']:
                     time.sleep(90)

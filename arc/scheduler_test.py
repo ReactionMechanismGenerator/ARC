@@ -6961,8 +6961,10 @@ class TestJobLimitWhenTheQueueCannotBeRead(unittest.TestCase):
     """The tracked-jobs fallback undercounts the user's queue, so it must not open the job limit."""
 
     def test_submission_is_put_off_without_waiting_while_the_queue_cannot_be_read(self):
-        sched = SimpleNamespace(queue_query_failures=dict(), server_job_ids=list(), unreadable_queue_servers=dict(),
-                                queue_clock=time.monotonic, queue_outage_limit=4 * 3600)
+        """A put-off job leaves the pass's job IDs as they were, and queries no other server to restore them."""
+        sched = SimpleNamespace(queue_query_failures=dict(), server_job_ids=['21', '22'],
+                                unreadable_queue_servers=dict(), queue_clock=time.monotonic,
+                                queue_outage_limit=4 * 3600)
         polls = list()
 
         def get_server_job_ids(specific_server=None):
@@ -6973,7 +6975,8 @@ class TestJobLimitWhenTheQueueCannotBeRead(unittest.TestCase):
         with patch.dict('arc.scheduler.servers_dict', {'zeus': {'max_simultaneous_jobs': 10}}), \
                 patch('time.sleep', side_effect=AssertionError('waited for an unreadable queue')):
             self.assertEqual(Scheduler.check_max_simultaneous_jobs_limit(sched, 'zeus'), DEFER)
-        self.assertEqual(polls, ['zeus', None])
+        self.assertEqual(polls, ['zeus'])
+        self.assertEqual(sched.server_job_ids, ['21', '22'])
 
     def test_a_full_queue_that_answers_is_waited_for(self):
         sched = SimpleNamespace(queue_query_failures=dict(), server_job_ids=list(), unreadable_queue_servers=dict(),
@@ -7155,7 +7158,7 @@ H       1.27889520   -0.81548721   -0.22940984"""
                               ('qstat -u $USER || true', 'an OR-list (||)'),
                               ('squeue -u $USER || echo', 'an OR-list (||)'),
                               ('qstat -u $USER; true', 'a ";"'),
-                              ('cd /tmp; squeue -u $USER', 'a ";"'),
+                              ('cd /tmp; squeue -u $USER; true', 'a ";"'),
                               ('qstat -u $USER | grep queue_outage || true', 'a pipe and an OR-list (||)'),
                               ('qstat -u $USER', None),
                               ('cd /tmp && squeue -u $USER', None)):
@@ -7172,19 +7175,28 @@ H       1.27889520   -0.81548721   -0.22940984"""
                 self.assertIn('exits non-zero on an empty queue', warned[0])
                 self.assertIn('exits 0 when the queue command fails', warned[0])
 
-    def test_a_semicolon_after_variable_assignments_only_is_not_warned_about(self):
+    def test_a_semicolon_list_that_ends_with_the_queue_command_is_not_warned_about(self):
         """
-        A ``;`` that only ends variable assignments leaves the queue command last, as in ARC's default OGE command.
-
-        A ``;`` followed by another command after the queue command, or preceded by a command that is not an
-        assignment, is still warned about.
+        A ``;`` list whose last command is the queue command exits with the queue command's status, so it is not
+        warned about, whatever runs before it. A ``|`` or ``;`` inside quotes is part of an argument, not a pipe or a
+        list. A list that ends with another command, a pipe, and an OR-list are still warned about.
         """
         for command, warns in ((settings['check_status_command']['OGE'], False),
                                ('export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER', False),
                                ('SGE_ROOT=/opt/sge; export SGE_CELL="default"; qstat -u $USER', False),
+                               ('source /etc/profile; squeue -u $USER', False),
+                               ('module load slurm; squeue -u $USER', False),
+                               ('. /opt/pbs/etc/pbs.sh; /opt/pbs/bin/qstat -u $USER', False),
+                               ('cd dir; squeue', False),
+                               ("squeue -u $USER -o '%i|%t'", False),
+                               ("squeue -u $USER -h -o '%i;%t'", False),
+                               (settings['check_status_command']['HTCondor'], False),
                                ('export SGE_ROOT=/opt/sge; qstat -u $USER; true', True),
                                ('qstat -u $USER; true', True),
-                               ('cd dir; squeue', True)):
+                               ('module load slurm; squeue -u $USER; true', True),
+                               ('squeue -u $USER || true', True),
+                               ('squeue -u $USER || echo', True),
+                               ("squeue -u $USER -o '%i|%t' | tail -n +2", True)):
             with self.subTest(command=command), \
                     patch.dict(settings['check_status_command'], {'OGE': command}), \
                     self.assertLogs('arc', level='WARNING') as logs:
@@ -7889,6 +7901,97 @@ H       1.27889520   -0.81548721   -0.22940984"""
         self.assertEqual(sleeps, [30] * 40)
         self.assertEqual(query.call_count, 20)
         self.assertEqual(sched.running_jobs['methylamine'], [job.job_name])
+
+    def test_the_main_loop_sleeps_while_a_job_the_bulk_query_omits_answers_running(self):
+        """
+        Over 40 main-loop passes with the bulk query not listing a job and the job's own status query answering
+        ``running``, every pass sleeps 30 s, so the server is not queried back to back.
+        """
+        sched = self._scheduler()
+        job = self._running(sched)
+        self.server.answer = list()
+        passes, sleeps = list(), list()
+
+        def strand():
+            passes.append(self.now)
+            if len(passes) > 40:
+                raise _StopLoop
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            self.now += seconds
+
+        def running():
+            job.job_status[0] = 'running'
+            return True
+        with patch.object(job, 'determine_job_status', side_effect=running) as query, \
+                patch.object(sched, 'strand_unreadable_queue_jobs', side_effect=strand), \
+                patch.object(Scheduler, 'run_conformer_jobs'), patch.object(Scheduler, 'spawn_ts_jobs'), \
+                patch.object(Scheduler, 'get_completed_incore_jobs'), \
+                patch.object(Scheduler, 'generate_final_ts_guess_report'), \
+                patch('time.sleep', side_effect=sleep), self.assertRaises(_StopLoop):
+            sched.schedule_jobs()
+        self.assertEqual(sleeps, [30] * 40)
+        self.assertEqual(query.call_count, 40)
+        self.assertEqual(sched.running_jobs['methylamine'], [job.job_name])
+
+    def test_a_failed_round_longer_than_the_cooldown_is_not_repeated_at_once(self):
+        """
+        The cooldown runs from the end of a failed query round, so a round that takes longer than the cooldown is
+        followed by one round per cooldown, not by a new round on every call.
+        """
+        sched = self._scheduler()
+        self._running(sched)
+        failing = self.server.check_running_jobs_ids
+
+        def slow_failure():
+            self.now += QUEUE_QUERY_COOLDOWN + 5.0
+            return failing()
+        with patch.object(self.server, 'check_running_jobs_ids', side_effect=slow_failure), \
+                self.assertLogs('arc', level='WARNING'):
+            for _ in range(6):
+                sched.get_server_job_ids()
+            self.assertEqual(self.server.queries, 1)
+            self.assertEqual(sched.queue_query_failures['server1']['last_attempt'], self.now)
+            self.now += QUEUE_QUERY_COOLDOWN
+            for _ in range(6):
+                sched.get_server_job_ids()
+        self.assertEqual(self.server.queries, 2)
+        self.assertEqual(sched.queue_query_failures['server1']['since'], 0.0)
+
+    def test_put_off_jobs_cost_no_bulk_query_on_a_healthy_server(self):
+        """
+        Over 40 passes with one job running on a healthy server2 and jobs put off on an unreadable, capped server1,
+        server2 is queried as often as with no put-off job: once per pass.
+        """
+        queries = dict()
+        for put_off in (0, 3):
+            sched = self._scheduler()
+            job = self._running(sched)
+            job.server = 'server2'
+            sched.servers = ['server1', 'server2']
+            server1, server2 = _QueueOutageServer(), _QueueOutageServer()
+            server2.answer = [str(job.job_id)]
+            for i in range(put_off):
+                deferred = SimpleNamespace(job_name=f'opt_put_off_{i}', server='server1', remote_project_path=None,
+                                           restarted=True)
+                sched.deferred_jobs.setdefault('methylamine', list()).append(deferred.job_name)
+                sched.unsubmitted_jobs.append(('methylamine', deferred))
+            capped = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+            with patch('arc.scheduler.borrow_ssh_client',
+                       side_effect=lambda server: {'server1': server1, 'server2': server2}[server]), \
+                    patch.dict('arc.scheduler.servers_dict', {'server1': capped}), \
+                    patch('time.sleep', side_effect=AssertionError('waited for an unreadable queue')), \
+                    self.assertLogs('arc', level='WARNING') if put_off else self.assertNoLogs('arc', level='ERROR'):
+                for i in range(40):
+                    self.now = i * 30.0
+                    sched.strand_unreadable_queue_jobs()
+                    sched.submit_unsubmitted_jobs()
+                    sched.get_server_job_ids()
+                    self.assertIn(str(job.job_id), sched.server_job_ids)
+            self.assertEqual(len(sched.unsubmitted_jobs), put_off)
+            queries[put_off] = server2.queries
+        self.assertEqual(queries, {0: 40, 3: 40})
 
     def test_a_server_with_no_tracked_jobs_is_not_queried(self):
         """A check of all servers skips a server where ARC tracks no queue job, so its outage never starts."""

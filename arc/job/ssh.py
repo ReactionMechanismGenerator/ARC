@@ -1214,6 +1214,9 @@ def check_job_status_in_stdout(job_id: int,
     """
     A helper function for checking job status.
 
+    The job is found by its job ID field, the first field of a status line, with any ``.<suffix>`` dropped (e.g.,
+    ``7654321.zeus-m`` on PBS or ``5231.0`` on HTCondor). An ID that appears in another column does not match.
+
     Args:
         job_id (int): the job ID recognized by the server.
         stdout (list | str): The output of a queue status check.
@@ -1225,7 +1228,8 @@ def check_job_status_in_stdout(job_id: int,
     if not isinstance(stdout, list):
         stdout = stdout.splitlines()
     for status_line in stdout:
-        if str(job_id) in status_line:
+        fields = status_line.split()
+        if fields and fields[0].split('.')[0] == str(job_id):
             break
     else:
         return 'done'
