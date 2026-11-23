@@ -9,12 +9,12 @@ import importlib.util
 import os
 import shutil
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file
 import arc.job.adapters.ts.gcn_ts as ts_gcn
-from arc.job.adapters.ts.gcn_ts import GCNAdapter
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess
@@ -72,8 +72,7 @@ class TestGCNAdapter(unittest.TestCase):
         Tests run in parallel (pytest-xdist), so each test gets its own directory.
         """
         self.maxDiff = None
-        self.output_dir = os.path.join(ARC_TESTING_PATH, f'GCN_{self._testMethodName}')
-        os.makedirs(self.output_dir, exist_ok=True)
+        self.output_dir = tempfile.mkdtemp(prefix='arc_test_gcn_')
         self.addCleanup(shutil.rmtree, self.output_dir, ignore_errors=True)
         self.reactant_path = os.path.join(self.output_dir, 'react.sdf')
         self.product_path = os.path.join(self.output_dir, 'prod.sdf')
@@ -85,16 +84,16 @@ class TestGCNAdapter(unittest.TestCase):
         return ARCReaction(r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
                            p_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C')])
 
-    def get_adapter(self, rxn: ARCReaction) -> GCNAdapter:
+    def get_adapter(self, rxn: ARCReaction) -> ts_gcn.GCNAdapter:
         """Get a GCNAdapter instance for testing."""
         project_dir = os.path.join(self.output_dir, 'project')
-        return GCNAdapter(job_type='tsg',
-                          reactions=[rxn],
-                          testing=True,
-                          project='test_GCNAdapter',
-                          project_directory=project_dir,
-                          dihedral_increment=1,
-                          )
+        return ts_gcn.GCNAdapter(job_type='tsg',
+                                 reactions=[rxn],
+                                 testing=True,
+                                 project='test_GCNAdapter',
+                                 project_directory=project_dir,
+                                 dihedral_increment=1,
+                                 )
 
     def test_gcn_available(self):
         """Test the gcn_available() function."""
@@ -238,8 +237,7 @@ class TestGCNScript(unittest.TestCase):
         A method that is run before each unit test in this class.
         """
         self.maxDiff = None
-        self.output_dir = os.path.join(ARC_TESTING_PATH, f'GCN_script_{self._testMethodName}')
-        os.makedirs(self.output_dir, exist_ok=True)
+        self.output_dir = tempfile.mkdtemp(prefix='arc_test_gcn_script_')
         self.addCleanup(shutil.rmtree, self.output_dir, ignore_errors=True)
         self.gcn_script = load_gcn_script()
 

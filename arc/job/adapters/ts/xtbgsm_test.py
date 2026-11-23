@@ -8,10 +8,10 @@ This module contains unit tests of the arc.job.adapters.ts.xtb_gsm module
 import os
 import shutil
 import tarfile
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from arc.common import ARC_TESTING_PATH
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.ts.xtb_gsm import xTBGSMAdapter
 from arc.level import Level
@@ -31,16 +31,12 @@ class TestxTBGSMAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        worker = os.environ.get('PYTEST_XDIST_WORKER', 'local')
-        for i in range(10):
-            cls.addClassCleanup(shutil.rmtree, os.path.join(ARC_TESTING_PATH,
-                                                           f'test_xTBAGSMdapter_{worker}_{i}'),
-                                ignore_errors=True)
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_xtb_gsm_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
         cls.job_1 = xTBGSMAdapter(project='test_1',
                                   job_type='tsg',
                                   server='local',
-                                  project_directory=os.path.join(ARC_TESTING_PATH,
-                                                                 f'test_xTBAGSMdapter_{worker}_1'),
+                                  project_directory=os.path.join(cls.scratch_dir, 'test_xTBAGSMdapter_1'),
                                   reactions=[ARCReaction(r_species=[ARCSpecies(label='HNO', smiles='N=O')],
                                                          p_species=[ARCSpecies(label='HON', smiles='[N-]=[OH+]')])],
                                   )
@@ -53,8 +49,7 @@ class TestxTBGSMAdapter(unittest.TestCase):
                                                                 'add_node_tol': 0.5,
                                                                 'final_opt': 10,
                                                                 'nnodes': 9}}),
-                                  project_directory=os.path.join(ARC_TESTING_PATH,
-                                                                 f'test_xTBAGSMdapter_{worker}_2'),
+                                  project_directory=os.path.join(cls.scratch_dir, 'test_xTBAGSMdapter_2'),
                                   reactions=[ARCReaction(r_species=[ARCSpecies(label='HNO', smiles='N=O')],
                                                          p_species=[ARCSpecies(label='HON', smiles='[N-]=[OH+]')])],
                                   )

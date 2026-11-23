@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import os
 import shutil
-import tempfile
+import time
 from types import SimpleNamespace
 
 
@@ -24,13 +24,16 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
+from arc.job.pipe.pipe_coordinator import PipeCoordinator
+from arc.job.pipe.pipe_run import build_rotor_scan_1d_tasks
+from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_state
 from arc.level import Level, get_freq_level_for_composite_method
 from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
                            MIXED_SCF_REFERENCE_MESSAGE, SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
                            SYMMETRY_BREAKING_ADAPTERS, UNREACHABLE_REFERENCE_MESSAGE,
-                           Scheduler, SchedulerError, species_has_freq, species_has_geo, species_has_sp,
-                           species_has_sp_and_freq, tsg_method_matches_adapter)
+                           Scheduler, SchedulerError, exception_summary_line, species_has_freq, species_has_geo,
+                           species_has_sp, species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
@@ -85,14 +88,34 @@ class TestScheduler(unittest.TestCase):
     """
     Contains unit tests for the Scheduler class
     """
-    @classmethod
-    def setUpClass(cls):
+    def make_project_directory(self, name):
         """
-        A method that is run before all unit tests in this class.
+        Create a unique project directory for the running test and schedule its removal.
+
+        Args:
+            name (str): A descriptive name, used as the directory name prefix.
+
+        Returns:
+            str: The path of the created directory.
         """
-        cls.maxDiff = None
-        cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
-        cls.project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3')
+        projects_path = os.path.join(ARC_PATH, 'Projects')
+        os.makedirs(projects_path, exist_ok=True)
+        project_directory = tempfile.mkdtemp(prefix=f'{name}_', dir=projects_path)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        return project_directory
+
+    def setUp(self):
+        """
+        A method that is run before each unit test in this class.
+
+        The fixtures below are rebuilt per test: many of these tests mutate the schedulers,
+        the species and the jobs they are handed, so a fixture shared across tests (or across
+        xdist workers, each of which runs its own class-level setup) would make the outcome of
+        one test depend on which other tests ran before it.
+        """
+        self.maxDiff = None
+        self.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
+        self.project_directory = self.make_project_directory('arc_project_for_testing_delete_after_usage3')
         xyz1 = str_to_xyz("""C      -0.57422867   -0.01669771    0.01229213
 N       0.82084044    0.08279104   -0.37769346
 H      -1.05737005   -0.84067772   -0.52007494
@@ -100,90 +123,90 @@ H      -1.10211468    0.90879867   -0.23383011
 H      -0.66133128   -0.19490562    1.08785111
 H       0.88047852    0.26966160   -1.37780789
 H       1.27889520   -0.81548721   -0.22940984""")
-        cls.spc1 = ARCSpecies(label='methylamine', smiles='CN', xyz=xyz1)
-        cls.spc2 = ARCSpecies(label='C2H6', smiles='CC')
+        self.spc1 = ARCSpecies(label='methylamine', smiles='CN', xyz=xyz1)
+        self.spc2 = ARCSpecies(label='C2H6', smiles='CC')
         xyz3 = """C       1.11424367   -0.01231165   -0.11493630
 C      -0.07257945   -0.17830906   -0.16010022
 O      -1.38500471   -0.36381519   -0.20928090
 H       2.16904830    0.12689206   -0.07152274
 H      -1.82570782    0.42754384   -0.56130718"""
-        cls.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz3)
-        cls.job1 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
-                               species=[cls.spc1], xyz=xyz1, job_type='conf_opt',
-                               conformer=0, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
-                               project_directory=cls.project_directory, job_num=101)
-        cls.job2 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
-                               species=[cls.spc1], xyz=xyz1, job_type='conf_opt',
-                               conformer=1, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
-                               project_directory=cls.project_directory, job_num=102)
-        cls.job3 = job_factory(job_adapter='qchem', project='project_test', ess_settings=cls.ess_settings,
-                               species=[cls.spc2], job_type='freq',
-                               level=Level(repr={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'}),
-                               project_directory=cls.project_directory, job_num=103)
-        cls.job4 = job_factory(job_adapter='gaussian', project='project_test_4', ess_settings=cls.ess_settings,
-                               species=[cls.spc1], xyz=xyz1, job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0,
-                               level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
-                               project_directory=cls.project_directory, job_num=104)
-        cls.job_types1 = {'conf_opt': True,
-                          'conf_sp': False,
-                          'opt': True,
-                          'fine': False,
-                          'freq': True,
-                          'sp': True,
-                          'rotors': False,
-                          'orbitals': False,
-                          'lennard_jones': False,
-                          }
-        cls.job_types2 = {'conf_opt': True,
-                          'conf_sp': False,
-                          'opt': True,
-                          'fine': False,
-                          'freq': True,
-                          'sp': True,
-                          'rotors': True,
-                          }
-        cls.sched1 = Scheduler(project='project_test_1', ess_settings=cls.ess_settings,
-                               species_list=[cls.spc1, cls.spc2, cls.spc3],
-                               composite_method=None,
-                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
-                               opt_level=Level(repr=default_levels_of_theory['opt']),
-                               freq_level=Level(repr=default_levels_of_theory['freq']),
-                               sp_level=Level(repr=default_levels_of_theory['sp']),
-                               scan_level=Level(repr=default_levels_of_theory['scan']),
-                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
-                               project_directory=cls.project_directory,
-                               testing=True,
-                               job_types=cls.job_types1,
-                               orbitals_level=default_levels_of_theory['orbitals'],
-                               adaptive_levels=None,
-                               )
-        cls.sched2 = Scheduler(project='project_test_2', ess_settings=cls.ess_settings,
-                               species_list=[cls.spc1, cls.spc2, cls.spc3],
-                               composite_method=None,
-                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
-                               opt_level=Level(repr=default_levels_of_theory['opt']),
-                               freq_level=Level(repr=default_levels_of_theory['freq']),
-                               sp_level=Level(repr=default_levels_of_theory['sp']),
-                               scan_level=Level(repr=default_levels_of_theory['scan']),
-                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
-                               project_directory=cls.project_directory,
-                               testing=True,
-                               job_types=cls.job_types1,
-                               orbitals_level=default_levels_of_theory['orbitals'],
-                               adaptive_levels=None,
-                               )
-        cls.sched3 = Scheduler(project='project_test_4', ess_settings=cls.ess_settings,
-                               species_list=[cls.spc1],
-                               composite_method=Level(repr='CBS-QB3'),
-                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
-                               opt_level=Level(repr=get_freq_level_for_composite_method('cbs-qb3')),
-                               freq_level=Level(repr=get_freq_level_for_composite_method('cbs-qb3')),
-                               scan_level=Level(repr=default_levels_of_theory['scan_for_composite']),
-                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
-                               project_directory=cls.project_directory,
-                               testing=True,
-                               job_types=cls.job_types2,
-                               )
+        self.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz3)
+        self.job1 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
+                                species=[self.spc1], xyz=xyz1, job_type='conf_opt',
+                                conformer=0, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
+                                project_directory=self.project_directory, job_num=101)
+        self.job2 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=self.ess_settings,
+                                species=[self.spc1], xyz=xyz1, job_type='conf_opt',
+                                conformer=1, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
+                                project_directory=self.project_directory, job_num=102)
+        self.job3 = job_factory(job_adapter='qchem', project='project_test', ess_settings=self.ess_settings,
+                                species=[self.spc2], job_type='freq',
+                                level=Level(repr={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'}),
+                                project_directory=self.project_directory, job_num=103)
+        self.job4 = job_factory(job_adapter='gaussian', project='project_test_4', ess_settings=self.ess_settings,
+                                species=[self.spc1], xyz=xyz1, job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0,
+                                level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
+                                project_directory=self.project_directory, job_num=104)
+        self.job_types1 = {'conf_opt': True,
+                           'conf_sp': False,
+                           'opt': True,
+                           'fine': False,
+                           'freq': True,
+                           'sp': True,
+                           'rotors': False,
+                           'orbitals': False,
+                           'lennard_jones': False,
+                           }
+        self.job_types2 = {'conf_opt': True,
+                           'conf_sp': False,
+                           'opt': True,
+                           'fine': False,
+                           'freq': True,
+                           'sp': True,
+                           'rotors': True,
+                           }
+        self.sched1 = Scheduler(project='project_test_1', ess_settings=self.ess_settings,
+                                species_list=[self.spc1, self.spc2, self.spc3],
+                                composite_method=None,
+                                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                                opt_level=Level(repr=default_levels_of_theory['opt']),
+                                freq_level=Level(repr=default_levels_of_theory['freq']),
+                                sp_level=Level(repr=default_levels_of_theory['sp']),
+                                scan_level=Level(repr=default_levels_of_theory['scan']),
+                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                                project_directory=self.project_directory,
+                                testing=True,
+                                job_types=self.job_types1,
+                                orbitals_level=default_levels_of_theory['orbitals'],
+                                adaptive_levels=None,
+                                )
+        self.sched2 = Scheduler(project='project_test_2', ess_settings=self.ess_settings,
+                                species_list=[self.spc1, self.spc2, self.spc3],
+                                composite_method=None,
+                                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                                opt_level=Level(repr=default_levels_of_theory['opt']),
+                                freq_level=Level(repr=default_levels_of_theory['freq']),
+                                sp_level=Level(repr=default_levels_of_theory['sp']),
+                                scan_level=Level(repr=default_levels_of_theory['scan']),
+                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                                project_directory=self.project_directory,
+                                testing=True,
+                                job_types=self.job_types1,
+                                orbitals_level=default_levels_of_theory['orbitals'],
+                                adaptive_levels=None,
+                                )
+        self.sched3 = Scheduler(project='project_test_4', ess_settings=self.ess_settings,
+                                species_list=[self.spc1],
+                                composite_method=Level(repr='CBS-QB3'),
+                                conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                                opt_level=Level(repr=get_freq_level_for_composite_method('cbs-qb3')),
+                                freq_level=Level(repr=get_freq_level_for_composite_method('cbs-qb3')),
+                                scan_level=Level(repr=default_levels_of_theory['scan_for_composite']),
+                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                                project_directory=self.project_directory,
+                                testing=True,
+                                job_types=self.job_types2,
+                                )
 
     def test_conformers(self):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
@@ -319,6 +342,295 @@ H       1.27889520   -0.81548721   -0.22940984"""
 
         # And the restored names are the live '{job_type}_{i}' format, not the fossil 'conformer{i}'.
         self.assertEqual(sched.running_jobs[label], ['conf_opt_0', 'conf_sp_0'])
+
+    _METHYLAMINE_XYZ = """C      -0.57422867   -0.01669771    0.01229213
+N       0.82084044    0.08279104   -0.37769346
+H      -1.05737005   -0.84067772   -0.52007494
+H      -1.10211468    0.90879867   -0.23383011
+H      -0.66133128   -0.19490562    1.08785111
+H       0.88047852    0.26966160   -1.37780789
+H       1.27889520   -0.81548721   -0.22940984"""
+
+    def _species_with_rotor(self, label, success=None, scan_path=None, invalidation_reason='', irc_label=None):
+        """Build a species with a single (CN) torsion in its rotors_dict."""
+        spc = ARCSpecies(label=label, smiles='CN', xyz=self._METHYLAMINE_XYZ, irc_label=irc_label)
+        spc.final_xyz = spc.get_xyz()  # a restarted species whose optimization has finished
+        spc.number_of_rotors = 1
+        spc.rotors_dict = {0: {'pivots': [1, 2], 'top': [3, 4, 5], 'scan': [3, 1, 2, 6], 'torsion': [2, 0, 1, 5],
+                               'success': success, 'scan_path': scan_path,
+                               'invalidation_reason': invalidation_reason, 'directed_scan_type': 'ess'}}
+        return spc
+
+    def _stage_rotor_scan_pipe_task(self, sched, label, rotor_index, status=TaskState.PENDING, lease_expired=False):
+        """
+        Stage a 1D rotor scan pipe task on disk as a previous session's pipe run would have left it.
+
+        This goes through the real ``PipeCoordinator`` and ``pipe_state`` writers, so the directory layout
+        the restart loop looks for is the one the pipe system actually writes rather than a replica of it:
+        a change to either side of that convention turns these tests red instead of silently detaching the
+        restart guard from the pipe runs it exists to find.
+
+        Args:
+            sched (Scheduler): A scheduler supplying the project directory and the species to stage under.
+            label (str): The species label.
+            rotor_index (int): The rotor's index in the species' ``rotors_dict``.
+            status (TaskState, optional): The state to walk the staged task to.
+            lease_expired (bool, optional): Whether the worker's lease on the task has already expired.
+
+        Returns:
+            str: The ``pipe_root`` the task was staged under.
+        """
+        tasks = build_rotor_scan_1d_tasks(sched.species_dict[label], label, [rotor_index],
+                                          {'method': 'wb97xd', 'basis': 'def2tzvp'}, 'gaussian', 14000)
+        pipe_root = PipeCoordinator(sched)._compute_pipe_root(f'{label}_scan_1d', tasks)
+        initialize_task(pipe_root, tasks[0])
+        now = time.time()
+        claimed_at, lease_expires_at = (now - 7200, now - 3600) if lease_expired else (now, now + 3600)
+        lifecycle = [(TaskState.CLAIMED, {'claimed_by': 'worker-0', 'claim_token': 'token',
+                                          'claimed_at': claimed_at, 'lease_expires_at': lease_expires_at}),
+                     (TaskState.RUNNING, {'started_at': now}),
+                     (TaskState.COMPLETED, {'ended_at': now})]
+        if status != TaskState.PENDING:
+            statuses = [task_state for task_state, _ in lifecycle]
+            if status not in statuses:
+                raise ValueError(f'Cannot stage a task in {status}, only PENDING or one of {statuses}')
+            for next_status, fields in lifecycle[:statuses.index(status) + 1]:
+                update_task_state(pipe_root, tasks[0].task_id, next_status, **fields)
+        return pipe_root
+
+    def _restart_scheduler(self, species_list, converged=(), stage=None, **patched):
+        """
+        Construct a non-testing Scheduler from a restart dict in which every species already has a geometry
+        (so the restart loop in ``__init__`` runs), with ``schedule_jobs`` and the given methods patched out.
+
+        Args:
+            species_list (list): The species to restart.
+            converged (tuple, optional): Labels whose saved ``output[label]['convergence']`` is ``True``,
+                                         i.e. species the previous session had already finished.
+            stage (callable, optional): Called with a ``testing=True`` Scheduler before the restarted one is
+                                        constructed, to lay down on-disk state that a previous session would
+                                        have left in the project directory (e.g. a staged pipe run).
+            **patched: Scheduler method names to patch out.
+
+        Returns:
+            dict: The mocks, keyed by method name (``schedule_jobs`` included).
+        """
+        job_types = dict(self.job_types1, rotors=True)
+        kwargs = dict(project='project_test_restart_loop', ess_settings=self.ess_settings,
+                      species_list=species_list, composite_method=None,
+                      conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                      opt_level=Level(repr=default_levels_of_theory['opt']),
+                      freq_level=Level(repr=default_levels_of_theory['freq']),
+                      sp_level=Level(repr=default_levels_of_theory['sp']),
+                      scan_level=Level(repr=default_levels_of_theory['scan']),
+                      ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                      project_directory=tempfile.mkdtemp(prefix='arc_test_restart_loop_'),
+                      job_types=job_types, orbitals_level=default_levels_of_theory['orbitals'],
+                      adaptive_levels=None)
+        self.addCleanup(shutil.rmtree, kwargs['project_directory'], ignore_errors=True)
+        testing_sched = Scheduler(testing=True, **kwargs)
+        output = testing_sched.output
+        for spc_output in output.values():
+            spc_output['paths'].update({'geo': 'geo.out', 'freq': 'freq.out', 'sp': 'sp.out'})
+        for label in converged:
+            output[label]['convergence'] = True
+        if stage is not None:
+            stage(testing_sched)
+        mocks = dict()
+        with patch.object(Scheduler, 'schedule_jobs') as schedule_jobs:
+            mocks['schedule_jobs'] = schedule_jobs
+            patchers = {name: patch.object(Scheduler, name) for name in patched}
+            for name, patcher in patchers.items():
+                mocks[name] = patcher.start()
+                self.addCleanup(patcher.stop)
+            mocks['sched'] = Scheduler(testing=False, restart_dict={'output': output}, **kwargs)
+        return mocks
+
+    def test_restart_does_not_scan_irc_endpoint_rotors(self):
+        """IRC endpoint species, identified by irc_label, get no restart rotor scan"""
+        regular = self._species_with_rotor('regular', success=True, scan_path=__file__)
+        irc = self._species_with_rotor('regular_endpoint_1', success=False, irc_label='regular')
+        mocks = self._restart_scheduler([regular, irc], run_scan_jobs=None)
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_still_scans_a_ts_whose_irc_species_were_spawned(self):
+        """A TS's irc_label lists the IRC species it spawned; it does not make the TS an IRC endpoint"""
+        regular = self._species_with_rotor('regular', success=True, scan_path=__file__)
+        mocks = self._restart_scheduler([regular], run_scan_jobs=None)
+        ts = self._species_with_rotor('ts_a', success=None, scan_path=None, irc_label='IRC_ts_a_1 IRC_ts_a_2')
+        ts.is_ts = True
+        sched = mocks['sched']
+        sched.output['ts_a'] = {'paths': {'geo': 'geo.out'}}
+        self.assertTrue(sched.rotor_scans_pending_on_restart(ts))
+
+    def test_restart_still_scans_a_failed_regular_rotor(self):
+        """The IRC guard does not suppress the restart scan of an ordinary species whose rotor failed"""
+        regular = self._species_with_rotor('regular', success=False)
+        irc = self._species_with_rotor('regular_endpoint_1', success=False, irc_label='regular')
+        mocks = self._restart_scheduler([regular, irc], run_scan_jobs=None)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_scans_a_never_scanned_rotor(self):
+        """A rotor with no result and no scan_path (e.g., added by hand to restart.yml) is spawned on restart"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], run_scan_jobs=None)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_scans_a_never_scanned_rotor_of_a_converged_species(self):
+        """A never-scanned rotor is spawned even when the species was saved as converged"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], converged=('regular',), run_scan_jobs=None)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_does_not_rescan_a_failed_rotor_of_a_converged_species(self):
+        """A converged species is not re-scanned on every restart for a rotor whose scan already failed"""
+        regular = self._species_with_rotor('regular', success=False)
+        mocks = self._restart_scheduler([regular], converged=('regular',), run_scan_jobs=None)
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_does_not_rescan_a_scanned_or_invalidated_rotor(self):
+        """Rotors that already have a result, or are invalidated, are not spawned again on restart"""
+        done = self._species_with_rotor('done', success=True, scan_path=__file__)
+        invalidated = self._species_with_rotor('invalidated', success=False, invalidation_reason='not a torsion')
+        mocks = self._restart_scheduler([done, invalidated], run_scan_jobs=None)
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_does_not_duplicate_a_rotor_scan_running_in_a_pipe(self):
+        """A rotor a pipe worker holds under a live lease is not spawned again as a standalone ESS job"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 0, TaskState.RUNNING))
+        self.assertEqual(mocks['run_scan_jobs'].call_args_list, list())
+
+    def test_restart_scans_a_rotor_whose_pipe_worker_lease_expired(self):
+        """A RUNNING task whose worker lease expired (e.g., a walltime-killed worker) no longer blocks the scan"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 0, TaskState.RUNNING,
+                                                                 lease_expired=True))
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_scans_a_rotor_whose_pipe_task_is_still_pending(self):
+        """A PENDING task carries no lease, and no session reloads its pipe run, so it does not block the scan"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 0, TaskState.PENDING))
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_scans_a_rotor_whose_pipe_task_already_terminated(self):
+        """A terminated pipe task does not block the scan: nothing ingests its results after a restart"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 0, TaskState.COMPLETED))
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_scans_a_rotor_whose_pipe_task_state_is_unreadable(self):
+        """A pipe task state that cannot be read shows no live lease, so it does not block the scan"""
+        def stage(sched):
+            pipe_root = self._stage_rotor_scan_pipe_task(sched, 'regular', 0, TaskState.RUNNING)
+            with open(os.path.join(pipe_root, 'tasks', 'regular_scan_r0', 'state.json'), 'w') as f:
+                f.write('{"status": ')
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], run_scan_jobs=None, stage=stage)
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_pipe_guard_is_per_rotor_not_per_species(self):
+        """A pipe task staged for one rotor does not suppress the restart scan of the species' other rotor"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        regular.rotors_dict[1] = dict(regular.rotors_dict[0], pivots=[1, 3], torsion=[2, 0, 1, 6])
+        regular.number_of_rotors = 2
+        mocks = self._restart_scheduler(
+            [regular], run_scan_jobs=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 1, TaskState.RUNNING))
+        self.assertEqual([c.args for c in mocks['run_scan_jobs'].call_args_list], [('regular',)])
+
+    def test_restart_scans_only_the_rotor_no_pipe_still_owes(self):
+        """The rotor in flight in a pipe is not resubmitted when the species' other rotor triggers the spawn"""
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        regular.rotors_dict[1] = dict(regular.rotors_dict[0], pivots=[1, 3], torsion=[2, 0, 1, 6])
+        regular.number_of_rotors = 2
+        mocks = self._restart_scheduler(
+            [regular], run_job=None,
+            stage=lambda sched: self._stage_rotor_scan_pipe_task(sched, 'regular', 1, TaskState.RUNNING))
+        self.assertEqual([c.kwargs['rotor_index'] for c in mocks['run_job'].call_args_list], [0])
+
+    def test_restart_spawns_a_rotor_scan_before_the_pipe_planner_exists(self):
+        """
+        The restart loop in __init__ calls run_scan_jobs() before the pipe planner is constructed, so a restart
+        with a rotor to spawn used to die with AttributeError. Without a planner each rotor is scanned alone.
+        """
+        regular = self._species_with_rotor('regular', success=None, scan_path=None)
+        mocks = self._restart_scheduler([regular], run_job=None)
+        self.assertEqual(mocks['run_job'].call_count, 1)
+        self.assertEqual(mocks['run_job'].call_args.kwargs['job_type'], 'scan')
+        self.assertEqual(mocks['run_job'].call_args.kwargs['rotor_index'], 0)
+
+    def test_restore_running_jobs_skips_a_job_of_an_unknown_species(self):
+        """A restored job referencing a species label that is not in this project is skipped, not a KeyError"""
+        label = 'methylamine'
+        spc = ARCSpecies(label=label, smiles='CN', xyz=self._METHYLAMINE_XYZ)
+        project_directory = tempfile.mkdtemp(prefix='arc_test_restore_unknown_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_restore_unknown', ess_settings=self.ess_settings,
+                          species_list=[spc], composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory, testing=True,
+                          job_types=self.job_types1,
+                          orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+        opt_job = job_factory(job_adapter='gaussian', project='project_test_restore_unknown',
+                              ess_settings=self.ess_settings, species=[spc], xyz=self._METHYLAMINE_XYZ,
+                              job_type='opt', level=Level(repr={'method': 'wb97xd', 'basis': 'def2svp'}),
+                              project_directory=project_directory, job_num=903)
+        stale = dict(opt_job.as_dict(), job_name='tsg9', species_labels=['rxn_label_TS'])
+        sched.restart_dict = {'running_jobs': {label: [stale, opt_job.as_dict()],
+                                               'removed_species': [opt_job.as_dict()]}}
+        sched.running_jobs = dict()
+        sched.job_dict = dict()
+        sched.restore_running_jobs()
+        self.assertEqual(sched.running_jobs[label], [opt_job.job_name])
+        self.assertEqual(list(sched.job_dict[label]['opt'].keys()), [opt_job.job_name])
+        # No running_jobs key for a species that is not in the project; schedule_jobs() would never clear it.
+        self.assertNotIn('removed_species', sched.running_jobs)
+
+    def test_save_restart_dict_skips_untracked_conformer_jobs(self):
+        """A conf_opt/conf_sp/tsg name in running_jobs with no job_dict entry is skipped with a warning"""
+        label = 'methylamine'
+        spc = ARCSpecies(label=label, smiles='CN', xyz=self._METHYLAMINE_XYZ)
+        project_directory = tempfile.mkdtemp(prefix='arc_test_save_restart_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_save_restart', ess_settings=self.ess_settings,
+                          species_list=[spc], composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory, testing=True,
+                          job_types=self.job_types1,
+                          orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+        tracked = MagicMock()
+        tracked.as_dict.return_value = {'job_name': 'conf_opt_0'}
+        sched.job_dict[label] = {'conf_opt': {0: tracked}}
+        sched.running_jobs[label] = ['conf_opt_0', 'conf_opt_5', 'conf_sp_2', 'tsg3']
+        sched.restart_dict = dict()
+        sched.save_restart = True
+        with self.assertLogs('arc', level='WARNING') as logs:
+            sched.save_restart_dict()
+        self.assertEqual(sched.restart_dict['running_jobs'][label], [{'job_name': 'conf_opt_0'}])
+        self.assertEqual(len(logs.output), 3)
+        # The untracked names leave running_jobs too, so the next poll does not KeyError on them.
+        self.assertEqual(sched.running_jobs[label], ['conf_opt_0'])
+        sched.get_completed_incore_jobs()
 
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
@@ -2478,7 +2790,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                           'job_types': {'conf_opt': True, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
                             },
                   }
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage6')
+        project_directory = self.make_project_directory('arc_project_for_testing_delete_after_usage6')
         os.makedirs(os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry'), exist_ok=True)
         os.makedirs(os.path.join(project_directory, 'output', 'Species', 'iC3H7', 'geometry'), exist_ok=True)
         os.makedirs(os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry'), exist_ok=True)
@@ -2490,7 +2802,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                     dst=os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry', 'freq.out'))
         sched = Scheduler(project='test_rxn_e0_check',
                           ess_settings=self.ess_settings,
-                          project_directory=os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage6'),
+                          project_directory=project_directory,
                           rxn_list=[rxn],
                           species_list=rxn.r_species + rxn.p_species + [rxn.ts_species],
                           kinetics_adapter='arkane',
@@ -2507,9 +2819,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                             job_type='freq',
                             level=Level(repr='B3LYP/6-31G(d,p)'),
                             project='test_project',
-                            project_directory=os.path.join(ARC_PATH,
-                                                           'Projects',
-                                                           'arc_project_for_testing_delete_after_usage6'),
+                            project_directory=project_directory,
                             )
         job_1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out')
         check_ts(reaction=rxn, verbose=True, job=job_1, checks=['NMD'])
@@ -2517,10 +2827,8 @@ H      -0.38158795    1.01273118   -0.02607927""")),
 
     def test_save_e_elect(self):
         """Test the save_e_elect() method."""
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'save_e_elect')
+        project_directory = self.make_project_directory('save_e_elect')
         e_elect_summary_path = os.path.join(project_directory, 'output', 'e_elect_summary.yml')
-        if os.path.isfile(os.path.join(project_directory, 'output', 'e_elect_summary.yml')):
-            os.remove(os.path.join(project_directory, 'output', 'e_elect_summary.yml'))
         sched = Scheduler(project='test_save_e_elect',
                           ess_settings=self.ess_settings,
                           project_directory=project_directory,
@@ -2544,7 +2852,6 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                               sp_path=os.path.join(ARC_TESTING_PATH, 'sp', 'mehylamine_CCSD(T).out'))
         content = read_yaml_file(e_elect_summary_path)
         self.assertEqual(content, {'formaldehyde': -300621.95378630824, 'mehylamine': -251360.00924747565})
-        shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_species_has_geo_sp_freq(self):
         """Test the species_has_geo() / species_has_sp() / species_has_freq() functions."""
@@ -2738,6 +3045,49 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertIsNone(failed.energy)
         self.assertEqual(sched.output['TS_single']['paths']['gsm'], good.log_path)
         self.assertEqual(sched.output['TS_single']['paths']['neb'], '')
+
+    @patch('arc.scheduler.Scheduler.run_job')
+    def test_run_ts_conformer_jobs_drops_orphaned_conf_opt_running_jobs(self, mock_run_job):
+        """Respawning the TS conformers cancels the superseded conf_opt jobs and stops tracking them, piped or not."""
+        xyz_a = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        xyz_b = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       2.51402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        label = 'TS_respawn'
+        ts_spc = ARCSpecies(label=label, is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, xyz=xyz_a),
+                             TSGuess(index=1, method='heuristics', success=True, xyz=xyz_b)]
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_ts_respawn')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_ts_respawn', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        for piped_indices in [set(), {1}]:
+            with self.subTest(piped_indices=piped_indices):
+                sched.pipe_planner = MagicMock()
+                sched.pipe_planner.try_pipe_ts_opt.return_value = piped_indices
+                superseded = {0: MagicMock(), 1: MagicMock()}
+                sched.job_dict[label] = {'conf_opt': dict(superseded)}
+                sched.running_jobs[label] = ['conf_opt_0', 'conf_opt_1', 'freq_a7']
+                mock_run_job.reset_mock()
+                sched.run_ts_conformer_jobs(label=label)
+                self.assertEqual(sched.running_jobs[label], ['freq_a7'])
+                self.assertEqual(mock_run_job.call_count, 2 - len(piped_indices))
+                for job in superseded.values():
+                    job.delete.assert_called_once()
+                self.assertFalse(any(job in superseded.values()
+                                     for job in sched.job_dict[label].get('conf_opt', dict()).values()))
 
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
@@ -3747,17 +4097,6 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertEqual(sched.remote_project_paths, {'server1': 'runs/ARC_Projects/a_project',
                                                       'server2': 'runs/ARC_Projects/a_project'})
 
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
-        """
-        projects = ['arc_project_for_testing_delete_after_usage3', 'arc_project_for_testing_delete_after_usage6']
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
-
 
 class StubJob(object):
     """
@@ -3766,12 +4105,23 @@ class StubJob(object):
     AutoTST adapters do when their backend is not installed.
     """
 
-    def __init__(self, job_type: str, job_adapter: str | None, unavailable: bool = False):
+    def __init__(self,
+                 job_type: str,
+                 job_adapter: str | None,
+                 unavailable: bool = False,
+                 raises: BaseException | None = None,
+                 submitted_job_id: int | None = None,
+                 partial_guess: tuple | None = None,
+                 ):
         self.job_type = job_type
         self.job_adapter = job_adapter
         self.unavailable = unavailable
+        self.raises = raises
         self.job_name = f'{job_type}_{job_adapter}'
         self.job_id = None
+        self.submitted_job_id = submitted_job_id
+        self.partial_guess = partial_guess
+        self.execution_type = 'incore' if submitted_job_id is None else 'queue'
         self.server = None
 
     def as_dict(self) -> dict:
@@ -3779,9 +4129,16 @@ class StubJob(object):
         return {'job_type': self.job_type, 'job_adapter': self.job_adapter}
 
     def execute(self) -> None:
-        """Execute the job, raising if its external backend is not installed."""
+        """Execute the job, raising if its external backend is not installed or if it was told to raise."""
         if self.unavailable:
             raise DependencyError(f'The {self.job_adapter} python executable was not found.')
+        if self.submitted_job_id is not None:
+            self.job_id = self.submitted_job_id  # The job reached the queue before raising.
+        if self.partial_guess is not None:
+            ts_species, guess = self.partial_guess
+            ts_species.ts_guesses.append(guess)  # The adapter saved a guess before raising.
+        if self.raises is not None:
+            raise self.raises
 
 
 class TestSpawnTsJobsAdmission(unittest.TestCase):
@@ -3794,7 +4151,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.ess_settings = {'gaussian': ['server1']}
-        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 6)]
+        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 14)]
 
     @classmethod
     def tearDownClass(cls):
@@ -3847,6 +4204,9 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                               ts_adapters: list,
                               project: str,
                               unavailable_adapters: list | None = None,
+                              r_species: list | None = None,
+                              p_species: list | None = None,
+                              family: str | None = None,
                               ) -> tuple:
         """
         Set up a Scheduler holding HOCHO <=> H2O + CO (family 1,2_Insertion_CO) with optimized wells.
@@ -3862,18 +4222,23 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
             ts_adapters (list): The TS adapters to configure the Scheduler with.
             project (str): The project name, also the project directory name.
             unavailable_adapters (list, optional): Adapters whose job raises ``DependencyError``.
+            r_species (list, optional): Reactants to use instead of HOCHO, the family is then not checked.
+            p_species (list, optional): Products to use instead of H2O + CO.
+            family (str, optional): The family to preset on the reaction.
 
         Returns:
             tuple: The Scheduler, its ARCReaction, and the list accumulating the
                    (job type, adapter) pairs jobs were created for.
         """
         unavailable_adapters = unavailable_adapters or list()
-        r_species = [ARCSpecies(label='HOCHO', smiles='OC=O')]
-        p_species = [ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')]
+        hocho = r_species is None
+        r_species = r_species or [ARCSpecies(label='HOCHO', smiles='OC=O')]
+        p_species = p_species or [ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')]
         for spc in r_species + p_species:
             spc.final_xyz = spc.get_xyz()  # Marks the well as optimized, gating spawn_ts_jobs().
-        rxn = ARCReaction(r_species=r_species, p_species=p_species)
-        self.assertEqual(rxn.family, '1,2_Insertion_CO')
+        rxn = ARCReaction(r_species=r_species, p_species=p_species, family=family)
+        if hocho:
+            self.assertEqual(rxn.family, '1,2_Insertion_CO')
         sched = Scheduler(project=project,
                           ess_settings=self.ess_settings,
                           species_list=r_species + p_species,
@@ -3922,6 +4287,25 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         self.assertTrue(any('Not spawning any TS search job' in record.getMessage()
                             and rxn.family in record.getMessage() for record in captured.records))
         self.assertTrue(rxn.ts_species.tsg_spawned)  # Latched, hence the single chance to report this.
+
+    def test_spawn_ts_jobs_warns_about_a_pinned_identity_reaction_before_the_search(self):
+        """Test that an identity reaction pinned to a family is warned about before its first TS search job,
+        when no adapter reads its product dicts"""
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=['kinbot'],
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_13',
+                                                         r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                                                         p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')],
+                                                         family='intra_H_migration')
+        with patch('arc.reaction.reaction.logger') as reaction_logger:
+            reaction_logger.warning.side_effect = lambda message: spawned.append(('warning', message))
+            sched.spawn_ts_jobs()
+        events = [(kind, detail) for kind, detail in spawned if kind in ('warning', 'tsg')]
+        identity = [i for i, (kind, detail) in enumerate(events) if kind == 'warning' and 'identity reaction' in detail]
+        tsg = [i for i, (kind, detail) in enumerate(events) if kind == 'tsg']
+        self.assertEqual(len(identity), 1, events)
+        self.assertIn('The intra_H_migration family will be searched', events[identity[0]][1])
+        self.assertTrue(len(tsg), events)
+        self.assertLess(identity[0], tsg[0])
 
     def test_spawn_ts_jobs_warns_when_ts_adapters_is_empty(self):
         """Test that an empty ts_adapters list warns instead of raising."""
@@ -3981,6 +4365,192 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                             for record in captured.records))
         self.assertEqual(sched.running_jobs.get(rxn.ts_label, list()), list())
         self.assertEqual(sched.job_dict[rxn.ts_label].get('tsg', dict()), dict())
+
+    def test_spawn_ts_jobs_runs_the_cope_adapters_for_a_cope_rearrangement(self):
+        """Test that 3-methyl-1,5-hexadiene <=> 1,5-heptadiene, which also matches the [1,3] shift family,
+        gets the TS adapters of the [3,3] shift family it is assigned"""
+        configured = ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear']
+        sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=configured,
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_12',
+                                                         r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                                                         p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
+        self.assertEqual(rxn.family, '6_membered_central_C-C_shift')
+        sched.spawn_ts_jobs()
+        self.assertEqual([adapter for job_type, adapter in spawned if job_type == 'tsg'], configured)
+
+    def setup_two_reaction_scheduler(self,
+                                     project: str,
+                                     raising: dict,
+                                     submitted: dict | None = None,
+                                     partial_guesses: dict | None = None,
+                                     ts_adapters: list | None = None,
+                                     ) -> tuple:
+        """
+        Set up a Scheduler holding two 1,2_Insertion_CO reactions with optimized wells, whose TS adapter
+        jobs raise the exceptions given in ``raising``.
+
+        Args:
+            project (str): The project name, also the project directory name.
+            raising (dict): Keys are (adapter, reactant label) pairs, values are the exception that adapter's
+                            job raises from ``execute()`` for the reaction of that reactant.
+            submitted (dict, optional): Keys are (adapter, reactant label) pairs, values are the queue job ID
+                                        that adapter's job got before it raised.
+            partial_guesses (dict, optional): Keys are (adapter, reactant label) pairs, values are a TSGuess that
+                                              adapter's job saves on its reaction's TS species before it raises.
+            ts_adapters (list, optional): The TS adapters, ['kinbot', 'linear'] by default.
+
+        Returns:
+            tuple: The Scheduler, the HOCHO reaction, the CH3CHO reaction, and the list accumulating the
+                   (job type, adapter, reactant label) triples jobs were created for.
+        """
+        hocho, ch3cho = ARCSpecies(label='HOCHO', smiles='OC=O'), ARCSpecies(label='CH3CHO', smiles='CC=O')
+        h2o, ch4, co = (ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CH4', smiles='C'),
+                        ARCSpecies(label='CO', smiles='[C-]#[O+]'))
+        species = [hocho, ch3cho, h2o, ch4, co]
+        for spc in species:
+            spc.final_xyz = spc.get_xyz()  # Marks the well as optimized, gating spawn_ts_jobs().
+        rxn_1 = ARCReaction(r_species=[hocho], p_species=[h2o, co])
+        rxn_2 = ARCReaction(r_species=[ch3cho], p_species=[ch4, co])
+        rxn_1.index, rxn_2.index = 0, 1  # ARC assigns these; they make the two TS labels distinct.
+        self.assertEqual(rxn_1.family, '1,2_Insertion_CO')
+        self.assertEqual(rxn_2.family, '1,2_Insertion_CO')
+        sched = Scheduler(project=project,
+                          ess_settings=self.ess_settings,
+                          species_list=species,
+                          rxn_list=[rxn_1, rxn_2],
+                          project_directory=os.path.join(ARC_PATH, 'Projects', project),
+                          ts_adapters=ts_adapters or ['kinbot', 'linear'],
+                          job_types=initialize_job_types(),
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          testing=True,
+                          )
+        spawned = list()
+
+        def stub_job_factory(job_type, job_adapter=None, reactions=None, **kwargs):
+            """Record the job being created and hand back a StubJob that raises as instructed."""
+            reactant = reactions[0].r_species[0].label if reactions else None
+            spawned.append((job_type, job_adapter, reactant))
+            guess = (partial_guesses or dict()).get((job_adapter, reactant))
+            return StubJob(job_type=job_type, job_adapter=job_adapter, raises=raising.get((job_adapter, reactant)),
+                           submitted_job_id=(submitted or dict()).get((job_adapter, reactant)),
+                           partial_guess=(reactions[0].ts_species, guess) if guess is not None else None)
+
+        patcher = patch('arc.scheduler.job_factory', new=stub_job_factory)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return sched, rxn_1, rxn_2, spawned
+
+    def test_spawn_ts_jobs_isolates_an_adapter_exception_to_its_reaction(self):
+        """Test that an adapter raising for one reaction costs that adapter for that reaction, not the run.
+
+        Regression test for a real pilot failure: the heuristics adapter raised ``KeyError: None`` deep in
+        its nitrile hydrolysis geometry builder for HCN + H2O. Nothing caught it, so the whole ARC process
+        died for every reaction in the project, and a restart repeated it.
+        """
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_6',
+            raising={('kinbot', 'HOCHO'): KeyError(None)})
+        with self.assertLogs('arc', level='ERROR') as captured:
+            sched.spawn_ts_jobs()  # Must not raise.
+
+        self.assertEqual([(adapter, reactant) for job_type, adapter, reactant in spawned if job_type == 'tsg'],
+                         [('kinbot', 'HOCHO'), ('linear', 'HOCHO'), ('kinbot', 'CH3CHO'), ('linear', 'CH3CHO')])
+        # The other reaction's TS guess stage is untouched.
+        self.assertEqual(rxn_2.ts_species.ts_adapter_failures, list())
+        self.assertEqual(rxn_2.ts_species.unsuccessful_methods, list())
+        self.assertEqual(sched.running_jobs[rxn_2.ts_label], ['tsg0', 'tsg1'])
+        self.assertEqual([job.job_adapter for job in sched.job_dict[rxn_2.ts_label]['tsg'].values()],
+                         ['kinbot', 'linear'])
+        # The failing reaction recorded the failure, rolled the job back, and went on with 'linear'.
+        failure = {'adapter': 'kinbot', 'exception_type': 'KeyError', 'message': 'None'}
+        self.assertEqual(rxn_1.ts_species.ts_adapter_failures, [failure])
+        self.assertEqual(rxn_1.ts_species.unsuccessful_methods, ['kinbot'])
+        self.assertEqual(sched.running_jobs[rxn_1.ts_label], ['tsg0'])
+        self.assertEqual(sched.job_dict[rxn_1.ts_label]['tsg'][0].job_adapter, 'linear')
+        # The ERROR record names the reaction and the adapter, and carries the traceback.
+        errors = [record.getMessage() for record in captured.records if record.levelno == logging.ERROR]
+        self.assertTrue(any(rxn_1.label in message and "'kinbot'" in message and 'Traceback' in message
+                            and 'KeyError' in message for message in errors), errors)
+
+    def test_spawn_ts_jobs_keeps_tracking_a_submitted_job_that_raised(self):
+        """Test that a queue job that was submitted before its adapter raised is recorded but stays tracked."""
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_10',
+            raising={('kinbot', 'HOCHO'): RuntimeError('lost the connection after submitting')},
+            submitted={('kinbot', 'HOCHO'): 4321})
+        with self.assertLogs('arc', level='ERROR') as captured:
+            sched.spawn_ts_jobs()
+        self.assertTrue(any('its submitted job stays tracked' in record.getMessage() for record in captured.records))
+        self.assertEqual(rxn_1.ts_species.ts_adapter_failures,
+                         [{'adapter': 'kinbot', 'exception_type': 'RuntimeError',
+                           'message': 'lost the connection after submitting'}])
+        self.assertEqual(rxn_1.ts_species.unsuccessful_methods, list())
+        self.assertEqual(sched.running_jobs[rxn_1.ts_label], ['tsg0', 'tsg1'])
+        self.assertEqual(sched.job_dict[rxn_1.ts_label]['tsg'][0].job_id, 4321)
+        self.assertEqual(sched.job_dict[rxn_1.ts_label]['tsg'][1].job_adapter, 'linear')
+
+    def test_spawn_ts_jobs_starts_conformers_for_guesses_an_adapter_saved_before_raising(self):
+        """Test that a guess saved by an adapter that then raised is still optimized when no tracked job remains.
+
+        Rolling the failed job back removes the one job whose completion would have started the TS conformer
+        jobs, so without this the saved guess would never be tried.
+        """
+        guess = TSGuess(method='kinbot', xyz=ARCSpecies(label='HOCHO', smiles='OC=O').get_xyz(), index=0,
+                        success=True)
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_11',
+            raising={('kinbot', 'HOCHO'): RuntimeError('the reverse run failed')},
+            partial_guesses={('kinbot', 'HOCHO'): guess},
+            ts_adapters=['kinbot'])
+        with self.assertLogs('arc', level='ERROR'):
+            sched.spawn_ts_jobs()
+        self.assertEqual(rxn_1.ts_species.ts_guesses, [guess])
+        self.assertTrue(rxn_1.ts_species.ts_conf_spawned)
+        self.assertEqual(sched.running_jobs[rxn_1.ts_label], ['opt_gaussian'])
+        self.assertEqual(list(sched.job_dict[rxn_1.ts_label]['opt'].keys()), ['opt_gaussian'])
+
+    def test_spawn_ts_jobs_lets_keyboard_interrupt_and_system_exit_propagate(self):
+        """Test that the adapter exception boundary never swallows KeyboardInterrupt or SystemExit."""
+        for i, exception in ((7, KeyboardInterrupt()), (8, SystemExit(1))):
+            with self.subTest(exception=type(exception).__name__):
+                sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+                    project=f'arc_project_for_testing_delete_after_usage_tsg_{i}',
+                    raising={('kinbot', 'HOCHO'): exception})
+                with self.assertRaises(type(exception)):
+                    sched.spawn_ts_jobs()
+                self.assertEqual(rxn_1.ts_species.ts_adapter_failures, list())
+
+    def test_spawn_ts_jobs_reports_when_every_adapter_raised(self):
+        """Test that a reaction whose every adapter raised ends through the no-guess path and leaves no state."""
+        sched, rxn_1, rxn_2, spawned = self.setup_two_reaction_scheduler(
+            project='arc_project_for_testing_delete_after_usage_tsg_9',
+            raising={('kinbot', 'HOCHO'): ValueError('first line\nsecond line'),
+                     ('linear', 'HOCHO'): RuntimeError()})
+        with self.assertLogs('arc', level='WARNING') as captured:
+            sched.spawn_ts_jobs()
+        self.assertEqual(rxn_1.ts_species.ts_adapter_failures,
+                         [{'adapter': 'kinbot', 'exception_type': 'ValueError', 'message': 'first line'},
+                          {'adapter': 'linear', 'exception_type': 'RuntimeError', 'message': 'RuntimeError'}])
+        self.assertEqual(sched.running_jobs.get(rxn_1.ts_label, list()), list())
+        self.assertEqual(sched.job_dict[rxn_1.ts_label].get('tsg', dict()), dict())
+        self.assertTrue(any('Not spawning any TS search job' in record.getMessage()
+                            and "['kinbot', 'linear'] raised an exception" in record.getMessage()
+                            for record in captured.records))
+        self.assertEqual(sched.running_jobs[rxn_2.ts_label], ['tsg0', 'tsg1'])
+
+
+class TestExceptionSummaryLine(unittest.TestCase):
+    """Contains unit tests for exception_summary_line()."""
+
+    def test_exception_summary_line(self):
+        """The summary is the first non-empty message line, the type name for an empty message, and is capped."""
+        self.assertEqual(exception_summary_line(KeyError(None)), 'None')
+        self.assertEqual(exception_summary_line(ValueError('\n  first  \nsecond')), 'first')
+        self.assertEqual(exception_summary_line(RuntimeError()), 'RuntimeError')
+        line = exception_summary_line(ValueError('x' * 500), max_length=20)
+        self.assertEqual(line, 'x' * 17 + '...')
+        self.assertEqual(len(line), 20)
 
 
 class TestSchedulerAdaptiveReactionLevels(unittest.TestCase):

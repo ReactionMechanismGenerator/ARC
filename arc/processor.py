@@ -51,7 +51,7 @@ def _thermo_lib_has_isomorph(spc: 'ARCSpecies', species_list: list) -> bool:
     for existing in species_list:
         if existing.mol is not None \
                 and existing.multiplicity == spc.multiplicity \
-                and existing.mol.is_isomorphic(spc.mol):
+                and existing.mol.copy(deep=True).is_isomorphic(spc.mol.copy(deep=True)):
             return True
     return False
 
@@ -176,6 +176,15 @@ def process_arc_project(thermo_adapter: str,
                                       T_min=T_min[0],
                                       T_max=T_max[0],
                                       )
+        elif os.path.isdir(os.path.join(libraries_path, 'kinetics')):
+            # A previous session's library may hold rates this session discarded.
+            stale_lib_path = os.path.join(libraries_path, 'kinetics')
+            logger.warning('No rate coefficient survived; removing the kinetics library of a previous session.')
+            try:
+                shutil.rmtree(stale_lib_path)
+            except OSError as e:
+                logger.error(f'Could not remove the stale kinetics library at {stale_lib_path}: {e}\n'
+                             f'It may hold rate coefficients that this session discarded; do not use it.')
 
     # 2. Thermo
     if compute_thermo:

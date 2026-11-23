@@ -219,17 +219,27 @@ cdef class Graph(object):
     cpdef list get_all_edges(self):
         """
         Returns a list of all edges in the graph.
+
+        The order is deterministic: edges appear in the order their first incident vertex is
+        reached while iterating ``self.vertices``, and within a vertex in that vertex's own
+        ``edges`` insertion order. Callers may rely on it being a pure function of the graph.
+
+        The deduplication is unchanged; only the iteration order is now fixed.
         """
-        cdef set edge_set
+        cdef list edges
+        cdef set seen
         cdef Vertex vertex
         cdef Edge edge
 
-        edge_set = set()
+        edges = []
+        seen = set()
         for vertex in self.vertices:
             for edge in vertex.edges.values():
-                edge_set.add(edge)
+                if edge not in seen:
+                    seen.add(edge)
+                    edges.append(edge)
 
-        return list(edge_set)
+        return edges
 
     cpdef dict get_edges(self, Vertex vertex):
         """
@@ -439,16 +449,13 @@ cdef class Graph(object):
             for vertex2 in vertex1.edges: count += vertex2.connectivity2
             vertex1.connectivity3 = count
 
-    cpdef sort_vertices(self, bint save_order=False):
+    cpdef sort_vertices(self):
         """
         Sort the vertices in the graph. This can make certain operations, e.g.
         the isomorphism functions, much more efficient.
         """
         cdef Vertex vertex
         cdef int index
-
-        if save_order:
-            self.ordered_vertices = self.vertices[:]
 
         # Only need to conduct sort if there is an invalid sorting label on any vertex
         for vertex in self.vertices:
@@ -461,16 +468,6 @@ cdef class Graph(object):
         self.vertices.sort(key=get_vertex_connectivity_value)
         for index, vertex in enumerate(self.vertices):
             vertex.sorting_label = index
-
-    cpdef restore_vertex_order(self):
-        """
-        reorder the vertices to what they were before sorting
-        if you saved the order
-        """
-        if not self.ordered_vertices or len(self.vertices) != len(self.ordered_vertices):
-            raise ValueError('Number of vertices has changed cannot restore original vertex order')
-        else:
-            self.vertices = self.ordered_vertices
 
     cpdef bint is_isomorphic(self, Graph other, dict initial_map=None, bint generate_initial_map=False, bint save_order=False, bint strict=True) except -2:
         """

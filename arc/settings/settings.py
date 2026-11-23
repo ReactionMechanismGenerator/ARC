@@ -379,6 +379,8 @@ pipe_settings = {
     'enabled': False,          # Set to True to enable pipe mode (it is off by default, use it for large compute campaigns).
     'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
     'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
+    'max_queued_jobs': None,   # The per-user job limit of the queue, if you know it (e.g., 40). None lets ARC read it from
+                               # the scheduler and, whatever it reads, shrink a job array the queue refuses.
     'run_locally': False,      # Run the pipe array as a local pool of worker processes instead of
                                # submitting it to a queue. Use on a workstation with no queueing
                                # system (e.g., to parallelize local PySCF jobs).
@@ -386,7 +388,7 @@ pipe_settings = {
                                # budget (the 'local' server's 'cpus') and available memory. Set an
                                # int to override; note an explicit value wins outright and can exceed
                                # the CPU budget, so total cores may pass servers['local']['cpus'].
-    'max_attempts': 3,         # Retry budget per task before terminal failure.
+    'max_attempts': 3,         # Retry budget per task before terminal failure; also the submission attempts of a pipe job array.
     'lease_duration_hrs': 1,   # Worker lease duration in hours (default 1h).
     'env_setup': {},           # Engine-specific shell setup commands, e.g.,
                                # {'gaussian': 'source /usr/local/g09/setup.sh',

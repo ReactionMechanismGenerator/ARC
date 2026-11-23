@@ -84,71 +84,115 @@ cdef class VF2:
         the first is found.
         """
         cdef int call_depth, index1, index2
+        cdef list order1 = None, order2 = None, labels1 = None, labels2 = None
+        cdef bint matched_distinct = False, size_exit
 
-        if self.graph1 is not graph1:
-            self.graph1 = graph1
-            graph1.sort_vertices(save_order)
-
-        if self.graph2 is not graph2:
-            self.graph2 = graph2
-            graph2.sort_vertices(save_order)
-
-        self.initial_mapping = initial_mapping
-        self.subgraph = subgraph
-        self.find_all = find_all
-        self.strict = strict
-
-        # Clear previous result
-        self.is_match = False
-        self.mapping_list = []
-
-        # Some quick isomorphism checks based on graph sizes
-        if not self.subgraph and len(graph2.vertices) != len(graph1.vertices):
-            # The two graphs don't have the same number of vertices, so they
-            # cannot be isomorphic
-            return
-        elif not self.subgraph and len(graph2.vertices) == len(graph1.vertices) == 0:
-            # The two graphs don't have any vertices; this means they are
-            # trivially isomorphic
-            self.is_match = True
-            return
-        elif self.subgraph and len(graph2.vertices) > len(graph1.vertices):
-            # The second graph has more vertices than the first, so it cannot be
-            # a subgraph of the first
-            return
-
-        # Initialize call_depth with the size of the smallest graph
-        # Each recursive call to match() will decrease it by one;
-        # when the whole graph has been explored, it should reach 0
-        # It should never go below zero!
-        call_depth = len(graph2.vertices)
-
-        # Initialize mapping by clearing any previous mapping information
-        for vertex1 in graph1.vertices:
-            vertex1.mapping = None
-            vertex1.terminal = False
-        for vertex2 in graph2.vertices:
-            vertex2.mapping = None
-            vertex2.terminal = False
-        # Set the initial mapping if provided
-        if self.initial_mapping is not None:
-            for vertex1, vertex2 in self.initial_mapping.items():
-                self.add_to_mapping(vertex1, vertex2)
-            call_depth -= len(self.initial_mapping)
-
-        self.match(call_depth)
-
+        # Snapshot before any sort, so a self-comparison (graph1 is graph2) restores too
         if save_order:
-            graph1.restore_vertex_order()
-            graph2.restore_vertex_order()
+            order1 = graph1.vertices[:]
+            order2 = graph2.vertices[:]
+            labels1 = [vertex.sorting_label for vertex in order1]
+            labels2 = [vertex.sorting_label for vertex in order2]
 
-        # We're done, so clear the mappings to prevent downstream effects
-        for vertex1 in graph1.vertices:
-            vertex1.mapping = None
-            vertex1.terminal = False
-        for vertex2 in graph2.vertices:
-            vertex2.mapping = None
-            vertex2.terminal = False
+        if subgraph:
+            size_exit = len(graph2.vertices) > len(graph1.vertices)
+        else:
+            size_exit = len(graph2.vertices) != len(graph1.vertices) or not graph1.vertices
+
+        try:
+            # A save_order call that returns on size alone searches nothing, so it skips the sort
+            if not (save_order and size_exit):
+                if self.graph1 is not graph1:
+                    self.graph1 = graph1
+                    graph1.sort_vertices()
+
+                if self.graph2 is not graph2:
+                    self.graph2 = graph2
+                    graph2.sort_vertices()
+
+            self.initial_mapping = initial_mapping
+            self.subgraph = subgraph
+            self.find_all = find_all
+            self.strict = strict
+
+            # Clear previous result
+            self.is_match = False
+            self.mapping_list = []
+
+            # Some quick isomorphism checks based on graph sizes
+            if not self.subgraph and len(graph2.vertices) != len(graph1.vertices):
+                # The two graphs don't have the same number of vertices, so they
+                # cannot be isomorphic
+                return
+            elif not self.subgraph and len(graph2.vertices) == len(graph1.vertices) == 0:
+                # The two graphs don't have any vertices; this means they are
+                # trivially isomorphic
+                self.is_match = True
+                return
+            elif self.subgraph and len(graph2.vertices) > len(graph1.vertices):
+                # The second graph has more vertices than the first, so it cannot be
+                # a subgraph of the first
+                return
+
+            # Initialize call_depth with the size of the smallest graph
+            # Each recursive call to match() will decrease it by one;
+            # when the whole graph has been explored, it should reach 0
+            # It should never go below zero!
+            call_depth = len(graph2.vertices)
+
+            # Initialize mapping by clearing any previous mapping information
+            for vertex1 in graph1.vertices:
+                vertex1.mapping = None
+                vertex1.terminal = False
+            for vertex2 in graph2.vertices:
+                vertex2.mapping = None
+                vertex2.terminal = False
+            # Set the initial mapping if provided
+            if self.initial_mapping is not None:
+                for vertex1, vertex2 in self.initial_mapping.items():
+                    self.add_to_mapping(vertex1, vertex2)
+                call_depth -= len(self.initial_mapping)
+
+            self.match(call_depth)
+            matched_distinct = graph1 is not graph2
+        finally:
+            # In place: the caller may hold a reference to the list
+            if save_order:
+                graph1.vertices[:] = order1
+                graph2.vertices[:] = order2
+                if not matched_distinct:
+                    # No full match of two graphs: leave the labels unset again, so the next search sorts
+                    self.restore_labels(graph2, order2, labels2)
+                    self.restore_labels(graph1, order1, labels1)
+
+            # We're done, so clear the mappings to prevent downstream effects
+            for vertex1 in graph1.vertices:
+                vertex1.mapping = None
+                vertex1.terminal = False
+            for vertex2 in graph2.vertices:
+                vertex2.mapping = None
+                vertex2.terminal = False
+
+    cdef restore_labels(self, Graph graph, list order, list labels):
+        """
+        Set the sorting labels of `graph` back to `labels`, and drop `graph` from the cache if any changed.
+
+        Args:
+            graph (Graph): The graph, already back in its entry order.
+            order (list): The vertices in their entry order.
+            labels (list): The sorting labels of `order` at entry.
+        """
+        cdef Vertex vertex
+        cdef bint changed = False
+        for vertex, label in zip(order, labels):
+            if vertex.sorting_label != label:
+                vertex.sorting_label = label
+                changed = True
+        if changed:
+            if self.graph1 is graph:
+                self.graph1 = None
+            if self.graph2 is graph:
+                self.graph2 = None
 
     cdef bint match(self, int call_depth) except -2:
         """

@@ -25,6 +25,8 @@ cdef class VF2:
     
     cdef isomorphism(self, Graph graph1, Graph graph2, dict initial_mapping, bint subgraph, bint find_all, bint save_order=?, bint strict=?)
 
+    cdef restore_labels(self, Graph graph, list order, list labels)
+
     cdef bint match(self, int call_depth) except -2
         
     cpdef bint feasible(self, Vertex vertex1, Vertex vertex2) except -2

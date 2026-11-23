@@ -14,6 +14,8 @@ from __future__ import annotations
 import argparse
 import numpy as np
 import os
+import sys
+import traceback
 import yaml
 
 from autotst.reaction import Reaction
@@ -67,7 +69,13 @@ def main(reaction_label: str | None = None,
         autotst_reaction = Reaction(label=reaction_label)
         autotst_reaction.get_labeled_reaction()
     except Exception:
-        return None
+        # Report, then fail loudly. A bare `return None` here exits 0 and writes no output
+        # file, so ARC sees an adapter that ran cleanly and found nothing: a broken AutoTST
+        # setup (e.g. a missing RMG database) becomes indistinguishable from a chemical
+        # failure. The traceback goes to stderr, which run_in_conda_env captures and logs, and
+        # the non-zero exit makes the adapter's return-code warning fire.
+        traceback.print_exc()
+        sys.exit(1)
 
     ts_list = autotst_reaction.ts['forward'] + autotst_reaction.ts['reverse']
     results = list()

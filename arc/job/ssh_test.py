@@ -1133,5 +1133,90 @@ class TestDeleteCheckFilesOnServers(unittest.TestCase):
         self.assertEqual(attempts, [1])
 
 
+class TestSubmitJobCap(unittest.TestCase):
+    """A per-user job cap must be waited out, and the job that finally gets submitted must be tracked."""
+
+    def _client(self, cluster_soft):
+        """Build an SSHClient without connecting to anything."""
+        server = {'address': 'host.example.edu', 'un': 'user', 'key': '/dev/null', 'cluster_soft': cluster_soft}
+        with patch.object(ssh, 'servers', {'srv': server}):
+            return ssh.SSHClient('srv')
+
+    def _submit(self, cluster_soft, responses):
+        """Submit through a transport that returns ``responses`` in order."""
+        client = self._client(cluster_soft)
+        server = {'address': 'host.example.edu', 'un': 'user', 'key': '/dev/null', 'cluster_soft': cluster_soft}
+        with patch.object(ssh, 'servers', {'srv': server}), \
+                patch.object(ssh, 'submit_command', {cluster_soft: 'sub'}), \
+                patch.object(ssh, 'submit_filenames', {cluster_soft: 'submit.sh'}), \
+                patch.object(client, '_send_command_to_server', side_effect=responses) as mock_send, \
+                patch('time.sleep', return_value=None) as mock_sleep:
+            result = client.submit_job(remote_path='/remote/path')
+        return result, mock_send, mock_sleep
+
+    def test_slurm_cap_retries_until_accepted(self):
+        """The job ID of the attempt that finally succeeds is returned after waiting out the cap."""
+        cap = ([], ['sbatch: error: AssocMaxSubmitJobLimit'])
+        result, mock_send, mock_sleep = self._submit('slurm', [cap, cap, cap, (['Submitted batch job 4242'], [])])
+        self.assertEqual(result, ('running', '4242'))
+        self.assertEqual(mock_send.call_count, 4)
+        self.assertEqual(mock_sleep.call_count, 3)
+        mock_sleep.assert_called_with(ssh.SUBMISSION_CAP_WAIT_SECONDS)
+
+    def test_pbs_cap_retries_until_accepted(self):
+        """A PBS queue over the user's cap is waited out like Slurm's, not handed back as an errored job."""
+        cap = ([], ['qsub: Maximum number of jobs already in queue for user MSG=total number of jobs in '
+                    'queue exceeds the queue limit: user user@host, queue main_q'])
+        result, mock_send, mock_sleep = self._submit('pbs', [cap, cap, (['123456.pbs-server'], [])])
+        self.assertEqual(result, ('running', '123456'))
+        self.assertEqual(mock_send.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 2)
+        mock_sleep.assert_called_with(ssh.SUBMISSION_CAP_WAIT_SECONDS)
+
+    def test_slurm_accepted_submission_does_not_wait(self):
+        """An accepted submission neither sleeps nor retries."""
+        result, mock_send, mock_sleep = self._submit('slurm', [(['Submitted batch job 5'], [])])
+        self.assertEqual(result, ('running', '5'))
+        self.assertEqual(mock_send.call_count, 1)
+        mock_sleep.assert_not_called()
+
+
+class TestSubmitJob(unittest.TestCase):
+    """submit_job() turns a scheduler's reply into a (status, job ID) pair without killing the run."""
+
+    def make_client(self, cluster_soft: str) -> ssh.SSHClient:
+        """Build an SSHClient for a server running ``cluster_soft``."""
+        server = {'address': 'host.example.edu', 'un': 'user', 'key': '/dev/null', 'cluster_soft': cluster_soft}
+        with patch.object(ssh, 'servers', {'srv': server}):
+            client = ssh.SSHClient('srv')
+        patcher = patch.object(ssh, 'servers', {'srv': server})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return client
+
+    def submit(self, client: ssh.SSHClient, replies: list):
+        """Submit through ``client``, answering each command with the next (stdout, stderr) reply."""
+        send = MagicMock(side_effect=replies)
+        with patch.object(client, '_send_command_to_server', send), \
+                patch.object(ssh.time, 'sleep') as sleep:
+            result = client.submit_job(remote_path='/remote/job')
+        return result, send, sleep
+
+    def test_unparsable_pbs_reply_is_an_errored_job(self):
+        """An empty stdout from a known scheduler is a failed submission, not an unknown cluster."""
+        client = self.make_client('PBS')
+        (status, job_id), send, _ = self.submit(client, [([], ['qsub: Job rejected by all possible destinations'])])
+        self.assertEqual(status, 'errored')
+        self.assertFalse(job_id)
+        send.assert_called_once()
+
+    def test_unknown_cluster_software_still_raises(self):
+        """A cluster software ARC cannot parse at all is still reported as unrecognized."""
+        client = self.make_client('LSF')
+        with patch.dict(ssh.submit_command, {'LSF': 'bsub'}), patch.dict(ssh.submit_filenames, {'LSF': 'submit.sh'}):
+            with self.assertRaisesRegex(ValueError, 'Unrecognized cluster software: LSF'):
+                self.submit(client, [(['Job <1> is submitted'], [])])
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

@@ -1238,6 +1238,77 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.assertEqual(len(self.species['conformers']),
                          len(self.species['conformer_energies']))
 
+    def test_the_family_record_of_an_overlap_tie_is_valid(self):
+        """A rule choice from two tied families, with the caveat next to the rate, satisfies the schema"""
+        reaction = self.document['reactions'][0]
+        reaction.update({'family': '1,2_shiftC', 'family_source': 'rule', 'n_family_candidates': 2,
+                         'family_candidates': [{'family': '1,2_shiftC', 'dropped_by': None},
+                                               {'family': 'intra_H_migration', 'dropped_by': None}],
+                         'family_tie': {'families': ['1,2_shiftC', 'intra_H_migration'], 'searched': '1,2_shiftC',
+                                        'not_searched': ['intra_H_migration']}})
+        self.assert_valid(self.document)
+
+    def test_an_unknown_family_source_is_rejected(self):
+        """family_source has three values"""
+        self.document['reactions'][0]['family_source'] = 'guess'
+        self.assert_invalid(self.document, 'family_source')
+
+    def test_a_family_tie_without_the_families_not_searched_is_rejected(self):
+        """The caveat must name the channels whose rate was not computed"""
+        self.document['reactions'][0]['family_tie'] = {'families': ['a', 'b'], 'searched': 'a'}
+        self.assert_invalid(self.document, 'not_searched')
+
+    def test_the_identity_reaction_flag_is_valid_and_optional(self):
+        """identity_reaction is a boolean, and a document without it still validates"""
+        reaction = self.document['reactions'][0]
+        reaction['identity_reaction'] = True
+        self.assert_valid(self.document)
+        del reaction['identity_reaction']
+        self.assert_valid(self.document)
+        reaction['identity_reaction'] = 'yes'
+        self.assert_invalid(self.document, 'identity_reaction')
+
+
+class TestTsAdapterFailuresValidate(SchemaAssertionMixin, unittest.TestCase):
+    """A TS adapter that raised is recorded on its reaction, and a reaction without a TS species carries none."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.schema = load_output_schema()
+        cls.validator = Draft202012Validator(cls.schema)
+        cls.tmp_dir = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.tmp_dir, ignore_errors=True)
+        cls.failure = {'adapter': 'heuristics', 'exception_type': 'KeyError', 'message': 'None'}
+        failed = ARCReaction(r_species=[ARCSpecies(label='HOCHO', smiles='OC=O')],
+                             p_species=[ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')])
+        failed.ts_species = ARCSpecies(label='TS1', is_ts=True)
+        failed.ts_species.ts_adapter_failures = [dict(cls.failure)]
+        cls.document = build_output_document(project_directory=cls.tmp_dir,
+                                             species_dict={},
+                                             output_dict={},
+                                             reactions=[failed, make_reaction()])
+
+    def test_document_validates(self):
+        """The record passes the schema."""
+        self.assert_valid(self.document)
+
+    def test_the_failure_is_recorded_on_its_reaction_only(self):
+        """The failing reaction lists its record, the other an empty list."""
+        self.assertEqual(self.document['reactions'][0]['ts_adapter_failures'], [self.failure])
+        self.assertEqual(self.document['reactions'][1]['ts_adapter_failures'], [])
+
+    def test_a_failure_with_an_unknown_key_is_rejected(self):
+        """A record is closed: a stray key fails the schema."""
+        document = copy.deepcopy(self.document)
+        document['reactions'][0]['ts_adapter_failures'][0]['traceback'] = 'Traceback ...'
+        self.assert_invalid(document, 'traceback')
+
+    def test_a_failure_missing_its_exception_type_is_rejected(self):
+        """Every record names the exception type."""
+        document = copy.deepcopy(self.document)
+        del document['reactions'][0]['ts_adapter_failures'][0]['exception_type']
+        self.assert_invalid(document, 'exception_type')
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

@@ -7,14 +7,17 @@ This module contains unit tests for the arc.utils.scale module
 
 import os
 import shutil
+import tempfile
 import unittest
 
-from arc.common import almost_equal_coords_lists, ARC_PATH
+from arc.common import almost_equal_coords_lists
 from arc.level import Level
-from arc.utils.scale import (calculate_truhlar_scaling_factors,
+from arc.utils.scale import (MAX_RENAMED_LEVEL_LENGTH,
+                             calculate_truhlar_scaling_factors,
                              get_species_list,
                              rename_level,
                              summarize_results,
+                             valid_chars,
                              )
 
 
@@ -71,7 +74,8 @@ class TestScale(unittest.TestCase):
                             ]
         times = ['3', '5']
         overall_time = '8.5'
-        base_path = os.path.join(ARC_PATH, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
+        base_path = tempfile.mkdtemp(prefix='arc_test_scaling_factors_')
+        self.addCleanup(shutil.rmtree, base_path, ignore_errors=True)
 
         summarize_results(lambda_zpes=lambda_zpes,
                           levels=levels_of_theory,
@@ -120,14 +124,28 @@ class TestScale(unittest.TestCase):
         self.assertEqual(renamed_level2, 'wb97xd_6-311pGb2d,2pb')
         self.assertEqual(renamed_level3, 'wb97xd_aug-ccpZQZ,_solvation_method.._SMD,_solvent.._DMSO,_software.._gaussian')
 
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all directories created during these unit tests
-        """
-        path = os.path.join(ARC_PATH, 'Projects', 'scaling_factors_arc_testing_delete_after_usage')
-        shutil.rmtree(path, ignore_errors=True)
+    def test_rename_level_sanitizes_args(self):
+        """Test that rename_level() maps the characters an args-carrying level contributes onto valid ones."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='orca',
+                      args={'block': {'general': '%scf\nMaxIter 500\nend'}})
+        renamed_level = rename_level(str(level))
+        for char in renamed_level:
+            self.assertIn(char, valid_chars)
+        self.assertNotIn(os.sep, renamed_level)
+        self.assertEqual(rename_level("a/b, keyword args: {'general': '$(rm -rf ~)'}"),
+                         'a_b,_keyword_args..___general_..___brm_-rf__b__')
+
+    def test_rename_level_bounds_long_names(self):
+        """Test that a long args-carrying level yields a bounded folder name that stays distinct from a sibling"""
+        levels = [Level(method='wb97xd', basis='def2tzvp', software='orca',
+                        args={'block': {'general': f'%scf\n{"MaxIter 500 " * 40}{suffix}\nend'}})
+                  for suffix in ('{', '}')]
+        names = [rename_level(str(level)) for level in levels]
+        for name in names:
+            self.assertLessEqual(len(('scaling_' + name).encode()), 255)
+            self.assertLessEqual(len(name), MAX_RENAMED_LEVEL_LENGTH)
+        self.assertNotEqual(names[0], names[1])
+        self.assertEqual(names[0], rename_level(str(levels[0])))
 
 
 if __name__ == '__main__':

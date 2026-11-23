@@ -80,13 +80,15 @@ class PipeRunState(str, Enum):
     COMPLETED_PARTIAL = 'COMPLETED_PARTIAL'
     FAILED = 'FAILED'
 
+ROTOR_SCAN_1D_TASK_FAMILY = 'rotor_scan_1d'
+
 # Task families currently supported by the pipe system.
 # Only families listed here pass TaskSpec validation.
 SUPPORTED_TASK_FAMILIES = (
     'conf_opt', 'conf_sp',
     'ts_guess_batch_method', 'ts_opt',
     'species_sp', 'species_freq', 'irc',
-    'rotor_scan_1d',
+    ROTOR_SCAN_1D_TASK_FAMILY,
 )
 
 # Owner types mapping to ARC object categories.

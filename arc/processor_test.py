@@ -7,11 +7,12 @@ This module contains unit tests for the arc.processor module
 
 import os
 import shutil
+import tempfile
 import unittest
 
 import arc.processor as processor
 from arc.checks.common import TS_IRC_FAILED_MARKER
-from arc.common import ARC_TESTING_PATH, read_yaml_file
+from arc.common import read_yaml_file
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 
@@ -27,6 +28,8 @@ class TestProcessor(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.scratch_dir = tempfile.mkdtemp(prefix='arc_test_processor_')
+        cls.addClassCleanup(shutil.rmtree, cls.scratch_dir, ignore_errors=True)
         cls.ch4 = ARCSpecies(label='CH4', smiles='C')
         cls.nh3 = ARCSpecies(label='NH3', smiles='N')
         cls.h = ARCSpecies(label='H', smiles='[H]')
@@ -57,7 +60,7 @@ class TestProcessor(unittest.TestCase):
                             kinetics={'A': 7.18e5, 'n': 2.05, 'Ea': 151.88},
                             )
         rxn_2.ts_species = ARCSpecies(label='TS2', is_ts=True)
-        output_directory = os.path.join(ARC_TESTING_PATH, 'process_kinetics')
+        output_directory = os.path.join(self.scratch_dir, 'process_kinetics')
         reactions_to_compare = processor.compare_rates(rxns_for_kinetics_lib=[rxn_1, rxn_2],
                                                        output_directory=output_directory,
                                                        )
@@ -78,18 +81,60 @@ class TestProcessor(unittest.TestCase):
         self.assertIn(TS_IRC_FAILED_MARKER, content[0]['ts_validation'])
         self.assertNotIn('ts_validation', content[1])
 
+    def test_thermo_lib_has_isomorph_keeps_atom_order(self):
+        """Test that _thermo_lib_has_isomorph() does not re-sort the atoms of the compared mols"""
+        first, second = ARCSpecies(label='first', smiles='CC=O'), ARCSpecies(label='second', smiles='C=CO')
+        before = [list(spc.mol.atoms) for spc in (first, second)]
+        self.assertFalse(processor._thermo_lib_has_isomorph(second, [first]))
+        self.assertEqual([list(spc.mol.atoms) for spc in (first, second)], before)
 
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        """
-        directories = [os.path.join(ARC_TESTING_PATH, 'process_kinetics'),
-                      ]
-        for dir_path in directories:
-            if os.path.isdir(dir_path):
-                shutil.rmtree(dir_path)
+    def test_thermo_lib_has_isomorph_after_plain_isomorphism_check(self):
+        """Test that _thermo_lib_has_isomorph() works after a plain is_isomorphic() call on the same mols"""
+        first, second = ARCSpecies(label='first', smiles='CC=O'), ARCSpecies(label='second', smiles='C=CO')
+        self.assertFalse(first.mol.is_isomorphic(second.mol))
+        self.assertFalse(processor._thermo_lib_has_isomorph(second, [first]))
 
+    def test_process_arc_project_removes_a_stale_kinetics_library(self):
+        """A kinetics library left by a previous session is removed when no rate coefficient survives"""
+        project_directory = tempfile.mkdtemp(prefix='arc_test_stale_kinetics_lib_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        lib_path = os.path.join(project_directory, 'output', 'RMG libraries', 'kinetics')
+        os.makedirs(lib_path)
+        with open(os.path.join(lib_path, 'reactions.py'), 'w') as f:
+            f.write('# a rate computed by a previous session\n')
+        ch3, h2 = ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2', smiles='[H][H]')
+        rxn = ARCReaction(r_species=[self.ch4, self.h], p_species=[ch3, h2])
+        rxn.ts_label = 'TS0'
+        output_dict = {label: {'convergence': label != 'TS0'} for label in ['CH4', 'H', 'CH3', 'H2', 'TS0']}
+        processor.process_arc_project(thermo_adapter='arkane', kinetics_adapter='arkane', project='stale',
+                                      project_directory=project_directory,
+                                      species_dict={spc.label: spc for spc in [self.ch4, self.h, ch3, h2]},
+                                      reactions=[rxn], output_dict=output_dict, compute_thermo=False,
+                                      compare_to_rmg=False)
+        self.assertFalse(os.path.isdir(lib_path))
+
+    def test_process_arc_project_logs_a_stale_kinetics_library_it_cannot_remove(self):
+        """A stale kinetics library that cannot be removed is reported, not dropped silently"""
+        project_directory = tempfile.mkdtemp(prefix='arc_test_stuck_kinetics_lib_')
+        lib_path = os.path.join(project_directory, 'output', 'RMG libraries', 'kinetics')
+        locked = os.path.join(lib_path, 'locked')
+        os.makedirs(locked)
+        with open(os.path.join(locked, 'reactions.py'), 'w') as f:
+            f.write('# a rate computed by a previous session\n')
+        os.chmod(locked, 0o500)
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        self.addCleanup(os.chmod, locked, 0o700)
+        ch3, h2 = ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2', smiles='[H][H]')
+        rxn = ARCReaction(r_species=[self.ch4, self.h], p_species=[ch3, h2])
+        rxn.ts_label = 'TS0'
+        output_dict = {label: {'convergence': label != 'TS0'} for label in ['CH4', 'H', 'CH3', 'H2', 'TS0']}
+        with self.assertLogs('arc', level='ERROR') as logs:
+            processor.process_arc_project(thermo_adapter='arkane', kinetics_adapter='arkane', project='stuck',
+                                          project_directory=project_directory,
+                                          species_dict={spc.label: spc for spc in [self.ch4, self.h, ch3, h2]},
+                                          reactions=[rxn], output_dict=output_dict, compute_thermo=False,
+                                          compare_to_rmg=False)
+        self.assertTrue(any('Could not remove the stale kinetics library' in line for line in logs.output))
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

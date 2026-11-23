@@ -35,6 +35,7 @@ from arc.imports import settings
 from arc.job.adapters.common import open_shell_character_source
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
+from arc.level import get_freq_scale_factor_key
 from arc.parser.adapters.gaussian import parse_gaussian_constraints
 from arc.parser.adapters.orca import parse_orca_constraints
 from arc.parser.parser import (
@@ -498,7 +499,7 @@ def _resolve_freq_scale_factor_entry(freq_level) -> tuple[str | None, str | None
     factors = data.get('freq_scale_factors')
     if not isinstance(factors, dict):
         return None, None
-    level_key = freq_level if isinstance(freq_level, str) else str(freq_level)
+    level_key = get_freq_scale_factor_key(freq_level)
     entry = factors.get(level_key)
     if not isinstance(entry, dict):
         return None, None
@@ -2844,10 +2845,28 @@ def _rxn_to_dict(rxn) -> dict:
         'reactant_labels': list(rxn.reactants),
         'product_labels': list(rxn.products),
         'family': rxn.family,
+        'family_source': rxn.family_source,
+        'family_candidates': rxn.family_candidates,
+        'n_family_candidates': rxn.n_family_candidates,
         'multiplicity': rxn.multiplicity,
         'ts_label': rxn.ts_label,
         'kinetics': kin_dict,
+        # Next to the rate on purpose: the rate is for the 'searched' channel only.
+        'family_tie': rxn.family_tie,
+        'identity_reaction': rxn.is_identity_reaction(),
+        'ts_adapter_failures': [dict(failure) for failure in
+                                getattr(getattr(rxn, 'ts_species', None), 'ts_adapter_failures', None) or []],
     }
+    if rxn_dict['identity_reaction']:
+        family = rxn_dict['family']
+        if family is None:
+            searched = 'No family was found for it.'
+        elif family in rxn.unavailable_families:
+            searched = f'The {family} family is unavailable, not searched: {rxn.unavailable_families[family]}'
+        else:
+            searched = f'The {family} family was searched.'
+        logger.warning(f'Reaction {rxn.label} is an identity reaction (its reactants and products are the same '
+                       f'species), so the IRC end points do not discriminate the channel. {searched}')
     long_kin_desc = getattr(rxn, 'long_kinetic_description', None)
     if long_kin_desc:
         rxn_dict['long_kinetic_description'] = long_kin_desc

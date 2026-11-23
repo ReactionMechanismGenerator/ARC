@@ -10,6 +10,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
@@ -18,7 +19,7 @@ from arc.common import (ARC_PATH,
                         save_yaml_file,
                         )
 from arc.species.converter import check_xyz_dict
-from arc.exceptions import SpeciesError
+from arc.exceptions import InputError, SpeciesError
 from arc.level import Level
 from arc.molecule.molecule import Molecule
 from arc.parser.parser import parse_e_elect
@@ -33,6 +34,7 @@ from arc.species.species import (ARCSpecies,
                                  TSGuess,
                                  are_coords_compliant_with_graph,
                                  check_atom_balance,
+                                 check_extensions,
                                  check_label,
                                  check_xyz,
                                  colliding_atoms,
@@ -40,6 +42,8 @@ from arc.species.species import (ARCSpecies,
                                  cyclic_index_i_plus_1,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 dict_repr_is_authoritative,
+                                 lift_legacy_extension_keys,
                                  process_run_time,
                                  rmg_mol_from_dict_repr,
                                  rmg_mol_to_dict_repr,
@@ -68,6 +72,11 @@ BIRAD_SINGLET_DOUBLY_CATIONIC_ADJLIST = """1  C u0 p0 c0 {2,D} {9,S} {10,S}
 19 H u0 p0 c0 {8,S}
 20 H u0 p0 c0 {8,S}
 """
+
+
+T3_EXTENSION = {'key': 12, 'qm_label': 's12_CH3', 'rmg_label': {0: '[CH3](15)'}, 'thermo_method': 'GAV',
+                'thermo_source': None, 'thermo_comment': '', 't3_status': 'pending', 'created_at_iteration': 1,
+                'reasons': ['(i 1) the 2nd most sensitive species thermo for OH(3)']}
 
 
 class TestARCSpecies(unittest.TestCase):
@@ -1737,6 +1746,111 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc_1_copy.mol.to_smiles(), spc_1.mol.to_smiles())
         atom_labels = [atom.label for atom in spc_1_copy.mol.atoms]
 
+    def test_copy_preserves_the_declared_lewis_structure(self):
+        """Test that copy() does not replace a declared graph with a charge-separated perception of the coordinates."""
+        isoxazole_xyz = """C      -1.09437451   -0.03845088    0.00235099
+                           C       0.00327326    0.77917425   -0.06526477
+                           C       1.08963190   -0.10993209    0.01007451
+                           N       0.69216257   -1.38022824    0.11616468
+                           O      -0.69387336   -1.33034168    0.11088427
+                           H      -2.16236830    0.11977522   -0.01175166
+                           H       0.01690055    1.85420986   -0.15530407
+                           H       2.14864790    0.10579356   -0.00715396"""
+        zwitterion_adjlist = """1 C u0 p0 c0 {2,S} {5,D} {6,S}
+                                2 C u0 p0 c0 {1,S} {3,D} {7,S}
+                                3 C u0 p0 c0 {2,D} {4,S} {8,S}
+                                4 N u0 p2 c-1 {3,S} {5,S}
+                                5 O u0 p1 c+1 {1,D} {4,S}
+                                6 H u0 p0 c0 {1,S}
+                                7 H u0 p0 c0 {2,S}
+                                8 H u0 p0 c0 {3,S}"""
+        spc = ARCSpecies(label='isoxazole', smiles='c1ccno1')
+        spc.final_xyz = str_to_xyz(isoxazole_xyz)
+        self.assertEqual(spc.mol.copy(deep=True).to_smiles(), 'c1ccno1')
+        with mock.patch('arc.species.species.perceive_molecule_from_xyz',
+                        side_effect=lambda *args, **kwargs: Molecule().from_adjacency_list(
+                            zwitterion_adjlist, raise_atomtype_exception=False,
+                            raise_charge_exception=False)) as perceive:
+            spc_copy = spc.copy()
+        perceive.assert_not_called()
+        self.assertEqual(spc_copy.mol.copy(deep=True).to_smiles(), 'c1ccno1')
+        self.assertTrue(check_isomorphism(spc.mol, spc_copy.mol))
+        self.assertEqual([atom.charge for atom in spc_copy.mol.atoms], [0] * 8)
+
+    def test_copy_preserves_the_declared_connectivity(self):
+        """
+        Test that copy() does not replace a declared graph with a differently bonded perception of the coordinates.
+
+        The injected ring closure stands in for the one measured in benchmark reaction_018, where a 1.476 A
+        contact in the product geometry closed a fourth ring. It is not a claim about butadiene: the C1...C4
+        distance of the s-trans geometry below is ~3.7 A, and no perception closes that ring.
+        """
+        butadiene_xyz = """C      -1.81799082   -0.22530589   -0.06165892
+                           C      -0.60325740    0.30083878   -0.25569759
+                           C       0.60325739   -0.30083877    0.25569760
+                           C       1.81799082    0.22530592    0.06165897
+                           H      -1.96812252   -1.14370732    0.49678746
+                           H      -2.69975248    0.26231344   -0.46539902
+                           H      -0.51116237    1.22426578   -0.82376453
+                           H       0.51116237   -1.22426580    0.82376450
+                           H       2.69975247   -0.26231341    0.46539906
+                           H       1.96812251    1.14370738   -0.49678738"""
+        cyclobutene_adjlist = """1  C u0 p0 c0 {2,S} {4,S} {5,S} {6,S}
+                                 2  C u0 p0 c0 {1,S} {3,D} {7,S}
+                                 3  C u0 p0 c0 {2,D} {4,S} {8,S}
+                                 4  C u0 p0 c0 {1,S} {3,S} {9,S} {10,S}
+                                 5  H u0 p0 c0 {1,S}
+                                 6  H u0 p0 c0 {1,S}
+                                 7  H u0 p0 c0 {2,S}
+                                 8  H u0 p0 c0 {3,S}
+                                 9  H u0 p0 c0 {4,S}
+                                 10 H u0 p0 c0 {4,S}"""
+        spc = ARCSpecies(label='butadiene', smiles='C=CC=C')
+        spc.final_xyz = str_to_xyz(butadiene_xyz)
+        self.assertEqual(len(spc.mol.get_all_edges()), 9)
+        with mock.patch('arc.species.species.perceive_molecule_from_xyz',
+                        side_effect=lambda *args, **kwargs: Molecule().from_adjacency_list(
+                            cyclobutene_adjlist, raise_atomtype_exception=False,
+                            raise_charge_exception=False)) as perceive:
+            spc_copy = spc.copy()
+        perceive.assert_not_called()
+        self.assertEqual(len(spc_copy.mol.get_all_edges()), 9)
+        self.assertEqual(spc_copy.mol.copy(deep=True).to_smiles(), 'C=CC=C')
+        self.assertTrue(check_isomorphism(spc.mol, spc_copy.mol))
+
+    def test_from_dict_perceives_the_graph_of_a_user_specified_structure(self):
+        """Test that from_dict() still perceives the graph when the structure is given as SMILES alongside xyz."""
+        scrambled_ethanol_xyz = """H      -1.42607526    0.68990357   -0.87225712
+                                   C      -0.98261300   -0.04502183    0.00436374
+                                   H      -1.39610270   -1.05737434   -0.02205278
+                                   H      -1.28565463    0.40890627    0.94943929
+                                   C       0.54008765    0.06694671   -0.10188014
+                                   H       0.85567615   -0.38455771   -1.04688865
+                                   H       0.95870245   -0.46330826    0.75955514
+                                   O       0.96361397    1.42484824   -0.03556676
+                                   H       1.91807512    1.45143902   -0.11029272"""
+        species_dict = {'label': 'ethanol', 'smiles': 'CCO', 'multiplicity': 1,
+                        'xyz': scrambled_ethanol_xyz}
+        spc = ARCSpecies(species_dict=species_dict)
+        self.assertEqual([atom.element.symbol for atom in spc.mol.atoms],
+                         list(spc.get_xyz()['symbols']))
+        self.assertTrue(check_isomorphism(spc.mol, Molecule(smiles='CCO')))
+
+    def test_from_dict_perceives_the_graph_without_a_declared_structure(self):
+        """Test that from_dict() still perceives the graph when only coordinates are given."""
+        species_dict = {'label': 'ethanol', 'multiplicity': 1,
+                        'xyz': """C      -0.97459464    0.29181710    0.10303882
+                                  C       0.39565894   -0.35143697    0.10221676
+                                  O       0.30253309   -1.63748590   -0.49196889
+                                  H      -1.68942501   -0.24618907   -0.51173648
+                                  H      -0.93861751    1.30890182   -0.28407958
+                                  H      -1.35943743    0.34098805    1.12546267
+                                  H       0.76858330   -0.46867535    1.12508303
+                                  H       1.10530896    0.26674355   -0.44244914
+                                  H       1.19023282   -2.03119348   -0.44235175"""}
+        spc = ARCSpecies(species_dict=species_dict)
+        self.assertTrue(check_isomorphism(spc.mol, Molecule(smiles='CCO')))
+
     def test_is_water(self):
         """Test the ARCSpecies.is_water() method."""
         water = self.water
@@ -2087,7 +2201,8 @@ H      -1.99779884    0.76292039   -1.08682170"""
 
     def test_append_conformers(self):
         """Test that ARC correctly parses its own conformer files"""
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage4')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_species_conformers_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         xyzs = [{'symbols': ('O', 'C', 'C', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 1, 1, 1),
                  'coords': ((1.090687, 0.265168, -0.167063), (2.922041, -1.183357, -0.388849),
                             (2.276555, -0.003739, 0.085435), (2.365448, -1.88781, -0.999146),
@@ -3539,6 +3654,39 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         new_mol = rmg_mol_from_dict_repr(representation, is_ts=False)
         self.assertEqual(new_mol.to_smiles(), 'CC')
 
+    def test_dict_repr_is_authoritative(self):
+        """Test the dict_repr_is_authoritative() function.
+
+        The ``mol`` argument is the graph decoded from the dictionary, as ``from_dict()`` passes it.
+        """
+        mol = Molecule(smiles='CC')
+        representation = rmg_mol_to_dict_repr(mol)
+        self.assertTrue(dict_repr_is_authoritative({'mol': representation},
+                                                   mol=rmg_mol_from_dict_repr(representation)))
+        self.assertFalse(dict_repr_is_authoritative({'mol': mol.to_adjacency_list()}, mol=mol))
+        self.assertFalse(dict_repr_is_authoritative({'smiles': 'CC'}, mol=mol))
+        self.assertFalse(dict_repr_is_authoritative({'adjlist': mol.to_adjacency_list()}, mol=mol))
+        self.assertFalse(dict_repr_is_authoritative({'mol': representation}, mol=None))
+
+        colliding_mol = Molecule(smiles='CCO')
+        colliding_mol.assign_atom_ids()
+        colliding_mol.atoms[-1].id = colliding_mol.atoms[0].id
+        colliding_repr = rmg_mol_to_dict_repr(colliding_mol)
+        self.assertEqual(colliding_repr['atom_order'][-1], colliding_repr['atom_order'][0])
+        decoded = rmg_mol_from_dict_repr(colliding_repr)
+        self.assertEqual(len(decoded.atoms), 9)
+        self.assertEqual(len(set(id(atom) for atom in decoded.atoms)), 8)
+        self.assertFalse(dict_repr_is_authoritative({'mol': colliding_repr}, mol=decoded))
+
+        degenerate_repr = rmg_mol_to_dict_repr(mol)
+        for atom_dict in degenerate_repr['atoms']:
+            atom_dict['id'] = -1
+            atom_dict['edges'] = {-1: 1.0}
+        degenerate_repr['atom_order'] = [-1] * len(degenerate_repr['atom_order'])
+        degenerate_mol = rmg_mol_from_dict_repr(degenerate_repr, is_ts=True)
+        self.assertEqual(len(set(id(atom) for atom in degenerate_mol.atoms)), 1)
+        self.assertFalse(dict_repr_is_authoritative({'mol': degenerate_repr}, mol=degenerate_mol))
+
     def test_rmg_mol_to_dict_repr(self):
         """Test the rmg_mol_to_dict_repr() function."""
         mol = Molecule(smiles='CC')
@@ -3614,14 +3762,8 @@ H      -1.47626400   -0.10694600   -1.88883800"""
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests
+        Delete files created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage4',
-                    os.path.join(ARC_TESTING_PATH, 'gcn_tst')]
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
-
         file_paths = [os.path.join(ARC_PATH, 'nul'), os.path.join(ARC_PATH, 'run.out'),
                       os.path.join(ARC_PATH, 'arc', 'species', 'nul'), os.path.join(ARC_PATH, 'arc', 'species', 'run.out')]
         for file_path in file_paths:
@@ -3765,6 +3907,56 @@ H      -1.47626400   -0.10694600   -1.88883800"""
             spc._assign_radicals_after_scission(mol=mol1, label='fragment_A', added_radical=added_radical)
 
 
+    def test_extensions_round_trip(self):
+        """Test that a downstream extensions block is kept verbatim through as_dict(), from_dict() and copy()"""
+        self.assertNotIn('extensions', ARCSpecies(label='CH4', smiles='C').as_dict())
+        spc = ARCSpecies(label='CH3', smiles='[CH3]', extensions={'t3': T3_EXTENSION})
+        species_dict = spc.as_dict()
+        self.assertEqual(species_dict['extensions'], {'t3': T3_EXTENSION})
+        self.assertEqual(ARCSpecies(species_dict=species_dict).extensions, {'t3': T3_EXTENSION})
+        self.assertEqual(spc.copy().extensions, {'t3': T3_EXTENSION})
+        species_dict['extensions']['t3']['key'] = 99
+        self.assertEqual(spc.extensions['t3']['key'], 12)
+
+    def test_from_dict_lifts_legacy_flat_t3_keys(self):
+        """Test that the frozen list of flat T3 keys is moved into extensions['t3'] when a species is loaded"""
+        species_dict = {'label': 'CH3', 'smiles': '[CH3]', **T3_EXTENSION}
+        spc = ARCSpecies(species_dict=species_dict)
+        self.assertEqual(spc.extensions, {'t3': T3_EXTENSION})
+        written = spc.as_dict()
+        self.assertEqual(written['extensions'], {'t3': T3_EXTENSION})
+        for key in T3_EXTENSION:
+            self.assertNotIn(key, written)
+        self.assertIn('qm_label', species_dict)
+
+    def test_lift_legacy_extension_keys(self):
+        """Test lifting flat legacy keys: no-op, merge with an existing block, equal duplicates, and a conflict"""
+        self.assertEqual(lift_legacy_extension_keys({'label': 'H2'}), {'label': 'H2'})
+        lifted = lift_legacy_extension_keys({'label': 'CH3', 'qm_label': 's12_CH3',
+                                             'extensions': {'t3': {'key': 12}, 'other': {'x': 1}}})
+        self.assertEqual(lifted, {'label': 'CH3', 'extensions': {'t3': {'key': 12, 'qm_label': 's12_CH3'},
+                                                                 'other': {'x': 1}}})
+        lifted = lift_legacy_extension_keys({'label': 'CH3', 'key': 12, 'extensions': {'t3': {'key': 12}}})
+        self.assertEqual(lifted, {'label': 'CH3', 'extensions': {'t3': {'key': 12}}})
+        with self.assertRaises(InputError):
+            lift_legacy_extension_keys({'label': 'CH3', 'key': 12, 'extensions': {'t3': {'key': 13}}})
+
+    def test_malformed_extensions_raise_input_error(self):
+        """Test that a malformed extensions block raises InputError on every path, with or without a flat legacy key"""
+        self.assertIsNone(check_extensions(None))
+        self.assertEqual(check_extensions({'t3': {'key': 12}}), {'t3': {'key': 12}})
+        for bad in (5, 'abc', ['t3'], {'t3': 5}, {'t3': ['key']}, {1: {'key': 12}}):
+            with self.assertRaises(InputError):
+                check_extensions(bad)
+            with self.assertRaises(InputError):
+                ARCSpecies(label='H', smiles='[H]', extensions=bad)
+            with self.assertRaises(InputError):
+                ARCSpecies(species_dict={'label': 'H', 'smiles': '[H]', 'extensions': bad})
+            with self.assertRaises(InputError):
+                ARCSpecies(species_dict={'label': 'H', 'smiles': '[H]', 'qm_label': 'a', 'extensions': bad})
+            with self.assertRaises(InputError):
+                lift_legacy_extension_keys({'label': 'H', 'qm_label': 'a', 'extensions': bad})
+
 class TestTSGuess(unittest.TestCase):
     """
     Contains unit tests for the TSGuess class
@@ -3873,6 +4065,26 @@ class TestTSGuess(unittest.TestCase):
         self.assertTrue(self.tsg2.almost_equal_tsgs(self.tsg2))
         self.assertFalse(self.tsg3.almost_equal_tsgs(self.tsg2))
         self.assertFalse(self.tsg2.almost_equal_tsgs(self.tsg3))
+
+
+class TestTsAdapterFailuresPersistence(unittest.TestCase):
+    """The TS adapter failures a TS species records survive a restart."""
+
+    def test_ts_adapter_failures_round_trip(self):
+        """as_dict() writes the records only when there are any, and from_dict() restores them."""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        self.assertEqual(ts.ts_adapter_failures, list())
+        self.assertNotIn('ts_adapter_failures', ts.as_dict())
+        failure = {'adapter': 'heuristics', 'exception_type': 'KeyError', 'message': 'None'}
+        ts.ts_adapter_failures.append(failure)
+        restored = ARCSpecies(species_dict=ts.as_dict())
+        self.assertEqual(restored.ts_adapter_failures, [failure])
+
+    def test_ts_adapter_failures_default_for_an_old_restart_file(self):
+        """A restart dictionary written before the field existed restores an empty list."""
+        species_dict = ARCSpecies(label='TS0', is_ts=True).as_dict()
+        species_dict.pop('ts_adapter_failures', None)
+        self.assertEqual(ARCSpecies(species_dict=species_dict).ts_adapter_failures, list())
 
 
 if __name__ == '__main__':

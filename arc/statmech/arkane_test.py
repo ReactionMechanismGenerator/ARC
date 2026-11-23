@@ -5,6 +5,7 @@
 This module contains unit tests for ARC's statmech.arkane module
 """
 
+import math
 import os
 import re
 import shutil
@@ -25,6 +26,7 @@ from arc.statmech.arkane import (
     _available_years_for_level,
     _extract_section,
     find_best_across_files,
+    find_unphysical_frequencies,
     _find_best_level_key_for_sp_level,
     get_qm_corrections_files,
     _level_to_str,
@@ -67,6 +69,7 @@ class TestArkaneAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.tmpdir = tempfile.mkdtemp(prefix='test_Arkane_')
+        cls.addClassCleanup(shutil.rmtree, cls.tmpdir, ignore_errors=True)
         output_path_1 = os.path.join(cls.tmpdir, 'output_1')
         calcs_path_1 = os.path.join(cls.tmpdir, 'calcs_1')
         output_path_2 = os.path.join(cls.tmpdir, 'output_2')
@@ -435,7 +438,7 @@ class TestArkaneAdapter(unittest.TestCase):
 
     def test_generate_arkane_input(self):
         """Test generating Arkane input"""
-        statmech_dir = os.path.join(ARC_TESTING_PATH, 'arkane_input_tests_delete')
+        statmech_dir = os.path.join(self.tmpdir, 'arkane_input_tests_delete')
         os.makedirs(statmech_dir, exist_ok=True)
         self.arkane_1.generate_arkane_input(statmech_dir=statmech_dir)
         input_path = os.path.join(statmech_dir, 'input.py')
@@ -489,14 +492,6 @@ class TestArkaneAdapter(unittest.TestCase):
         self.assertIn("species('R',", content)
         self.assertIn("species('P',", content)
         self.assertNotIn("species('X',", content)
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        """
-        shutil.rmtree(cls.tmpdir, ignore_errors=True)
-        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'arkane_input_tests_delete'), ignore_errors=True)
 
 
 class TestArkaneOutputParsing(unittest.TestCase):
@@ -662,6 +657,112 @@ kinetics(
             self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
             self.assertNotIn('ts_validation', rxn.kinetics)
             self.assertNotIn(TS_IRC_FAILED_MARKER, rxn.kinetics['comment'])
+
+    near_zero_freq_kinetics_output_content = """
+conformer(
+    label = 'TS0',
+    E0 = (50.0, 'kJ/mol'),
+    modes = [
+        NonlinearRotor(inertia=([10.0, 20.0, 30.0], 'amu*angstrom^2'), symmetry=1),
+        HarmonicOscillator(frequencies=([0.0, 3.2, 125.4, 1450.1, 3050.7], 'cm^-1')),
+    ],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+
+conformer(
+    label = 'nitroethane',
+    E0 = (-100.0, 'kJ/mol'),
+    modes = [
+        NonlinearRotor(inertia=([10.0, 20.0, 30.0], 'amu*angstrom^2'), symmetry=1),
+        HarmonicOscillator(frequencies=([45.3, 610.2, 1500.0], 'cm^-1')),
+    ],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+
+kinetics(
+    label = 'nitroethane <=> ethyl_nitrite',
+    kinetics = Arrhenius(
+        A = (5.0e20, 's^-1'),
+        n = 1.0,
+        Ea = (20.0, 'kJ/mol'),
+        T0 = (1, 'K'),
+        Tmin = (300, 'K'),
+        Tmax = (2000, 'K'),
+    ),
+)
+"""
+
+    def test_find_unphysical_frequencies(self):
+        """Near-zero harmonic frequencies are reported per conformer; physical ones are not."""
+        content = self.near_zero_freq_kinetics_output_content
+        self.assertEqual(find_unphysical_frequencies('TS0', content), [0.0, 3.2])
+        self.assertEqual(find_unphysical_frequencies('nitroethane', content), [])
+        self.assertEqual(find_unphysical_frequencies('missing_species', content), [])
+
+    def test_find_unphysical_frequencies_at_the_threshold(self):
+        """Modes just below the threshold, of either sign, are unphysical; a mode at it is not."""
+        content = self.near_zero_freq_kinetics_output_content.replace('[0.0, 3.2, 125.4', '[4.99, -4.99, 5.0, 125.4')
+        self.assertEqual(find_unphysical_frequencies('TS0', content), [4.99, -4.99])
+
+    def test_find_unphysical_frequencies_reports_nan(self):
+        """Arkane's sqrt of a slightly negative eigenvalue is nan, which compares False against any threshold."""
+        content = self.near_zero_freq_kinetics_output_content.replace('[0.0, 3.2, 125.4', '[nan, 125.4')
+        freqs = find_unphysical_frequencies('TS0', content)
+        self.assertEqual(len(freqs), 1)
+        self.assertTrue(math.isnan(freqs[0]))
+
+    def parse_kinetics(self, content: str, rxn: ARCReaction | None = None) -> ARCReaction:
+        """Run the adapter's kinetics parser over an Arkane ``output.py`` with ``content``."""
+        statmech_dir = tempfile.mkdtemp(prefix='test_Arkane_kinetics_')
+        self.addCleanup(shutil.rmtree, statmech_dir, ignore_errors=True)
+        with open(os.path.join(statmech_dir, 'output.py'), 'w') as f:
+            f.write(content)
+        rxn = rxn or self.isomerization_reaction()
+        adapter = ArkaneAdapter(output_directory=os.path.join(statmech_dir, 'output'),
+                                calcs_directory=os.path.join(statmech_dir, 'calcs'),
+                                output_dict=dict(),
+                                bac_type=None,
+                                species=rxn.r_species + rxn.p_species + [rxn.ts_species],
+                                reactions=[rxn],
+                                )
+        adapter.parse_arkane_kinetics_output(statmech_dir)
+        return rxn
+
+    def test_kinetics_parsed_from_a_near_zero_frequency_conformer_are_discarded(self):
+        """A rate coefficient whose TS carried a ~0 cm^-1 oscillator is discarded, with the reason in output.yml."""
+        rxn = self.parse_kinetics(self.near_zero_freq_kinetics_output_content)
+        self.assertIsNone(rxn.kinetics)
+        self.assertIn('TS0: [0.0, 3.2] cm^-1', rxn.long_kinetic_description)
+
+    def test_kinetics_discarded_for_a_product_only_offender(self):
+        """A near-zero mode in a product, with a physical TS, also discards the rate coefficient."""
+        physical_ts = self.near_zero_freq_kinetics_output_content.replace('[0.0, 3.2, 125.4', '[85.0, 125.4')
+        content = physical_ts + self.near_zero_freq_kinetics_output_content[
+            self.near_zero_freq_kinetics_output_content.index("conformer(\n    label = 'nitroethane'"):
+            self.near_zero_freq_kinetics_output_content.index('kinetics(')].replace(
+            "'nitroethane'", "'ethyl_nitrite'").replace('[45.3, 610.2', '[1.5, 610.2')
+        rxn = self.parse_kinetics(content)
+        self.assertIsNone(rxn.kinetics)
+        self.assertIn('ethyl_nitrite: [1.5] cm^-1', rxn.long_kinetic_description)
+        self.assertNotIn('TS0', rxn.long_kinetic_description)
+
+    def test_discard_reason_does_not_stack_and_clears_once_resolved(self):
+        """A reaction parsed again (as on a restart) carries the reason once, and none once its modes are physical."""
+        rxn = self.parse_kinetics(self.near_zero_freq_kinetics_output_content)
+        rxn = self.parse_kinetics(self.near_zero_freq_kinetics_output_content, rxn=rxn)
+        self.assertEqual(rxn.long_kinetic_description.count('discarded'), 1)
+        physical = self.near_zero_freq_kinetics_output_content.replace('[0.0, 3.2, 125.4', '[85.0, 125.4')
+        rxn = self.parse_kinetics(physical, rxn=rxn)
+        self.assertNotIn('discarded', rxn.long_kinetic_description)
+
+    def test_kinetics_parsed_from_physical_conformers_are_kept(self):
+        """Kinetics whose conformers carry only physical frequencies are kept as parsed."""
+        content = self.near_zero_freq_kinetics_output_content.replace('[0.0, 3.2, 125.4', '[85.0, 125.4')
+        rxn = self.parse_kinetics(content)
+        self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0e20)
+        self.assertNotIn('discarded', rxn.long_kinetic_description)
 
     def test_parse_thermo_data_block_scalars_are_float(self):
         """Verify Tmin, Tmax, H298, S298 are parsed as floats, not strings."""
