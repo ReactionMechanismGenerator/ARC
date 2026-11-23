@@ -106,7 +106,6 @@ class TestChecks(unittest.TestCase):
         self.assertIn('e_elect', comment)
         self.assertIn('E0', comment)
 
-
     def test_get_nmd_near_miss(self):
         """Test that the near-miss record is read only beside a False NMD verdict, and malformed records fail closed"""
         record = {'amplitude': 0.9, 'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': 4.55}]}

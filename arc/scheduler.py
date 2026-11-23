@@ -5459,7 +5459,7 @@ class Scheduler(object):
         Revoke the IRC acceptance of a near-miss TS whose IRC verdict is no longer ``True``.
 
         The ``accepted_on_irc`` marker and its warning are removed, and a converged TS is returned to
-        an undetermined convergence, so the TS is deferred again. A current acceptance is left untouched.
+        an undetermined convergence. The TS is then deferred again. A current acceptance is left untouched.
 
         Args:
             label (str): The TS species label.
@@ -5571,7 +5571,7 @@ class Scheduler(object):
         Switch a TS that waited for its IRC after a near-miss NMD failure, and was not accepted, to its next guess.
 
         Once every guess was tried, the TS is marked unconverged and its NMD verdict of ``False`` is restored.
-        Its near-miss record is not, so the TS is not deferred again.
+        Its near-miss record is not restored, and the TS is not deferred again.
 
         Args:
             label (str): The TS species label.
@@ -5590,8 +5590,8 @@ class Scheduler(object):
 
         ``ts_checks['NMD']`` stays ``False`` and its near-miss record is kept and marked ``accepted_on_irc``. The
         acceptance and the sub-gate bonds are written to ``ts_checks['warnings']`` and to the TS's output warnings
-        under ``NMD_ACCEPTED_ON_IRC_WARNING``, so output.yml reports both facts. The TS is then checked for
-        convergence, which a deferred TS is denied.
+        under ``NMD_ACCEPTED_ON_IRC_WARNING``, which output.yml publishes. The TS is then checked for convergence
+        by ``check_all_done()``.
 
         Args:
             label (str): The TS species label.
