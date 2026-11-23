@@ -484,7 +484,7 @@ class MirrorReach(object):
         Find the rotor dihedrals that bring the structure closest to its mirror image.
         For each symmetry map, every rotor is set to its mirror-image value under that map. A rotor alone sets the
         torsions about its own bond, so each one is chosen among its candidates by the deviation of those torsions,
-        in two passes (the second with every other rotor already set, so the fit that assigns H atoms is good).
+        in two passes (the second with every other rotor already set).
 
         Args:
             torsions (list[tuple]): The rotor torsions.
@@ -767,8 +767,8 @@ def walk_linear_chain(neighbors: dict[int, set[int]], linear: set[int], start: i
 
 def get_axis_torsions(neighbors: dict[int, set[int]], linear: set[int]) -> list[tuple[int, int, int, int]]:
     """
-    Get the torsions across linear chains (e.g., the C=C=C of an allene), which proper torsions cannot see because
-    every bond angle along the chain is straight: a-b-c-d for the two ends b and c of the chain, with a and d off it.
+    Get the torsions across linear chains (e.g., the C=C=C of an allene), whose bond angles are all straight:
+    a-b-c-d for the two ends b and c of the chain, with a and d off it.
 
     Args:
         neighbors (dict[int, set[int]]): The neighbors of each atom.

@@ -1311,7 +1311,7 @@ class TestHarmonicFallbackTorsions(unittest.TestCase):
             self.assertEqual(ring, rotatable - rotors, msg=smiles)
 
     def test_yml_and_irc_species_are_not_listed(self):
-        """Test that species ARC never scans by design, from an Arkane YAML file or an IRC endpoint, are not listed."""
+        """Test that species ARC never scans, from an Arkane YAML file or an IRC endpoint, are not listed."""
         spc = ARCSpecies(label='EtOH_yml', smiles='CCO')
         spc.yml_path = os.path.join(self.tmpdir, 'EtOH_yml.yml')
         self.assertEqual(get_harmonic_fallback_torsions(spc), [])
@@ -1368,7 +1368,7 @@ class TestHarmonicFallbackTorsions(unittest.TestCase):
         self.assertNotIn('HinderedRotor', content)
 
     def test_species_file_without_fallback_has_no_comment(self):
-        """Test that a species with every rotor treated gets no fallback comment."""
+        """Test that a species with every rotor treated gets no fallback comment, and one with a failed scan does."""
         spc = ARCSpecies(label='EtOH_clean', smiles='CCO')
         spc.determine_rotors()
         for rotor in spc.rotors_dict.values():
@@ -1383,6 +1383,12 @@ class TestHarmonicFallbackTorsions(unittest.TestCase):
             content = f.read()
         self.assertNotIn('Harmonic fallback', content)
         self.assertEqual(content.count('HinderedRotor('), 2)
+        spc.rotors_dict[0]['success'] = False
+        adapter.generate_species_file(spc, species_dir, skip_rotors=False)
+        with open(os.path.join(species_dir, 'EtOH_clean.py')) as f:
+            content = f.read()
+        self.assertIn('# Harmonic fallback:', content)
+        self.assertEqual(content.count('HinderedRotor('), 1)
 
     def test_status_yml_warnings(self):
         """Test that status.yml names each fallback torsion of a species and of a TS, with its cause."""

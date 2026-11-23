@@ -769,7 +769,7 @@ def get_harmonic_fallback_torsions(species: 'ARCSpecies', skip_rotors: bool = Fa
     """
     List every torsion of a species or TS that Arkane does not treat as a hindered rotor, with its cause.
     Arkane receives only the rotors whose ``success`` is truthy; each torsion listed here stays a harmonic mode.
-    Species loaded from an Arkane YAML file and IRC endpoint species are never scanned by design, and get no entries.
+    Species loaded from an Arkane YAML file and IRC endpoint species are never scanned, and get no entries.
     The rotors of a species without stored rotors are "not scanned (BDE fragment)" for a bond-dissociation fragment
     (``e0_only`` and no ``compute_thermo``), and "user choice" otherwise.
 
@@ -874,7 +874,8 @@ def get_untreated_torsions(fallback: list[dict]) -> list[tuple[tuple[int, int, i
 
 def format_harmonic_fallback_message(label: str, fallback: list[dict]) -> str:
     """
-    Format the harmonic-fallback torsions of a species as one warning, delimited so it can be replaced later.
+    Format the harmonic-fallback torsions of a species as one warning, between the markers that
+    ``record_harmonic_fallback_warnings()`` replaces.
 
     Args:
         label (str): The species label.

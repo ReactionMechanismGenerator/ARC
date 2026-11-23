@@ -1789,7 +1789,7 @@ def get_ts_bonds(mol: Molecule | None,
     geometry, or in the TS 2D graph if there is no geometry), and the TS geometry (atom pairs no farther apart than
     ``TS_PARTIAL_BOND_RATIO`` times their single bond length, ``TS_PARTIAL_BOND_RATIO_H`` for a pair with an H atom).
     The bonds the reaction forms or breaks are added only if they are within ``TS_STRETCHED_BOND_RATIO`` in the TS
-    geometry, so a reaction and its reverse give the same TS bonds. A reaction whose bonds could not be determined
+    geometry. A reaction whose bonds could not be determined
     is not tried again until a reactant or product geometry changes.
     A TS 2D-graph bond that the TS geometry puts farther apart than ``TS_CONTRADICTED_BOND_RATIO`` times its single
     bond length is dropped, unless the reaction forms or breaks it.
@@ -2554,8 +2554,8 @@ def get_graph_stereocenters(label: str,
     """
     Determine whether the 2D graph of a well is chiral, and which atoms are its stereocenters.
     The configuration of each stereocenter is read from ``xyz``, and the graph is chiral if its stereo-perceived
-    graph differs from that of its mirror image. Conformational chirality of a single geometry (e.g., a gauche
-    conformer of 1-propanol) does not count, since only graph stereocenters carry a configuration. Meso species
+    graph differs from that of its mirror image. Only graph stereocenters carry a configuration: conformational
+    chirality of a single geometry (e.g., a gauche conformer of 1-propanol) does not count. Meso species
     and species whose only stereo elements are E/Z double bonds are not chiral.
 
     Args:

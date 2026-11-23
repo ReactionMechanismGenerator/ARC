@@ -993,6 +993,7 @@ class TestRingTorsionWithoutDihedralValidates(SchemaAssertionMixin, unittest.Tes
 
     def test_document_validates(self):
         """The null atom_indices of the O-O ring torsion is valid."""
+        self.assertIn(None, [e['atom_indices'] for e in self.statmech['harmonic_fallback_torsions']])
         self.assert_valid(self.document)
 
     def test_ring_entry_is_kept_with_a_null_scan(self):

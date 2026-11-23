@@ -670,7 +670,7 @@ H       1.45393100    0.16115000   -0.04990200""")
     def test_every_cause_has_a_case(self):
         """
         Drift test: every cause template is produced by a named case of this module, and each produced cause text is
-        its template formatted, so a template cannot change or be added without a case that produces it.
+        its template formatted.
         """
         spc = self.make_nc3h7oo()
         user = self.make_nc3h7oo()

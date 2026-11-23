@@ -79,8 +79,8 @@ TS_GRAPH_INVALIDATION_REASON = 'TS graph contradicts the geometry (code: ts grap
 def is_reactive_ring_rejection(rotor: dict, sole_reason: bool = False) -> bool:
     """
     Determine whether a rotor was rejected by a TS rotor check (see ``ARCSpecies.check_reactive_ring_rotors``):
-    its torsion lies in the reactive ring of its TS, or the TS graph contradicts the TS geometry,
-    so no scan of it may be submitted, continued, or used.
+    its torsion lies in the reactive ring of its TS, or the TS graph contradicts the TS geometry.
+    No scan of such a rotor is submitted, continued, or used.
 
     Args:
         rotor (dict): A ``rotors_dict`` entry.
@@ -121,10 +121,10 @@ class ARCSpecies(object):
                               'directed_scan_type': ``str``,
                               'directed_scan': ``dict``,  # keys: tuples of dihedrals as strings,
                                                           # values: dicts of energy, xyz, is_isomorphic, trsh
-                              'ring_check': ``str``,  # TSs only: the sources of the reactive ring check,
-                                                      # or 'unverified: <reason>'
-                              'ring_check_dropped_bonds': ``list[dict]``,  # TSs only: the TS 2D-graph bonds
-                                                      # the reactive ring check dropped, see ``get_ts_bonds``
+                              'ring_check': ``str`` (TSs only: the sources of the reactive ring check,
+                                            or 'unverified: <reason>'),
+                              'ring_check_dropped_bonds': ``list[dict]`` (TSs only: the TS 2D-graph bonds the
+                                                          reactive ring check dropped, see ``get_ts_bonds``),
                              }
                           1: {}, ...
                          }
@@ -1456,10 +1456,10 @@ class ARCSpecies(object):
     def check_reactive_ring_rotors(self, reaction: 'ARCReaction | None' = None) -> None:
         """
         Invalidate the rotors of a TS whose pivot bond lies in a ring of the TS graph, e.g., the reactive ring of an
-        intra-molecular H migration, which the TS 2D graph lacks. Scanning such a torsion breaks the ring.
-        Also invalidate the rotors of a TS whose 2D graph the TS geometry contradicts, since their tops come from
-        that graph: all rotors if the graph and the geometry are in different atom orders, and, if a graph bond was
-        dropped (see ``conformers.get_ts_bonds``), each rotor whose top differs from its top in the TS bonds.
+        intra-molecular H migration, which the TS 2D graph lacks.
+        Also invalidate the rotors of a TS whose 2D graph the TS geometry contradicts: all rotors if the graph and the
+        geometry are in different atom orders, and, if a graph bond was dropped (see ``conformers.get_ts_bonds``),
+        each rotor whose top differs from its top in the TS bonds.
         Rotors that were not scanned yet are judged, and so are rotors that only this check invalidated (judged on an
         earlier geometry, e.g. a TS guess), which are restored if no longer invalid, and rotors with a successful
         scan (e.g., restored from a run before this check existed), which are rejected with a warning if invalid.
@@ -1524,10 +1524,11 @@ class ARCSpecies(object):
         dropped_bonds = [{'atoms': [i + 1, j + 1], 'distance_angstrom': round(distance, 3), 'ratio': round(ratio, 3)}
                          for i, j, distance, ratio in dropped]
         if dropped_bonds and any(rotor.get('ring_check_dropped_bonds') != dropped_bonds for rotor in rotors):
+            described = ', '.join(f"{xyz['symbols'][i]}{i + 1}-{xyz['symbols'][j]}{j + 1} "
+                                  f"({distance:.3f} A, {ratio:.2f} times the single bond)"
+                                  for i, j, distance, ratio in dropped)
             logger.warning(f'The reactive ring check of TS {self.label} dropped 2D-graph bonds that its geometry '
-                           f'contradicts: ' + ', '.join(f"{xyz['symbols'][i]}{i + 1}-{xyz['symbols'][j]}{j + 1} "
-                                                       f"({distance:.3f} A, {ratio:.2f} times the single bond)"
-                                                       for i, j, distance, ratio in dropped))
+                           f'contradicts: {described}')
         for rotor in rotors:
             rotor['ring_check'] = ', '.join(sources) + (f' ({reason})' if reason else '')
             rotor['ring_check_dropped_bonds'] = dropped_bonds
@@ -1539,10 +1540,11 @@ class ARCSpecies(object):
                 continue
             if dropped and rotor.get('top'):
                 tops = rotor['top'] if nested else [rotor['top']]
-                differing = [(top, sorted(i + 1 for i in conformers.get_top_from_bonds(
-                                 bonds=bonds, pivots=(pivots[0] - 1, pivots[1] - 1) if pivots[0] in top
-                                 else (pivots[1] - 1, pivots[0] - 1))))
-                             for pivots, top in zip(pivots_list, tops)]
+                differing = list()
+                for pivots, top in zip(pivots_list, tops):
+                    start = (pivots[0] - 1, pivots[1] - 1) if pivots[0] in top else (pivots[1] - 1, pivots[0] - 1)
+                    bond_top = conformers.get_top_from_bonds(bonds=bonds, pivots=start)
+                    differing.append((top, sorted(i + 1 for i in bond_top)))
                 differing = [(top, bond_top) for top, bond_top in differing if sorted(top) != bond_top]
                 if differing:
                     reject(rotor, TS_GRAPH_INVALIDATION_REASON,
