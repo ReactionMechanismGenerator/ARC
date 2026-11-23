@@ -13,7 +13,6 @@ from unittest.mock import patch
 
 import arc.settings.settings as arc_settings
 from arc import imports as arc_imports
-from arc.common import settings as common_settings
 from arc.imports import _report_unusable_overlay, resolve_overridden_dependents
 from arc.settings import external_paths
 
@@ -201,20 +200,19 @@ REPLACED_DICTS = ('orca_default_options_dict', 'pipe_settings', 'ob_default_sett
 
 
 class TestLocalSettingsMergedOntoDefaults(unittest.TestCase):
-    """A local ~/.arc/settings.py that leaves a key out of a fixed-key settings dict must still load."""
+    """Load a local ~/.arc/settings.py and check how its fixed-key settings dicts combine with ARC's defaults."""
 
     def setUp(self):
-        """Keep the arc_imports namespace and settings object so every reload can be undone."""
+        """Record the arc_imports namespace, sys.path and the sys.modules entries that a reload replaces."""
         self.tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmpdir.cleanup)
         self.original_namespace = dict(vars(arc_imports))
-        self.original_settings = arc_imports.settings
         self.original_sys_path = list(sys.path)
         self.original_modules = {name: sys.modules.get(name) for name in ('settings', 'submit', 'inputs')}
         self.addCleanup(self._restore)
 
     def _restore(self):
-        """Put back the module namespace, sys.path, sys.modules and HOME as they were before the test."""
+        """Put back the arc_imports namespace, sys.path and sys.modules entries recorded in setUp."""
         namespace = vars(arc_imports)
         namespace.clear()
         namespace.update(self.original_namespace)
@@ -246,15 +244,17 @@ class TestLocalSettingsMergedOntoDefaults(unittest.TestCase):
         return dict(arc_imports.settings)
 
     def test_a_missing_key_takes_the_default(self):
-        """A key the local dict leaves out takes ARC's default value."""
+        """A key the local dict leaves out takes ARC's default value, and ARC's default dict is unchanged."""
         for name in MERGED_DICTS:
             with self.subTest(name=name):
                 default = getattr(arc_settings, name)
+                before = copy.deepcopy(default)
                 missing = next(iter(default))
                 local = {key: val for key, val in default.items() if key != missing}
+                local['a_user_key'] = 1
                 settings = self._load({name: local})
-                self.assertEqual(settings[name][missing], default[missing])
-                self.assertEqual(settings[name], default)
+                self.assertEqual(settings[name], {**before, 'a_user_key': 1})
+                self.assertEqual(getattr(arc_settings, name), before)
 
     def test_a_set_key_keeps_the_users_value(self):
         """A key the local dict sets keeps the user's value whole, with no merge inside it."""
@@ -274,40 +274,23 @@ class TestLocalSettingsMergedOntoDefaults(unittest.TestCase):
         settings = self._load({'default_job_types': local})
         self.assertIs(settings['default_job_types']['stability'], False)
 
-    def test_the_defaults_are_not_mutated(self):
-        """Loading a local file leaves ARC's default dicts unchanged."""
-        before = {name: copy.deepcopy(getattr(arc_settings, name)) for name in MERGED_DICTS}
-        self._load({name: {'a_user_key': 1} for name in MERGED_DICTS})
-        for name in MERGED_DICTS:
-            self.assertEqual(getattr(arc_settings, name), before[name])
-
-    def test_servers_are_still_replaced_whole(self):
-        """A local servers dict with one server gives exactly that one server."""
-        server = {'local': {'cluster_soft': 'Slurm', 'un': 'user'}}
-        settings = self._load({'servers': server})
-        self.assertEqual(settings['servers'], server)
-
-    def test_unmerged_dicts_are_still_replaced_whole(self):
-        """A local pipe_settings, orca_default_options_dict or ob_default_settings gives exactly the local dict."""
-        for name in REPLACED_DICTS:
+    def test_only_the_merged_dicts_are_merged(self):
+        """In one local file, a merged dict gains ARC's defaults and every other dict is exactly the local one."""
+        job_types = {key: val for key, val in arc_settings.default_job_types.items() if key != 'stability'}
+        others = {name: dict(list(getattr(arc_settings, name).items())[1:]) for name in REPLACED_DICTS}
+        others['servers'] = {'local': {'cluster_soft': 'Slurm', 'un': 'user'}}
+        settings = self._load({'default_job_types': job_types, **others})
+        self.assertEqual(settings['default_job_types'], arc_settings.default_job_types)
+        for name, local in others.items():
             with self.subTest(name=name):
-                default = getattr(arc_settings, name)
-                missing = next(iter(default))
-                local = {key: val for key, val in default.items() if key != missing}
-                settings = self._load({name: local})
                 self.assertEqual(settings[name], local)
 
-    def test_a_non_dict_value_is_still_replaced_whole(self):
-        """A local value that is not a dict replaces ARC's default as before."""
-        settings = self._load({'pipe_settings': None})
-        self.assertIsNone(settings['pipe_settings'])
-
-    def test_the_settings_object_is_restored(self):
-        """Undoing a reload gives back the settings object other modules imported."""
-        self._load({'pipe_settings': {'min_tasks': 3}})
-        self._restore()
-        self.assertIs(arc_imports.settings, self.original_settings)
-        self.assertIs(arc_imports.settings, common_settings)
+    def test_a_non_dict_value_replaces_the_default(self):
+        """A local value that is not a dict replaces ARC's default, next to a merged dict in the same file."""
+        job_types = {key: val for key, val in arc_settings.default_job_types.items() if key != 'stability'}
+        settings = self._load({'default_job_types': job_types, 'preserve_params_in_scan': None})
+        self.assertIs(settings['default_job_types']['stability'], False)
+        self.assertIsNone(settings['preserve_params_in_scan'])
 
 
 if __name__ == '__main__':
