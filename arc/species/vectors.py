@@ -352,6 +352,34 @@ def calculate_dihedral_angle(coords: list | tuple | dict,
     return get_dihedral(v1, v2, v3, units=units)
 
 
+def calculate_dihedral_angles(coords: list | tuple | np.ndarray,
+                              torsions: list | tuple | np.ndarray,
+                              tol: float = 1e-8,
+                              ) -> np.ndarray:
+    """
+    Calculate the dihedral angles of many torsions at once, as ``calculate_dihedral_angle()`` does for one.
+
+    Args:
+        coords (list, tuple, np.ndarray): The array-format coordinates.
+        torsions (list, tuple, np.ndarray): Rows of four 0-indexed atoms.
+        tol (float, optional): The tolerance below which a cross product is zero (three collinear atoms).
+
+    Returns: np.ndarray
+        The dihedral angles in degrees, in a 0-360 range, ``NaN`` where three of the atoms are collinear.
+    """
+    coords = np.asarray(coords, dtype=np.float64)
+    index = np.asarray(torsions, dtype=int).reshape(-1, 4)
+    v1, v2, v3 = (coords[index[:, k + 1]] - coords[index[:, k]] for k in range(3))
+    n1, n2 = np.cross(v2, v1), np.cross(v3, v2)
+    norm1, norm2 = np.linalg.norm(n1, axis=1), np.linalg.norm(n2, axis=1)
+    collinear = (norm1 < tol) | (norm2 < tol)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        cosine = np.clip(np.sum(n1 * n2, axis=1) / (norm1 * norm2), -1.0, 1.0)
+    dihedrals = np.degrees(np.arccos(cosine))
+    dihedrals = np.where(np.sum(n1 * v3, axis=1) > 0, 360.0 - dihedrals, dihedrals)
+    return np.where(collinear, np.nan, dihedrals)
+
+
 def calculate_param(coords: list | tuple | dict,
                     atoms: list,
                     index: int = 0,

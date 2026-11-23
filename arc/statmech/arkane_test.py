@@ -1245,6 +1245,17 @@ class TestHarmonicFallbackTorsions(unittest.TestCase):
         self.assertEqual(ROTOR_FALLBACK_REACTIVE_RING, 'reactive ring')
         self.assertEqual(count_harmonic_fallback_torsions(fallback), (0, 6))
 
+    def test_aromatic_ring_bonds_are_not_ring_torsions(self):
+        """Test that the ring torsions of a species do not depend on the Kekulé structure of its aromatic rings."""
+        for smiles, expected in [('c1ccccc1', 0), ('Cc1ccccc1', 0), ('Oc1ccccc1', 0), ('c1ccncc1', 0),
+                                 ('c1ccoc1', 0), ('c1ccc2ccccc2c1', 0), ('C1=CCCCC1', 5), ('C1=CC=CC=CC=C1', 4),
+                                 ('c1ccc(cc1)C1CC1', 3)]:
+            spc = ARCSpecies(label='aromatic', smiles=smiles)
+            for structure in spc.mol_list:
+                spc.mol = structure
+                ring = [e for e in get_harmonic_fallback_torsions(spc) if e['cause'] == ROTOR_FALLBACK_RING]
+                self.assertEqual(len(ring), expected, msg=f'{smiles}: {structure.to_smiles()}')
+
     def test_ring_scan_has_four_distinct_atoms(self):
         """Test that every ring torsion's dihedral names four different atoms, also in a three-membered ring."""
         for smiles in ['C1CC1', 'C1CCCCC1', 'C1CC2CCC1C2']:
@@ -1530,11 +1541,12 @@ class TestArkaneOpticalIsomers(unittest.TestCase):
     def test_parsed_value_is_not_taken_for_a_user_value(self):
         """
         Test that the Arkane value parsed back into species.optical_isomers after one statmech run (e.g., kinetics)
-        is not taken for a user value by the next one (e.g., thermo), which re-decides it.
+        is not taken for a user value by the next one (e.g., thermo), which re-decides it. The value set here is
+        what _parse_conformer_statmech() stores.
         """
         spc = self.make_nc3h7(rotor_success=True)
         self.generate(spc, skip_rotors=False)
-        spc.optical_isomers = 1  # what _parse_conformer_statmech() stores
+        spc.optical_isomers = 1
         content = self.generate(spc, skip_rotors=True)
         self.assertEqual(self.arkane_local_context(content)['opticalIsomers'], 2)
 

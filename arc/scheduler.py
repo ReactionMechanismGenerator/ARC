@@ -815,8 +815,8 @@ class Scheduler(object):
         """
         Cancel the running scan and directed scan jobs of a TS whose rotor is a reactive-ring rejection,
         e.g., jobs restored from a restart file whose rotor the reactive-ring check rejected after the restart.
-        Each such job is deleted from the server (unless it runs incore) and removed from
-        ``running_jobs`` and ``job_dict``.
+        Each such job is removed from ``running_jobs``, ``unsubmitted_jobs`` and ``job_dict``, and a queue job with
+        a job ID is deleted from the server. A delete command that fails is logged as a warning.
 
         Args:
             label (str): The TS label.
@@ -832,8 +832,14 @@ class Scheduler(object):
                     continue
                 logger.info(f"Cancelling job {job_name} of {label}: the torsion of rotor {rotor.get('pivots')} "
                             f"lies in the reactive ring of the TS.")
-                if job.execution_type != 'incore':
-                    job.delete()
+                self.unsubmitted_jobs = [(queued_label, queued) for queued_label, queued in self.unsubmitted_jobs
+                                         if queued is not job]
+                if job.execution_type != 'incore' and job.job_id is not None:
+                    try:
+                        job.delete()
+                    except Exception as e:
+                        logger.warning(f'Could not delete job {job_name} ({job.job_id}) of {label} on {job.server}: '
+                                       f'{e}. It may still be running there.')
                 self.running_jobs[label].remove(job_name)
                 del jobs[job_name]
 

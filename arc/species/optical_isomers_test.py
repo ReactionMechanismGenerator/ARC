@@ -769,7 +769,8 @@ H      -1.38636956    1.19178135    0.29552364""")
         normal = np.cross(coords[0] - coords[1], coords[2] - coords[1])
         coords[1] += 0.15 * normal / np.linalg.norm(normal) * np.sign(np.dot(coords[1] - coords[6], normal))
         angle_sum = oi.get_angle_sums(coords.tolist(), neighbors)[1]
-        self.assertTrue(oi.PLANAR_ANGLE_SUM - oi.NEAR_PLANAR_MARGIN <= angle_sum < oi.PLANAR_ANGLE_SUM, angle_sum)
+        self.assertGreaterEqual(angle_sum, oi.PLANAR_ANGLE_SUM - oi.NEAR_PLANAR_MARGIN)
+        self.assertLess(angle_sum, oi.PLANAR_ANGLE_SUM)
         spc = ARCSpecies(label='iC3H7', smiles='C[CH]C',
                          xyz=converter.xyz_from_data(coords=coords.tolist(), symbols=xyz['symbols']))
         with self.assertLogs('arc', level='INFO') as logs:
@@ -777,6 +778,47 @@ H      -1.38636956    1.19178135    0.29552364""")
         note = f'near-planar C2 (angle sum {angle_sum:.1f} deg)'
         self.assertTrue(result.cause.endswith(note), result.cause)
         self.assertTrue(any(note in line for line in logs.output))
+
+    def test_pyramidal_radical_on_both_sides_of_the_cut(self):
+        """
+        Test that the 2-butyl radical with every rotor treated gives 1 with its C2 angle sum above PLANAR_ANGLE_SUM
+        and 2 below it, where its configuration at C2 is counted and C2 is named as near-planar.
+        """
+        xyz = converter.str_to_xyz(THREE_COORDINATE_XYZ['2-butyl'])
+        bonds = {(0, 1), (1, 2), (2, 3), (0, 4), (0, 5), (0, 6), (1, 7), (2, 8), (2, 9), (3, 10), (3, 11), (3, 12)}
+        neighbors = oi.get_neighbors(bonds, len(xyz['symbols']))
+        planar = oi.flatten_centers(np.array(xyz['coords'], dtype=float), neighbors, {1})
+        p0, p1, p2 = (planar[i] for i in sorted(neighbors[1]))
+        normal = np.cross(p1 - p0, p2 - p0)
+        normal /= np.linalg.norm(normal)
+        results = dict()
+        for height in [0.22, 0.27]:
+            coords = planar.copy()
+            coords[1] += height * normal
+            spc = ARCSpecies(label='2-butyl', smiles='C[CH]CC',
+                             xyz=converter.xyz_from_data(coords=coords.tolist(), symbols=xyz['symbols']))
+            spc.determine_rotors()
+            for r in spc.rotors_dict.values():
+                r['success'] = True
+            results[height] = (oi.get_angle_sums(coords.tolist(), neighbors)[1],
+                               oi.determine_optical_isomers(spc, treated(spc)))
+        above, below = results[0.22], results[0.27]
+        self.assertGreaterEqual(above[0], oi.PLANAR_ANGLE_SUM)
+        self.assertEqual(above[1].value, 1, above[1].cause)
+        self.assertLess(below[0], oi.PLANAR_ANGLE_SUM)
+        self.assertGreaterEqual(below[0], oi.PLANAR_ANGLE_SUM - oi.NEAR_PLANAR_MARGIN)
+        self.assertEqual(below[1].value, 2, below[1].cause)
+        self.assertIn('configuration at', below[1].cause)
+        self.assertTrue(below[1].cause.endswith(f'near-planar C2 (angle sum {below[0]:.1f} deg)'), below[1].cause)
+
+    def test_mirror_torsion_deviation_skips_an_undefined_torsion(self):
+        """Test that a torsion through three collinear atoms is not compared"""
+        coords = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
+        mirror = [[x, y, -z] for x, y, z in coords]
+        identity = {i: i for i in range(5)}
+        deviation, worst = oi.get_mirror_torsion_deviation(coords, mirror, identity, torsions=[(0, 1, 2, 3)])
+        self.assertEqual(deviation, 0.0)
+        self.assertTrue(np.isnan(worst[(0, 1, 2, 3)]))
 
     def test_no_symmetry_map_is_undetermined(self):
         """Test that a structure without a graph symmetry map is not decided, rather than failing in the search"""

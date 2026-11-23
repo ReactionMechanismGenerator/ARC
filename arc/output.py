@@ -2156,7 +2156,7 @@ def _get_ring_check_dropped_bonds(spc) -> list[dict]:
             sorted by atoms.
     """
     dropped = dict()
-    for rotor in (getattr(spc, 'rotors_dict', None) or dict()).values():
+    for rotor in (spc.rotors_dict or dict()).values():
         for bond in rotor.get('ring_check_dropped_bonds') or list():
             dropped[tuple(bond['atoms'])] = dict(bond)
     return [dropped[atoms] for atoms in sorted(dropped)]

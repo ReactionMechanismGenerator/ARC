@@ -72,7 +72,7 @@ TS_PARTIAL_BOND_RATIO = 1.3
 TS_PARTIAL_BOND_RATIO_H = 1.5
 TS_STRETCHED_BOND_RATIO = 1.6
 # Distance / single bond length ratio beyond which a TS 2D-graph bond that the reaction neither forms nor breaks is
-# absent from the TS geometry. It lies between 1.525 (a real reactive bond) and 2.097 (a contradicted graph bond).
+# dropped from the TS graph.
 TS_CONTRADICTED_BOND_RATIO = 1.8
 
 # The reactions whose formed and broken bonds could not be determined: reaction -> (geometries, reason).
@@ -1792,9 +1792,7 @@ def get_ts_bonds(mol: Molecule | None,
     geometry, so a reaction and its reverse give the same TS bonds. A reaction whose bonds could not be determined
     is not tried again until a reactant or product geometry changes.
     A TS 2D-graph bond that the TS geometry puts farther apart than ``TS_CONTRADICTED_BOND_RATIO`` times its single
-    bond length is dropped, unless the reaction forms or breaks it. If the cut drops a real bond, the ring through it
-    is missed and its torsions are scanned, as without a reactive-ring check; if it keeps a bad bond, a real torsion
-    is left harmonic.
+    bond length is dropped, unless the reaction forms or breaks it.
 
     Args:
         mol (Molecule | None): The TS 2D graph.
@@ -1821,19 +1819,6 @@ def get_ts_bonds(mol: Molecule | None,
     graph_bonds, named_bonds = set(bonds), set()
     symbols = list(xyz['symbols']) if xyz is not None else [atom.element.symbol for atom in mol.atoms]
 
-    def distance(i: int, j: int) -> float:
-        """
-        Get the distance between two TS atoms.
-
-        Args:
-            i (int): The 0-indexed first atom.
-            j (int): The 0-indexed second atom.
-
-        Returns:
-            float: The distance in Angstrom.
-        """
-        return sum((xyz['coords'][i][k] - xyz['coords'][j][k]) ** 2 for k in range(3)) ** 0.5
-
     def distance_ratio(i: int, j: int) -> float:
         """
         Get the distance between two TS atoms relative to their single bond length.
@@ -1845,7 +1830,7 @@ def get_ts_bonds(mol: Molecule | None,
         Returns:
             float: The distance divided by the single bond length of the two elements.
         """
-        return distance(i, j) / get_single_bond_length(symbols[i], symbols[j])
+        return vectors.calculate_distance(xyz['coords'], [i, j]) / get_single_bond_length(symbols[i], symbols[j])
 
     sources = list()
     if reaction is None:
@@ -1891,7 +1876,8 @@ def get_ts_bonds(mol: Molecule | None,
         geometry_bonds = {(i, j) for i in range(len(symbols)) for j in range(i + 1, len(symbols))
                           if distance_ratio(i, j) <= (TS_PARTIAL_BOND_RATIO_H if 'H' in (symbols[i], symbols[j])
                                                       else TS_PARTIAL_BOND_RATIO)}
-        dropped = [(i, j, distance(i, j), distance_ratio(i, j)) for i, j in sorted(graph_bonds - named_bonds)
+        dropped = [(i, j, vectors.calculate_distance(xyz['coords'], [i, j]), distance_ratio(i, j))
+                   for i, j in sorted(graph_bonds - named_bonds)
                    if distance_ratio(i, j) > TS_CONTRADICTED_BOND_RATIO]
         bonds -= {(i, j) for i, j, _, _ in dropped}
         bonds |= geometry_bonds
@@ -1930,19 +1916,49 @@ def get_top_from_bonds(bonds: set[tuple[int, int]],
     Returns:
         set[int]: The 0-indexed atoms of the top, including the first pivot.
     """
-    start, end = pivots
-    neighbors = dict()
+    neighbors = get_neighbors(bonds, max(set(pivots).union(*bonds)) + 1)
+    return get_reachable(neighbors, pivots[0], cut=(pivots[0], pivots[1]))
+
+
+def get_neighbors(bonds: set[tuple[int, int]], n: int) -> dict[int, set[int]]:
+    """
+    Get the neighbors of each atom of a graph.
+
+    Args:
+        bonds (set[tuple[int, int]]): The bonds.
+        n (int): The number of atoms.
+
+    Returns:
+        dict[int, set[int]]: The neighbors of each atom.
+    """
+    neighbors = {i: set() for i in range(n)}
     for i, j in bonds:
-        if {i, j} != {start, end}:
-            neighbors.setdefault(i, set()).add(j)
-            neighbors.setdefault(j, set()).add(i)
-    visited, stack = {start}, [start]
+        neighbors[i].add(j)
+        neighbors[j].add(i)
+    return neighbors
+
+
+def get_reachable(neighbors: dict[int, set[int]], start: int, cut: tuple[int, int] | None = None) -> set[int]:
+    """
+    Get the atoms reachable from an atom, optionally without crossing one bond.
+
+    Args:
+        neighbors (dict[int, set[int]]): The neighbors of each atom.
+        start (int): The atom to start from.
+        cut (tuple[int, int], optional): A bond that is not crossed.
+
+    Returns:
+        set[int]: The reachable atoms, including ``start``.
+    """
+    cut = set(cut) if cut is not None else set()
+    reached, stack = {start}, [start]
     while stack:
-        for neighbor in neighbors.get(stack.pop(), set()):
-            if neighbor not in visited:
-                visited.add(neighbor)
+        atom = stack.pop()
+        for neighbor in neighbors[atom] - reached:
+            if {atom, neighbor} != cut:
+                reached.add(neighbor)
                 stack.append(neighbor)
-    return visited
+    return reached
 
 
 def is_ts_graph_out_of_order(mol: Molecule | None, xyz: dict | None) -> bool:
@@ -2557,9 +2573,9 @@ def get_graph_stereocenters(label: str,
         return None, list(), 'no 2D graph'
     if xyz is None:
         return None, list(), 'no geometry'
-    symbols = [atom.element.symbol for atom in mol.atoms]
-    if symbols != list(xyz['symbols']):
+    if is_ts_graph_out_of_order(mol=mol, xyz=xyz):
         return None, list(), 'the atom order of the 2D graph and the geometry differ'
+    symbols = [atom.element.symbol for atom in mol.atoms]
     chiral_nitrogen_centers = identify_chiral_nitrogen_centers(mol)
     new_mol, elements_to_insert = replace_n_with_c_in_mol(mol, chiral_nitrogen_centers)
     stereo_smiles, centers = list(), list()

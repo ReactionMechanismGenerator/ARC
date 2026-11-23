@@ -4463,13 +4463,16 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                                     for rotor in ts.rotors_dict.values()))
 
     def test_restart_rechecks_restored_ts_rotors(self):
-        """Test that the unchecked rotors of a TS restored from a restart file are checked for its reactive ring"""
+        """
+        Test that the unchecked rotors of a TS restored from a restart file, as written by a run before the check
+        existed, are checked for its reactive ring
+        """
         rxn = ARCReaction(r_species=[ARCSpecies(label='nC3H7OO', smiles='CCCO[O]', xyz=NC3H7OO_XYZ)],
                           p_species=[ARCSpecies(label='QOOH', smiles='[CH2]CCOO', xyz=QOOH_XYZ)])
         rxn.ts_label = 'TS0'
         ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
         ts.final_xyz = str_to_xyz(TS0_XYZ)
-        for i, rotor in enumerate(find_internal_rotors(ts.mol)):  # As written by a run before the check existed.
+        for i, rotor in enumerate(find_internal_rotors(ts.mol)):
             ts.rotors_dict[i] = rotor
         ts.number_of_rotors = len(ts.rotors_dict)
         self.assertEqual(ts.number_of_rotors, 3)
@@ -4530,6 +4533,46 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertEqual(sched.running_jobs['TS0'], ['scan_a2'])
         self.assertEqual(list(sched.job_dict['TS0']['scan']), ['scan_a2'])
         self.assertEqual(sched.job_dict['TS0']['directed_scan'], dict())
+
+    def test_cancel_reactive_ring_scan_jobs_drops_an_unsubmitted_job(self):
+        """Test that a cancelled scan restored with no job ID leaves the unsubmitted jobs and is not deleted"""
+        rejected = {'pivots': [2, 3], 'success': False, 'invalidation_reason': REACTIVE_RING_INVALIDATION_REASON}
+        unsubmitted = MagicMock(rotor_index=0, execution_type='queue', job_id=None)
+        other = MagicMock(rotor_index=0, execution_type='queue', job_id=None)
+        sched = MagicMock()
+        sched.species_dict = {'TS0': SimpleNamespace(rotors_dict={0: rejected})}
+        sched.job_dict = {'TS0': {'scan': {'scan_a1': unsubmitted}}}
+        sched.running_jobs = {'TS0': ['scan_a1']}
+        sched.unsubmitted_jobs = [('TS0', unsubmitted), ('CH4', other)]
+
+        Scheduler.cancel_reactive_ring_scan_jobs(sched, label='TS0')
+
+        unsubmitted.delete.assert_not_called()
+        self.assertEqual(sched.unsubmitted_jobs, [('CH4', other)])
+        self.assertEqual(sched.running_jobs['TS0'], list())
+        self.assertEqual(sched.job_dict['TS0']['scan'], dict())
+
+    def test_cancel_reactive_ring_scan_jobs_goes_on_when_delete_fails(self):
+        """Test that a scan whose delete command fails is still cancelled, with a warning that names it"""
+        rejected = {'pivots': [2, 3], 'success': False, 'invalidation_reason': REACTIVE_RING_INVALIDATION_REASON}
+        job = MagicMock(rotor_index=0, execution_type='queue', job_id=4242, server='server1')
+        job.job_name = 'scan_a1'
+        job.delete.side_effect = OSError('connection refused')
+        sched = MagicMock()
+        sched.species_dict = {'TS0': SimpleNamespace(rotors_dict={0: rejected})}
+        sched.job_dict = {'TS0': {'scan': {'scan_a1': job}}}
+        sched.running_jobs = {'TS0': ['scan_a1']}
+        sched.unsubmitted_jobs = list()
+
+        with self.assertLogs('arc', level='WARNING') as logged:
+            Scheduler.cancel_reactive_ring_scan_jobs(sched, label='TS0')
+
+        job.delete.assert_called_once_with()
+        self.assertEqual(sched.running_jobs['TS0'], list())
+        self.assertEqual(sched.job_dict['TS0']['scan'], dict())
+        warning = ' '.join(logged.output)
+        for expected in ('scan_a1', '4242', 'server1', 'connection refused', 'may still be running'):
+            self.assertIn(expected, warning)
 
     def test_non_rotor(self):
         """Test that a 180 degree angle on either side of a torsion is not considered as a rotor."""
