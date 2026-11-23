@@ -118,8 +118,6 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
 
 WRONG_FREQ_MESSAGE = 'wrong number of negative frequencies; '
 
-# Written to output[label]['conformers'] (which restart.yml keeps) for each conformer isomorphism troubleshooting level,
-# so that a restart does not repeat a level that was already tried.
 CONFORMER_ISOMORPHISM_TRSH_NOTE = 'Troubleshooting conformer isomorphism at {level}; '
 CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED = 'Error: No conformer was found to be isomorphic with the 2D graph representation!; '
 
@@ -850,7 +848,6 @@ class Scheduler(object):
                     and any([e is not None for e in species.conformer_energies]) \
                     and not self.has_running_conformer_jobs(species.label):
                 # The species has no xyz, but has conformers and at least one of the conformers has energy.
-                # A species with conformer jobs still running is decided by the main loop once they all terminate.
                 self.determine_most_stable_conformer(species.label)
                 if species.initial_xyz is not None:
                     if self.composite_method:
@@ -914,7 +911,6 @@ class Scheduler(object):
                                 if self.species_dict[label].is_ts:
                                     self.determine_most_likely_ts_conformer(label)
                                 elif label not in self._pending_pipe_conf_sp:
-                                    # A conf_sp still owed would be ranked at the conf_opt level; decide once it ends.
                                     self.determine_most_stable_conformer(label, sp_flag=True if self.job_types['conf_sp'] else False)  # also checks isomorphism
                                 if self.species_dict[label].initial_xyz is not None:
                                     # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
@@ -1571,7 +1567,6 @@ class Scheduler(object):
         log_info_printed = False
         for label in labels_to_consider:
             if not self.species_dict[label].is_ts and self.has_running_conformer_jobs(label):
-                # Conformer jobs restored on restart are still running; the main loop decides once they terminate.
                 species = self.species_dict[label]
                 conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
                 conf_sp_jobs = self.job_dict[label].get('conf_sp', dict())
@@ -1581,7 +1576,6 @@ class Scheduler(object):
                     and not any(method.startswith(('conformer ', 'conf_opt: '))
                                 for job in conf_opt_jobs.values() for method in job.ess_trsh_methods or list())
                 if first_round:
-                    # The energies may be force-field ones; resubmit every conformer that is not running.
                     species.conformer_energies = [None] * len(species.conformers)
                     xyzs = species.conformers_before_opt if species.conformers_before_opt is not None \
                         else species.conformers
@@ -1593,15 +1587,14 @@ class Scheduler(object):
                     if i in conf_opt_jobs or i in conf_sp_jobs or (i < len(energies) and energies[i] is not None):
                         continue
                     if first_round and conf_sp_on and i < len(species.conformers) and species.conformers[i] != xyz:
-                        # This conformer's conf_opt finished before the restart; only its conf_sp is owed.
                         self.run_sp_job(label=label, level=self.conformer_sp_level, conformer=i)
                     else:
                         self.run_job(label=label,
-                                         xyz=xyz,
-                                         job_type='conf_opt',
-                                         level_of_theory=self.conformer_opt_level,
-                                         conformer=i,
-                                         )
+                                     xyz=xyz,
+                                     job_type='conf_opt',
+                                     level_of_theory=self.conformer_opt_level,
+                                     conformer=i,
+                                     )
                 continue
             if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
@@ -5284,7 +5277,6 @@ class Scheduler(object):
                          f'{label}. NOT optimizing this species.')
             return None
 
-        # A restart restores only the conformer jobs that were still running, so conformer 0 may have no job.
         conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
         ess_trsh_methods = get_conformer_isomorphism_trsh_history(self.output[label]['conformers'])
         if conf_opt_jobs:

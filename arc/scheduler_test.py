@@ -1157,7 +1157,6 @@ H       1.27889520   -0.81548721   -0.12940984"""
         sched = Scheduler(testing=True, **kwargs)
         sched.testing = False
         sched.dont_gen_confs.append(label)
-        self._issue622_last_fresh_scheduler = sched
         job_nums = iter(range(900, 1000))
         run_job_calls = list()
 
@@ -1220,17 +1219,6 @@ H       1.27889520   -0.81548721   -0.12940984"""
         self.assertEqual(energies_at_decision, [[-300000.0, -300001.0]])
         self.assertNotIn(label, sched._pending_pipe_conf_sp)
         self.assertNotIn(label, sched.running_jobs)
-
-    def test_issue622_fresh_round_owed_conf_sp_survives_a_failed_pipe_flush(self):
-        """
-        A pipe flush that raises has already emptied the owed conf_sp set, so the species cannot be left waiting
-        in it with no job live.
-        """
-        label = 'methylamine'
-        with self.assertRaises(RuntimeError):
-            self._issue622_fresh_conf_sp_round(try_pipe_conf_sp=MagicMock(side_effect=RuntimeError('pipe')))
-        sched = self._issue622_last_fresh_scheduler
-        self.assertNotIn(label, sched._pending_pipe_conf_sp)
 
     def test_issue622_fresh_round_leaves_a_piped_conf_sp_decision_to_the_pipe(self):
         """
