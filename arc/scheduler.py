@@ -218,7 +218,7 @@ def is_same_conformer(d_dihedral: float | None,
     A known energy change decides: an unchanged energy means the lower conformer was not reached, whatever the
     dihedral. When the energy is unknown, or the scan's energy gap is itself below the energy tolerance (a nearly
     free rotor), the dihedral decides: a missing energy change counts as the same energy, and a missing dihedral
-    change never counts as the same dihedral.
+    change does not count as the same dihedral.
 
     Args:
         d_dihedral (float, optional): The absolute change of the scanned dihedral angle in degrees.
@@ -4282,7 +4282,6 @@ class Scheduler(object):
                     success &= is_isomorphic
                 if success:
                     self.check_change_conformer_reopt(label=label, job=job)
-                # Update restart dictionary and save a restart file:
                 self.save_restart_dict()
                 return success
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
@@ -4499,8 +4498,8 @@ class Scheduler(object):
 
     def record_pending_conformer_changes(self) -> None:
         """
-        Record in the output dict how many 'change conformer' records of each species were never judged.
-        Called at the end of the run (also a restarted one), so the RMG library gate sees them as not verified.
+        Record in the output dict how many 'change conformer' records of each species were not judged.
+        Called at the end of the run (also a restarted one).
         """
         for label in self.species_dict:
             if label in self.output:
@@ -4525,9 +4524,8 @@ class Scheduler(object):
         """
         Check that a re-optimization started from a lower conformer found by a rotor scan reached a new geometry.
         The same energy as before the change (or, without a comparable energy, the same scanned dihedral) means the
-        lower conformer was not reached, so the species is flagged as not verified (see ``is_same_conformer``).
-        The latest change (by ``change_index``) is judged, and
-        its verdict closes every older pending change, since a later scan already moved away from their geometry.
+        lower conformer was not reached, and the species is flagged as not verified (see ``is_same_conformer``).
+        The latest change (by ``change_index``) is judged, and its verdict closes every older pending change.
         A dihedral that cannot be computed (collinear atoms) counts as not compared. Only a job of the type the
         baseline energy came from (composite or opt) is compared; an opt troubleshooting a composite run is not.
         The energies are not compared when the jobs ran at different effective levels (``job_level_signature``).
@@ -4621,8 +4619,8 @@ class Scheduler(object):
     def set_conformer_verified(self, label: str) -> None:
         """
         Set ``conformer_verified`` to ``True`` once every rotor of the species was scanned and passed the scan check
-        (each has a scan output and ``success`` is ``True``), and no lower conformer is pending or unresolved. A ``False`` value is kept. A species without scanned rotors keeps
-        ``None``, since nothing checked that its geometry is the lowest conformer.
+        (each has a scan output and ``success`` is ``True``), and no lower conformer is pending or unresolved.
+        A ``False`` value is kept. A species without scanned rotors keeps ``None``.
 
         Args:
             label (str): The species label.
@@ -5464,7 +5462,6 @@ class Scheduler(object):
                         # Detailed reasons are logged in the troubleshoot_scan_job().
                         invalidation_reason += ' But unable to propose troubleshooting methods.'
                     else:
-                        # Record actions, only if the method is valid; a conformer change records itself.
                         conformer_changed = 'change conformer' in actions
                         if not conformer_changed:
                             self.species_dict[label].rotors_dict[job.rotor_index]['trsh_methods'].append(actions)
@@ -5497,7 +5494,6 @@ class Scheduler(object):
 
         # Save the path and invalidation reason for debugging and tracking the file.
         # If ``success`` is None, it means that the job is being troubleshooted.
-        # After a conformer change the rotor was reset, and is scanned again from the new geometry.
         if not conformer_changed:
             self.species_dict[label].rotors_dict[job.rotor_index]['scan_path'] = job.local_path_to_output_file
             self.species_dict[label].rotors_dict[job.rotor_index]['scan_software'] = job.job_adapter
@@ -6207,6 +6203,12 @@ class Scheduler(object):
         2. inc_res: increasing the scan resolution.
         3. change conformer: changing to a conformer with a lower energy
 
+        A 'change conformer' to a conformer already tried keeps the current results and flags the species.
+        Otherwise all jobs of the species are deleted. For an isomorphic conformer, the completed rotor results are
+        reset (``times_dihedral_set`` and the 'change conformer' records are kept), the change record is attached
+        to the rotor, and opt (or composite) is re-run on the new geometry. A non-isomorphic conformer ends the
+        species.
+
         Args:
             job (JobAdapter): The scan Job object.
             methods (dict): The troubleshooting method/s to try::
@@ -6247,8 +6249,6 @@ class Scheduler(object):
 
         # A lower conformation was found.
         if 'change conformer' in methods:
-            # A conformer already tried is not tried again, and the current results are kept (flagged).
-            # Otherwise, all jobs are deleted to avoid conflicts, even if the new conformer is not isomorphic.
             new_xyz = methods['change conformer']
             if any('change conformer' in used_trsh_method
                    and compare_confs(new_xyz, used_trsh_method['change conformer'])
@@ -6265,7 +6265,6 @@ class Scheduler(object):
                                    for rotor in self.species_dict[label].rotors_dict.values()
                                    for method in rotor['trsh_methods'])
             self.delete_all_species_jobs(label)
-            # If 'change conformer' is not used, check for isomorphism.
             if self.species_dict[label].is_ts:
                 is_isomorphic = True
             else:
@@ -6278,18 +6277,13 @@ class Scheduler(object):
                 self.output[label]['geo_e_elect'], self.output[label]['geo_level'] = None, None
                 self.output[label]['conformer_verified'] = None
                 self.output[label]['conformer_verified_cause'] = ''
-                # Remove all completed rotor calculation information.
                 for rotor in self.species_dict[label].rotors_dict.values():
-                    # Don't initialize all parameters, e.g., `times_dihedral_set` needs to remain as is.
                     rotor['scan_path'] = ''
                     rotor['invalidation_reason'] = ''
                     rotor['success'] = None
                     rotor['symmetry'] = None
                     if rotor['scan'] == torsions_to_scans(job.torsions)[0]:
                         rotor['times_dihedral_set'] += 1
-                    # We can save the change conformer trsh info, but other trsh methods like
-                    # freezing or increasing scan resolution can be cleaned, otherwise, they may
-                    # not be troubleshot.
                     rotor['trsh_methods'] = [trsh_method for trsh_method in rotor['trsh_methods']
                                              if 'change conformer' in trsh_method]
                 trsh_success = True
@@ -6302,16 +6296,13 @@ class Scheduler(object):
                                   'verified': None,
                                   'change_index': change_index,
                                   }
-                # Attached before the re-opt is spawned, so the restart file the re-opt saves holds the baseline.
                 self.species_dict[label].rotors_dict[job.rotor_index]['trsh_methods'].append(actual_actions)
-                # Re-run opt (or composite) on the new initial_xyz with the desired dihedral.
                 if not self.composite_method:
                     self.run_opt_job(label)
                 else:
                     self.run_composite_job(label)
                 return trsh_success, actual_actions
 
-            # The conformer is not isomorphic with the species.
             self.output[label]['errors'] += \
                 f'A lower conformer was found for {label} via a torsion mode, ' \
                 f'but it is not isomorphic with the 2D graph representation ' \

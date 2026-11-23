@@ -9370,7 +9370,7 @@ class TestChangeConformerReopt(unittest.TestCase):
         spc.final_xyz = spc.get_xyz()
         spc.set_dihedral(scan=self.scan, index=1, deg_abs=120.0, count=False)
         spc.final_xyz = spc.initial_xyz
-        project_directory = os.path.join(ARC_PATH, 'Projects', f'arc_project_{name}')
+        project_directory = tempfile.mkdtemp(prefix=f'arc_project_{name}_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         kwargs = {'composite_method': Level(repr='cbs-qb3')} if composite else dict()
         sched = Scheduler(project=name, ess_settings=self.ess_settings, species_list=[spc],
@@ -9548,7 +9548,7 @@ class TestChangeConformerReopt(unittest.TestCase):
         xyz = parser.parse_geometry(log_file_path=log)
         old_spc = ARCSpecies(label='nC3H7_old', smiles='[CH2]CC', xyz=xyz)
         old_spc.determine_rotors()
-        methyl_torsion = old_spc.rotors_dict[1]['scan']  # C-C-C-H, referenced to a methyl H
+        methyl_torsion = old_spc.rotors_dict[1]['scan']
         self.assertEqual(len(old_spc.rotors_dict[1]['top']), 4)
         old_spc.final_xyz = xyz
         old_spc.set_dihedral(scan=methyl_torsion, index=1, deg_increment=120.0, count=False)
@@ -9629,7 +9629,10 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIsNone(sched.output['cc_nocomp']['conformer_verified'])
 
     def test_is_same_conformer(self):
-        """A known, unchanged energy is the same conformer at any dihedral; without it, the dihedral decides."""
+        """
+        A known, unchanged energy is the same conformer at any dihedral; without it, the dihedral decides.
+        A gap below the energy tolerance (a nearly free rotor) also leaves the dihedral to decide.
+        """
         self.assertFalse(is_same_conformer(d_dihedral=None, d_energy=None))
         self.assertTrue(is_same_conformer(d_dihedral=0.5, d_energy=0.01))
         self.assertTrue(is_same_conformer(d_dihedral=0.5, d_energy=None))
@@ -9639,7 +9642,6 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertFalse(is_same_conformer(d_dihedral=0.5, d_energy=3.2))
         self.assertFalse(is_same_conformer(d_dihedral=0.0, d_energy=0.1))
         self.assertFalse(is_same_conformer(d_dihedral=2.0, d_energy=None))
-        # A gap below the energy tolerance (a nearly free rotor) cannot be told apart by energy; the dihedral decides.
         self.assertFalse(is_same_conformer(d_dihedral=120.0, d_energy=0.0, energy_gap=0.05))
         self.assertTrue(is_same_conformer(d_dihedral=0.5, d_energy=0.0, energy_gap=0.05))
         self.assertFalse(is_same_conformer(d_dihedral=2.0, d_energy=0.0, energy_gap=0.05))
@@ -9671,7 +9673,7 @@ class TestChangeConformerReopt(unittest.TestCase):
         spc.final_xyz = xyz
         spc.determine_rotors()
         spc.rotors_dict[3]['invalidation_reason'] = invalidation_reason
-        project_directory = os.path.join(ARC_PATH, 'Projects', f'arc_project_{name}')
+        project_directory = tempfile.mkdtemp(prefix=f'arc_project_{name}_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project=name, ess_settings=self.ess_settings, species_list=[spc],
                           opt_level=Level(repr=default_levels_of_theory['opt']),
@@ -9698,7 +9700,7 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIn('troubleshooting was not applied', sched.output['cc_scan_notrsh']['conformer_verified_cause'])
 
     def test_check_scan_job_does_not_flag_a_pivts_rotor(self):
-        """A TS reaction-zone rotor ('pivTS') is never troubleshot, so it is not flagged as a lower conformer."""
+        """A TS reaction-zone rotor ('pivTS') is not troubleshot or flagged as a lower conformer."""
         sched, job = self.make_coccoo_scan('cc_scan_pivts', invalidation_reason='pivTS')
         sched.trsh_rotors = True
         with patch('arc.plotter.plot_1d_rotor_scan'):
@@ -9772,7 +9774,7 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertEqual(restarted.output[label]['conformer_change_pending'], 1)
 
     def test_change_conformer_record_is_in_the_restart_saved_by_the_reopt(self):
-        """The pending record is attached before the re-opt is spawned, so the restart file it saves holds it."""
+        """The restart file the re-opt saves holds the pending record."""
         sched = self.make_sched('cc_ckpt')
         saved = list()
         sched.save_restart_dict = lambda: saved.append(
@@ -9797,7 +9799,6 @@ class TestChangeConformerReopt(unittest.TestCase):
             self.assertTrue(sched.parse_opt_geo(label=label, job=opt_job))
         self.assertEqual(sched.get_latest_geo_job_e_elect(label), (e_elect, job_level_signature(opt_job)))
 
-        # restart.yml holds the output dict and the species, and only the running jobs (here, the rotor scans).
         restart_path = os.path.join(sched.project_directory, 'restart_before_scan.yml')
         save_yaml_file(path=restart_path,
                        content={'output': sched.output,
@@ -9822,7 +9823,6 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertAlmostEqual(record['pre_e_elect'], e_elect)
         self.assertEqual(record['pre_level'], job_level_signature(opt_job))
 
-        # The re-opt moved the dihedral 60 deg but kept the energy: judged by energy, the change was not reached.
         restarted.species_dict[label].final_xyz = new_xyz
         restarted.check_change_conformer_reopt(label=label, job=self.geo_job('opt', 'opt_a2', level))
         self.assertIs(record['verified'], False)
@@ -9836,11 +9836,9 @@ class TestChangeConformerReopt(unittest.TestCase):
         sched.record_geo_job_e_elect(label=label, job=composite_job)
         self.assertAlmostEqual(sched.get_latest_geo_job_e_elect(label)[0],
                                parser.parse_e_elect(log_file_path=self.nc3h7_log))
-        # An opt troubleshooting the composite run sets final_xyz; the composite energy no longer belongs to it.
         sched.record_geo_job_e_elect(label=label, job=self.geo_job('opt', 'opt_a2',
                                                                    Level(repr=default_levels_of_theory['opt'])))
         self.assertEqual(sched.get_latest_geo_job_e_elect(label), (None, None))
-        # A conformer change moves final_xyz to the scan's geometry, which no job computed yet.
         sched.record_geo_job_e_elect(label=label, job=composite_job)
         self.change_conformer(sched, label, self.new_xyz(sched, label))
         record = sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]
@@ -9969,7 +9967,7 @@ class TestChangeConformerReopt(unittest.TestCase):
                 if job_name == 'opt_a1':
                     self.assertFalse(sched.post_freq_actions(label=label, job=freq_job, vibfreqs=[-150.0, 400.0])[0])
                     self.assertIsNone(record['verified'])
-            sched.job_dict[label]['opt'] = dict()  # a restart restores no completed job
+            sched.job_dict[label]['opt'] = dict()
             sched.species_dict[label] = ARCSpecies(species_dict=sched.species_dict[label].as_dict())
             record = sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]
             self.assertTrue(sched.post_freq_actions(label=label, job=freq_job, vibfreqs=[150.0, 400.0])[0])
@@ -10009,7 +10007,7 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIn('3.20 kJ/mol lower', sched.output[label]['conformer_verified_cause'])
 
     def test_check_change_conformer_reopt_collinear_dihedral_stays_pending(self):
-        """A dihedral over collinear atoms (NaN) cannot be compared, so an unchanged energy keeps the record pending."""
+        """With a dihedral over collinear atoms (NaN), an unchanged energy keeps the record pending."""
         sched = self.make_sched('cc_nan')
         label = 'cc_nan'
         xyz = str_to_xyz("""C 0.0 0.0 0.0
@@ -10026,7 +10024,7 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIsNone(sched.output[label]['conformer_verified'])
 
     def test_check_scan_job_change_conformer_rescans_the_rotor(self):
-        """After a successful conformer change the triggering rotor keeps no scan path, so it is scanned again."""
+        """After a successful conformer change the triggering rotor keeps no scan path and is scanned again."""
         sched, job = self.make_coccoo_scan('cc_rescan')
         sched.trsh_rotors = True
         with patch('arc.plotter.plot_1d_rotor_scan'), patch('arc.job.adapter.JobAdapter.execute'), \
@@ -10058,7 +10056,7 @@ class TestChangeConformerReopt(unittest.TestCase):
 
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_resets_the_conformer_verdict(self, mock_run_opt):
-        """A replacement TS guess is a new geometry, so the previous guess's not-verified verdict is dropped."""
+        """A replacement TS guess drops the previous guess's not-verified verdict."""
         ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
         H       1.81402049    1.03819414    0.00000000
         H       0.00000000    0.00000000    0.00000000
@@ -10069,7 +10067,7 @@ class TestChangeConformerReopt(unittest.TestCase):
         for i, tsg in enumerate(ts_spc.ts_guesses):
             tsg.opt_xyz, tsg.imaginary_freqs = ts_xyz, [-500.0 + 100 * i]
         ts_spc.chosen_ts, ts_spc.chosen_ts_list, ts_spc.ts_guesses_exhausted = 0, [0], False
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_cc_switch_ts')
+        project_directory = tempfile.mkdtemp(prefix='arc_project_cc_switch_ts_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='cc_switch_ts', ess_settings=self.ess_settings, species_list=[ts_spc],
                           opt_level=Level(repr=default_levels_of_theory['opt']),

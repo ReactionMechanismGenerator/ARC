@@ -150,8 +150,8 @@ def select_thermo_lib_species(species: list,
 
 def remove_gated_out_library(libraries_path: str, library: str, gated_out: bool) -> None:
     """
-    Remove a library left from an earlier run when the not-verified gate left out every entry of this run,
-    so a stale library with not verified entries does not remain. Nothing is removed if nothing was gated out.
+    Remove a library left from an earlier run when the not-verified gate left out every entry of this run.
+    Nothing is removed if nothing was gated out.
 
     Args:
         libraries_path (str): The path of the RMG libraries directory.
