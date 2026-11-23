@@ -5176,6 +5176,10 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         job-level troubleshooting is exhausted. The job status is parsed from a real Gaussian TS rotor scan
         that ended with "Number of steps exceeded" after every method trsh_ess_job offers for it was already used.
 
+        Args:
+            label (str): The TS label.
+            job_type (str): The job type, ``'scan'`` or ``'opt'``.
+
         Returns:
             tuple: The scheduler and the job.
         """
