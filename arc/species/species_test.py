@@ -43,6 +43,7 @@ from arc.species.species import (ARCSpecies,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
                                  dict_repr_is_authoritative,
+                                 get_stereo_smiles,
                                  lift_legacy_extension_keys,
                                  process_run_time,
                                  rmg_mol_from_dict_repr,
@@ -1583,6 +1584,28 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         spc_copy.label_atoms()
         for index, atom in enumerate(spc_copy.mol.atoms):
             self.assertEqual(str(index), atom.label)
+
+    def test_stereo_smiles(self):
+        """Test that a SMILES with stereo marks is kept through as_dict(), from_dict() and copy()."""
+        self.assertEqual(get_stereo_smiles('C[C@@H](O)CC'), 'C[C@@H](O)CC')
+        self.assertEqual(get_stereo_smiles('C/C=C/C'), 'C/C=C/C')
+        self.assertEqual(get_stereo_smiles('C\\C=C/C'), 'C\\C=C/C')
+        for smiles in ['CC(O)CC', '', None]:
+            self.assertIsNone(get_stereo_smiles(smiles))
+        smiles = 'C[C@@H]1CCCC[C@H]1[N+](C)(C)C'
+        spc = ARCSpecies(label='trans', smiles=smiles)
+        self.assertEqual(spc.stereo_smiles, smiles)
+        self.assertEqual(spc.as_dict()['smiles'], smiles)
+        for restored in [ARCSpecies(species_dict=spc.as_dict()), spc.copy()]:
+            self.assertEqual(restored.stereo_smiles, smiles)
+            self.assertTrue(restored.mol.is_isomorphic(spc.mol))
+        # A species from an input dictionary (e.g., ARC's input file)
+        self.assertEqual(ARCSpecies(species_dict={'label': 'trans', 'smiles': smiles, 'charge': 1}).stereo_smiles, smiles)
+        # No stereo marks: nothing is stored
+        plain = ARCSpecies(label='plain', smiles='CC1CCCCC1[N+](C)(C)C')
+        self.assertIsNone(plain.stereo_smiles)
+        self.assertNotIn('smiles', plain.as_dict())
+        self.assertIsNone(plain.copy().stereo_smiles)
 
     def test_copy(self):
         """Test the copy() method."""
