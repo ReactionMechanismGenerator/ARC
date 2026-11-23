@@ -123,6 +123,7 @@ WRONG_FREQ_MESSAGE = 'wrong number of negative frequencies; '
 CONFORMER_ISOMORPHISM_TRSH_NOTE = 'Troubleshooting conformer isomorphism at {level}; '
 CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED = 'Error: No conformer was found to be isomorphic with the 2D graph representation!; '
 CONFORMER_SET_REPLACED_NOTE = 'Conformers replaced after a negative frequency; '
+CONFORMER_TRSH_TAG_PREFIXES = ('conformer ', 'conf_opt: ')
 UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE = 'a restart found running conformer jobs with no conformer isomorphism ' \
                                           'troubleshooting level recorded; conformers with no energy and no ' \
                                           'running job, if any, are resubmitted at the conformer level; '
@@ -244,7 +245,7 @@ def get_conformer_trsh_levels(jobs) -> list[str]:
     levels = list()
     for job in jobs:
         for method in job.ess_trsh_methods or list():
-            if method.startswith(('conformer ', 'conf_opt: ')):
+            if method.startswith(CONFORMER_TRSH_TAG_PREFIXES):
                 level = method.split(' ', 1)[1]
                 if level not in levels:
                     levels.append(level)
@@ -1276,7 +1277,8 @@ class Scheduler(object):
             torsions = species.rotors_dict[rotor_index]['torsion']
             torsions = [torsions] if not isinstance(torsions[0], list) else torsions
         if label is not None:
-            level_of_theory = self.get_job_level(label=label, level_of_theory=level_of_theory, job_type=job_type)
+            level_of_theory = self.get_job_level(label=label, level_of_theory=level_of_theory, job_type=job_type,
+                                                 ess_trsh_methods=ess_trsh_methods)
         job_adapter = job_adapter.lower() if job_adapter is not None else \
             self.deduce_job_adapter(level=Level(repr=level_of_theory), job_type=job_type)
         args = {'keyword': {}, 'block': {}}
@@ -1397,20 +1399,26 @@ class Scheduler(object):
                       label: str | list[str],
                       level_of_theory: Level | dict | str | None,
                       job_type: str,
+                      ess_trsh_methods: list[str] | None = None,
                       ) -> Level | dict | str | None:
         """
         Get the level of theory a job of a species runs at: the adaptive level for the job type if one applies,
-        otherwise the given level.
+        otherwise the given level. A conf_opt job tagged with a conformer isomorphism troubleshooting level runs at
+        the given level.
 
         Args:
             label (str | list[str]): The species label.
             level_of_theory (Level | dict | str): The level of theory requested for the job.
             job_type (str): The job's type.
+            ess_trsh_methods (list[str], optional): The job's troubleshooting methods.
 
         Returns:
             Level | dict | str | None: The level of theory the job runs at.
         """
         if self.adaptive_levels is None:
+            return level_of_theory
+        if job_type == 'conf_opt' \
+                and any(method.startswith(CONFORMER_TRSH_TAG_PREFIXES) for method in ess_trsh_methods or list()):
             return level_of_theory
         spc = self.species_dict[label]
         heavy_atoms = spc.adaptive_lot_n_heavy if spc.adaptive_lot_n_heavy is not None else spc.number_of_heavy_atoms
