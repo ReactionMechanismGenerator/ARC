@@ -1659,9 +1659,8 @@ class Scheduler(object):
 
     def refuse_conformer_isomorphism_trsh_recovery(self, label: str) -> bool:
         """
-        Check whether a restart may not continue the conformer isomorphism troubleshooting of a species, because
-        troubleshooting is disabled or exhausted for it. If so, warn naming the species, and record the warning
-        once in the species' output warnings.
+        Check whether conformer isomorphism troubleshooting is disabled or exhausted for a species. If so, warn
+        naming the species, and record the warning once in the species' output warnings.
 
         Args:
             label (str): The species label.

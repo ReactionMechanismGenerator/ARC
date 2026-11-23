@@ -1506,9 +1506,8 @@ H       4.27889520   -0.81548721   -0.22940984"""
 
     def test_conformer_trsh_restart_mid_respawn_does_not_select_across_levels(self):
         """
-        A run killed after the troubleshooting respawn resubmitted conformer 0 only must not, after a restart,
-        select a conformer from conformer-level energies of conformers 1 and 2 mixed with the troubleshooting-level
-        energy of conformer 0: conformers 1 and 2 are resubmitted at the troubleshooting level.
+        A restart of a run killed after the troubleshooting respawn resubmitted conformer 0 only resubmits conformers
+        1 and 2 at the troubleshooting level, and the conformer decision sees no conformer-level energy.
         """
         label = 'methylamine'
         sched = self._conformer_trsh_interrupted_respawn_restart(round_1_energies=[0.0, 10.0, 20.0])
@@ -1879,15 +1878,28 @@ H       4.27889520   -0.81548721   -0.22940984"""
 
     def test_conformer_trsh_all_none_moves_to_the_next_level_once_ess_troubleshooting_ends(self):
         """
-        While ESS troubleshooting still reruns a failed troubleshooting-level conformer job, the species stays at
-        that level; once the rerun fails too, it moves to the next level exactly once.
+        While ESS troubleshooting still reruns a failed troubleshooting-level conformer job, in ``parse_conformer``
+        or in the conformer decision, the species stays at that level; once the rerun fails too, it moves to the
+        next level exactly once.
         """
         label = 'methylamine'
         sched = self._conformer_trsh_respawned_scheduler()
-        submitted = self._conformer_trsh_fail_conformer_jobs(sched, {0: ['MaxOptCycles', 'GL9999'], 1: ['DiskSpace'],
-                                                           2: ['DiskSpace']})
+        submitted = self._conformer_trsh_fail_conformer_jobs(sched, {0: ['MaxOptCycles', 'GL9999'],
+                                                                     1: ['DiskSpace'],
+                                                                     2: ['DiskSpace']})
         self.assertEqual(submitted, [(0, 'wb97xd/def2tzvp')])
         self.assertEqual(sched.running_jobs[label], [sched.job_dict[label]['conf_opt'][0].job_name])
+
+        sched = self._conformer_trsh_respawned_scheduler()
+        for job in sched.job_dict[label]['conf_opt'].values():
+            job.times_rerun = 1
+        submitted = self._conformer_trsh_fail_conformer_jobs(sched, {0: ['MaxOptCycles', 'GL9999'],
+                                                                     1: ['DiskSpace'],
+                                                                     2: ['DiskSpace']})
+        self.assertEqual(submitted, [(0, 'wb97xd/def2tzvp')])
+        self.assertEqual(sched.running_jobs[label], [sched.job_dict[label]['conf_opt'][0].job_name])
+        self.assertEqual(get_conformer_isomorphism_trsh_history(sched.output[label]['conformers']),
+                         ['conformer wb97xd/def2TZVP'])
         submitted = self._conformer_trsh_fail_conformer_jobs(sched, {0: ['DiskSpace']})
         self.assertEqual(submitted, [(i, 'apfd/def2tzvp') for i in range(3)])
         self.assertEqual(sched.output[label]['conformers'].count(
