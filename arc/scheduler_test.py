@@ -4151,15 +4151,13 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.ess_settings = {'gaussian': ['server1']}
-        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 14)]
 
-    @classmethod
-    def tearDownClass(cls):
+    def setUp(self):
         """
-        A method that is run after all unit tests in this class, deleting the project directories.
+        A method that is run before each unit test, giving it its own temporary root for project directories.
         """
-        for project in cls.projects:
-            shutil.rmtree(os.path.join(ARC_PATH, 'Projects', project), ignore_errors=True)
+        self.projects_root = tempfile.mkdtemp(prefix='arc_tsg_admission_')
+        self.addCleanup(shutil.rmtree, self.projects_root, ignore_errors=True)
 
     def test_spawn_ts_jobs_unknown_family_admission_predicate(self):
         """Test the admission predicate for TS adapters of reactions with an unknown family."""
@@ -4243,7 +4241,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                           ess_settings=self.ess_settings,
                           species_list=r_species + p_species,
                           rxn_list=[rxn],
-                          project_directory=os.path.join(ARC_PATH, 'Projects', project),
+                          project_directory=os.path.join(self.projects_root, project),
                           ts_adapters=ts_adapters,
                           job_types=initialize_job_types(),
                           conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
@@ -4418,7 +4416,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                           ess_settings=self.ess_settings,
                           species_list=species,
                           rxn_list=[rxn_1, rxn_2],
-                          project_directory=os.path.join(ARC_PATH, 'Projects', project),
+                          project_directory=os.path.join(self.projects_root, project),
                           ts_adapters=ts_adapters or ['kinbot', 'linear'],
                           job_types=initialize_job_types(),
                           conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
