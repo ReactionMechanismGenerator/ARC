@@ -5044,6 +5044,22 @@ class TestScanSoftwareStamp(unittest.TestCase):
                 if expect_opt:
                     sched.determine_most_stable_conformer.assert_called_once_with('spc', sp_flag=True)
 
+    def test_run_ts_conformer_jobs_keeps_restored_conformer_jobs(self):
+        """TS conformer jobs restored by a restarted run are not spawned again"""
+        from arc.scheduler import Scheduler
+
+        for running, expect_spawn in ((['conf_opt_0', 'conf_opt_1'], False), (['opt_a7'], True)):
+            with self.subTest(running=running):
+                sched = MagicMock()
+                sched.running_jobs = {'TS0': running}
+                sched.species_dict['TS0'].cluster_tsgs.side_effect = StopIteration
+                if expect_spawn:
+                    with self.assertRaises(StopIteration):
+                        Scheduler.run_ts_conformer_jobs(sched, 'TS0')
+                else:
+                    Scheduler.run_ts_conformer_jobs(sched, 'TS0')
+                self.assertEqual(sched.species_dict['TS0'].cluster_tsgs.called, expect_spawn)
+
 
 class TestSchedulerIRCSpecies(unittest.TestCase):
     """
