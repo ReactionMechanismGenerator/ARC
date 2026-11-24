@@ -8,7 +8,9 @@ This module contains unit tests of the arc.job.local module
 import datetime
 import os
 import shutil
+import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -210,7 +212,7 @@ class TestLocal(unittest.TestCase):
                 local.check_running_jobs_ids()
 
     def test_check_job_status_does_not_read_a_socket_timeout_as_done(self):
-        """A queue that cannot be read must not make a running job look finished"""
+        """A queue that cannot be read leaves a running job's status unknown, not finished"""
         with patch.dict(local.servers, {'local': {'cluster_soft': 'Slurm'}}), \
                 patch('arc.job.local.execute_command', return_value=([], SOCKET_TIMEOUT, 1)), \
                 patch('time.sleep'):
@@ -218,7 +220,7 @@ class TestLocal(unittest.TestCase):
                 local.check_job_status(4242)
 
     def test_check_running_jobs_ids_does_not_read_a_socket_timeout_as_no_jobs(self):
-        """A queue that cannot be read must not report an empty job list"""
+        """A queue that cannot be read raises QueueQueryError, not an empty job list"""
         with patch.dict(local.servers, {'local': {'cluster_soft': 'Slurm'}}), \
                 patch('arc.job.local.execute_command', return_value=([], SOCKET_TIMEOUT, 1)), \
                 patch('time.sleep'):
@@ -250,7 +252,7 @@ class TestLocal(unittest.TestCase):
                 local.check_running_jobs_ids(missing_command_reads_empty=False)
 
     def test_a_missing_queue_command_does_not_end_a_job_on_the_local_queue(self):
-        """ARC submitted the job with that queue, so a vanished queue command leaves its status unknown"""
+        """A vanished queue command leaves the status of a job submitted with that queue unknown"""
         with patch.dict(local.servers, {'local': {'cluster_soft': 'Slurm'}}), \
                 patch('arc.job.local.execute_command',
                       return_value=([], ['/bin/sh: 1: /usr/bin/squeue: not found'], 127)), \
@@ -282,7 +284,7 @@ class TestLocal(unittest.TestCase):
         self.assertFalse(any('no longer running' in line for line in logs.output))
 
     def test_delete_all_local_arc_jobs_does_not_read_a_socket_timeout_as_an_empty_queue(self):
-        """Deleting every ARC job must not report success when the queue could not be listed"""
+        """Deleting every ARC job raises QueueQueryError when the queue could not be listed"""
         with patch.dict(local.servers, {'local': {'cluster_soft': 'Slurm'}}), \
                 patch('arc.job.local.execute_command', return_value=([], SOCKET_TIMEOUT, 1)), \
                 patch('time.sleep'):
@@ -296,9 +298,21 @@ class TestLocalQueueQueryExitStatus(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        sleep = patch('time.sleep')
-        self.sleep = sleep.start()
-        self.addCleanup(sleep.stop)
+        self.own_sleeps = list()
+        test_thread = threading.get_ident()
+
+        def sleep(*args):
+            caller = sys._getframe(1)
+            while caller.f_globals.get('__name__') == 'unittest.mock':
+                caller = caller.f_back
+            if threading.get_ident() == test_thread and caller.f_globals.get('__name__', '').startswith('arc.'):
+                self.own_sleeps.append(args)
+            else:
+                REAL_SLEEP(*args)
+
+        patcher = patch('time.sleep', side_effect=sleep)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _stub(self, stdout: str = '', stderr: str = '', exit_status: int = 0) -> str:
         """Write a stand-in queue command and return the status command that runs it."""
@@ -321,7 +335,7 @@ class TestLocalQueueQueryExitStatus(unittest.TestCase):
     def test_an_empty_queue_with_a_banner_on_stderr_reads_as_no_jobs(self):
         cmd = self._stub(stderr='lmod: warning: module foo is deprecated\\n', exit_status=0)
         self.assertEqual(self._query(cmd), list())
-        self.sleep.assert_not_called()
+        self.assertEqual(self.own_sleeps, list())
 
     def test_a_listing_with_a_banner_on_stderr_is_parsed(self):
         cmd = self._stub(stdout='JOBID PARTITION NAME USER ST\\n  4242 short a42 user R\\n',
@@ -339,7 +353,7 @@ class TestLocalQueueQueryExitStatus(unittest.TestCase):
             self._query(self._stub(exit_status=2))
 
     def test_a_status_command_that_never_answers_is_a_failed_query(self):
-        """Each attempt is stopped after queue_query_timeout seconds, so the outage clock can run"""
+        """Each attempt is stopped after queue_query_timeout seconds"""
         path = os.path.join(self.tmp, 'squeue')
         with open(path, 'w') as f:
             f.write('#!/bin/sh\ntrue\nsleep 60\n')
@@ -377,7 +391,7 @@ class TestLocalQueueQueryExitStatus(unittest.TestCase):
         """The shell's 127 decides; the message is not read"""
         self.assertEqual(self._query(os.path.join(self.tmp, 'no_such_squeue') + ' -u $USER'), list())
         self.assertEqual(self._query(self._stub(stderr='squeue: introuvable\\n', exit_status=127)), list())
-        self.sleep.assert_not_called()
+        self.assertEqual(self.own_sleeps, list())
 
 
 if __name__ == '__main__':

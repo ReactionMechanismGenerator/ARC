@@ -210,7 +210,7 @@ class TestGCNAdapter(unittest.TestCase):
         self.assertTrue(rxn.ts_species is None or len(rxn.ts_species.ts_guesses) == 0)
 
     def test_execute_incore_reports_the_reason_it_checked(self):
-        """Test that the guard judges the engine once, so the reason it raises with is the one it checked."""
+        """Test that the guard checks the engine once and raises with the reason from that check."""
         adapter = self.get_adapter(self.get_reaction())
         with patch.object(ts_gcn, 'engine_unavailable_reason', side_effect=['the env vanished', None]) as reason_mock:
             with self.assertRaisesRegex(DependencyError, 'GCN is not available: the env vanished'):

@@ -13,8 +13,11 @@ import unittest
 from unittest.mock import patch
 
 from arc.common import ARC_PATH
-import arc.imports as arc_imports
-from arc.imports import _report_unusable_overlay, local_settings_keys, resolve_overridden_dependents
+from arc.imports import (_report_unusable_overlay,
+                         local_settings_keys,
+                         overridden_setting_names,
+                         resolve_overridden_dependents,
+                         )
 from arc.settings import external_paths
 
 # The finders consult these before ``repo_path``, and CI exports two of them
@@ -254,7 +257,7 @@ class TestLocalSettingsKeys(unittest.TestCase):
                 raise ValueError('ambiguous')
         default = {'a': [1, 2], 'b': 'x', 'c': Unequal()}
         local = {'a': [1, 2], 'b': 'y', 'c': default['c'], 'd': 1, 'e': Unequal()}
-        self.assertEqual(arc_imports.overridden_setting_names(local, default), frozenset({'b', 'd', 'e'}))
+        self.assertEqual(overridden_setting_names(local, default), frozenset({'b', 'd', 'e'}))
 
 
 if __name__ == '__main__':

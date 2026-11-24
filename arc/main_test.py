@@ -709,8 +709,7 @@ class TestARC(unittest.TestCase):
     def test_ts_adapter_listed_in_the_family_map_is_accepted_without_a_module(self):
         """Test that a TS adapter the family map lists is accepted even when this build has no module for it.
 
-        Such an adapter is dropped for each reaction at TS search time with a named warning; rejecting
-        it as unknown at input time would abort the whole run instead.
+        Such an adapter is dropped for each reaction at TS search time with a named warning.
         """
         unregistered = 'absent_unregistered_ts_adapter'
         family_map = {'H_Abstraction': ts_adapters_by_rmg_family['H_Abstraction'] + [unregistered]}
