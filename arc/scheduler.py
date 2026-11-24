@@ -4559,8 +4559,6 @@ class Scheduler(object):
                           f'be read. Invalidating rotor.'
                 logger.error(message)
             elif len(energies) > 5 and max(energies) - min(energies) < 1e-6:
-                # Every point has the same energy: nothing turned, e.g., because the rotating group lies on the axis.
-                # There is no torsion to treat as a rotor, and the symmetry of a profile without peaks is undefined.
                 invalidate = True
                 invalidation_reason += 'The scan energy is flat (nothing rotated); '
             elif len(energies) > 5:
