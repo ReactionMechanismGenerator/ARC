@@ -903,6 +903,8 @@ class LinearAdapter(JobAdapter):
             family_snapshot = rxn._family
             family_own_reverse_snapshot = rxn._family_own_reverse
             product_dicts_snapshot = rxn._product_dicts
+            family_selection_snapshot = (rxn._family_source, rxn._family_tie,
+                                         rxn._family_candidates, rxn._n_family_candidates)
             try:
                 rxn.ts_species = rxn.ts_species or ARCSpecies(label='TS',
                                                               is_ts=True,
@@ -969,6 +971,8 @@ class LinearAdapter(JobAdapter):
                 rxn._family = family_snapshot
                 rxn._family_own_reverse = family_own_reverse_snapshot
                 rxn._product_dicts = product_dicts_snapshot
+                (rxn._family_source, rxn._family_tie,
+                 rxn._family_candidates, rxn._n_family_candidates) = family_selection_snapshot
 
             if len(self.reactions) < 5:
                 successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'linear' in tsg.method.lower()])
@@ -1761,20 +1765,22 @@ def interpolate_addition(rxn: ARCReaction,
     # migration their recipe prescribes instead of silently falling
     # through to the heavy-only heuristic path.
     if not rxn.product_dicts and not (map_cache is not None and map_cache.get('wider_scan_empty')):
+        dropped_families: dict[str, str] = dict()
         try:
-            wider_pds = rxn.get_product_dicts(
-                rmg_family_set='all',
-                consider_rmg_families=True,
-                consider_arc_families=True,
+            wider_pds = rxn.adopt_product_dicts(
+                rxn.get_product_dicts(
+                    rmg_family_set='all',
+                    consider_rmg_families=True,
+                    consider_arc_families=True,
+                    dropped_families=dropped_families,
+                ),
+                dropped_families=dropped_families,
             )
         except Exception as e:
             logger.debug(f'Linear addition (rxn={rxn.label}): wider family-set '
                          f'retry raised {type(e).__name__}: {e}; continuing without recipe.')
             wider_pds = []
         if wider_pds:
-            rxn.product_dicts = wider_pds
-            if rxn.family is None:
-                rxn.family = wider_pds[0]['family']
             logger.debug(f'Linear addition (rxn={rxn.label}): wider family-set '
                          f'retry recovered family={wider_pds[0].get("family")} '
                          f'with {len(wider_pds)} product_dict(s).')
