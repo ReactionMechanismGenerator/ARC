@@ -256,7 +256,7 @@ class TestNotVerifiedGate(unittest.TestCase):
             self.assertEqual(selected, [oh])
 
     def test_select_thermo_lib_species_prefers_the_verified_isomorph(self):
-        """A not verified species never displaces an isomorphic verified one from the thermo library."""
+        """A not verified species does not displace an isomorphic verified one from the thermo library."""
         oh_1, oh_2 = ARCSpecies(label='OH_1', smiles='[OH]'), ARCSpecies(label='OH_2', smiles='[OH]')
         for spc in [oh_1, oh_2, self.h2o]:
             spc.thermo.data = 'NASA()'

@@ -254,6 +254,12 @@ parse_irc_path = make_parser(
     error_message='Could not parse rich IRC path from {path}',
 )
 
+parse_irc_ts_energy = make_parser(
+    parse_method='parse_irc_ts_energy',
+    return_type=float | None,
+    error_message='Could not parse the energy of the IRC TS from {path}',
+)
+
 parse_scan_conformers = make_parser(
     parse_method='parse_scan_conformers',
     return_type=pd.DataFrame | None,
