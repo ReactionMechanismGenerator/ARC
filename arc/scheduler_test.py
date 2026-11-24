@@ -984,11 +984,12 @@ H       1.27889520   -0.81548721   -0.12940984"""
         kwargs['job_types'] = dict(self.job_types1, conf_sp=True)
         kwargs['conformer_sp_level'] = Level(repr=default_levels_of_theory['sp'])
         output = Scheduler(testing=True, **kwargs).output
-        jobs = [job_factory(job_adapter='gaussian', project=kwargs['project'], ess_settings=self.ess_settings,
-                            species=[restored_spc], xyz=restored_spc.conformers[i], job_type=job_type, conformer=i,
-                            level=kwargs['conformer_opt_level'] if job_type == 'conf_opt'
-                            else kwargs['conformer_sp_level'],
-                            project_directory=kwargs['project_directory'], job_num=900 + n).as_dict()
+        jobs = [dict(job_factory(job_adapter='gaussian', project=kwargs['project'], ess_settings=self.ess_settings,
+                                 species=[restored_spc], xyz=restored_spc.conformers[i], job_type=job_type,
+                                 conformer=i, level=kwargs['conformer_opt_level'] if job_type == 'conf_opt'
+                                 else kwargs['conformer_sp_level'],
+                                 project_directory=kwargs['project_directory'], job_num=900 + n).as_dict(),
+                     job_id=str(4000 + n))
                 for n, (job_type, i) in enumerate(running)]
         restart_path = os.path.join(kwargs['project_directory'], 'restart.yml')
         save_yaml_file(path=restart_path, content={'output': output, 'running_jobs': {label: jobs}})
