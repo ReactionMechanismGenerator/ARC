@@ -504,7 +504,7 @@ class TestRichDocumentValidates(SchemaAssertionMixin, unittest.TestCase):
                 'sBuOH': {'convergence': True,
                           'paths': {'geo': opt_log, 'freq': FREQ_LOG, 'sp': OPT_LOG},
                           'job_types': {'opt': True},
-                          'conformer_change_pending': 1, 'conformer_change_judged': 1},
+                          'conformer_change_pending': 1},
                 'TS0': {'convergence': True,
                         'paths': {'geo': OPT_LOG, 'freq': FREQ_LOG, 'sp': OPT_LOG,
                                   'irc': [OPT_LOG, OPT_LOG],
@@ -542,7 +542,6 @@ class TestRichDocumentValidates(SchemaAssertionMixin, unittest.TestCase):
         species = self.document['species'][0]
         self.assertEqual(species['label'], 'sBuOH')
         self.assertEqual(species['conformer_change_pending'], 1)
-        self.assertEqual(species['conformer_change_judged'], 1)
         self.assertIn('conformers', species)
         self.assertIn('conformer_energies', species)
         self.assertTrue(species['rotor_scans'])
@@ -1021,6 +1020,7 @@ class TestRingTorsionWithoutDihedralValidates(SchemaAssertionMixin, unittest.Tes
 
     def test_document_validates(self):
         """The null atom_indices of the O-O ring torsion is valid."""
+        self.assertIn(None, [e['atom_indices'] for e in self.statmech['harmonic_fallback_torsions']])
         self.assert_valid(self.document)
 
     def test_ring_entry_is_kept_with_a_null_scan(self):
@@ -1144,7 +1144,7 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.assert_valid(self.document)
 
     def test_an_unknown_ts_adapters_source_is_rejected(self):
-        """The ts_adapters source vocabulary is closed, so a consumer can tell a user override from the default."""
+        """The ts_adapters source vocabulary is closed."""
         self.document['ts_adapters'] = {'adapters': ['linear'], 'source': 'somewhere'}
         self.assert_invalid(self.document, 'somewhere')
 
@@ -1331,7 +1331,7 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.assert_invalid(self.document, 'brand_new_reaction_field')
 
     def test_a_reaction_ts_validation_caution_must_start_with_its_marker(self):
-        """The caution of a rate whose TS lost its IRC is found by its marker, so the schema pins it."""
+        """Test that the schema accepts a ts_validation_caution made of its marker and a known cause, and no other"""
         self.assertNotIn('ts_validation_caution', self.document['reactions'][0])
         ts = ARCSpecies(label='TS0', is_ts=True)
         ts.ts_checks['warnings'] = f'{IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
@@ -1393,6 +1393,36 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         """The alignment the schema cannot express, asserted against the producer."""
         self.assertEqual(len(self.species['conformers']),
                          len(self.species['conformer_energies']))
+
+    def test_the_family_record_of_an_overlap_tie_is_valid(self):
+        """A rule choice from two tied families, with the caveat next to the rate, satisfies the schema"""
+        reaction = self.document['reactions'][0]
+        reaction.update({'family': '1,2_shiftC', 'family_source': 'rule', 'n_family_candidates': 2,
+                         'family_candidates': [{'family': '1,2_shiftC', 'dropped_by': None},
+                                               {'family': 'intra_H_migration', 'dropped_by': None}],
+                         'family_tie': {'families': ['1,2_shiftC', 'intra_H_migration'], 'searched': '1,2_shiftC',
+                                        'not_searched': ['intra_H_migration']}})
+        self.assert_valid(self.document)
+
+    def test_an_unknown_family_source_is_rejected(self):
+        """family_source has three values"""
+        self.document['reactions'][0]['family_source'] = 'guess'
+        self.assert_invalid(self.document, 'family_source')
+
+    def test_a_family_tie_without_the_families_not_searched_is_rejected(self):
+        """The caveat must name the channels whose rate was not computed"""
+        self.document['reactions'][0]['family_tie'] = {'families': ['a', 'b'], 'searched': 'a'}
+        self.assert_invalid(self.document, 'not_searched')
+
+    def test_the_identity_reaction_flag_is_valid_and_optional(self):
+        """identity_reaction is a boolean, and a document without it still validates"""
+        reaction = self.document['reactions'][0]
+        reaction['identity_reaction'] = True
+        self.assert_valid(self.document)
+        del reaction['identity_reaction']
+        self.assert_valid(self.document)
+        reaction['identity_reaction'] = 'yes'
+        self.assert_invalid(self.document, 'identity_reaction')
 
 
 class TestTsAdapterFailuresValidate(SchemaAssertionMixin, unittest.TestCase):

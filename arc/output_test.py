@@ -14,7 +14,7 @@ import yaml
 from arc.checks.common import IRC_CAUSE_NOT_COMPLETED, TS_IRC_NOT_CONFIRMED_MARKER
 from arc.common import ARC_PATH, read_yaml_file
 from arc.constants import E_h_kJmol
-from arc.exceptions import InputError
+from arc.exceptions import InputError, RecipeError
 from arc.level import Level
 from arc.common import ARC_TESTING_PATH
 from arc.output import (
@@ -55,6 +55,8 @@ from arc.output import (
     _thermo_to_dict,
     write_output_yml,
 )
+from arc.family.family import get_reaction_family
+from arc.reaction.reaction import ARCReaction
 from arc.species.species import ARCSpecies, TSGuess, ThermoData
 
 
@@ -1909,12 +1911,163 @@ class TestRxnToDict(unittest.TestCase):
         self.assertEqual(result['kinetics']['Ea_units'], 'kJ/mol')
         self.assertEqual(result['kinetics']['n'], 0.5)
 
-    def _rxn_with_unconfirmed_ts(self, kinetics):
+    def test_the_family_record_of_a_rule_choice(self):
+        """The record of a reaction matching two families lists both, the one used, and that a rule chose it"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['family'], '6_membered_central_C-C_shift')
+        self.assertEqual(result['family_source'], 'rule')
+        self.assertEqual(result['n_family_candidates'], 2)
+        self.assertEqual(result['family_candidates'], [{'family': '6_membered_central_C-C_shift', 'dropped_by': None},
+                                                       {'family': '1,3_sigmatropic_rearrangement', 'dropped_by': None}])
+        self.assertIsNone(result['family_tie'])
+
+    def test_the_rate_of_an_overlap_tie_carries_the_tie(self):
+        """A reaction whose family came from an undecided overlap tie says, next to its rate, which
+        channel was searched and which was not"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['family_tie']['searched'], result['family'])
+        self.assertEqual(set(result['family_tie']['families']), {'intra_H_migration', '1,2_shiftC'})
+        self.assertEqual(list(result).index('family_tie'), list(result).index('kinetics') + 1)
+
+    def identity_warnings(self, rxn: ARCReaction) -> tuple[dict, list[str]]:
+        """
+        Convert a reaction for output.yml, and capture the identity reaction WARNINGs it logs.
+
+        Args:
+            rxn (ARCReaction): The reaction.
+
+        Returns:
+            tuple[dict, list[str]]: The output.yml dict of the reaction, and the identity reaction WARNINGs.
+        """
+        _ = rxn.family
+        with patch('arc.output.logger') as logger:
+            result = _rxn_to_dict(rxn)
+        warnings = [call.args[0] for call in logger.warning.call_args_list if 'identity reaction' in call.args[0]]
+        return result, warnings
+
+    def test_an_overlap_tie_identity_reaction_is_flagged_next_to_the_rate(self):
+        """The degenerate H shift of n-butyl is an identity reaction: its rate says so, and one WARNING names
+        the family searched"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        result, warnings = self.identity_warnings(rxn)
+        self.assertIs(result['identity_reaction'], True)
+        self.assertEqual(list(result).index('identity_reaction'), list(result).index('family_tie') + 1)
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn(rxn.label, warnings[0])
+        self.assertIn('do not discriminate the channel', warnings[0])
+        self.assertIn(f'The {result["family"]} family was searched', warnings[0])
+
+    def test_a_single_family_identity_reaction_is_flagged(self):
+        """Only 1,2_shiftC matches the identity reaction of n-nonyl, so there is no tie: ARC searches 1,2_shiftC,
+        and identity_reaction is the only signal that the IRC check cannot tell the channel"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCCCCCCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCCCCCCC')])
+        result, warnings = self.identity_warnings(rxn)
+        self.assertEqual(result['family'], '1,2_shiftC')
+        self.assertEqual(result['n_family_candidates'], 1)
+        self.assertIsNone(result['family_tie'])
+        self.assertIs(result['identity_reaction'], True)
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('The 1,2_shiftC family was searched', warnings[0])
+
+    def test_an_identity_reaction_with_no_family_names_none(self):
+        """The WARNING of an identity reaction with no family says so, and does not guess one"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C')],
+                          p_species=[ARCSpecies(label='P', smiles='C')])
+        result, warnings = self.identity_warnings(rxn)
+        self.assertIsNone(result['family'])
+        self.assertIs(result['identity_reaction'], True)
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('No family was found for it', warnings[0])
+        self.assertNotIn('family was searched', warnings[0])
+
+    def test_an_identity_reaction_with_an_unavailable_preset_family_says_it_was_not_searched(self):
+        """The WARNING of an identity reaction preset to an unavailable family names the cause, and does not
+        say the family was searched"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')],
+                          family='intra_H_migration')
+        rxn.unavailable_families['intra_H_migration'] = 'Malformed recipe action, line 17'
+        result, warnings = self.identity_warnings(rxn)
+        self.assertEqual(result['family'], 'intra_H_migration')
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('The intra_H_migration family is unavailable, not searched: Malformed recipe action, line 17',
+                      warnings[0])
+        self.assertNotIn('family was searched', warnings[0])
+
+    def test_a_restored_family_found_unavailable_before_the_search_exports_no_stale_tie(self):
+        """A restored tied family found unavailable on the pre-search path is exported with no saved candidates,
+        count, or tie next to the WARNING that it was not searched"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        _ = rxn.family
+        self.assertIsNotNone(rxn.family_tie)
+        reaction_dict = rxn.as_dict()
+        reaction_dict['family'] = 'intra_H_migration'
+        restored = ARCReaction(reaction_dict=reaction_dict)
+        self.assertIsNotNone(restored.family_tie)
+
+        def lookup(label, consider_arc_families=True):
+            if label == 'intra_H_migration':
+                raise RecipeError('Malformed recipe action, line 17')
+            return get_reaction_family(label=label, consider_arc_families=consider_arc_families)
+
+        with patch('arc.reaction.reaction.get_reaction_family', side_effect=lookup), \
+                patch('arc.family.family.get_reaction_family', side_effect=lookup):
+            restored.warn_if_identity_reaction(family=restored.family)
+            result, warnings = self.identity_warnings(restored)
+        self.assertEqual(result['family'], 'intra_H_migration')
+        self.assertIsNone(result['family_candidates'])
+        self.assertIsNone(result['n_family_candidates'])
+        self.assertIsNone(result['family_tie'])
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('The intra_H_migration family is unavailable, not searched: Malformed recipe action, line 17',
+                      warnings[0])
+
+    def test_a_non_identity_reaction_is_not_flagged(self):
+        """An H shift between two different species is not an identity reaction, and logs no such WARNING"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCCC')],
+                          p_species=[ARCSpecies(label='P', smiles='C[CH]CCC')])
+        result, warnings = self.identity_warnings(rxn)
+        self.assertIs(result['identity_reaction'], False)
+        self.assertEqual(warnings, list())
+
+    def test_the_family_record_of_a_user_choice(self):
+        """A family set by the user is the one recorded, with its source"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')],
+                          family='1,3_sigmatropic_rearrangement')
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['family'], '1,3_sigmatropic_rearrangement')
+        self.assertEqual(result['family_source'], 'input')
+        self.assertEqual(result['n_family_candidates'], 2)
+
+    def test_the_family_record_of_a_family_that_does_not_match(self):
+        """A pinned family that matches nothing does not stop the record from being written"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
+                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')],
+                          family='H_Abstraction')
+        result = _rxn_to_dict(rxn)
+        self.assertEqual(result['family'], 'H_Abstraction')
+        self.assertEqual(result['family_source'], 'input')
+        self.assertIsNone(result['family_candidates'])
+        self.assertIsNone(result['n_family_candidates'])
+        with patch.object(ARCReaction, 'get_product_dicts', wraps=rxn.get_product_dicts) as mocked:
+            _rxn_to_dict(rxn)
+        self.assertEqual(mocked.call_count, 0)
+
+    def _rxn_with_unconfirmed_ts(self, kinetics, yml_path=None):
         """
         Build a reaction whose TS has every ts_checks entry None and no irc_label.
 
         Args:
             kinetics (dict | None): The kinetics of the reaction.
+            yml_path (str, optional): The Arkane YAML file the TS was loaded from, if it was.
 
         Returns:
             MagicMock: The reaction.
@@ -1929,6 +2082,7 @@ class TestRxnToDict(unittest.TestCase):
         ts = ARCSpecies(label='TS0', is_ts=True)
         ts.ts_checks = {key: None for key in ts.ts_checks}
         ts.irc_label = None
+        ts.yml_path = yml_path
         rxn.ts_species = ts
         return rxn
 
@@ -1939,12 +2093,20 @@ class TestRxnToDict(unittest.TestCase):
         self.assertNotIn('ts_validation_caution', result)
 
     def test_a_kept_rate_with_an_unconfirmed_ts_carries_a_ts_validation_caution(self):
-        """Test that a kept rate whose TS IRC was requested but not confirmed carries the IRC caution"""
+        """Test that a kept rate whose TS ARC computed with IRC requested, but not confirmed, carries the IRC caution"""
         kinetics = {'A': (1.2e10, 's^-1'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')}
         result = _rxn_to_dict(self._rxn_with_unconfirmed_ts(kinetics=kinetics), irc_requested=True, output_dict=dict())
         self.assertIsNotNone(result['kinetics'])
         self.assertTrue(result['ts_validation_caution'].startswith(
             f'{TS_IRC_NOT_CONFIRMED_MARKER} ({IRC_CAUSE_NOT_COMPLETED})'))
+
+    def test_a_kept_rate_with_a_ts_loaded_from_an_arkane_yaml_file_has_no_ts_validation_caution(self):
+        """Test that a kept rate whose TS was loaded from an Arkane YAML file, with no IRC species, has no caution"""
+        kinetics = {'A': (1.2e10, 's^-1'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')}
+        result = _rxn_to_dict(self._rxn_with_unconfirmed_ts(kinetics=kinetics, yml_path='TS0.yml'),
+                              irc_requested=True, output_dict=dict())
+        self.assertIsNotNone(result['kinetics'])
+        self.assertNotIn('ts_validation_caution', result)
 
 
 class TestSpcToDict(unittest.TestCase):
@@ -2015,19 +2177,6 @@ class TestSpcToDict(unittest.TestCase):
         self.assertEqual(_spc_to_dict(spc, output_dict, '/abs')['conformer_change_pending'], 0)
         result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}}, '/abs')
         self.assertIsNone(result['conformer_change_pending'])
-
-    def test_conformer_change_judged_field(self):
-        """A judged conformer change, which keeps a null verdict out of the libraries, shows next to that verdict."""
-        spc = self._make_spc_mock()
-        output_dict = {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True},
-                               'conformer_verified': None, 'conformer_change_judged': 2}}
-        result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertIsNone(result['conformer_verified'])
-        self.assertEqual(result['conformer_change_judged'], 2)
-        output_dict['CH4']['conformer_change_judged'] = 0
-        self.assertEqual(_spc_to_dict(spc, output_dict, '/abs')['conformer_change_judged'], 0)
-        result = _spc_to_dict(spc, {'CH4': {'convergence': True, 'paths': {}, 'job_types': {'opt': True}}}, '/abs')
-        self.assertIsNone(result['conformer_change_judged'])
 
     def test_converged_species(self):
         spc = self._make_spc_mock()

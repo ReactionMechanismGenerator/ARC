@@ -753,7 +753,7 @@ class TestAdapterTables(unittest.TestCase):
     """
 
     def test_every_family_ts_adapter_is_a_registered_ts_adapter(self):
-        """Every adapter a family lists must be a registered TS adapter."""
+        """Every adapter a family lists is a registered TS adapter."""
         registered = {enum.value: cls for enum, cls in factory._registered_job_adapters.items()}
         self.assertTrue(common.ts_adapters_by_rmg_family)
         for family, adapters in common.ts_adapters_by_rmg_family.items():
@@ -763,14 +763,14 @@ class TestAdapterTables(unittest.TestCase):
                                 f'{family} lists {adapter!r}, which is not a TS adapter')
 
     def test_every_default_incore_adapter_is_registered(self):
-        """Every default incore adapter must be a registered adapter."""
+        """Every default incore adapter is a registered adapter."""
         registered = {enum.value for enum in factory._registered_job_adapters}
         self.assertTrue(common.default_incore_adapters)
         for adapter in common.default_incore_adapters:
             self.assertIn(adapter, registered, f'default_incore_adapters lists the unregistered adapter {adapter!r}')
 
     def test_default_ts_adapters_equal_the_registered_adapters_the_map_uses(self):
-        """The repo default ts_adapters must be the registered TS adapters the family map can dispatch, less the opt-in ones."""
+        """The repo default ts_adapters is the registered TS adapters the family map can dispatch, less the opt-in ones."""
         registered = [enum.value for enum in factory._registered_job_adapters]
         used = common.ts_adapters_used_by_the_map(registered)
         self.assertEqual(repo_settings.ts_adapters, [adapter for adapter in used if adapter not in common.opt_in_ts_adapters])
@@ -797,7 +797,7 @@ class TestAdapterTables(unittest.TestCase):
                          ['heuristics', 'linear', 'goflow', 'aa_new', 'rits', 'unregistered', 'zz_new'])
 
     def test_ts_adapter_install_targets_exist_in_the_makefile(self):
-        """Every make target named for a TS engine must exist in ARC's Makefile."""
+        """Every make target named for a TS engine exists in ARC's Makefile."""
         with open(os.path.join(ARC_PATH, 'Makefile'), 'r') as f:
             targets = set(re.findall(r'^([\w-]+):', f.read(), flags=re.MULTILINE))
         self.assertTrue(common.ts_adapter_install_targets)

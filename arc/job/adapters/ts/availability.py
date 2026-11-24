@@ -3,9 +3,9 @@ The availability check of TS search adapters.
 
 Many TS search adapters drive an external engine (a conda env, an executable, or an ESS server).
 The Scheduler asks :func:`ts_adapter_unavailable_reason` about each adapter it is about to spawn
-for a reaction, and drops an adapter whose engine is not installed or not configured, rather than
-let it raise, stall, or run as an empty job. Each engine rule lives once, in its adapter's module
-(``engine_unavailable_reason()``), where the adapter's own execute-time guard also uses it.
+for a reaction, and drops an adapter whose engine is not installed or not configured. Each engine rule
+is in its adapter's module (``engine_unavailable_reason()``), which the adapter's own execute-time guard
+also calls.
 """
 
 from arc.imports import settings
@@ -28,10 +28,9 @@ ENGINE_REASON_FUNCTIONS = {'autotst': autotst_ts.engine_unavailable_reason,
 
 def orca_neb_unavailable_reason(ess_settings: dict | None) -> str | None:
     """
-    Report why Orca NEB cannot run. It is a queue adapter that runs Orca, and it resolves its server
-    from the ESS settings' 'orca' entry (``OrcaAdapter.__init__`` resolves the server while the job
-    adapter is still 'orca'), so the first server there must be defined in the servers settings,
-    compared case-insensitively as the input check does.
+    Report why Orca NEB cannot run. It is a queue adapter that runs Orca on the first server of the ESS
+    settings' 'orca' entry. That server is looked up in the servers settings case-insensitively, as the
+    input check does.
     Empty ESS settings fall back to ``global_ess_settings``, as the job itself does.
 
     Args:

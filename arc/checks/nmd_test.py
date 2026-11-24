@@ -99,7 +99,7 @@ def make_c2h5cl_rxn() -> ARCReaction:
 
 def make_retroene_rxn() -> ARCReaction:
     """
-    Make the hepta-1,6-diene <=> C3H6 + butadiene reaction whose wrong-saddle TS freq logs ship as fixtures.
+    Make the hepta-1,6-diene <=> C3H6 + butadiene reaction whose wrong-saddle TS freq log ships as a fixture.
 
     Returns:
         ARCReaction: The reaction, with species geometries in the atom order of the TS fixtures.
@@ -1741,13 +1741,10 @@ H       0.33017200   -2.31698300   -0.00000000"""
             if os.path.isfile(file_path):
                 os.remove(file_path)
 
-
     def test_evaluate_sets_the_near_miss_record_for_saddles_that_fail_only_on_the_5_percent_gate(self):
         """Test that a TS whose NMD fails only by reactive bonds under the 5% gate carries a near-miss record."""
         cases = [('TS_C2H5Cl_four_centre_near_miss.log', make_c2h5cl_rxn(), 0.9, 'C-Cl', 4.55),
-                 ('TS_C2H5Cl_guess7_near_miss.log', make_c2h5cl_rxn(), nmd.DEFAULT_AMPLITUDE, None, None),
-                 ('TS_retroene_wrong_a1577.log', make_retroene_rxn(), nmd.DEFAULT_AMPLITUDE, None, None),
-                 ('TS_retroene_wrong_a1605.log', make_retroene_rxn(), nmd.DEFAULT_AMPLITUDE, None, None)]
+                 ('TS_C2H5Cl_guess7_near_miss.log', make_c2h5cl_rxn(), nmd.DEFAULT_AMPLITUDE, None, None)]
         for log_name, rxn, amplitude, weakest_symbols, weakest_percent in cases:
             with self.subTest(log=log_name):
                 log_path = os.path.join(ARC_TESTING_PATH, 'freq', log_name)
@@ -1772,7 +1769,7 @@ H       0.33017200   -2.31698300   -0.00000000"""
 
     def test_evaluate_gives_a_pass_and_no_near_miss_record_when_another_amplitude_passes(self):
         """Test that a TS that is a near miss at 0.9 but passes at 1.1 passes the default check with no near-miss
-        record, so that it is not deferred."""
+        record."""
         log_path = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5Cl_four_centre_near_miss.log')
         self.generic_job.local_path_to_output_file = log_path
         rxn = make_c2h5cl_rxn()
@@ -1800,7 +1797,8 @@ H       0.33017200   -2.31698300   -0.00000000"""
         cases = [(os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5O2_HO2_elimination.log'), ho2_rxn, True),
                  (os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C2H5O2_HO2_elimination_wrong_saddle.log'), ho2_rxn, False),
                  (os.path.join(c3h7_path, 'TS4.log'), c3h7_rxn, False),
-                 (os.path.join(c3h7_path, 'TS7.log'), c3h7_rxn, False)]
+                 (os.path.join(c3h7_path, 'TS7.log'), c3h7_rxn, False),
+                 (os.path.join(ARC_TESTING_PATH, 'freq', 'TS_retroene_wrong_a1577.log'), make_retroene_rxn(), False)]
         for log_path, rxn, expected in cases:
             with self.subTest(log=os.path.basename(log_path)):
                 self.generic_job.local_path_to_output_file = log_path
@@ -1820,7 +1818,7 @@ H       0.33017200   -2.31698300   -0.00000000"""
         rxn.ts_species.populate_ts_checks()
         with patch('arc.checks.nmd.do_reactive_bonds_stand_out', return_value=False):
             self.assertEqual(nmd.evaluate_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job,
-                                                                    amplitude=0.9),
+                                                                      amplitude=0.9),
                              (False, None))
 
     def test_evaluate_sets_no_near_miss_record_when_a_sub_gate_bond_does_not_stand_out(self):
@@ -1848,7 +1846,7 @@ H       0.33017200   -2.31698300   -0.00000000"""
 
         with patch('arc.checks.nmd.do_reactive_bonds_stand_out', side_effect=sub_gate_bond_below_baseline):
             self.assertEqual(nmd.evaluate_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job,
-                                                                    amplitude=0.9),
+                                                                      amplitude=0.9),
                              (False, None))
 
     def test_evaluate_returns_no_near_miss_record_when_the_analysis_cannot_run(self):

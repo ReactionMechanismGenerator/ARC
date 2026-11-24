@@ -106,7 +106,6 @@ class TestChecks(unittest.TestCase):
         self.assertIn('e_elect', comment)
         self.assertIn('E0', comment)
 
-
     def test_get_nmd_near_miss(self):
         """Test that the near-miss record is read only beside a False NMD verdict, and malformed records fail closed"""
         record = {'amplitude': 0.9, 'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': 4.55}]}
@@ -137,7 +136,8 @@ class TestChecks(unittest.TestCase):
         """Test the one-line summary of the sub-gate bonds of a near-miss record"""
         record = {'amplitude': 0.9, 'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': 4.55},
                                                        {'atoms': [0, 3], 'symbols': 'C-H', 'percent': 3.1}]}
-        self.assertEqual(common.get_nmd_near_miss_summary(record), 'C-Cl (1, 2) 4.55%, C-H (0, 3) 3.1%')
+        self.assertEqual(common.get_nmd_near_miss_summary(record),
+                         'C-Cl (1, 2) 4.55%, C-H (0, 3) 3.1% at amplitude 0.9')
 
     def test_remove_nmd_accepted_on_irc_warning(self):
         """Test that only the IRC acceptance warning of a near-miss TS is removed from a warnings string"""
@@ -148,7 +148,7 @@ class TestChecks(unittest.TestCase):
         self.assertEqual(common.remove_nmd_accepted_on_irc_warning(''), '')
 
     def test_get_ts_validation_caution(self):
-        """Test that only a TS whose IRC is unverified because an IRC job failed gets a caution"""
+        """Test that, with no IRC requested for the run, only a TS whose IRC job failed gets a caution"""
         self.assertIsNone(common.get_ts_validation_caution(None))
         ts = ARCSpecies(label='TS0', is_ts=True)
         self.assertIsNone(common.get_ts_validation_caution(ts))
@@ -165,6 +165,33 @@ class TestChecks(unittest.TestCase):
         ts.ts_checks['warnings'] = None
         ts.ts_checks['IRC'] = None
         self.assertIsNone(common.get_ts_validation_caution(ts))
+
+    def test_get_ts_validation_caution_with_irc_requested(self):
+        """Test that, with IRC requested for the run, a TS with no IRC verdict gets a caution unless it has one"""
+        self.assertIsNone(common.get_ts_validation_caution(None, irc_requested=True))
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.ts_checks['warnings'] = 'NMD check could not run; '
+        caution = common.get_ts_validation_caution(ts, irc_requested=True)
+        self.assertTrue(caution.startswith(f'{common.TS_IRC_NOT_CONFIRMED_MARKER} ({common.IRC_CAUSE_NOT_COMPLETED})'))
+        ts.ts_checks['warnings'] += f'{common.IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
+        caution = common.get_ts_validation_caution(ts, irc_requested=True)
+        self.assertTrue(caution.startswith(f'{common.TS_IRC_NOT_CONFIRMED_MARKER} ({common.IRC_CAUSE_JOB_FAILED})'))
+        for verdict in [True, False]:
+            with self.subTest(irc=verdict):
+                ts.ts_checks['IRC'] = verdict
+                self.assertIsNone(common.get_ts_validation_caution(ts, irc_requested=True))
+
+    def test_get_ts_validation_caution_of_a_ts_loaded_from_an_arkane_yaml_file(self):
+        """Test that a TS loaded from an Arkane YAML file gets an IRC caution only if an IRC ran on it"""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.yml_path = 'TS0.yml'
+        self.assertIsNone(common.get_ts_validation_caution(ts, irc_requested=True))
+        ts.irc_label = 'IRC_TS0_1'
+        self.assertIn(common.IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED,
+                      common.get_ts_validation_caution(ts, irc_requested=True))
+        ts.irc_label = None
+        ts.ts_checks['warnings'] = f'{common.IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
+        self.assertIn(common.IRC_CAUSE_JOB_FAILED, common.get_ts_validation_caution(ts, irc_requested=True))
 
     def test_get_ts_validation_caution_names_its_cause(self):
         """Test that a TS whose requested IRC reached no verdict gets a caution naming why"""
