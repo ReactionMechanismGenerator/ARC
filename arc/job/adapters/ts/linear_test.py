@@ -36,6 +36,9 @@ import numpy as np
 import pytest
 
 from arc.common import almost_equal_coords, get_single_bond_length
+from arc.exceptions import RecipeError
+from arc.family.family import REACTION_FAMILY_CACHE
+from arc.imports import settings
 from arc.job.adapters.ts.linear import (GuessRecord,
                                         LinearAdapter,
                                         build_ring_scission_ts,
@@ -245,6 +248,50 @@ def _make_rxn_2() -> ARCReaction:
                                                     H      -1.41423043    0.87863077    0.42354512
                                                     H       1.02430791    0.21530309    0.12674144
                                                     H       0.27058353   -0.73979548    1.43184405""")])
+
+
+def _make_korcek_step2_rxn(family: str | None = None) -> ARCReaction:
+    """
+    Construct a fresh OC1CC(C)OO1 <=> CC(C)=O + OC=O reaction. No family of the default RMG family set
+    matches it, and the wider 'all' set matches Korcek_step2.
+
+    Args:
+        family (str, optional): A family to preset on the reaction.
+
+    Returns:
+        ARCReaction: The dissociation reaction.
+    """
+    r = ARCSpecies(label='R', smiles='OC1CC(C)OO1', xyz="""O       2.24879740   -0.60288879   -0.61333491
+C       1.57371209    0.04810206    0.45127457
+C       0.22294576   -0.58878552    0.64811736
+C      -0.61576351    0.24712755   -0.27994372
+C      -2.09858764    0.18320384    0.02866078
+O      -0.12479259    1.56634922   -0.03969215
+O       1.33454248    1.41337976    0.10504694
+H       3.11409720   -0.16350527   -0.66741772
+H       2.18959683   -0.01025467    1.35388451
+H      -0.09844973   -0.43616204    1.68554384
+H       0.18774256   -1.65691471    0.41684740
+H      -0.43624076   -0.00498099   -1.33176411
+H      -2.30557569    0.51236113    1.05290855
+H      -2.48665452   -0.83141064   -0.10098054
+H      -2.65275729    0.85777810   -0.63272727""")
+    p1 = ARCSpecies(label='P1', smiles='CC(C)=O', xyz="""C       1.27586049   -0.20311519   -0.02275731
+C       0.00452324    0.57012170   -0.24664672
+C      -1.27830828   -0.10541516    0.15623466
+O       0.01347981    1.69903580   -0.73503936
+H       1.24624439   -1.13132851   -0.59865800
+H       1.38830626   -0.42276962    1.04177383
+H       2.13211808    0.39115663   -0.35359592
+H      -1.25777130   -0.32155350    1.22720667
+H      -1.38833773   -1.04508735   -0.39212641
+H      -2.12451706    0.54376791   -0.08169526""")
+    p2 = ARCSpecies(label='P2', smiles='OC=O', xyz="""O       0.80871183   -0.54502054   -0.13494187
+C      -0.41707829   -0.03415895    0.05655464
+O      -0.60811294    1.16486843    0.13270033
+H       1.39322951    0.24033937   -0.18369670
+H      -1.17675011   -0.82602831    0.12938360""")
+    return ARCReaction(r_species=[r], p_species=[p1, p2], family=family)
 
 
 class TestLinearAdapter(unittest.TestCase):
@@ -1093,6 +1140,34 @@ H      -1.17675011   -0.82602831    0.12938360""")
         self.assertIsNone(rxn._family,
                           msg='Expected the wider family-set scan to be skipped, but a family was recovered.')
         self.assertTrue(cache.get('wider_scan_empty'))
+
+    def test_interpolate_addition_wider_scan_keeps_preset_family(self):
+        """The all-family-set retry never adopts the product dicts of a family other than a preset one."""
+        family = '1,2_Insertion_carbene'
+        unavailable = {(family, True): RecipeError('malformed recipe'), (family, False): RecipeError('malformed recipe')}
+        for case, cache_patch in (('available but unmatched', {}), ('unavailable', unavailable)):
+            with self.subTest(case=case), patch.dict(REACTION_FAMILY_CACHE, cache_patch):
+                rxn = _make_korcek_step2_rxn(family=family)
+                self.assertEqual(rxn.product_dicts, [])
+                interpolate_addition(rxn, weight=0.5, map_cache={})
+                self.assertEqual(rxn.family, family)
+                self.assertEqual(rxn.family_source, 'input')
+                self.assertEqual([pd['family'] for pd in rxn.product_dicts], [])
+
+    def test_interpolate_addition_wider_scan_records_family_selection(self):
+        """A family chosen by the all-family-set retry records what a first pass over that set would."""
+        rxn = _make_korcek_step2_rxn()
+        self.assertEqual(rxn.product_dicts, [])
+        self.assertIsNone(rxn.family)
+        interpolate_addition(rxn, weight=0.5, map_cache={})
+        with patch.dict(settings, {'rmg_family_set': 'all'}):
+            reference = _make_korcek_step2_rxn()
+            expected = (reference.family, reference.family_source, reference.family_tie,
+                        reference.family_candidates, reference.n_family_candidates)
+        self.assertEqual(expected[:2], ('Korcek_step2', 'rule'))
+        self.assertEqual((rxn.family, rxn.family_source, rxn.family_tie,
+                          rxn.family_candidates, rxn.n_family_candidates), expected)
+        self.assertEqual({pd['family'] for pd in rxn.product_dicts}, {'Korcek_step2'})
 
     # -----------------------------------------------------------------------
     # Tests for specific RMG families ***
@@ -5966,6 +6041,26 @@ H       0.97222065   -1.40727159   -1.00427440"""
         self.assertEqual(rxn._atom_map, [0, 1, 3, 2, 4, 5, 7, 6, 9, 8])
         self.assertEqual(rxn._family, 'intra_NO2_ONO_conversion')
         self.assertIsNone(rxn._product_dicts)
+
+    def test_execute_incore_restores_family_selection_after_wider_scan(self):
+        """execute_incore() restores the family selection that the all-family-set retry records."""
+        rxn = _make_korcek_step2_rxn()
+        self.assertEqual(rxn.product_dicts, [])
+        before = (rxn._family, rxn._family_source, rxn._family_tie, rxn._family_candidates, rxn._n_family_candidates)
+        project_directory = tempfile.mkdtemp(prefix='arc_linear_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        adapter = LinearAdapter(job_type='tsg',
+                                reactions=[rxn],
+                                testing=True,
+                                project='test',
+                                project_directory=project_directory,
+                                )
+        with patch('arc.job.adapters.ts.linear.interpolate', wraps=interpolate) as wrapped:
+            adapter.execute()
+        self.assertTrue(wrapped.called)
+        self.assertEqual((rxn._family, rxn._family_source, rxn._family_tie, rxn._family_candidates,
+                          rxn._n_family_candidates), before)
+        self.assertEqual(rxn._product_dicts, [])
 
     def test_interpolate_addition_symmetric_dissociation(self):
         """Test that a symmetric dissociation (C2H6 <=> CH3 + CH3) is classified as a dissociation."""

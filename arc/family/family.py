@@ -7,9 +7,10 @@ import ast
 import functools
 import os
 import re
+import warnings
 
 from arc.common import clean_text, get_logger
-from arc.exceptions import InvalidAdjacencyListError
+from arc.exceptions import InvalidAdjacencyListError, RecipeError
 from arc.imports import settings
 from arc.molecule import Bond, Group, Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
@@ -43,7 +44,8 @@ logger = get_logger()
 RESONANCE_SEARCH_LIMIT: int | None = None
 
 
-REACTION_FAMILY_CACHE: dict[tuple[str, bool], 'ReactionFamily'] = {}
+# A family whose recipe is malformed is cached as its RecipeError, so it is reported once and then unavailable.
+REACTION_FAMILY_CACHE: dict[tuple[str, bool], 'ReactionFamily | RecipeError'] = {}
 
 # Pre-compiled regex patterns
 ENTRY_PATTERN = re.compile(r'entry\((.*?)\)', re.DOTALL)
@@ -57,23 +59,38 @@ PRODUCTS_PATTERN = re.compile(r'products\s*=\s*\[(.*?)\]', re.DOTALL)
 ACTIONS_PATTERN = re.compile(r'actions\s*=\s*\[(.*?)\]', re.DOTALL)
 
 RADICAL_RECIPE_ACTIONS = ('GAIN_RADICAL', 'LOSE_RADICAL')
+BOND_RECIPE_ACTIONS = ('CHANGE_BOND', 'FORM_BOND', 'BREAK_BOND')
+ATOM_RECIPE_ACTIONS = ('GAIN_RADICAL', 'LOSE_RADICAL', 'GAIN_CHARGE', 'LOSE_CHARGE', 'GAIN_PAIR', 'LOSE_PAIR')
 
 
 def get_reaction_family(label: str, consider_arc_families: bool = True) -> 'ReactionFamily':
     """
     A helper function for getting a cached ReactionFamily object.
 
+    A family whose recipe is malformed is logged once at ERROR level, and every lookup of it raises the same error.
+
     Args:
         label (str): The reaction family label.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
+
+    Raises:
+        RecipeError: If the family's recipe is malformed.
 
     Returns:
         ReactionFamily: The ReactionFamily object.
     """
     key = (label, consider_arc_families)
     if key not in REACTION_FAMILY_CACHE:
-        REACTION_FAMILY_CACHE[key] = ReactionFamily(label=label, consider_arc_families=consider_arc_families)
-    return REACTION_FAMILY_CACHE[key]
+        try:
+            REACTION_FAMILY_CACHE[key] = ReactionFamily(label=label, consider_arc_families=consider_arc_families)
+        except RecipeError as e:
+            logger.error(f'The {label} family is unavailable for this run: {e}')
+            # Cache a bare copy and raise a fresh one per lookup, so no traceback or chained exception keeps frames alive.
+            REACTION_FAMILY_CACHE[key] = RecipeError(str(e))
+    cached = REACTION_FAMILY_CACHE[key]
+    if isinstance(cached, RecipeError):
+        raise RecipeError(str(cached))
+    return cached
 
 
 def get_rmg_db_subpath(*parts: str, must_exist: bool = False) -> str:
@@ -156,6 +173,21 @@ class ReactionFamily(object):
                  ):
         if getattr(self, '_initialized', False):
             return
+        try:
+            self._load(label, consider_arc_families)
+        except Exception:
+            ReactionFamily._cache.pop((label, consider_arc_families), None)
+            raise
+        self._initialized = True
+
+    def _load(self, label: str, consider_arc_families: bool):
+        """
+        Read and parse the family groups file.
+
+        Args:
+            label (str): The reaction family label.
+            consider_arc_families (bool): Whether to consider ARC's custom families.
+        """
         self.label = label
         self.groups_as_lines = read_groups_file_lines(label, consider_arc_families)
         self.reversible = is_reversible(self.groups_as_lines)
@@ -181,8 +213,7 @@ class ReactionFamily(object):
             label: Group().from_adjacency_list(adjlist)
             for label, adjlist in self.entries.items()
         }
-        self.actions = get_recipe_actions(self.groups_as_lines)
-        self._initialized = True
+        self.actions = get_recipe_actions(self.groups_as_lines, self.label)
 
     def __str__(self):
         """
@@ -509,6 +540,7 @@ def get_reaction_family_products(rxn: ARCReaction,
                                  consider_rmg_families: bool = True,
                                  consider_arc_families: bool = True,
                                  discover_own_reverse_rxns_in_reverse: bool = False,
+                                 dropped_families: dict[str, str] | None = None,
                                  ) -> list[dict]:
     """
     Determine the RMG reaction family for a given ARC reaction by generating corresponding product dicts.
@@ -539,6 +571,9 @@ def get_reaction_family_products(rxn: ARCReaction,
                                                                whenever a forward match exists, so the flag only
                                                                widens the result for a reaction that no family
                                                                matches in the forward direction.
+        dropped_families (dict[str, str], optional): If given, filled with the families that matched after the
+                                                     direction gate but were then dropped, mapped to the gate
+                                                     that dropped them (see prioritize_family_product_dicts()).
 
     Returns:
         list[dict]: The list of product dictionaries with the reaction family label, ordered and filtered
@@ -568,6 +603,7 @@ def get_reaction_family_products(rxn: ARCReaction,
     # RMG and ARC copies) share results for the same template-product graph across calls.
     fwd_iso_cache: dict[tuple, bool] = {}
     rev_iso_cache: dict[tuple, bool] = {}
+    unavailable_families: dict[str, str] = {}
     for family_label in family_labels:
         try:
             # Forward:
@@ -600,11 +636,19 @@ def get_reaction_family_products(rxn: ARCReaction,
                     product_dicts.extend([prod for prod in filtered_products if not prod['own_reverse']])
                 else:
                     product_dicts.extend(filtered_products)
+        except RecipeError as e:
+            unavailable_families[family_label] = str(e)
         except (KeyError, ValueError, InvalidAdjacencyListError) as e:
             logger.debug(f'Skipping family {family_label} due to unsupported group definition: {type(e).__name__}: {e}')
+    for family_label, cause in unavailable_families.items():
+        if family_label not in rxn.unavailable_families:
+            logger.warning(f'Reaction {rxn.label} was not checked against the {family_label} family, '
+                           f'which is unavailable: {cause}')
+        rxn.unavailable_families[family_label] = cause
     return prioritize_family_product_dicts(rxn=rxn,
                                            product_dicts=product_dicts,
                                            consider_arc_families=consider_arc_families,
+                                           dropped_families=dropped_families,
                                            )
 
 
@@ -637,9 +681,145 @@ def count_recipe_bond_changes(actions: list[list]) -> tuple[int, int]:
     return formed_or_broken, changed
 
 
+def get_recipe_center(product_dict: dict, actions: list[list]) -> frozenset[int]:
+    """
+    Get the reaction center of a family match: the reactant atoms that its family recipe acts on.
+
+    Template labels that no recipe action names (e.g., the ring-path atoms of Intra_RH_Add_Exocyclic)
+    are not part of the center. A label that the template gives to several atoms (e.g., the two '*' atoms of
+    R_Recombination) is stored with a suffix ('*', '*_2'), and all of its atoms are part of the center.
+
+    Args:
+        product_dict (dict): A family product dictionary.
+        actions (list[list]): The recipe actions of that family.
+
+    Returns:
+        frozenset[int]: The reactant atom indices the recipe acts on.
+    """
+    label_map = product_dict.get('r_label_map') or dict()
+    recipe_labels = {entry for action in actions for entry in action[1:] if isinstance(entry, str) and entry.startswith('*')}
+    return frozenset(index for label, index in label_map.items() if re.sub(r'_\d+$', '', label) in recipe_labels)
+
+
+def get_recipe_bond_changes(product_dict: dict, actions: list[list]) -> frozenset[tuple]:
+    """
+    Get the bonds a family match forms, breaks, or changes the order of, as reactant atom index pairs.
+
+    Two matches with the same bond changes describe the same reaction channel and give the same atom map.
+    An action between two atoms that share a label (e.g., ['FORM_BOND', '*', 1, '*'] of R_Recombination)
+    joins the atom stored as '*' with the one stored as '*_2'.
+
+    Args:
+        product_dict (dict): A family product dictionary.
+        actions (list[list]): The recipe actions of that family.
+
+    Returns:
+        frozenset[tuple]: Entries of (action name, frozenset of the two atom indices, order change).
+                          Empty if the label map does not cover the recipe.
+    """
+    label_map = product_dict.get('r_label_map') or dict()
+    changes = set()
+    for action in actions:
+        if action[0] in ('FORM_BOND', 'BREAK_BOND', 'CHANGE_BOND'):
+            second = f'{action[3]}_2' if action[3] == action[1] else action[3]
+            if action[1] not in label_map or second not in label_map:
+                return frozenset()
+            changes.add((action[0], frozenset((label_map[action[1]], label_map[second])),
+                         action[2] if action[0] == 'CHANGE_BOND' else None))
+    return frozenset(changes)
+
+
+def get_subsumed_families(product_dicts: list[dict],
+                          actions_by_family: dict[str, list[list]],
+                          ) -> set[str]:
+    """
+    Get the families whose match is described more fully by another family's match of the same reaction.
+
+    The reaction center of a match is the set of reactant atoms its family recipe acts on (get_recipe_center()).
+    A family is subsumed when the reaction center of one of its matches is a strict subset of the
+    reaction center of a match of another family, unless a center of that other family is in turn a
+    strict subset of a center of the first one, directly or through other families (families that contain
+    each other through different matches are tied with each other, while each may still subsume a third family). Both matches give the
+    reaction's products, so the other family describes the same change and accounts for more of the
+    atoms that take part in it, e.g., the [3,3] shift of 6_membered_central_C-C_shift subsumes the [1,3]
+    shift that 1,3_sigmatropic_rearrangement finds in a Cope rearrangement. Equal or partly overlapping
+    centers subsume nothing, and a match with an empty center is never compared.
+
+    Args:
+        product_dicts (list[dict]): The family product dictionaries of one reaction, all in one index space.
+        actions_by_family (dict[str, list[list]]): The recipe actions of every family in ``product_dicts``.
+
+    Returns:
+        set[str]: The labels of the subsumed families.
+    """
+    centers = dict()
+    for product_dict in product_dicts:
+        center = get_recipe_center(product_dict, actions_by_family[product_dict['family']])
+        if len(center):
+            centers.setdefault(product_dict['family'], list()).append(center)
+    contains = {(larger, smaller) for larger, larger_centers in centers.items()
+                for smaller, smaller_centers in centers.items() if larger != smaller
+                and any(small < large for small in smaller_centers for large in larger_centers)}
+    for middle in centers:
+        contains |= {(larger, smaller) for larger, inner in contains if inner == middle
+                     for outer, smaller in contains if outer == middle and larger != smaller}
+    return {smaller for larger, smaller in contains if (smaller, larger) not in contains}
+
+
+def get_undecided_family_ties(product_dicts: list[dict],
+                              consider_arc_families: bool = True,
+                              head: str | None = None,
+                              ) -> list[str]:
+    """
+    Get the families that tie with the first-ranked family without the most specific family rule deciding it.
+
+    ``product_dicts`` is the ranked output of prioritize_family_product_dicts(). Another family ties with the
+    first one when it is not subsumed (get_subsumed_families()) and none of its matches has the same bond
+    changes (get_recipe_bond_changes()) as a match of the first family: the two families then describe
+    different reaction channels to the same products, and only the bond-change counts or the family order
+    chose between them. A family that shares a channel with the first one is not tied by its other matches,
+    which are usually the same channel on symmetry-equivalent atoms (e.g., the two radical N atoms of NCN).
+    A family whose recipe cannot be read is reported as tied. A ``head`` family other than the first-ranked one
+    (e.g., a family kept from a restart file) ties in the same way, unless it is itself subsumed: then the rule
+    decided against it, and nothing ties with it.
+
+    Args:
+        product_dicts (list[dict]): The ranked family product dictionaries of one reaction.
+        consider_arc_families (bool, optional): Whether ARC's custom families were considered.
+        head (str, optional): The family used for the reaction. Defaults to the first-ranked family.
+
+    Returns:
+        list[str]: The tied families, in ranked order, without the head family.
+    """
+    families = list(dict.fromkeys(product_dict['family'] for product_dict in product_dicts))
+    if len(families) < 2:
+        return list()
+    try:
+        actions_by_family = {family: get_reaction_family(label=family, consider_arc_families=consider_arc_families).actions
+                             for family in families}
+    except (FileNotFoundError, KeyError, ValueError, InvalidAdjacencyListError):
+        return [family for family in families if family != (head or families[0])]
+    subsumed = get_subsumed_families(product_dicts, actions_by_family)
+    head = head or families[0]
+    if head in subsumed:
+        return list()
+    head_changes = {get_recipe_bond_changes(product_dict, actions_by_family[head])
+                    for product_dict in product_dicts if product_dict['family'] == head} - {frozenset()}
+    tied = list()
+    for family in families:
+        if family == head or family in subsumed:
+            continue
+        changes = {get_recipe_bond_changes(product_dict, actions_by_family[family])
+                   for product_dict in product_dicts if product_dict['family'] == family} - {frozenset()}
+        if not len(changes & head_changes):
+            tied.append(family)
+    return tied
+
+
 def prioritize_family_product_dicts(rxn: ARCReaction,
                                     product_dicts: list[dict],
                                     consider_arc_families: bool = True,
+                                    dropped_families: dict[str, str] | None = None,
                                     ) -> list[dict]:
     """
     Order family product dictionaries so that the first entry is the family match to use,
@@ -647,19 +827,24 @@ def prioritize_family_product_dicts(rxn: ARCReaction,
 
     An entry discovered in the reverse direction carries an atom label map in the index space of the
     flipped reaction, so all such entries are dropped whenever at least one entry was discovered in the
-    forward direction. This gate reads only ``discovered_in_reverse`` and is therefore applied even when a
-    family recipe cannot be read. If any of the reactants carries unpaired electrons, only the entries whose
-    family recipe gains or loses a radical are kept, provided that this keeps at least one entry and drops at
-    least one. The remaining entries are then ordered by the number of bonds their family recipe forms or
-    breaks, then by the number of bonds it changes the order of, then by the order in which the families
-    were considered, which is the order of ``get_all_families()``. Entries of the same family keep their
-    relative order. The radical gate and the ordering both need the family recipes, so an unreadable recipe
-    leaves the direction-gated entries in the order they were discovered in.
+    forward direction (the direction gate). This gate reads only ``discovered_in_reverse`` and is therefore
+    applied even when a family recipe cannot be read. If any of the reactants carries unpaired electrons,
+    only the entries whose family recipe gains or loses a radical are kept, provided that this keeps at least
+    one entry and drops at least one (the radical gate). The remaining entries of the families that
+    get_subsumed_families() finds to be subsumed by another family's match (by the atoms their recipes act on)
+    are placed after all other entries, so the most specific family is used. Within these two groups, entries are ordered by the number
+    of bonds their family recipe forms or breaks, then by the number of bonds it changes the order of, then by
+    the order in which the families were considered, which is the order of ``get_all_families()``. Entries of
+    the same family keep their relative order. The radical gate and the bond-change ordering need the family
+    recipes, so an unreadable recipe leaves the direction-gated entries in the order they were discovered in.
 
     Args:
         rxn (ARCReaction): The ARC reaction object.
         product_dicts (list[dict]): The family product dictionaries to order.
         consider_arc_families (bool, optional): Whether ARC's custom families were considered.
+        dropped_families (dict[str, str], optional): If given, filled with the families that passed the
+                                                     direction gate and were dropped by the radical gate,
+                                                     mapped to ``'radical gate'``.
 
     Returns:
         list[dict]: The ordered product dictionaries.
@@ -687,9 +872,14 @@ def prioritize_family_product_dicts(rxn: ARCReaction,
         radical_dicts = [product_dict for product_dict in product_dicts
                          if has_radical_recipe_action(actions_by_family[product_dict['family']])]
         if len(radical_dicts) and len(radical_dicts) < len(product_dicts):
+            if dropped_families is not None:
+                kept = {product_dict['family'] for product_dict in radical_dicts}
+                dropped_families.update({family: 'radical gate' for family in family_order if family not in kept})
             product_dicts = radical_dicts
+    subsumed = get_subsumed_families(product_dicts, actions_by_family)
     return sorted(product_dicts,
-                  key=lambda product_dict: (*count_recipe_bond_changes(actions_by_family[product_dict['family']]),
+                  key=lambda product_dict: (product_dict['family'] in subsumed,
+                                            *count_recipe_bond_changes(actions_by_family[product_dict['family']]),
                                             family_order[product_dict['family']]))
 
 
@@ -1232,28 +1422,105 @@ def get_initial_reactant_labels_from_template(groups_as_lines: list[str],
     return list()
 
 
-def get_recipe_actions(groups_as_lines: list[str]) -> list[list[str]]:
+def get_recipe_actions(groups_as_lines: list[str], family_label: str) -> list[list[str | int]]:
     """
-    Get the recipe actions from a template content string.
+    Get the recipe actions from the lines of a family groups file.
+
+    The file is parsed as a Python module, as RMG executes it, and the actions are taken from its single
+    top-level ``recipe(...)`` call. A missing trailing comma, a closing bracket on the last action's line,
+    or an action that spans lines are therefore all read as RMG reads them.
+    Each action is normalized by ``normalize_recipe_action()``.
 
     Args:
-        groups_as_lines (list[str]): The template content string.
+        groups_as_lines (list[str]): The lines of the groups file.
+        family_label (str): The family label, used in error messages.
+
+    Raises:
+        RecipeError: If the file does not parse, does not have exactly one recipe, or an action is malformed.
 
     Returns:
-        list[list[str]]: The recipe actions.
+        list[list[str | int]]: The recipe actions.
     """
-    actions = []
-    for i in range(len(groups_as_lines)):
-        if 'recipe(actions=[' in groups_as_lines[i]:
-            j = 0
-            while '])' not in groups_as_lines[i + 1 + j]:
-                if "['" in groups_as_lines[i + 1 + j]:
-                    line = groups_as_lines[i + 1 + j].strip()
-                    if not line.startswith('#'):
-                        actions.append(ast.literal_eval(line)[0])
-                j += 1
-            break
+    lines = [line.rstrip('\n') for line in groups_as_lines]
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', SyntaxWarning)
+            module = ast.parse('\n'.join(lines))
+    except SyntaxError as e:
+        raise RecipeError(f'The groups file of family {family_label} does not parse, line {e.lineno}: '
+                          f'{(e.text or "").strip()!r}: {e.msg}')
+    calls = [node.value for node in module.body if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+             and isinstance(node.value.func, ast.Name) and node.value.func.id == 'recipe']
+    if len(calls) != 1:
+        raise RecipeError(f'The groups file of family {family_label} has {len(calls)} recipe() calls, expected one.')
+    call = calls[0]
+    if len(call.args) == 1 and not call.keywords:
+        actions_node = call.args[0]
+    elif not call.args and [kw.arg for kw in call.keywords] == ['actions']:
+        actions_node = call.keywords[0].value
+    else:
+        actions_node = None
+    if not isinstance(actions_node, ast.List):
+        raise RecipeError(f'The recipe of family {family_label} at line {call.lineno} has no actions list: '
+                          f'{lines[call.lineno - 1].strip()!r}')
+    actions = list()
+    for node in actions_node.elts:
+        line_number = node.lineno
+        line = lines[line_number - 1].strip()
+        try:
+            action = ast.literal_eval(node)
+        except (ValueError, TypeError, SyntaxError):
+            raise RecipeError(f'Malformed recipe action in family {family_label}, line {line_number}: {line!r}: '
+                              f'not a literal')
+        actions.append(normalize_recipe_action(action, family_label, line_number, line))
     return actions
+
+
+def normalize_recipe_action(action: object,
+                            family_label: str,
+                            line_number: int,
+                            line: str,
+                            ) -> list[str | int]:
+    """
+    Validate one recipe action against RMG's recipe grammar and convert its order or change token to an int.
+    RMG-database writes this token either as an int (``-1``) or as a string of an int (``'-1'``).
+    The action name is upper-cased, as RMG does.
+
+    Args:
+        action (object): The action as read from the groups file.
+        family_label (str): The family label, used in error messages.
+        line_number (int): The 1-based line number of the action in the groups file.
+        line (str): The text of that line.
+
+    Raises:
+        RecipeError: If the action is not a list, has an unknown name or a wrong length, has a non-string
+                     atom label, or has an order/change token that is not an integer.
+
+    Returns:
+        list[str | int]: ``[name, label, int, label]`` for a bond action, ``[name, label, int]`` for an atom action.
+    """
+    prefix = f'Malformed recipe action in family {family_label}, line {line_number}: {line!r}: '
+    if not isinstance(action, list) or not action:
+        raise RecipeError(prefix + f'expected a non-empty list, got {action!r}')
+    name = action[0].upper() if isinstance(action[0], str) else action[0]
+    if name in BOND_RECIPE_ACTIONS:
+        length, label_indices = 4, (1, 3)
+    elif name in ATOM_RECIPE_ACTIONS:
+        length, label_indices = 3, (1,)
+    else:
+        raise RecipeError(prefix + f'unknown action {name!r}')
+    if len(action) != length:
+        raise RecipeError(prefix + f'{name} takes {length} items, got {len(action)}')
+    if not all(isinstance(action[i], str) for i in label_indices):
+        raise RecipeError(prefix + f'{name} atom labels must be strings')
+    token = action[2]
+    if isinstance(token, bool) or not isinstance(token, (int, str)):
+        raise RecipeError(prefix + f'the order/change {token!r} is not an integer')
+    try:
+        value = int(token)
+    except ValueError:
+        raise RecipeError(prefix + f'the order/change {token!r} is not an integer')
+    return [name, action[1], value] + action[3:]
 
 
 def split_entries(groups_str: str) -> list[str]:
