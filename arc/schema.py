@@ -305,11 +305,15 @@ class Reaction(BaseModel):
     done_opt_r_n_p: Flag | None = None
     extensions: dict[str, dict] | None = None
     family: str | None = None
+    family_candidates: list[dict] | None = None
     family_own_reverse: Flag | None = None
+    family_source: str | None = None
+    family_tie: dict | None = None
     index: StrictInt | None = None
     kinetics: dict | None = None
     long_kinetic_description: str | None = None
     multiplicity: Annotated[int, Field(ge=1, strict=True)] | None = None
+    n_family_candidates: StrictInt | None = None
     p_species: list[ReactionSpecies] | None = None
     preserve_param_in_scan: list | None = None
     products: list[str] | None = None

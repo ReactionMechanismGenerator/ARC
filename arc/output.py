@@ -2173,7 +2173,7 @@ def _get_ring_check_dropped_bonds(spc) -> list[dict]:
             sorted by atoms.
     """
     dropped = dict()
-    for rotor in (getattr(spc, 'rotors_dict', None) or dict()).values():
+    for rotor in (spc.rotors_dict or dict()).values():
         for bond in rotor.get('ring_check_dropped_bonds') or list():
             dropped[tuple(bond['atoms'])] = dict(bond)
     return [dropped[atoms] for atoms in sorted(dropped)]
@@ -2913,12 +2913,28 @@ def _rxn_to_dict(rxn,
         'reactant_labels': list(rxn.reactants),
         'product_labels': list(rxn.products),
         'family': rxn.family,
+        'family_source': rxn.family_source,
+        'family_candidates': rxn.family_candidates,
+        'n_family_candidates': rxn.n_family_candidates,
         'multiplicity': rxn.multiplicity,
         'ts_label': rxn.ts_label,
         'kinetics': kin_dict,
+        # Next to the rate on purpose: the rate is for the 'searched' channel only.
+        'family_tie': rxn.family_tie,
+        'identity_reaction': rxn.is_identity_reaction(),
         'ts_adapter_failures': [dict(failure) for failure in
                                 getattr(getattr(rxn, 'ts_species', None), 'ts_adapter_failures', None) or []],
     }
+    if rxn_dict['identity_reaction']:
+        family = rxn_dict['family']
+        if family is None:
+            searched = 'No family was found for it.'
+        elif family in rxn.unavailable_families:
+            searched = f'The {family} family is unavailable, not searched: {rxn.unavailable_families[family]}'
+        else:
+            searched = f'The {family} family was searched.'
+        logger.warning(f'Reaction {rxn.label} is an identity reaction (its reactants and products are the same '
+                       f'species), so the IRC end points do not discriminate the channel. {searched}')
     long_kin_desc = getattr(rxn, 'long_kinetic_description', None)
     if long_kin_desc:
         rxn_dict['long_kinetic_description'] = long_kin_desc

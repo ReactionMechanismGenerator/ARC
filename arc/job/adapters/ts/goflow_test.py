@@ -622,7 +622,7 @@ class TestExecuteIncoreWithMockedSubprocess(unittest.TestCase):
             self.assertEqual(len(self.rxn.ts_species.ts_guesses), 0)
 
     def test_guard_reports_the_reason_it_checked(self):
-        """The guard judges the engine once, so the reason it raises with is the one it checked."""
+        """The guard checks the engine once and raises with the reason from that check."""
         adapter = GoFlowAdapter(project='goflow_test',
                                 project_directory=self.tmpdir,
                                 job_type='tsg',

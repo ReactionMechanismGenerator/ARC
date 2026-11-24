@@ -16,6 +16,7 @@ from arc.checks.common import get_ts_validation_comment
 from arc.common import ARC_PATH, get_logger, is_str_float, read_yaml_file
 from arc.exceptions import AtomTypeError, InputError
 from arc.imports import incore_commands, settings
+from arc.molecule.converter import to_rdkit_mol
 from arc.molecule.molecule import Molecule
 from arc.job.env_run import rmg_env_command
 from arc.job.local import execute_command
@@ -720,9 +721,28 @@ def _pick_scan_end_atoms(mol: Molecule, atom1, atom2) -> tuple:
     return None, None
 
 
+def _get_aromatic_bonds(mol: Molecule) -> set[frozenset[int]]:
+    """
+    Get the bonds of ``mol`` that RDKit perceives as aromatic, whichever Kekulé structure ``mol`` holds.
+
+    Args:
+        mol (Molecule): The molecule.
+
+    Returns:
+        set[frozenset[int]]: The 0-indexed atom pairs of the aromatic bonds, empty if RDKit cannot sanitize ``mol``.
+    """
+    try:
+        rd_mol = to_rdkit_mol(mol.copy(deep=True), remove_h=False, save_order=True)
+    except (KeyError, ValueError):
+        return set()
+    return {frozenset((bond.GetBeginAtomIdx(), bond.GetEndAtomIdx())) for bond in rd_mol.GetBonds()
+            if bond.GetIsAromatic()}
+
+
 def _ring_torsions(mol: Molecule) -> list[dict]:
     """
     List the torsions of ``mol`` that ``find_internal_rotors()`` skips because their bond is in a ring.
+    Aromatic bonds are not torsions, in any Kekulé structure.
 
     Args:
         mol (Molecule): The molecule.
@@ -731,11 +751,13 @@ def _ring_torsions(mol: Molecule) -> list[dict]:
         list[dict]: Entries with 1-indexed ``pivots`` and ``scan``; ``scan`` is ``None`` when no dihedral about the
                     bond has four distinct atoms.
     """
+    aromatic_bonds = _get_aromatic_bonds(mol)
     torsions = list()
     for bond in mol.get_all_edges():
         atom1, atom2 = sorted([bond.atom1, bond.atom2], key=mol.atoms.index)
         if atom1.is_non_hydrogen() and atom2.is_non_hydrogen() and bond.is_rotatable() \
-                and mol.is_bond_in_cycle(bond) and len(atom1.edges) > 1 and len(atom2.edges) > 1:
+                and mol.is_bond_in_cycle(bond) and len(atom1.edges) > 1 and len(atom2.edges) > 1 \
+                and frozenset((mol.atoms.index(atom1), mol.atoms.index(atom2))) not in aromatic_bonds:
             end1, end2 = _pick_scan_end_atoms(mol, atom1, atom2)
             pivots = [mol.atoms.index(atom1) + 1, mol.atoms.index(atom2) + 1]
             scan = [mol.atoms.index(end1) + 1] + pivots + [mol.atoms.index(end2) + 1] if end1 is not None else None
@@ -747,7 +769,7 @@ def get_harmonic_fallback_torsions(species: 'ARCSpecies', skip_rotors: bool = Fa
     """
     List every torsion of a species or TS that Arkane does not treat as a hindered rotor, with its cause.
     Arkane receives only the rotors whose ``success`` is truthy; each torsion listed here stays a harmonic mode.
-    Species loaded from an Arkane YAML file and IRC endpoint species are never scanned by design, and get no entries.
+    Species loaded from an Arkane YAML file and IRC endpoint species are never scanned, and get no entries.
     The rotors of a species without stored rotors are "not scanned (BDE fragment)" for a bond-dissociation fragment
     (``e0_only`` and no ``compute_thermo``), and "user choice" otherwise.
 
@@ -759,11 +781,9 @@ def get_harmonic_fallback_torsions(species: 'ARCSpecies', skip_rotors: bool = Fa
         list[dict]: Entries with ``pivots``, ``scan``, ``cause`` (a ``ROTOR_FALLBACK_*`` label), and ``reason``
                     (the recorded invalidation reason, ``''`` if none).
     """
-    if getattr(species, 'yml_path', None) or (not getattr(species, 'is_ts', False) and getattr(species, 'irc_label', None)):
+    if species.yml_path or (not species.is_ts and species.irc_label):
         return list()
-    rotors_dict = getattr(species, 'rotors_dict', None)
-    mol = getattr(species, 'mol', None)
-    mol = mol if isinstance(mol, Molecule) else None
+    rotors_dict, mol = species.rotors_dict, species.mol
     fallback = list()
     if rotors_dict:
         for rotor in rotors_dict.values():
@@ -774,11 +794,8 @@ def get_harmonic_fallback_torsions(species: 'ARCSpecies', skip_rotors: bool = Fa
                              'reason': ' '.join(str(rotor.get('invalidation_reason') or '').split())})
     elif mol is not None:
         cause = ROTOR_FALLBACK_BDE_FRAGMENT \
-            if getattr(species, 'e0_only', False) and not getattr(species, 'compute_thermo', True) \
-            else ROTOR_FALLBACK_USER_CHOICE
-        for structure in getattr(species, 'mol_list', None) or [mol]:
-            if not isinstance(structure, Molecule):
-                continue
+            if species.e0_only and not species.compute_thermo else ROTOR_FALLBACK_USER_CHOICE
+        for structure in species.mol_list or [mol]:
             for rotor in find_internal_rotors(structure.copy(deep=True)):
                 if all(entry['pivots'] != rotor['pivots'] for entry in fallback):
                     fallback.append({'pivots': rotor['pivots'], 'scan': rotor['scan'],
@@ -857,7 +874,8 @@ def get_untreated_torsions(fallback: list[dict]) -> list[tuple[tuple[int, int, i
 
 def format_harmonic_fallback_message(label: str, fallback: list[dict]) -> str:
     """
-    Format the harmonic-fallback torsions of a species as one warning, delimited so it can be replaced later.
+    Format the harmonic-fallback torsions of a species as one warning, between the markers that
+    ``record_harmonic_fallback_warnings()`` replaces.
 
     Args:
         label (str): The species label.

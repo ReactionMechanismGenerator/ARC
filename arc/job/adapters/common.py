@@ -116,11 +116,8 @@ all_families_ts_adapters = []
 # family. These adapters must tolerate rxn.family being None or unknown.
 ts_adapters_for_unknown_unimolecular = ['goflow', 'rits', 'linear']
 
-# Mapped adapters left out of the default ts_adapters.
 opt_in_ts_adapters = ('rits',)
 
-# The Makefile targets that install each TS adapter's engine. Orca NEB has none: it runs on the server
-# the ESS settings map 'orca' to.
 ts_adapter_install_targets = {'autotst': ('install-autotst',),
                               'gcn': ('install-gcn', 'install-gcn-cpu'),
                               'goflow': ('install-goflow',),
@@ -143,7 +140,7 @@ def ts_adapters_used_by_the_map(registered: Iterable[str] | None,
                                 ) -> list[str]:
     """
     Get the TS adapters that the family map, or the unknown-family rule, can dispatch.
-    ARC's default ``ts_adapters`` must equal the registered ones less ``opt_in_ts_adapters``; a unit test ties them.
+    ARC's default ``ts_adapters`` is the registered ones less ``opt_in_ts_adapters``.
 
     Args:
         registered (Iterable[str], optional): The names of the registered job adapters to keep.
@@ -1007,7 +1004,7 @@ def missing_engine_file_reason(path: object, setting: str, expected: str) -> str
     """
     Report why an engine file setting does not point at an existing file.
 
-    A missing, ``None`` or wrong-type setting is reported as missing rather than raising.
+    A missing, ``None`` or wrong-type setting is reported as missing.
 
     Args:
         path (object): The value of the setting, expected to be a path string.

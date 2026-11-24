@@ -786,7 +786,7 @@ class TestRitSGracefulSkip(unittest.TestCase):
         self.assertEqual(len(rxn.ts_species.ts_guesses), 0)
 
     def test_guard_reports_the_reason_it_checked(self):
-        """The guard judges the engine once, so the reason it raises with is the one it checked."""
+        """The guard checks the engine once and raises with the reason from that check."""
         rxn = _build_rxn_isomerization_propyl()
         adapter = RitSAdapter(
             job_type='tsg',
