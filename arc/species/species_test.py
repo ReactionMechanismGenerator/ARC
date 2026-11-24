@@ -527,11 +527,14 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(ts.rotors_dict[0]['invalidation_reason'].count('reactive ring)'), 1)
 
     def test_determine_rotors_ts_reactive_ring_without_a_reason(self):
-        """Test that restored TS rotors with a missing or null invalidation reason are judged without raising"""
+        """
+        Test that TS rotors restored from a restart file of another ARC version, with a missing or null
+        invalidation reason, are judged without raising
+        """
         for reason in ['missing', None]:
             ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
             ts.determine_rotors()
-            for rotor in ts.rotors_dict.values():  # As restored from a restart file of another ARC version.
+            for rotor in ts.rotors_dict.values():
                 rotor['success'] = None
                 if reason == 'missing':
                     del rotor['invalidation_reason']
@@ -689,7 +692,8 @@ class TestARCSpecies(unittest.TestCase):
     def test_determine_rotors_ts_rejects_a_restored_successful_ring_rotor(self):
         """
         Test that a TS rotor restored with a successful scan of a reactive-ring torsion is rejected with one warning
-        naming it, while a rotor whose scan failed is not re-judged.
+        naming it, while a rotor whose scan failed is not re-judged. Rotor 1 has no ``ring_check``, as written
+        before the check existed.
         """
         ts = ARCSpecies(label='TS0', is_ts=True, xyz=TS0_XYZ)
         mol = ts.mol
@@ -697,7 +701,7 @@ class TestARCSpecies(unittest.TestCase):
         ts.mol = mol
         ts.determine_rotors()
         ts.rotors_dict[0]['success'] = True
-        del ts.rotors_dict[1]['ring_check']  # A rotor restored from a restart file written before the check existed.
+        del ts.rotors_dict[1]['ring_check']
         ts.rotors_dict[2].update({'success': False, 'invalidation_reason': 'Could not read energies. ',
                                   'scan_path': 'scan.out'})
         ts.final_xyz = str_to_xyz(TS0_XYZ)

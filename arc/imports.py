@@ -134,9 +134,7 @@ local_arc_path = os.path.join(home, '.arc')
 
 local_arc_settings_path = os.path.join(local_arc_path, 'settings.py')
 settings = {key: val for key, val in vars(arc_settings).items() if '__' not in key}
-# ARC's default ts_adapters, kept before an overlay can edit the shared list in place.
 repo_default_ts_adapters = list(arc_settings.ts_adapters)
-# The setting names ~/.arc/settings.py overrides, so a caller can tell a user override from ARC's default.
 local_settings_keys = frozenset()
 if os.path.isfile(local_arc_settings_path):
     default_settings_snapshot = dict()

@@ -3406,7 +3406,12 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertFalse(conformers.is_ring_twist(bonds=ts1_bonds, pivots=(4, 5)))
 
     def test_get_ts_bonds(self):
-        """Test building the TS graph from the reaction and from the TS geometry"""
+        """
+        Test building the TS graph from the reaction and from the TS geometry. The TS1 atom map picks an H of the
+        other ethane C than the one abstracted in the TS1 geometry. A reaction whose bonds cannot be determined is
+        skipped with the reason. A TS geometry, or without one a TS 2D graph with the same element sequence, that is
+        not in the atom order of the reactants is not judged by the reaction's bonds.
+        """
         mol_bonds = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=None, reaction=None)[0]
         self.assertNotIn((0, 5), mol_bonds)
         self.assertNotIn((4, 5), mol_bonds)
@@ -3426,12 +3431,10 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertEqual(sources, [])
         self.assertIn('no reaction', reason)
         self.assertIn('no TS geometry', reason)
-        # The atom map picks an H of the other ethane C than the one abstracted in the TS1 geometry.
         bonds, sources, reason, _ = conformers.get_ts_bonds(mol=self.ts1.mol, xyz=self.ts1.get_xyz(),
                                                             reaction=self.rxn1)
         self.assertIn((0, 10), bonds)
         self.assertNotIn((0, 6), bonds)
-        # A reaction whose bonds cannot be determined is skipped with the reason, it does not raise.
         broken_rxn = ARCReaction(r_species=self.rxn0.r_species, p_species=self.rxn0.p_species)
         broken_rxn.atom_map = [0] * 12
         bonds, sources, reason, _ = conformers.get_ts_bonds(mol=self.ts0.mol, xyz=self.ts0.get_xyz(),
@@ -3439,7 +3442,6 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertEqual(sources, ['geometry'])
         self.assertIn('ValueError', reason)
         self.assertLessEqual({(0, 5), (4, 5)}, bonds)
-        # A TS geometry not in the atom order of the reactants is not judged by the reaction's bonds.
         xyz = self.ts0.get_xyz()
         order = [4, 1, 2, 3, 0] + list(range(5, 12))
         permuted = converter.xyz_from_data(coords=[xyz['coords'][i] for i in order],
@@ -3449,8 +3451,6 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertEqual(sources, ['geometry'])
         self.assertIn('atom order', reason)
         self.assertLessEqual({(4, 5), (0, 5)}, bonds)
-        # Without a TS geometry, a TS 2D graph in another atom order with the same element sequence is caught by
-        # the reactant bonds it lacks.
         order = [0, 2, 1] + list(range(3, 12))
         swapped = converter.xyz_from_data(coords=[xyz['coords'][i] for i in order],
                                           symbols=[xyz['symbols'][i] for i in order])

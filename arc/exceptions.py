@@ -108,6 +108,14 @@ class ReactionError(Exception):
     pass
 
 
+class RecipeError(Exception):
+    """
+    An exception class for a malformed reaction family recipe.
+    Deliberately not a ValueError or a KeyError, so family-matching handlers that skip a family do not swallow it.
+    """
+    pass
+
+
 class ResonanceError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with reactions.
