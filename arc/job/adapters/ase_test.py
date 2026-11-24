@@ -29,8 +29,7 @@ from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  rotor_top,
                                                  run_torsion_scan,
                                                  scan_convergence_warning,
-                                                 to_kJmol,
-                                                 well_defined_torsion)
+                                                 to_kJmol)
 
 ETHANE_XYZ = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
               'isotopes': (12, 12, 1, 1, 1, 1, 1, 1),
@@ -475,25 +474,6 @@ class TestASEAdapter(unittest.TestCase):
         # Pulled far enough apart, they are no longer a bond at all.
         with self.assertRaises(ValueError):
             rotor_top(ts_like, 0, 1, pivot_mult=1.0)
-
-    def test_well_defined_torsion(self):
-        """A dihedral end atom collinear with the pivot bond is replaced by the next atom off the axis"""
-        # HO-C#C-OH with a linear O-C#C-O chain: the OH rotor's dihedral H-O-C#C is undefined.
-        hoccoh = Atoms('OCCOHH', positions=[(0.0, 0.0, 0.0), (1.3, 0.0, 0.0), (2.5, 0.0, 0.0), (3.8, 0.0, 0.0),
-                                            (-0.3, 0.92, 0.0), (4.1, 0.0, 0.92)])
-        self.assertEqual(well_defined_torsion(hoccoh, [4, 0, 1, 2]), [4, 0, 1, 5])
-        self.assertEqual(well_defined_torsion(hoccoh, [5, 3, 2, 1]), [5, 3, 2, 4])
-        # An ordinary dihedral is kept as is.
-        ethane = Atoms('CCHHHHHH', positions=[(0.0, 0.0, 0.765), (0.0, 0.0, -0.765), (1.018, 0.0, 1.164),
-                                              (-0.509, 0.882, 1.164), (-0.509, -0.882, 1.164),
-                                              (-1.018, 0.0, -1.164), (0.509, -0.882, -1.164),
-                                              (0.509, 0.882, -1.164)])
-        self.assertEqual(well_defined_torsion(ethane, [2, 0, 1, 5]), [2, 0, 1, 5])
-        # An acyl group linear to its terminal O has no torsion about the C-C bond.
-        acyl = Atoms('COCOH', positions=[(0.0, 0.0, 0.0), (-0.7, 1.0, 0.0), (1.5, 0.0, 0.0), (2.65, 0.0, 0.0),
-                                         (-0.6, -0.9, 0.0)])
-        with self.assertRaises(ValueError):
-            well_defined_torsion(acyl, [1, 0, 2, 3])
 
     def test_an_irc_job_ends_at_the_end_of_its_path(self):
         """An IRC job's final geometry is the last point of its path, from which ARC builds the IRC species"""
