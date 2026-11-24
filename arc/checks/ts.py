@@ -721,8 +721,6 @@ def _match_fragments_to_species(fragments: list[Molecule],
         return False
 
     def same_species(fragment: Molecule, expected: Molecule) -> bool:
-        # An isolated atom's electronic state cannot be perceived from a geometry (an O atom comes out as a singlet,
-        # while O(3P) is the reactant of O + H2), so atoms match by element; molecules match by isomorphism.
         if len(fragment.atoms) == 1 and len(expected.atoms) == 1:
             return fragment.atoms[0].element.symbol == expected.atoms[0].element.symbol
         return check_isomorphism(fragment, expected)

@@ -1159,11 +1159,8 @@ class TestTSChecks(unittest.TestCase):
 
     def test_check_irc_matches_an_isolated_atom_by_element(self):
         """
-        Test that an isolated atom in an IRC endpoint matches its species by element.
-
-        Its electronic state cannot be perceived from a geometry: the O atom of these UMA endpoints of
-        O + H2 <=> OH + H comes out as a singlet, not O(3P). The bond-list tier rejects these endpoints too,
-        since it compares bonds under one atom map, while the two H atoms of H2 are interchangeable.
+        Test that an isolated atom in an IRC endpoint matches its species by element, on UMA endpoints of
+        O + H2 <=> OH + H whose O atom is perceived as a singlet.
         """
         rxn = ARCReaction(r_species=[ARCSpecies(label='H2', smiles='[H][H]'),
                                      ARCSpecies(label='O', smiles='[O]', multiplicity=3)],
