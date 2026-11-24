@@ -1044,6 +1044,37 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertAlmostEqual(points[0]['electronic_energy_hartree'], -316.80812525887)
         self.assertNotAlmostEqual(points[0]['electronic_energy_hartree'], -316.439293079)
 
+    def test_parse_irc_ts_energy(self):
+        """Test parsing the energy of the TS an IRC log started from, the last energy reported before point 0"""
+        cases = {'rxn_1_irc_1.out': -303.577879721,
+                 'cyano_irc_1.out': -363.100327672,
+                 'irc_failed.out': -306.074250216}
+        for name, expected in cases.items():
+            with self.subTest(log=name):
+                self.assertAlmostEqual(parser.parse_irc_ts_energy(
+                    log_file_path=os.path.join(ARC_TESTING_PATH, 'irc', name)), expected)
+        tmp_dir = tempfile.mkdtemp(prefix='test_parse_irc_ts_energy_')
+        self.addCleanup(shutil.rmtree, tmp_dir, ignore_errors=True)
+        with open(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out'), 'r') as f:
+            lines = f.readlines()
+        point_0 = next(i for i, line in enumerate(lines) if 'Point Number:' in line and 'Path Number:' in line)
+        contents = {'post-SCF': lines[:point_0] + [' E2(B2PLYPD3) =    -0.3688321800D+00 '
+                                                   'E(B2PLYPD3) =    -0.31680812525887D+03\n'] + lines[point_0:],
+                    'no energy before point 0': [line for line in lines[:point_0] if 'SCF Done' not in line]
+                    + lines[point_0:],
+                    'cut before point 0': lines[:point_0]}
+        expected = {'post-SCF': -316.80812525887, 'no energy before point 0': None, 'cut before point 0': None}
+        for case, content in contents.items():
+            with self.subTest(case=case):
+                path = os.path.join(tmp_dir, 'irc.out')
+                with open(path, 'w') as f:
+                    f.writelines(content)
+                energy = parser.parse_irc_ts_energy(log_file_path=path)
+                if expected[case] is None:
+                    self.assertIsNone(energy)
+                else:
+                    self.assertAlmostEqual(energy, expected[case])
+
     def test_parse_1d_scan_full_result_never_raises(self):
         """The wrapper documents that it never raises; hold it to that.
 

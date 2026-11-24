@@ -106,7 +106,6 @@ class TestChecks(unittest.TestCase):
         self.assertIn('e_elect', comment)
         self.assertIn('E0', comment)
 
-
     def test_get_ts_validation_caution(self):
         """Test that, with no IRC requested for the run, only a TS whose IRC job failed gets a caution"""
         self.assertIsNone(common.get_ts_validation_caution(None))

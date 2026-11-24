@@ -22,6 +22,8 @@ from arc.parser.parser import (_get_lines_from_file,
 
 logger = get_logger()
 
+SCF_DONE_ENERGY_PATTERN = re.compile(r"SCF Done:\s+E\([^)]*\)\s*=\s*([-+]?\d*\.?\d+(?:[EDed][-+]?\d+)?)")
+
 
 def _find_force_constants_header(lines: list[str]) -> int | None:
     """
@@ -58,10 +60,7 @@ def _read_irc_geometry_table(lines: list[str],
     Reads the table as all-or-nothing. A table that does not open with both
     separators, a row that is not a numeric ``center, atomic number, x, y, z``
     tuple, and a table that runs into the end of the file without its closing
-    separator each yield ``None`` rather than the atoms read so far. A log
-    truncated mid-table would otherwise produce a geometry carrying some of the
-    molecule's atoms, which is indistinguishable downstream from a smaller
-    molecule and is never what the log describes.
+    separator each yield ``None`` rather than the atoms read so far.
 
     Args:
         lines (list[str]): The log file lines.
@@ -934,7 +933,6 @@ class GaussianParser(ESSAdapter, ABC):
         """
         lines = _get_lines_from_file(self.log_file_path)
         number = r"[-+]?\d*\.?\d+(?:[EDed][-+]?\d+)?"
-        energy_re = re.compile(r"SCF Done:\s+E\([^)]*\)\s*=\s*(" + number + r")")
         forces_re = re.compile(
             r"Cartesian Forces:\s+Max\s+(" + number + r")\s+RMS\s+(" + number + r")"
         )
@@ -960,14 +958,9 @@ class GaussianParser(ESSAdapter, ABC):
         i = 0
         while i < len(lines):
             line = lines[i]
-            match = energy_re.search(line)
-            if match:
-                energy = to_float(match.group(1))
-                i += 1
-                continue
-            post_scf_energy = extract_post_scf_energy(line)
-            if post_scf_energy is not None:
-                energy = post_scf_energy
+            line_energy = extract_irc_energy(line)
+            if line_energy is not None:
+                energy = line_energy
                 i += 1
                 continue
             match = forces_re.search(line)
@@ -1025,6 +1018,26 @@ class GaussianParser(ESSAdapter, ABC):
             })
             i = p + 1 if p < coordinate_end else k
         return points or None
+
+    def parse_irc_ts_energy(self) -> float | None:
+        """
+        Parse the electronic energy of the TS an IRC started from.
+
+        Reads the total electronic energy most recently reported before the ``Point Number: 0`` block,
+        by the rules ``parse_irc_path()`` applies to the energy of an IRC point.
+
+        Returns:
+            float | None: The energy in Hartree, or ``None`` if the log reports none before point 0
+                          or holds no point 0.
+        """
+        energy = None
+        for line in _get_lines_from_file(self.log_file_path):
+            if 'Point Number:' in line and 'Path Number:' in line:
+                return energy
+            line_energy = extract_irc_energy(line)
+            if line_energy is not None:
+                energy = line_energy
+        return None
 
     def parse_scan_conformers(self) -> pd.DataFrame | None:
         """
@@ -1404,6 +1417,23 @@ def extract_float_at_index(line: str, idx: int) -> float | None:
     if len(parts) > idx and is_float(parts[idx]):
         return float(parts[idx].replace('D', 'E'))
     return None
+
+
+def extract_irc_energy(line: str) -> float | None:
+    """
+    Extract the total electronic energy in Hartree that one line of a Gaussian IRC log reports.
+
+    Args:
+        line (str): The line.
+
+    Returns:
+        float | None: The ``SCF Done`` energy, or a correlated total ``extract_post_scf_energy()`` recognises,
+                      or ``None`` for any other line.
+    """
+    match = SCF_DONE_ENERGY_PATTERN.search(line)
+    if match:
+        return float(match.group(1).replace('D', 'E').replace('d', 'e'))
+    return extract_post_scf_energy(line)
 
 
 def extract_post_scf_energy(line: str) -> float | None:

@@ -1862,8 +1862,8 @@ class TestRxnToDict(unittest.TestCase):
         self.assertTrue(result['ts_validation_caution'].startswith(
             f'{TS_IRC_NOT_CONFIRMED_MARKER} ({IRC_CAUSE_NOT_COMPLETED})'))
 
-    def test_a_kept_rate_with_a_ts_loaded_from_an_arkane_yaml_file_carries_no_ts_validation_caution(self):
-        """Test that a kept rate whose TS was loaded from an Arkane YAML file, so no IRC ran on it, has no IRC caution"""
+    def test_a_kept_rate_with_a_ts_loaded_from_an_arkane_yaml_file_has_no_ts_validation_caution(self):
+        """Test that a kept rate whose TS was loaded from an Arkane YAML file, with no IRC species, has no caution"""
         kinetics = {'A': (1.2e10, 's^-1'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')}
         result = _rxn_to_dict(self._rxn_with_unconfirmed_ts(kinetics=kinetics, yml_path='TS0.yml'),
                               irc_requested=True, output_dict=dict())

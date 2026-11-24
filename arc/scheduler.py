@@ -27,6 +27,7 @@ from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
                         get_number_with_ordinal_indicator,
+                        get_single_bond_length,
                         is_angle_linear,
                         read_yaml_file,
                         safe_copy_file,
@@ -34,6 +35,7 @@ from arc.common import (extremum_list,
                         sort_two_lists_by_the_first,
                         torsions_to_scans,
                         )
+from arc.constants import E_h_kJmol
 from arc.exceptions import (DependencyError,
                             InputError,
                             SchedulerError,
@@ -148,7 +150,16 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
 
 MAX_S_SQUARED_DEVIATION = 0.1
 
-IRC_MIN_ENDPOINT_DISPLACEMENT = 0.3  # Angstrom, the largest change of an interatomic distance from the TS
+IRC_MIN_ENERGY_DROP = 5.0
+IRC_MIN_ENDPOINT_DISPLACEMENT = 0.3
+IRC_BONDED_PAIR_TOLERANCE = 2.0
+"""
+How far an IRC job that did not end normally must have got from its TS for its last converged point to be
+an IRC endpoint (see ``get_irc_path_progress()``): ``IRC_MIN_ENERGY_DROP`` (kJ/mol) below the TS energy its log
+reports, or, where the log reports none, a change of more than ``IRC_MIN_ENDPOINT_DISPLACEMENT`` (Angstrom)
+in the distance of a TS-bonded atom pair: a pair whose distance in the TS is at most ``IRC_BONDED_PAIR_TOLERANCE``
+times the single bond length of its two elements.
+"""
 
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
@@ -215,23 +226,102 @@ def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> b
     return normalize(job_adapter) in normalize(method)
 
 
+def get_irc_path_progress(irc_points: list[dict] | None,
+                          ts_energy: float | None = None,
+                          ts_xyz: dict | None = None,
+                          ) -> tuple[float, str] | None:
+    """
+    Measure how far the converged points of an IRC path got from the TS the path started from.
+
+    With ``ts_energy`` and at least one point energy, the measure is the largest drop of a point energy below
+    ``ts_energy``, in kJ/mol. Otherwise, it is the largest change of the distance of a TS-bonded atom pair
+    (see ``IRC_BONDED_PAIR_TOLERANCE``) from its distance in ``ts_xyz``, in Angstrom.
+
+    Args:
+        irc_points (list[dict], optional): The converged IRC points, as ``parser.parse_irc_path()`` returns them.
+        ts_energy (float, optional): The electronic energy of the TS in Hartree.
+        ts_xyz (dict, optional): The TS geometry.
+
+    Returns:
+        tuple[float, str] | None: The measure and its unit, ``'kJ/mol'`` or ``'Angstrom'``, or ``None`` if there
+                                  are no points, or nothing to measure them against.
+    """
+    if not irc_points:
+        return None
+    energies = [point.get('electronic_energy_hartree') for point in irc_points
+                if point.get('electronic_energy_hartree') is not None]
+    if ts_energy is not None and energies:
+        return float((ts_energy - min(energies)) * E_h_kJmol), 'kJ/mol'
+    ts_dmat = xyz_to_dmat(ts_xyz) if ts_xyz is not None else None
+    if ts_dmat is None:
+        return None
+    symbols = ts_xyz['symbols']
+    max_distances = np.array([[IRC_BONDED_PAIR_TOLERANCE * get_single_bond_length(symbol_i, symbol_j)
+                               for symbol_j in symbols] for symbol_i in symbols])
+    bonded = (ts_dmat <= max_distances) & ~np.eye(len(symbols), dtype=bool)
+    if not bonded.any():
+        return None
+    changes = list()
+    for point in irc_points:
+        point_dmat = xyz_to_dmat(point.get('xyz'))
+        if point_dmat is not None and point_dmat.shape == ts_dmat.shape:
+            changes.append(float(np.max(np.abs(point_dmat - ts_dmat)[bonded])))
+    return (max(changes), 'Angstrom') if changes else None
+
+
+def irc_path_got_far_enough(progress: tuple[float, str] | None) -> bool:
+    """
+    Determine whether an IRC path got far enough from its TS for its last converged point to be an IRC endpoint.
+
+    Args:
+        progress (tuple[float, str], optional): The measure ``get_irc_path_progress()`` returns.
+
+    Returns:
+        bool: Whether the measure is at least ``IRC_MIN_ENERGY_DROP`` kJ/mol,
+              or more than ``IRC_MIN_ENDPOINT_DISPLACEMENT`` Angstrom.
+    """
+    if progress is None:
+        return False
+    value, unit = progress
+    return value >= IRC_MIN_ENERGY_DROP if unit == 'kJ/mol' else value > IRC_MIN_ENDPOINT_DISPLACEMENT
+
+
+def describe_irc_path_progress(progress: tuple[float, str] | None) -> str:
+    """
+    Describe how far the converged points of an IRC path got from its TS.
+
+    Args:
+        progress (tuple[float, str], optional): The measure ``get_irc_path_progress()`` returns.
+
+    Returns:
+        str: The description, e.g., ``'got 5.13 kJ/mol below the TS'``.
+    """
+    if progress is None:
+        return 'could not be compared with the TS'
+    value, unit = progress
+    if unit == 'kJ/mol':
+        return f'got {value:.2f} kJ/mol below the TS'
+    return f'changed the distance of a TS-bonded atom pair by {value:.3f} Angstrom'
+
+
 def irc_ended_usably(server_status: str | None,
                      ess_status: dict,
                      ts_xyz: dict | None = None,
                      irc_points: list[dict] | None = None,
+                     ts_energy: float | None = None,
                      ) -> bool:
     """
-    Determine whether an IRC job ended in a way its last geometry may be used as an IRC endpoint.
+    Determine whether an IRC job ended in a way that gives an IRC endpoint.
 
-    It did when the server status is ``done`` and either the ESS status is ``done``, or the job's path moved off
-    the TS: a converged IRC point changes some interatomic distance of the TS by more than
-    ``IRC_MIN_ENDPOINT_DISPLACEMENT`` (Angstrom). The ESS termination keywords are not considered.
+    It did when the server status is ``done`` and either the ESS status is ``done``, or its converged path got
+    far enough from the TS (see ``irc_path_got_far_enough()``). The ESS termination keywords are not considered.
 
     Args:
         server_status (str, optional): The server status of the job, ``job.job_status[0]``.
         ess_status (dict): The ESS status of the job, ``job.job_status[1]``.
         ts_xyz (dict, optional): The TS geometry the IRC started from.
         irc_points (list[dict], optional): The converged IRC points, as ``parser.parse_irc_path()`` returns them.
+        ts_energy (float, optional): The electronic energy in Hartree of the TS the IRC started from.
 
     Returns:
         bool: Whether the IRC job ended usably.
@@ -240,15 +330,7 @@ def irc_ended_usably(server_status: str | None,
         return False
     if ess_status.get('status') == 'done':
         return True
-    ts_dmat = xyz_to_dmat(ts_xyz) if ts_xyz is not None else None
-    if ts_dmat is None:
-        return False
-    for point in irc_points or list():
-        point_dmat = xyz_to_dmat(point.get('xyz'))
-        if point_dmat is not None and point_dmat.shape == ts_dmat.shape \
-                and np.max(np.abs(point_dmat - ts_dmat)) > IRC_MIN_ENDPOINT_DISPLACEMENT:
-            return True
-    return False
+    return irc_path_got_far_enough(get_irc_path_progress(irc_points=irc_points, ts_energy=ts_energy, ts_xyz=ts_xyz))
 
 
 def get_conformer_isomorphism_trsh_history(conformers_note: str | None) -> list[str]:
@@ -4654,9 +4736,10 @@ class Scheduler(object):
         The last geometry of the IRC output becomes a new IRC species, which is then optimized. If the ESS status
         is not ``done``, the last converged IRC point is used instead, and a warning is logged.
         Only an IRC job ``irc_ended_usably()`` accepts spawns: its server status is ``done``, and its ESS status
-        is ``done`` or its converged path moved more than ``IRC_MIN_ENDPOINT_DISPLACEMENT`` off the TS.
+        is ``done`` or its converged path got far enough from the TS (see ``irc_path_got_far_enough()``).
         Any other job, e.g., one the server errored, or one that stopped near the TS on whatever ESS error,
-        is recorded as a failed IRC (see ``record_failed_irc()``) and nothing is spawned.
+        is recorded as a failed IRC (see ``record_failed_irc()``), with how far its path got, and nothing
+        is spawned.
         So is an output that holds no complete geometry, or one whose parsing raises ``IndexError`` or ``ValueError``.
 
         Args:
@@ -4668,27 +4751,35 @@ class Scheduler(object):
         server_status = job_status[0] if job_status else None
         ended_normally = ess_status.get('status') == 'done'
         ts_xyz = getattr(job, 'xyz', None) or self.species_dict[label].get_xyz(generate=False)
+        judge_path = server_status == 'done' and not ended_normally
         try:
-            irc_points = parser.parse_irc_path(log_file_path=job.local_path_to_output_file) \
-                if server_status == 'done' and not ended_normally else None
+            irc_points = parser.parse_irc_path(log_file_path=job.local_path_to_output_file) if judge_path else None
+            ts_energy = parser.parse_irc_ts_energy(log_file_path=job.local_path_to_output_file) \
+                if judge_path else None
             usable = irc_ended_usably(server_status=server_status, ess_status=ess_status,
-                                      ts_xyz=ts_xyz, irc_points=irc_points)
+                                      ts_xyz=ts_xyz, irc_points=irc_points, ts_energy=ts_energy)
             xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file) \
                 if usable and ended_normally else None
         except (IndexError, ValueError) as e:
             self.record_failed_irc(label=label, job=job, ess_status=ess_status,
                                    parse_error=f'{type(e).__name__}: {e}')
             return
+        n_points = len(irc_points or list())
+        progress = describe_irc_path_progress(
+            get_irc_path_progress(irc_points=irc_points, ts_energy=ts_energy, ts_xyz=ts_xyz))
         if not usable:
-            self.record_failed_irc(label=label, job=job, ess_status=ess_status, server_status=server_status)
+            path_note = None
+            if judge_path:
+                path_note = f'its {n_points} converged IRC point{"s" if n_points != 1 else ""} {progress}, ' \
+                            f'too near the TS for an endpoint' if n_points else 'no IRC point converged'
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status, server_status=server_status,
+                                   path_note=path_note)
             return
         if not ended_normally:
             xyz = irc_points[-1]['xyz']
-            displacement = np.max(np.abs(xyz_to_dmat(xyz) - xyz_to_dmat(ts_xyz)))
             logger.warning(f'IRC job {job.job_name} of {label} did not end normally (ESS keywords: '
-                           f'{ess_status.get("keywords")}) after {len(irc_points)} converged points. Its endpoint '
-                           f'is its last converged point, {displacement:.3f} Angstrom (largest interatomic distance '
-                           f'change) off the TS.')
+                           f'{", ".join(ess_status.get("keywords") or list()) or "none"}) after {n_points} '
+                           f'converged points, which {progress}. Its endpoint is its last converged point.')
         if xyz is None:
             self.record_failed_irc(label=label, job=job, ess_status=ess_status)
             return
@@ -4754,6 +4845,7 @@ class Scheduler(object):
                           ess_status: dict,
                           parse_error: str | None = None,
                           server_status: str | None = None,
+                          path_note: str | None = None,
                           ) -> None:
         """
         Record an IRC job that gave no usable endpoint as a failed IRC of its TS.
@@ -4768,13 +4860,16 @@ class Scheduler(object):
             ess_status (dict): The ESS status of the job, with optional ``error`` and ``keywords`` entries.
             parse_error (str, optional): The error the geometry parser raised, if it raised one.
             server_status (str, optional): The server status of the job.
+            path_note (str, optional): How far the converged IRC points got from the TS.
         """
+        error = ess_status.get('error')
         if server_status not in (None, 'done'):
-            reason = ess_status.get('error') or f'server status: {server_status}'
-        else:
-            reason = ess_status.get('error') or 'no geometry could be parsed from its output'
+            error = error or f'server status: {server_status}'
+        reason = error or path_note or 'no geometry could be parsed from its output'
         if ess_status.get('keywords'):
             reason += f' (keywords: {", ".join(ess_status["keywords"])})'
+        if path_note and error:
+            reason += f'; {path_note}'
         if parse_error:
             reason += f'; parsing raised {parse_error}'
         direction = getattr(job, 'irc_direction', None)

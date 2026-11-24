@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 import os
+import re
 import shutil
 import time
 from types import SimpleNamespace
@@ -23,6 +24,7 @@ from arc.checks.common import (IRC_CAUSE_COMPARISON_INCONCLUSIVE, IRC_CAUSE_ENDP
                                get_ts_validation_comment)
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
+from arc.constants import E_h_kJmol
 from arc.exceptions import DependencyError, ReactionError
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_incore_adapters,
@@ -49,7 +51,7 @@ from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, CONFORMER_ISOMORPHISM_TR
                            species_has_geo, species_has_sp, species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
-from arc.species.converter import str_to_xyz, xyz_to_dmat
+from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess
 
 
@@ -2925,6 +2927,17 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertEqual(species.derived_stability_verdict['verdict'], 'external_instability')
         self.assertTrue(adopted_reference_is_unrestricted(species))
 
+    def _irc_scratch_directory(self):
+        """
+        Create a temporary directory outside the repository and schedule its removal.
+
+        Returns:
+            str: The path of the created directory.
+        """
+        scratch_directory = tempfile.mkdtemp(prefix='arc_test_irc_')
+        self.addCleanup(shutil.rmtree, scratch_directory, ignore_errors=True)
+        return scratch_directory
+
     def _irc_scheduler(self, irc_file_name='rxn_1_irc_1.out', multiplicity=2):
         """
         Build a testing Scheduler holding a TS and one regular species, plus a forward IRC job of that TS.
@@ -2938,6 +2951,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         """
         ts_xyz = self._ts_xyz_of_irc_log(irc_file_name)
         ts = ARCSpecies(label='TS0', is_ts=True, xyz=ts_xyz, multiplicity=multiplicity, charge=0)
+        project_directory = self._irc_scratch_directory()
         sched = Scheduler(project='project_test_irc', ess_settings=self.ess_settings,
                           species_list=[ts, self.spc1], composite_method=None,
                           conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
@@ -2946,13 +2960,13 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                           sp_level=Level(repr=default_levels_of_theory['sp']),
                           scan_level=Level(repr=default_levels_of_theory['scan']),
                           ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
-                          project_directory=self.project_directory, testing=True,
+                          project_directory=project_directory, testing=True,
                           job_types=self.job_types1, orbitals_level=default_levels_of_theory['orbitals'],
                           adaptive_levels=None)
         job = job_factory(job_adapter='gaussian', project='project_test_irc', ess_settings=self.ess_settings,
                           species=[ts], xyz=ts_xyz, job_type='irc', irc_direction='forward',
                           level=Level(repr={'method': 'wb97xd', 'basis': 'def2svp'}),
-                          project_directory=self.project_directory, job_num=1587)
+                          project_directory=project_directory, job_num=1587)
         return sched, ts.label, job
 
     @staticmethod
@@ -2981,8 +2995,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         """
         lines = self._irc_log_lines(file_name)
         head = lines[:next(i for i, line in enumerate(lines) if 'Point Number:' in line and 'Path Number:' in line)]
-        os.makedirs(self.project_directory, exist_ok=True)
-        head_path = os.path.join(self.project_directory, f'ts_of_{file_name}')
+        head_path = os.path.join(self._irc_scratch_directory(), f'ts_of_{file_name}')
         with open(head_path, 'w') as f:
             f.writelines(head)
         return parser.parse_geometry(log_file_path=head_path)
@@ -3017,7 +3030,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
     @staticmethod
     def _irc_state(sched, label):
         """
-        Snapshot the state a failed IRC must not change.
+        Snapshot the state that a failed IRC leaves unchanged.
 
         Args:
             sched (Scheduler): The scheduler.
@@ -3079,8 +3092,8 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         """
         Test that an IRC log cut by a node fault near the TS is a failed IRC, not a near-TS endpoint.
 
-        Cut at the header of point 1, the log holds no converged point. Cut after converged point 1, the largest
-        interatomic distance change from the TS is 0.037 Angstrom, too near the TS for an endpoint.
+        Cut at the header of point 1, the log holds no converged point. Cut after converged point 1, the log is
+        0.87 kJ/mol below the TS.
         """
         lines = self._irc_log_lines('rxn_1_irc_1.out')
         point_lines = [i for i, line in enumerate(lines) if 'Point Number:' in line and 'Path Number' in line]
@@ -3201,38 +3214,91 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self._assert_failed_irc_left_no_trace(sched, label, job, before, cause='server status: errored')
         self.assertIn(IRC_JOB_FAILED_WARNING, sched.species_dict[label].ts_checks['warnings'])
 
+    def _irc_points_of_log(self, file_name):
+        """
+        Read the TS geometry, the TS energy and the converged IRC points of an IRC output in arc/testing/irc.
+
+        Args:
+            file_name (str): The file name.
+
+        Returns:
+            tuple: The TS geometry, the TS energy in Hartree, and the converged IRC points.
+        """
+        path = os.path.join(ARC_TESTING_PATH, 'irc', file_name)
+        return (self._ts_xyz_of_irc_log(file_name), parser.parse_irc_ts_energy(log_file_path=path),
+                parser.parse_irc_path(log_file_path=path))
+
+    @staticmethod
+    def _stretched_bond_irc_points(ts_xyz, ts_energy, atoms, steps):
+        """
+        Build IRC points along which one bond of the TS stretches by 0.02 Angstrom and drops by 2 kJ/mol per point.
+
+        Args:
+            ts_xyz (dict): The TS geometry.
+            ts_energy (float): The TS energy in Hartree.
+            atoms (tuple[int, int]): The indices of the bonded atoms; the second one moves.
+            steps (int): The number of points.
+
+        Returns:
+            list[dict]: The IRC points, each with ``xyz`` and ``electronic_energy_hartree``.
+        """
+        coords = np.array(ts_xyz['coords'], dtype=float)
+        bond = coords[atoms[1]] - coords[atoms[0]]
+        bond /= np.linalg.norm(bond)
+        points = list()
+        for step in range(1, steps + 1):
+            point_coords = coords.copy()
+            point_coords[atoms[1]] += 0.02 * step * bond
+            points.append({'xyz': {'symbols': ts_xyz['symbols'], 'isotopes': ts_xyz['isotopes'],
+                                   'coords': tuple(tuple(float(c) for c in row) for row in point_coords)},
+                           'electronic_energy_hartree': ts_energy - 2.0 * step / E_h_kJmol})
+        return points
+
     def test_irc_ended_usably(self):
-        """Test that an IRC job is usable when its ESS ended normally or its converged path moved off the TS"""
-        ts_xyz = self._ts_xyz_of_irc_log('rxn_1_irc_1.out')
-        lines = self._irc_log_lines('rxn_1_irc_1.out')
-        cut = next(i for i, line in enumerate(lines) if 'Point Number 37 in FORWARD path direction' in line)
-        cut_log = os.path.join(self.project_directory, 'irc_cut_after_point_36.out')
-        os.makedirs(self.project_directory, exist_ok=True)
-        with open(cut_log, 'w') as f:
-            f.writelines(lines[:cut])
-        far_points = parser.parse_irc_path(log_file_path=cut_log)
-        self.assertEqual(len(far_points), 36)
-        near_points = far_points[:1]
+        """Test that an IRC job is usable when its ESS ended normally or its converged path went downhill"""
+        rxn_ts_xyz, rxn_ts_energy, rxn_points = self._irc_points_of_log('rxn_1_irc_1.out')
         errored = {'status': 'errored', 'keywords': ['Unknown']}
         cases = [('done', {'status': 'done', 'keywords': list()}, None, True),
                  ('done', {'status': 'errored', 'keywords': ['DeltaX', 'GL123']}, None, False),
                  ('done', {'status': 'errored', 'keywords': ['DeltaX', 'GL123']}, list(), False),
-                 ('done', {'status': 'errored', 'keywords': ['DeltaX', 'GL123']}, near_points, False),
-                 ('done', errored, far_points, True),
-                 ('done', {'status': 'errored', 'keywords': ['SCF', 'GL502', 'NoSymm']}, far_points, True),
-                 ('done', {'status': 'errored', 'keywords': ['GS2Opt', 'GL123']}, far_points, True),
-                 ('done', {'status': 'errored', 'keywords': ['ServerTimeLimit']}, near_points, False),
+                 ('done', {'status': 'errored', 'keywords': ['DeltaX', 'GL123']}, rxn_points[:1], False),
+                 ('done', errored, rxn_points[:36], True),
+                 ('done', {'status': 'errored', 'keywords': ['SCF', 'GL502', 'NoSymm']}, rxn_points[:36], True),
+                 ('done', {'status': 'errored', 'keywords': ['GS2Opt', 'GL123']}, rxn_points[:36], True),
+                 ('done', {'status': 'errored', 'keywords': ['ServerTimeLimit']}, rxn_points[:1], False),
                  ('done', {'status': 'unconverged', 'keywords': list()}, None, False),
                  ('done', dict(), None, False),
-                 ('errored', {'status': 'done', 'keywords': list()}, far_points, False),
-                 ('errored', errored, far_points, False),
+                 ('errored', {'status': 'done', 'keywords': list()}, rxn_points[:36], False),
+                 ('errored', errored, rxn_points[:36], False),
                  (None, {'status': 'done', 'keywords': list()}, None, False)]
         for server_status, ess_status, irc_points, expected in cases:
             with self.subTest(server_status=server_status, ess_status=ess_status,
                               n_points=None if irc_points is None else len(irc_points)):
                 self.assertEqual(irc_ended_usably(server_status=server_status, ess_status=ess_status,
-                                                  ts_xyz=ts_xyz, irc_points=irc_points), expected)
-        self.assertFalse(irc_ended_usably(server_status='done', ess_status=errored, ts_xyz=None, irc_points=far_points))
+                                                  ts_xyz=rxn_ts_xyz, irc_points=irc_points,
+                                                  ts_energy=rxn_ts_energy), expected)
+
+        cyano_ts_xyz, cyano_ts_energy, cyano_points = self._irc_points_of_log('cyano_irc_1.out')
+        heavy_atom_points = self._stretched_bond_irc_points(rxn_ts_xyz, rxn_ts_energy, atoms=(1, 2), steps=4)
+        energy_cases = {'cyano, 4.04 kJ/mol down at point 7': (cyano_ts_xyz, cyano_points[:7], False),
+                        'cyano, 5.13 kJ/mol down at point 8': (cyano_ts_xyz, cyano_points[:8], True),
+                        'heavy atoms, 8 kJ/mol down, 0.08 Angstrom off': (rxn_ts_xyz, heavy_atom_points, True)}
+        ts_energies = {'cyano, 4.04 kJ/mol down at point 7': cyano_ts_energy,
+                       'cyano, 5.13 kJ/mol down at point 8': cyano_ts_energy,
+                       'heavy atoms, 8 kJ/mol down, 0.08 Angstrom off': rxn_ts_energy}
+        for case, (ts_xyz, irc_points, expected) in energy_cases.items():
+            with self.subTest(case=case):
+                self.assertEqual(irc_ended_usably(server_status='done', ess_status=errored, ts_xyz=ts_xyz,
+                                                  irc_points=irc_points, ts_energy=ts_energies[case]), expected)
+
+        geometry_cases = {'cyano point 11, a remote pair 0.333 Angstrom off': (cyano_ts_xyz, cyano_points[:11], False),
+                          'cyano point 20': (cyano_ts_xyz, cyano_points[:20], True),
+                          'heavy atoms, 0.08 Angstrom off': (rxn_ts_xyz, heavy_atom_points, False),
+                          'no TS geometry': (None, cyano_points, False)}
+        for case, (ts_xyz, irc_points, expected) in geometry_cases.items():
+            with self.subTest(case=f'no TS energy, {case}'):
+                self.assertEqual(irc_ended_usably(server_status='done', ess_status=errored, ts_xyz=ts_xyz,
+                                                  irc_points=irc_points, ts_energy=None), expected)
 
     def test_a_completed_irc_output_without_a_geometry_is_recorded_as_failed(self):
         """Test that an IRC whose status is not a failure but whose output holds no geometry is a failed IRC"""
@@ -3305,10 +3371,10 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         with patch.object(sched, 'run_job'):
             sched.spawn_post_irc_jobs(label=label, job=job)
         self.assertIn(job.job_name, sched.species_dict[label].ts_checks['warnings'])
-        write_output_yml(project='project_test_irc', project_directory=self.project_directory,
+        write_output_yml(project='project_test_irc', project_directory=sched.project_directory,
                          species_dict=sched.species_dict, reactions=list(), output_dict=sched.output,
                          compute_thermo=False)
-        document = read_yaml_file(os.path.join(self.project_directory, 'output', 'output.yml'))
+        document = read_yaml_file(os.path.join(sched.project_directory, 'output', 'output.yml'))
         ts_entry = next(ts for ts in document['transition_states'] if ts['label'] == label)
         self.assertIsNone(ts_entry['ts_checks']['IRC'])
         self.assertFalse(ts_entry['irc_converged'])
@@ -3328,10 +3394,10 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O', ts_label=label,
                           kinetics={'A': (1.2e10, 'cm^3/(mol*s)'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')})
         rxn.ts_species = ts_species
-        write_output_yml(project='project_test_irc', project_directory=self.project_directory,
+        write_output_yml(project='project_test_irc', project_directory=sched.project_directory,
                          species_dict=sched.species_dict, reactions=[rxn], output_dict=sched.output,
                          compute_thermo=False)
-        document = read_yaml_file(os.path.join(self.project_directory, 'output', 'output.yml'))
+        document = read_yaml_file(os.path.join(sched.project_directory, 'output', 'output.yml'))
         self.assertTrue(document['reactions'][0]['ts_validation_caution'].startswith(
             f'{TS_IRC_NOT_CONFIRMED_MARKER} ({IRC_CAUSE_JOB_FAILED})'))
 
@@ -3368,14 +3434,14 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         rxn = ARCReaction(label='CH4 + OH <=> CH3 + H2O', ts_label=label,
                           kinetics={'A': (1.2e10, 'cm^3/(mol*s)'), 'n': 0.5, 'Ea': (45.6, 'kJ/mol')})
         rxn.ts_species = sched.species_dict[label]
-        write_output_yml(project='project_test_irc', project_directory=self.project_directory,
+        write_output_yml(project='project_test_irc', project_directory=sched.project_directory,
                          species_dict={label: sched.species_dict[label]}, reactions=[rxn], output_dict=sched.output,
                          compute_thermo=False, irc_requested=True)
-        document = read_yaml_file(os.path.join(self.project_directory, 'output', 'output.yml'))
+        document = read_yaml_file(os.path.join(sched.project_directory, 'output', 'output.yml'))
         return document['reactions'][0].get('ts_validation_caution')
 
     def test_a_rate_whose_irc_endpoint_opt_did_not_converge_carries_a_caution(self):
-        """Test that a rate whose IRC endpoint opt never converged, so no comparison ran, carries a caution"""
+        """Test that a rate whose IRC endpoint opt did not converge carries a caution naming that cause"""
         sched, label, endpoint_labels = self._spawn_both_irc_endpoints()
         sched.output[endpoint_labels[0]]['paths']['geo'] = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
         self.assertIsNone(sched.species_dict[label].ts_checks['IRC'])
@@ -3431,10 +3497,9 @@ H      -0.38158795    1.01273118   -0.02607927""")),
 
     def test_an_irc_stopped_on_delta_x_before_its_first_point_is_recorded_as_failed(self):
         """
-        Test that an IRC that stopped on Delta-x before converging point 1 is a failed IRC.
+        Test that an IRC that stopped on Delta-x before converging point 1 is a failed IRC and spawns nothing.
 
-        ``irc_failed.out`` holds only point 0 and its last geometry is 0.007 Angstrom from the TS, so an endpoint
-        opt from it can end at the saddle point or in the other well.
+        ``irc_failed.out`` holds point 0 and no converged IRC point.
         """
         sched, label, job = self._irc_scheduler(irc_file_name='irc_failed.out', multiplicity=1)
         self._write_irc_output(job, content=''.join(self._irc_log_lines('irc_failed.out')))
@@ -3448,9 +3513,9 @@ H      -0.38158795    1.01273118   -0.02607927""")),
 
     def test_an_irc_cut_far_along_its_path_spawns_its_endpoint(self):
         """
-        Test that an IRC log that ends on an error after its path moved off the TS spawns its endpoint.
+        Test that an IRC log that ends on an error after its path went downhill from the TS spawns its endpoint.
 
-        Cut after converged point 36, the largest interatomic distance change from the TS is 0.90 Angstrom.
+        Cut after converged point 36, the log is 65.71 kJ/mol below the TS.
         """
         lines = self._irc_log_lines('rxn_1_irc_1.out')
         cut_after_point_36 = ''.join(
@@ -3472,6 +3537,112 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                 with patch.object(sched, 'run_job') as run_job:
                     sched.spawn_post_irc_jobs(label=label, job=job)
                 self._assert_irc_spawned_its_endpoint(sched, label, job, run_job)
+
+    def _irc_cut_after_point(self, file_name, point, multiplicity=2, keep_ts_energy=True):
+        """
+        Build an IRC scheduler whose forward IRC output is an IRC output in arc/testing/irc cut after a converged point.
+
+        The job's status is what ARC determines from the cut output.
+
+        Args:
+            file_name (str): The IRC output.
+            point (int): The number of the last converged point the cut output keeps.
+            multiplicity (int, optional): The TS multiplicity, matching that IRC output.
+            keep_ts_energy (bool, optional): Whether the cut output keeps the energies reported before point 0.
+
+        Returns:
+            tuple: The scheduler, the TS label, and the IRC job.
+        """
+        lines = self._irc_log_lines(file_name)
+        point_0 = next(i for i, line in enumerate(lines) if 'Point Number:' in line and 'Path Number:' in line)
+        cut = next(i for i, line in enumerate(lines)
+                   if re.search(rf'Point Number\s+{point + 1}\s+in FORWARD path direction', line))
+        head = [line for line in lines[:point_0] if keep_ts_energy or 'SCF Done' not in line]
+        sched, label, job = self._irc_scheduler(irc_file_name=file_name, multiplicity=multiplicity)
+        self._write_irc_output(job, content=''.join(head + lines[point_0:cut]))
+        self.assertEqual(len(parser.parse_irc_path(log_file_path=job.local_path_to_output_file)), point)
+        self._set_ess_status_from_output(job)
+        return sched, label, job
+
+    def test_an_irc_cut_after_its_path_went_downhill_spawns_its_endpoint(self):
+        """
+        Test that an IRC log cut after a converged point at least IRC_MIN_ENERGY_DROP below the TS spawns its endpoint.
+
+        Cut after converged point 8, ``cyano_irc_1.out`` is 5.13 kJ/mol below the TS and its largest interatomic
+        distance change is 0.236 Angstrom.
+        """
+        sched, label, job = self._irc_cut_after_point('cyano_irc_1.out', point=8, multiplicity=1)
+        last_point = parser.parse_irc_path(log_file_path=job.local_path_to_output_file)[-1]
+        with patch.object(sched, 'run_job') as run_job:
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        self._assert_irc_spawned_its_endpoint(sched, label, job, run_job, expected_xyz=last_point['xyz'])
+
+    def test_an_irc_cut_before_its_path_went_downhill_is_recorded_with_its_energy_drop(self):
+        """Test that an IRC log cut 4.04 kJ/mol below the TS is a failed IRC whose recorded cause gives that drop"""
+        sched, label, job = self._irc_cut_after_point('cyano_irc_1.out', point=7, multiplicity=1)
+        before = self._irc_state(sched, label)
+        with patch.object(sched, 'run_job') as run_job:
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        self.assertFalse(run_job.called)
+        self._assert_failed_irc_left_no_trace(sched, label, job, before, cause='4.04 kJ/mol below the TS')
+        self.assertIn('4.04 kJ/mol below the TS', sched.species_dict[label].ts_checks['warnings'])
+
+    def test_a_heavy_atom_irc_cut_early_spawns_its_endpoint(self):
+        """
+        Test that an IRC cut after a C-C bond of the TS stretched 0.08 Angstrom, 8 kJ/mol downhill, spawns.
+
+        ``rxn_1_irc_1.out`` reports -303.577879721 Hartree for the TS before point 0.
+        """
+        sched, label, job = self._irc_cut_after_point('rxn_1_irc_1.out', point=1)
+        irc_points = self._stretched_bond_irc_points(self._ts_xyz_of_irc_log('rxn_1_irc_1.out'), -303.577879721,
+                                                     atoms=(1, 2), steps=4)
+        with patch('arc.scheduler.parser.parse_irc_path', return_value=irc_points), \
+                patch.object(sched, 'run_job') as run_job:
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        self._assert_irc_spawned_its_endpoint(sched, label, job, run_job, expected_xyz=irc_points[-1]['xyz'])
+
+    def test_an_irc_log_without_a_ts_energy_is_judged_by_its_ts_bonded_atom_pairs(self):
+        """
+        Test that an IRC log with no energy before point 0 spawns only once a TS-bonded atom pair moved.
+
+        Cut after converged point 11, the largest change in ``cyano_irc_1.out`` is 0.333 Angstrom, of the C4-H7 pair,
+        3.36 Angstrom apart at the TS, and that of a TS-bonded pair is 0.287 Angstrom.
+        """
+        sched, label, job = self._irc_cut_after_point('cyano_irc_1.out', point=11, multiplicity=1,
+                                                      keep_ts_energy=False)
+        with open(job.local_path_to_output_file, 'r') as f:
+            head = f.read().split('Point Number:')[0]
+        self.assertNotIn('SCF Done', head)
+        before = self._irc_state(sched, label)
+        with patch.object(sched, 'run_job') as run_job:
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        self.assertFalse(run_job.called)
+        self._assert_failed_irc_left_no_trace(sched, label, job, before, cause='0.287 Angstrom')
+
+        sched, label, job = self._irc_cut_after_point('cyano_irc_1.out', point=20, multiplicity=1,
+                                                      keep_ts_energy=False)
+        last_point = parser.parse_irc_path(log_file_path=job.local_path_to_output_file)[-1]
+        with patch.object(sched, 'run_job') as run_job:
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        self._assert_irc_spawned_its_endpoint(sched, label, job, run_job, expected_xyz=last_point['xyz'])
+
+    def test_a_failed_irc_records_how_far_its_path_got(self):
+        """Test that the cause of an IRC rejected near the TS says how far its converged points got"""
+        sched, label, job = self._irc_cut_after_point('rxn_1_irc_1.out', point=1)
+        job.job_status = ['done', {'status': 'unconverged', 'keywords': list(), 'error': '', 'line': ''}]
+        with patch.object(sched, 'run_job'):
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        for recorded in [sched.output[label]['errors'], sched.species_dict[label].ts_checks['warnings']]:
+            self.assertIn('0.87 kJ/mol below the TS', recorded)
+            self.assertNotIn('no geometry could be parsed', recorded)
+
+        sched, label, job = self._irc_scheduler(irc_file_name='irc_failed.out', multiplicity=1)
+        self._write_irc_output(job, content=''.join(self._irc_log_lines('irc_failed.out')))
+        self._set_ess_status_from_output(job)
+        with patch.object(sched, 'run_job'):
+            sched.spawn_post_irc_jobs(label=label, job=job)
+        for recorded in [sched.output[label]['errors'], sched.species_dict[label].ts_checks['warnings']]:
+            self.assertIn('Delta-x Convergence NOT Met (keywords: DeltaX, GL123); no IRC point converged', recorded)
 
     def _irc_cut_inside_point_37(self):
         """
@@ -3521,11 +3692,9 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertFalse(almost_equal_coords_lists(sched.species_dict['IRC_TS0_1'].get_xyz(), last_geometry))
         warnings = self._irc_endpoint_warnings(logs, job)
         self.assertEqual(len(warnings), 1)
-        ts_dmat = xyz_to_dmat(sched.species_dict[label].get_xyz())
-        displacement = float(np.max(np.abs(xyz_to_dmat(last_point['xyz']) - ts_dmat)))
-        self.assertAlmostEqual(displacement, 0.897, places=3)
-        for item in [label, job.job_name, "['Unknown']", '36 converged', f'{displacement:.3f} Angstrom']:
+        for item in [label, job.job_name, '(ESS keywords: Unknown)', '36 converged', '65.71 kJ/mol below the TS']:
             self.assertIn(item, warnings[0])
+        self.assertNotIn("['", warnings[0])
 
     def test_an_irc_that_ended_normally_spawns_its_last_geometry(self):
         """Test that an IRC whose ESS ended normally spawns its endpoint from its last geometry, without a warning"""

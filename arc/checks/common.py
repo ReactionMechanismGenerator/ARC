@@ -189,8 +189,8 @@ def get_ts_validation_caution(ts_species: 'ARCSpecies | None',
 
     A TS gets the caution when its IRC verdict is ``None`` and an IRC was requested for it, either per
     ``irc_requested`` or as shown by a failed IRC job recorded in its ``ts_checks['warnings']``
-    (a warning that starts with ``IRC_JOB_FAILED_WARNING``). A TS loaded from an Arkane YAML file (``yml_path``)
-    runs no jobs, so ``irc_requested`` covers it only if it has IRC endpoint species.
+    (a warning that starts with ``IRC_JOB_FAILED_WARNING``). For a TS loaded from an Arkane YAML file
+    (``yml_path``), ``irc_requested`` applies only if the TS has IRC endpoint species.
     The caution names the first cause that applies:
     ``IRC_CAUSE_JOB_FAILED`` when an IRC job failed, ``IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED`` when an IRC endpoint
     species has no optimized geometry in ``output_dict``, ``IRC_CAUSE_COMPARISON_INCONCLUSIVE`` when both endpoints

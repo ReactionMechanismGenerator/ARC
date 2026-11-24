@@ -1194,7 +1194,7 @@ class TestSchemaRejectsInvalidDocuments(SchemaAssertionMixin, unittest.TestCase)
         self.assert_invalid(self.document, 'brand_new_reaction_field')
 
     def test_a_reaction_ts_validation_caution_must_start_with_its_marker(self):
-        """The caution of a rate whose TS lost its IRC is found by its marker, so the schema pins it."""
+        """Test that the schema accepts a ts_validation_caution made of its marker and a known cause, and no other"""
         self.assertNotIn('ts_validation_caution', self.document['reactions'][0])
         ts = ARCSpecies(label='TS0', is_ts=True)
         ts.ts_checks['warnings'] = f'{IRC_JOB_FAILED_WARNING}IRC job irc_a1 (forward) failed: x; '
