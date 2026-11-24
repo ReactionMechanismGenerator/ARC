@@ -770,6 +770,20 @@ class TestReaction(unittest.TestCase):
                 self.assertEqual(set(validated_spc.keys()), set(raw_spc.keys()))
         self.assertEqual(set(validated['ts_species'].keys()), set(rxn_dict['ts_species'].keys()))
 
+    def test_a_family_record_with_a_tie_round_trips_through_the_schema(self):
+        """Test that the family record ARCReaction.as_dict() writes, including an overlap tie, survives validation"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        rxn_dict = rxn.as_dict()
+        family_keys = ('family_source', 'family_candidates', 'n_family_candidates', 'family_tie')
+        for key in family_keys:
+            self.assertIsNotNone(rxn_dict.get(key), key)
+        validated = ARCInput(project='family_round_trip',
+                             reactions=[copy.deepcopy(rxn_dict)]).as_input_dict()['reactions'][0]
+        for key in family_keys:
+            self.assertEqual(validated[key], rxn_dict[key], key)
+        self.assertEqual(ARCReaction(reaction_dict=validated).family_tie, rxn.family_tie)
+
     def test_reaction_schema(self):
         """Test creating an instance of Reaction"""
         rxn = Reaction(label='H + O2 <=> HO2')
@@ -911,7 +925,11 @@ class TestSchemaDrift(unittest.TestCase):
         rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
                                      ARCSpecies(label='O2', smiles='[O][O]')],
                           p_species=[ARCSpecies(label='HO2', smiles='O[O]')])
-        emitted_keys = set(rxn.as_dict().keys())
+        tied = ARCReaction(r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
+                           p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')])
+        tied_keys = set(tied.as_dict().keys())
+        self.assertIn('family_tie', tied_keys)
+        emitted_keys = set(rxn.as_dict().keys()) | tied_keys
         self.assertTrue(emitted_keys.issubset(set(Reaction.model_fields)),
                         (f'ARC writes a reaction key the schema does not model — add it to arc/schema.py or '
                          f'restarts will break. Unmodeled: {sorted(emitted_keys - set(Reaction.model_fields))}'))

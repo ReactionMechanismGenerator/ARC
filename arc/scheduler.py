@@ -30,6 +30,7 @@ from arc.common import (ARC_PATH,
                         get_angle_in_180_range,
                         get_logger,
                         get_number_with_ordinal_indicator,
+                        get_single_bond_length,
                         is_angle_linear,
                         read_yaml_file,
                         safe_copy_file,
@@ -37,6 +38,7 @@ from arc.common import (ARC_PATH,
                         sort_two_lists_by_the_first,
                         torsions_to_scans,
                         )
+from arc.constants import E_h_kJmol
 from arc.exceptions import (DependencyError,
                             InputError,
                             QueueQueryError,
@@ -80,6 +82,7 @@ from arc.species.species import (ARCSpecies,
 from arc.species.converter import (check_isomorphism,
                                    compare_confs,
                                    xyz_to_coords_list,
+                                   xyz_to_dmat,
                                    xyz_to_str,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz
@@ -127,11 +130,10 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
 
 WRONG_FREQ_MESSAGE = 'wrong number of negative frequencies; '
 
-# Written to output[label]['conformers'] (which restart.yml keeps) for each conformer isomorphism troubleshooting level,
-# so that a restart does not repeat a level that was already tried.
 CONFORMER_ISOMORPHISM_TRSH_NOTE = 'Troubleshooting conformer isomorphism at {level}; '
 CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED = 'Error: No conformer was found to be isomorphic with the 2D graph representation!; '
 CONFORMER_SET_REPLACED_NOTE = 'Conformers replaced after a negative frequency; '
+CONFORMER_TRSH_TAG_PREFIXES = ('conformer ', 'conf_opt: ')
 UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE = 'a restart found running conformer jobs with no conformer isomorphism ' \
                                           'troubleshooting level recorded; conformers with no energy and no ' \
                                           'running job, if any, are resubmitted at the conformer level; '
@@ -155,7 +157,16 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
 
 MAX_S_SQUARED_DEVIATION = 0.1
 
-IRC_EARLY_STOP_KEYWORDS = ('DeltaX', 'GL123')
+IRC_MIN_ENERGY_DROP = 5.0
+IRC_MIN_ENDPOINT_DISPLACEMENT = 0.3
+IRC_BONDED_PAIR_TOLERANCE = 2.0
+"""
+How far an IRC job that did not end normally must have got from its TS for its last converged point to be
+an IRC endpoint (see ``get_irc_path_progress()``): ``IRC_MIN_ENERGY_DROP`` (kJ/mol) below the TS energy its log
+reports, or, where the log reports none, a change of more than ``IRC_MIN_ENDPOINT_DISPLACEMENT`` (Angstrom)
+in the distance of a TS-bonded atom pair: a pair whose distance in the TS is at most ``IRC_BONDED_PAIR_TOLERANCE``
+times the single bond length of its two elements.
+"""
 
 QUEUE_QUERY_COOLDOWN = 60
 QUEUE_OUTAGE_WARNING_INTERVAL = 600
@@ -163,10 +174,8 @@ UNREADABLE_QUEUE_ERROR = 'The queue on {server} was unreadable past the outage l
                          'jobs {job_names} were left running for a restart; '
 HELD_BACK_JOB_ERROR = 'Job {job_name} was not submitted to {server}, whose queue was unreadable; '
 SUBMIT, DEFER, REFUSE = 'submit', 'defer', 'refuse'
-SHELL_ASSIGNMENT = r'[A-Za-z_]\w*=(?:"[^"]*"|\'[^\']*\'|[^\s;|&\'"])*'
-SHELL_ASSIGNMENTS = rf'(?:export\s+)?{SHELL_ASSIGNMENT}(?:\s+{SHELL_ASSIGNMENT})*'
-HIDDEN_FAILURE_PATTERNS = (('a pipe', r'(?<!\|)\|(?!\|)'), ('an OR-list (||)', r'\|\|'),
-                           ('a ";"', rf'^(?!(?:\s*{SHELL_ASSIGNMENTS}\s*;)+[^;]*$).*;'))
+QUEUE_COMMANDS = ('squeue', 'qstat', 'condor_q')
+SHELL_OPERATOR_CHARS = ';|&'
 
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
@@ -189,6 +198,47 @@ the orbitals a ``ROTATE`` would mix needs their index and irreducible representa
 that adapter has neither at the point it writes its input nor a ``nosym`` geometry to make
 unambiguous.
 """
+
+
+def hidden_failure_forms(command: str) -> list[str]:
+    """
+    Find the shell forms in a queue status command that can make it exit with another command's status.
+
+    The command is split into words and operators as the shell splits it, so a ``|`` or ``;`` inside a quoted
+    argument is part of that argument. A pipe (``|`` or ``|&``) and an OR-list (``||``) are found anywhere. A ``;``
+    is found when the last command of the ``;`` list does not run a queue command (``QUEUE_COMMANDS``, by base name,
+    after any variable assignments), as in ``qstat -u $USER; true``. A list that ends with the queue command, as in
+    ``module load slurm; squeue -u $USER``, exits with its status and is not found. A word that is only operator
+    characters in quotes, e.g., ``';'``, reads as an operator. A command that cannot be split, e.g., one with an
+    unbalanced quote, has no forms.
+
+    Args:
+        command (str): The queue status command.
+
+    Returns:
+        list[str]: The forms found, of ``'a pipe'``, ``'an OR-list (||)'`` and ``'a ";"'``, in that order.
+    """
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=SHELL_OPERATOR_CHARS)
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return list()
+    operators = [token for token in tokens if not token.strip(SHELL_OPERATOR_CHARS)]
+    forms = list()
+    if any(operator in ('|', '|&') for operator in operators):
+        forms.append('a pipe')
+    if '||' in operators:
+        forms.append('an OR-list (||)')
+    while tokens and tokens[-1] == ';':
+        tokens.pop()
+    if ';' in tokens:
+        last = tokens[len(tokens) - tokens[::-1].index(';'):]
+        words = list(itertools.takewhile(lambda token: token not in operators, last))
+        words = list(itertools.dropwhile(lambda word: re.match(r'[A-Za-z_]\w*=', word), words))
+        if not words or os.path.basename(words[0]) not in QUEUE_COMMANDS:
+            forms.append('a ";"')
+    return forms
 
 
 def exception_summary_line(exception: BaseException, max_length: int = 300) -> str:
@@ -233,27 +283,111 @@ def tsg_method_matches_adapter(method: str | None, job_adapter: str | None) -> b
     return normalize(job_adapter) in normalize(method)
 
 
-def irc_ended_usably(server_status: str | None, ess_status: dict) -> bool:
+def get_irc_path_progress(irc_points: list[dict] | None,
+                          ts_energy: float | None = None,
+                          ts_xyz: dict | None = None,
+                          ) -> tuple[float, str] | None:
     """
-    Determine whether an IRC job ended in a way its last geometry may be used as an IRC endpoint.
+    Measure how far the converged points of an IRC path got from the TS the path started from.
 
-    It did when the server status is ``done`` and the ESS status is ``done``, or ``errored`` with a non-empty
-    list of keywords that are all in ``IRC_EARLY_STOP_KEYWORDS``.
+    With ``ts_energy`` and at least one point energy, the measure is the largest drop of a point energy below
+    ``ts_energy``, in kJ/mol. Otherwise, it is the largest change of the distance of a TS-bonded atom pair
+    (see ``IRC_BONDED_PAIR_TOLERANCE``) from its distance in ``ts_xyz``, in Angstrom.
+
+    Args:
+        irc_points (list[dict], optional): The converged IRC points, as ``parser.parse_irc_path()`` returns them.
+        ts_energy (float, optional): The electronic energy of the TS in Hartree.
+        ts_xyz (dict, optional): The TS geometry.
+
+    Returns:
+        tuple[float, str] | None: The measure and its unit, ``'kJ/mol'`` or ``'Angstrom'``, or ``None`` if there
+                                  are no points, or nothing to measure them against.
+    """
+    if not irc_points:
+        return None
+    energies = [point.get('electronic_energy_hartree') for point in irc_points
+                if point.get('electronic_energy_hartree') is not None]
+    if ts_energy is not None and energies:
+        return float((ts_energy - min(energies)) * E_h_kJmol), 'kJ/mol'
+    ts_dmat = xyz_to_dmat(ts_xyz) if ts_xyz is not None else None
+    if ts_dmat is None:
+        return None
+    symbols = ts_xyz['symbols']
+    max_distances = np.array([[IRC_BONDED_PAIR_TOLERANCE * get_single_bond_length(symbol_i, symbol_j)
+                               for symbol_j in symbols] for symbol_i in symbols])
+    bonded = (ts_dmat <= max_distances) & ~np.eye(len(symbols), dtype=bool)
+    if not bonded.any():
+        return None
+    changes = list()
+    for point in irc_points:
+        point_dmat = xyz_to_dmat(point.get('xyz'))
+        if point_dmat is not None and point_dmat.shape == ts_dmat.shape:
+            changes.append(float(np.max(np.abs(point_dmat - ts_dmat)[bonded])))
+    return (max(changes), 'Angstrom') if changes else None
+
+
+def irc_path_got_far_enough(progress: tuple[float, str] | None) -> bool:
+    """
+    Determine whether an IRC path got far enough from its TS for its last converged point to be an IRC endpoint.
+
+    Args:
+        progress (tuple[float, str], optional): The measure ``get_irc_path_progress()`` returns.
+
+    Returns:
+        bool: Whether the measure is at least ``IRC_MIN_ENERGY_DROP`` kJ/mol,
+              or more than ``IRC_MIN_ENDPOINT_DISPLACEMENT`` Angstrom.
+    """
+    if progress is None:
+        return False
+    value, unit = progress
+    return value >= IRC_MIN_ENERGY_DROP if unit == 'kJ/mol' else value > IRC_MIN_ENDPOINT_DISPLACEMENT
+
+
+def describe_irc_path_progress(progress: tuple[float, str] | None) -> str:
+    """
+    Describe how far the converged points of an IRC path got from its TS.
+
+    Args:
+        progress (tuple[float, str], optional): The measure ``get_irc_path_progress()`` returns.
+
+    Returns:
+        str: The description, e.g., ``'got 5.13 kJ/mol below the TS'``.
+    """
+    if progress is None:
+        return 'could not be compared with the TS'
+    value, unit = progress
+    if unit == 'kJ/mol':
+        return f'got {value:.2f} kJ/mol below the TS'
+    return f'changed the distance of a TS-bonded atom pair by {value:.3f} Angstrom'
+
+
+def irc_ended_usably(server_status: str | None,
+                     ess_status: dict,
+                     ts_xyz: dict | None = None,
+                     irc_points: list[dict] | None = None,
+                     ts_energy: float | None = None,
+                     ) -> bool:
+    """
+    Determine whether an IRC job ended in a way that gives an IRC endpoint.
+
+    It did when the server status is ``done`` and either the ESS status is ``done``, or its converged path got
+    far enough from the TS (see ``irc_path_got_far_enough()``). The ESS termination keywords are not considered.
 
     Args:
         server_status (str, optional): The server status of the job, ``job.job_status[0]``.
         ess_status (dict): The ESS status of the job, ``job.job_status[1]``.
+        ts_xyz (dict, optional): The TS geometry the IRC started from.
+        irc_points (list[dict], optional): The converged IRC points, as ``parser.parse_irc_path()`` returns them.
+        ts_energy (float, optional): The electronic energy in Hartree of the TS the IRC started from.
 
     Returns:
         bool: Whether the IRC job ended usably.
     """
     if server_status != 'done':
         return False
-    status, keywords = ess_status.get('status'), ess_status.get('keywords')
-    if status == 'done':
+    if ess_status.get('status') == 'done':
         return True
-    return status == 'errored' and isinstance(keywords, list) and bool(keywords) \
-        and all(keyword in IRC_EARLY_STOP_KEYWORDS for keyword in keywords)
+    return irc_path_got_far_enough(get_irc_path_progress(irc_points=irc_points, ts_energy=ts_energy, ts_xyz=ts_xyz))
 
 
 def get_conformer_isomorphism_trsh_history(conformers_note: str | None) -> list[str]:
@@ -289,7 +423,7 @@ def get_conformer_trsh_levels(jobs) -> list[str]:
     levels = list()
     for job in jobs:
         for method in job.ess_trsh_methods or list():
-            if method.startswith(('conformer ', 'conf_opt: ')):
+            if method.startswith(CONFORMER_TRSH_TAG_PREFIXES):
                 level = method.split(' ', 1)[1]
                 if level not in levels:
                     levels.append(level)
@@ -530,6 +664,7 @@ class Scheduler(object):
         self.queue_query_failures = dict()
         self.job_query_failures = dict()
         self.job_query_failed = False
+        self.unlisted_job_running = False
         self.answered_queue_servers = set()
         self.queue_clock = time.monotonic
         self.queue_outage_limit = queue_outage_limit(settings.get('queue_outage_limit_hrs'))
@@ -912,13 +1047,14 @@ class Scheduler(object):
           the queue command failed, which ARC reads as an empty queue.
         - an OR-list (``||``), e.g., ``squeue -u $USER || true`` or ``... || echo``: it exits 0 when the queue command
           failed.
-        - a ``;`` after anything but variable assignments, e.g., ``qstat -u $USER; true`` or ``cd dir; squeue``: the
-          command exits with the status of the last command in the list. A ``;`` that only ends assignments, as in
-          ``export SGE_ROOT=/opt/sge; qstat -u $USER``, leaves the queue command last and is not warned about.
+        - a ``;`` list whose last command is not the queue command, e.g., ``qstat -u $USER; true``: the list exits
+          with the status of its last command. A list that ends with the queue command, as in
+          ``export SGE_ROOT=/opt/sge; qstat -u $USER`` or ``module load slurm; squeue -u $USER``, is not warned about.
 
-        The check matches these characters in the command string and does not parse shell. It does not catch a
-        failure hidden elsewhere: in a wrapper script, a shell function or alias, a command substitution, a newline,
-        or an ``exit 0``. An ``&&``-list is not warned about, since it exits non-zero once the queue command fails.
+        The check splits the command into words and operators as the shell does (see ``hidden_failure_forms()``), so
+        a ``|`` or ``;`` inside a quoted argument is not warned about. It does not catch a failure hidden elsewhere:
+        in a wrapper script, a shell function or alias, a command substitution, a newline, or an ``exit 0``. An
+        ``&&``-list is not warned about, since it exits non-zero once the queue command fails.
         """
         servers = list(self.servers)
         for server_list in self.ess_settings.values():
@@ -928,7 +1064,7 @@ class Scheduler(object):
         for server in servers:
             cluster_soft = settings['servers'].get(server, dict()).get('cluster_soft')
             command = settings['check_status_command'].get(cluster_soft) or ''
-            forms = [form for form, pattern in HIDDEN_FAILURE_PATTERNS if re.search(pattern, command)]
+            forms = hidden_failure_forms(command)
             if forms:
                 logger.warning(f'The check_status_command of server {server} contains {" and ".join(forms)}: '
                                f'{command}\n'
@@ -937,8 +1073,8 @@ class Scheduler(object):
                                f'so finished jobs stay running until queue_outage_limit_hrs and are then stranded. '
                                f'A pipe into tail or awk, "|| true", "|| echo" or "; true" exits 0 when the queue '
                                f'command fails, which reads as an empty queue, so ARC ends every job it tracks '
-                               f'there. Use a bare queue command, preceded only by variable assignments '
-                               f'such as "export SGE_ROOT=/opt/sge;".')
+                               f'there. Use a bare queue command, or a ";" list that ends with it, such as '
+                               f'"export SGE_ROOT=/opt/sge; qstat -u $USER".')
 
     def has_pending_pipe_work(self, label: str) -> bool:
         """
@@ -1019,7 +1155,13 @@ class Scheduler(object):
         self._pending_pipe_conf_sp.clear()
         for label in sorted(pending):
             conformer_indices = pending[label]
-            piped = self.pipe_planner.try_pipe_conf_sp(label, sorted(conformer_indices))
+            try:
+                piped = self.pipe_planner.try_pipe_conf_sp(label, sorted(conformer_indices))
+            except Exception as e:
+                error = str(e).splitlines()[0] if str(e) else type(e).__name__
+                logger.warning(f'Could not route the conf_sp jobs of {label} to pipe mode ({error}); '
+                               f'submitting them as individual jobs.')
+                piped = set()
             for i in sorted(conformer_indices - piped):
                 self.run_sp_job(label=label, level=self.conformer_sp_level, conformer=i)
 
@@ -1041,7 +1183,6 @@ class Scheduler(object):
                     and any([e is not None for e in species.conformer_energies]) \
                     and not self.has_running_conformer_jobs(species.label):
                 # The species has no xyz, but has conformers and at least one of the conformers has energy.
-                # A species with conformer jobs still running is decided by the main loop once they all terminate.
                 self.determine_most_stable_conformer(species.label)
                 if species.initial_xyz is not None:
                     if self.composite_method:
@@ -1055,6 +1196,7 @@ class Scheduler(object):
                 or self._pending_pipe_irc or self._pending_pipe_conf_sp:
             self.timer = True
             self.job_query_failed = False
+            self.unlisted_job_running = False
             self.strand_unreadable_queue_jobs()
             self.submit_unsubmitted_jobs()
             for label in self.unique_species_labels:
@@ -1079,7 +1221,9 @@ class Scheduler(object):
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
                                 troubleshooting_conformer = self.parse_conformer(job=job, label=label, i=i)
-                                if 'conf_opt' in job_name and self.job_types['conf_sp'] and not troubleshooting_conformer:
+                                if 'conf_opt' in job_name and self.job_types['conf_sp'] \
+                                        and self.conformer_sp_level != self.conformer_opt_level \
+                                        and not troubleshooting_conformer:
                                     # Accumulate for deferred pipe batching of conf_sp.
                                     self._pending_pipe_conf_sp.setdefault(label, set()).add(i)
                                 if troubleshooting_conformer:
@@ -1104,7 +1248,7 @@ class Scheduler(object):
                                 logger.info(f'\nConformer jobs for {label} successfully terminated.\n')
                                 if self.species_dict[label].is_ts:
                                     self.determine_most_likely_ts_conformer(label)
-                                else:
+                                elif label not in self._pending_pipe_conf_sp:
                                     self.determine_most_stable_conformer(label, sp_flag=True if self.job_types['conf_sp'] else False)  # also checks isomorphism
                                 if self.species_dict[label].initial_xyz is not None:
                                     # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
@@ -1287,7 +1431,7 @@ class Scheduler(object):
             # newly-ready work has been discovered and before the loop sleeps.
             self.flush_pending_pipe_batches()
 
-            should_sleep = (self.timer or self.job_query_failed) \
+            should_sleep = (self.timer or self.job_query_failed or self.unlisted_job_running) \
                 and (self.running_jobs or self.active_pipes or self.unsubmitted_jobs)
             if should_sleep:
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
@@ -1429,7 +1573,8 @@ class Scheduler(object):
             torsions = species.rotors_dict[rotor_index]['torsion']
             torsions = [torsions] if not isinstance(torsions[0], list) else torsions
         if label is not None:
-            level_of_theory = self.get_job_level(label=label, level_of_theory=level_of_theory, job_type=job_type)
+            level_of_theory = self.get_job_level(label=label, level_of_theory=level_of_theory, job_type=job_type,
+                                                 ess_trsh_methods=ess_trsh_methods)
         job_adapter = job_adapter.lower() if job_adapter is not None else \
             self.deduce_job_adapter(level=Level(repr=level_of_theory), job_type=job_type)
         args = {'keyword': {}, 'block': {}}
@@ -1557,20 +1702,26 @@ class Scheduler(object):
                       label: str | list[str],
                       level_of_theory: Level | dict | str | None,
                       job_type: str,
+                      ess_trsh_methods: list[str] | None = None,
                       ) -> Level | dict | str | None:
         """
         Get the level of theory a job of a species runs at: the adaptive level for the job type if one applies,
-        otherwise the given level.
+        otherwise the given level. A conf_opt job tagged with a conformer isomorphism troubleshooting level runs at
+        the given level.
 
         Args:
             label (str | list[str]): The species label.
             level_of_theory (Level | dict | str): The level of theory requested for the job.
             job_type (str): The job's type.
+            ess_trsh_methods (list[str], optional): The job's troubleshooting methods.
 
         Returns:
             Level | dict | str | None: The level of theory the job runs at.
         """
         if self.adaptive_levels is None:
+            return level_of_theory
+        if job_type == 'conf_opt' \
+                and any(method.startswith(CONFORMER_TRSH_TAG_PREFIXES) for method in ess_trsh_methods or list()):
             return level_of_theory
         spc = self.species_dict[label]
         heavy_atoms = spc.adaptive_lot_n_heavy if spc.adaptive_lot_n_heavy is not None else spc.number_of_heavy_atoms
@@ -1627,6 +1778,9 @@ class Scheduler(object):
         one, so a download that failed leaves an empty file behind that ``os.path.isfile`` cannot
         tell from a real one, and adopting it would hand every subsequent job an unreadable guess.
 
+        A job the bulk queue query did not list, but whose own status query answers ``running``, stays running, and
+        the main loop sleeps after this pass as though no job ended.
+
         Args:
             job (JobAdapter): The job object.
             label (str): The species label.
@@ -1642,6 +1796,7 @@ class Scheduler(object):
                     return False
                 self.clear_job_query_failure(job)
                 if job.job_status[0] == 'running':
+                    self.unlisted_job_running = True
                     return False
             except IOError:
                 if job.job_type not in ['orbitals', 'stability']:
@@ -1817,9 +1972,8 @@ class Scheduler(object):
 
     def refuse_conformer_isomorphism_trsh_recovery(self, label: str) -> bool:
         """
-        Check whether a restart may not continue the conformer isomorphism troubleshooting of a species, because
-        troubleshooting is disabled or exhausted for it. If so, warn naming the species, and record the warning
-        once in the species' output warnings.
+        Check whether conformer isomorphism troubleshooting is disabled or exhausted for a species. If so, warn
+        naming the species, and record the warning once in the species' output warnings.
 
         Args:
             label (str): The species label.
@@ -1964,16 +2118,14 @@ class Scheduler(object):
         log_info_printed = False
         for label in labels_to_consider:
             if not self.species_dict[label].is_ts and self.has_running_conformer_jobs(label):
-                # Conformer jobs restored on restart are still running; the main loop decides once they terminate.
                 species = self.species_dict[label]
                 conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
+                conf_sp_jobs = self.job_dict[label].get('conf_sp', dict())
                 conformers_note = self.output[label]['conformers']
-                first_round = bool(conf_opt_jobs) \
-                    and not get_conformer_isomorphism_trsh_history(conformers_note) \
+                first_round = not get_conformer_isomorphism_trsh_history(conformers_note) \
                     and CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED not in conformers_note \
                     and not get_conformer_trsh_levels(conf_opt_jobs.values())
                 if first_round:
-                    # The energies may be force-field ones; resubmit every conformer that is not running.
                     species.conformer_energies = [None] * len(species.conformers)
                     xyzs = species.conformers_before_opt if species.conformers_before_opt is not None \
                         else species.conformers
@@ -1982,8 +2134,13 @@ class Scheduler(object):
                 else:
                     xyzs = species.conformers
                 energies = species.conformer_energies
+                conf_sp_on = self.job_types['conf_sp'] and self.conformer_sp_level != self.conformer_opt_level
                 for i, xyz in enumerate(xyzs):
-                    if i not in conf_opt_jobs and (i >= len(energies) or energies[i] is None):
+                    if i in conf_opt_jobs or i in conf_sp_jobs or (i < len(energies) and energies[i] is not None):
+                        continue
+                    if first_round and conf_sp_on and i < len(species.conformers) and species.conformers[i] != xyz:
+                        self.run_sp_job(label=label, level=self.conformer_sp_level, conformer=i)
+                    else:
                         self.run_job(label=label,
                                      xyz=xyz,
                                      job_type='conf_opt',
@@ -3274,6 +3431,8 @@ class Scheduler(object):
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
                 else:
                     rxn.ts_species.tsg_spawned = True
+                    if rxn.family is not None:
+                        rxn.warn_if_identity_reaction(family=rxn.family)
                     tsg_index, eligible_methods = 0, list()
                     family_known = rxn.family is not None and rxn.family in ts_adapters_by_rmg_family
                     for method in self.ts_adapters:
@@ -4785,11 +4944,13 @@ class Scheduler(object):
         """
         Spawn the jobs that follow an IRC job, or record it as a failed IRC.
 
-        The last geometry of the IRC output becomes a new IRC species, which is then optimized.
-        Only an IRC job whose server status is ``done`` and whose ESS status is ``done``, or ``errored`` with
-        every keyword in ``IRC_EARLY_STOP_KEYWORDS`` (an IRC that stopped early on Delta-x), spawns.
-        Any other status, e.g., a server time limit, a memory kill, a cut output, or an absent status,
-        is recorded as a failed IRC (see ``record_failed_irc()``) and nothing is spawned.
+        The last geometry of the IRC output becomes a new IRC species, which is then optimized. If the ESS status
+        is not ``done``, the last converged IRC point is used instead, and a warning is logged.
+        Only an IRC job ``irc_ended_usably()`` accepts spawns: its server status is ``done``, and its ESS status
+        is ``done`` or its converged path got far enough from the TS (see ``irc_path_got_far_enough()``).
+        Any other job, e.g., one the server errored, or one that stopped near the TS on whatever ESS error,
+        is recorded as a failed IRC (see ``record_failed_irc()``), with how far its path got, and nothing
+        is spawned.
         So is an output that holds no complete geometry, or one whose parsing raises ``IndexError`` or ``ValueError``.
 
         Args:
@@ -4798,16 +4959,38 @@ class Scheduler(object):
         """
         job_status = job.job_status if isinstance(job.job_status, list) else list()
         ess_status = job_status[1] if len(job_status) > 1 and isinstance(job_status[1], dict) else dict()
-        if not irc_ended_usably(server_status=job_status[0] if job_status else None, ess_status=ess_status):
-            self.record_failed_irc(label=label, job=job, ess_status=ess_status,
-                                   server_status=job_status[0] if job_status else None)
-            return
+        server_status = job_status[0] if job_status else None
+        ended_normally = ess_status.get('status') == 'done'
+        ts_xyz = getattr(job, 'xyz', None) or self.species_dict[label].get_xyz(generate=False)
+        judge_path = server_status == 'done' and not ended_normally
         try:
-            xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+            irc_points = parser.parse_irc_path(log_file_path=job.local_path_to_output_file) if judge_path else None
+            ts_energy = parser.parse_irc_ts_energy(log_file_path=job.local_path_to_output_file) \
+                if judge_path else None
+            usable = irc_ended_usably(server_status=server_status, ess_status=ess_status,
+                                      ts_xyz=ts_xyz, irc_points=irc_points, ts_energy=ts_energy)
+            xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file) \
+                if usable and ended_normally else None
         except (IndexError, ValueError) as e:
             self.record_failed_irc(label=label, job=job, ess_status=ess_status,
                                    parse_error=f'{type(e).__name__}: {e}')
             return
+        n_points = len(irc_points or list())
+        progress = describe_irc_path_progress(
+            get_irc_path_progress(irc_points=irc_points, ts_energy=ts_energy, ts_xyz=ts_xyz))
+        if not usable:
+            path_note = None
+            if judge_path:
+                path_note = f'its {n_points} converged IRC point{"s" if n_points != 1 else ""} {progress}, ' \
+                            f'too near the TS for an endpoint' if n_points else 'no IRC point converged'
+            self.record_failed_irc(label=label, job=job, ess_status=ess_status, server_status=server_status,
+                                   path_note=path_note)
+            return
+        if not ended_normally:
+            xyz = irc_points[-1]['xyz']
+            logger.warning(f'IRC job {job.job_name} of {label} did not end normally (ESS keywords: '
+                           f'{", ".join(ess_status.get("keywords") or list()) or "none"}) after {n_points} '
+                           f'converged points, which {progress}. Its endpoint is its last converged point.')
         if xyz is None:
             self.record_failed_irc(label=label, job=job, ess_status=ess_status)
             return
@@ -4873,6 +5056,7 @@ class Scheduler(object):
                           ess_status: dict,
                           parse_error: str | None = None,
                           server_status: str | None = None,
+                          path_note: str | None = None,
                           ) -> None:
         """
         Record an IRC job that gave no usable endpoint as a failed IRC of its TS.
@@ -4887,13 +5071,16 @@ class Scheduler(object):
             ess_status (dict): The ESS status of the job, with optional ``error`` and ``keywords`` entries.
             parse_error (str, optional): The error the geometry parser raised, if it raised one.
             server_status (str, optional): The server status of the job.
+            path_note (str, optional): How far the converged IRC points got from the TS.
         """
+        error = ess_status.get('error')
         if server_status not in (None, 'done'):
-            reason = ess_status.get('error') or f'server status: {server_status}'
-        else:
-            reason = ess_status.get('error') or 'no geometry could be parsed from its output'
+            error = error or f'server status: {server_status}'
+        reason = error or path_note or 'no geometry could be parsed from its output'
         if ess_status.get('keywords'):
             reason += f' (keywords: {", ".join(ess_status["keywords"])})'
+        if path_note and error:
+            reason += f'; {path_note}'
         if parse_error:
             reason += f'; parsing raised {parse_error}'
         direction = getattr(job, 'irc_direction', None)
@@ -5310,18 +5497,18 @@ class Scheduler(object):
         """
         Check job status on a specific server or on all active servers, get a list of relevant running job IDs.
 
-        A server whose queue cannot be read reports the queue jobs ARC tracks there as still running, so none of
-        them is ended on a failed query, and it is not queried again for ``QUEUE_QUERY_COOLDOWN`` seconds. The
-        outage is timed from its first failure, and warned about at most every ``QUEUE_OUTAGE_WARNING_INTERVAL``
-        seconds. A server past the outage limit is not queried at all (see ``strand_unreadable_queue_jobs()``).
+        A server whose queue cannot be read reports the queue jobs ARC tracks there as still running, and it is not
+        queried again for ``QUEUE_QUERY_COOLDOWN`` seconds after the failed query round ends. The outage is timed from the start of its first failed round, and warned about at
+        most every ``QUEUE_OUTAGE_WARNING_INTERVAL`` seconds. A server past the outage limit is not queried at all
+        (see ``strand_unreadable_queue_jobs()``).
 
-        A check of all servers skips a server where ARC tracks no queue job, since no job of its can end. A check of a
-        specific server (the job limit check before a submission) queries it anyway. A check of all servers also lists
-        as running each job whose own status query failed less than ``QUEUE_QUERY_COOLDOWN`` seconds ago, so the
-        main loop does not query it again before then (see ``record_job_query_failure()``).
+        A check of all servers skips a server where ARC tracks no queue job. A check of a specific server (the job
+        limit check before a submission) queries it anyway. A check of all servers also lists as running each job
+        whose own status query failed less than ``QUEUE_QUERY_COOLDOWN`` seconds ago
+        (see ``record_job_query_failure()``).
 
-        A missing queue command (exit status 127) on a server whose queue has not answered once in this run is a
-        configuration error, not an outage, so ARC stops at once. Once a server has answered, a later 127 is an
+        A missing queue command (exit status 127) on a server whose queue has not answered once in this run stops ARC
+        at once. Once a server has answered, a later 127 is an
         outage like any other failure. On the local machine a 127 reads as an empty queue only while ARC tracks no
         queue job there and the local server sets no ``max_simultaneous_jobs``; such a reading does not count as an
         answer, while a real answer in that mode does.
@@ -5361,19 +5548,19 @@ class Scheduler(object):
                                         f'{MISSING_COMMAND_EXIT_STATUS}): {e.output}\nCheck '
                                         f'check_status_command[{cluster_soft!r}] in your settings: '
                                         f'{settings["check_status_command"].get(cluster_soft)}')
-                failure = failure or outage_record(now)
-                failure.update(last_attempt=now, output=e.output, exit_status=e.exit_status)
+                failure, ended = failure or outage_record(now), self.queue_clock()
+                failure.update(last_attempt=ended, output=e.output, exit_status=e.exit_status)
                 self.queue_query_failures[server] = failure
                 tracked = tracked_queue_job_ids(self.job_dict, self.running_jobs, server)
-                elapsed, left = now - failure['since'], max(self.queue_outage_limit - (now - failure['since']), 0)
+                elapsed, left = ended - failure['since'], max(self.queue_outage_limit - (ended - failure['since']), 0)
                 message = (f'Could not read the job queue on {server} for {format_duration(elapsed)} '
                            f'(exit status {e.exit_status}: {e.output}). ARC keeps the {len(tracked)} jobs it tracks '
                            f'there as running (and puts off new submissions there if max_simultaneous_jobs is set); '
                            f'it stops polling {server} in '
                            f'{format_duration(left)} (queue_outage_limit_hrs).')
-                if failure['last_warning'] is None or now - failure['last_warning'] >= QUEUE_OUTAGE_WARNING_INTERVAL:
+                if failure['last_warning'] is None or ended - failure['last_warning'] >= QUEUE_OUTAGE_WARNING_INTERVAL:
                     logger.warning(message)
-                    failure['last_warning'] = now
+                    failure['last_warning'] = ended
                 else:
                     logger.debug(message)
                 self.server_job_ids.extend(tracked)
@@ -5393,10 +5580,8 @@ class Scheduler(object):
 
         The per-job outage record of a server (``job_query_failures``) holds the IDs of the jobs whose status query
         failed there and, per job, the time of its last failed query. While that time is within the cooldown, the
-        job is not queried again. A server past the outage limit is left out, and so is a job ARC no longer tracks.
-        The main loop matches job IDs without their server, so an ID that a tracked queue job on another server also
-        holds is left out too: that job may have ended, and the ID must not hide it. The job in cooldown is then
-        queried as usual.
+        job is not queried again. A server past the outage limit is left out, and so is a job ARC no longer tracks. An
+        ID that a tracked queue job on another server also holds is left out too, and that job is queried as usual.
 
         Returns:
             list: The job IDs, as the job objects hold them.
@@ -5421,9 +5606,9 @@ class Scheduler(object):
 
         Two clocks lead here: the bulk queue query (``queue_query_failures``) and the per-job status query
         (``job_query_failures``), which a good bulk answer does not reset. A per-job clock forgets each failing job
-        ARC no longer tracks, e.g., a cancelled one, and is dropped once none is left, so a stale one never strands
-        a server. Their jobs are neither ended nor deleted. They move from ``running_jobs`` to ``stranded_jobs``, which
-        restart.yml still lists as running, so the run can finish its other work and a restart polls them again.
+        ARC no longer tracks, e.g., a cancelled one, and is dropped once none is left. Their jobs are neither ended
+        nor deleted. They move from ``running_jobs`` to ``stranded_jobs``, which restart.yml still lists as running.
+        The run finishes its other work, and a restart polls them again.
         The server is not queried any more, one ERROR names it, and status.yml records it per species.
 
         A job queue outage on a server where ARC tracks no queue job strands nothing. It is dropped once no job waits
@@ -5489,7 +5674,7 @@ class Scheduler(object):
 
     def keeps_local_check_files(self) -> bool:
         """
-        Whether the local check files must outlive the run.
+        Whether the local check files are kept after the run.
 
         A job left on an unreadable queue, or held back from one, may read a check file from the local ``calcs``
         tree after a restart, e.g., as the initial guess its restart uploads.
@@ -5551,9 +5736,8 @@ class Scheduler(object):
         """
         Time a failed per-job status query on the job's server.
 
-        A per-job query can keep failing while the bulk query of the same server answers, so it has its own outage
-        clock in ``job_query_failures``, started at its first failure, with the IDs of the jobs whose query
-        failed (job names repeat across species, IDs on one server do not) and the time of each one's last failed
+        A per-job query has its own outage clock in ``job_query_failures``, separate from the bulk query of the same
+        server, started at its first failure, with the IDs of the jobs whose query failed and the time of each one's last failed
         query. A bulk answer does not stop it; it stops once each of those jobs has answered a per-job query (see
         ``clear_job_query_failure()``). The record keeps the output and exit status of the job's last failed query,
         which the outage ERROR and status.yml report. Past the outage limit ``strand_unreadable_queue_jobs()`` leaves
@@ -5583,8 +5767,7 @@ class Scheduler(object):
         Note that a job's per-job status query answered.
 
         The server's per-job outage clock keeps running while any other job whose query failed there is still
-        unresolved, so a job that answers does not restart the clock of one that keeps failing. The clock stops
-        once no such job is left.
+        unresolved. The clock stops once no such job is left.
 
         Args:
             job (JobAdapter): The job whose status query answered.
@@ -5598,10 +5781,9 @@ class Scheduler(object):
         """
         Resolve the per-job query failures of the jobs a good bulk answer lists as running.
 
-        A job the bulk query lists is not queried on its own, so its earlier per-job failure would never clear and
-        would strand the server later. The bulk answer settles its status, so its ID leaves the server's per-job
-        outage record, as does the ID of a failing job ARC no longer tracks (e.g., a cancelled one). The record
-        goes once no failing job is left in it.
+        The ID of each job the server's bulk answer lists leaves the server's per-job outage record, as does the ID
+        of a failing job ARC no longer tracks (e.g., a cancelled one). The record goes once no failing job is left
+        in it.
 
         Args:
             server (str): The server name.
@@ -5618,8 +5800,8 @@ class Scheduler(object):
         """
         Keep only the given unresolved jobs in a server's per-job outage record, and time the outage from them.
 
-        The outage starts at the earliest first failure of the jobs still unresolved, so a job that answers does not
-        pass its start on to a job that began failing later. The record goes once no job is left.
+        The outage starts at the earliest first failure of the jobs still unresolved. The record goes once no job is
+        left.
 
         Args:
             server (str): The server name.
@@ -5641,12 +5823,11 @@ class Scheduler(object):
         """
         Put off a job that was about to be submitted to a server whose queue cannot be read right now.
 
-        The server sets ``max_simultaneous_jobs``, so ARC must count its jobs before it submits more, and the count
-        is unknown. The call does not wait for the queue: the job moves from ``running_jobs`` to ``deferred_jobs``
+        The server sets ``max_simultaneous_jobs`` and its job count is unknown. The call does not wait for the queue: the job moves from ``running_jobs`` to ``deferred_jobs``
         and joins ``unsubmitted_jobs``, which the main loop tries again on each pass (see
         ``submit_unsubmitted_jobs()``). Other servers, incore jobs, pipes, reports and restart saves go on
         meanwhile. restart.yml lists the job with no job ID, so a restart submits it. A new job gets its row in
-        initiated_jobs.csv with no job ID and is marked ``restarted``, since the row count numbers the next job.
+        initiated_jobs.csv with no job ID and is marked ``restarted``.
         A job already put off is only queued again for the next pass, with no log line and no restart save.
 
         Args:
@@ -6183,7 +6364,6 @@ class Scheduler(object):
                          f'{label}. NOT optimizing this species.')
             return None
 
-        # A restart restores only the conformer jobs that were still running, so conformer 0 may have no job.
         conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
         job_adapter, ess_trsh_methods = self.get_conformer_isomorphism_trsh_basis(label)
 
@@ -6230,9 +6410,8 @@ class Scheduler(object):
         """
         Delete a submitted job that was left on a queue which stayed unreadable past the outage limit.
 
-        The server may still be unreachable, so a failure to delete the job does not stop the caller. Nor can a
-        delete command that did not fail confirm that the job ended: the queue that would show it could not be read,
-        and ``JobAdapter.delete()`` does not report a command that the server rejected. Either way one warning names
+        A failure to delete the job does not stop the caller. A delete command that did not fail is reported as sent,
+        not as confirmed. Either way one warning names
         the job, its ID and its server, says whether the delete command failed or was only sent, and that the job
         may still be running there.
 
@@ -6253,9 +6432,9 @@ class Scheduler(object):
         """
         Delete all jobs of a species/TS.
 
-        Jobs put off while a queue could not be read are dropped too, so none of them is submitted later.
+        Jobs put off while a queue could not be read are dropped too, and are not submitted later.
         Jobs left on a queue that stayed unreadable past the outage limit (``stranded_jobs``) are dropped as well,
-        so restart.yml no longer lists them and a restart neither polls nor submits them. A stranded job that was
+        and restart.yml no longer lists them. A stranded job that was
         submitted is deleted on its server like a running job; if that fails, e.g., because the server still cannot
         be reached, a warning names the job and its ID, which may still run there, and the job is dropped anyway.
         A stranded job that was never submitted has nothing to delete on a server.
@@ -6721,10 +6900,10 @@ class Scheduler(object):
         """
         Check if the number of running jobs on the server is not above the set server limit.
 
-        While the server's queue answers and is full, ARC waits for a slot, as before. While the queue cannot be
-        read the count is unknown, as it holds only the jobs ARC tracks there, so ARC does not wait: the job is put
-        off and the main loop goes on. Once the queue has been unreadable past the outage limit, the job is held
-        back for a restart.
+        While the server's queue answers and is full, ARC waits for a slot. While the queue cannot be read, ARC does
+        not wait: the job is put off and the main loop goes on. Once the queue has been unreadable past the outage limit, the job is held
+        back for a restart. A job put off or held back leaves ``server_job_ids`` as the check found it, with no
+        query of the other servers.
 
         Args:
             server (str): The server name.
@@ -6736,12 +6915,13 @@ class Scheduler(object):
         if server is not None and server in self.unreadable_queue_servers:
             return REFUSE
         if server is not None and 'max_simultaneous_jobs' in servers_dict[server]:
+            pass_job_ids = list(self.server_job_ids)
             continue_lopping = True
             while continue_lopping:
                 self.get_server_job_ids(specific_server=server)
                 failure = self.queue_query_failures.get(server)
                 if failure is not None:
-                    self.get_server_job_ids()
+                    self.server_job_ids = pass_job_ids
                     return REFUSE if self.queue_clock() - failure['since'] >= self.queue_outage_limit else DEFER
                 if len(self.server_job_ids) >= servers_dict[server]['max_simultaneous_jobs']:
                     time.sleep(90)
