@@ -827,6 +827,8 @@ class Scheduler(object):
                     and any([e is not None for e in species.conformer_energies]):
                 # The species has no xyz, but has conformers and at least one of the conformers has energy.
                 self.optimize_most_stable_conformer(species.label)
+            elif self.irc_species_awaiting_opt(species.label):
+                self.run_irc_species_opt(species.label)
         self.run_conformer_jobs()
         self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
         while self.running_jobs != {} or self.active_pipes \
@@ -1516,9 +1518,6 @@ class Scheduler(object):
         labels_to_consider = labels if labels is not None else [spc.label for spc in self.species_list]
         log_info_printed = False
         for label in labels_to_consider:
-            # IRC endpoint species (non-TS species with an irc_label) take their geometry from the IRC path, and ARC
-            # often cannot perceive a 2D graph for these complexes. A restarted run whose IRC species had not finished
-            # their opt crashed here, generating conformers for a species without a molecule.
             if not self.species_dict[label].is_ts and self.species_dict[label].irc_label is None \
                     and not self.output[label]['job_types']['opt'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
@@ -4376,12 +4375,7 @@ class Scheduler(object):
         self.species_list.append(irc_spc)
         self.species_dict[irc_spc.label] = irc_spc
         self.initialize_output_dict(label=irc_spc.label)
-        self.run_job(label=irc_spc.label,
-                     xyz=self.species_dict[irc_spc.label].get_xyz(),
-                     level_of_theory=self.opt_level if not self.composite_method else self.freq_level,
-                     job_type='opt',
-                     fine=False,
-                     )
+        self.run_irc_species_opt(irc_spc.label)
 
     def flag_incomplete_ase_irc(self, label: str, job: JobAdapter):
         """
@@ -4403,6 +4397,39 @@ class Scheduler(object):
         logger.warning(f'TS {label}: {message}')
         if message not in self.output[label]['warnings']:
             self.output[label]['warnings'] += message
+
+    def run_irc_species_opt(self, label: str):
+        """
+        Spawn the geometry optimization of an IRC endpoint species, starting from the end of its IRC path.
+
+        Args:
+            label (str): The IRC species label.
+        """
+        self.run_job(label=label,
+                     xyz=self.species_dict[label].get_xyz(),
+                     level_of_theory=self.opt_level if not self.composite_method else self.freq_level,
+                     job_type='opt',
+                     fine=False,
+                     )
+
+    def irc_species_awaiting_opt(self, label: str) -> bool:
+        """
+        Whether an IRC endpoint species has no optimization running or converged, the state a restarted run leaves
+        it in when its optimization had not been spawned or had not been restored.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: ``True`` if the species is an IRC endpoint species that still needs its optimization.
+        """
+        species = self.species_dict[label]
+        if species.is_ts or species.irc_label is None or species.final_xyz is not None:
+            return False
+        output = self.output.get(label, dict())
+        if output.get('job_types', dict()).get('opt') or output.get('paths', dict()).get('geo'):
+            return False
+        return not any(job_type in self.job_dict.get(label, dict()) for job_type in ('opt', 'composite'))
 
     def add_label_to_unique_species_labels(self, label: str) -> str:
         """

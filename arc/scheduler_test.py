@@ -5089,6 +5089,71 @@ class TestSchedulerIRCSpecies(unittest.TestCase):
     Contains tests of the IRC endpoint species the Scheduler builds from IRC jobs.
     """
 
+    label = 'IRC_TS0_1'
+
+    @classmethod
+    def restored_irc_species(cls) -> ARCSpecies:
+        """An IRC endpoint species as a restarted run restores it from its restart file"""
+        live = ARCSpecies(label=cls.label, xyz='O 0.0 0.0 0.0\nH 0.0 0.0 0.96\nH 0.93 0.0 -0.24',
+                          irc_label='TS0', compute_thermo=False)
+        return ARCSpecies(species_dict=live.as_dict())
+
+    def sched_with(self, species: ARCSpecies, job_dict: dict = None, opt_done: bool = False, geo: str = '') -> MagicMock:
+        """A Scheduler mock holding a single species"""
+        sched = MagicMock()
+        sched.species_dict = {species.label: species}
+        sched.output = {species.label: {'job_types': {'opt': opt_done}, 'paths': {'geo': geo}}}
+        sched.job_dict = {species.label: job_dict or dict()}
+        return sched
+
+    def test_irc_species_awaiting_opt(self):
+        """Only an IRC endpoint species with no optimization running or converged awaits one"""
+        from arc.scheduler import Scheduler
+
+        irc_spc = self.restored_irc_species()
+        self.assertIsNone(irc_spc.initial_xyz)
+        for job_dict, opt_done, geo, expected in (
+                (dict(), False, '', True),
+                ({'opt': {'opt_a3': None}}, False, '', False),
+                ({'composite': {'composite_a3': None}}, False, '', False),
+                (dict(), True, '', False),
+                (dict(), False, '/project/geo.log', False),
+        ):
+            with self.subTest(job_dict=job_dict, opt_done=opt_done, geo=geo):
+                sched = self.sched_with(irc_spc, job_dict=job_dict, opt_done=opt_done, geo=geo)
+                self.assertEqual(Scheduler.irc_species_awaiting_opt(sched, self.label), expected)
+
+        ts = ARCSpecies(label=self.label, is_ts=True, multiplicity=1, compute_thermo=False)
+        ts.irc_label = 'IRC_TS0_1 IRC_TS0_2'
+        self.assertFalse(Scheduler.irc_species_awaiting_opt(self.sched_with(ts), self.label))
+        spc = ARCSpecies(label=self.label, smiles='O')
+        self.assertFalse(Scheduler.irc_species_awaiting_opt(self.sched_with(spc), self.label))
+
+    def test_schedule_jobs_optimizes_a_restored_irc_species(self):
+        """A restarted run spawns the optimization of an IRC endpoint species that had none"""
+        from arc.scheduler import Scheduler
+
+        sched = self.sched_with(self.restored_irc_species())
+        sched.running_jobs, sched.active_pipes = dict(), dict()
+        sched._pending_pipe_sp, sched._pending_pipe_freq, sched._pending_pipe_irc = set(), set(), set()
+        sched._pending_pipe_conf_sp = dict()
+        sched.irc_species_awaiting_opt.side_effect = lambda label: Scheduler.irc_species_awaiting_opt(sched, label)
+        Scheduler.schedule_jobs(sched)
+        sched.run_irc_species_opt.assert_called_once_with(self.label)
+
+    def test_run_irc_species_opt(self):
+        """An IRC endpoint species is optimized from its IRC geometry at the opt level"""
+        from arc.scheduler import Scheduler
+
+        irc_spc = self.restored_irc_species()
+        sched = self.sched_with(irc_spc)
+        sched.composite_method = None
+        Scheduler.run_irc_species_opt(sched, self.label)
+        kwargs = sched.run_job.call_args.kwargs
+        self.assertEqual(kwargs['job_type'], 'opt')
+        self.assertEqual(kwargs['xyz'], irc_spc.get_xyz())
+        self.assertIs(kwargs['level_of_theory'], sched.opt_level)
+
     def test_flag_incomplete_ase_irc(self):
         """An ASE IRC job that reports an incomplete path adds a warning to the TS's output"""
         from arc.common import save_yaml_file
