@@ -10,6 +10,7 @@ import argparse
 import math
 import os
 import sys
+import warnings
 import yaml
 import numpy as np
 
@@ -614,13 +615,10 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict):
 
 def read_trajectory(path: str) -> list:
     """
-    The images of an ASE trajectory, or an empty list if it does not exist or cannot be read.
+    The images of an ASE trajectory, or an empty list if the file does not exist.
     """
     from ase.io import read
-    try:
-        return read(path, index=':') if os.path.isfile(path) else list()
-    except Exception:
-        return list()
+    return read(path, index=':') if os.path.isfile(path) else list()
 
 
 def main():
@@ -713,30 +711,37 @@ def main():
 
     if job_type == 'irc':
         from sella import IRC
-        from ase.io import read
-        # Sella converges each IRC step to min(fmax, 0.01) eV/A. At the opt default of 0.001, an MLIP's force noise
-        # kept the inner loop from converging, on the first step off UMA's CH4 + OH saddle and in the CH4 + H wells.
-        # The endpoints only seed ARC's IRC species, which ARC optimizes anyway, so the path need not end tighter.
         fmax = float(settings.get('irc_fmax', 0.01))
         steps = int(settings.get('steps', 1000))
         direction = input_dict.get('irc_direction', 'forward')
         traj_path = os.path.join(os.path.dirname(input_path), 'irc.traj')
+        irc_issues, run_error = list(), None
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            try:
+                irc = IRC(atoms, logfile=os.path.join(os.path.dirname(input_path), 'irc.log'),
+                          trajectory=traj_path, keep_going=True)
+                irc.run(fmax=fmax, steps=steps, direction=direction)
+            except Exception as exc:
+                run_error = f'{type(exc).__name__}: {exc}'
+        n_inner_failures = sum('trustworthy IRC' in str(warning.message) for warning in caught)
+        if n_inner_failures:
+            irc_issues.append(f'the IRC inner loop failed to converge on {n_inner_failures} step(s), '
+                              f'so the path past them is not a trustworthy IRC')
         try:
-            # keep_going: an inner loop that still fails only warns, rather than ending the path there.
-            irc = IRC(atoms, logfile=os.path.join(os.path.dirname(input_path), 'irc.log'),
-                      trajectory=traj_path, keep_going=True)
-            irc.run(fmax=fmax, steps=steps, direction=direction)
+            images = read_trajectory(traj_path)
         except Exception as exc:
-            # The path walked so far still leads from the TS toward its well, so keep it and only warn.
-            n_points = len(read_trajectory(traj_path))
-            if n_points > 1:
-                output.setdefault('warnings', list()).append(
-                    f'IRC stopped after {n_points} points: {type(exc).__name__}: {exc}')
-            else:
-                output['error'] = f'IRC failed: {type(exc).__name__}: {exc}'
-        images = read_trajectory(traj_path)
+            images = list()
+            output['error'] = f'IRC trajectory {traj_path} could not be read: {type(exc).__name__}: {exc}'
+        if run_error is not None:
+            if len(images) > 1:
+                irc_issues.append(f'the IRC stopped after {len(images)} points: {run_error}')
+            elif 'error' not in output:
+                output['error'] = f'IRC failed: {run_error}'
+        if irc_issues:
+            output['irc_complete'] = False
+            output.setdefault('warnings', list()).extend(irc_issues)
         if len(images) > 1:
-            # ARC builds the IRC species from the job's final geometry, so that is the end of the path, not the TS.
             save_current_geometry(output, images[-1], xyz)
             output['irc_traj'] = [
                 {'coords': tuple(map(tuple, image.get_positions().tolist())),

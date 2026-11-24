@@ -5045,6 +5045,34 @@ class TestScanSoftwareStamp(unittest.TestCase):
                     sched.determine_most_stable_conformer.assert_called_once_with('spc', sp_flag=True)
 
 
+class TestSchedulerIRCSpecies(unittest.TestCase):
+    """
+    Contains tests of the IRC endpoint species the Scheduler builds from IRC jobs.
+    """
+
+    def test_flag_incomplete_ase_irc(self):
+        """An ASE IRC job that reports an incomplete path adds a warning to the TS's output"""
+        from arc.common import save_yaml_file
+        from arc.scheduler import Scheduler
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'output.yml')
+            for adapter, results, expected in (
+                    ('ase', {'irc_complete': False, 'warnings': ['the IRC stopped after 3 points: X']},
+                     'the reverse ASE IRC path is incomplete or untrustworthy (the IRC stopped after 3 points: X); '),
+                    ('ase', {'irc_traj': []}, ''),
+                    ('gaussian', {'irc_complete': False}, ''),
+            ):
+                with self.subTest(adapter=adapter, results=results):
+                    save_yaml_file(path, results)
+                    job = SimpleNamespace(job_adapter=adapter, local_path_to_output_file=path, irc_direction='reverse')
+                    sched = MagicMock()
+                    sched.output = {'TS0': {'warnings': ''}}
+                    Scheduler.flag_incomplete_ase_irc(sched, 'TS0', job)
+                    Scheduler.flag_incomplete_ase_irc(sched, 'TS0', job)
+                    self.assertEqual(sched.output['TS0']['warnings'], expected)
+
+
 class TestSchedulerReactionChargeBalance(unittest.TestCase):
     """
     Contains the charge balance check of reactions whose species the Scheduler attaches.

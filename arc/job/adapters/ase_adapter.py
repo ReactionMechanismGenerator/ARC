@@ -165,6 +165,9 @@ class ASEAdapter(JobAdapter):
         a resolved ``calculator`` and, for UMA, default ``model`` (the level method, with 'uma'
         resolving to the latest model), ``task``, and ``device``.
 
+        Run keys a level can set in its ``keyword`` block include ``fmax`` (the force criterion in eV/Angstrom),
+        ``steps`` and ``optimizer``. IRC jobs read ``irc_fmax`` (eV/Angstrom, 0.01 by default) in place of ``fmax``.
+
         Returns:
             dict: The resolved ASE run settings.
         """

@@ -4354,6 +4354,7 @@ class Scheduler(object):
         self.output[label]['paths'].setdefault('irc_directions', list()).append(
             getattr(job, 'irc_direction', None)
         )
+        self.flag_incomplete_ase_irc(label=label, job=job)
         index = 1
         if len(self.output[label]['paths']['irc']) == 2:
             index = 2
@@ -4383,6 +4384,27 @@ class Scheduler(object):
                      job_type='opt',
                      fine=False,
                      )
+
+    def flag_incomplete_ase_irc(self, label: str, job: JobAdapter):
+        """
+        Add a warning to the TS's output if its ASE IRC job reports a path that is incomplete or not a
+        trustworthy IRC (``irc_complete: False`` in the job's output.yml).
+
+        Args:
+            label (str): The TS label.
+            job (JobAdapter): The IRC job.
+        """
+        if job.job_adapter != 'ase' or not os.path.isfile(job.local_path_to_output_file):
+            return
+        results = read_yaml_file(job.local_path_to_output_file) or dict()
+        if results.get('irc_complete', True):
+            return
+        direction = getattr(job, 'irc_direction', None)
+        issues = '; '.join(results.get('warnings') or list()) or 'no details reported'
+        message = f'the {direction + " " if direction else ""}ASE IRC path is incomplete or untrustworthy ({issues}); '
+        logger.warning(f'TS {label}: {message}')
+        if message not in self.output[label]['warnings']:
+            self.output[label]['warnings'] += message
 
     def add_label_to_unique_species_labels(self, label: str) -> str:
         """
