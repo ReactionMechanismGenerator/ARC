@@ -53,7 +53,7 @@ from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
 from arc.job.pipe.pipe_run import rotor_scan_1d_task_id
-from arc.job.pipe.pipe_state import ROTOR_SCAN_1D_TASK_FAMILY, TaskState, read_task_state
+from arc.job.pipe.pipe_state import PipeRunState, ROTOR_SCAN_1D_TASK_FAMILY, TaskState, read_task_state
 from arc.job.ssh_pool import borrow_ssh_client
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
@@ -749,6 +749,24 @@ class Scheduler(object):
                 or label in self._pending_pipe_conf_sp
                 or any(label in {t.owner_key for t in p.tasks}
                        for p in self.active_pipes.values()))
+
+    def has_pending_conformer_sp(self, label: str) -> bool:
+        """
+        Whether a conformer single point (``conf_sp``) of a species is queued for a pipe batch or runs in a pipe
+        run that has not terminated.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: ``True`` if a conformer single point of the species has not reported yet.
+        """
+        if self._pending_pipe_conf_sp.get(label):
+            return True
+        terminal = (PipeRunState.COMPLETED, PipeRunState.COMPLETED_PARTIAL, PipeRunState.FAILED)
+        return any(pipe.status not in terminal
+                   and any(task.task_family == 'conf_sp' and task.owner_key == label for task in pipe.tasks)
+                   for pipe in self.active_pipes.values())
 
     def flush_pending_pipe_batches(self) -> None:
         """
@@ -1648,23 +1666,16 @@ class Scheduler(object):
         Determine the species' most stable conformer (the most likely one for a TS) and spawn its geometry
         optimization, or its composite job.
 
-        Nothing is spawned while conformer jobs of the species are still running, which is the state of a restarted
-        run that restored them: they pick the conformer when they end, and until then the energies of those that
-        have not reported are still the force field's.
-
-        Nor is anything spawned if the species already has an optimization (or composite job) running or converged.
-        Conformer jobs that end after that are leftovers of a restart: a restarted run restores the conformer jobs
-        of its restart file, also ones it had processed before. Determining the conformer again from them started
-        another optimization, of whichever conformer now won, after the first one's rotor scans had run, so that
-        Arkane combined the scans of one conformer with the frequencies of another. Troubleshooting that re-runs
-        conformers deletes the species' jobs first, which resets both conditions.
+        Nothing is spawned while any conformer job of the species is running, while any of its conformer single
+        points (``conf_sp``) is queued or running in a pipe run, or once the species has an optimization or a
+        composite job running or converged.
 
         Args:
             label (str): The species label.
             sp_flag (bool): Whether the conformer energies come from single points (``conf_sp`` jobs).
         """
         running = self.running_jobs.get(label, list())
-        if any(is_conformer_job(job_name) for job_name in running):
+        if any(is_conformer_job(job_name) for job_name in running) or self.has_pending_conformer_sp(label):
             return
         job_types = self.output[label]['job_types']
         if job_types['opt'] or job_types['composite'] \
@@ -1674,9 +1685,8 @@ class Scheduler(object):
         if self.species_dict[label].is_ts:
             self.determine_most_likely_ts_conformer(label)
         else:
-            self.determine_most_stable_conformer(label, sp_flag=sp_flag)  # also checks isomorphism
+            self.determine_most_stable_conformer(label, sp_flag=sp_flag)
         if self.species_dict[label].initial_xyz is not None:
-            # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
             if not self.composite_method:
                 self.run_opt_job(label, fine=self.fine_only)
             else:

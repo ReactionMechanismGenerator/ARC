@@ -5046,17 +5046,20 @@ class TestScanSoftwareStamp(unittest.TestCase):
         """A species is optimized from its conformers once, not while they run nor again after a restart"""
         from arc.scheduler import Scheduler
 
-        for running, opt_done, expect_opt in (
-                ([], False, True),                             # all conformer jobs ended: optimize
-                (['conf_opt_7', 'conf_opt_8'], False, False),  # restored conformer jobs are still running
-                (['opt_a402'], False, False),                  # an optimization is running
-                (['scan_a3211', 'freq_a3658'], True, False),   # optimized and scanned already
-                (['composite_a12'], False, False),             # a composite job is running
+        for running, opt_done, sp_pending, expect_opt in (
+                ([], False, False, True),
+                ([], False, True, False),
+                (['conf_opt_7', 'conf_opt_8'], False, False, False),
+                (['conf_sp_7'], False, False, False),
+                (['opt_a402'], False, False, False),
+                (['scan_a3211', 'freq_a3658'], True, False, False),
+                (['composite_a12'], False, False, False),
         ):
-            with self.subTest(running=running, opt_done=opt_done):
+            with self.subTest(running=running, opt_done=opt_done, sp_pending=sp_pending):
                 spc = MagicMock()
                 spc.is_ts, spc.initial_xyz = False, {'symbols': ('H', 'H')}
                 sched = MagicMock()
+                sched.has_pending_conformer_sp.return_value = sp_pending
                 sched.species_dict = {'spc': spc}
                 sched.running_jobs = {'spc': running}
                 sched.output = {'spc': {'job_types': {'opt': opt_done, 'composite': False}}}
@@ -5066,6 +5069,41 @@ class TestScanSoftwareStamp(unittest.TestCase):
                 self.assertEqual(sched.run_opt_job.called, expect_opt)
                 if expect_opt:
                     sched.determine_most_stable_conformer.assert_called_once_with('spc', sp_flag=True)
+
+    def test_has_pending_conformer_sp(self):
+        """A conformer single point is pending while queued for a pipe batch or in a pipe run that has not ended"""
+        from arc.job.pipe.pipe_state import PipeRunState
+        from arc.scheduler import Scheduler
+
+        def pipe(status, task_family, owner_key):
+            return SimpleNamespace(status=status, tasks=[SimpleNamespace(task_family=task_family, owner_key=owner_key)])
+
+        for pending, pipes, expected in (
+                (dict(), dict(), False),
+                ({'spc': {3}}, dict(), True),
+                ({'other': {3}}, dict(), False),
+                (dict(), {'p': pipe(PipeRunState.SUBMITTED, 'conf_sp', 'spc')}, True),
+                (dict(), {'p': pipe(PipeRunState.ACTIVE, 'conf_sp', 'spc')}, True),
+                (dict(), {'p': pipe(PipeRunState.COMPLETED, 'conf_sp', 'spc')}, False),
+                (dict(), {'p': pipe(PipeRunState.FAILED, 'conf_sp', 'spc')}, False),
+                (dict(), {'p': pipe(PipeRunState.ACTIVE, 'conf_opt', 'spc')}, False),
+                (dict(), {'p': pipe(PipeRunState.ACTIVE, 'conf_sp', 'other')}, False),
+        ):
+            with self.subTest(pending=pending, pipes=pipes):
+                sched = MagicMock()
+                sched._pending_pipe_conf_sp = pending
+                sched.active_pipes = pipes
+                self.assertEqual(Scheduler.has_pending_conformer_sp(sched, 'spc'), expected)
+
+    def test_pipe_conf_sp_ingestion_optimizes_through_the_scheduler(self):
+        """Ingesting a conformer single-point pipe run picks the conformer through the Scheduler's guarded path"""
+        from arc.job.pipe.pipe_coordinator import PipeCoordinator
+
+        sched = MagicMock()
+        PipeCoordinator(sched)._post_ingest_conf_sp('spc')
+        sched.optimize_most_stable_conformer.assert_called_once_with('spc', sp_flag=True)
+        sched.determine_most_stable_conformer.assert_not_called()
+        sched.run_opt_job.assert_not_called()
 
     def test_run_ts_conformer_jobs_keeps_restored_conformer_jobs(self):
         """TS conformer jobs restored by a restarted run are not spawned again"""

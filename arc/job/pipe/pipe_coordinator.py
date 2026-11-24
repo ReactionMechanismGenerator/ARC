@@ -602,15 +602,9 @@ class PipeCoordinator:
         """After all conformer SP tasks, pick the best conformer and run opt."""
         logger.info(f'\nConformer SP jobs for {label} successfully terminated (pipe mode).\n')
         try:
-            self.sched.determine_most_stable_conformer(label, sp_flag=True)
+            self.sched.optimize_most_stable_conformer(label, sp_flag=True)
         except Exception:
             logger.error(f'Failed to determine most stable conformer for {label}.', exc_info=True)
-            return
-        if self.sched.species_dict[label].initial_xyz is not None:
-            if not self.sched.composite_method:
-                self.sched.run_opt_job(label, fine=self.sched.fine_only)
-            else:
-                self.sched.run_composite_job(label)
 
     def _eject_to_scheduler(self, pipe: 'PipeRun', spec: TaskSpec,
                             state: 'TaskStateRecord') -> bool:
