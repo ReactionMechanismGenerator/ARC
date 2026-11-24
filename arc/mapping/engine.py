@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 
 from arc.common import extremum_list, get_angle_in_180_range, is_angle_linear, logger, signed_angular_diff
 from arc.exceptions import AtomTypeError, ConformerError, InputError, SpeciesError, VectorsError
-from arc.family import ReactionFamily
 from arc.molecule import Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species import ARCSpecies
@@ -1725,7 +1724,9 @@ def make_bond_changes(rxn: ARCReaction, r_cuts: list[ARCSpecies], r_label_dict: 
         r_cuts (list[ARCSpecies]): The cut products
         r_label_dict (dict): The dictionary of reactant atom labels for the family recipe.
     """
-    family = ReactionFamily(label=rxn.family)
+    family = rxn.get_reaction_family_object()
+    if family is None:
+        return
     for action in family.actions:
         if action[0].lower() == "change_bond":
             indices = r_label_dict[action[1]], r_label_dict[action[3]]
@@ -2232,10 +2233,10 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
             broken bond (1-indexed), representing the atom indices to be cut.
             Returns ``None`` if ``rxn.family`` is not set or ``rxn.product_dicts`` is empty.
     """
-    if rxn.family is None:
+    if rxn.family is None or not len(rxn.product_dicts):
         return None
-    family = ReactionFamily(label=rxn.family)
-    if not len(rxn.product_dicts):
+    family = rxn.get_reaction_family_object()
+    if family is None:
         return None
     label_dict = rxn.product_dicts[pdi][f'{"r" if r_direction else "p"}_label_map']
     breaking_bonds = list()
