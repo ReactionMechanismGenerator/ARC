@@ -19,9 +19,11 @@ import numpy as np
 
 from arc.common import get_logger
 from arc.mapping.cluster import ComplexGraph, core_automorphisms
-from arc.species.conformers import get_graph_stereocenters, get_ts_bonds, is_ring_twist
+from arc.species.conformers import (get_graph_stereocenters, get_neighbors, get_reachable, get_ts_bonds,
+                                    is_ring_twist, is_ts_graph_out_of_order)
 from arc.species.species import USER_OPTICAL_ISOMERS_CAUSE
-from arc.species.vectors import apply_rodrigues_rotation, calculate_angle, calculate_dihedral_angle
+from arc.species.vectors import (apply_rodrigues_rotation, calculate_angle, calculate_dihedral_angles, get_normal,
+                                 unit_vector)
 
 if TYPE_CHECKING:
     from arc.reaction import ARCReaction
@@ -178,7 +180,7 @@ def _determine(species: 'ARCSpecies',
     if xyz is None:
         return _result(None, 'undetermined', reason='no optimised geometry')
     symbols = list(xyz['symbols'])
-    if species.mol is not None and [atom.element.symbol for atom in species.mol.atoms] != symbols:
+    if is_ts_graph_out_of_order(mol=species.mol, xyz=xyz):
         return _result(None, 'undetermined', reason='the atom order of the 2D graph and the geometry differ')
     if species.is_ts:
         bonds = get_ts_bonds(mol=species.mol, xyz=xyz, reaction=reaction)[0]
@@ -482,7 +484,7 @@ class MirrorReach(object):
         Find the rotor dihedrals that bring the structure closest to its mirror image.
         For each symmetry map, every rotor is set to its mirror-image value under that map. A rotor alone sets the
         torsions about its own bond, so each one is chosen among its candidates by the deviation of those torsions,
-        in two passes (the second with every other rotor already set, so the fit that assigns H atoms is good).
+        in two passes (the second with every other rotor already set).
 
         Args:
             torsions (list[tuple]): The rotor torsions.
@@ -653,35 +655,17 @@ def get_mirror_torsion_deviation(coords: np.ndarray | list | tuple,
         torsions (list[tuple]): The torsions to compare, as atom indices of the structure.
 
     Returns:
-        tuple[float, dict]: D in degrees (0 if no torsion), and the deviation of every torsion.
+        tuple[float, dict]: D in degrees (0 if no torsion is defined in both), and the deviation of every torsion
+                            (``NaN`` for a torsion through three collinear atoms, which is not compared).
     """
     if not torsions:
         return 0.0, dict()
     index = np.array(torsions, dtype=int)
     mapped = np.vectorize(atom_map.__getitem__)(index)
-    difference = get_dihedrals(np.asarray(coords, dtype=float), index) \
-        - get_dihedrals(np.asarray(mirror, dtype=float), mapped)
+    difference = calculate_dihedral_angles(coords, index) - calculate_dihedral_angles(mirror, mapped)
     deviations = np.abs((difference + 180.0) % 360.0 - 180.0)
-    return float(deviations.max()), dict(zip(torsions, deviations.tolist()))
-
-
-def get_dihedrals(coords: np.ndarray, torsions: np.ndarray) -> np.ndarray:
-    """
-    Get signed dihedral angles, vectorized.
-
-    Args:
-        coords (np.ndarray): The coordinates.
-        torsions (np.ndarray): Rows of four atom indices.
-
-    Returns:
-        np.ndarray: The dihedral angles in degrees, in (-180, 180].
-    """
-    p0, p1, p2, p3 = (coords[torsions[:, k]] for k in range(4))
-    b1 = p2 - p1
-    b1 /= np.linalg.norm(b1, axis=1)[:, None]
-    v = (p0 - p1) - np.sum((p0 - p1) * b1, axis=1)[:, None] * b1
-    w = (p3 - p2) - np.sum((p3 - p2) * b1, axis=1)[:, None] * b1
-    return np.degrees(np.arctan2(np.sum(np.cross(b1, v) * w, axis=1), np.sum(v * w, axis=1)))
+    compared = deviations[~np.isnan(deviations)]
+    return float(compared.max()) if compared.size else 0.0, dict(zip(torsions, deviations.tolist()))
 
 
 def get_all_torsions(neighbors: dict[int, set[int]],
@@ -741,8 +725,7 @@ def flatten_centers(coords: np.ndarray, neighbors: dict[int, set[int]], centers:
     new_coords = np.array(coords, dtype=float)
     for center in sorted(centers):
         p0, p1, p2 = (coords[i] for i in sorted(neighbors[center]))
-        normal = np.cross(p1 - p0, p2 - p0)
-        normal /= np.linalg.norm(normal)
+        normal = np.array(get_normal(p1 - p0, p2 - p0))
         new_coords[center] = coords[center] - np.dot(coords[center] - p0, normal) * normal
     return new_coords
 
@@ -784,8 +767,8 @@ def walk_linear_chain(neighbors: dict[int, set[int]], linear: set[int], start: i
 
 def get_axis_torsions(neighbors: dict[int, set[int]], linear: set[int]) -> list[tuple[int, int, int, int]]:
     """
-    Get the torsions across linear chains (e.g., the C=C=C of an allene), which proper torsions cannot see because
-    every bond angle along the chain is straight: a-b-c-d for the two ends b and c of the chain, with a and d off it.
+    Get the torsions across linear chains (e.g., the C=C=C of an allene), whose bond angles are all straight:
+    a-b-c-d for the two ends b and c of the chain, with a and d off it.
 
     Args:
         neighbors (dict[int, set[int]]): The neighbors of each atom.
@@ -818,48 +801,7 @@ def get_signed_dihedral(coords: list, torsion: tuple[int, int, int, int] | list[
     Returns:
         float: The dihedral angle in degrees, in [-180, 180).
     """
-    return (calculate_dihedral_angle(coords, [int(i) for i in torsion]) + 180.0) % 360.0 - 180.0
-
-
-def get_neighbors(bonds: set[tuple[int, int]], n: int) -> dict[int, set[int]]:
-    """
-    Get the neighbors of each atom of a graph.
-
-    Args:
-        bonds (set[tuple[int, int]]): The bonds.
-        n (int): The number of atoms.
-
-    Returns:
-        dict[int, set[int]]: The neighbors of each atom.
-    """
-    neighbors = {i: set() for i in range(n)}
-    for i, j in bonds:
-        neighbors[i].add(j)
-        neighbors[j].add(i)
-    return neighbors
-
-
-def get_reachable(neighbors: dict[int, set[int]], start: int, cut: tuple[int, int] | None = None) -> set[int]:
-    """
-    Get the atoms reachable from an atom, optionally without crossing one bond.
-
-    Args:
-        neighbors (dict[int, set[int]]): The neighbors of each atom.
-        start (int): The atom to start from.
-        cut (tuple[int, int], optional): A bond that is not crossed.
-
-    Returns:
-        set[int]: The reachable atoms, including ``start``.
-    """
-    cut = set(cut) if cut is not None else set()
-    reached, stack = {start}, [start]
-    while stack:
-        atom = stack.pop()
-        for neighbor in neighbors[atom] - reached:
-            if {atom, neighbor} != cut:
-                reached.add(neighbor)
-                stack.append(neighbor)
-    return reached
+    return (float(calculate_dihedral_angles(coords, [[int(i) for i in torsion]])[0]) + 180.0) % 360.0 - 180.0
 
 
 def rotate_top(coords: np.ndarray,
@@ -887,9 +829,9 @@ def rotate_top(coords: np.ndarray,
     current = get_signed_dihedral(coords.tolist(), dihedral or torsion)
     if math.isnan(current):
         return coords
-    axis = (coords[c] - coords[b]) / np.linalg.norm(coords[c] - coords[b])
     new_coords = [tuple(row) for row in coords.tolist()]
-    apply_rodrigues_rotation(new_coords, axis_origin=coords[c].tolist(), axis_unit=axis.tolist(),
+    apply_rodrigues_rotation(new_coords, axis_origin=coords[c].tolist(),
+                             axis_unit=unit_vector((coords[c] - coords[b]).tolist()),
                              angle_rad=math.radians(value - current),
                              indices=sorted(get_reachable(neighbors, c, cut=(b, c)) - {c}))
     return np.array(new_coords, dtype=float)

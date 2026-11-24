@@ -2,9 +2,8 @@
 A module deciding whether a queue status command (``squeue``, ``qstat``, ``condor_q``) was answered.
 
 A command that fails on the cluster, e.g., Slurm's "Socket timed out on send/recv operation", prints nothing on
-stdout, which is also what an empty queue looks like. Reading that as "no jobs running" ends every live job, so a
-failed query is retried here, after each delay in ``QUEUE_QUERY_RETRY_DELAYS`` (seconds), and then reported as
-unknown, never as empty. The local and the SSH paths both query through ``run_queue_query()``.
+stdout, as an empty queue does. A failed query is retried here, after each delay in ``QUEUE_QUERY_RETRY_DELAYS``
+(seconds), and then reported as unknown. The local and the SSH paths both query through ``run_queue_query()``.
 
 The command's exit status decides: 0 is an answer, whatever stderr says (many servers print a module warning or a
 login banner on every command), and any other status is a failure. The shell's 127 is a missing command. Only a
@@ -107,7 +106,7 @@ def run_queue_query(run: Callable[[], tuple[list | None, list | None, int | None
 
 def positive_setting(value: object, name: str, default: float, unit: str, scale: float = 1.0) -> float:
     """
-    Read a setting that must be a positive, finite number.
+    Read a setting that holds a positive, finite number.
 
     Args:
         value (object): The setting's value; ``None`` where it is not set.
@@ -141,7 +140,7 @@ def queue_outage_limit(hours: object) -> float:
         hours (object): The ``queue_outage_limit_hrs`` setting; ``None`` where it is not set.
 
     Returns:
-        float: The limit in seconds. An absent or malformed setting gives ``QUEUE_OUTAGE_LIMIT_HRS``, never no limit.
+        float: The limit in seconds. An absent or malformed setting gives ``QUEUE_OUTAGE_LIMIT_HRS``.
     """
     return positive_setting(hours, 'queue_outage_limit_hrs', QUEUE_OUTAGE_LIMIT_HRS, 'hours', scale=3600.0)
 
@@ -154,7 +153,7 @@ def queue_query_timeout(seconds: object) -> float:
         seconds (object): The ``queue_query_timeout`` setting; ``None`` where it is not set.
 
     Returns:
-        float: The timeout in seconds. An absent or malformed setting gives ``QUEUE_QUERY_TIMEOUT``, never no timeout.
+        float: The timeout in seconds. An absent or malformed setting gives ``QUEUE_QUERY_TIMEOUT``.
     """
     return float(positive_setting(seconds, 'queue_query_timeout', QUEUE_QUERY_TIMEOUT, 'seconds'))
 
