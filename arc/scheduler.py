@@ -4536,12 +4536,11 @@ class Scheduler(object):
                 # There is no torsion to treat as a rotor, and the symmetry of a profile without peaks is undefined.
                 invalidate = True
                 invalidation_reason += 'The scan energy is flat (nothing rotated); '
-            elif len(energies) > 5 and not invalidate:
-                # Not after an 'Internal coordinate error': the scan stopped partway (e.g., at point 12 of 46), and a
-                # quality check of the points it did reach would overwrite that verdict, turning it into a success.
+            elif len(energies) > 5:
+                stopped_partway = invalidate
                 trajectory = parser.parse_1d_scan_coords(log_file_path=job.local_path_to_output_file) \
                     if self.species_dict[label].is_ts else None
-                invalidate, invalidation_reason, message, actions = scan_quality_check(
+                check_invalidate, check_reason, message, actions = scan_quality_check(
                     label=label,
                     pivots=self.species_dict[label].rotors_dict[job.rotor_index]['pivots'],
                     energies=energies,
@@ -4552,6 +4551,10 @@ class Scheduler(object):
                     trajectory=trajectory,
                     original_xyz=self.species_dict[label].final_xyz,
                 )
+                if stopped_partway:
+                    actions = {key: value for key, value in actions.items() if key == 'change conformer'}
+                else:
+                    invalidate, invalidation_reason = check_invalidate, check_reason
 
                 if len(list(actions.keys())) \
                         and 'pivTS' not in self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] \

@@ -4927,10 +4927,8 @@ class TestScanSoftwareStamp(unittest.TestCase):
         self.assertEqual(rotor['scan_path'], '/fake/scan.out')
         self.assertFalse(rotor['success'])
 
-    def test_check_scan_job_keeps_an_internal_coordinate_error_invalid(self):
-        """A scan that stopped on an internal coordinate error stays invalid, however smooth the points it reached"""
-        from arc.scheduler import Scheduler
-
+    def _scan_stopped_on_internal_coordinate_error(self):
+        """A Scheduler mock, its species' rotor, and a scan job that stopped on an internal coordinate error"""
         rotor = self._rotor()
         spc = MagicMock()
         spc.rotors_dict = {0: rotor}
@@ -4954,18 +4952,43 @@ class TestScanSoftwareStamp(unittest.TestCase):
         job.xyz = {'coords': (), 'symbols': ()}
         job.is_ts = False
         job.species_label = 'spc'
+        return sched, rotor, job
 
-        energies = [0.0, 0.5, 2.0, 4.0, 5.5, 6.0, 5.5, 4.0, 2.0, 0.5, 0.0, 0.5]  # 12 of 46 points, all smooth
+    def _check_scan_with_quality_check_result(self, sched, job, quality_check_result):
+        """Run check_scan_job on 12 smooth scan points, with scan_quality_check returning the given result"""
+        from arc.scheduler import Scheduler
+
+        energies = [0.0, 0.5, 2.0, 4.0, 5.5, 6.0, 5.5, 4.0, 2.0, 0.5, 0.0, 0.5]
         with patch('arc.scheduler.parser.parse_1d_scan_energies_from_specific_angle',
                    return_value=(energies, [8.0 * i for i in range(12)])), \
              patch('arc.scheduler.calculate_dihedral_angle', return_value=0.0), \
-             patch('arc.scheduler.scan_quality_check', return_value=(False, '', '', dict())) as quality_check, \
+             patch('arc.scheduler.scan_quality_check', return_value=quality_check_result) as quality_check, \
              patch('arc.scheduler.plotter.plot_1d_rotor_scan'):
             Scheduler.check_scan_job(sched, label='spc', job=job)
+        return quality_check
 
-        quality_check.assert_not_called()
+    def test_check_scan_job_keeps_an_internal_coordinate_error_invalid(self):
+        """A scan that stopped on an internal coordinate error stays invalid, however smooth the points it reached"""
+        sched, rotor, job = self._scan_stopped_on_internal_coordinate_error()
+        quality_check = self._check_scan_with_quality_check_result(sched, job, (False, '', '', dict()))
+
+        quality_check.assert_called_once()
+        sched.troubleshoot_scan_job.assert_not_called()
         self.assertFalse(rotor['success'])
         self.assertIn('Internal coordinate error', rotor['invalidation_reason'])
+
+    def test_check_scan_job_changes_conformer_from_a_scan_stopped_partway(self):
+        """A lower conformer found by a scan that stopped on an internal coordinate error replaces the species' one"""
+        sched, rotor, job = self._scan_stopped_on_internal_coordinate_error()
+        lower_xyz = {'symbols': ('C',), 'coords': ((0.0, 0.0, 0.0),)}
+        actions = {'change conformer': lower_xyz, 'freeze': [[1, 2]]}
+        sched.troubleshoot_scan_job.return_value = (True, {'change conformer': lower_xyz})
+        self._check_scan_with_quality_check_result(sched, job, (True, 'lower conformer; ', '', actions))
+
+        sched.troubleshoot_scan_job.assert_called_once_with(job=job, methods={'change conformer': lower_xyz})
+        self.assertFalse(rotor['success'])
+        self.assertIn('Internal coordinate error', rotor['invalidation_reason'])
+        self.assertNotIn('lower conformer', rotor['invalidation_reason'])
 
     def test_check_scan_job_invalidates_a_flat_scan(self):
         """A scan along which nothing turned (one energy at every point) is not a rotor, and has no symmetry to find"""
