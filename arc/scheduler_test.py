@@ -1232,7 +1232,8 @@ H       1.27889520   -0.81548721   -0.12940984"""
         with self.assertLogs('arc', level='WARNING') as logs:
             sched, energies_at_decision, run_job_calls = self._fresh_conf_sp_round(
                 try_pipe_conf_sp=MagicMock(side_effect=RuntimeError('pipe down\nsecond line')))
-        warnings = [line for line in logs.output if line.startswith('WARNING') and 'pipe mode' in line]
+        warnings = [record.getMessage() for record in logs.records
+                    if record.levelno == logging.WARNING and 'pipe mode' in record.getMessage()]
         self.assertEqual(len(warnings), 1)
         self.assertIn(label, warnings[0])
         self.assertIn('pipe down', warnings[0])
