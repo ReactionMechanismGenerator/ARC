@@ -253,9 +253,8 @@ class TestKinBotAdapter(unittest.TestCase):
         """
         Test that a KinBot guess built from the product ('R') is stored in reactant atom order.
 
-        Here the product and the reactant list their elements in the same sequence, so the element sequence alone
-        cannot tell the two orders apart; the guess must be the atom-map permutation of KinBot's output and must
-        keep every non-reacting reactant bond.
+        The product and the reactant list their elements in the same sequence. The stored guess is the atom-map
+        permutation of KinBot's output and keeps every non-reacting reactant bond.
         """
         rxn = self.ts13_reaction()
         adapter = self.get_adapter(dir_name='tst_reverse_order')
@@ -311,10 +310,8 @@ class TestKinBotAdapter(unittest.TestCase):
 
     def test_reactant_order_guess_unchanged(self):
         """
-        Test that a KinBot guess built from the reactant ('F') is stored exactly as KinBot returned it.
-
-        The guess is already in reactant order. This guards a no-op and passes before the fix too; it fails if the
-        reordering is applied regardless of the direction.
+        Test that a KinBot guess built from the reactant ('F') is stored exactly as KinBot returned it, with no
+        reordering.
         """
         rxn = self.ts13_reaction()
         adapter = self.get_adapter(dir_name='tst_forward_order')

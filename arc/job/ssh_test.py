@@ -78,6 +78,28 @@ class TestSSH(unittest.TestCase):
         status1 = ssh.check_job_status_in_stdout(job_id=4000, stdout=stdout_2, server='local')
         self.assertEqual(status1, 'done')
 
+    def test_the_job_id_is_matched_on_the_job_id_field_only(self):
+        """A job ID that appears inside another column of another job's status line does not read as that job"""
+        stdout = ['zeus-m:\n',
+                  "                                                            Req'd  Req'd   Elap\n",
+                  'Job ID          Username Queue    Jobname    SessID NDS TSK Memory Time  S Time\n',
+                  '--------------- -------- -------- ---------- ------ --- --- ------ ----- - -----\n',
+                  '7654321.zeus-m  user     alon_q   a12345     384521   1   8    8gb 24:00 R 01:10\n']
+        with patch.dict(ssh.servers, {'pbs_server': {'cluster_soft': 'PBS'}}):
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id=8452, stdout=stdout, server='pbs_server'), 'done')
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id=765432, stdout=stdout, server='pbs_server'),
+                             'done')
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id=7654321, stdout=stdout, server='pbs_server'),
+                             'running')
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id='7654321', stdout=stdout, server='pbs_server'),
+                             'running')
+        slurm = ['             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)\n',
+                 '             14428     short   a14428     user  R       0:01      1 node01\n']
+        with patch.dict(ssh.servers, {'slurm_server': {'cluster_soft': 'Slurm'}}):
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id=1442, stdout=slurm, server='slurm_server'), 'done')
+            self.assertEqual(ssh.check_job_status_in_stdout(job_id=14428, stdout=slurm, server='slurm_server'),
+                             'running')
+
 
 
 class TestSSHConnectHardening(unittest.TestCase):
@@ -172,13 +194,13 @@ class TestQueueQueryFailure(unittest.TestCase):
         return patch.object(self.client, '_send_command_to_server', side_effect=list(replies))
 
     def test_check_job_status_does_not_read_a_socket_timeout_as_finished(self):
-        """A running job must not read as done or errored because the queue did not answer."""
+        """A running job whose queue did not answer raises QueueQueryError, not done or errored."""
         with self._replies(*[([], SOCKET_TIMEOUT, 1)] * 3):
             with self.assertRaises(ServerError):
                 self.client.check_job_status(4242)
 
     def test_check_running_jobs_ids_does_not_read_a_socket_timeout_as_no_jobs(self):
-        """An unanswered queue must not report an empty job list."""
+        """An unanswered queue raises QueueQueryError, not an empty job list."""
         with self._replies(*[([], SOCKET_TIMEOUT, 1)] * 3):
             with self.assertRaises(ServerError):
                 self.client.check_running_jobs_ids()
@@ -190,7 +212,7 @@ class TestQueueQueryFailure(unittest.TestCase):
                 self.client.check_running_jobs_ids()
 
     def test_a_missing_queue_command_on_the_server_is_a_failed_query(self):
-        """A remote queue server always has a queue command, so a missing one is not an empty queue."""
+        """A missing queue command on a remote server is a failure, not an empty queue."""
         with self._replies(*[([], ['bash: squeue: command not found\n'], 127)] * 3):
             with self.assertRaises(ServerError):
                 self.client.check_job_status(4242)
