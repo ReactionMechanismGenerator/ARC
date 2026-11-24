@@ -11,6 +11,7 @@ import re
 import shutil
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from arc.checks.common import TS_IRC_FAILED_MARKER
@@ -458,6 +459,17 @@ class TestArkaneAdapter(unittest.TestCase):
             lines = f.readlines()
         for expected_line in expected_lines:
             self.assertIn(expected_line + '\n', lines, f"Expected line '{expected_line}' not found in {input_path}")
+
+    def test_species_file_sets_spin_multiplicity(self):
+        """A species file sets the multiplicity under the name Arkane reads, spin_multiplicity"""
+        species = SimpleNamespace(label='CH2', is_linear=False, multiplicity=3, rotors_dict=dict(), arkane_file=None)
+        adapter = SimpleNamespace(output_dict={'CH2': {'paths': {'composite': '', 'sp': 'sp.log', 'freq': 'freq.log'}}})
+        with tempfile.TemporaryDirectory() as tmp:
+            ArkaneAdapter.generate_species_file(adapter, species, species_dir=tmp, skip_rotors=True)
+            with open(os.path.join(tmp, 'CH2.py')) as f:
+                lines = f.readlines()
+        self.assertIn('spin_multiplicity = 3\n', lines)
+        self.assertFalse(any('spinMultiplicity' in line for line in lines))
 
     def test_lone_pair_species_uses_adjacency_list(self):
         """A lone-pair singlet (singlet carbene [CH2], mult 1) whose SMILES round-trips to a different
