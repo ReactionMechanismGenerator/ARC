@@ -158,7 +158,18 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
                                 'reference followed by MRCI or CASPT2) is what this species calls for; '
 
 MAX_S_SQUARED_DEVIATION = 0.1
-CONFORMER_ENERGY_TOLERANCE = 0.1  # kJ/mol
+CONFORMER_ENERGY_TOLERANCE = 0.1
+CONFORMER_ENERGY_RISE_TOLERANCE = 1.0
+"""
+Energy tolerances in kJ/mol for judging a re-optimization after a conformer change.
+
+``CONFORMER_ENERGY_TOLERANCE`` is the largest electronic energy change between the geometry before the conformer
+change and the re-optimized one that counts as the same energy (see ``is_same_conformer``).
+
+``CONFORMER_ENERGY_RISE_TOLERANCE`` is the smallest rise of that energy that marks the re-optimized geometry as
+higher than the one it replaced. It is set above the geometry-dependent numerical noise of such an energy
+difference, about 0.4 kJ/mol for the COSX integration of ORCA's default RIJCOSX.
+"""
 
 IRC_EARLY_STOP_KEYWORDS = ('DeltaX', 'GL123')
 
@@ -4501,19 +4512,12 @@ class Scheduler(object):
 
     def record_pending_conformer_changes(self) -> None:
         """
-        Record in the output dict how many 'change conformer' records of each species were never judged
-        (``conformer_change_pending``) and how many were judged (``conformer_change_judged``).
-        Records written before the judgement existed (no ``'verified'`` key) are counted in neither.
-        Called at the end of the run (also a restarted one), so the RMG library gate sees an unjudged change, and a
-        judged change whose species was not confirmed by its rotor rescans, as not verified.
+        Record in the output dict how many 'change conformer' records of each species were never judged.
+        Called at the end of the run (also a restarted one), so the RMG library gate sees them as not verified.
         """
         for label in self.species_dict:
             if label in self.output:
                 self.output[label]['conformer_change_pending'] = len(self.pending_conformer_changes(label))
-                self.output[label]['conformer_change_judged'] = sum(
-                    1 for rotor in (self.species_dict[label].rotors_dict or dict()).values()
-                    for method in rotor.get('trsh_methods', list())
-                    if 'change conformer' in method and method.get('verified') is not None)
 
     def stage_change_conformer_reopt(self, label: str, job: JobAdapter) -> None:
         """
@@ -4535,10 +4539,10 @@ class Scheduler(object):
         Check that a re-optimization started from a lower conformer found by a rotor scan reached a new geometry.
         The same energy as before the change (or, without a comparable energy, the same scanned dihedral) means the
         lower conformer was not reached, so the species is flagged as not verified (see ``is_same_conformer``).
-        An electronic energy higher than before the change by ``CONFORMER_ENERGY_TOLERANCE`` or more also means it
-        was not reached, whatever the dihedral.
-        The latest change (by ``change_index``) is judged, and its verdict closes every older pending change, since a
-        later scan already moved away from their geometry.
+        An electronic energy higher than before the change by ``CONFORMER_ENERGY_RISE_TOLERANCE`` or more marks the
+        record as not verified and flags the species, whatever the dihedral.
+        The latest change (by ``change_index``) is judged, and
+        its verdict closes every older pending change, since a later scan already moved away from their geometry.
         A dihedral that cannot be computed (collinear atoms) counts as not compared. Only a job of the type the
         baseline energy came from (composite or opt) is compared; an opt troubleshooting a composite run is not.
         The energies are not compared when the jobs ran at different effective levels (``job_level_signature``).
@@ -4581,15 +4585,17 @@ class Scheduler(object):
             return
         same_conformer = is_same_conformer(d_dihedral=d_dihedral, d_energy=d_energy,
                                            energy_gap=record.get('energy_gap'))
-        energy_rose = e_rise is not None and e_rise >= CONFORMER_ENERGY_TOLERANCE
+        energy_rose = e_rise is not None and e_rise >= CONFORMER_ENERGY_RISE_TOLERANCE
         for method in pending:
             method['verified'] = not same_conformer and not energy_rose
         if energy_rose:
+            job_type = 'composite' if self.composite_method else 'opt'
             self.flag_conformer_not_verified(
                 label=label,
-                cause=f'Re-optimization of {label} from the lower conformer found by the scan of torsion '
-                      f'{record["torsion"]} ended {e_rise:.2f} kJ/mol above the energy before the conformer '
-                      f'change; the conformer {format_energy_gap(record.get("energy_gap"))} was not reached.')
+                cause=f'Re-optimization of {label} from the conformer the scan of torsion {record["torsion"]} '
+                      f'found {format_energy_gap(record.get("energy_gap"))} at the scan level ended '
+                      f'{e_rise:.2f} kJ/mol above the energy before the conformer change, both at the '
+                      f'{job_type} level; the geometry used is higher than the one it replaced.')
         elif same_conformer:
             energy_txt = f'energy change {d_energy:.2f} kJ/mol' if d_energy is not None else 'energy not compared'
             self.flag_conformer_not_verified(

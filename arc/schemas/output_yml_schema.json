@@ -1530,13 +1530,6 @@
           ],
           "minimum": 0
         },
-        "conformer_change_judged": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "minimum": 0
-        },
         "smiles": {
           "type": [
             "string",

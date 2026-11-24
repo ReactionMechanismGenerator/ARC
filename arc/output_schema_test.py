@@ -504,7 +504,7 @@ class TestRichDocumentValidates(SchemaAssertionMixin, unittest.TestCase):
                 'sBuOH': {'convergence': True,
                           'paths': {'geo': opt_log, 'freq': FREQ_LOG, 'sp': OPT_LOG},
                           'job_types': {'opt': True},
-                          'conformer_change_pending': 1, 'conformer_change_judged': 1},
+                          'conformer_change_pending': 1},
                 'TS0': {'convergence': True,
                         'paths': {'geo': OPT_LOG, 'freq': FREQ_LOG, 'sp': OPT_LOG,
                                   'irc': [OPT_LOG, OPT_LOG],
@@ -542,7 +542,6 @@ class TestRichDocumentValidates(SchemaAssertionMixin, unittest.TestCase):
         species = self.document['species'][0]
         self.assertEqual(species['label'], 'sBuOH')
         self.assertEqual(species['conformer_change_pending'], 1)
-        self.assertEqual(species['conformer_change_judged'], 1)
         self.assertIn('conformers', species)
         self.assertIn('conformer_energies', species)
         self.assertTrue(species['rotor_scans'])

@@ -244,22 +244,10 @@ class TestNotVerifiedGate(unittest.TestCase):
         self.assertEqual(kept, [self.rxn])
         self.assertIn('conformer change not judged', comments[self.rxn.label])
 
-    def test_gate_leaves_out_a_judged_conformer_change_left_unconfirmed(self):
-        """A species with a judged conformer change and conformer_verified None is left out, with its reactions."""
-        output = self.output_dict()
-        output['OH'] = {'conformer_verified': None, 'conformer_verified_cause': '', 'conformer_change_pending': 0,
-                        'conformer_change_judged': 1}
-        self.assertEqual(processor.not_verified_causes('OH', output),
-                         ['OH: conformer change not confirmed by a rotor rescan'])
-        kept, _ = processor.gate_not_verified_library_entries(items=[self.rxn], output_dict=output)
-        self.assertEqual(kept, list())
-        output['OH']['conformer_verified'] = True
-        self.assertEqual(processor.not_verified_causes('OH', output), list())
-
     def test_gate_passes_an_unverified_species_with_no_pending_change(self):
         """conformer_verified None with no pending conformer change still passes the gate."""
         output = self.output_dict()
-        for pending in [dict(), {'conformer_change_pending': 0}, {'conformer_change_judged': 0}]:
+        for pending in [dict(), {'conformer_change_pending': 0}]:
             output['OH'] = {'conformer_verified': None, 'conformer_verified_cause': '', **pending}
             self.assertEqual(processor.not_verified_causes('OH', output), list())
             oh = ARCSpecies(label='OH', smiles='[OH]')
