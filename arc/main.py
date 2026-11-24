@@ -643,7 +643,6 @@ class ARC(object):
                                    )
 
         self.output = self.scheduler.output
-        # The Scheduler deletes the IRC species of a TS whose IRC check failed, from its own species list only.
         self.species = [spc for spc in self.species if spc.label in self.output]
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.output)
 

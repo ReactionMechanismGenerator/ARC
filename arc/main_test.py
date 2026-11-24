@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from arc.common import ARC_INPUT_SCHEMA_VERSION, VERSION, get_logger
 from arc.exceptions import InputError
@@ -800,6 +800,28 @@ class SchedulerStub(object):
         self.output = dict()
         self.species_dict = dict()
         self.rxn_list = list()
+
+
+class TestSpeciesAfterScheduling(unittest.TestCase):
+    """Contains tests of the species ARC keeps once the Scheduler has run its jobs."""
+
+    def test_species_the_scheduler_deleted_are_dropped(self):
+        """An IRC species the Scheduler deleted (it has no output) is not saved with the project"""
+        kept = ARCSpecies(label='H2O', smiles='O')
+        deleted = ARCSpecies(label='IRC_TS0_1', xyz='O 0.0 0.0 0.0\nH 0.0 0.0 0.96\nH 0.93 0.0 -0.24',
+                             irc_label='TS0', compute_thermo=False)
+        scheduler = SchedulerStub(remote_project_paths=dict())
+        scheduler.output = {'H2O': dict()}
+        arc_object = MagicMock()
+        arc_object.species, arc_object.reactions = [kept, deleted], list()
+        arc_object.project_directory = '/fake/project'
+        arc_object.delete_leftovers.side_effect = ReachedTheCleanup
+        with patch('arc.main.Scheduler', return_value=scheduler), \
+                patch('arc.main.save_yaml_file'), \
+                patch('arc.main.display'):
+            with self.assertRaises(ReachedTheCleanup):
+                ARC._execute(arc_object)
+        self.assertEqual(arc_object.species, [kept])
 
 
 class TestCheckFileCleanup(unittest.TestCase):
