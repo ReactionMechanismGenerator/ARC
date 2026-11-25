@@ -53,6 +53,7 @@ from arc.job.trsh import determine_ess_status
 from arc.level import Level, get_freq_level_for_composite_method
 from arc.output import _statmech_to_dict, write_output_yml
 from arc.plotter import save_conformers_file
+from arc.processor import not_verified_causes
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED,
                            CONFORMER_ISOMORPHISM_TRSH_NOTE,
                            CONFORMER_SET_REPLACED_NOTE, DEFER, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
@@ -10421,6 +10422,123 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIsNone(sched.output[label]['conformer_verified'])
         self.assertEqual(sched.output[label]['warnings'], '')
 
+    def test_check_change_conformer_reopt_energy_up_is_not_verified(self):
+        """
+        A re-opt that keeps the scanned dihedral (change 0) and ends 3 kJ/mol above the energy before the conformer
+        change is judged with these inputs, its record is not verified, the species is flagged
+        ``conformer_verified = False`` with a cause that names the rise, and it does not pass the RMG library gate.
+        """
+        sched = self.make_sched('cc_up')
+        label = 'cc_up'
+        log = self.nc3h7_log
+        xyz = parser.parse_geometry(log_file_path=log)
+        old_spc = ARCSpecies(label='nC3H7_old', smiles='[CH2]CC', xyz=xyz)
+        old_spc.determine_rotors()
+        torsion = old_spc.rotors_dict[0]['scan']
+        sched.species_dict[label].final_xyz = xyz
+        sched.species_dict[label].rotors_dict[0]['trsh_methods'] = [
+            {'change conformer': xyz, 'pre_xyz': xyz,
+             'pre_e_elect': parser.parse_e_elect(log_file_path=log) - 3.0,
+             'torsion': torsion, 'energy_gap': 3.2, 'verified': None}]
+        with patch('arc.scheduler.is_same_conformer', wraps=is_same_conformer) as spy:
+            sched.check_change_conformer_reopt(label=label, job=SimpleNamespace(
+                job_type='opt', local_path_to_xyz=None, local_path_to_output_file=log))
+        spy.assert_called_once()
+        self.assertLess(spy.call_args.kwargs['d_dihedral'], 2.0)
+        self.assertAlmostEqual(spy.call_args.kwargs['d_energy'], 3.0, places=3)
+        sched.record_pending_conformer_changes()
+        self.assertIs(sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]['verified'], False)
+        self.assertIs(sched.output[label]['conformer_verified'], False)
+        self.assertIn('ended 3.00 kJ/mol above the energy before the conformer change, both at the opt level',
+                      sched.output[label]['conformer_verified_cause'])
+        self.assertTrue(not_verified_causes(label, sched.output))
+
+    def judge_reopt(self, label: str, energy_rise: float, energy_gap: float, dihedral_change: float) -> Scheduler:
+        """
+        Judge a re-opt of nC3H7 against a record whose geometry before the change differs in the scanned dihedral.
+
+        Args:
+            label (str): The species label.
+            energy_rise (float): The re-opt energy minus the energy recorded before the change, in kJ/mol.
+            energy_gap (float): How much lower the scan found the conformer, in kJ/mol.
+            dihedral_change (float): The re-opt dihedral minus the dihedral before the change, in degrees.
+
+        Returns:
+            Scheduler: The scheduler after the judgement.
+        """
+        sched = self.make_sched(label)
+        log = self.nc3h7_log
+        xyz = parser.parse_geometry(log_file_path=log)
+        old_spc = ARCSpecies(label='nC3H7_old', smiles='[CH2]CC', xyz=xyz)
+        old_spc.determine_rotors()
+        torsion = old_spc.rotors_dict[0]['scan']
+        old_spc.final_xyz = xyz
+        old_spc.set_dihedral(scan=torsion, index=1, deg_increment=-dihedral_change, count=False)
+        sched.species_dict[label].final_xyz = xyz
+        sched.species_dict[label].rotors_dict[0]['trsh_methods'] = [
+            {'change conformer': xyz, 'pre_xyz': old_spc.initial_xyz,
+             'pre_e_elect': parser.parse_e_elect(log_file_path=log) - energy_rise,
+             'torsion': torsion, 'energy_gap': energy_gap, 'verified': None}]
+        sched.check_change_conformer_reopt(label=label, job=SimpleNamespace(
+            job_type='opt', local_path_to_xyz=None, local_path_to_output_file=log))
+        sched.record_pending_conformer_changes()
+        return sched
+
+    def test_check_change_conformer_reopt_energy_rise_below_tolerance_is_verified(self):
+        """
+        A re-opt that ends higher than before the conformer change by less than ``CONFORMER_ENERGY_RISE_TOLERANCE``
+        is judged by ``is_same_conformer`` alone: a 0.5 kJ/mol rise with an unchanged dihedral and a 3.2 kJ/mol gap,
+        and a 0.15 kJ/mol rise with a 60 deg dihedral change on a nearly free rotor (0.06 kJ/mol gap), are verified
+        and leave the species unflagged.
+        """
+        cases = [('cc_rise_small', 0.5, 3.2, 0.0), ('cc_rise_free_rotor', 0.15, 0.06, 60.0)]
+        for label, energy_rise, energy_gap, dihedral_change in cases:
+            with self.subTest(label=label):
+                sched = self.judge_reopt(label=label, energy_rise=energy_rise, energy_gap=energy_gap,
+                                         dihedral_change=dihedral_change)
+                self.assertIs(sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]['verified'], True)
+                self.assertIsNone(sched.output[label]['conformer_verified'])
+                self.assertEqual(sched.output[label]['warnings'], '')
+                self.assertEqual(not_verified_causes(label, sched.output), list())
+
+    def check_reopt_without_dihedral(self, label: str, energy_shift: float) -> tuple[Scheduler, dict]:
+        """
+        Judge a re-opt whose scanned dihedral cannot be compared (no geometry recorded before the change).
+
+        Args:
+            label (str): The species label.
+            energy_shift (float): The re-opt energy minus the energy recorded before the change, in kJ/mol.
+
+        Returns:
+            tuple[Scheduler, dict]: The scheduler and the judged 'change conformer' record.
+        """
+        sched = self.make_sched(label)
+        method = {'change conformer': None, 'pre_xyz': None,
+                  'pre_e_elect': parser.parse_e_elect(log_file_path=self.nc3h7_log) - energy_shift,
+                  'torsion': self.scan, 'energy_gap': 3.2, 'verified': None}
+        sched.species_dict[label].rotors_dict[0]['trsh_methods'] = [method]
+        sched.check_change_conformer_reopt(label=label, job=SimpleNamespace(
+            job_type='opt', local_path_to_xyz=None, local_path_to_output_file=self.nc3h7_log))
+        sched.record_pending_conformer_changes()
+        return sched, method
+
+    def test_check_change_conformer_reopt_energy_up_without_dihedral_is_not_verified(self):
+        """A re-opt that ends at a higher energy is not verified also when its dihedral cannot be compared."""
+        label = 'cc_up_nodih'
+        sched, method = self.check_reopt_without_dihedral(label=label, energy_shift=3.0)
+        output = sched.output
+        self.assertIs(method['verified'], False)
+        self.assertIs(output[label]['conformer_verified'], False)
+        self.assertIn('3.00 kJ/mol above', output[label]['conformer_verified_cause'])
+        self.assertEqual(not_verified_causes(label, output), [output[label]['conformer_verified_cause']])
+
+    def test_check_change_conformer_reopt_energy_down_without_dihedral_is_verified(self):
+        """A re-opt that ends at a lower energy is verified when its dihedral cannot be compared."""
+        label = 'cc_down_nodih'
+        sched, method = self.check_reopt_without_dihedral(label=label, energy_shift=-3.0)
+        self.assertIs(method['verified'], True)
+        self.assertIsNone(sched.output[label]['conformer_verified'])
+
     def test_check_change_conformer_reopt_symmetry_equivalent_copy_is_not_verified(self):
         """A re-opt that lands on the old minimum with its methyl rotated by 120 deg did not reach the lower conformer."""
         sched = self.make_sched('cc_methyl')
@@ -10653,6 +10771,25 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertNotIn('conformer_change_pending', restarted.output[label])
         restarted.record_pending_conformer_changes()
         self.assertEqual(restarted.output[label]['conformer_change_pending'], 1)
+
+    def test_judged_conformer_change_with_an_invalidated_rotor_passes_the_gate(self):
+        """
+        A species whose conformer change was judged verified and whose rotor is then invalidated keeps
+        ``conformer_verified = None`` and passes the RMG library gate, as a species without a conformer change does.
+        """
+        sched = self.make_sched('cc_judged')
+        label = 'cc_judged'
+        rotor = sched.species_dict[label].rotors_dict[0]
+        rotor['success'], rotor['scan_path'] = False, ''
+        sched.set_conformer_verified(label)
+        sched.record_pending_conformer_changes()
+        self.assertIsNone(sched.output[label]['conformer_verified'])
+        self.assertEqual(not_verified_causes(label, sched.output), list())
+        rotor['trsh_methods'] = [{'change conformer': None, 'verified': True}]
+        sched.set_conformer_verified(label)
+        sched.record_pending_conformer_changes()
+        self.assertIsNone(sched.output[label]['conformer_verified'])
+        self.assertEqual(not_verified_causes(label, sched.output), list())
 
     def test_change_conformer_record_is_in_the_restart_saved_by_the_reopt(self):
         """The restart file the re-opt saves holds the pending record."""

@@ -160,6 +160,18 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
                                 'reference followed by MRCI or CASPT2) is what this species calls for; '
 
 MAX_S_SQUARED_DEVIATION = 0.1
+CONFORMER_ENERGY_TOLERANCE = 0.1
+CONFORMER_ENERGY_RISE_TOLERANCE = 1.0
+"""
+Energy tolerances in kJ/mol for judging a re-optimization after a conformer change.
+
+``CONFORMER_ENERGY_TOLERANCE`` is the largest electronic energy change between the geometry before the conformer
+change and the re-optimized one that counts as the same energy (see ``is_same_conformer``).
+
+``CONFORMER_ENERGY_RISE_TOLERANCE`` is the smallest rise of that energy that marks the re-optimized geometry as
+higher than the one it replaced. It is set above the geometry-dependent numerical noise of such an energy
+difference, about 0.4 kJ/mol for the COSX integration of ORCA's default RIJCOSX.
+"""
 
 IRC_MIN_ENERGY_DROP = 5.0
 IRC_MIN_ENDPOINT_DISPLACEMENT = 0.3
@@ -237,9 +249,10 @@ def is_same_conformer(d_dihedral: float | None,
     Returns:
         bool: Whether the re-optimization returned to the same conformer.
     """
-    if d_energy is not None and (energy_gap is None or energy_gap >= 0.1):
-        return d_energy < 0.1
-    return d_dihedral is not None and d_dihedral < 2.0 and (d_energy is None or d_energy < 0.1)
+    if d_energy is not None and (energy_gap is None or energy_gap >= CONFORMER_ENERGY_TOLERANCE):
+        return d_energy < CONFORMER_ENERGY_TOLERANCE
+    return d_dihedral is not None and d_dihedral < 2.0 \
+        and (d_energy is None or d_energy < CONFORMER_ENERGY_TOLERANCE)
 
 
 def job_level_signature(job: JobAdapter) -> str:
@@ -4687,6 +4700,8 @@ class Scheduler(object):
         Check that a re-optimization started from a lower conformer found by a rotor scan reached a new geometry.
         The same energy as before the change (or, without a comparable energy, the same scanned dihedral) means the
         lower conformer was not reached, and the species is flagged as not verified (see ``is_same_conformer``).
+        An electronic energy higher than before the change by ``CONFORMER_ENERGY_RISE_TOLERANCE`` or more marks the
+        record as not verified and flags the species, whatever the dihedral.
         The latest change (by ``change_index``) is judged, and its verdict closes every older pending change.
         A dihedral that cannot be computed (collinear atoms) counts as not compared. Only a job of the type the
         baseline energy came from (composite or opt) is compared; an opt troubleshooting a composite run is not.
@@ -4722,16 +4737,26 @@ class Scheduler(object):
                 d_dihedral = None
         if record.get('pre_level') is not None and record['pre_level'] != new_level:
             new_e_elect = None
-        d_energy = abs(new_e_elect - pre_e_elect) if new_e_elect is not None and pre_e_elect is not None else None
-        if d_dihedral is None and (d_energy is None or d_energy < 0.1):
+        e_rise = new_e_elect - pre_e_elect if new_e_elect is not None and pre_e_elect is not None else None
+        d_energy = abs(e_rise) if e_rise is not None else None
+        if d_dihedral is None and (d_energy is None or d_energy < CONFORMER_ENERGY_TOLERANCE):
             logger.warning(f'Could not compare the re-optimized geometry of {label} with the one before the '
                            f'conformer change; its conformer stays unverified.')
             return
         same_conformer = is_same_conformer(d_dihedral=d_dihedral, d_energy=d_energy,
                                            energy_gap=record.get('energy_gap'))
+        energy_rose = e_rise is not None and e_rise >= CONFORMER_ENERGY_RISE_TOLERANCE
         for method in pending:
-            method['verified'] = not same_conformer
-        if same_conformer:
+            method['verified'] = not same_conformer and not energy_rose
+        if energy_rose:
+            job_type = 'composite' if self.composite_method else 'opt'
+            self.flag_conformer_not_verified(
+                label=label,
+                cause=f'Re-optimization of {label} from the conformer the scan of torsion {record["torsion"]} '
+                      f'found {format_energy_gap(record.get("energy_gap"))} at the scan level ended '
+                      f'{e_rise:.2f} kJ/mol above the energy before the conformer change, both at the '
+                      f'{job_type} level; the geometry used is higher than the one it replaced.')
+        elif same_conformer:
             energy_txt = f'energy change {d_energy:.2f} kJ/mol' if d_energy is not None else 'energy not compared'
             self.flag_conformer_not_verified(
                 label=label,
