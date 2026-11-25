@@ -14,14 +14,17 @@ import os
 import shlex
 import time
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 from collections.abc import Callable
 
 import paramiko
 
 from arc.common import get_logger
-from arc.exceptions import InputError, ServerError
+from arc.exceptions import InputError, QueueQueryError, ServerError
 from arc.imports import settings
+from arc.job.queue_status import configured_queue_query_timeout, run_queue_query
 
 
 logger = get_logger()
@@ -253,17 +256,27 @@ class SSHClient(object):
     def _send_command_to_server(self,
                                 command: str | list,
                                 remote_path: str = '',
-                                ) -> tuple[list, list]:
+                                return_exit_status: bool = False,
+                                timeout: float | None = None,
+                                ) -> tuple[list, list] | tuple[list, list, int | None]:
         """
         A wrapper for exec_command in paramiko.SSHClient. Send commands to the server.
 
         Args:
             command (str | list): A string or an array of string commands to send.
             remote_path (str | None): The directory path at which the command will be executed.
+            return_exit_status (bool, optional): Whether to also return the command's exit status.
+            timeout (float, optional): Seconds to wait for the channel to open, for each read, and for the exit
+                                       status. ``None`` waits for them.
 
-        Returns: tuple[list, list]:
+        Raises:
+            TimeoutError: If the command did not answer within ``timeout`` seconds. Its channel is closed first.
+
+        Returns: tuple[list, list] | tuple[list, list, int | None]:
             - A list of lines of standard output stream.
             - A list of lines of the standard error stream.
+            - The exit status, only if ``return_exit_status`` is ``True``. ``None`` if the channel did not open,
+              -1 if it closed without an exit status.
         """
         if isinstance(command, list):
             command = '; '.join(command)
@@ -278,17 +291,27 @@ class SSHClient(object):
                 raise InputError(
                     f'Cannot execute command at given remote_path({remote_path})')
         try:
-            _, stdout, stderr = self._ssh.exec_command(command)
+            _, stdout, stderr = self._ssh.exec_command(command, timeout=timeout)
         except Exception as e:  # SSHException: Timeout opening channel.
             logger.debug(f'ssh timed-out in the first trial. Got: {e}')
             try:  # try again
-                _, stdout, stderr = self._ssh.exec_command(command)
+                _, stdout, stderr = self._ssh.exec_command(command, timeout=timeout)
             except Exception as e:
                 logger.debug(f'ssh timed-out after two trials. Got: {e}')
+                if return_exit_status:
+                    return ['', ], ['ssh timed-out after two trials', ], None
                 return ['', ], ['ssh timed-out after two trials', ]
-        stdout = stdout.readlines()
-        stderr = stderr.readlines()
-        return stdout, stderr
+        try:
+            stdout_lines, stderr_lines = stdout.readlines(), stderr.readlines()
+            if not return_exit_status:
+                return stdout_lines, stderr_lines
+            if timeout is not None and not stdout.channel.status_event.wait(timeout):
+                raise TimeoutError(f'The command "{command}" on {self.server} gave no exit status '
+                                   f'within {timeout} seconds.')
+        except TimeoutError:
+            stdout.channel.close()
+            raise
+        return stdout_lines, stderr_lines, stdout.channel.recv_exit_status()
 
     @check_connections
     def upload_file(self,
@@ -410,19 +433,19 @@ class SSHClient(object):
         Args:
             job_id (int): The job's ID.
 
+        Raises:
+            QueueQueryError: If the queue status command keeps failing, so the job's status is unknown.
+
         Returns: str
-            Possible statuses: `before_submission`, `running`, `errored on node xx`,
-            `done`, and `errored: ...`
+            Possible statuses: `before_submission`, `running`, `errored on node xx`, and `done`.
         """
         cmd = check_status_command[servers[self.server]['cluster_soft']]
-        stdout, stderr = self._send_command_to_server(cmd)
         # Status line formats:
         # OGE: '540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster'
         # SLURM: '14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06'
-        if stderr:
-            logger.info('\n\n')
-            logger.error(f'Could not check status of job {job_id} due to {stderr}')
-            return f'errored: {stderr}'
+        stdout = run_queue_query(lambda: self._send_command_to_server(
+                                     cmd, return_exit_status=True, timeout=configured_queue_query_timeout()),
+                                 server=self.server)
         return check_job_status_in_stdout(job_id=job_id, stdout=stdout, server=self.server)
 
     def delete_job(self, job_id: int | str) -> None:
@@ -457,6 +480,9 @@ class SSHClient(object):
         """
         Check all jobs submitted by the user on a server.
 
+        Raises:
+            QueueQueryError: If the queue status command keeps failing, so which jobs run is unknown.
+
         Returns: list
             A list of job IDs.
         """
@@ -464,7 +490,9 @@ class SSHClient(object):
             raise ValueError(f"Server cluster software {servers['local']['cluster_soft']} is not supported.")
         running_job_ids = list()
         cmd = check_status_command[servers[self.server]['cluster_soft']]
-        stdout = self._send_command_to_server(cmd)[0]
+        stdout = run_queue_query(lambda: self._send_command_to_server(
+                                     cmd, return_exit_status=True, timeout=configured_queue_query_timeout()),
+                                 server=self.server)
         i_dict = {'slurm': 0, 'oge': 1, 'sge': 1, 'pbs': 4, 'htcondor': -1}
         split_by_dict = {'slurm': ' ', 'oge': ' ', 'sge': ' ', 'pbs': '.', 'htcondor': ' '}
         cluster_soft = servers[self.server]['cluster_soft'].lower()
@@ -1154,12 +1182,40 @@ def delete_check_files_on_servers(remote_project_paths: dict) -> None:
             logger.warning(f'Could not delete the check files under {remote_project_path} on {server}.\nGot: {e}')
 
 
+@contextmanager
+def queue_query_connection(server: str) -> Iterator[None]:
+    """
+    Read a failure to reach a server during a queue status query as a failed query.
+
+    A ``ServerError`` (e.g., connecting gave up or was refused), a paramiko ``SSHException`` or an ``OSError`` raised
+    in the block becomes a ``QueueQueryError`` for ``server`` with no exit status, whose output names the original
+    error. A ``QueueQueryError`` passes through unchanged.
+
+    Args:
+        server (str): The server name.
+
+    Raises:
+        QueueQueryError: If the block could not reach the server or its queue did not answer.
+    """
+    try:
+        yield
+    except QueueQueryError:
+        raise
+    except (ServerError, paramiko.SSHException, OSError) as e:
+        output = f'{type(e).__name__}: {e}'
+        raise QueueQueryError(f'Could not reach {server} to read its queue: {output}',
+                              server=server, output=output, exit_status=None) from e
+
+
 def check_job_status_in_stdout(job_id: int,
                                stdout: list | str,
                                server: str,
                                ) -> str:
     """
     A helper function for checking job status.
+
+    The job is found by its job ID field, the first field of a status line, with any ``.<suffix>`` dropped (e.g.,
+    ``7654321.zeus-m`` on PBS or ``5231.0`` on HTCondor). An ID that appears in another column does not match.
 
     Args:
         job_id (int): the job ID recognized by the server.
@@ -1172,7 +1228,8 @@ def check_job_status_in_stdout(job_id: int,
     if not isinstance(stdout, list):
         stdout = stdout.splitlines()
     for status_line in stdout:
-        if str(job_id) in status_line:
+        fields = status_line.split()
+        if fields and fields[0].split('.')[0] == str(job_id):
             break
     else:
         return 'done'

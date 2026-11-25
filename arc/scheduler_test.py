@@ -7,14 +7,17 @@ This module contains unit tests for the arc.scheduler module
 
 import contextlib
 import copy
+import csv
 import logging
+import shlex
 import tempfile
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 import os
 import re
 import shutil
-import time
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -27,7 +30,7 @@ from arc.checks.ts import check_ts
 from arc.common import (ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file,
                         save_yaml_file)
 from arc.constants import E_h_kJmol
-from arc.exceptions import DependencyError, ReactionError
+from arc.exceptions import DependencyError, QueueQueryError, ReactionError, ServerError, SettingsError
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_incore_adapters,
                                       derived_instability_breaks_spin_symmetry, is_restricted,
@@ -37,19 +40,21 @@ from arc.job.factory import job_factory
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_run import build_rotor_scan_1d_tasks
 from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_state
+from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status
 from arc.level import Level, get_freq_level_for_composite_method
 from arc.output import write_output_yml
 from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, CONFORMER_ISOMORPHISM_TRSH_EXHAUSTED,
                            CONFORMER_ISOMORPHISM_TRSH_NOTE,
-                           CONFORMER_SET_REPLACED_NOTE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
-                           MIXED_SCF_REFERENCE_MESSAGE, REFUSED_CONFORMER_TRSH_RECOVERY_MESSAGE,
+                           CONFORMER_SET_REPLACED_NOTE, DEFER, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
+                           MIXED_SCF_REFERENCE_MESSAGE, QUEUE_QUERY_COOLDOWN, REFUSE,
+                           REFUSED_CONFORMER_TRSH_RECOVERY_MESSAGE, SUBMIT,
                            SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
                            SYMMETRY_BREAKING_ADAPTERS, UNREACHABLE_REFERENCE_MESSAGE,
                            UNREADABLE_CONFORMER_TRSH_LEVEL_MESSAGE, Scheduler, SchedulerError,
                            exception_summary_line, get_conformer_isomorphism_trsh_history, get_conformer_trsh_levels,
-                           get_respawned_conformer_trsh_methods, irc_ended_usably, species_has_freq,
+                           get_respawned_conformer_trsh_methods, irc_ended_usably, outage_record, species_has_freq,
                            species_has_geo, species_has_sp, species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
 from arc.reaction import ARCReaction
@@ -998,6 +1003,72 @@ H       4.27889520   -0.81548721   -0.22940984"""
         spc.conformers_before_opt = [str_to_xyz(self._METHYLAMINE_XYZ)] * 3
         self._assert_top_block_does_not_decide(sched, resubmitted=(0, 1))
 
+    def _held_conformer_scheduler(self, held_in: str):
+        """
+        Build a restarted Scheduler whose conformer 1 job is out of ``running_jobs`` but still unfinished, held in
+        ``stranded_jobs`` or ``deferred_jobs``, with its ``job_dict`` entry kept and conformer 0 finished.
+
+        Args:
+            held_in (str): ``'stranded_jobs'`` or ``'deferred_jobs'``.
+
+        Returns:
+            tuple[Scheduler, MagicMock]: The scheduler and the held conformer 1 job.
+        """
+        job_1 = MagicMock(job_adapter='gaussian', ess_trsh_methods=list())
+        sched = self._scheduler_with_running_conformers(
+            energies=[0.0, None], running=list(), job_dict={'conf_opt': {1: job_1}})
+        getattr(sched, held_in)['methylamine'] = ['conf_opt_1']
+        return sched, job_1
+
+    def _run_conformer_jobs_with_mocked_submission(self, sched):
+        """
+        Run ``run_conformer_jobs`` with every job submission mocked.
+
+        Args:
+            sched (Scheduler): The scheduler.
+
+        Returns:
+            dict: The mocks, keyed by the mocked method name.
+        """
+        with patch.object(Scheduler, 'run_job') as run_job, \
+                patch.object(Scheduler, 'run_opt_job') as run_opt_job, \
+                patch.object(Scheduler, 'run_composite_job') as run_composite_job, \
+                patch.object(Scheduler, 'process_conformers', wraps=sched.process_conformers) as process_conformers, \
+                patch.object(Scheduler, 'determine_most_stable_conformer') as determine, \
+                patch.object(sched.pipe_planner, 'try_pipe_conformers', return_value=set()):
+            sched.run_conformer_jobs()
+        return {'run_job': run_job, 'run_opt_job': run_opt_job, 'run_composite_job': run_composite_job,
+                'process_conformers': process_conformers, 'determine_most_stable_conformer': determine}
+
+    def test_a_stranded_or_deferred_conformer_job_keeps_the_species_from_advancing(self):
+        """A conformer job left on an unreadable queue, or held back from one, counts as unfinished"""
+        label = 'methylamine'
+        for held_in in ('stranded_jobs', 'deferred_jobs'):
+            with self.subTest(held_in=held_in):
+                sched, job_1 = self._held_conformer_scheduler(held_in)
+                self.assertNotIn('conf_opt_1', sched.running_jobs[label])
+                self.assertTrue(sched.has_running_conformer_jobs(label))
+                mocks = self._run_conformer_jobs_with_mocked_submission(sched)
+                mocks['process_conformers'].assert_not_called()
+                mocks['determine_most_stable_conformer'].assert_not_called()
+                mocks['run_opt_job'].assert_not_called()
+                mocks['run_composite_job'].assert_not_called()
+                self.assertIsNone(sched.species_dict[label].initial_xyz)
+                self.assertIs(sched.job_dict[label]['conf_opt'][1], job_1)
+                self.assertEqual(getattr(sched, held_in)[label], ['conf_opt_1'])
+
+    def test_a_stranded_or_deferred_conf_opt_job_is_not_submitted_again(self):
+        """The restored-conformer block submits no new job for a conformer whose conf_opt job is held"""
+        for held_in in ('stranded_jobs', 'deferred_jobs'):
+            with self.subTest(held_in=held_in):
+                sched, _ = self._held_conformer_scheduler(held_in)
+                run_job = self._run_conformer_jobs_with_mocked_submission(sched)['run_job']
+                submitted = [call.kwargs['conformer'] for call in run_job.call_args_list]
+                self.assertEqual(submitted.count(1), 0)
+                self.assertEqual(submitted.count(0), 1)
+                for call in run_job.call_args_list:
+                    self.assertEqual(call.kwargs['job_type'], 'conf_opt')
+
     _METHYLAMINE_OPTIMIZED_XYZ = """C      -0.57422867   -0.01669771    0.01229213
 N       0.82084044    0.08279104   -0.37769346
 H      -1.05737005   -0.84067772   -0.52007494
@@ -1451,7 +1522,7 @@ H       1.27889520   -0.81548721   -0.12940984"""
         class _OptSpawned(Exception):
             pass
 
-        def server_job_ids():
+        def server_job_ids(specific_server=None):
             sched.server_job_ids = list()
 
         with patch.object(Scheduler, 'determine_most_stable_conformer',
@@ -1538,7 +1609,7 @@ H       1.27889520   -0.81548721   -0.12940984"""
             energies_at_decision.append(list(spc.conformer_energies))
             raise _Decided
 
-        def server_job_ids():
+        def server_job_ids(specific_server=None):
             sched.server_job_ids = list()
 
         with patch.object(Scheduler, 'determine_most_stable_conformer', side_effect=determine), \
@@ -1819,7 +1890,7 @@ H       1.27889520   -0.81548721   -0.12940984"""
             energies_at_decision.append(list(spc.conformer_energies))
             raise _Decided
 
-        def server_job_ids():
+        def server_job_ids(specific_server=None):
             """Report no server jobs so the stub jobs are polled as terminated."""
             sched.server_job_ids = list()
 
@@ -1830,7 +1901,8 @@ H       1.27889520   -0.81548721   -0.12940984"""
                 patch.object(Scheduler, 'parse_conformer', side_effect=parse_conformer), \
                 patch.object(sched.pipe_planner, 'try_pipe_conformers', return_value=set()), \
                 patch.object(Scheduler, 'spawn_ts_jobs'), \
-                patch.object(Scheduler, 'get_server_job_ids', side_effect=server_job_ids):
+                patch.object(Scheduler, 'get_server_job_ids', side_effect=server_job_ids), \
+                patch.object(JobAdapter, 'execute'):
             with self.assertRaises(_Decided):
                 sched.schedule_jobs()
         return submitted, energies_at_decision
@@ -3546,6 +3618,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         def server_error():
             """Set the server status of the IRC job to errored, as determine_job_status() does."""
             job.job_status = ['errored', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
+            return True
 
         def submit(**kwargs):
             """Mark a new IRC job of the TS as running."""
@@ -6818,7 +6891,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.ess_settings = {'gaussian': ['server1']}
-        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 14)]
+        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 27)]
 
     @classmethod
     def tearDownClass(cls):
@@ -6959,7 +7032,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         """Test that an identity reaction pinned to a family is warned about before its first TS search job,
         when no adapter reads its product dicts"""
         sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=['kinbot'],
-                                                         project='arc_project_for_testing_delete_after_usage_tsg_13',
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_26',
                                                          r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
                                                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')],
                                                          family='intra_H_migration')
@@ -7038,7 +7111,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         gets the TS adapters of the [3,3] shift family it is assigned"""
         configured = ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear']
         sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=configured,
-                                                         project='arc_project_for_testing_delete_after_usage_tsg_12',
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_25',
                                                          r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
                                                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
         self.assertEqual(rxn.family, '6_membered_central_C-C_shift')
@@ -7418,8 +7491,16 @@ class TestGetServerJobIds(unittest.TestCase):
 
     @staticmethod
     def _sched(servers):
-        """A stand-in carrying only what get_server_job_ids() reads."""
-        return SimpleNamespace(servers=servers, server_job_ids=None)
+        """A stand-in carrying only what get_server_job_ids() reads, with one tracked queue job on each server."""
+        jobs = {f'opt_{server}': SimpleNamespace(job_name=f'opt_{server}', job_id=900 + i, server=server,
+                                                 execution_type='queue') for i, server in enumerate(servers)}
+        return SimpleNamespace(servers=servers, server_job_ids=None, job_dict={'spc': {'opt': jobs}},
+                               running_jobs={'spc': list(jobs)},
+                               queue_query_failures=dict(), unreadable_queue_servers=dict(),
+                               answered_queue_servers=set(),
+                               clear_job_query_failures_seen_running=lambda server, server_job_ids: None,
+                               job_ids_in_query_cooldown=lambda: list(),
+                               queue_clock=time.monotonic, queue_outage_limit=4 * 3600)
 
     def test_a_remote_server_is_polled_through_a_pooled_client(self):
         """Opening a connection per poll is what the pool exists to stop."""
@@ -7464,6 +7545,1519 @@ class TestGetServerJobIds(unittest.TestCase):
             borrow.return_value.__enter__.return_value = MagicMock()
             Scheduler.get_server_job_ids(sched, specific_server='atlas')
         borrow.assert_called_once_with('atlas')
+
+
+class TestGetServerJobIdsWhenTheQueueCannotBeRead(unittest.TestCase):
+    """A queue that does not answer keeps every tracked job running."""
+
+    SOCKET_TIMEOUT = ['squeue: error: slurm_receive_msg: Socket timed out on send/recv operation\n',
+                      'slurm_load_jobs error: Socket timed out on send/recv operation\n']
+    SLURM_LISTING = ['             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)\n',
+                     '                21     short      a21     user  R       0:01      1 node01\n']
+    SERVERS = {'zeus': {'address': 'zeus.example.edu', 'un': 'user', 'cluster_soft': 'Slurm'},
+               'atlas': {'address': 'atlas.example.edu', 'un': 'user', 'cluster_soft': 'Slurm'}}
+
+    def setUp(self):
+        servers = patch('arc.job.ssh.servers', self.SERVERS)
+        servers.start()
+        self.addCleanup(servers.stop)
+        sleep = patch('time.sleep')
+        self.sleep = sleep.start()
+        self.addCleanup(sleep.stop)
+        self.client = SSHClient('zeus')
+
+    @staticmethod
+    def _job(job_name, job_id, server='zeus', execution_type='queue'):
+        return SimpleNamespace(job_name=job_name, job_id=job_id, server=server, execution_type=execution_type)
+
+    def _sched(self):
+        """A stand-in tracking queue jobs on two servers, an incore job, and a job that already ended."""
+        job_dict = {'spc': {'opt': {'opt_a11': self._job('opt_a11', 11),
+                                    'opt_a14': self._job('opt_a14', 14)},
+                            'sp': {'sp_a12': self._job('sp_a12', 12, execution_type='incore')},
+                            'freq': {'freq_a13': self._job('freq_a13', 13, server='atlas')},
+                            'conf_opt': {0: self._job('conf_opt_0', 15)}}}
+        running_jobs = {'spc': ['opt_a11', 'sp_a12', 'freq_a13', 'conf_opt_0']}
+        return SimpleNamespace(servers=['zeus'], server_job_ids=None, job_dict=job_dict, running_jobs=running_jobs,
+                               queue_query_failures=dict(), unreadable_queue_servers=dict(),
+                               answered_queue_servers=set(),
+                               clear_job_query_failures_seen_running=lambda server, server_job_ids: None,
+                               job_ids_in_query_cooldown=lambda: list(),
+                               queue_clock=time.monotonic, queue_outage_limit=4 * 3600)
+
+    def _poll(self, sched, *replies):
+        """Run one get_server_job_ids() with the zeus server boundary answering ``replies``."""
+        with patch('arc.scheduler.borrow_ssh_client') as borrow, \
+                patch.object(self.client, '_send_command_to_server', side_effect=list(replies)) as send:
+            borrow.return_value.__enter__.return_value = self.client
+            Scheduler.get_server_job_ids(sched)
+        return send
+
+    def test_a_failed_poll_keeps_the_tracked_jobs_running(self):
+        sched = self._sched()
+        with self.assertLogs('arc', level='WARNING') as logged:
+            self._poll(sched, *[([], self.SOCKET_TIMEOUT, 1)] * 3)
+        self.assertEqual(sorted(sched.server_job_ids), [11, 15])
+        self.assertEqual(len(logged.output), 1)
+        self.assertIn('zeus', logged.output[0])
+
+    def test_a_missing_local_queue_command_is_an_outage_while_local_queue_jobs_are_tracked(self):
+        """A missing local command reads as no jobs while no local queue job is tracked, and is an outage after."""
+        sched = self._sched()
+        sched.servers = ['local']
+        missing = ([], ['/bin/sh: 1: /usr/bin/squeue: not found'], 127)
+        with patch.dict('arc.job.local.servers', {'local': {'cluster_soft': 'Slurm'}}), \
+                patch('arc.job.local.execute_command', return_value=missing):
+            Scheduler.get_server_job_ids(sched, specific_server='local')
+            self.assertNotIn('local', sched.queue_query_failures)
+            self.assertNotIn('local', sched.answered_queue_servers)
+            sched.answered_queue_servers.add('local')
+            sched.job_dict['spc']['opt']['opt_a11'].server = 'local'
+            with self.assertLogs('arc', level='WARNING'):
+                Scheduler.get_server_job_ids(sched)
+        self.assertEqual(sched.queue_query_failures['local']['exit_status'], 127)
+        self.assertEqual(sched.server_job_ids, [11])
+
+    def test_a_real_local_answer_counts_while_a_missing_command_would_read_as_no_jobs(self):
+        """After a real answer from an idle local queue, a missing command is an outage."""
+        sched = self._sched()
+        sched.servers = ['local']
+        with patch.dict('arc.job.local.servers', {'local': {'cluster_soft': 'Slurm'}}), \
+                patch('arc.job.local.execute_command', return_value=([], [], 0)):
+            Scheduler.get_server_job_ids(sched, specific_server='local')
+        self.assertIn('local', sched.answered_queue_servers)
+        sched.job_dict['spc']['opt']['opt_a11'].server = 'local'
+        missing = ([], ['/bin/sh: 1: /usr/bin/squeue: not found'], 127)
+        with patch.dict('arc.job.local.servers', {'local': {'cluster_soft': 'Slurm'}}), \
+                patch('arc.job.local.execute_command', return_value=missing), \
+                self.assertLogs('arc', level='WARNING'):
+            Scheduler.get_server_job_ids(sched)
+        self.assertEqual(sched.queue_query_failures['local']['exit_status'], 127)
+
+    def test_a_missing_queue_command_on_a_server_that_never_answered_stops_arc(self):
+        sched = self._sched()
+        missing = ([], ['bash: /usr/bin/squeue: No such file or directory'], 127)
+        with patch.dict('arc.scheduler.servers_dict', {'zeus': {'cluster_soft': 'Slurm'}}), \
+                self.assertRaises(SettingsError) as cm:
+            self._poll(sched, *[missing] * 3)
+        self.assertIn('zeus', str(cm.exception))
+        self.assertIn('check_status_command', str(cm.exception))
+        self.assertNotIn('zeus', sched.queue_query_failures)
+
+    def test_a_missing_queue_command_after_an_answer_is_an_outage(self):
+        sched = self._sched()
+        self._poll(sched, (self.SLURM_LISTING, [], 0))
+        self.assertIn('zeus', sched.answered_queue_servers)
+        with self.assertLogs('arc', level='WARNING'):
+            self._poll(sched, *[([], ['bash: squeue: command not found'], 127)] * 3)
+        self.assertEqual(sched.queue_query_failures['zeus']['exit_status'], 127)
+
+    def test_a_missing_local_queue_command_stops_arc_when_the_local_server_caps_its_jobs(self):
+        """The job limit check queries an idle local server that caps its jobs, and a missing command stops ARC."""
+        sched = self._sched()
+        sched.servers = ['local']
+        missing = ([], ['/bin/sh: 1: /usr/bin/squeue: not found'], 127)
+        with patch.dict('arc.job.local.servers', {'local': {'cluster_soft': 'Slurm'}}), \
+                patch.dict('arc.scheduler.servers_dict', {'local': {'cluster_soft': 'Slurm',
+                                                                    'max_simultaneous_jobs': 10}}), \
+                patch('arc.job.local.execute_command', return_value=missing), \
+                self.assertRaises(SettingsError):
+            Scheduler.get_server_job_ids(sched, specific_server='local')
+
+    def test_a_good_poll_reads_the_queue(self):
+        sched = self._sched()
+        self._poll(sched, (self.SLURM_LISTING, [], 0))
+        self.assertEqual(sched.server_job_ids, ['21'])
+
+    def test_polls_inside_the_cooldown_do_not_query_the_server_again(self):
+        sched = self._sched()
+        with self.assertLogs('arc', level='WARNING'):
+            first = self._poll(sched, *[([], self.SOCKET_TIMEOUT, 1)] * 3)
+        with self.assertNoLogs('arc', level='WARNING'):
+            second = self._poll(sched)
+        self.assertEqual(first.call_count, 3)
+        self.assertEqual(second.call_count, 0)
+        self.assertEqual(self.sleep.call_count, 2)
+        self.assertEqual(sorted(sched.server_job_ids), [11, 15])
+
+    def test_the_first_good_poll_after_the_cooldown_clears_it(self):
+        sched = self._sched()
+        with self.assertLogs('arc', level='WARNING'):
+            self._poll(sched, *[([], self.SOCKET_TIMEOUT, 1)] * 3)
+        sched.queue_query_failures['zeus']['last_attempt'] -= 3600
+        self._poll(sched, (self.SLURM_LISTING, [], 0))
+        self.assertEqual(sched.server_job_ids, ['21'])
+        self.assertNotIn('zeus', sched.queue_query_failures)
+
+    def test_the_cooldown_of_one_server_does_not_hold_another(self):
+        sched = self._sched()
+        sched.queue_query_failures['atlas'] = outage_record(time.monotonic())
+        self._poll(sched, (self.SLURM_LISTING, [], 0))
+        self.assertEqual(sched.server_job_ids, ['21'])
+
+
+class TestJobLimitWhenTheQueueCannotBeRead(unittest.TestCase):
+    """A submission to an unreadable queue with a job limit is put off or held back."""
+
+    def test_submission_is_put_off_without_waiting_while_the_queue_cannot_be_read(self):
+        """A put-off job leaves the pass's job IDs as they were, and queries no other server to restore them."""
+        sched = SimpleNamespace(queue_query_failures=dict(), server_job_ids=['21', '22'],
+                                unreadable_queue_servers=dict(), queue_clock=time.monotonic,
+                                queue_outage_limit=4 * 3600)
+        polls = list()
+
+        def get_server_job_ids(specific_server=None):
+            polls.append(specific_server)
+            sched.queue_query_failures['zeus'] = outage_record(time.monotonic())
+            sched.server_job_ids = ['11']
+        sched.get_server_job_ids = get_server_job_ids
+        with patch.dict('arc.scheduler.servers_dict', {'zeus': {'max_simultaneous_jobs': 10}}), \
+                patch('time.sleep', side_effect=AssertionError('waited for an unreadable queue')):
+            self.assertEqual(Scheduler.check_max_simultaneous_jobs_limit(sched, 'zeus'), DEFER)
+        self.assertEqual(polls, ['zeus'])
+        self.assertEqual(sched.server_job_ids, ['21', '22'])
+
+    def test_a_full_queue_that_answers_is_waited_for(self):
+        sched = SimpleNamespace(queue_query_failures=dict(), server_job_ids=list(), unreadable_queue_servers=dict(),
+                                queue_clock=time.monotonic, queue_outage_limit=4 * 3600)
+        answers = iter([['11', '12'], ['11'], ['11']])
+
+        def get_server_job_ids(specific_server=None):
+            sched.server_job_ids = next(answers)
+        sched.get_server_job_ids = get_server_job_ids
+        with patch.dict('arc.scheduler.servers_dict', {'zeus': {'max_simultaneous_jobs': 2}}), \
+                patch('time.sleep') as sleep:
+            self.assertEqual(Scheduler.check_max_simultaneous_jobs_limit(sched, 'zeus'), SUBMIT)
+        self.assertEqual(sleep.call_count, 1)
+
+    def test_the_wait_ends_at_the_outage_limit(self):
+        sched = SimpleNamespace(queue_query_failures=dict(), server_job_ids=list(), unreadable_queue_servers=dict(),
+                                queue_clock=time.monotonic, queue_outage_limit=4 * 3600)
+
+        def get_server_job_ids(specific_server=None):
+            sched.queue_query_failures['zeus'] = outage_record(time.monotonic() - 5 * 3600)
+            sched.server_job_ids = ['11']
+        sched.get_server_job_ids = get_server_job_ids
+        with patch.dict('arc.scheduler.servers_dict', {'zeus': {'max_simultaneous_jobs': 10}}), \
+                patch('time.sleep', side_effect=AssertionError('waited past the outage limit')):
+            self.assertEqual(Scheduler.check_max_simultaneous_jobs_limit(sched, 'zeus'), REFUSE)
+
+    def test_an_answered_queue_under_the_limit_does_not_wait(self):
+        sched = SimpleNamespace(queue_query_failures=dict(), server_job_ids=list(), unreadable_queue_servers=dict(),
+                                queue_clock=time.monotonic, queue_outage_limit=4 * 3600)
+        sched.get_server_job_ids = lambda specific_server=None: None
+        with patch.dict('arc.scheduler.servers_dict', {'zeus': {'max_simultaneous_jobs': 10}}), \
+                patch('time.sleep') as sleep:
+            Scheduler.check_max_simultaneous_jobs_limit(sched, 'zeus')
+        sleep.assert_not_called()
+
+
+class TestEndJobWhenTheQueueCannotBeRead(unittest.TestCase):
+
+    def test_the_job_stays_running_and_is_not_rerun(self):
+        sched = MagicMock()
+        sched.running_jobs = {'spc': ['opt_a11']}
+        job = MagicMock()
+        job.job_status = ['running', {'status': 'running'}]
+        job.job_type = 'opt'
+        job.execution_type = 'queue'
+        job.local_path_to_output_file = '/no/such/output.out'
+        job.determine_job_status.return_value = False
+        with patch('time.sleep'):
+            result = Scheduler.end_job(sched, job=job, label='spc', job_name='opt_a11')
+        self.assertFalse(result)
+        sched._run_a_job.assert_not_called()
+        self.assertEqual(sched.running_jobs, {'spc': ['opt_a11']})
+        self.assertEqual(job.job_status, ['running', {'status': 'running'}])
+
+
+class _QueueOutageServer(object):
+    """A stand-in for a pooled SSH client whose queue query fails while ``answer`` is ``None``."""
+
+    def __init__(self):
+        self.answer, self.queries = None, 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def check_running_jobs_ids(self) -> list:
+        self.queries += 1
+        if self.answer is None:
+            raise QueueQueryError('The queue status command on server1 failed 3 times',
+                                  server='server1', output='slurm_load_jobs error: Socket timed out', exit_status=1)
+        return list(self.answer)
+
+
+class TestQueueOutageBound(unittest.TestCase):
+    """An unreadable queue is waited for up to a time bound, then its jobs are left for a restart."""
+
+    HOUR = 3600.0
+    JOB_TYPES = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False, 'freq': True, 'sp': True,
+                 'rotors': False, 'orbitals': False, 'lennard_jones': False, 'irc': False, 'bde': False}
+    XYZ = """C      -0.57422867   -0.01669771    0.01229213
+N       0.82084044    0.08279104   -0.37769346
+H      -1.05737005   -0.84067772   -0.52007494
+H      -1.10211468    0.90879867   -0.23383011
+H      -0.66133128   -0.19490562    1.08785111
+H       0.88047852    0.26966160   -1.37780789
+H       1.27889520   -0.81548721   -0.22940984"""
+
+    def setUp(self):
+        self.project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.project_directory, ignore_errors=True)
+        self.ess_settings = {'gaussian': ['server1']}
+        self.now = 0.0
+        self.server = _QueueOutageServer()
+        borrow = patch('arc.scheduler.borrow_ssh_client', side_effect=lambda server: self.server)
+        borrow.start()
+        self.addCleanup(borrow.stop)
+        ledger_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, ledger_dir, ignore_errors=True)
+        ledger = patch('arc.job.adapter.local_arc_path', ledger_dir)
+        ledger.start()
+        self.addCleanup(ledger.stop)
+
+    def _scheduler(self, restart_dict: dict | None = None, testing: bool = True) -> Scheduler:
+        sched = Scheduler(project='queue_outage', ess_settings=self.ess_settings,
+                          species_list=[ARCSpecies(label='methylamine', smiles='CN', xyz=self.XYZ)],
+                          composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=self.project_directory, testing=testing,
+                          job_types=dict(self.JOB_TYPES), restart_dict=restart_dict,
+                          orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+        sched.queue_clock = lambda: self.now
+        if sched.restart_dict is None:
+            sched.restart_dict = dict()
+        return sched
+
+    def _running(self, sched: Scheduler, job_id: int = 4242):
+        """Track one submitted opt job on server1, as run_job() leaves it."""
+        job = job_factory(job_adapter='gaussian', project='queue_outage', ess_settings=self.ess_settings,
+                          species=[sched.species_dict['methylamine']], xyz=self.XYZ, job_type='opt',
+                          level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
+                          project_directory=self.project_directory, job_num=7, server='server1', testing=True)
+        job.job_id, job.execution_type = job_id, 'queue'
+        sched.job_dict['methylamine']['opt'] = {job.job_name: job}
+        sched.running_jobs['methylamine'] = [job.job_name]
+        sched.servers = ['server1']
+        return job
+
+    def _second_job(self, sched: Scheduler, server: str, job_id: int):
+        """
+        Track a second submitted queue job (a freq job) for methylamine.
+
+        Args:
+            sched (Scheduler): The scheduler.
+            server (str): The server the job runs on.
+            job_id (int): The job's queue ID.
+
+        Returns:
+            JobAdapter: The job.
+        """
+        job = job_factory(job_adapter='gaussian', project='queue_outage', ess_settings=self.ess_settings,
+                          species=[sched.species_dict['methylamine']], xyz=self.XYZ, job_type='freq',
+                          level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
+                          project_directory=self.project_directory, job_num=8, server=server, testing=True)
+        job.job_id, job.execution_type = job_id, 'queue'
+        sched.job_dict['methylamine']['freq'] = {job.job_name: job}
+        sched.running_jobs['methylamine'].append(job.job_name)
+        return job
+
+    def _pass(self, sched: Scheduler, hours: float):
+        """One main-loop pass at ``hours`` into the outage."""
+        self.now = hours * self.HOUR
+        sched.strand_unreadable_queue_jobs()
+        sched.get_server_job_ids()
+
+    def _outage(self, sched: Scheduler, until_hours: float, step_hours: float = 0.25, from_hours: float = 0.0):
+        hours = from_hours
+        while hours < until_hours:
+            self._pass(sched, hours)
+            hours += step_hours
+        self._pass(sched, until_hours)
+
+    def test_a_command_that_can_hide_a_failure_is_warned_about_once_per_server_at_start(self):
+        """
+        A pipe, an OR-list (``||``) or any ``;`` in ``check_status_command`` gets one warning per server at start.
+
+        A bare command and an ``&&``-list get no warning.
+        """
+        self.ess_settings = {'gaussian': ['server1'], 'molpro': ['server1']}
+        for command, form in (('qstat -u $USER | grep queue_outage', 'a pipe'),
+                              ('qstat -u $USER | tail -n +3', 'a pipe'),
+                              ('qstat -u $USER || true', 'an OR-list (||)'),
+                              ('squeue -u $USER || echo', 'an OR-list (||)'),
+                              ('qstat -u $USER; true', 'a ";"'),
+                              ('cd /tmp; squeue -u $USER; true', 'a ";"'),
+                              ('qstat -u $USER | grep queue_outage || true', 'a pipe and an OR-list (||)'),
+                              ('qstat -u $USER', None),
+                              ('cd /tmp && squeue -u $USER', None)):
+            with self.subTest(command=command), \
+                    patch.dict(settings['check_status_command'], {'OGE': command}), \
+                    self.assertLogs('arc', level='WARNING') as logs:
+                self._scheduler()
+                logging.getLogger('arc').warning('sentinel')
+            warned = [line for line in logs.output if 'check_status_command' in line]
+            self.assertEqual(len(warned), 0 if form is None else 1, warned)
+            if form is not None:
+                self.assertIn(f'server server1 contains {form}: {command}', warned[0])
+                self.assertIn('bare queue command', warned[0])
+                self.assertIn('exits non-zero on an empty queue', warned[0])
+                self.assertIn('exits 0 when the queue command fails', warned[0])
+
+    def test_a_semicolon_list_that_ends_with_the_queue_command_is_not_warned_about(self):
+        """
+        A ``;`` list whose last command is the queue command is not warned about, whatever runs before it. A ``|`` or ``;`` inside quotes is part of an argument, not a pipe or a
+        list. A list that ends with another command, a pipe, and an OR-list are still warned about.
+        """
+        for command, warns in ((settings['check_status_command']['OGE'], False),
+                               ('export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER', False),
+                               ('SGE_ROOT=/opt/sge; export SGE_CELL="default"; qstat -u $USER', False),
+                               ('source /etc/profile; squeue -u $USER', False),
+                               ('module load slurm; squeue -u $USER', False),
+                               ('. /opt/pbs/etc/pbs.sh; /opt/pbs/bin/qstat -u $USER', False),
+                               ('cd dir; squeue', False),
+                               ("squeue -u $USER -o '%i|%t'", False),
+                               ("squeue -u $USER -h -o '%i;%t'", False),
+                               (settings['check_status_command']['HTCondor'], False),
+                               ('export SGE_ROOT=/opt/sge; qstat -u $USER; true', True),
+                               ('qstat -u $USER; true', True),
+                               ('module load slurm; squeue -u $USER; true', True),
+                               ('squeue -u $USER || true', True),
+                               ('squeue -u $USER || echo', True),
+                               ("squeue -u $USER -o '%i|%t' | tail -n +2", True)):
+            with self.subTest(command=command), \
+                    patch.dict(settings['check_status_command'], {'OGE': command}), \
+                    self.assertLogs('arc', level='WARNING') as logs:
+                self._scheduler()
+                logging.getLogger('arc').warning('sentinel')
+            warned = [line for line in logs.output if 'check_status_command' in line]
+            self.assertEqual(len(warned), int(warns), warned)
+
+    def test_before_the_bound_the_jobs_are_held(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        with self.assertLogs('arc', level='WARNING') as logged:
+            self._outage(sched, 3.9)
+        self.assertFalse(any('ERROR' in line for line in logged.output))
+        self.assertEqual(sched.running_jobs['methylamine'], [job.job_name])
+        self.assertIn(4242, sched.server_job_ids)
+        self.assertEqual(sched.stranded_jobs, dict())
+
+    def test_the_outage_warning_gives_elapsed_and_remaining_time_at_most_every_ten_minutes(self):
+        """Over 21 minutes of failed polls, the warning is logged at 0, 10.5 and 21 minutes only."""
+        sched = self._scheduler()
+        self._running(sched)
+        with self.assertLogs('arc', level='WARNING') as logged:
+            for minutes in (0, 2, 5, 9, 10.5, 12, 19, 21):
+                self.now = minutes * 60.0
+                sched.get_server_job_ids()
+        warnings = [record.getMessage() for record in logged.records if record.levelno == logging.WARNING]
+        self.assertEqual(len(warnings), 3, warnings)
+        self.assertIn('0 min', warnings[0])
+        self.assertIn('4 h 0 min', warnings[0])
+        self.assertIn('10 min', warnings[1])
+        self.assertIn('3 h 49 min', warnings[1])
+        self.assertIn('21 min', warnings[2])
+        self.assertIn('3 h 39 min', warnings[2])
+        self.assertTrue(all('server1' in line for line in warnings))
+
+    def test_at_the_bound_one_error_names_server_jobs_stderr_and_the_restart_command(self):
+        """At the outage limit one ERROR is logged, and the server is not polled again afterwards."""
+        sched = self._scheduler()
+        job = self._running(sched)
+        status = [job.job_status[0], dict(job.job_status[1])]
+        with patch.object(job, 'delete', side_effect=AssertionError('deleted')), \
+                patch.object(sched, 'end_job', side_effect=AssertionError('ended')), \
+                self.assertLogs('arc', level='WARNING') as logged:
+            self._outage(sched, 4.0)
+            queries = self.server.queries
+            self._outage(sched, 6.0)
+        errors = [record.getMessage() for record in logged.records if record.levelno == logging.ERROR]
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn('server1', errors[0])
+        self.assertIn('4242', errors[0])
+        self.assertIn('slurm_load_jobs error: Socket timed out', errors[0])
+        restart_command = shlex.join([sys.executable, os.path.join(ARC_PATH, 'ARC.py'),
+                                      os.path.join(self.project_directory, 'restart.yml')])
+        self.assertIn(restart_command, errors[0])
+        self.assertIn('No job was ended or deleted', errors[0])
+        self.assertEqual(self.server.queries, queries)
+        self.assertNotIn('methylamine', {k: v for k, v in sched.running_jobs.items() if v})
+        self.assertEqual(sched.stranded_jobs, {'methylamine': [job.job_name]})
+        self.assertEqual(job.job_status, status)
+        record = sched.output['methylamine']['unreadable_queue']['server1']
+        self.assertEqual(record['server'], 'server1')
+        self.assertEqual(record['job_ids'], [4242])
+        self.assertIn('Socket timed out', record['last_output'])
+        self.assertEqual(record['exit_status'], 1)
+
+    def test_jobs_stranded_on_two_servers_keep_both_records(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        other = job_factory(job_adapter='gaussian', project='queue_outage', ess_settings=self.ess_settings,
+                            species=[sched.species_dict['methylamine']], xyz=self.XYZ, job_type='freq',
+                            level=Level(repr={'method': 'wb97xd', 'basis': 'def2tzvp'}),
+                            project_directory=self.project_directory, job_num=8, server='server2', testing=True)
+        other.job_id, other.execution_type = 5151, 'queue'
+        sched.job_dict['methylamine']['freq'] = {other.job_name: other}
+        sched.running_jobs['methylamine'].append(other.job_name)
+        sched.servers = ['server1', 'server2']
+        with self.assertLogs('arc', level='WARNING'):
+            self._outage(sched, 4.0)
+        records = sched.output['methylamine']['unreadable_queue']
+        self.assertEqual({server: record['job_ids'] for server, record in records.items()},
+                         {'server1': [4242], 'server2': [5151]})
+        self.assertEqual(sorted(sched.stranded_jobs['methylamine']), sorted([job.job_name, other.job_name]))
+
+    def test_the_restart_command_survives_a_path_with_spaces(self):
+        sched = self._scheduler()
+        sched.restart_path = '/home/user/ARC projects/run 1/restart.yml'
+        self.assertEqual(shlex.split(sched.restart_command()),
+                         [sys.executable, os.path.join(ARC_PATH, 'ARC.py'), '/home/user/ARC projects/run 1/restart.yml'])
+
+    def test_the_check_files_of_stranded_jobs_are_kept(self):
+        sched = self._scheduler()
+        self._running(sched)
+        sched.remote_project_paths = {'server1': '/home/user/runs/ARC_Projects/queue_outage',
+                                      'server2': '/home/user/runs/ARC_Projects/queue_outage'}
+        self.assertEqual(sched.cleanable_remote_project_paths(), sched.remote_project_paths)
+        with self.assertLogs('arc', level='WARNING'):
+            self._outage(sched, 4.0)
+        self.assertEqual(sched.cleanable_remote_project_paths(),
+                         {'server2': '/home/user/runs/ARC_Projects/queue_outage'})
+
+    def test_the_bound_is_recorded_in_status_and_restart_files(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        with self.assertLogs('arc', level='WARNING'):
+            self._outage(sched, 4.0)
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        self.assertEqual([j['job_id'] for j in restart['running_jobs']['methylamine']], [4242])
+        self.assertEqual(restart['output']['methylamine']['unreadable_queue']['server1']['job_ids'], [4242])
+        self.assertIn(job.job_name, restart['output']['methylamine']['errors'])
+
+    def test_a_restart_after_the_bound_picks_the_jobs_up_again(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        with self.assertLogs('arc', level='WARNING'):
+            self._outage(sched, 4.0)
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        restarted = self._scheduler(restart_dict={'output': restart['output'],
+                                                  'running_jobs': restart['running_jobs']})
+        self.assertEqual(restarted.running_jobs['methylamine'], [job.job_name])
+        self.assertNotIn('unreadable_queue', restarted.output['methylamine'])
+        self.assertEqual(restarted.stranded_jobs, dict())
+        self.assertEqual(restarted.servers, ['server1'])
+        self.server.answer = ['4242']
+        queries = self.server.queries
+        restarted.get_server_job_ids()
+        self.assertEqual(self.server.queries, queries + 1)
+        self.assertEqual(restarted.server_job_ids, ['4242'])
+
+    def test_a_good_answer_ends_the_outage_and_resets_the_clock(self):
+        """A good answer at 3.5 h resets the clock, so a new outage from 3.75 h is not stranded before 7.75 h."""
+        sched = self._scheduler()
+        self._running(sched)
+        with self.assertLogs('arc', level='WARNING'):
+            self._outage(sched, 3.0)
+        self.server.answer = ['4242']
+        self._pass(sched, 3.5)
+        self.assertNotIn('server1', sched.queue_query_failures)
+        self.server.answer = None
+        with self.assertLogs('arc', level='WARNING') as logged:
+            self._outage(sched, 7.25, from_hours=3.75)
+        self.assertFalse(any(record.levelno == logging.ERROR for record in logged.records))
+        self.assertEqual(sched.stranded_jobs, dict())
+
+    def test_submission_past_the_bound_is_refused_and_named(self):
+        sched = self._scheduler()
+        sched.servers = ['server1']
+        sched.unreadable_queue_servers.setdefault('server1', dict())
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        with patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('time.sleep', side_effect=[None] * 3 + [AssertionError('held for ever')]), \
+                patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')), \
+                self.assertLogs('arc', level='ERROR') as logged:
+            sched.run_opt_job('methylamine')
+        self.assertEqual(sched.running_jobs.get('methylamine', list()), list())
+        self.assertEqual(len(logged.output), 1)
+        self.assertIn('opt_', logged.output[0])
+        self.assertIn('server1', logged.output[0])
+        self.assertIn('restart submits it', logged.output[0])
+
+    def test_an_incore_job_does_not_wait_for_an_unreadable_queue(self):
+        sched = self._scheduler()
+        job = MagicMock()
+        job.job_name, job.server, job.execution_type, job.remote_project_path = 'opt_a9', 'server1', 'incore', None
+        with patch('arc.scheduler.job_factory', return_value=job), \
+                patch.object(Scheduler, 'check_max_simultaneous_jobs_limit',
+                             side_effect=AssertionError('an incore job waited for the queue')), \
+                patch.object(Scheduler, 'warn_on_collapsible_unrestricted_reference'), \
+                patch.object(Scheduler, 'save_restart_dict'):
+            sched.run_job(label='methylamine', job_type='opt',
+                          level_of_theory=Level(repr=default_levels_of_theory['opt']), job_adapter='gaussian')
+        job.execute.assert_called_once()
+
+    def _refuse_an_opt_job(self, sched: Scheduler):
+        """Run an opt job on server1 after its queue stayed unreadable past the bound, which left it unpolled."""
+        sched.servers = ['server1']
+        sched.unreadable_queue_servers.setdefault('server1', dict())
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        with patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('time.sleep', side_effect=[None] * 3 + [AssertionError('held for ever')]), \
+                patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')), \
+                self.assertLogs('arc', level='ERROR') as logged:
+            sched.run_opt_job('methylamine')
+        return logged
+
+    def test_a_refused_job_stays_in_the_restart_file_unsubmitted(self):
+        sched = self._scheduler()
+        self._refuse_an_opt_job(sched)
+        job_name = list(sched.job_dict['methylamine']['opt'])[0]
+        self.assertEqual(sched.stranded_jobs['methylamine'], [job_name])
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        refused = restart['running_jobs']['methylamine']
+        self.assertEqual([(j['job_name'], j['job_id'], j['job_status'][0]) for j in refused],
+                         [(job_name, None, 'initializing')])
+
+    def _refuse_jobs(self, sched: Scheduler, csv_dir: str) -> list:
+        """Run two directed scans and two opt jobs on server1 after its queue stayed unreadable past the bound."""
+        sched.servers = ['server1']
+        sched.unreadable_queue_servers.setdefault('server1', dict())
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        scan = dict(label='methylamine', xyz=self.XYZ, level_of_theory=Level(repr=default_levels_of_theory['scan']),
+                    job_type='directed_scan', directed_scan_type='brute_force_opt', torsions=[[1, 2, 3, 4]],
+                    rotor_index=0, job_adapter='gaussian')
+        opt = dict(label='methylamine', job_type='opt', level_of_theory=Level(repr=default_levels_of_theory['opt']),
+                   job_adapter='gaussian')
+        with patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('arc.job.adapter.local_arc_path', csv_dir), \
+                patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')), \
+                self.assertLogs('arc', level='ERROR'):
+            sched.run_job(dihedrals=[30.0], **scan)
+            sched.run_job(dihedrals=[60.0], **scan)
+            sched.run_job(**opt)
+            sched.run_job(**opt)
+        return sched.stranded_jobs['methylamine']
+
+    def test_refused_jobs_get_distinct_names_and_all_stay_in_the_restart_file(self):
+        csv_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, csv_dir, ignore_errors=True)
+        sched = self._scheduler()
+        names = self._refuse_jobs(sched, csv_dir)
+        self.assertEqual(len(names), 4)
+        self.assertEqual(len(set(names)), 4, names)
+        self.assertEqual(sorted(sched.job_dict['methylamine']['directed_scan']), sorted(names[:2]))
+        self.assertEqual(sorted(sched.job_dict['methylamine']['opt']), sorted(names[2:]))
+        self.assertEqual(len({job.job_server_name for jobs in sched.job_dict['methylamine'].values()
+                              for job in jobs.values()}), 4)
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        self.assertEqual(sorted(j['job_name'] for j in restart['running_jobs']['methylamine']), sorted(names))
+        with open(os.path.join(csv_dir, 'initiated_jobs.csv')) as f:
+            rows = list(csv.reader(f))
+        self.assertEqual(sorted(row[7] for row in rows[1:]), sorted(names))
+        self.assertEqual({row[8] for row in rows[1:]}, {''})
+
+    def test_a_refused_job_gets_a_row_with_its_job_id_once_submitted(self):
+        csv_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, csv_dir, ignore_errors=True)
+        sched = self._scheduler()
+        self._refuse_jobs(sched, csv_dir)
+        csv_path = os.path.join(csv_dir, 'initiated_jobs.csv')
+        with open(csv_path) as f:
+            rows = f.readlines()
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        with patch.object(Scheduler, 'schedule_jobs'), patch.object(Scheduler, 'run_job'):
+            restarted = self._scheduler(restart_dict={'output': restart['output'],
+                                                      'running_jobs': restart['running_jobs']},
+                                        testing=False)
+        self.assertTrue(all(job.restarted for _, job in restarted.unsubmitted_jobs))
+        restarted.unreadable_queue_servers['server1'] = dict()
+        with patch('arc.job.adapter.local_arc_path', csv_dir), \
+                patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')), \
+                self.assertLogs('arc', level='ERROR'):
+            restarted.submit_unsubmitted_jobs()
+        restarted.unsubmitted_jobs = [(label, job) for label, names in restarted.stranded_jobs.items()
+                                      for jobs in restarted.job_dict[label].values()
+                                      for job in jobs.values() if job.job_name in names]
+        restarted.unreadable_queue_servers = dict()
+        self.server.answer = list()
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        job_ids = iter(range(9001, 9005))
+
+        def dispatch(job, execution_type):
+            job.job_id = next(job_ids)
+        with patch('arc.job.adapter.local_arc_path', csv_dir), \
+                patch('arc.job.adapter.JobAdapter._dispatch_execution', autospec=True,
+                      side_effect=dispatch) as dispatched, \
+                patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('arc.job.adapter.get_default_pool'), \
+                patch('time.sleep', side_effect=AssertionError('held')), \
+                patch.object(Scheduler, 'warn_on_collapsible_unrestricted_reference'), \
+                patch.object(Scheduler, 'save_restart_dict'):
+            restarted.submit_unsubmitted_jobs()
+        self.assertEqual(dispatched.call_count, 4)
+        with open(csv_path) as f:
+            lines = f.readlines()
+        self.assertEqual(lines[:len(rows)], rows)
+        reserved, submitted = list(csv.reader(rows[1:])), list(csv.reader(lines[len(rows):]))
+        self.assertEqual(sorted((row[1], row[7]) for row in submitted), sorted((row[1], row[7]) for row in reserved))
+        self.assertEqual(sorted(row[8] for row in submitted), ['9001', '9002', '9003', '9004'])
+
+    def test_a_restart_submits_a_refused_job_once_and_does_not_re_derive_it(self):
+        """
+        A restart submits the restored job itself, without spawning it again.
+
+        Once the queue answers again under the limit, the restored job is submitted once.
+        """
+        sched = self._scheduler()
+        self._refuse_an_opt_job(sched)
+        job_name = list(sched.job_dict['methylamine']['opt'])[0]
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        spawned = list()
+        with patch.object(Scheduler, 'schedule_jobs'), \
+                patch.object(Scheduler, 'run_job',
+                             lambda _, **kwargs: spawned.append((kwargs['label'], kwargs['job_type']))):
+            restarted = self._scheduler(restart_dict={'output': restart['output'],
+                                                      'running_jobs': restart['running_jobs']},
+                                        testing=False)
+        self.assertNotIn(('methylamine', 'opt'), spawned)
+        self.assertEqual(restarted.running_jobs['methylamine'], [job_name])
+        self.assertEqual([job.job_name for _, job in restarted.unsubmitted_jobs], [job_name])
+        self.assertNotIn(None, restarted.server_job_ids)
+        self.server.answer = list()
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        with patch('arc.job.adapter.JobAdapter.execute', autospec=True) as execute, \
+                patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('time.sleep', side_effect=AssertionError('held')), \
+                patch.object(Scheduler, 'warn_on_collapsible_unrestricted_reference') as warn, \
+                patch.object(Scheduler, 'save_restart_dict'):
+            restarted.submit_unsubmitted_jobs()
+            restarted.submit_unsubmitted_jobs()
+        self.assertEqual([call.args[0].job_name for call in execute.call_args_list], [job_name])
+        self.assertEqual([call.kwargs['job'].job_name for call in warn.call_args_list], [job_name])
+        self.assertIn('server1', restarted.servers)
+        self.assertEqual(restarted.unsubmitted_jobs, list())
+
+    def test_an_outage_puts_a_capped_submission_off_while_incore_work_and_restart_saves_go_on(self):
+        sched = self._scheduler()
+        sched.servers = ['server1']
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        with patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('time.sleep', side_effect=AssertionError('waited for an unreadable queue')), \
+                patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')):
+            sched.run_job(label='methylamine', job_type='opt',
+                          level_of_theory=Level(repr=default_levels_of_theory['opt']), job_adapter='gaussian')
+        deferred = [name for name in sched.job_dict['methylamine']['opt']
+                    if name not in sched.running_jobs.get('methylamine', list())]
+        self.assertEqual(len(deferred), 1)
+        self.assertEqual(sched.deferred_jobs['methylamine'], deferred)
+        self.assertEqual([job.job_name for _, job in sched.unsubmitted_jobs], deferred)
+        self.assertIn(deferred[0], sched.unfinished_job_names('methylamine'))
+        incore = MagicMock()
+        incore.job_name, incore.server, incore.execution_type, incore.remote_project_path = 'sp_a9', 'local', 'incore', None
+        with patch('arc.scheduler.job_factory', return_value=incore), \
+                patch('time.sleep', side_effect=AssertionError('waited for an unreadable queue')), \
+                patch.object(Scheduler, 'warn_on_collapsible_unrestricted_reference'), \
+                patch.object(Scheduler, 'save_restart_dict'):
+            sched.run_job(label='methylamine', job_type='sp',
+                          level_of_theory=Level(repr=default_levels_of_theory['sp']), job_adapter='gaussian')
+        incore.execute.assert_called_once()
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        saved = {j['job_name']: j for j in restart['running_jobs']['methylamine']}
+        self.assertIsNone(saved[deferred[0]]['job_id'])
+        self.assertEqual(saved[deferred[0]]['job_status'][0], 'initializing')
+        self.server.answer = list()
+        self.now = 1.5 * self.HOUR
+        with patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('arc.job.adapter.JobAdapter.execute', autospec=True) as execute, \
+                patch('time.sleep', side_effect=AssertionError('held')), \
+                patch.object(Scheduler, 'warn_on_collapsible_unrestricted_reference'), \
+                patch.object(Scheduler, 'save_restart_dict'):
+            sched.submit_unsubmitted_jobs()
+        self.assertEqual([call.args[0].job_name for call in execute.call_args_list], deferred)
+        self.assertIn(deferred[0], sched.running_jobs['methylamine'])
+        self.assertEqual(sched.deferred_jobs, dict())
+        self.assertEqual(sched.unsubmitted_jobs, list())
+
+    def test_the_main_loop_retries_put_off_jobs_on_every_pass(self):
+        sched = self._scheduler()
+        sched.unsubmitted_jobs = [('methylamine', MagicMock())]
+        calls, passes = list(), list()
+
+        def submit():
+            calls.append(len(calls))
+            if len(calls) == 2:
+                sched.unsubmitted_jobs = list()
+
+        def strand():
+            passes.append(None)
+            if len(passes) > 3:
+                raise _StopLoop
+        with patch.object(sched, 'submit_unsubmitted_jobs', side_effect=submit), \
+                patch.object(sched, 'strand_unreadable_queue_jobs', side_effect=strand), \
+                patch.object(Scheduler, 'run_conformer_jobs'), patch.object(Scheduler, 'spawn_ts_jobs'), \
+                patch.object(Scheduler, 'get_server_job_ids'), patch.object(Scheduler, 'get_completed_incore_jobs'), \
+                patch.object(Scheduler, 'generate_final_ts_guess_report'), patch('time.sleep'):
+            sched.schedule_jobs()
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(passes), 1)
+
+    def test_per_job_query_failures_are_bounded_though_the_bulk_query_answers(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        self.server.answer = list()
+        with patch.object(job, 'determine_job_status', return_value=False), \
+                self.assertLogs('arc', level='ERROR') as logged:
+            hours = 0.0
+            while hours <= 4.0:
+                self.now = hours * self.HOUR
+                sched.strand_unreadable_queue_jobs()
+                if 'server1' in sched.unreadable_queue_servers:
+                    break
+                sched.get_server_job_ids()
+                self.assertNotIn(4242, sched.server_job_ids)
+                self.assertFalse(sched.end_job(job=job, label='methylamine', job_name=job.job_name))
+                hours += 0.5
+        self.assertEqual(hours, 4.0)
+        self.assertEqual(sched.stranded_jobs['methylamine'], [job.job_name])
+        self.assertEqual(sched.running_jobs['methylamine'], list())
+        self.assertTrue(any('per-job status query' in line for line in logged.output))
+
+    def test_a_job_that_answers_does_not_restart_the_clock_of_one_that_keeps_failing(self):
+        sched = self._scheduler()
+        failing = self._running(sched)
+        answering = SimpleNamespace(job_name=failing.job_name, job_id=4243, server='server1', execution_type='queue')
+        with patch.object(failing, 'determine_job_status', return_value=False):
+            sched.end_job(job=failing, label='methylamine', job_name=failing.job_name)
+        since = sched.job_query_failures['server1']['since']
+        self.now = 2 * self.HOUR
+        sched.clear_job_query_failure(answering)
+        self.assertEqual(sched.job_query_failures['server1']['since'], since)
+        sched.clear_job_query_failure(failing)
+        self.assertNotIn('server1', sched.job_query_failures)
+
+    def test_a_job_the_bulk_query_lists_again_stops_its_per_job_clock(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        with patch.object(job, 'determine_job_status', return_value=False):
+            sched.end_job(job=job, label='methylamine', job_name=job.job_name)
+        self.server.answer = ['4242']
+        self.now = self.HOUR
+        sched.get_server_job_ids()
+        self.assertNotIn('server1', sched.job_query_failures)
+        self.now = 5 * self.HOUR
+        sched.strand_unreadable_queue_jobs()
+        self.assertEqual(sched.unreadable_queue_servers, dict())
+
+    def test_a_server_past_both_outage_limits_is_stranded_once(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        with patch.object(job, 'determine_job_status', return_value=False):
+            sched.end_job(job=job, label='methylamine', job_name=job.job_name)
+        with self.assertLogs('arc', level='WARNING'):
+            sched.get_server_job_ids()
+        self.now = 5 * self.HOUR
+        with self.assertLogs('arc', level='ERROR') as logged:
+            sched.strand_unreadable_queue_jobs()
+        self.assertEqual(len([r for r in logged.records if r.levelno == logging.ERROR]), 1)
+        self.assertEqual(sched.stranded_jobs['methylamine'], [job.job_name])
+        self.assertEqual((sched.queue_query_failures, sched.job_query_failures), (dict(), dict()))
+
+    def test_a_cancelled_job_leaves_no_per_job_clock_behind(self):
+        sched = self._scheduler()
+        cancelled = self._running(sched, job_id=4242)
+        kept = self._running(sched, job_id=4243)
+        sched.job_dict['methylamine']['opt'] = {cancelled.job_name: cancelled, kept.job_name: kept}
+        sched.running_jobs['methylamine'] = [cancelled.job_name, kept.job_name]
+        with patch.object(cancelled, 'determine_job_status', return_value=False):
+            sched.end_job(job=cancelled, label='methylamine', job_name=cancelled.job_name)
+        sched.running_jobs['methylamine'].remove(cancelled.job_name)
+        self.now = 5 * self.HOUR
+        with self.assertNoLogs('arc', level='ERROR'):
+            sched.strand_unreadable_queue_jobs()
+        self.assertEqual(sched.unreadable_queue_servers, dict())
+        self.assertEqual(sched.job_query_failures, dict())
+
+    def test_a_cancelled_job_is_dropped_from_the_per_job_clock_by_a_good_bulk_answer(self):
+        """A good bulk answer, asked for another job ARC still tracks on server1, drops the cancelled job's clock."""
+        sched = self._scheduler()
+        cancelled = self._running(sched, job_id=4242)
+        with patch.object(cancelled, 'determine_job_status', return_value=False):
+            sched.end_job(job=cancelled, label='methylamine', job_name=cancelled.job_name)
+        other = SimpleNamespace(job_name='freq_a2', job_id=4243, server='server1', execution_type='queue')
+        sched.job_dict['methylamine']['freq'] = {other.job_name: other}
+        sched.running_jobs['methylamine'] = [other.job_name]
+        self.server.answer = ['4243']
+        sched.get_server_job_ids()
+        self.assertEqual(sched.job_query_failures, dict())
+
+    def test_the_per_job_outage_record_keeps_the_real_error(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        error = QueueQueryError('failed 3 times', server='server1', output='qstat: Unknown Job Id', exit_status=153)
+        with patch.object(job, '_check_job_server_status', side_effect=error), \
+                self.assertLogs('arc', level='WARNING'):
+            self.assertFalse(sched.end_job(job=job, label='methylamine', job_name=job.job_name))
+        record = sched.job_query_failures['server1']
+        self.assertEqual((record['exit_status'], record['output']), (153, 'qstat: Unknown Job Id'))
+
+    def test_a_bulk_query_that_cannot_reach_its_server_is_an_outage(self):
+        """A failure to connect keeps the tracked jobs and starts the outage clock, as a failed query does"""
+        sched = self._scheduler()
+        self._running(sched)
+        for error in (ServerError('Could not connect to server server1'), OSError('Network is unreachable')):
+            sched.queue_query_failures = dict()
+            with patch('arc.scheduler.borrow_ssh_client', side_effect=error), \
+                    self.assertLogs('arc', level='WARNING'):
+                sched.get_server_job_ids()
+            self.assertEqual(sched.server_job_ids, [4242])
+            record = sched.queue_query_failures['server1']
+            self.assertIsNone(record['exit_status'])
+            self.assertIn(str(error), record['output'])
+        self.now = 4 * self.HOUR
+        with self.assertLogs('arc', level='ERROR'):
+            sched.strand_unreadable_queue_jobs()
+        self.assertIn('server1', sched.unreadable_queue_servers)
+
+    def _fail_per_job_query(self, sched: Scheduler, job, hours: float):
+        """Fail the per-job status query of ``job`` at ``hours``."""
+        self.now = hours * self.HOUR
+        with patch.object(job, 'determine_job_status', return_value=False):
+            sched.end_job(job=job, label='methylamine', job_name=job.job_name)
+
+    def test_the_outage_start_moves_to_the_earliest_job_still_failing(self):
+        """Job A fails at 0 h, job B first fails at 3.99 h; once A is resolved, B's own failure starts the outage"""
+        for resolve in ('answer', 'bulk answer', 'cancel'):
+            sched = self._scheduler()
+            first = self._running(sched, job_id=4242)
+            second = self._second_job(sched, 'server1', job_id=4243)
+            self._fail_per_job_query(sched, first, 0.0)
+            self._fail_per_job_query(sched, second, 3.99)
+            if resolve == 'answer':
+                sched.clear_job_query_failure(first)
+            elif resolve == 'bulk answer':
+                self.server.answer = ['4242']
+                sched.get_server_job_ids()
+            else:
+                sched.running_jobs['methylamine'].remove(first.job_name)
+            self.now = 4.5 * self.HOUR
+            with self.assertNoLogs('arc', level='ERROR'):
+                sched.strand_unreadable_queue_jobs()
+            self.assertEqual(sched.unreadable_queue_servers, dict(), resolve)
+            self.assertEqual(sched.job_query_failures['server1']['since'], 3.99 * self.HOUR, resolve)
+            self.now = 7.99 * self.HOUR
+            with self.assertLogs('arc', level='ERROR'):
+                sched.strand_unreadable_queue_jobs()
+            self.assertIn(second.job_name, sched.stranded_jobs['methylamine'], resolve)
+
+    def test_a_running_per_job_answer_after_an_empty_bulk_answer_keeps_the_job(self):
+        """A job whose per-job answer is running is neither rerun nor ended, though its output is absent"""
+        sched = self._scheduler()
+        job = self._running(sched)
+        self.server.answer = list()
+        sched.get_server_job_ids()
+        self.assertNotIn(job.job_id, sched.server_job_ids)
+        with patch.object(job, '_check_job_server_status', return_value='running'), \
+                patch.object(sched, '_run_a_job') as rerun, patch('time.sleep'):
+            self.assertFalse(sched.end_job(job=job, label='methylamine', job_name=job.job_name))
+        rerun.assert_not_called()
+        self.assertEqual(sched.running_jobs['methylamine'], [job.job_name])
+        self.assertEqual(job.job_status[0], 'running')
+
+    def test_a_put_off_job_of_an_unconverged_species_is_not_submitted(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        job.job_id = None
+        sched.defer_job_on_unreadable_queue(label='methylamine', job=job)
+        sched.output['methylamine']['convergence'] = False
+        self.server.answer = list()
+        with patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')), \
+                patch.object(Scheduler, 'save_restart_dict') as save:
+            sched.submit_unsubmitted_jobs()
+        self.assertEqual(sched.unsubmitted_jobs, list())
+        self.assertEqual(sched.deferred_jobs, dict())
+        self.assertNotIn(job.job_name, sched.unfinished_job_names('methylamine'))
+        save.assert_called()
+
+    def test_a_job_without_an_id_does_not_poll_a_failing_queue_forever(self):
+        """An unacknowledged submission is checked by its output, not by a queue query that cannot find it"""
+        sched = self._scheduler()
+        job = self._running(sched)
+        job.job_id = None
+        error = QueueQueryError('failed 3 times', server='server1', output='Socket timed out', exit_status=1)
+        with patch('arc.job.adapter.check_job_status', side_effect=error) as query, \
+                patch.object(job, '_check_job_ess_status'), patch.object(job, '_get_additional_job_info'), \
+                patch.object(sched, '_run_a_job') as rerun, patch('time.sleep'), \
+                self.assertLogs('arc', level='WARNING'):
+            self.assertFalse(sched.end_job(job=job, label='methylamine', job_name=job.job_name))
+        query.assert_not_called()
+        rerun.assert_called_once()
+        self.assertEqual(sched.job_query_failures, dict())
+
+    def test_a_job_put_off_on_many_passes_is_logged_and_saved_once(self):
+        """Putting off an already put-off job logs no line and saves no restart file."""
+        sched = self._scheduler()
+        sched.servers = ['server1']
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        with patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('time.sleep', side_effect=AssertionError('waited for an unreadable queue')), \
+                patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')), \
+                patch.object(Scheduler, 'save_restart_dict') as save, \
+                self.assertLogs('arc', level='INFO') as logged:
+            sched.run_job(label='methylamine', job_type='opt',
+                          level_of_theory=Level(repr=default_levels_of_theory['opt']), job_adapter='gaussian')
+            for minutes in range(2, 42, 2):
+                self.now = minutes * 60.0
+                sched.submit_unsubmitted_jobs()
+        put_off = [line for line in logged.output if 'Put off job' in line]
+        self.assertEqual(len(put_off), 1, put_off)
+        self.assertEqual(save.call_count, 1)
+        self.assertEqual(len(sched.unsubmitted_jobs), 1)
+        label, job = sched.unsubmitted_jobs[0]
+        self.assertIn(job.job_name, sched.deferred_jobs[label])
+        self.server.answer = list()
+        self.now = 50 * 60.0
+        with patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('arc.job.adapter.JobAdapter.execute') as execute:
+            sched.submit_unsubmitted_jobs()
+        execute.assert_called_once()
+        self.assertEqual((sched.unsubmitted_jobs, sched.deferred_jobs), (list(), dict()))
+        self.assertIn(job.job_name, sched.running_jobs[label])
+
+    def test_deleting_a_species_jobs_drops_its_put_off_jobs(self):
+        sched = self._scheduler()
+        sched.servers = ['server1']
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        with patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('time.sleep', side_effect=AssertionError('waited for an unreadable queue')), \
+                patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')):
+            sched.run_job(label='methylamine', job_type='opt',
+                          level_of_theory=Level(repr=default_levels_of_theory['opt']), job_adapter='gaussian')
+        self.assertTrue(sched.unsubmitted_jobs)
+        sched.delete_all_species_jobs('methylamine')
+        self.assertEqual((sched.deferred_jobs, sched.unsubmitted_jobs), (dict(), list()))
+        self.server.answer = list()
+        with patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')):
+            sched.submit_unsubmitted_jobs()
+
+    def test_a_per_job_clock_with_no_tracked_job_left_strands_nothing(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        with patch.object(job, 'determine_job_status', return_value=False):
+            sched.end_job(job=job, label='methylamine', job_name=job.job_name)
+        self.assertIn('server1', sched.job_query_failures)
+        del sched.running_jobs['methylamine']
+        self.now = 5 * self.HOUR
+        with self.assertNoLogs('arc', level='ERROR'):
+            sched.strand_unreadable_queue_jobs()
+        self.assertEqual(sched.unreadable_queue_servers, dict())
+        self.assertEqual(sched.job_query_failures, dict())
+
+    def test_a_failed_per_job_query_waits_out_the_cooldown(self):
+        """A job whose own status query failed reads as running, and is not queried, for ``QUEUE_QUERY_COOLDOWN``."""
+        sched = self._scheduler()
+        job = self._running(sched)
+        self.server.answer = list()
+        with patch.object(job, 'determine_job_status', return_value=False) as query:
+            sched.get_server_job_ids()
+            self.assertNotIn(4242, sched.server_job_ids)
+            self.assertFalse(sched.end_job(job=job, label='methylamine', job_name=job.job_name))
+            self.now = QUEUE_QUERY_COOLDOWN - 1.0
+            sched.get_server_job_ids()
+            self.assertIn(4242, sched.server_job_ids)
+            self.now = QUEUE_QUERY_COOLDOWN + 1.0
+            sched.get_server_job_ids()
+            self.assertNotIn(4242, sched.server_job_ids)
+        self.assertEqual(query.call_count, 1)
+
+    def test_each_failed_job_waits_out_its_own_cooldown(self):
+        """A later failure of another job on the same server does not extend the cooldown of the first."""
+        sched = self._scheduler()
+        first = self._running(sched)
+        second = self._second_job(sched, server='server1', job_id=5151)
+        self.server.answer = list()
+        with patch.object(first, 'determine_job_status', return_value=False), \
+                patch.object(second, 'determine_job_status', return_value=False):
+            sched.end_job(job=first, label='methylamine', job_name=first.job_name)
+            self.now = QUEUE_QUERY_COOLDOWN - 10.0
+            sched.end_job(job=second, label='methylamine', job_name=second.job_name)
+        self.now = QUEUE_QUERY_COOLDOWN + 1.0
+        sched.get_server_job_ids()
+        self.assertNotIn(4242, sched.server_job_ids)
+        self.assertIn(5151, sched.server_job_ids)
+
+    def test_a_job_in_cooldown_does_not_hide_a_job_with_its_id_on_another_server(self):
+        """A job ID in cooldown on one server is not listed as running when another server's job holds that ID."""
+        sched = self._scheduler()
+        first = self._running(sched)
+        self._second_job(sched, server='server2', job_id=4242)
+        sched.servers = ['server1', 'server2']
+        self.server.answer = list()
+        with patch.object(first, 'determine_job_status', return_value=False):
+            sched.end_job(job=first, label='methylamine', job_name=first.job_name)
+        self.now = 1.0
+        sched.get_server_job_ids()
+        self.assertNotIn(4242, sched.server_job_ids)
+
+    def test_the_main_loop_sleeps_and_spaces_per_job_queries_while_they_fail(self):
+        """
+        Over 40 main-loop passes with the bulk query answering and the per-job query failing, every pass sleeps 30 s,
+        and the job is queried once per ``QUEUE_QUERY_COOLDOWN``, not on every pass.
+        """
+        sched = self._scheduler()
+        job = self._running(sched)
+        self.server.answer = list()
+        passes, sleeps = list(), list()
+
+        def strand():
+            passes.append(self.now)
+            if len(passes) > 40:
+                raise _StopLoop
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            self.now += seconds
+        with patch.object(job, 'determine_job_status', return_value=False) as query, \
+                patch.object(sched, 'strand_unreadable_queue_jobs', side_effect=strand), \
+                patch.object(Scheduler, 'run_conformer_jobs'), patch.object(Scheduler, 'spawn_ts_jobs'), \
+                patch.object(Scheduler, 'get_completed_incore_jobs'), \
+                patch.object(Scheduler, 'generate_final_ts_guess_report'), \
+                patch('time.sleep', side_effect=sleep), self.assertRaises(_StopLoop):
+            sched.schedule_jobs()
+        self.assertEqual(sleeps, [30] * 40)
+        self.assertEqual(query.call_count, 20)
+        self.assertEqual(sched.running_jobs['methylamine'], [job.job_name])
+
+    def test_the_main_loop_sleeps_while_a_job_the_bulk_query_omits_answers_running(self):
+        """
+        Over 40 main-loop passes with the bulk query not listing a job and the job's own status query answering
+        ``running``, every pass sleeps 30 s.
+        """
+        sched = self._scheduler()
+        job = self._running(sched)
+        self.server.answer = list()
+        passes, sleeps = list(), list()
+
+        def strand():
+            passes.append(self.now)
+            if len(passes) > 40:
+                raise _StopLoop
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            self.now += seconds
+
+        def running():
+            job.job_status[0] = 'running'
+            return True
+        with patch.object(job, 'determine_job_status', side_effect=running) as query, \
+                patch.object(sched, 'strand_unreadable_queue_jobs', side_effect=strand), \
+                patch.object(Scheduler, 'run_conformer_jobs'), patch.object(Scheduler, 'spawn_ts_jobs'), \
+                patch.object(Scheduler, 'get_completed_incore_jobs'), \
+                patch.object(Scheduler, 'generate_final_ts_guess_report'), \
+                patch('time.sleep', side_effect=sleep), self.assertRaises(_StopLoop):
+            sched.schedule_jobs()
+        self.assertEqual(sleeps, [30] * 40)
+        self.assertEqual(query.call_count, 40)
+        self.assertEqual(sched.running_jobs['methylamine'], [job.job_name])
+
+    def test_a_failed_round_longer_than_the_cooldown_is_not_repeated_at_once(self):
+        """
+        The cooldown runs from the end of a failed query round: a round that takes longer than the cooldown is
+        followed by one round per cooldown, not by a new round on every call.
+        """
+        sched = self._scheduler()
+        self._running(sched)
+        failing = self.server.check_running_jobs_ids
+
+        def slow_failure():
+            self.now += QUEUE_QUERY_COOLDOWN + 5.0
+            return failing()
+        with patch.object(self.server, 'check_running_jobs_ids', side_effect=slow_failure), \
+                self.assertLogs('arc', level='WARNING'):
+            for _ in range(6):
+                sched.get_server_job_ids()
+            self.assertEqual(self.server.queries, 1)
+            self.assertEqual(sched.queue_query_failures['server1']['last_attempt'], self.now)
+            self.now += QUEUE_QUERY_COOLDOWN
+            for _ in range(6):
+                sched.get_server_job_ids()
+        self.assertEqual(self.server.queries, 2)
+        self.assertEqual(sched.queue_query_failures['server1']['since'], 0.0)
+
+    def test_put_off_jobs_cost_no_bulk_query_on_a_healthy_server(self):
+        """
+        Over 40 passes with one job running on a healthy server2 and jobs put off on an unreadable, capped server1,
+        server2 is queried as often as with no put-off job: once per pass.
+        """
+        queries = dict()
+        for put_off in (0, 3):
+            sched = self._scheduler()
+            job = self._running(sched)
+            job.server = 'server2'
+            sched.servers = ['server1', 'server2']
+            server1, server2 = _QueueOutageServer(), _QueueOutageServer()
+            server2.answer = [str(job.job_id)]
+            for i in range(put_off):
+                deferred = SimpleNamespace(job_name=f'opt_put_off_{i}', server='server1', remote_project_path=None,
+                                           restarted=True)
+                sched.deferred_jobs.setdefault('methylamine', list()).append(deferred.job_name)
+                sched.unsubmitted_jobs.append(('methylamine', deferred))
+            capped = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+            with patch('arc.scheduler.borrow_ssh_client',
+                       side_effect=lambda server: {'server1': server1, 'server2': server2}[server]), \
+                    patch.dict('arc.scheduler.servers_dict', {'server1': capped}), \
+                    patch('time.sleep', side_effect=AssertionError('waited for an unreadable queue')), \
+                    self.assertLogs('arc', level='WARNING') if put_off else self.assertNoLogs('arc', level='ERROR'):
+                for i in range(40):
+                    self.now = i * 30.0
+                    sched.strand_unreadable_queue_jobs()
+                    sched.submit_unsubmitted_jobs()
+                    sched.get_server_job_ids()
+                    self.assertIn(str(job.job_id), sched.server_job_ids)
+            self.assertEqual(len(sched.unsubmitted_jobs), put_off)
+            queries[put_off] = server2.queries
+        self.assertEqual(queries, {0: 40, 3: 40})
+
+    def test_a_server_with_no_tracked_jobs_is_not_queried(self):
+        """A check of all servers skips a server where ARC tracks no queue job, and starts no outage there."""
+        sched = self._scheduler()
+        sched.servers = ['server1']
+        with self.assertNoLogs('arc', level='WARNING'):
+            sched.get_server_job_ids()
+        self.assertEqual(self.server.queries, 0)
+        self.assertEqual(sched.queue_query_failures, dict())
+
+    def test_an_outage_with_no_job_left_on_the_server_strands_nothing(self):
+        """A job queue outage on a server whose tracked jobs are all gone is dropped, not stranded at the bound."""
+        sched = self._scheduler()
+        self._running(sched)
+        with self.assertLogs('arc', level='WARNING'):
+            self._outage(sched, 1.0)
+        self.assertIn('server1', sched.queue_query_failures)
+        sched.running_jobs['methylamine'] = list()
+        self.now = 5 * self.HOUR
+        with self.assertNoLogs('arc', level='ERROR'):
+            sched.strand_unreadable_queue_jobs()
+        self.assertEqual(sched.queue_query_failures, dict())
+        self.assertEqual(sched.unreadable_queue_servers, dict())
+        self.assertFalse(sched.keeps_local_check_files())
+
+    def test_a_put_off_job_keeps_its_queue_outage_running_until_it_is_held_back(self):
+        """
+        A job put off on an idle server whose queue cannot be read keeps that outage's clock running. The job is
+        held back for a restart at the bound, with one ERROR naming it, and no ERROR strands the idle server.
+        """
+        sched = self._scheduler()
+        sched.servers = ['server1']
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        with patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('time.sleep', side_effect=AssertionError('waited for an unreadable queue')), \
+                patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')), \
+                self.assertLogs('arc', level='WARNING') as logged:
+            sched.run_opt_job('methylamine')
+            job_name = list(sched.job_dict['methylamine']['opt'])[0]
+            hours = 0.25
+            while hours <= 4.0:
+                self.now = hours * self.HOUR
+                sched.strand_unreadable_queue_jobs()
+                if hours < 4.0:
+                    self.assertEqual(sched.deferred_jobs['methylamine'], [job_name])
+                sched.submit_unsubmitted_jobs()
+                hours += 0.25
+        errors = [record.getMessage() for record in logged.records if record.levelno == logging.ERROR]
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn(f'Did not submit job {job_name}', errors[0])
+        self.assertEqual(sched.stranded_jobs['methylamine'], [job_name])
+
+    def test_schedule_jobs_submits_a_restored_held_back_job(self):
+        sched = self._scheduler()
+        self._refuse_an_opt_job(sched)
+        job_name = list(sched.job_dict['methylamine']['opt'])[0]
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        with patch.object(Scheduler, 'schedule_jobs'), patch.object(Scheduler, 'run_job'):
+            restarted = self._scheduler(restart_dict={'output': restart['output'],
+                                                      'running_jobs': restart['running_jobs']},
+                                        testing=False)
+        self.server.answer = list()
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        with patch('arc.job.adapter.JobAdapter.execute', autospec=True) as execute, \
+                patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('time.sleep', side_effect=AssertionError('held')), \
+                patch.object(Scheduler, 'run_conformer_jobs'), patch.object(Scheduler, 'spawn_ts_jobs'), \
+                patch.object(Scheduler, 'warn_on_collapsible_unrestricted_reference'), \
+                patch.object(Scheduler, 'save_restart_dict'), \
+                patch.object(Scheduler, 'strand_unreadable_queue_jobs', side_effect=_StopLoop):
+            with self.assertRaises(_StopLoop):
+                restarted.schedule_jobs()
+        self.assertEqual([call.args[0].job_name for call in execute.call_args_list], [job_name])
+
+    def test_a_restart_drops_the_errors_an_unreadable_queue_wrote(self):
+        sched = self._scheduler()
+        self._running(sched)
+        sched.output['methylamine']['errors'] = 'An earlier error; '
+        with self.assertLogs('arc', level='WARNING'):
+            self._outage(sched, 4.0)
+        self._refuse_an_opt_job(sched)
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        errors = restart['output']['methylamine']['errors']
+        self.assertIn('was unreadable past the outage limit', errors)
+        self.assertIn('was not submitted to server1', errors)
+        restarted = self._scheduler(restart_dict={'output': restart['output'],
+                                                  'running_jobs': restart['running_jobs']})
+        self.assertEqual(restarted.output['methylamine']['errors'], 'An earlier error; ')
+
+    def test_conformers_are_not_spawned_again_while_a_conformer_job_is_unfinished(self):
+        for tracked in ('running_jobs', 'stranded_jobs', None):
+            with self.subTest(tracked=tracked):
+                sched = self._scheduler()
+                sched.dont_gen_confs = ['methylamine']
+                if tracked is not None:
+                    getattr(sched, tracked)['methylamine'] = ['conf_opt_0']
+                with patch.object(Scheduler, 'process_conformers') as process:
+                    sched.run_conformer_jobs()
+                self.assertEqual(process.call_count, 0 if tracked else 1)
+
+    def test_a_restart_refuses_an_unsubmitted_job_again_while_its_queue_stays_unreadable(self):
+        sched = self._scheduler()
+        self._refuse_an_opt_job(sched)
+        job_name = list(sched.job_dict['methylamine']['opt'])[0]
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        with patch.object(Scheduler, 'schedule_jobs'), patch.object(Scheduler, 'run_job'):
+            restarted = self._scheduler(restart_dict={'output': restart['output'],
+                                                      'running_jobs': restart['running_jobs']},
+                                        testing=False)
+        restarted.unreadable_queue_servers['server1'] = dict()
+        with patch('arc.job.adapter.JobAdapter.execute', side_effect=AssertionError('submitted')), \
+                self.assertLogs('arc', level='ERROR'):
+            restarted.submit_unsubmitted_jobs()
+        self.assertEqual(restarted.running_jobs['methylamine'], list())
+        self.assertEqual(restarted.stranded_jobs['methylamine'], [job_name])
+
+    def test_cancelling_a_species_drops_its_unsubmitted_stranded_job(self):
+        sched = self._scheduler()
+        self._refuse_an_opt_job(sched)
+        with patch('arc.job.adapter.JobAdapter.delete') as delete:
+            sched.delete_all_species_jobs('methylamine')
+        delete.assert_not_called()
+        self.assertNotIn('methylamine', sched.stranded_jobs)
+
+    def test_a_cancelled_species_submits_nothing_after_a_restart(self):
+        sched = self._scheduler()
+        self._refuse_an_opt_job(sched)
+        with patch('arc.job.adapter.JobAdapter.delete') as delete:
+            sched.delete_all_species_jobs('methylamine')
+        delete.assert_not_called()
+        sched.save_restart_dict()
+        restart = read_yaml_file(os.path.join(self.project_directory, 'restart.yml'))
+        with patch.object(Scheduler, 'schedule_jobs'), patch.object(Scheduler, 'run_job'):
+            restarted = self._scheduler(restart_dict={'output': restart['output'],
+                                                      'running_jobs': restart['running_jobs']},
+                                        testing=False)
+        self.server.answer = list()
+        server1 = dict(settings['servers']['server1'], max_simultaneous_jobs=10)
+        with patch('arc.job.adapter.JobAdapter.execute', autospec=True) as execute, \
+                patch.dict('arc.scheduler.servers_dict', {'server1': server1}), \
+                patch('time.sleep', side_effect=AssertionError('held')), \
+                patch.object(Scheduler, 'warn_on_collapsible_unrestricted_reference'), \
+                patch.object(Scheduler, 'save_restart_dict'):
+            restarted.submit_unsubmitted_jobs()
+        execute.assert_not_called()
+        self.assertNotIn('methylamine', [label for label, _ in restarted.unsubmitted_jobs])
+        self.assertFalse(restarted.stranded_jobs.get('methylamine'))
+        self.assertFalse(restart['running_jobs'].get('methylamine'))
+
+    def test_cancelling_a_species_cancels_its_submitted_stranded_job(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        with self.assertLogs('arc', level='WARNING'):
+            self._outage(sched, 4.0)
+        self.assertEqual(sched.stranded_jobs, {'methylamine': [job.job_name]})
+        with patch.object(job, 'delete') as delete, self.assertLogs('arc', level='WARNING') as logged:
+            sched.delete_all_species_jobs('methylamine')
+        delete.assert_called_once_with()
+        self.assertNotIn('methylamine', sched.stranded_jobs)
+        warnings = [record.getMessage() for record in logged.records if record.levelno == logging.WARNING]
+        self.assertEqual(len(warnings), 1, warnings)
+        for expected in (job.job_name, '4242', 'server1', 'cannot confirm', 'may still be running'):
+            self.assertIn(expected, warnings[0])
+
+    def test_a_stranded_job_that_cannot_be_cancelled_is_dropped_with_a_warning(self):
+        sched = self._scheduler()
+        job = self._running(sched)
+        with self.assertLogs('arc', level='WARNING'):
+            self._outage(sched, 4.0)
+        with patch.object(job, 'delete', side_effect=OSError('connection refused')), \
+                self.assertLogs('arc', level='WARNING') as logged:
+            sched.delete_all_species_jobs('methylamine')
+        warnings = [record.getMessage() for record in logged.records if record.levelno == logging.WARNING]
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn(job.job_name, warnings[0])
+        self.assertIn('4242', warnings[0])
+        self.assertIn('server1', warnings[0])
+        self.assertIn('connection refused', warnings[0])
+        self.assertIn('may still be running', warnings[0])
+        self.assertNotIn('methylamine', sched.stranded_jobs)
+
+    def test_an_absent_or_malformed_setting_bounds_at_four_hours(self):
+        with patch.dict('arc.scheduler.settings', {'queue_outage_limit_hrs': None}):
+            self.assertEqual(self._scheduler().queue_outage_limit, 4 * self.HOUR)
+        for value in ('four', -2, True):
+            with patch.dict('arc.scheduler.settings', {'queue_outage_limit_hrs': value}), \
+                    self.assertLogs('arc', level='WARNING') as logged:
+                sched = self._scheduler()
+            self.assertEqual(sched.queue_outage_limit, 4 * self.HOUR, value)
+            self.assertTrue(any('queue_outage_limit_hrs' in line for line in logged.output))
+        with patch.dict('arc.scheduler.settings', {'queue_outage_limit_hrs': 1}):
+            self.assertEqual(self._scheduler().queue_outage_limit, self.HOUR)
+
+
+class _StopLoop(Exception):
+    """Ends a test's pass through the scheduler's main loop."""
+
+
+class TestTrackedWorkInTheMainLoop(unittest.TestCase):
+    """A job whose status is unknown, or that was left on an unreadable queue, is not treated as finished."""
+
+    JOB_TYPES = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'fine': False, 'freq': True, 'sp': True,
+                 'rotors': False, 'orbitals': False, 'lennard_jones': False, 'irc': False, 'bde': False}
+
+    def setUp(self):
+        project_directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        self.label = 'methylamine'
+        self.sched = Scheduler(project='tracked_work', ess_settings={'gaussian': ['server1']},
+                               species_list=[ARCSpecies(label=self.label, smiles='CN')],
+                               composite_method=None,
+                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                               opt_level=Level(repr=default_levels_of_theory['opt']),
+                               freq_level=Level(repr=default_levels_of_theory['freq']),
+                               sp_level=Level(repr=default_levels_of_theory['sp']),
+                               scan_level=Level(repr=default_levels_of_theory['scan']),
+                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                               project_directory=project_directory, testing=True,
+                               job_types=dict(self.JOB_TYPES), restart_dict=dict(),
+                               orbitals_level=default_levels_of_theory['orbitals'], adaptive_levels=None)
+        for name in ('run_conformer_jobs', 'spawn_ts_jobs', 'get_completed_incore_jobs',
+                     'generate_final_ts_guess_report', 'determine_most_stable_conformer', 'run_opt_job',
+                     'process_directed_scans', 'parse_conformer'):
+            patcher = patch.object(self.sched, name, return_value=False)
+            setattr(self, name, patcher.start())
+            self.addCleanup(patcher.stop)
+        patcher = patch.object(self.sched, 'get_server_job_ids',
+                               side_effect=lambda specific_server=None: setattr(self.sched, 'server_job_ids', list()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _job(self, job_type: str, job_id: int, **kwargs) -> MagicMock:
+        job = MagicMock(job_type=job_type, job_id=job_id, server='server1', execution_type='queue', **kwargs)
+        job.as_dict.return_value = {'job_type': job_type, 'job_id': job_id}
+        return job
+
+    def _ending(self, *removed: str):
+        """An end_job() that ends the named jobs: it drops them from running_jobs and reports success."""
+        def end_job(job, label, job_name):
+            if job_name in removed:
+                self.sched.running_jobs[label].remove(job_name)
+                return True
+            raise _StopLoop(job_name)
+        return end_job
+
+    def _directed_scan(self) -> tuple[MagicMock, str]:
+        local_path = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, local_path, ignore_errors=True)
+        job = self._job('directed_scan', 51, job_name='directed_scan_a51', directed_scan_type='brute_force_sp',
+                        rotor_index=0, pivots=[1, 2], local_path=local_path)
+        self.sched.species_dict[self.label].rotors_dict = {0: {'number_of_running_jobs': 1, 'pivots': [1, 2]}}
+        self.sched.job_dict[self.label]['directed_scan'] = {job.job_name: job}
+        self.sched.running_jobs[self.label] = [job.job_name]
+        return job, local_path
+
+    def test_a_directed_scan_of_unknown_status_keeps_its_count_and_its_files(self):
+        """A failed per-job query (``end_job()`` returns ``False`` and keeps the job running) leaves the scan alone."""
+        job, local_path = self._directed_scan()
+        calls = list()
+
+        def end_job(job, label, job_name):
+            calls.append(job_name)
+            if len(calls) > 1:
+                raise _StopLoop(job_name)
+            return False
+        with patch.object(self.sched, 'end_job', side_effect=end_job), self.assertRaises(_StopLoop):
+            self.sched.schedule_jobs()
+        self.assertEqual(self.sched.species_dict[self.label].rotors_dict[0]['number_of_running_jobs'], 1)
+        self.assertTrue(os.path.isdir(local_path))
+        self.assertEqual(self.sched.running_jobs[self.label], [job.job_name])
+        self.process_directed_scans.assert_not_called()
+
+    def test_a_directed_scan_that_failed_for_good_is_still_counted_and_cleaned(self):
+        """A terminal failure, after which ``end_job()`` no longer tracks the job, still counts and cleans the scan."""
+        job, local_path = self._directed_scan()
+
+        def end_job(job, label, job_name):
+            self.sched.running_jobs[label].remove(job_name)
+            return False
+        with patch.object(self.sched, 'end_job', side_effect=end_job), \
+                patch.object(self.sched, 'check_all_done'):
+            self.sched.schedule_jobs()
+        self.assertEqual(self.sched.species_dict[self.label].rotors_dict[0]['number_of_running_jobs'], 0)
+        self.assertFalse(os.path.isdir(local_path))
+        self.process_directed_scans.assert_called_once()
+
+    def test_a_stranded_conformer_job_holds_back_the_choice_of_conformer(self):
+        """A stranded conformer job is not polled, and keeps the conformer choice and the opt job from starting."""
+        done, stranded = self._job('conf_opt', 60), self._job('conf_opt', 61)
+        self.sched.job_dict[self.label]['conf_opt'] = {0: done, 1: stranded}
+        self.sched.running_jobs[self.label] = ['conf_opt_0']
+        self.sched.stranded_jobs[self.label] = ['conf_opt_1']
+        with patch.object(self.sched, 'end_job', side_effect=self._ending('conf_opt_0')) as end_job:
+            self.sched.schedule_jobs()
+        self.assertEqual([c.kwargs['job_name'] for c in end_job.call_args_list], ['conf_opt_0'])
+        self.determine_most_stable_conformer.assert_not_called()
+        self.run_opt_job.assert_not_called()
+        self.assertNotEqual(self.sched.output[self.label]['convergence'], True)
+
+    def test_cancelling_a_species_deletes_its_stranded_conformer_and_ts_guess_jobs(self):
+        conformer = self._job('conf_opt', 61, job_name='conf_opt_1')
+        guess = self._job('tsg', 62, job_name='tsg3')
+        self.sched.job_dict[self.label]['conf_opt'] = {1: conformer}
+        self.sched.job_dict[self.label]['tsg'] = {3: guess}
+        self.sched.stranded_jobs[self.label] = ['conf_opt_1', 'tsg3']
+        self.sched.delete_all_species_jobs(self.label)
+        conformer.delete.assert_called_once_with()
+        guess.delete.assert_called_once_with()
+        self.assertNotIn(self.label, self.sched.stranded_jobs)
+
+    def test_a_stranded_ts_guess_job_holds_back_the_conformers(self):
+        done, stranded = self._job('tsg', 70, local_path_to_output_file='out.txt'), self._job('tsg', 71)
+        self.sched.job_dict[self.label]['tsg'] = {0: done, 1: stranded}
+        self.sched.running_jobs[self.label] = ['tsg0']
+        self.sched.stranded_jobs[self.label] = ['tsg1']
+        with patch.object(self.sched, 'end_job', side_effect=self._ending('tsg0')) as end_job:
+            self.sched.schedule_jobs()
+        self.assertEqual([c.kwargs['job_name'] for c in end_job.call_args_list], ['tsg0'])
+        self.assertNotIn(([], {'labels': [self.label]}), [(list(c.args), c.kwargs)
+                                                          for c in self.run_conformer_jobs.call_args_list])
+
+    def test_check_all_done_does_not_converge_a_species_with_a_stranded_job(self):
+        for job_type, spawned in self.JOB_TYPES.items():
+            if spawned:
+                self.sched.output[self.label]['job_types'][job_type] = True
+        self.sched.job_dict[self.label]['conf_opt'] = {1: self._job('conf_opt', 61)}
+        self.sched.stranded_jobs[self.label] = ['conf_opt_1']
+        with self.assertNoLogs('arc', level='ERROR'):
+            self.sched.check_all_done(self.label)
+        self.assertNotEqual(self.sched.output[self.label]['convergence'], True)
 
 
 class TestTsGuessPathProvenance(unittest.TestCase):
