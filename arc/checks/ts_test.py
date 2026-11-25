@@ -22,6 +22,8 @@ from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
 from arc.reaction import ARCReaction
 from arc.species.converter import xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess
+from arc.checks.common import NMD_ACCEPTED_ON_IRC_WARNING, NMD_NEAR_MISS_KEY
+from arc.checks.nmd_test import make_c2h5cl_rxn
 
 
 class TestTSChecks(unittest.TestCase):
@@ -741,9 +743,9 @@ class TestTSChecks(unittest.TestCase):
 
         def record_amplitude(reaction, job, amplitude):
             forwarded.append(amplitude)
-            return None
+            return None, None
 
-        with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', side_effect=record_amplitude):
+        with patch('arc.checks.ts.evaluate_ts_normal_mode_displacement', side_effect=record_amplitude):
             for requested in requested_amplitudes:
                 rxn = self.make_c3h7_intra_h_rxn()
                 rxn.ts_species.populate_ts_checks()
@@ -773,11 +775,11 @@ class TestTSChecks(unittest.TestCase):
         self.assertIsNone(rxn.ts_species.ts_checks['NMD'])
 
         def fail_the_check(reaction, job, amplitude):
-            return False
+            return False, None
 
         rxn = self.make_c3h7_intra_h_rxn()
         rxn.ts_species.populate_ts_checks()
-        with patch('arc.checks.ts.analyze_ts_normal_mode_displacement', side_effect=fail_the_check):
+        with patch('arc.checks.ts.evaluate_ts_normal_mode_displacement', side_effect=fail_the_check):
             ts.check_ts(reaction=rxn, job=self.job1, checks=['NMD'], skip_nmd=True)
         self.assertIs(rxn.ts_species.ts_checks['NMD'], True)
 
@@ -802,6 +804,47 @@ class TestTSChecks(unittest.TestCase):
             ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(rxn, self.job1)
         self.assertEqual([key for key, rotor in rxn.ts_species.rotors_dict.items()
                           if 'pivTS' in rotor['invalidation_reason']], list())
+
+    def test_check_normal_mode_displacement_stores_a_near_miss_record_beside_a_false_verdict(self):
+        """Test that a near-miss NMD failure keeps NMD False and stores the record, and that a re-check clears it."""
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq',
+                                                           'TS_C2H5Cl_guess7_near_miss.log')
+        rxn = make_c2h5cl_rxn()
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=self.job1.local_path_to_output_file)
+        rxn.ts_species.populate_ts_checks()
+        ts.check_normal_mode_displacement(reaction=rxn, job=self.job1)
+        self.assertIs(rxn.ts_species.ts_checks['NMD'], False)
+        record = rxn.ts_species.ts_checks[NMD_NEAR_MISS_KEY]
+        self.assertEqual([bond['symbols'] for bond in record['sub_gate_bonds']], ['C-Cl'])
+
+        with patch('arc.checks.ts.evaluate_ts_normal_mode_displacement', return_value=(False, None)):
+            ts.check_normal_mode_displacement(reaction=rxn, job=self.job1)
+        self.assertIs(rxn.ts_species.ts_checks['NMD'], False)
+        self.assertNotIn(NMD_NEAR_MISS_KEY, rxn.ts_species.ts_checks)
+
+    def test_check_normal_mode_displacement_drops_a_previous_irc_acceptance_warning(self):
+        """Test that re-evaluating NMD drops the IRC acceptance warning of the previous evaluation and keeps the
+        other warnings, whatever the new verdict."""
+        rxn = make_c2h5cl_rxn()
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=os.path.join(ARC_TESTING_PATH, 'freq',
+                                                                             'TS_C2H5Cl_four_centre_near_miss.log'))
+        record = {'amplitude': 0.9, 'sub_gate_bonds': [{'atoms': [1, 2], 'symbols': 'C-Cl', 'percent': 4.55}]}
+        for result in [(True, None), (False, None), (False, record)]:
+            rxn.ts_species.populate_ts_checks()
+            rxn.ts_species.ts_checks['warnings'] = f'Other; {NMD_ACCEPTED_ON_IRC_WARNING}C-Cl (1, 2) 4.55%; '
+            with patch('arc.checks.ts.evaluate_ts_normal_mode_displacement', return_value=result):
+                ts.check_normal_mode_displacement(reaction=rxn, job=self.job1)
+            self.assertEqual(rxn.ts_species.ts_checks['warnings'], 'Other; ', msg=f'{result}')
+
+    def test_ts_passed_checks_ignores_the_near_miss_record(self):
+        """Test that the near-miss record is not treated as a TS check by ts_passed_checks()."""
+        spc = ARCSpecies(label='TS', is_ts=True)
+        spc.populate_ts_checks()
+        for key in ['E0', 'e_elect', 'IRC', 'freq', 'NMD']:
+            spc.ts_checks[key] = True
+        for record in [None, {}, {'sub_gate_bonds': []}]:
+            spc.ts_checks[NMD_NEAR_MISS_KEY] = record
+            self.assertTrue(ts.ts_passed_checks(spc, exemptions=['warnings']), msg=f'record {record}')
 
     def test_ts_passed_checks_nmd(self):
         """Test that ts_passed_checks() treats the three-valued NMD check correctly."""

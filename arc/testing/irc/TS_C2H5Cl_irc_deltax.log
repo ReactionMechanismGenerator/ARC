@@ -1,0 +1,1787 @@
+ Entering Gaussian System, Link 0=g16
+ Initial command:
+ /usr/local/g16/l1.exe "/scratch/user/g16/0000000.server/" -scrdir="/scratch/user/g16/0000000.server/"
+ Entering Link 1 = /usr/local/g16/l1.exe PID=   0000000.
+  
+ Copyright (c) 1988-2019, Gaussian, Inc.  All Rights Reserved.
+  
+ This is part of the Gaussian(R) 16 program.  It is based on
+ the Gaussian(R) 09 system (copyright 2009, Gaussian, Inc.),
+ the Gaussian(R) 03 system (copyright 2003, Gaussian, Inc.),
+ the Gaussian(R) 98 system (copyright 1998, Gaussian, Inc.),
+ the Gaussian(R) 94 system (copyright 1995, Gaussian, Inc.),
+ the Gaussian 92(TM) system (copyright 1992, Gaussian, Inc.),
+ the Gaussian 90(TM) system (copyright 1990, Gaussian, Inc.),
+ the Gaussian 88(TM) system (copyright 1988, Gaussian, Inc.),
+ the Gaussian 86(TM) system (copyright 1986, Carnegie Mellon
+ University), and the Gaussian 82(TM) system (copyright 1983,
+ Carnegie Mellon University). Gaussian is a federally registered
+ trademark of Gaussian, Inc.
+  
+ This software contains proprietary and confidential information,
+ including trade secrets, belonging to Gaussian, Inc.
+  
+ This software is provided under written license and may be
+ used, copied, transmitted, or stored only in accord with that
+ written license.
+  
+ The following legend is applicable only to US Government
+ contracts under FAR:
+  
+                    RESTRICTED RIGHTS LEGEND
+  
+ Use, reproduction and disclosure by the US Government is
+ subject to restrictions as set forth in subparagraphs (a)
+ and (c) of the Commercial Computer Software - Restricted
+ Rights clause in FAR 52.227-19.
+  
+ Gaussian, Inc.
+ 340 Quinnipiac St., Bldg. 40, Wallingford CT 06492
+  
+  
+ ---------------------------------------------------------------
+ Warning -- This program may not be used in any manner that
+ competes with the business of Gaussian, Inc. or will provide
+ assistance to any competitor of Gaussian, Inc.  The licensee
+ of this program is prohibited from giving any competitor of
+ Gaussian, Inc. access to this program.  By using this program,
+ the user acknowledges that Gaussian, Inc. is engaged in the
+ business of creating and licensing software in the field of
+ computational chemistry and represents and warrants to the
+ licensee that it is not a competitor of Gaussian, Inc. and that
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 16, Revision C.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, 
+ G. A. Petersson, H. Nakatsuji, X. Li, M. Caricato, A. V. Marenich, 
+ J. Bloino, B. G. Janesko, R. Gomperts, B. Mennucci, H. P. Hratchian, 
+ J. V. Ortiz, A. F. Izmaylov, J. L. Sonnenberg, D. Williams-Young, 
+ F. Ding, F. Lipparini, F. Egidi, J. Goings, B. Peng, A. Petrone, 
+ T. Henderson, D. Ranasinghe, V. G. Zakrzewski, J. Gao, N. Rega, 
+ G. Zheng, W. Liang, M. Hada, M. Ehara, K. Toyota, R. Fukuda, 
+ J. Hasegawa, M. Ishida, T. Nakajima, Y. Honda, O. Kitao, H. Nakai, 
+ T. Vreven, K. Throssell, J. A. Montgomery, Jr., J. E. Peralta, 
+ F. Ogliaro, M. J. Bearpark, J. J. Heyd, E. N. Brothers, K. N. Kudin, 
+ V. N. Staroverov, T. A. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. P. Rendell, J. C. Burant, S. S. Iyengar, 
+ J. Tomasi, M. Cossi, J. M. Millam, M. Klene, C. Adamo, R. Cammi, 
+ J. W. Ochterski, R. L. Martin, K. Morokuma, O. Farkas, 
+ J. B. Foresman, and D. J. Fox, Gaussian, Inc., Wallingford CT, 2019.
+ 
+ ******************************************
+ Gaussian 16:  EM64L-G16RevC.01  3-Jul-2019
+                15-Nov-2026 
+ ******************************************
+ %chk=check.chk
+ %mem=32440mb
+ %NProcShared=16
+ Will use up to   16 processors via shared memory.
+ ----------------------------------------------------------------------
+ #P irc=(RCFC,forward,MaxPoints=150,StepSize=10) geom=check guess=read 
+ wb97xd/def2svp integral=(grid=ultrafine, Acc2E=12) IOp(2/9=2000) scf=(
+ direct,tight)
+ ----------------------------------------------------------------------
+ 1/10=5,18=10,22=1,26=4,29=2,38=1,39=10,42=150,44=3,172=1/1,23;
+ 2/9=2000,12=2,29=1,40=1/2;
+ 3/5=43,7=101,11=2,14=-4,25=1,27=12,30=1,71=2,74=-58,75=-5,116=-2,140=1/1,2,3;
+ 4/5=1/1;
+ 5/5=2,32=2,38=6,87=12/2;
+ 8/6=4,10=90,11=11,87=12/1;
+ 11/6=1,8=1,9=11,15=111,16=1,87=12/1,2,10;
+ 10/6=1,13=1,87=12/2;
+ 6/7=2,8=2,9=2,10=2,28=1,87=12/1;
+ 7/10=1,25=1,87=12/1,2,3,16;
+ 1/18=10,22=1,26=4,39=10,42=150,44=3/23(2);
+ 2/9=2000,29=1/2;
+ 99/5=20/99;
+ 2/9=2000,29=1/2;
+ 3/5=43,7=101,11=2,14=-2,25=1,27=12,30=1,71=2,74=-58,75=-5,140=1/1,2,3;
+ 4/5=5,16=3,69=1/1;
+ 5/5=2,32=2,38=5,87=12/2;
+ 8/6=4,10=90,11=11,87=12/1;
+ 11/6=1,8=1,9=11,15=111,16=1,87=12/1,2,10;
+ 10/6=1,13=1,87=12/2;
+ 7/10=1,25=1,87=12/1,2,3,16;
+ 1/18=10,22=1,26=4,39=10,42=150,44=3/23(-8);
+ 2/9=2000,29=1/2;
+ 6/7=2,8=2,9=2,10=2,19=2,28=1,87=12/1;
+ 99/5=20,9=1/99;
+ Leave Link    1 at Sun Nov 15 22:29:01 2026, MaxMem=  4251975680 cpu:               0.9 elap:               0.1
+ (Enter /usr/local/g16/l101.exe)
+ -----------------------------------------------------
+ TS5 row 7 IRC forward from freq_a1466 (-1702.84 cm-1)
+ -----------------------------------------------------
+ Structure from the checkpoint file:  "check.chk"
+ Charge =  0 Multiplicity = 1
+ No Z-Matrix found in chk file; cartesian coordinates used.
+  C                                                -1.598736000000     -0.530494000000      0.000024000000
+  C                                                -1.082271000000      0.764840000000      0.000066000000
+  Cl                                                1.304540000000     -0.080511000000     -0.000019000000
+  H                                                -0.329202000000     -0.762833000000     -0.000578000000
+  H                                                -1.984537000000     -0.946782000000      0.934166000000
+  H                                                -1.985705000000     -0.946331000000     -0.933849000000
+  H                                                -0.895592000000      1.309255000000      0.927664000000
+  H                                                -0.896103000000      1.309294000000     -0.927615000000
+ Recover connectivity data from disk.
+ ITRead=  0  0  0  0  0  0  0  0
+ MicOpt= -1 -1 -1 -1 -1 -1 -1 -1
+ NAtoms=      8 NQM=        8 NQMF=       0 NMMI=      0 NMMIF=      0
+                NMic=       0 NMicF=      0.
+                    Isotopes and Nuclear Properties:
+ (Nuclear quadrupole moments (NQMom) in fm**2, nuclear magnetic moments (NMagM)
+  in nuclear magnetons)
+
+  Atom         1           2           3           4           5           6           7           8
+ IAtWgt=          12          12          35           1           1           1           1           1
+ AtmWgt=  12.0000000  12.0000000  34.9688527   1.0078250   1.0078250   1.0078250   1.0078250   1.0078250
+ NucSpn=           0           0           3           1           1           1           1           1
+ AtZEff=   3.6000000   3.6000000  14.2400000   1.0000000   1.0000000   1.0000000   1.0000000   1.0000000
+ NQMom=    0.0000000   0.0000000  -8.1650000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000
+ NMagM=    0.0000000   0.0000000   0.8218740   2.7928460   2.7928460   2.7928460   2.7928460   2.7928460
+ AtZNuc=   6.0000000   6.0000000  17.0000000   1.0000000   1.0000000   1.0000000   1.0000000   1.0000000
+ Leave Link  101 at Sun Nov 15 22:29:01 2026, MaxMem=  4251975680 cpu:               0.9 elap:               0.1
+ (Enter /usr/local/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ ------------------------------------------------------------------------
+ INPUT DATA FOR L123
+ ------------------------------------------------------------------------
+ GENERAL PARAMETERS:
+ Rxn path following direction = Forward
+ Maximum points per path      = 150
+ Step size                    =   0.100 bohr
+ Integration scheme           = HPC                                 
+    Redo corrector integration= Yes                                 
+    DWI Weight Power          =  2
+    DWI will use Hessian update vectors when possible.
+    Max correction cycles     =  20
+ Initial Hessian              = ReadFC from chk
+ Hessian evaluation           = All updating
+ Hessian updating method      = Bofill                              
+ ------------------------------------------------------------------------
+          ******** Start new reaction path calculation ********
+ RCFC Option Requested - Data Read From Chk File:
+ "check.chk"
+   Energy From Chk =   -539.0962712
+
+ Current Structure is TS -> form Hessian eigenvectors.
+                            Recovering Hessian eigenvectors from chk file.
+ Supplied step size of   0.1000 bohr.
+    Integration on MW PES will use step size of   0.1061 sqrt(amu)*bohr.
+ Point Number:   0          Path Number:   1
+ Calculating another point on the path.
+ Point Number  1 in FORWARD path direction.
+ Using LQA Reaction Path Following.
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Leave Link  123 at Sun Nov 15 22:29:01 2026, MaxMem=  4251975680 cpu:               0.1 elap:               0.0
+ (Enter /usr/local/g16/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0       -1.711411   -0.532768    0.000020
+      2          6           0       -1.192519    0.766836    0.000063
+      3         17           0        1.190288   -0.079001   -0.000022
+      4          1           0       -0.489557   -0.785277   -0.000599
+      5          1           0       -2.104409   -0.942924    0.933846
+      6          1           0       -2.105585   -0.942469   -0.933525
+      7          1           0       -1.011583    1.312372    0.927881
+      8          1           0       -1.012082    1.312403   -0.927836
+ ---------------------------------------------------------------------
+ SCF Done:  E(RwB97XD) =  -539.096848164     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.009623051 RMS     0.003474322
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   1          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.711495   -0.532831    0.000021
+      2          6                   -1.192341    0.766924    0.000062
+      3         17                    1.190244   -0.078979   -0.000022
+      4          1                   -0.488107   -0.787096   -0.000574
+      5          1                   -2.104798   -0.942698    0.933830
+      6          1                   -2.105909   -0.942252   -0.933516
+      7          1                   -1.011781    1.312511    0.927906
+      8          1                   -1.012291    1.312577   -0.927850
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10602
+   NET REACTION COORDINATE UP TO THIS POINT =    0.10602
+  # OF POINTS ALONG THE PATH =   1
+  # OF STEPS =   1
+ Point Number  2 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.098347473     A.U. after   17 cycles
+ Cartesian Forces:  Max     0.018016198 RMS     0.006225411
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   2          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.710195   -0.535957    0.000021
+      2          6                   -1.187869    0.768466    0.000061
+      3         17                    1.189995   -0.078021   -0.000023
+      4          1                   -0.529592   -0.815445   -0.000564
+      5          1                   -2.111907   -0.938686    0.933399
+      6          1                   -2.112967   -0.938249   -0.933089
+      7          1                   -1.014103    1.315457    0.928146
+      8          1                   -1.014608    1.315545   -0.928075
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10601
+   NET REACTION COORDINATE UP TO THIS POINT =    0.21203
+  # OF POINTS ALONG THE PATH =   2
+  # OF STEPS =   1
+ Point Number  3 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.100503143     A.U. after   16 cycles
+ Cartesian Forces:  Max     0.025126386 RMS     0.008302875
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   3          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.709085   -0.539225    0.000021
+      2          6                   -1.182926    0.770014    0.000061
+      3         17                    1.189614   -0.076980   -0.000023
+      4          1                   -0.567116   -0.847029   -0.000564
+      5          1                   -2.120171   -0.933993    0.932851
+      6          1                   -2.121204   -0.933560   -0.932537
+      7          1                   -1.016701    1.318697    0.928361
+      8          1                   -1.017196    1.318792   -0.928280
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10605
+   NET REACTION COORDINATE UP TO THIS POINT =    0.31809
+  # OF POINTS ALONG THE PATH =   3
+  # OF STEPS =   1
+ Point Number  4 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.103040781     A.U. after   16 cycles
+ Cartesian Forces:  Max     0.030857658 RMS     0.009767687
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   4          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.708198   -0.542573    0.000020
+      2          6                   -1.177485    0.771465    0.000061
+      3         17                    1.189096   -0.075856   -0.000023
+      4          1                   -0.600337   -0.881256   -0.000570
+      5          1                   -2.129557   -0.928578    0.932161
+      6          1                   -2.130572   -0.928146   -0.931841
+      7          1                   -1.019537    1.322142    0.928536
+      8          1                   -1.020018    1.322240   -0.928445
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10603
+   NET REACTION COORDINATE UP TO THIS POINT =    0.42412
+  # OF POINTS ALONG THE PATH =   4
+  # OF STEPS =   1
+ Point Number  5 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.105794695     A.U. after   16 cycles
+ Cartesian Forces:  Max     0.035368109 RMS     0.010836248
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   5          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.707511   -0.545959    0.000019
+      2          6                   -1.171529    0.772719    0.000061
+      3         17                    1.188415   -0.074649   -0.000023
+      4          1                   -0.629093   -0.917401   -0.000579
+      5          1                   -2.140063   -0.922354    0.931299
+      6          1                   -2.141067   -0.921923   -0.930970
+      7          1                   -1.022539    1.325708    0.928642
+      8          1                   -1.023005    1.325808   -0.928543
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10607
+   NET REACTION COORDINATE UP TO THIS POINT =    0.53019
+  # OF POINTS ALONG THE PATH =   5
+  # OF STEPS =   1
+ Point Number  6 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.108649252     A.U. after   16 cycles
+ Cartesian Forces:  Max     0.038990686 RMS     0.011615891
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   6          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.706956   -0.549348    0.000018
+      2          6                   -1.165075    0.773671    0.000061
+      3         17                    1.187574   -0.073365   -0.000023
+      4          1                   -0.654571   -0.954073   -0.000590
+      5          1                   -2.151447   -0.915348    0.930231
+      6          1                   -2.152444   -0.914914   -0.929891
+      7          1                   -1.025601    1.329256    0.928653
+      8          1                   -1.026050    1.329356   -0.928545
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10607
+   NET REACTION COORDINATE UP TO THIS POINT =    0.63626
+  # OF POINTS ALONG THE PATH =   6
+  # OF STEPS =   1
+ Point Number  7 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.111537108     A.U. after   16 cycles
+ Cartesian Forces:  Max     0.041795716 RMS     0.012224281
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   7          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.706506   -0.552705    0.000017
+      2          6                   -1.158135    0.774254    0.000062
+      3         17                    1.186564   -0.072008   -0.000023
+      4          1                   -0.677390   -0.990592   -0.000602
+      5          1                   -2.163551   -0.907554    0.928947
+      6          1                   -2.164543   -0.907116   -0.928594
+      7          1                   -1.028624    1.332683    0.928547
+      8          1                   -1.029054    1.332781   -0.928432
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10609
+   NET REACTION COORDINATE UP TO THIS POINT =    0.74235
+  # OF POINTS ALONG THE PATH =   7
+  # OF STEPS =   1
+ Point Number  8 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.114411060     A.U. after   16 cycles
+ Cartesian Forces:  Max     0.043986075 RMS     0.012684641
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   8          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.706110   -0.556031    0.000016
+      2          6                   -1.150723    0.774429    0.000062
+      3         17                    1.185385   -0.070576   -0.000023
+      4          1                   -0.698597   -1.026195   -0.000614
+      5          1                   -2.176114   -0.899028    0.927435
+      6          1                   -2.177105   -0.898584   -0.927069
+      7          1                   -1.031492    1.335871    0.928314
+      8          1                   -1.031902    1.335968   -0.928191
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10609
+   NET REACTION COORDINATE UP TO THIS POINT =    0.84844
+  # OF POINTS ALONG THE PATH =   8
+  # OF STEPS =   1
+ Point Number  9 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.117236461     A.U. after   14 cycles
+ Cartesian Forces:  Max     0.045660654 RMS     0.013073312
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:   9          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.705777   -0.559296    0.000014
+      2          6                   -1.142848    0.774163    0.000062
+      3         17                    1.184030   -0.069069   -0.000023
+      4          1                   -0.718474   -1.060630   -0.000627
+      5          1                   -2.188961   -0.889813    0.925714
+      6          1                   -2.189952   -0.889362   -0.925333
+      7          1                   -1.034099    1.338738    0.927951
+      8          1                   -1.034488    1.338833   -0.927821
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10609
+   NET REACTION COORDINATE UP TO THIS POINT =    0.95453
+  # OF POINTS ALONG THE PATH =   9
+  # OF STEPS =   1
+ Point Number 10 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.119989596     A.U. after   15 cycles
+ Cartesian Forces:  Max     0.046968599 RMS     0.013387013
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  10          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.705490   -0.562512    0.000013
+      2          6                   -1.134493    0.773436    0.000062
+      3         17                    1.182486   -0.067478   -0.000023
+      4          1                   -0.737508   -1.093438   -0.000639
+      5          1                   -2.201871   -0.879989    0.923804
+      6          1                   -2.202863   -0.879528   -0.923406
+      7          1                   -1.036335    1.341198    0.927463
+      8          1                   -1.036701    1.341291   -0.927327
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10609
+   NET REACTION COORDINATE UP TO THIS POINT =    1.06061
+  # OF POINTS ALONG THE PATH =  10
+  # OF STEPS =   1
+ Point Number 11 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.122657200     A.U. after   15 cycles
+ Cartesian Forces:  Max     0.047935182 RMS     0.013674713
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  11          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.705280   -0.565638    0.000012
+      2          6                   -1.125667    0.772227    0.000062
+      3         17                    1.180745   -0.065806   -0.000023
+      4          1                   -0.755719   -1.124531   -0.000650
+      5          1                   -2.214658   -0.869651    0.921746
+      6          1                   -2.215654   -0.869180   -0.921332
+      7          1                   -1.038084    1.343185    0.926855
+      8          1                   -1.038427    1.343275   -0.926714
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10608
+   NET REACTION COORDINATE UP TO THIS POINT =    1.16669
+  # OF POINTS ALONG THE PATH =  11
+  # OF STEPS =   1
+ Point Number 12 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.125243139     A.U. after   15 cycles
+ Cartesian Forces:  Max     0.048683057 RMS     0.013896730
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  12          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.705146   -0.568664    0.000011
+      2          6                   -1.116386    0.770538    0.000062
+      3         17                    1.178814   -0.064049   -0.000022
+      4          1                   -0.773648   -1.153612   -0.000661
+      5          1                   -2.227070   -0.858963    0.919590
+      6          1                   -2.228070   -0.858481   -0.919159
+      7          1                   -1.039239    1.344630    0.926146
+      8          1                   -1.039558    1.344717   -0.925999
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10608
+   NET REACTION COORDINATE UP TO THIS POINT =    1.27277
+  # OF POINTS ALONG THE PATH =  12
+  # OF STEPS =   1
+ Point Number 13 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.127748497     A.U. after   15 cycles
+ Cartesian Forces:  Max     0.049238202 RMS     0.014151943
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  13          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.705144   -0.571505    0.000009
+      2          6                   -1.106704    0.768364    0.000062
+      3         17                    1.176695   -0.062218   -0.000022
+      4          1                   -0.790894   -1.181046   -0.000671
+      5          1                   -2.238981   -0.848054    0.917409
+      6          1                   -2.239987   -0.847560   -0.916960
+      7          1                   -1.039701    1.345496    0.925349
+      8          1                   -1.039995    1.345581   -0.925199
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10606
+   NET REACTION COORDINATE UP TO THIS POINT =    1.37883
+  # OF POINTS ALONG THE PATH =  13
+  # OF STEPS =   1
+ Point Number 14 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.130175870     A.U. after   14 cycles
+ Cartesian Forces:  Max     0.049594115 RMS     0.014318036
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  14          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.705244   -0.574212    0.000008
+      2          6                   -1.096621    0.765740    0.000062
+      3         17                    1.174389   -0.060306   -0.000022
+      4          1                   -0.807821   -1.206350   -0.000682
+      5          1                   -2.250232   -0.837077    0.915243
+      6          1                   -2.251244   -0.836569   -0.914776
+      7          1                   -1.039397    1.345761    0.924493
+      8          1                   -1.039666    1.345843   -0.924339
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10604
+   NET REACTION COORDINATE UP TO THIS POINT =    1.48487
+  # OF POINTS ALONG THE PATH =  14
+  # OF STEPS =   1
+ Point Number 15 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.132523010     A.U. after   14 cycles
+ Cartesian Forces:  Max     0.049858934 RMS     0.014568836
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  15          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.705507   -0.576663    0.000007
+      2          6                   -1.086230    0.762655    0.000061
+      3         17                    1.171898   -0.058341   -0.000022
+      4          1                   -0.823743   -1.230123   -0.000691
+      5          1                   -2.260823   -0.826093    0.913145
+      6          1                   -2.261841   -0.825571   -0.912660
+      7          1                   -1.038264    1.345424    0.923579
+      8          1                   -1.038509    1.345503   -0.923423
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10594
+   NET REACTION COORDINATE UP TO THIS POINT =    1.59081
+  # OF POINTS ALONG THE PATH =  15
+  # OF STEPS =   1
+ Point Number 16 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.134809035     A.U. after   15 cycles
+ Cartesian Forces:  Max     0.049959516 RMS     0.014689280
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  16          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.705829   -0.579014    0.000006
+      2          6                   -1.075548    0.759212    0.000061
+      3         17                    1.169256   -0.056309   -0.000022
+      4          1                   -0.839972   -1.251428   -0.000701
+      5          1                   -2.270578   -0.815286    0.911129
+      6          1                   -2.271604   -0.814749   -0.910627
+      7          1                   -1.036285    1.344502    0.922653
+      8          1                   -1.036506    1.344578   -0.922496
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10585
+   NET REACTION COORDINATE UP TO THIS POINT =    1.69667
+  # OF POINTS ALONG THE PATH =  16
+  # OF STEPS =   1
+ Point Number 17 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.137078013     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.050090551 RMS     0.014850711
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  17          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.706498   -0.580811    0.000005
+      2          6                   -1.064716    0.755335    0.000060
+      3         17                    1.166452   -0.054264   -0.000021
+      4          1                   -0.853442   -1.273257   -0.000712
+      5          1                   -2.279590   -0.804660    0.909220
+      6          1                   -2.280624   -0.804108   -0.908701
+      7          1                   -1.033483    1.343047    0.921690
+      8          1                   -1.033681    1.343121   -0.921532
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10586
+   NET REACTION COORDINATE UP TO THIS POINT =    1.80253
+  # OF POINTS ALONG THE PATH =  17
+  # OF STEPS =   2
+ Point Number 18 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.139281309     A.U. after   13 cycles
+ Cartesian Forces:  Max     0.050024695 RMS     0.014975215
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  18          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.706973   -0.582786    0.000004
+      2          6                   -1.053509    0.751150    0.000060
+      3         17                    1.163480   -0.052129   -0.000021
+      4          1                   -0.869144   -1.290216   -0.000721
+      5          1                   -2.287621   -0.794619    0.907576
+      6          1                   -2.288664   -0.794050   -0.907041
+      7          1                   -1.029891    1.341079    0.920752
+      8          1                   -1.030067    1.341150   -0.920594
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10604
+   NET REACTION COORDINATE UP TO THIS POINT =    1.90856
+  # OF POINTS ALONG THE PATH =  18
+  # OF STEPS =   1
+ Point Number 19 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.141470984     A.U. after   13 cycles
+ Cartesian Forces:  Max     0.049954687 RMS     0.015096512
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  19          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.707654   -0.584403    0.000003
+      2          6                   -1.042166    0.746664    0.000059
+      3         17                    1.160371   -0.049969   -0.000021
+      4          1                   -0.883001   -1.306909   -0.000731
+      5          1                   -2.294911   -0.784931    0.906077
+      6          1                   -2.295962   -0.784346   -0.905526
+      7          1                   -1.025531    1.338661    0.919792
+      8          1                   -1.025686    1.338729   -0.919634
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10608
+   NET REACTION COORDINATE UP TO THIS POINT =    2.01465
+  # OF POINTS ALONG THE PATH =  19
+  # OF STEPS =   1
+ Point Number 20 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.143629148     A.U. after   13 cycles
+ Cartesian Forces:  Max     0.049781473 RMS     0.015188420
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  20          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.708322   -0.585920    0.000003
+      2          6                   -1.030690    0.741947    0.000059
+      3         17                    1.157147   -0.047774   -0.000021
+      4          1                   -0.896472   -1.321852   -0.000740
+      5          1                   -2.301470   -0.775687    0.904742
+      6          1                   -2.302530   -0.775085   -0.904176
+      7          1                   -1.020510    1.335868    0.918840
+      8          1                   -1.020646    1.335932   -0.918684
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10609
+   NET REACTION COORDINATE UP TO THIS POINT =    2.12074
+  # OF POINTS ALONG THE PATH =  20
+  # OF STEPS =   1
+ Point Number 21 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.145766620     A.U. after   13 cycles
+ Cartesian Forces:  Max     0.049639767 RMS     0.015276989
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  21          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.709081   -0.587167    0.000002
+      2          6                   -1.019148    0.737011    0.000058
+      3         17                    1.153813   -0.045570   -0.000020
+      4          1                   -0.908954   -1.336095   -0.000750
+      5          1                   -2.307340   -0.766852    0.903538
+      6          1                   -2.308409   -0.766233   -0.902957
+      7          1                   -1.014885    1.332751    0.917893
+      8          1                   -1.015002    1.332812   -0.917739
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10610
+   NET REACTION COORDINATE UP TO THIS POINT =    2.22683
+  # OF POINTS ALONG THE PATH =  21
+  # OF STEPS =   1
+ Point Number 22 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.147888024     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.049433520 RMS     0.015345378
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  22          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.709805   -0.588310    0.000002
+      2          6                   -1.007546    0.731906    0.000057
+      3         17                    1.150386   -0.043352   -0.000020
+      4          1                   -0.921103   -1.348930   -0.000760
+      5          1                   -2.312651   -0.758389    0.902482
+      6          1                   -2.313730   -0.757752   -0.901887
+      7          1                   -1.008735    1.329364    0.916958
+      8          1                   -1.008836    1.329421   -0.916807
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10611
+   NET REACTION COORDINATE UP TO THIS POINT =    2.33294
+  # OF POINTS ALONG THE PATH =  22
+  # OF STEPS =   1
+ Point Number 23 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.149995372     A.U. after   13 cycles
+ Cartesian Forces:  Max     0.049232021 RMS     0.015399829
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  23          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.710548   -0.589252    0.000001
+      2          6                   -0.995922    0.726653    0.000056
+      3         17                    1.146875   -0.041132   -0.000019
+      4          1                   -0.932667   -1.361123   -0.000771
+      5          1                   -2.317378   -0.750300    0.901531
+      6          1                   -2.318466   -0.749645   -0.900921
+      7          1                   -1.002147    1.325754    0.916024
+      8          1                   -1.002232    1.325808   -0.915876
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10611
+   NET REACTION COORDINATE UP TO THIS POINT =    2.43905
+  # OF POINTS ALONG THE PATH =  23
+  # OF STEPS =   1
+ Point Number 24 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.152090219     A.U. after   13 cycles
+ Cartesian Forces:  Max     0.048980477 RMS     0.015437118
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  24          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.711238   -0.590098    0.000001
+      2          6                   -0.984277    0.721283    0.000056
+      3         17                    1.143288   -0.038910   -0.000019
+      4          1                   -0.943876   -1.372287   -0.000781
+      5          1                   -2.321682   -0.742496    0.900700
+      6          1                   -2.322780   -0.741822   -0.900076
+      7          1                   -0.995183    1.321960    0.915097
+      8          1                   -0.995254    1.322010   -0.914952
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10611
+   NET REACTION COORDINATE UP TO THIS POINT =    2.54516
+  # OF POINTS ALONG THE PATH =  24
+  # OF STEPS =   1
+ Point Number 25 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.154172185     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.048703219 RMS     0.015452995
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  25          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.711907   -0.590792    0.000001
+      2          6                   -0.972626    0.715811    0.000055
+      3         17                    1.139629   -0.036694   -0.000019
+      4          1                   -0.954619   -1.382896   -0.000791
+      5          1                   -2.325507   -0.734997    0.899945
+      6          1                   -2.326614   -0.734304   -0.899307
+      7          1                   -0.987922    1.318020    0.914167
+      8          1                   -0.987981    1.318066   -0.914026
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10611
+   NET REACTION COORDINATE UP TO THIS POINT =    2.65127
+  # OF POINTS ALONG THE PATH =  25
+  # OF STEPS =   1
+ Point Number 26 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.156240910     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.048373013 RMS     0.015447795
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  26          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.712504   -0.591408    0.000000
+      2          6                   -0.960972    0.710259    0.000054
+      3         17                    1.135904   -0.034482   -0.000018
+      4          1                   -0.965010   -1.392730   -0.000802
+      5          1                   -2.329001   -0.727700    0.899278
+      6          1                   -2.330118   -0.726988   -0.898627
+      7          1                   -0.980410    1.313959    0.913236
+      8          1                   -0.980458    1.314002   -0.913099
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10611
+   NET REACTION COORDINATE UP TO THIS POINT =    2.75738
+  # OF POINTS ALONG THE PATH =  26
+  # OF STEPS =   1
+ Point Number 27 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.158294939     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.047994956 RMS     0.015416974
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  27          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.713052   -0.591908    0.000000
+      2          6                   -0.949320    0.704642    0.000053
+      3         17                    1.132117   -0.032280   -0.000018
+      4          1                   -0.975056   -1.402135   -0.000813
+      5          1                   -2.332099   -0.720637    0.898664
+      6          1                   -2.333227   -0.719906   -0.897999
+      7          1                   -0.972718    1.309811    0.912299
+      8          1                   -0.972755    1.309850   -0.912166
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10611
+   NET REACTION COORDINATE UP TO THIS POINT =    2.86350
+  # OF POINTS ALONG THE PATH =  27
+  # OF STEPS =   1
+ Point Number 28 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.160332723     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.047560842 RMS     0.015363232
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  28          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.713515   -0.592344    0.000000
+      2          6                   -0.937675    0.698971    0.000052
+      3         17                    1.128274   -0.030087   -0.000017
+      4          1                   -0.984815   -1.410969   -0.000824
+      5          1                   -2.334933   -0.713709    0.898116
+      6          1                   -2.336071   -0.712959   -0.897437
+      7          1                   -0.964877    1.305589    0.911354
+      8          1                   -0.964905    1.305624   -0.911225
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    2.96961
+  # OF POINTS ALONG THE PATH =  28
+  # OF STEPS =   1
+ Point Number 29 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.162352054     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.047057941 RMS     0.015280878
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  29          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.713910   -0.592690   -0.000000
+      2          6                   -0.926037    0.693259    0.000051
+      3         17                    1.124376   -0.027906   -0.000017
+      4          1                   -0.994335   -1.419487   -0.000835
+      5          1                   -2.337434   -0.706955    0.897603
+      6          1                   -2.338582   -0.706185   -0.896911
+      7          1                   -0.956944    1.301318    0.910397
+      8          1                   -0.956964    1.301349   -0.910273
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    3.07573
+  # OF POINTS ALONG THE PATH =  29
+  # OF STEPS =   1
+ Point Number 30 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.164350317     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.046480334 RMS     0.015169936
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  30          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.714208   -0.592985   -0.000000
+      2          6                   -0.914411    0.687510    0.000050
+      3         17                    1.120428   -0.025736   -0.000016
+      4          1                   -1.003637   -1.427579   -0.000846
+      5          1                   -2.339715   -0.700278    0.897137
+      6          1                   -2.340874   -0.699488   -0.896431
+      7          1                   -0.948937    1.297002    0.909427
+      8          1                   -0.948950    1.297030   -0.909308
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    3.18185
+  # OF POINTS ALONG THE PATH =  30
+  # OF STEPS =   1
+ Point Number 31 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.166324177     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.046250961 RMS     0.015025221
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  31          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.714425   -0.593204   -0.000000
+      2          6                   -0.902798    0.681733    0.000048
+      3         17                    1.116431   -0.023579   -0.000016
+      4          1                   -1.012771   -1.435440   -0.000858
+      5          1                   -2.341705   -0.693723    0.896694
+      6          1                   -2.342875   -0.692912   -0.895975
+      7          1                   -0.940898    1.292659    0.908441
+      8          1                   -0.940905    1.292683   -0.908327
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    3.28796
+  # OF POINTS ALONG THE PATH =  31
+  # OF STEPS =   1
+ Point Number 32 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.168269925     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.046059422 RMS     0.014846383
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  32          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.714537   -0.593381   -0.000000
+      2          6                   -0.891202    0.675929    0.000047
+      3         17                    1.112389   -0.021436   -0.000015
+      4          1                   -1.021721   -1.442965   -0.000870
+      5          1                   -2.343508   -0.687195    0.896284
+      6          1                   -2.344688   -0.686363   -0.895551
+      7          1                   -0.932833    1.288288    0.907437
+      8          1                   -0.932835    1.288308   -0.907328
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    3.39408
+  # OF POINTS ALONG THE PATH =  32
+  # OF STEPS =   1
+ Point Number 33 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.170183224     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.045729168 RMS     0.014627413
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  33          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.714559   -0.593494   -0.000001
+      2          6                   -0.879621    0.670106    0.000046
+      3         17                    1.108300   -0.019306   -0.000015
+      4          1                   -1.030536   -1.450309   -0.000882
+      5          1                   -2.345045   -0.680748    0.895890
+      6          1                   -2.346236   -0.679894   -0.895142
+      7          1                   -0.924777    1.283901    0.906414
+      8          1                   -0.924773    1.283916   -0.906311
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    3.50019
+  # OF POINTS ALONG THE PATH =  33
+  # OF STEPS =   1
+ Point Number 34 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.172059300     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.045246322 RMS     0.014366163
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  34          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.714468   -0.593573   -0.000001
+      2          6                   -0.868062    0.664262    0.000044
+      3         17                    1.104167   -0.017190   -0.000014
+      4          1                   -1.039182   -1.457371   -0.000894
+      5          1                   -2.346415   -0.674286    0.895517
+      6          1                   -2.347617   -0.673410   -0.894755
+      7          1                   -0.916725    1.279494    0.905372
+      8          1                   -0.916717    1.279505   -0.905274
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    3.60631
+  # OF POINTS ALONG THE PATH =  34
+  # OF STEPS =   1
+ Point Number 35 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.173892948     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.044604665 RMS     0.014059654
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  35          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.714279   -0.593594   -0.000001
+      2          6                   -0.856523    0.658404    0.000043
+      3         17                    1.099991   -0.015088   -0.000013
+      4          1                   -1.047728   -1.464292   -0.000907
+      5          1                   -2.347532   -0.667876    0.895155
+      6          1                   -2.348746   -0.666979   -0.894379
+      7          1                   -0.908709    1.275078    0.904310
+      8          1                   -0.908698    1.275086   -0.904218
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    3.71243
+  # OF POINTS ALONG THE PATH =  35
+  # OF STEPS =   1
+ Point Number 36 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.175678766     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.043787851 RMS     0.013704889
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  36          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.713969   -0.593587   -0.000001
+      2          6                   -0.845011    0.652532    0.000041
+      3         17                    1.095772   -0.013001   -0.000013
+      4          1                   -1.056128   -1.470975   -0.000920
+      5          1                   -2.348496   -0.661414    0.894806
+      6          1                   -2.349721   -0.660493   -0.894014
+      7          1                   -0.900721    1.270647    0.903229
+      8          1                   -0.900707    1.270650   -0.903143
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    3.81854
+  # OF POINTS ALONG THE PATH =  36
+  # OF STEPS =   1
+ Point Number 37 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.177410623     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.042773387 RMS     0.013294884
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  37          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.713552   -0.593525   -0.000001
+      2          6                   -0.833525    0.646649    0.000040
+      3         17                    1.091511   -0.010930   -0.000012
+      4          1                   -1.064479   -1.477561   -0.000933
+      5          1                   -2.349208   -0.654986    0.894467
+      6          1                   -2.350445   -0.654041   -0.893660
+      7          1                   -0.892791    1.266210    0.902127
+      8          1                   -0.892774    1.266209   -0.902047
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    3.92466
+  # OF POINTS ALONG THE PATH =  37
+  # OF STEPS =   1
+ Point Number 38 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.179081612     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.041533554 RMS     0.012822354
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  38          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.713004   -0.593440   -0.000001
+      2          6                   -0.822075    0.640754    0.000038
+      3         17                    1.087211   -0.008872   -0.000011
+      4          1                   -1.072709   -1.483949   -0.000947
+      5          1                   -2.349779   -0.648459    0.894129
+      6          1                   -2.351029   -0.647489   -0.893305
+      7          1                   -0.884898    1.261756    0.901007
+      8          1                   -0.884879    1.261751   -0.900933
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    4.03078
+  # OF POINTS ALONG THE PATH =  38
+  # OF STEPS =   1
+ Point Number 39 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.180684120     A.U. after   11 cycles
+ Cartesian Forces:  Max     0.040059487 RMS     0.012285509
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  39          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.712341   -0.593299   -0.000001
+      2          6                   -0.810660    0.634850    0.000036
+      3         17                    1.082870   -0.006831   -0.000011
+      4          1                   -1.080957   -1.490286   -0.000962
+      5          1                   -2.350090   -0.641953    0.893807
+      6          1                   -2.351353   -0.640958   -0.892966
+      7          1                   -0.877077    1.257294    0.899866
+      8          1                   -0.877056    1.257286   -0.899800
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    4.13689
+  # OF POINTS ALONG THE PATH =  39
+  # OF STEPS =   1
+ Point Number 40 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.182210078     A.U. after   12 cycles
+ Cartesian Forces:  Max     0.038326464 RMS     0.011676032
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  40          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.711535   -0.593141   -0.000001
+      2          6                   -0.799294    0.628932    0.000034
+      3         17                    1.078492   -0.004804   -0.000010
+      4          1                   -1.089091   -1.496457   -0.000978
+      5          1                   -2.350269   -0.635284    0.893465
+      6          1                   -2.351547   -0.634262   -0.892606
+      7          1                   -0.869293    1.252809    0.898711
+      8          1                   -0.869269    1.252796   -0.898652
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10612
+   NET REACTION COORDINATE UP TO THIS POINT =    4.24301
+  # OF POINTS ALONG THE PATH =  40
+  # OF STEPS =   1
+ Point Number 41 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.183650620     A.U. after   11 cycles
+ Cartesian Forces:  Max     0.036326791 RMS     0.010994599
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  41          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.710603   -0.592920   -0.000000
+      2          6                   -0.787973    0.623008    0.000032
+      3         17                    1.074074   -0.002795   -0.000009
+      4          1                   -1.097324   -1.502606   -0.000995
+      5          1                   -2.350170   -0.628637    0.893161
+      6          1                   -2.351463   -0.627587   -0.892283
+      7          1                   -0.861594    1.248312    0.897536
+      8          1                   -0.861569    1.248293   -0.897485
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10611
+   NET REACTION COORDINATE UP TO THIS POINT =    4.34912
+  # OF POINTS ALONG THE PATH =  41
+  # OF STEPS =   1
+ Point Number 42 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.184996452     A.U. after   11 cycles
+ Cartesian Forces:  Max     0.034036151 RMS     0.010230808
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  42          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.709512   -0.592689   -0.000000
+      2          6                   -0.776720    0.617066    0.000030
+      3         17                    1.069620   -0.000802   -0.000008
+      4          1                   -1.105402   -1.508621   -0.001013
+      5          1                   -2.349945   -0.621729    0.892789
+      6          1                   -2.351255   -0.620648   -0.891889
+      7          1                   -0.853920    1.243780    0.896357
+      8          1                   -0.853893    1.243757   -0.896314
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10611
+   NET REACTION COORDINATE UP TO THIS POINT =    4.45523
+  # OF POINTS ALONG THE PATH =  42
+  # OF STEPS =   1
+ Point Number 43 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.186237830     A.U. after   11 cycles
+ Cartesian Forces:  Max     0.031463093 RMS     0.009395378
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  43          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.708274   -0.592383   -0.000000
+      2          6                   -0.765523    0.611124    0.000027
+      3         17                    1.065125    0.001172   -0.000007
+      4          1                   -1.113715   -1.514611   -0.001033
+      5          1                   -2.349410   -0.614876    0.892525
+      6          1                   -2.350739   -0.613764   -0.891604
+      7          1                   -0.846359    1.239232    0.895152
+      8          1                   -0.846329    1.239202   -0.895119
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10610
+   NET REACTION COORDINATE UP TO THIS POINT =    4.56133
+  # OF POINTS ALONG THE PATH =  43
+  # OF STEPS =   1
+ Point Number 44 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.187364169     A.U. after   11 cycles
+ Cartesian Forces:  Max     0.028542880 RMS     0.008463282
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  44          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.706856   -0.592074    0.000000
+      2          6                   -0.754426    0.605154    0.000024
+      3         17                    1.060598    0.003123   -0.000006
+      4          1                   -1.121745   -1.520546   -0.001056
+      5          1                   -2.348736   -0.607584    0.892062
+      6          1                   -2.350086   -0.606434   -0.891113
+      7          1                   -0.838787    1.234638    0.893969
+      8          1                   -0.838756    1.234602   -0.893946
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10608
+   NET REACTION COORDINATE UP TO THIS POINT =    4.66740
+  # OF POINTS ALONG THE PATH =  44
+  # OF STEPS =   1
+ Point Number 45 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.188363845     A.U. after   11 cycles
+ Cartesian Forces:  Max     0.025286407 RMS     0.007453946
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  45          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.705255   -0.591666    0.000001
+      2          6                   -0.743398    0.599200    0.000021
+      3         17                    1.056028    0.005050   -0.000005
+      4          1                   -1.130306   -1.526385   -0.001081
+      5          1                   -2.347717   -0.600440    0.891909
+      6          1                   -2.349093   -0.599254   -0.890934
+      7          1                   -0.831378    1.230012    0.892734
+      8          1                   -0.831343    1.229969   -0.892725
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10603
+   NET REACTION COORDINATE UP TO THIS POINT =    4.77344
+  # OF POINTS ALONG THE PATH =  45
+  # OF STEPS =   1
+ Point Number 46 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.189223234     A.U. after   11 cycles
+ Cartesian Forces:  Max     0.021610851 RMS     0.006344557
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  46          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.703434   -0.591272    0.000001
+      2          6                   -0.732541    0.593187    0.000017
+      3         17                    1.051444    0.006942   -0.000003
+      4          1                   -1.138355   -1.532348   -0.001113
+      5          1                   -2.346531   -0.592478    0.891258
+      6          1                   -2.347939   -0.591242   -0.890243
+      7          1                   -0.823877    1.225338    0.891609
+      8          1                   -0.823841    1.225285   -0.891613
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10595
+   NET REACTION COORDINATE UP TO THIS POINT =    4.87939
+  # OF POINTS ALONG THE PATH =  46
+  # OF STEPS =   1
+ Point Number 47 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.189935665     A.U. after   11 cycles
+ Cartesian Forces:  Max     0.017588194 RMS     0.005121163
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  47          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.701399   -0.590709    0.000002
+      2          6                   -0.721743    0.587237    0.000012
+      3         17                    1.046803    0.008805   -0.000001
+      4          1                   -1.147288   -1.538102   -0.001150
+      5          1                   -2.344903   -0.584894    0.891232
+      6          1                   -2.346354   -0.583611   -0.890182
+      7          1                   -0.816685    1.220610    0.890321
+      8          1                   -0.816642    1.220545   -0.890346
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10590
+   NET REACTION COORDINATE UP TO THIS POINT =    4.98529
+  # OF POINTS ALONG THE PATH =  47
+  # OF STEPS =   1
+ Point Number 48 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.190493659     A.U. after    9 cycles
+ Cartesian Forces:  Max     0.013123571 RMS     0.003728128
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  48          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.698792   -0.590240    0.000002
+      2          6                   -0.711396    0.581133    0.000007
+      3         17                    1.042154    0.010584    0.000001
+      4          1                   -1.155522   -1.544175   -0.001206
+      5          1                   -2.343235   -0.575731    0.890534
+      6          1                   -2.344767   -0.574341   -0.889423
+      7          1                   -0.808943    1.215557    0.889084
+      8          1                   -0.808911    1.215477   -0.889135
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10591
+   NET REACTION COORDINATE UP TO THIS POINT =    5.09120
+  # OF POINTS ALONG THE PATH =  48
+  # OF STEPS =   2
+ Point Number 49 in FORWARD path direction.
+ SCF Done:  E(RwB97XD) =  -539.190867731     A.U. after   10 cycles
+ Cartesian Forces:  Max     0.008259342 RMS     0.002293475
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence Met
+ Point Number:  49          Path Number:   1
+                    CURRENT STRUCTURE
+                Cartesian Coordinates (Ang):                
+ ---------------------------------------------------------------------
+ Center     Atomic                     Coordinates (Angstroms)
+ Number     Number                        X           Y           Z
+ ---------------------------------------------------------------------
+      1          6                   -1.696020   -0.589407    0.000004
+      2          6                   -0.700997    0.575184   -0.000004
+      3         17                    1.037336    0.012307    0.000005
+      4          1                   -1.164110   -1.549936   -0.001295
+      5          1                   -2.340486   -0.567539    0.890179
+      6          1                   -2.342102   -0.566068   -0.888969
+      7          1                   -0.802018    1.210721    0.887811
+      8          1                   -0.801969    1.210614   -0.887897
+ ---------------------------------------------------------------------
+   CHANGE IN THE REACTION COORDINATE =    0.10598
+   NET REACTION COORDINATE UP TO THIS POINT =    5.19718
+  # OF POINTS ALONG THE PATH =  49
+  # OF STEPS =   1
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0       -1.692378   -0.588719   -0.000044
+      2          6           0       -0.690811    0.569526    0.000267
+      3         17           0        1.032673    0.013703    0.000043
+      4          1           0       -1.172845   -1.555800   -0.001765
+      5          1           0       -2.334588   -0.560562    0.888843
+      6          1           0       -2.341767   -0.553156   -0.889755
+      7          1           0       -0.793995    1.206375    0.886922
+      8          1           0       -0.798114    1.207167   -0.887548
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3          4          5
+     1  C    0.000000
+     2  C    1.531231   0.000000
+     3  Cl   2.790845   1.810894   0.000000
+     4  H    1.097799   2.179305   2.706963   0.000000
+     5  H    1.096971   2.183728   3.529616   1.770121   0.000000
+     6  H    1.102070   2.185912   3.535522   1.777695   1.778628
+     7  H    2.194576   1.096531   2.354939   2.926244   2.344247
+     8  H    2.193760   1.098324   2.358804   2.925581   2.939589
+                    6          7          8
+     6  H    0.000000
+     7  H    2.940770   0.000000
+     8  H    2.341284   1.774475   0.000000
+ Symmetry turned off by external request.
+ Stoichiometry    C2H5Cl
+ Framework group  C1[X(C2H5Cl)]
+ Deg. of freedom    18
+ Full point group                 C1      NOp   1
+ Rotational constants (GHZ):          31.7927205           5.2867020           4.8072323
+ Leave Link  202 at Sun Nov 15 22:34:02 2026, MaxMem=  4251975680 cpu:               0.1 elap:               0.0
+ (Enter /usr/local/g16/l301.exe)
+ Standard basis: def2SVP (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+    71 basis functions,   122 primitive gaussians,    74 cartesian basis functions
+    17 alpha electrons       17 beta electrons
+       nuclear repulsion energy       101.7155301691 Hartrees.
+ IExCor= 4639 DFT=T Ex+Corr=wB97XD ExCW=0 ScaHFX=  1.000000
+ ScaDFX=  1.000000  1.000000  1.000000  1.000000 ScalE2=  1.000000  1.000000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=121
+ HFx  wShort=  0.000000 wLong=  0.200000 cFull=  0.222036 cShort=  0.000000 cLong=  0.777964
+ DFx  wShort=  0.000000 wLong=  0.200000 cFull=  0.000000 cShort=  0.000000 cLong=  1.000000
+ NAtoms=    8 NActive=    8 NUniq=    8 SFac= 1.00D+00 NAtFMM=   60 NAOKFM=F Big=F
+ Integral buffers will be    131072 words long.
+ Raffenetti 2 integral format.
+ Two-electron integral symmetry is turned off.
+ R6Disp:  Grimme-D2 Dispersion energy=       -0.0019727940 Hartrees.
+ Nuclear repulsion after empirical dispersion term =      101.7135573752 Hartrees.
+ Leave Link  301 at Sun Nov 15 22:34:02 2026, MaxMem=  4251975680 cpu:               0.4 elap:               0.0
+ (Enter /usr/local/g16/l302.exe)
+ NPDir=0 NMtPBC=     1 NCelOv=     1 NCel=       1 NClECP=     1 NCelD=      1
+         NCelK=      1 NCelE2=     1 NClLst=     1 CellRange=     0.0.
+ One-electron integrals computed using PRISM.
+   1 Symmetry operations used in ECPInt.
+ ECPInt:  NShTT=     630 NPrTT=    2342 LenC2=     630 LenP2D=    2071.
+ LDataN:  DoStor=T MaxTD1= 4 Len=   56
+ NBasis=    71 RedAO= T EigKep=  3.68D-03  NBF=    71
+ NBsUse=    71 1.00D-06 EigRej= -1.00D+00 NBFU=    71
+ Precomputing XC quadrature grid using
+ IXCGrd= 4 IRadAn=           5 IRanWt=          -1 IRanGd=           0 AccXCQ= 1.00D-12.
+ Generated NRdTot=       0 NPtTot=           0 NUsed=           0 NTot=          32
+ NSgBfM=    74    74    74    74    74 MxSgAt=     8 MxSgA2=     8.
+ Leave Link  302 at Sun Nov 15 22:34:03 2026, MaxMem=  4251975680 cpu:               1.7 elap:               0.1
+ (Enter /usr/local/g16/l303.exe)
+ DipDrv:  MaxL=1.
+ Leave Link  303 at Sun Nov 15 22:34:03 2026, MaxMem=  4251975680 cpu:               0.2 elap:               0.0
+ (Enter /usr/local/g16/l401.exe)
+ Initial guess from the checkpoint file:  "check.chk"
+ B after Tr=    -0.000225    0.000194   -0.000197
+         Rot=    1.000000   -0.000754   -0.000142   -0.000208 Ang=  -0.09 deg.
+ Guess basis will be translated and rotated to current coordinates.
+ JPrj=2 DoOrth=T DoCkMO=T.
+ Generating alternative initial guess.
+ ExpMin= 1.22D-01 ExpMax= 1.04D+04 ExpMxC= 1.57D+03 IAcc=3 IRadAn=         5 AccDes= 0.00D+00
+ Harris functional with IExCor= 4639 and IRadAn=       5 diagonalized for initial guess.
+ HarFok:  IExCor= 4639 AccDes= 0.00D+00 IRadAn=         5 IDoV= 1 UseB2=F ITyADJ=14
+ ICtDFT=  3500011 ScaDFX=  1.000000  1.000000  1.000000  1.000000
+ FoFCou: FMM=F IPFlag=           0 FMFlag=      100000 FMFlg1=           0
+         NFxFlg=           0 DoJE=T BraDBF=F KetDBF=T FulRan=T
+         wScrn=  0.000000 ICntrl=       500 IOpCl=  0 I1Cent=   200000004 NGrid=           0
+         NMat0=    1 NMatS0=      1 NMatT0=    0 NMatD0=    1 NMtDS0=    0 NMtDT0=    0
+ Symmetry not used in FoFCou.
+ Harris En= -527.544917587978    
+ Leave Link  401 at Sun Nov 15 22:34:03 2026, MaxMem=  4251975680 cpu:               5.1 elap:               0.3
+ (Enter /usr/local/g16/l502.exe)
+ Keep R1 ints in memory in canonical form, NReq=21086172.
+ FoFCou: FMM=F IPFlag=           0 FMFlag=           0 FMFlg1=           0
+         NFxFlg=           0 DoJE=F BraDBF=F KetDBF=F FulRan=T
+         wScrn=  0.000000 ICntrl=       600 IOpCl=  0 I1Cent=           0 NGrid=           0
+         NMat0=    1 NMatS0=   2556 NMatT0=    0 NMatD0=    1 NMtDS0=    0 NMtDT0=    0
+ Symmetry not used in FoFCou.
+ Two-electron integral symmetry not used.
+ Closed shell SCF:
+ Using DIIS extrapolation, IDIIS=  1040.
+ NGot=  4251975680 LenX=  4245426884 LenY=  4245420967
+ Requested convergence on RMS density matrix=1.00D-08 within 128 cycles.
+ Requested convergence on MAX density matrix=1.00D-06.
+ Requested convergence on             energy=1.00D-06.
+ No special actions if energy rises.
+ Integral accuracy reduced to 1.0D-05 until final iterations.
+
+ Cycle   1  Pass 0  IDiag  1:
+ E= -539.191023738546    
+ DIIS: error= 3.36D-04 at cycle   1 NSaved=   1.
+ NSaved= 1 IEnMin= 1 EnMin= -539.191023738546     IErMin= 1 ErrMin= 3.36D-04
+ ErrMax= 3.36D-04  0.00D+00 EMaxC= 1.00D-01 BMatC= 1.25D-05 BMatP= 1.25D-05
+ IDIUse=3 WtCom= 9.97D-01 WtEn= 3.36D-03
+ Coeff-Com:  0.100D+01
+ Coeff-En:   0.100D+01
+ Coeff:      0.100D+01
+ Gap=     0.747 Goal=   None    Shift=    0.000
+ RMSDP=9.39D-05 MaxDP=1.59D-03              OVMax= 1.29D-03
+
+ Cycle   2  Pass 0  IDiag  1:
+ E= -539.191041577499     Delta-E=       -0.000017838953 Rises=F Damp=F
+ DIIS: error= 5.31D-05 at cycle   2 NSaved=   2.
+ NSaved= 2 IEnMin= 2 EnMin= -539.191041577499     IErMin= 2 ErrMin= 5.31D-05
+ ErrMax= 5.31D-05  0.00D+00 EMaxC= 1.00D-01 BMatC= 5.44D-07 BMatP= 1.25D-05
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com: -0.246D-01 0.102D+01
+ Coeff:     -0.246D-01 0.102D+01
+ Gap=     0.477 Goal=   None    Shift=    0.000
+ RMSDP=1.89D-05 MaxDP=2.02D-04 DE=-1.78D-05 OVMax= 3.53D-04
+
+ Cycle   3  Pass 0  IDiag  1:
+ E= -539.191042499806     Delta-E=       -0.000000922307 Rises=F Damp=F
+ DIIS: error= 2.44D-05 at cycle   3 NSaved=   3.
+ NSaved= 3 IEnMin= 3 EnMin= -539.191042499806     IErMin= 3 ErrMin= 2.44D-05
+ ErrMax= 2.44D-05  0.00D+00 EMaxC= 1.00D-01 BMatC= 1.11D-07 BMatP= 5.44D-07
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com: -0.443D-01 0.247D+00 0.797D+00
+ Coeff:     -0.443D-01 0.247D+00 0.797D+00
+ Gap=     0.478 Goal=   None    Shift=    0.000
+ RMSDP=7.47D-06 MaxDP=1.14D-04 DE=-9.22D-07 OVMax= 1.15D-04
+
+ Initial convergence to 1.0D-05 achieved.  Increase integral accuracy.
+ Cycle   4  Pass 1  IDiag  1:
+ E= -539.191045319657     Delta-E=       -0.000002819851 Rises=F Damp=F
+ DIIS: error= 2.65D-05 at cycle   1 NSaved=   1.
+ NSaved= 1 IEnMin= 1 EnMin= -539.191045319657     IErMin= 1 ErrMin= 2.65D-05
+ ErrMax= 2.65D-05  0.00D+00 EMaxC= 1.00D-01 BMatC= 7.96D-08 BMatP= 7.96D-08
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com:  0.100D+01
+ Coeff:      0.100D+01
+ Gap=     0.478 Goal=   None    Shift=    0.000
+ RMSDP=7.47D-06 MaxDP=1.14D-04 DE=-2.82D-06 OVMax= 1.15D-04
+
+ Cycle   5  Pass 1  IDiag  1:
+ E= -539.191045398012     Delta-E=       -0.000000078355 Rises=F Damp=F
+ DIIS: error= 1.18D-05 at cycle   2 NSaved=   2.
+ NSaved= 2 IEnMin= 2 EnMin= -539.191045398012     IErMin= 2 ErrMin= 1.18D-05
+ ErrMax= 1.18D-05  0.00D+00 EMaxC= 1.00D-01 BMatC= 1.41D-08 BMatP= 7.96D-08
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com:  0.204D+00 0.796D+00
+ Coeff:      0.204D+00 0.796D+00
+ Gap=     0.478 Goal=   None    Shift=    0.000
+ RMSDP=2.32D-06 MaxDP=5.42D-05 DE=-7.84D-08 OVMax= 4.24D-05
+
+ Cycle   6  Pass 1  IDiag  1:
+ E= -539.191045409844     Delta-E=       -0.000000011833 Rises=F Damp=F
+ DIIS: error= 6.91D-06 at cycle   3 NSaved=   3.
+ NSaved= 3 IEnMin= 3 EnMin= -539.191045409844     IErMin= 3 ErrMin= 6.91D-06
+ ErrMax= 6.91D-06  0.00D+00 EMaxC= 1.00D-01 BMatC= 3.92D-09 BMatP= 1.41D-08
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com: -0.450D-01 0.323D+00 0.722D+00
+ Coeff:     -0.450D-01 0.323D+00 0.722D+00
+ Gap=     0.478 Goal=   None    Shift=    0.000
+ RMSDP=9.52D-07 MaxDP=1.78D-05 DE=-1.18D-08 OVMax= 2.29D-05
+
+ Cycle   7  Pass 1  IDiag  1:
+ E= -539.191045414136     Delta-E=       -0.000000004291 Rises=F Damp=F
+ DIIS: error= 9.74D-07 at cycle   4 NSaved=   4.
+ NSaved= 4 IEnMin= 4 EnMin= -539.191045414136     IErMin= 4 ErrMin= 9.74D-07
+ ErrMax= 9.74D-07  0.00D+00 EMaxC= 1.00D-01 BMatC= 7.79D-11 BMatP= 3.92D-09
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com: -0.180D-01 0.449D-01 0.167D+00 0.807D+00
+ Coeff:     -0.180D-01 0.449D-01 0.167D+00 0.807D+00
+ Gap=     0.478 Goal=   None    Shift=    0.000
+ RMSDP=2.55D-07 MaxDP=4.79D-06 DE=-4.29D-09 OVMax= 3.93D-06
+
+ Cycle   8  Pass 1  IDiag  1:
+ E= -539.191045414247     Delta-E=       -0.000000000112 Rises=F Damp=F
+ DIIS: error= 1.65D-07 at cycle   5 NSaved=   5.
+ NSaved= 5 IEnMin= 5 EnMin= -539.191045414247     IErMin= 5 ErrMin= 1.65D-07
+ ErrMax= 1.65D-07  0.00D+00 EMaxC= 1.00D-01 BMatC= 3.74D-12 BMatP= 7.79D-11
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com:  0.308D-02-0.271D-01-0.572D-01-0.160D-01 0.110D+01
+ Coeff:      0.308D-02-0.271D-01-0.572D-01-0.160D-01 0.110D+01
+ Gap=     0.478 Goal=   None    Shift=    0.000
+ RMSDP=1.21D-07 MaxDP=1.66D-06 DE=-1.12D-10 OVMax= 2.19D-06
+
+ Cycle   9  Pass 1  IDiag  1:
+ E= -539.191045414261     Delta-E=       -0.000000000014 Rises=F Damp=F
+ DIIS: error= 5.17D-08 at cycle   6 NSaved=   6.
+ NSaved= 6 IEnMin= 6 EnMin= -539.191045414261     IErMin= 6 ErrMin= 5.17D-08
+ ErrMax= 5.17D-08  0.00D+00 EMaxC= 1.00D-01 BMatC= 3.39D-13 BMatP= 3.74D-12
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com:  0.146D-02-0.756D-02-0.187D-01-0.394D-01 0.199D+00 0.866D+00
+ Coeff:      0.146D-02-0.756D-02-0.187D-01-0.394D-01 0.199D+00 0.866D+00
+ Gap=     0.478 Goal=   None    Shift=    0.000
+ RMSDP=2.47D-08 MaxDP=3.70D-07 DE=-1.39D-11 OVMax= 5.09D-07
+
+ Cycle  10  Pass 1  IDiag  1:
+ E= -539.191045414262     Delta-E=       -0.000000000001 Rises=F Damp=F
+ DIIS: error= 1.65D-08 at cycle   7 NSaved=   7.
+ NSaved= 7 IEnMin= 7 EnMin= -539.191045414262     IErMin= 7 ErrMin= 1.65D-08
+ ErrMax= 1.65D-08  0.00D+00 EMaxC= 1.00D-01 BMatC= 4.35D-14 BMatP= 3.39D-13
+ IDIUse=1 WtCom= 1.00D+00 WtEn= 0.00D+00
+ Coeff-Com: -0.766D-04 0.156D-02 0.293D-02-0.349D-02-0.872D-01 0.172D+00
+ Coeff-Com:  0.915D+00
+ Coeff:     -0.766D-04 0.156D-02 0.293D-02-0.349D-02-0.872D-01 0.172D+00
+ Coeff:      0.915D+00
+ Gap=     0.478 Goal=   None    Shift=    0.000
+ RMSDP=8.75D-09 MaxDP=1.42D-07 DE=-6.82D-13 OVMax= 2.06D-07
+
+ SCF Done:  E(RwB97XD) =  -539.191045414     A.U. after   10 cycles
+            NFock= 10  Conv=0.88D-08     -V/T= 2.0037
+ KE= 5.372150969422D+02 PE=-1.480026692162D+03 EE= 3.019069924306D+02
+ Leave Link  502 at Sun Nov 15 22:34:05 2026, MaxMem=  4251975680 cpu:              30.0 elap:               1.9
+ (Enter /usr/local/g16/l801.exe)
+ DoSCS=F DFT=T ScalE2(SS,OS)=  1.000000  1.000000
+ Range of M.O.s used for correlation:     1    71
+ NBasis=    71 NAE=    17 NBE=    17 NFC=     0 NFV=     0
+ NROrb=     71 NOA=    17 NOB=    17 NVA=    54 NVB=    54
+ Leave Link  801 at Sun Nov 15 22:34:05 2026, MaxMem=  4251975680 cpu:               0.1 elap:               0.0
+ (Enter /usr/local/g16/l1101.exe)
+ Leave Link 1101 at Sun Nov 15 22:34:05 2026, MaxMem=  4251975680 cpu:               0.2 elap:               0.0
+ (Enter /usr/local/g16/l1102.exe)
+ Symmetrizing basis deriv contribution to polar:
+ IMax=3 JMax=2 DiffMx= 0.00D+00
+ Leave Link 1102 at Sun Nov 15 22:34:05 2026, MaxMem=  4251975680 cpu:               0.2 elap:               0.0
+ (Enter /usr/local/g16/l1110.exe)
+ Leave Link 1110 at Sun Nov 15 22:34:05 2026, MaxMem=  4251975680 cpu:               0.1 elap:               0.0
+ (Enter /usr/local/g16/l1002.exe)
+ Minotr:  Closed shell wavefunction.
+ Leave Link 1002 at Sun Nov 15 22:34:05 2026, MaxMem=  4251975680 cpu:               0.1 elap:               0.0
+ (Enter /usr/local/g16/l701.exe)
+ ... and contract with generalized density number  0.
+ Compute integral first derivatives.
+ R6Disp: Adding Grimme-D2 dispersion energy 1st derivatives to the gradient.
+   1 Symmetry operations used in ECPInt.
+ ECPInt:  NShTT=     630 NPrTT=    2342 LenC2=     630 LenP2D=    2071.
+ LDataN:  DoStor=T MaxTD1= 5 Len=  102
+ Leave Link  701 at Sun Nov 15 22:34:05 2026, MaxMem=  4251975680 cpu:               3.7 elap:               0.2
+ (Enter /usr/local/g16/l702.exe)
+ L702 exits ... SP integral derivatives will be done elsewhere.
+ Leave Link  702 at Sun Nov 15 22:34:05 2026, MaxMem=  4251975680 cpu:               0.2 elap:               0.0
+ (Enter /usr/local/g16/l703.exe)
+ Integral derivatives from FoFJK, PRISM(SPDF).
+ Compute integral first derivatives, UseDBF=F ICtDFT=           0.
+ Calling FoFJK, ICntrl=      2127 FMM=F ISym2X=0 I1Cent= 0 IOpClX= 0 NMat=1 NMatS=1 NMatT=0.
+ FoFJK:  IHMeth= 1 ICntrl=    2127 DoSepK=T KAlg= 0 I1Cent=           0 FoldK=F
+ IRaf=         1 NMat=       1 IRICut=       1 DoRegI=T DoRafI=F ISym2E= 0 IDoP0=0 IntGTp=1.
+ FoFCou: FMM=F IPFlag=           0 FMFlag=      100000 FMFlg1=         800
+         NFxFlg=           0 DoJE=F BraDBF=F KetDBF=F FulRan=T
+         wScrn=  0.000000 ICntrl=      2527 IOpCl=  0 I1Cent=           0 NGrid=           0
+         NMat0=    1 NMatS0=      1 NMatT0=    0 NMatD0=    1 NMtDS0=    0 NMtDT0=    0
+ Symmetry not used in FoFCou.
+ Leave Link  703 at Sun Nov 15 22:34:06 2026, MaxMem=  4251975680 cpu:              11.9 elap:               0.8
+ (Enter /usr/local/g16/l716.exe)
+ Dipole        =-7.92330202D-01 1.82864760D-01 1.44184750D-03
+ Polarizability= 0.00000000D+00 0.00000000D+00 0.00000000D+00
+                 0.00000000D+00 0.00000000D+00 0.00000000D+00
+ -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------
+      1        6           0.000506612    0.000590990   -0.002299361
+      2        6           0.002030058   -0.000784925   -0.000887420
+      3       17          -0.003161518    0.000783349   -0.000110643
+      4        1           0.000012350   -0.000083215   -0.000358749
+      5        1          -0.000833347    0.000277229    0.001125970
+      6        1           0.001222046   -0.000277315    0.001581084
+      7        1          -0.000141508    0.000057812    0.000179920
+      8        1           0.000365306   -0.000563925    0.000769200
+ -------------------------------------------------------------------
+ Cartesian Forces:  Max     0.003161518 RMS     0.001106472
+ Leave Link  716 at Sun Nov 15 22:34:06 2026, MaxMem=  4251975680 cpu:               0.1 elap:               0.0
+ (Enter /usr/local/g16/l123.exe)
+ IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC-IRC
+ Error in corrector energy =          -0.0000320111
+ Magnitude of corrector gradient =     0.0052569499
+ Magnitude of analytic gradient =      0.0054205828
+ Magnitude of difference =             0.0041293019
+ Angle between gradients (degrees)=   45.4700
+ Pt 50 Step number  20 out of a maximum of  20
+ Using modified Bulirsch-Stoer corrector integration.
+   Using distance weighted interpolants to fit PES.
+ PreDWI: IReCr0= 2 IReCr1= 1 IReCr2= 1 IReCr3= 1
+ Modified Bulirsch-Stoer Extrapolation Cycles:
+    EPS =    0.000010000000000
+    Cycle     1 NS=    48
+      PEZero:  N= 2 I= 1 D=  5.52D-04 Err=  1.69D-04
+    Cycle     2 NS=    64 Truncation Error =  0.000169300
+      PEZero:  N= 3 I= 2 D=  5.52D-04 Err=  1.13D-04
+      PEZero:  N= 3 I= 1 D=  1.10D-03 Err=  1.43D-06
+    Cycle     3 NS=    96 Truncation Error =  0.000001431
+ BS completed in    3 cycles and     208 integration steps.
+ Maximum DWI energy   std dev =  0.000004689 at pt    -1
+ Maximum DWI gradient std dev =  0.311305440 at pt    -1
+ SUMMARY OF CORRECTOR INTEGRATION:
+   Predictor End Point Energy =  -539.191051
+   Old End Point Energy       =  -539.191045
+   Corrected End Point Energy =  -539.191081
+   Predictor End-Start Dist.  =     0.106035
+   Old End-Start Dist.        =     0.105239
+   New End-Start Dist.        =     0.104683
+   New End-Old End Dist.      =     0.031501
+ CORRECTOR INTEGRATION CONVERGENCE:
+   Recorrection delta-x convergence threshold:    0.010000
+   Delta-x Convergence NOT Met
+ Maximum number of corrector steps exceded.
+ Error termination via Lnk1e in /usr/local/g16/l123.exe at Sun Nov 15 22:34:06 2026.
+ Job cpu time:       0 days  1 hours 12 minutes  6.8 seconds.
+ Elapsed time:       0 days  0 hours  4 minutes 57.5 seconds.
+ File lengths (MBytes):  RWF=     10 Int=      0 D2E=      0 Chk=      3 Scr=      1

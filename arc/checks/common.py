@@ -4,6 +4,7 @@ contains helper functions for Scheduler.
 """
 
 import datetime
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -13,6 +14,8 @@ if TYPE_CHECKING:
 
 CONFORMER_JOB_TYPES = ('conf_opt', 'conf_sp')
 TS_IRC_FAILED_MARKER = 'INVALID TS (failed IRC validation)'
+NMD_NEAR_MISS_KEY = 'NMD_near_miss'
+NMD_ACCEPTED_ON_IRC_WARNING = 'NMD below the 5% gate, accepted on IRC: '
 TS_IRC_NOT_CONFIRMED_MARKER = 'IRC NOT CONFIRMED'
 IRC_CAUSE_JOB_FAILED = 'IRC job failed'
 IRC_CAUSE_ENDPOINT_OPT_NOT_CONVERGED = 'endpoint opt not converged'
@@ -178,6 +181,84 @@ def get_ts_validation_comment(ts_species: 'ARCSpecies | None') -> str | None:
     if other_failed_checks:
         comment += f' Additional TS checks that failed: {", ".join(other_failed_checks)}.'
     return comment
+
+
+def get_nmd_near_miss(ts_checks: dict | None) -> dict | None:
+    """
+    Get the near-miss record of a TS whose normal mode displacement check failed only on the 5% reactive-bond gate.
+
+    The record is the one ``check_normal_mode_displacement()`` stores under ``NMD_NEAR_MISS_KEY``. It is returned
+    only beside an NMD verdict of ``False``, and only when it is a dict with a non-empty ``sub_gate_bonds`` list
+    whose every entry passes ``is_sub_gate_bond()``.
+    Anything else (no record, a malformed one, or an NMD verdict other than ``False``) returns ``None``.
+
+    Args:
+        ts_checks (dict, optional): The ``ts_checks`` dictionary of a TS species.
+
+    Returns:
+        dict | None: The near-miss record, or ``None``.
+    """
+    if not isinstance(ts_checks, dict) or ts_checks.get('NMD') is not False:
+        return None
+    record = ts_checks.get(NMD_NEAR_MISS_KEY)
+    if not isinstance(record, dict) or not isinstance(record.get('sub_gate_bonds'), list) \
+            or not record['sub_gate_bonds'] or not all(is_sub_gate_bond(bond) for bond in record['sub_gate_bonds']):
+        return None
+    return record
+
+
+def is_sub_gate_bond(bond) -> bool:
+    """
+    Check that an entry of a near-miss record's ``sub_gate_bonds`` has the shape the record is written in.
+
+    Args:
+        bond: The entry to check.
+
+    Returns:
+        bool: Whether the entry is a dict with ``atoms`` (two distinct non-negative integers), ``symbols`` (a
+              string) and ``percent`` (a number from 0 to 5.0).
+    """
+    if not isinstance(bond, dict):
+        return False
+    atoms, percent = bond.get('atoms'), bond.get('percent')
+    return isinstance(atoms, list) and len(atoms) == 2 \
+        and all(isinstance(i, int) and not isinstance(i, bool) and i >= 0 for i in atoms) \
+        and atoms[0] != atoms[1] \
+        and isinstance(bond.get('symbols'), str) \
+        and isinstance(percent, (int, float)) and not isinstance(percent, bool) \
+        and 0 <= percent <= 5.0
+
+
+def get_nmd_near_miss_summary(record: dict) -> str:
+    """
+    Summarize the sub-gate bonds of a near-miss record in one line.
+
+    Args:
+        record (dict): A near-miss record, as returned by ``get_nmd_near_miss()``.
+
+    Returns:
+        str: The element symbols, 0-indexed atoms and percent change of each sub-gate bond, and the normal mode
+             displacement amplitude the percent changes were measured at,
+             e.g., ``'C-Cl (1, 2) 4.55% at amplitude 0.9'``.
+    """
+    bonds = ', '.join(f"{bond['symbols']} ({bond['atoms'][0]}, {bond['atoms'][1]}) {bond['percent']}%"
+                      for bond in record['sub_gate_bonds'])
+    return f"{bonds} at amplitude {record.get('amplitude')}"
+
+
+def remove_nmd_accepted_on_irc_warning(warnings: str) -> str:
+    """
+    Remove the warning that a TS was accepted on IRC despite a near-miss NMD failure.
+
+    Every other warning in ``warnings`` is kept as is.
+
+    Args:
+        warnings (str): Warnings separated by ``'; '``, as stored in the Scheduler output dict.
+
+    Returns:
+        str: ``warnings`` without any ``NMD_ACCEPTED_ON_IRC_WARNING`` entry.
+    """
+    return re.sub(re.escape(NMD_ACCEPTED_ON_IRC_WARNING) + r'[^;]*; ', '', warnings)
 
 
 def get_ts_validation_caution(ts_species: 'ARCSpecies | None',

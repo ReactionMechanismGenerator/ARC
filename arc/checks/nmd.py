@@ -87,12 +87,42 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
                      ``reaction.ts_species.ts_checks['warnings']``.
                      Only ``False`` marks the TS as inconsistent with the reaction.
     """
+    return evaluate_ts_normal_mode_displacement(reaction=reaction, job=job, amplitude=amplitude, weights=weights)[0]
+
+
+def evaluate_ts_normal_mode_displacement(reaction: ARCReaction,
+                                         job: JobAdapter | None,
+                                         amplitude: float | list = DEFAULT_AMPLITUDE,
+                                         weights: bool | np.ndarray = True,
+                                         ) -> tuple[bool | None, dict | None]:
+    """
+    Analyze the normal mode displacement of a TS, and report whether a failure is a near miss.
+
+    The verdict is the one ``analyze_ts_normal_mode_displacement()`` returns, computed in the same way.
+    A failed TS (verdict ``False``) is a near miss when, in one atom mapping at one probed amplitude,
+    its normal mode fails only because some reactive bonds change by less than the 5% gate, as decided by
+    ``get_near_miss_for_any_mapping()``. The near-miss record is returned only beside a ``False`` verdict.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        job (JobAdapter): The frequency job object instance that points to the respective log file.
+        amplitude (float | list): The amplitude of the normal mode displacement motion to check.
+                                  If a list, every amplitude in it is probed.
+        weights (bool | np.ndarray): Per-atom weights, as in ``analyze_ts_normal_mode_displacement()``.
+
+    Returns:
+        tuple[bool | None, dict | None]:
+            - The verdict, ``True``, ``False``, or ``None`` if the analysis could not be performed.
+            - The near-miss record, a dict with the probed ``amplitude`` and the ``sub_gate_bonds``
+              (each with its 0-indexed ``atoms``, its element ``symbols`` and its ``percent`` change),
+              or ``None`` if the TS is not a near miss.
+    """
     if job is None:
-        return None
+        return None, None
     ts_xyz = get_ts_xyz_in_normal_mode_frame(reaction=reaction, job=job)
     if ts_xyz is None:
         record_ts_check_warning(species=reaction.ts_species, warning=NO_GEOMETRY_WARNING)
-        return None
+        return None, None
     n_ts = len(ts_xyz['symbols'])
     reactants, _ = reaction.get_reactants_and_products(return_copies=False)
     n_expected = sum(spc.number_of_atoms for spc in reactants)
@@ -102,14 +132,14 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
                        f'changed bonds of the reaction are indexed into the reactant atoms, so they cannot be '
                        f'applied to this TS geometry. Skipping the normal mode displacement analysis.')
         record_ts_check_warning(species=reaction.ts_species, warning=ATOM_COUNT_MISMATCH_WARNING)
-        return None
+        return None, None
     bond_change_candidates = get_bond_change_candidates(reaction=reaction)
     if not bond_change_candidates:
         logger.warning(f'Neither the reaction family recipe nor an atom map could supply the bonds that change '
                        f'in reaction {reaction.label}, so there is nothing to validate the normal mode against. '
                        f'Skipping the normal mode displacement analysis.')
         record_ts_check_warning(species=reaction.ts_species, warning=NO_REACTIVE_BONDS_WARNING)
-        return None
+        return None, None
     if not is_ts_atom_order_consistent_with_reactants(reaction=reaction, ts_xyz=ts_xyz):
         logger.warning(f'The geometry of TS {reaction.ts_species.label} lists its atoms as '
                        f'{tuple(ts_xyz["symbols"])}, while the reactants of reaction {reaction.label} are ordered '
@@ -117,12 +147,12 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
                        f'breaking bond indices refer to the reactant order, so they do not describe the intended '
                        f'atoms of this TS. Skipping the normal mode displacement analysis.')
         record_ts_check_warning(species=reaction.ts_species, warning=INCONSISTENT_ATOM_ORDER_WARNING)
-        return None
+        return None, None
     parsed_modes = parser.get_normal_mode_displacement(log_file_path=job.local_path_to_output_file,
                                                        label=reaction.ts_species.label)
     if parsed_modes is None:
         record_ts_check_warning(species=reaction.ts_species, warning=NO_NORMAL_MODES_WARNING)
-        return None
+        return None, None
     freqs, normal_mode_disp = parsed_modes
     mode_index = get_index_of_abs_largest_neg_freq(freqs)
     if mode_index is None:
@@ -130,12 +160,13 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
                        f'imaginary frequency, so none of its normal modes describes a reaction coordinate. '
                        f'Skipping the normal mode displacement analysis.')
         record_ts_check_warning(species=reaction.ts_species, warning=NO_IMAGINARY_FREQUENCY_WARNING)
-        return None
+        return None, None
 
     amplitude_list = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
     weights_array = get_weights_from_xyz(xyz=ts_xyz, weights=weights)
     r_eq_atoms, _ = find_equivalent_atoms(reaction=reaction, reactant_only=True)
 
+    near_miss = None
     for amp in amplitude_list:
         if not amp:
             continue
@@ -152,8 +183,19 @@ def analyze_ts_normal_mode_displacement(reaction: ARCReaction,
                 weights=weights_array,
                 amplitude=amp)
             if nmd_correct:
-                return True
-    return False
+                return True, None
+            if near_miss is None:
+                near_miss = get_near_miss_for_any_mapping(
+                    reaction=reaction,
+                    xyzs=xyzs,
+                    formed_bonds=formed_bonds,
+                    broken_bonds=broken_bonds,
+                    changed_bonds=changed_bonds,
+                    r_eq_atoms=r_eq_atoms,
+                    weights=weights_array,
+                    amplitude=amp,
+                    symbols=ts_xyz['symbols'])
+    return False, near_miss
 
 
 def get_ts_xyz_in_normal_mode_frame(reaction: ARCReaction,
@@ -384,37 +426,185 @@ def is_nmd_correct_for_any_mapping(reaction: ARCReaction,
         if check_diffs is None or len(check_diffs) == 0:
             continue
 
-        r_bonds, _ = reaction.get_bonds(r_bonds_only=True)
         reactive_bonds = set(eq_formed_bonds) | set(eq_broken_bonds) | set(eq_changed_bonds)
-        non_reactive_bonds = [bond for bond in r_bonds if bond not in reactive_bonds]
-        baseline, std = get_bond_length_changes_baseline_and_std(non_reactive_bonds=non_reactive_bonds,
-                                                                 xyzs=xyzs,
-                                                                 weights=weights,
-                                                                 )
-
-        min_check_diff = float(np.min(check_diffs))
-
-        if baseline is None:
-            # Small molecule case: Get UNWEIGHTED changes to compare against a physical distance
-            unweighted_diffs, _ = get_bond_length_changes(
-                bonds=check_bonds,
-                xyzs=xyzs,
-                weights=None,
-                amplitude=amplitude,
-                return_none_if_change_is_insignificant=False
-            )
-            if unweighted_diffs is not None and len(unweighted_diffs) > 0:
-                # For small molecules without a baseline, check that the minimum reactive
-                # bond-length change exceeds 10% of the displacement amplitude.
-                if np.min(unweighted_diffs) > 0.1 * amplitude:
-                    return True
-            continue
-
-        std = max(std, STD_FLOOR)
-        sigma = (min_check_diff - baseline) / std
-        if sigma > SIGMA_THRESHOLD:
+        if do_reactive_bonds_stand_out(reaction=reaction,
+                                       xyzs=xyzs,
+                                       check_bonds=check_bonds,
+                                       check_diffs=check_diffs,
+                                       reactive_bonds=reactive_bonds,
+                                       weights=weights,
+                                       amplitude=amplitude):
             return True
     return False
+
+
+def do_reactive_bonds_stand_out(reaction: ARCReaction,
+                                xyzs: tuple[dict, dict],
+                                check_bonds: list[tuple[int, int]],
+                                check_diffs: np.ndarray,
+                                reactive_bonds: set[tuple[int, int]],
+                                weights: np.ndarray | None,
+                                amplitude: float,
+                                ) -> bool:
+    """
+    Check whether the reactive bonds of one atom mapping change significantly more than the non-reactive bonds.
+
+    The smallest weighted change of ``check_bonds`` must exceed the median change of the non-reactive bonds by more
+    than ``SIGMA_THRESHOLD`` MAD-based spreads. When no non-reactive bond has a change to compare against (a
+    small molecule), the smallest unweighted change of ``check_bonds`` must instead exceed 10% of the amplitude.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        xyzs (tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
+        check_bonds (list[tuple[int, int]]): The reactive bonds the test is applied to.
+        check_diffs (np.ndarray): The weighted bond length changes of ``check_bonds``.
+        reactive_bonds (set[tuple[int, int]]): All bonds that change in this mapping, excluded from the baseline.
+        weights (np.ndarray): The weights for the atoms.
+        amplitude (float): The motion amplitude.
+
+    Returns:
+        bool: Whether the reactive bonds stand out of the non-reactive background.
+    """
+    r_bonds, _ = reaction.get_bonds(r_bonds_only=True)
+    non_reactive_bonds = [bond for bond in r_bonds if bond not in reactive_bonds]
+    baseline, std = get_bond_length_changes_baseline_and_std(non_reactive_bonds=non_reactive_bonds,
+                                                             xyzs=xyzs,
+                                                             weights=weights,
+                                                             )
+    if baseline is None:
+        unweighted_diffs, _ = get_bond_length_changes(bonds=check_bonds,
+                                                      xyzs=xyzs,
+                                                      weights=None,
+                                                      amplitude=amplitude,
+                                                      return_none_if_change_is_insignificant=False,
+                                                      )
+        return unweighted_diffs is not None and len(unweighted_diffs) > 0 \
+            and bool(np.min(unweighted_diffs) > 0.1 * amplitude)
+    std = max(std, STD_FLOOR)
+    sigma = (float(np.min(check_diffs)) - baseline) / std
+    return sigma > SIGMA_THRESHOLD
+
+
+def get_near_miss_for_any_mapping(reaction: ARCReaction,
+                                  xyzs: tuple[dict, dict],
+                                  formed_bonds: list[tuple[int, int]],
+                                  broken_bonds: list[tuple[int, int]],
+                                  changed_bonds: list[tuple[int, int]],
+                                  r_eq_atoms: list[list[int]],
+                                  weights: np.ndarray | None,
+                                  amplitude: float,
+                                  symbols: tuple[str, ...] | list[str],
+                                  ) -> dict | None:
+    """
+    Get the near-miss record of a TS normal mode that failed the NMD check, if it is a near miss.
+
+    A mapping is a near miss when its formed and broken bonds pass ``check_bond_directionality()``, it has at
+    least one formed and at least one broken bond, at least one formed and at least one broken bond clear the
+    5% gate of ``is_bond_change_significant()``, and all its formed and broken bonds, those under the gate
+    included, pass ``do_reactive_bonds_stand_out()`` both on mass-weighted and on unweighted bond length changes.
+    An isomerization, which has no formed or broken bonds, is never a near miss.
+
+    Args:
+        reaction (ARCReaction): The reaction for which the TS is checked.
+        xyzs (tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
+        formed_bonds (list[tuple[int, int]]): The bonds that are formed in the reaction.
+        broken_bonds (list[tuple[int, int]]): The bonds that are broken in the reaction.
+        changed_bonds (list[tuple[int, int]]): The bonds that are changed in the reaction.
+        r_eq_atoms (list[list[int]]): A list of equivalent atoms in the reactants.
+        weights (np.ndarray): The weights for the atoms.
+        amplitude (float): The motion amplitude.
+        symbols (tuple[str, ...] | list[str]): The element symbols of the TS atoms.
+
+    Returns:
+        dict | None: The record of the first near-miss mapping, with the ``amplitude`` and the ``sub_gate_bonds``
+                     (each with its 0-indexed ``atoms``, its element ``symbols`` and its ``percent`` change,
+                     rounded to two decimals), or ``None`` if no mapping is a near miss.
+    """
+    modified_bond_grand_list = get_eq_formed_and_broken_bonds(formed_bonds=formed_bonds,
+                                                              broken_bonds=broken_bonds,
+                                                              changed_bonds=changed_bonds,
+                                                              r_eq_atoms=r_eq_atoms,
+                                                              )
+    for eq_formed_bonds, eq_broken_bonds, eq_changed_bonds in modified_bond_grand_list:
+        if not eq_formed_bonds or not eq_broken_bonds:
+            continue
+        if not check_bond_directionality(formed_bonds=eq_formed_bonds,
+                                         broken_bonds=eq_broken_bonds,
+                                         xyzs=xyzs):
+            continue
+        formed_changes = get_relative_bond_length_changes(bonds=eq_formed_bonds, xyzs=xyzs, weights=weights)
+        broken_changes = get_relative_bond_length_changes(bonds=eq_broken_bonds, xyzs=xyzs, weights=weights)
+        if not any(significant for _, _, significant in formed_changes) \
+                or not any(significant for _, _, significant in broken_changes):
+            continue
+        sub_gate = [(bond, fraction) for bond, fraction, significant in formed_changes + broken_changes
+                    if not significant]
+        check_bonds = [bond for bond, _, _ in formed_changes + broken_changes]
+        reactive_bonds = set(eq_formed_bonds) | set(eq_broken_bonds) | set(eq_changed_bonds)
+        if all(do_reactive_bonds_stand_out(reaction=reaction,
+                                           xyzs=xyzs,
+                                           check_bonds=check_bonds,
+                                           check_diffs=get_bond_length_changes(bonds=check_bonds,
+                                                                               xyzs=xyzs,
+                                                                               weights=standout_weights,
+                                                                               amplitude=amplitude)[0],
+                                           reactive_bonds=reactive_bonds,
+                                           weights=standout_weights,
+                                           amplitude=amplitude)
+               for standout_weights in (weights, None)):
+            return {'amplitude': float(amplitude),
+                    'sub_gate_bonds': [{'atoms': [int(bond[0]), int(bond[1])],
+                                        'symbols': f'{symbols[bond[0]]}-{symbols[bond[1]]}',
+                                        'percent': round(100 * fraction, 2)}
+                                       for bond, fraction in sub_gate]}
+    return None
+
+
+def get_relative_bond_length_changes(bonds: list[tuple[int, int]],
+                                     xyzs: tuple[dict, dict],
+                                     weights: np.ndarray | None,
+                                     ) -> list[tuple[tuple[int, int], float, bool]]:
+    """
+    Get the relative change of each bond between the two displaced TS geometries, and whether it clears the 5% gate.
+
+    Args:
+        bonds (list[tuple[int, int]]): The bonds to measure.
+        xyzs (tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
+        weights (np.ndarray): The weights for the atoms.
+
+    Returns:
+        list[tuple[tuple[int, int], float, bool]]: Per measurable bond, the bond, its largest relative change
+                                                  (as a fraction of either displaced length), and whether it
+                                                  clears the gate. Bonds whose length cannot be measured are
+                                                  omitted.
+    """
+    changes = list()
+    for bond in bonds:
+        r_bond_length = get_bond_length_in_reaction(bond=bond, xyz=xyzs[0], weights=weights)
+        p_bond_length = get_bond_length_in_reaction(bond=bond, xyz=xyzs[1], weights=weights)
+        if r_bond_length is None or p_bond_length is None:
+            continue
+        diff = abs(r_bond_length - p_bond_length)
+        changes.append((bond, max(diff / r_bond_length, diff / p_bond_length),
+                        is_bond_change_significant(r_bond_length=r_bond_length, p_bond_length=p_bond_length)))
+    return changes
+
+
+def is_bond_change_significant(r_bond_length: float,
+                               p_bond_length: float,
+                               ) -> bool:
+    """
+    Check whether a bond changes by at least 5% of either of its two displaced lengths (the reactive-bond gate).
+
+    Args:
+        r_bond_length (float): The bond length in one displaced geometry.
+        p_bond_length (float): The bond length in the other displaced geometry.
+
+    Returns:
+        bool: Whether the change clears the gate.
+    """
+    diff = abs(r_bond_length - p_bond_length)
+    return not (abs(diff / r_bond_length) < 0.05 and abs(diff / p_bond_length) < 0.05)
 
 
 def get_eq_formed_and_broken_bonds(formed_bonds: list[tuple[int, int]],
@@ -625,8 +815,7 @@ def get_bond_length_changes(bonds: list[tuple[int, int]] | set[tuple[int, int]],
             continue
         diff = abs(r_bond_length - p_bond_length)
         if return_none_if_change_is_insignificant \
-                and abs(diff / r_bond_length) < 0.05 \
-                and abs(diff / p_bond_length) < 0.05:
+                and not is_bond_change_significant(r_bond_length=r_bond_length, p_bond_length=p_bond_length):
             return None, None
         diffs.append(diff)
         if considered_reactive:
