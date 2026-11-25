@@ -194,6 +194,19 @@ def resolve_ts_adapters(input_ts_adapters: list[str] | None,
     return adapters, source, removed
 
 
+def nested_torsions(torsions: list[int] | list[list[int]] | None) -> list[list[int]] | None:
+    """
+    Give torsions the nested shape a job adapter stores, e.g., ``[2, 0, 1, 5]`` -> ``[[2, 0, 1, 5]]``.
+
+    Args:
+        torsions (list[int] | list[list[int]], optional): One flat torsion, or a list of torsions.
+
+    Returns:
+        list[list[int]] | None: The torsions as a list of torsions, ``None`` if no torsions were given.
+    """
+    return [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
+
+
 def _initialize_adapter(obj: JobAdapter,
                         is_ts: bool,
                         project: str,
@@ -302,7 +315,7 @@ def _initialize_adapter(obj: JobAdapter,
     obj.submit_script_memory_mib = None
     obj.testing = testing
     obj.times_rerun = times_rerun
-    obj.torsions = [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
+    obj.torsions = nested_torsions(torsions)
     obj.pivots = [[tor[1] + 1, tor[2] + 1] for tor in obj.torsions] if obj.torsions is not None else None
     obj.tsg = tsg
     obj.workers = None

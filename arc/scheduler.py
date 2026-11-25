@@ -55,6 +55,7 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                      derived_reference_is_unrestricted,
                                      job_scf_reference_is_restricted,
                                      level_admits_a_broken_symmetry_reference,
+                                     nested_torsions,
                                      REFERENCE_CHANGE_AVAILABLE_KEY,
                                      resolve_ts_adapters,
                                      ts_adapter_install_targets,
@@ -1664,8 +1665,7 @@ class Scheduler(object):
         memory = memory if memory is not None else self.memory
         checkfile = self.species_dict[label].checkfile if isinstance(label, str) else None
         if torsions is None and rotor_index is not None:
-            torsions = species.rotors_dict[rotor_index]['torsion']
-            torsions = [torsions] if not isinstance(torsions[0], list) else torsions
+            torsions = nested_torsions(species.rotors_dict[rotor_index]['torsion'])
         if label is not None:
             level_of_theory = self.get_job_level(label=label, level_of_theory=level_of_theory, job_type=job_type,
                                                  ess_trsh_methods=ess_trsh_methods)
@@ -2129,7 +2129,7 @@ class Scheduler(object):
         history = get_conformer_isomorphism_trsh_history(conformers_note)
         tagged_levels = get_conformer_trsh_levels(conf_opt_jobs.values())
         pending_levels = [level for level in tagged_levels if f'conformer {level}' not in history]
-        running_conf_sp = [get_i_from_job_name(job_name) for job_name in self.running_jobs.get(label, [])
+        running_conf_sp = [get_i_from_job_name(job_name) for job_name in self.unfinished_job_names(label)
                            if 'conf_sp' in job_name]
         xyzs = species.conformers_before_opt if species.conformers_before_opt is not None else species.conformers
         num_of_conformers = min(len(species.conformers), len(xyzs))
@@ -2300,6 +2300,10 @@ class Scheduler(object):
         adapters append ``success=False`` guesses, so the first entry of ``ts_guesses`` is not
         necessarily the guess whose coordinates are being optimized.
 
+        When several guesses succeeded, the conformers spawned for them supersede any conf_opt job
+        not finished yet (restored from a previous session, or held by a queue guard): those jobs
+        are cancelled and no longer tracked.
+
         Args:
             label (str): The TS species label.
         """
@@ -2322,14 +2326,23 @@ class Scheduler(object):
         if len(successful_tsgs) > 1:
             xyzs = [tsg.initial_xyz for tsg in successful_tsgs]
             piped_indices = self.pipe_planner.try_pipe_ts_opt(label, xyzs, self.ts_guess_level)
-            # conf_opt jobs still running (e.g., restored from a previous session) are superseded by the
-            # conformers spawned below: cancel them and stop tracking them.
             conf_opt_jobs = self.job_dict[label].get('conf_opt', dict())
             for job_name in [name for name in self.running_jobs.get(label, list()) if 'conf_opt' in name]:
                 job = conf_opt_jobs.pop(get_i_from_job_name(job_name), None)
                 if job is not None:
                     job.delete()
                 self.running_jobs[label].remove(job_name)
+            for held in (self.deferred_jobs, self.stranded_jobs):
+                for job_name in [name for name in held.get(label, list()) if 'conf_opt' in name]:
+                    job = conf_opt_jobs.pop(get_i_from_job_name(job_name), None)
+                    if held is self.stranded_jobs and job is not None and job.job_id is not None \
+                            and job.execution_type != 'incore':
+                        self.delete_stranded_job(label=label, job=job)
+                    held[label].remove(job_name)
+                    self.unsubmitted_jobs = [(job_label, queued) for job_label, queued in self.unsubmitted_jobs
+                                             if not (job_label == label and queued.job_name == job_name)]
+                if label in held and not held[label]:
+                    del held[label]
             if not piped_indices:
                 self.job_dict[label]['conf_opt'] = dict()
             for i, tsg in enumerate(successful_tsgs):
@@ -2600,8 +2613,8 @@ class Scheduler(object):
                         self.job_dict[label]['directed_scan'] = dict()
                     # Check that this job isn't already running on the server (from a restarted project).
                     for directed_scan_job in self.job_dict[label]['directed_scan'].values():
-                        if directed_scan_job.torsions == torsions \
-                                and directed_scan_job.job_name in self.running_jobs[label]:
+                        if directed_scan_job.torsions == nested_torsions(torsions) \
+                                and directed_scan_job.job_name in self.unfinished_job_names(label):
                             break
                     else:
                         if 'cont' in directed_scan_type:
@@ -2614,7 +2627,10 @@ class Scheduler(object):
                                 self.spawn_directed_scan_jobs(label, rotor_index=i)
                         else:
                             self.spawn_directed_scan_jobs(label, rotor_index=i)
-                elif not self.rotor_scan_owed_to_a_pipe_run(self.species_dict[label], i):
+                elif not self.rotor_scan_owed_to_a_pipe_run(self.species_dict[label], i) \
+                        and not any(nested_torsions(torsions) == scan_job.torsions
+                                    and scan_job.job_name in self.unfinished_job_names(label)
+                                    for scan_job in self.job_dict[label].get('scan', dict()).values()):
                     # This is a "normal" ESS scan (not directed). Collect for potential pipe batching.
                     ess_rotor_indices.append(i)
 
@@ -2630,26 +2646,20 @@ class Scheduler(object):
                     continue
                 rotor = self.species_dict[label].rotors_dict[i]
                 torsions = rotor['torsion']
-                if 'scan' not in self.job_dict[label].keys():
-                    self.job_dict[label]['scan'] = dict()
-                for scan_job in self.job_dict[label]['scan'].values():
-                    if torsions == scan_job.torsions and scan_job.job_name in self.running_jobs[label]:
-                        break
-                else:
-                    job_label = label
-                    if self.species_dict[label].multi_species:
-                        if self.output_multi_spc[self.species_dict[label].multi_species].get('scan', False):
-                            return
-                        self.output_multi_spc[self.species_dict[label].multi_species]['scan'] = True
-                        job_label = [species.label for species in self.species_list
-                                     if species.multi_species == self.species_dict[label].multi_species]
-                    self.run_job(label=job_label,
-                                 xyz=self.species_dict[label].get_xyz(generate=False),
-                                 level_of_theory=self.scan_level,
-                                 job_type='scan',
-                                 torsions=torsions,
-                                 rotor_index=i,
-                                 )
+                job_label = label
+                if self.species_dict[label].multi_species:
+                    if self.output_multi_spc[self.species_dict[label].multi_species].get('scan', False):
+                        return
+                    self.output_multi_spc[self.species_dict[label].multi_species]['scan'] = True
+                    job_label = [species.label for species in self.species_list
+                                 if species.multi_species == self.species_dict[label].multi_species]
+                self.run_job(label=job_label,
+                             xyz=self.species_dict[label].get_xyz(generate=False),
+                             level_of_theory=self.scan_level,
+                             job_type='scan',
+                             torsions=torsions,
+                             rotor_index=i,
+                             )
 
     def run_irc_job(self, label, irc_direction='forward'):
         """

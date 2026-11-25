@@ -2470,6 +2470,29 @@ H       1.27889520   -0.81548721   -0.12940984"""
         self.assertEqual(len(warnings), 1)
         self.assertIn(label, warnings[0])
 
+    def test_a_held_conf_sp_job_resumes_the_troubleshooting_round_as_a_running_one_does(self):
+        """
+        A restored conf_sp job that the restart puts off or holds back on an unreadable queue still counts
+        as unfinished: its conformer is not resubmitted, and its sibling is resubmitted at the noted level only.
+        """
+        label = 'methylamine'
+        for admission, held_in in ((DEFER, 'deferred_jobs'), (REFUSE, 'stranded_jobs')):
+            with self.subTest(held_in=held_in):
+                restarted = self._conformer_trsh_conf_sp_restart()
+                self.assertEqual([(job_label, job.job_name) for job_label, job in restarted.unsubmitted_jobs],
+                                 [(label, 'conf_sp_0')])
+                with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit', return_value=admission), \
+                        patch.object(Scheduler, 'save_restart_dict'), patch('arc.scheduler.logger'):
+                    restarted.submit_unsubmitted_jobs()
+                self.assertEqual(restarted.running_jobs[label], list())
+                self.assertEqual(getattr(restarted, held_in)[label], ['conf_sp_0'])
+                with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit'), \
+                        patch.object(JobAdapter, 'execute'):
+                    restarted.run_conformer_jobs(labels=[label])
+                jobs = restarted.job_dict[label].get('conf_opt', dict())
+                self.assertEqual([(i, self._conformer_trsh_level(job.level)) for i, job in sorted(jobs.items())],
+                                 [(1, 'wb97xd/def2tzvp')])
+
     def _conformer_trsh_negative_freq_replacement(self, sched):
         """
         Replace the species' conformers with the real ``troubleshoot_negative_freq``, which submits the new set at
@@ -6101,6 +6124,77 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                     job.delete.assert_called_once()
                 self.assertFalse(any(job in superseded.values()
                                      for job in sched.job_dict[label].get('conf_opt', dict()).values()))
+
+    def test_run_ts_conformer_jobs_cancels_held_superseded_conf_opt_jobs(self):
+        """
+        Respawning the TS conformers also cancels the superseded conf_opt jobs that a queue guard put off or held
+        back, and drops them from their holder and from the unsubmitted jobs.
+        """
+        xyz_a = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        xyz_b = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       2.51402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        label = 'TS_respawn_held'
+        ts_spc = ARCSpecies(label=label, is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
+        ts_spc.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, xyz=xyz_a),
+                             TSGuess(index=1, method='heuristics', success=True, xyz=xyz_b)]
+        project_directory = tempfile.mkdtemp(prefix='ts_respawn_held_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_ts_respawn_held', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+
+        def run_job(label, conformer, **kwargs):
+            job = MagicMock(job_name=f'conf_opt_{conformer}', job_id=None, server='server1', execution_type='queue')
+            sched.job_dict[label]['conf_opt'][conformer] = job
+            sched.running_jobs[label].append(job.job_name)
+
+        for piped_indices in [set(), {1}]:
+            with self.subTest(piped_indices=piped_indices):
+                sched.pipe_planner = MagicMock()
+                sched.pipe_planner.try_pipe_ts_opt.return_value = piped_indices
+                deferred, stranded_submitted, stranded_unsubmitted = \
+                    [MagicMock(job_name=f'conf_opt_{i}', job_id=job_id, server='server1', execution_type='queue')
+                     for i, job_id in enumerate([None, 4242, None])]
+                superseded = [deferred, stranded_submitted, stranded_unsubmitted]
+                sched.job_dict[label] = {'conf_opt': dict(enumerate(superseded))}
+                sched.running_jobs[label] = ['freq_a7']
+                sched.deferred_jobs[label] = ['conf_opt_0']
+                sched.stranded_jobs[label] = ['conf_opt_1', 'conf_opt_2']
+                sched.unsubmitted_jobs = [(label, deferred)]
+                with patch.object(Scheduler, 'run_job', side_effect=run_job), patch('arc.scheduler.logger'):
+                    sched.run_ts_conformer_jobs(label=label)
+                stranded_submitted.delete.assert_called_once_with()
+                deferred.delete.assert_not_called()
+                stranded_unsubmitted.delete.assert_not_called()
+                self.assertNotIn(label, sched.deferred_jobs)
+                self.assertNotIn(label, sched.stranded_jobs)
+                self.assertEqual(sched.unsubmitted_jobs, list())
+                new_jobs = {i: job for i, job in sched.job_dict[label]['conf_opt'].items() if job not in superseded}
+                self.assertEqual(sorted(new_jobs), sorted({0, 1} - piped_indices))
+                self.assertEqual(sorted(sched.running_jobs[label]),
+                                 sorted(['freq_a7'] + [job.job_name for job in new_jobs.values()]))
+
+                with patch.object(Scheduler, 'check_max_simultaneous_jobs_limit', return_value=SUBMIT), \
+                        patch.object(Scheduler, 'save_restart_dict'), patch('arc.scheduler.logger'):
+                    sched.submit_unsubmitted_jobs()
+                for job in superseded:
+                    job.execute.assert_not_called()
+                self.assertFalse(any(job in superseded
+                                     for job in sched.job_dict[label].get('conf_opt', dict()).values()))
+                self.assertEqual(sorted(sched.running_jobs[label]),
+                                 sorted(['freq_a7'] + [job.job_name for job in new_jobs.values()]))
 
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_switch_ts_cleanup(self, mock_run_opt):
@@ -10424,6 +10518,24 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
         job.as_dict.return_value = {'job_type': job_type, 'job_id': job_id}
         return job
 
+    def _scan_job(self, job_type: str, torsion: list[int]) -> JobAdapter:
+        """
+        A scan job built by the real Gaussian adapter, with ``torsions`` in the shape the adapter stores.
+
+        Args:
+            job_type (str): Either ``'scan'`` or ``'directed_scan'``.
+            torsion (list[int]): The rotor's flat torsion.
+
+        Returns:
+            JobAdapter: The job.
+        """
+        return job_factory(job_adapter='gaussian', project='tracked_work',
+                           project_directory=self.sched.project_directory, job_type=job_type,
+                           level=Level(method='wb97xd', basis='def2-tzvp'),
+                           species=[self.sched.species_dict[self.label]], rotor_index=0, torsions=torsion,
+                           directed_scan_type='brute_force_sp' if job_type == 'directed_scan' else None,
+                           execution_type='queue', testing=True)
+
     def _ending(self, *removed: str):
         """An end_job() that ends the named jobs: it drops them from running_jobs and reports success."""
         def end_job(job, label, job_name):
@@ -10518,6 +10630,87 @@ class TestTrackedWorkInTheMainLoop(unittest.TestCase):
         with self.assertNoLogs('arc', level='ERROR'):
             self.sched.check_all_done(self.label)
         self.assertNotEqual(self.sched.output[self.label]['convergence'], True)
+
+    def test_a_held_scan_of_a_torsion_keeps_a_second_scan_of_it_from_spawning(self):
+        """
+        A directed or ordinary scan put off or held back by a queue guard counts as already running.
+        A directed rotor's torsion, scan and pivots are nested even in 1D, as ``initialize_directed_rotors()``
+        stores them.
+        """
+        torsion = [2, 0, 1, 5]
+        self.sched.job_types['rotors'] = True
+        self.sched.species_dict[self.label].final_xyz = str_to_xyz(TestScheduler._METHYLAMINE_XYZ)
+        for directed_scan_type, job_type in (('brute_force_sp', 'directed_scan'), ('ess', 'scan')):
+            for held_in in ('deferred_jobs', 'stranded_jobs', None):
+                with self.subTest(job_type=job_type, held_in=held_in):
+                    nest = (lambda value: [value]) if job_type == 'directed_scan' else (lambda value: value)
+                    self.sched.species_dict[self.label].rotors_dict = {
+                        0: {'torsion': nest(torsion), 'scan': nest([t + 1 for t in torsion]), 'pivots': nest([1, 2]),
+                            'scan_path': '', 'success': None, 'invalidation_reason': '',
+                            'directed_scan_type': directed_scan_type}}
+                    job = self._scan_job(job_type, torsion)
+                    self.sched.job_dict[self.label] = {job_type: {job.job_name: job}}
+                    self.sched.running_jobs[self.label] = list()
+                    self.sched.deferred_jobs, self.sched.stranded_jobs = dict(), dict()
+                    if held_in is not None:
+                        getattr(self.sched, held_in)[self.label] = [job.job_name]
+                    with patch.object(self.sched, 'spawn_directed_scan_jobs') as spawn_directed_scan_jobs, \
+                            patch.object(self.sched, 'run_job') as run_job, \
+                            patch.object(self.sched, 'rotor_scan_owed_to_a_pipe_run', return_value=False), \
+                            patch.object(self.sched.pipe_planner, 'try_pipe_rotor_scans_1d', return_value=set()):
+                        self.sched.run_scan_jobs(self.label)
+                    spawned = spawn_directed_scan_jobs if job_type == 'directed_scan' else run_job
+                    self.assertEqual(spawned.call_count, 0 if held_in else 1)
+                    self.assertEqual(spawn_directed_scan_jobs.call_count + run_job.call_count, 0 if held_in else 1)
+
+    def test_a_held_scan_of_a_torsion_keeps_the_rotor_out_of_a_pipe_batch(self):
+        """A rotor whose ESS scan is running or held is not handed to the pipe planner."""
+        held_torsion, free_torsion = [2, 0, 1, 5], [2, 0, 1, 6]
+        self.sched.job_types['rotors'] = True
+        self.sched.species_dict[self.label].final_xyz = str_to_xyz(TestScheduler._METHYLAMINE_XYZ)
+        for held_in in ('running_jobs', 'deferred_jobs', 'stranded_jobs', None):
+            with self.subTest(held_in=held_in):
+                self.sched.species_dict[self.label].rotors_dict = {
+                    i: {'torsion': torsion, 'scan': [t + 1 for t in torsion], 'pivots': [1, 2], 'scan_path': '',
+                        'success': None, 'invalidation_reason': '', 'directed_scan_type': 'ess'}
+                    for i, torsion in enumerate((held_torsion, free_torsion))}
+                job = self._scan_job('scan', held_torsion)
+                self.sched.job_dict[self.label] = {'scan': {job.job_name: job}}
+                self.sched.running_jobs[self.label] = list()
+                self.sched.deferred_jobs, self.sched.stranded_jobs = dict(), dict()
+                if held_in is not None:
+                    getattr(self.sched, held_in)[self.label] = [job.job_name]
+                with patch.object(self.sched, 'run_job') as run_job, \
+                        patch.object(self.sched, 'rotor_scan_owed_to_a_pipe_run', return_value=False), \
+                        patch.object(self.sched.pipe_planner, 'try_pipe_rotor_scans_1d',
+                                     side_effect=lambda label, rotor_indices: set(rotor_indices)) as try_pipe:
+                    self.sched.run_scan_jobs(self.label)
+                piped = [i for c in try_pipe.call_args_list for i in c.args[1]]
+                self.assertEqual(piped, [1] if held_in else [0, 1])
+                self.assertEqual(run_job.call_count, 0)
+
+    def test_a_scan_restored_from_the_restart_file_keeps_a_second_scan_of_its_torsion_from_spawning(self):
+        """A scan job rebuilt from restart.yml by restore_running_jobs() is seen as a scan of its rotor's torsion."""
+        torsion = [2, 0, 1, 5]
+        self.sched.job_types['rotors'] = True
+        self.sched.species_dict[self.label].final_xyz = str_to_xyz(TestScheduler._METHYLAMINE_XYZ)
+        self.sched.species_dict[self.label].rotors_dict = {
+            0: {'torsion': torsion, 'scan': [t + 1 for t in torsion], 'pivots': [1, 2], 'scan_path': '',
+                'success': None, 'invalidation_reason': '', 'directed_scan_type': 'ess'}}
+        job = self._scan_job('scan', torsion)
+        restart_path = os.path.join(self.sched.project_directory, 'restart.yml')
+        save_yaml_file(path=restart_path, content={'running_jobs': {self.label: [job.as_dict()]}})
+        self.sched.restart_dict = read_yaml_file(restart_path)
+        self.sched.job_dict[self.label], self.sched.running_jobs = dict(), dict()
+        self.sched.restore_running_jobs()
+        self.assertEqual(self.sched.running_jobs[self.label], [job.job_name])
+        restored = self.sched.job_dict[self.label]['scan'][job.job_name]
+        self.assertIsNot(restored, job)
+        with patch.object(self.sched, 'run_job') as run_job, \
+                patch.object(self.sched, 'rotor_scan_owed_to_a_pipe_run', return_value=False), \
+                patch.object(self.sched.pipe_planner, 'try_pipe_rotor_scans_1d', return_value=set()):
+            self.sched.run_scan_jobs(self.label)
+        self.assertEqual(run_job.call_count, 0)
 
 
 class TestTsGuessPathProvenance(unittest.TestCase):

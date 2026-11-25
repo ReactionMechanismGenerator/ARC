@@ -13,6 +13,7 @@ from arc.common import get_logger
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (check_argument_consistency,
+                                     nested_torsions,
                                      set_job_args,
                                      which)
 from arc.job.factory import register_job_adapter
@@ -240,7 +241,7 @@ class Psi4Adapter(JobAdapter):
         self.attempted_queues = attempted_queues or list()
         self.species = [species] if species is not None and not isinstance(species, list) else species
         self.testing = testing
-        self.torsions = [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
+        self.torsions = nested_torsions(torsions)
         self.pivots = [[tor[1] + 1, tor[2] + 1] for tor in self.torsions] if self.torsions is not None else None
         self.tsg = tsg
         self.xyz = xyz or self.species[0].get_xyz()
