@@ -150,6 +150,10 @@ class ARC(object):
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
         skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
+        allow_not_verified_in_libraries (bool, optional): Whether to write not verified species and reactions
+                                                          (e.g., ``conformer_verified`` is ``False``) to the RMG
+                                                          libraries, with the cause in their comment.
+                                                          Default is ``False``.
         schema_version (int, optional): The input schema version read from a restart file.
                                         Accepted for restart compatibility and ignored.
         arc_version (str, optional): The ARC version that wrote a restart file.
@@ -222,6 +226,7 @@ class ARC(object):
         ts_adapters (list): Entries represent different TS adapters.
         report_e_elect (bool): Whether to report electronic energy.
         skip_nmd (bool): Whether to skip normal mode displacement check.
+        allow_not_verified_in_libraries (bool): Whether to write not verified entries to the RMG libraries.
 
     """
 
@@ -277,6 +282,7 @@ class ARC(object):
                  verbose=logging.INFO,
                  report_e_elect: bool | None = False,
                  skip_nmd: bool | None = False,
+                 allow_not_verified_in_libraries: bool = False,
                  schema_version: int | None = None,
                  arc_version: str | None = None,
                  ):
@@ -337,6 +343,10 @@ class ARC(object):
         self.ts_adapters = ts_adapters
         self.report_e_elect = report_e_elect
         self.skip_nmd = skip_nmd
+        if not isinstance(allow_not_verified_in_libraries, bool):
+            raise InputError(f'allow_not_verified_in_libraries must be true or false, '
+                             f'got {allow_not_verified_in_libraries!r}')
+        self.allow_not_verified_in_libraries = allow_not_verified_in_libraries
         registered_job_adapters = get_registered_job_adapters()
         mapped_ts_adapters = ts_adapters_used_by_the_map(registered=None)
         for ts_adapter in self.ts_adapters or list():
@@ -555,6 +565,8 @@ class ARC(object):
             restart_dict['report_e_elect'] = self.report_e_elect
         if self.skip_nmd:
             restart_dict['skip_nmd'] = self.skip_nmd
+        if self.allow_not_verified_in_libraries:
+            restart_dict['allow_not_verified_in_libraries'] = self.allow_not_verified_in_libraries
         return restart_dict
 
     def write_input_file(self, path=None):
@@ -675,6 +687,7 @@ class ARC(object):
                             sp_level=self.arkane_level_of_theory,
                             freq_level=self.freq_level,
                             skip_nmd=self.skip_nmd,
+                            allow_not_verified_in_libraries=self.allow_not_verified_in_libraries,
                             )
 
         # Determine whether the user supplied the scale factor explicitly, or ARC looked it up.

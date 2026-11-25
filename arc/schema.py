@@ -353,6 +353,7 @@ class ARCInput(BaseModel):
     project: str
     adaptive_levels: list | dict | None = None
     allow_nonisomorphic_2d: Flag = False
+    allow_not_verified_in_libraries: Flag = False
     arc_version: str | None = None
     arkane_level_of_theory: str | dict | None = None
     bac_type: BACTypeEnum | None = 'p'
