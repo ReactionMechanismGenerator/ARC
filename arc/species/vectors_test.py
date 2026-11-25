@@ -293,6 +293,23 @@ O      -1.40465894   -0.03095532    0.00000000""")
         dihedral2 = vectors.calculate_dihedral_angle(coords=cj_11974['coords'], torsion=[15, 18, 19, 20], index=1)
         self.assertAlmostEqual(dihedral2, 308.04758, 2)
 
+    def test_calculate_dihedral_angles(self):
+        """Test that the dihedral angles of many torsions at once are those of calculate_dihedral_angle()"""
+        hydrazine = converter.str_to_xyz("""N       0.70683700   -0.07371000   -0.21400700
+    N      -0.70683700    0.07371000   -0.21400700
+    H       1.11984200    0.81113900   -0.47587600
+    H       1.07456200   -0.35127300    0.68988300
+    H      -1.11984200   -0.81113900   -0.47587600
+    H      -1.07456200    0.35127300    0.68988300""")
+        torsions = [[2, 0, 1, 4], [3, 0, 1, 5], [2, 0, 1, 5], [3, 0, 1, 4], [4, 1, 0, 2]]
+        dihedrals = vectors.calculate_dihedral_angles(coords=hydrazine['coords'], torsions=torsions)
+        self.assertEqual(len(dihedrals), len(torsions))
+        for torsion, dihedral in zip(torsions, dihedrals):
+            self.assertAlmostEqual(dihedral, vectors.calculate_dihedral_angle(hydrazine['coords'], torsion), 3)
+        collinear = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 1.0, 0.0]]
+        self.assertTrue(math.isnan(vectors.calculate_dihedral_angles(collinear, [[0, 1, 2, 3]])[0]))
+        self.assertTrue(math.isnan(vectors.calculate_dihedral_angle(collinear, [0, 1, 2, 3])))
+
     def test_calculate_param(self):
         """Test calculating a parameter"""
         distance = vectors.calculate_param(coords=self.propene['coords'], atoms=[0, 1])
