@@ -617,6 +617,7 @@ def process_goflow_tsg(tsg_dict: dict,
                                  dmat1=ts_dmat, dmat2=other_dmat) < dmat_rmsd_tol:
             if 'goflow' not in other_tsg.method.lower():
                 other_tsg.method += ' and GoFlow'
+            other_tsg.add_method_source('GoFlow')
             return False
 
     method_index = int(tsg_dict.get('method_index', 0))

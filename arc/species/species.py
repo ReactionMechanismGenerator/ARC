@@ -43,6 +43,7 @@ from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
                                    check_zmat_dict,
                                    compare_confs,
+                                   compare_confs_by_graph_maps,
                                    get_xyz_radius,
                                    modify_coords,
                                    order_atoms,
@@ -2717,6 +2718,18 @@ class TSGuess(object):
                 normalized.append(method)
         return normalized
 
+    def add_method_source(self, method: str) -> None:
+        """
+        Record that another method produced this guess's geometry.
+
+        The method is added to ``method_sources`` in the normalized form (lowercase, unique, in order
+        of addition) that ``ARCSpecies.cluster_tsgs`` uses when it folds two guesses.
+
+        Args:
+            method (str): The name of the method, e.g., ``'GoFlow'`` or ``'Linear (w=0.35, 1)'``.
+        """
+        self.method_sources = self._normalize_method_sources((self.method_sources or []) + [method])
+
     def as_dict(self, for_report: bool = False) -> dict:
         """
         A helper function for dumping this object as a dictionary.
@@ -2853,6 +2866,12 @@ class TSGuess(object):
         """
         Determine whether two TSGuess object instances represent the same geometry.
 
+        The two guesses must agree on ``success``, on the energy within 0.1 kJ/mol (when both are set),
+        and on the imaginary frequencies (when both are set). Their geometries (``get_xyz()``) are then
+        compared in the given atom order, and, if that fails, under every atom map that keeps each atom's
+        element and bonded neighbours (``compare_confs_by_graph_maps``), so the same structure numbered
+        differently still counts as the same geometry.
+
         Args:
             other (TSGuess): The other TSGuess object instance to compare to.
 
@@ -2874,10 +2893,9 @@ class TSGuess(object):
             # parseable geometry) can never be a geometric duplicate. Comparing it would pass None
             # into almost_equal_coords and crash clustering (TypeError), so treat it as not-equal.
             return False
-        if almost_equal_coords(xyz1=self_xyz, xyz2=other_xyz) \
-                or compare_confs(xyz1=self_xyz, xyz2=other_xyz, rmsd_score=False):
-            return True
-        return False
+        return almost_equal_coords(xyz1=self_xyz, xyz2=other_xyz) \
+            or compare_confs(xyz1=self_xyz, xyz2=other_xyz, rmsd_score=False) \
+            or compare_confs_by_graph_maps(xyz1=self_xyz, xyz2=other_xyz)
 
     def tic(self):
         """
