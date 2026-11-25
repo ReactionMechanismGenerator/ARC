@@ -984,6 +984,17 @@ class TestRoundTrip(TmpDirTestCase):
                 else:
                     self.assertEqual(_normalize(dumped[key]), _normalize(original), f'{restart_file}: {key}')
 
+    def test_a_restart_species_with_skipped_methods_validates(self):
+        """Test that a TS whose skipped_methods is recorded validates on restart and restores the map"""
+        ts = ARCSpecies(label='TS0', is_ts=True)
+        ts.skipped_methods = {'autotst': 'AUTOTST_PYTHON is not set'}
+        species_dict = yaml.safe_load(yaml.dump(ts.as_dict()))
+        self.assertIn('skipped_methods', species_dict)
+        validated = validate_input_dict({'project': 'p', 'species': [species_dict]})
+        self.assertEqual(validated['species'][0]['skipped_methods'], {'autotst': 'AUTOTST_PYTHON is not set'})
+        restored = ARCSpecies(species_dict=validated['species'][0])
+        self.assertEqual(restored.skipped_methods, {'autotst': 'AUTOTST_PYTHON is not set'})
+
     def test_restart_thermo_runtime_keys_preserved(self):
         """Test that runtime restart keys survive validation as modeled fields"""
         restart_file = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '1_restart_thermo', 'restart.yml')

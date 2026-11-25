@@ -27,21 +27,14 @@ class TestExternalAdapterSettingsExposed(unittest.TestCase):
             self.assertTrue(hasattr(settings_mod, name), f"settings module missing attribute {name}")
 
     def test_default_ts_adapters_list(self):
-        """The default ``ts_adapters`` list must match main's default exactly."""
-        self.assertEqual(settings_mod.ts_adapters, ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb'])
+        """The default ``ts_adapters`` list is pinned."""
+        self.assertEqual(settings_mod.ts_adapters, ['heuristics', 'linear', 'autotst', 'gcn', 'xtb_gsm', 'orca_neb',
+                                                    'kinbot', 'goflow'])
 
-    def test_ts_adapters_does_not_include_goflow_by_default(self):
-        """GoFlow's env (goflow_env + pretrained ckpt) is heavyweight, so it must
-        stay opt-in. Users enable it via ``ts_adapters: ['goflow', ...]`` in
-        their input.yml."""
-        self.assertNotIn('goflow', [a.lower() for a in settings_mod.ts_adapters])
-
-    def test_ts_adapters_does_not_include_rits_by_default(self):
-        """RitS's env (rits_env + pretrained ckpt) is heavyweight, so it must
-        stay opt-in. Users enable it via ``ts_adapters: ['rits', ...]`` in
-        their input.yml."""
-        self.assertNotIn('rits', [a.lower() for a in settings_mod.ts_adapters])
-
+    def test_ts_adapters_include_goflow_but_not_rits_by_default(self):
+        """GoFlow is in the default ``ts_adapters``; RitS is opt-in."""
+        self.assertIn('goflow', settings_mod.ts_adapters)
+        self.assertNotIn('rits', settings_mod.ts_adapters)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

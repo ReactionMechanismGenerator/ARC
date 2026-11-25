@@ -376,11 +376,13 @@ reactant + product 2D graphs (SMILES + RDKit features). The model was trained on
 
 Supported domain
 """"""""""""""""
-GoFlow is **opt-in only** — its inference stack (``goflow_env`` + pretrained
-checkpoint) is heavyweight, so it is intentionally absent from the default
-``ts_adapters`` list. When enabled, the adapter skips cleanly at runtime if
-``goflow_env`` or the checkpoint is not installed, and it enforces a runtime
-domain guard:
+GoFlow is in the default ``ts_adapters`` list. It runs incore and blocks ARC
+while it runs, up to 600 s per reaction, with no queue polling in between.
+To leave it out, list the adapters you want without it, in the input file
+(``ts_adapters``) or in ``~/.arc/settings.py``.
+When ``goflow_env`` or the checkpoint is not installed, ARC skips it
+with one warning that names the missing piece, and the other adapters still run.
+It enforces a runtime domain guard:
 
 - Molecularity: unimolecular reactions only (one side has a single species), the
   same scope as the Linear adapter. ``A + B <=> C`` qualifies; a 2↔2 reaction
@@ -397,7 +399,7 @@ skipped with a warning instead of being attempted with out-of-distribution input
 
 How it is used
 """"""""""""""
-To enable GoFlow, install its environment and request it explicitly:
+To use GoFlow, install its environment once:
 
 1. Install the dedicated conda env and download the pretrained checkpoint:
 
@@ -410,16 +412,8 @@ To enable GoFlow, install its environment and request it explicitly:
    (`10.5281/zenodo.20073635 <https://doi.org/10.5281/zenodo.20073635>`_), and verifies
    its SHA-256.
 
-2. Add ``goflow`` to ``ts_adapters`` in the input file:
-
-   .. code-block:: yaml
-
-      ts_adapters:
-        - heuristics
-        - goflow
-
-   Once requested, GoFlow is invoked automatically for every reaction within its
-   supported domain.
+2. Keep ``goflow`` in ``ts_adapters`` (it is in the default list). GoFlow is then
+   invoked automatically for every reaction within its supported domain.
 
 3. (Optional) Override the default checkpoint or feature-dictionary location via env vars:
 
@@ -479,9 +473,16 @@ the adapter declines anything bimolecular at runtime with a warning.
 
 How it is used
 """"""""""""""
-RitS is **opt-in only** — its inference stack is heavyweight, so it is
-intentionally absent from the default ``ts_adapters`` list. To enable it,
-install its environment once and request it in the ARC input file:
+RitS is **opt-in only**: it is not in the default ``ts_adapters`` list. It runs
+incore and blocks ARC while it runs, up to 600 s per reaction, with no queue
+polling in between. Enable it with one line that lists it with the adapters you want,
+in the input file, e.g.
+``ts_adapters: ['heuristics', 'linear', 'autotst', 'gcn', 'xtb_gsm', 'orca_neb', 'kinbot', 'goflow', 'rits']``,
+or in ``~/.arc/settings.py``, e.g.
+``ts_adapters = ['heuristics', 'linear', 'autotst', 'gcn', 'xtb_gsm', 'orca_neb', 'kinbot', 'goflow', 'rits']``.
+When enabled but its environment or checkpoint is not installed, ARC skips it
+with one warning that names the missing piece. To enable it, install its
+environment once and request it:
 
 1. Install the dedicated conda env and download the pretrained checkpoint:
 

@@ -9,11 +9,13 @@ import shutil
 import sys
 import re
 
+from collections.abc import Iterable
 from pprint import pformat
 from typing import TYPE_CHECKING
 
 from arc.common import get_logger
-from arc.imports import settings
+from arc.exceptions import InputError
+from arc.imports import repo_default_ts_adapters, settings
 from arc.level import Level
 from arc.species.converter import order_xyz_by_atom_map
 
@@ -69,7 +71,7 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', '
                              'Diels_alder_addition': ['kinbot', 'goflow', 'rits', 'linear'],
                              'Diels_alder_addition_Aromatic': ['goflow', 'rits', 'linear'],
                              'HO2_Elimination_from_PeroxyRadical': ['kinbot', 'goflow', 'rits', 'linear'],
-                             'H_Abstraction': ['heuristics', 'autotst', 'crest'],
+                             'H_Abstraction': ['heuristics', 'autotst'],
                              'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'Intra_5_membered_conjugated_C=C_C=C_addition': ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
                              'Intra_Diels_alder_monocyclic': ['gcn', 'kinbot', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear'],
@@ -114,11 +116,82 @@ all_families_ts_adapters = []
 # family. These adapters must tolerate rxn.family being None or unknown.
 ts_adapters_for_unknown_unimolecular = ['goflow', 'rits', 'linear']
 
+opt_in_ts_adapters = ('rits',)
+
+ts_adapter_install_targets = {'autotst': ('install-autotst',),
+                              'gcn': ('install-gcn', 'install-gcn-cpu'),
+                              'goflow': ('install-goflow',),
+                              'kinbot': ('install-kinbot',),
+                              'rits': ('install-rits',),
+                              'xtb_gsm': ('install-xtb',),
+                              }
+
+TS_ADAPTERS_SOURCES = ('repo default', '~/.arc/settings.py', 'input file')
+
 adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani', 'ase']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'crest', 'gcn', 'goflow', 'heuristics', 'kinbot', 'linear', 'openbabel',
+default_incore_adapters = ['autotst', 'gcn', 'goflow', 'heuristics', 'kinbot', 'linear', 'openbabel',
                            'psi4', 'rits', 'torchani', 'xtb', 'xtb_gsm']
+
+
+def ts_adapters_used_by_the_map(registered: Iterable[str] | None,
+                                family_map: dict[str, list[str]] | None = None,
+                                ) -> list[str]:
+    """
+    Get the TS adapters that the family map, or the unknown-family rule, can dispatch.
+    ARC's default ``ts_adapters`` is the registered ones less ``opt_in_ts_adapters``.
+
+    Args:
+        registered (Iterable[str], optional): The names of the registered job adapters to keep.
+                                              ``None`` keeps every adapter the map names.
+        family_map (dict, optional): The family to adapters map. Defaults to ``ts_adapters_by_rmg_family``.
+
+    Returns:
+        list[str]: The adapters in the order of the repo default ``ts_adapters``, then alphabetically
+                   for any adapter the default does not list.
+    """
+    family_map = family_map if family_map is not None else ts_adapters_by_rmg_family
+    used = {adapter for adapters in family_map.values() for adapter in adapters}
+    used.update(ts_adapters_for_unknown_unimolecular, all_families_ts_adapters)
+    if registered is not None:
+        used &= set(registered)
+    order = [adapter.lower() for adapter in repo_default_ts_adapters]
+    return [adapter for adapter in order if adapter in used] + sorted(used.difference(order))
+
+
+def resolve_ts_adapters(input_ts_adapters: list[str] | None,
+                        settings_ts_adapters: list[str] | None,
+                        local_settings_keys: Iterable[str],
+                        repo_default: list[str],
+                        ) -> tuple[list[str], str, list[str]]:
+    """
+    Resolve the TS adapters a run uses and where the list came from.
+
+    Args:
+        input_ts_adapters (list, optional): The input file's ``ts_adapters``, ``None`` if it sets none.
+        settings_ts_adapters (list, optional): The merged settings' ``ts_adapters``. Unless ``~/.arc/settings.py``
+                                               set it, it is the repo default (or an in-process edit of it).
+        local_settings_keys (Iterable[str]): The setting names ``~/.arc/settings.py`` set.
+        repo_default (list): The repository default ``ts_adapters``.
+
+    Raises:
+        InputError: If the selected list is not a list of strings.
+
+    Returns:
+        tuple[list[str], str, list[str]]: The lowercased adapters, their source (one of ``TS_ADAPTERS_SOURCES``),
+                                          and the repository default adapters the list leaves out.
+    """
+    if input_ts_adapters is not None:
+        adapters, source = input_ts_adapters, 'input file'
+    else:
+        adapters = settings_ts_adapters
+        source = '~/.arc/settings.py' if 'ts_adapters' in local_settings_keys else 'repo default'
+    if not isinstance(adapters, (list, tuple)) or not all(isinstance(adapter, str) for adapter in adapters):
+        raise InputError(f'ts_adapters from the {source} must be a list of adapter names, got {adapters!r}.')
+    adapters = [adapter.lower() for adapter in adapters]
+    removed = [adapter for adapter in (default.lower() for default in repo_default) if adapter not in adapters]
+    return adapters, source, removed
 
 
 def _initialize_adapter(obj: JobAdapter,
@@ -909,6 +982,42 @@ def set_job_args(args: dict | None,
         if key not in args.keys():
             args[key] = dict()
     return args
+
+
+def engine_path(value: object) -> str | None:
+    """
+    Convert an engine path setting to a path string.
+
+    Args:
+        value (object): The setting's value, a ``str`` or an ``os.PathLike`` is a path.
+
+    Returns:
+        str | None: The path, or ``None`` if the value is not a path.
+    """
+    if isinstance(value, (str, os.PathLike)):
+        path = os.fspath(value)
+        return path if isinstance(path, str) else None
+    return None
+
+
+def missing_engine_file_reason(path: object, setting: str, expected: str) -> str | None:
+    """
+    Report why an engine file setting does not point at an existing file.
+
+    A missing, ``None`` or wrong-type setting is reported as missing.
+
+    Args:
+        path (object): The value of the setting, expected to be a path string.
+        setting (str): The setting's name, e.g., ``'KINBOT_PYTHON'``.
+        expected (str): What the setting should point at, e.g., ``'the python of the kinbot_env conda env'``.
+
+    Returns:
+        str | None: ``None`` if ``path`` is an existing file, otherwise a reason naming the setting.
+    """
+    path_str = engine_path(path)
+    if path_str is not None and os.path.isfile(path_str):
+        return None
+    return f'{setting} ({path!r}) is not an existing file; expected {expected}'
 
 
 def which(command: str | list,
