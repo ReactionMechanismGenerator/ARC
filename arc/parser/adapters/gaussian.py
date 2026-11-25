@@ -11,7 +11,7 @@ import re
 
 from arc.common import SYMBOL_BY_NUMBER, get_logger, is_same_pivot, is_str_int
 from arc.constants import E_h_kJmol, bohr_to_angstrom
-from arc.species.converter import str_to_xyz, xyz_from_data
+from arc.species.converter import xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
 from arc.parser.parser import (_get_lines_from_file,
@@ -21,6 +21,8 @@ from arc.parser.parser import (_get_lines_from_file,
 
 
 logger = get_logger()
+
+SCF_DONE_ENERGY_PATTERN = re.compile(r"SCF Done:\s+E\([^)]*\)\s*=\s*([-+]?\d*\.?\d+(?:[EDed][-+]?\d+)?)")
 
 
 def _find_force_constants_header(lines: list[str]) -> int | None:
@@ -43,25 +45,28 @@ def _find_force_constants_header(lines: list[str]) -> int | None:
     return None
 
 
-def _read_irc_geometry_table(lines: list[str], start: int) -> tuple[dict | None, int]:
+def _read_irc_geometry_table(lines: list[str],
+                             start: int,
+                             x_column: int = 2,
+                             ) -> tuple[dict | None, int]:
     """
-    Read one Gaussian IRC Cartesian geometry table.
+    Read one Gaussian Cartesian geometry table.
 
     Skips forward from ``start`` past the two dashed separator lines that head
-    the table, then reads ``center, atomic number, x, y, z`` rows until the
-    closing dashed line.
+    the table, then reads rows until the closing dashed line. IRC tables have
+    ``center, atomic number, x, y, z`` rows; orientation tables have an extra
+    atomic type column, ``center, atomic number, type, x, y, z``.
 
     Reads the table as all-or-nothing. A table that does not open with both
     separators, a row that is not a numeric ``center, atomic number, x, y, z``
     tuple, and a table that runs into the end of the file without its closing
-    separator each yield ``None`` rather than the atoms read so far. A log
-    truncated mid-table would otherwise produce a geometry carrying some of the
-    molecule's atoms, which is indistinguishable downstream from a smaller
-    molecule and is never what the log describes.
+    separator each yield ``None`` rather than the atoms read so far.
 
     Args:
         lines (list[str]): The log file lines.
         start (int): The index of the line introducing the table.
+        x_column (int, optional): The index of the x coordinate in a row, 2 for IRC tables
+                                  and 3 for orientation tables.
 
     Returns: tuple[dict | None, int]
         The geometry as an ARC xyz dict, or ``None`` when the table is absent,
@@ -84,7 +89,7 @@ def _read_irc_geometry_table(lines: list[str], start: int) -> tuple[dict | None,
         parts = lines[i].split()
         try:
             atomic_number = int(parts[1])
-            coordinates = [float(parts[2]), float(parts[3]), float(parts[4])]
+            coordinates = [float(parts[x_column]), float(parts[x_column + 1]), float(parts[x_column + 2])]
         except (IndexError, ValueError):
             logger.warning('Discarding a Gaussian geometry table with a malformed row: %s',
                            lines[i].rstrip())
@@ -158,43 +163,21 @@ class GaussianParser(ESSAdapter, ABC):
     def parse_geometry(self) -> dict[str, tuple] | None:
         """
         Parse the xyz geometry from an ESS log file.
-        Try to find the 'Standard orientation:' first, and if not found, fall back to the 'Input orientation:'.
+
+        Takes the last complete 'Standard orientation:' table, and if there is none, the last complete
+        'Input orientation:' table. A table cut by the end of the file, or holding a malformed row,
+        is skipped in favour of the table before it.
 
         Returns: dict[str, tuple] | None
-            The cartesian geometry.
+            The cartesian geometry, or ``None`` if the log holds no complete orientation table.
         """
         lines = _get_lines_from_file(self.log_file_path)
-        for i in range(len(lines) - 1, -1, -1):  # Search for the latest 'Standard orientation:' from the end
-            if 'Standard orientation:' in lines[i]:
-                j = i + 5  # Usually 5 lines after 'Standard orientation:' is the table start
-                xyz_str = ''
-                while j < len(lines) and lines[j].strip() and not lines[j].startswith(' ---'):
-                    splits = lines[j].split()
-                    if splits and splits[0].isdigit():
-                        xyz_str += f'{SYMBOL_BY_NUMBER[int(splits[1])]}  {splits[3]}  {splits[4]}  {splits[5]}\n'
-                    j += 1
-                if xyz_str:
-                    return str_to_xyz(xyz_str)
-                break
-
-        numbers, coords, = list(), list()
-        with open(self.log_file_path, 'r') as f:
-            line = f.readline()
-            while line != '':
-                if 'Input orientation:' in line:
-                    numbers, coords = list(), list()
-                    for i in range(5):
-                        line = f.readline()
-                    while '---------------------------------------------------------------------' not in line:
-                        data = line.split()
-                        numbers.append(int(data[1]))
-                        coords.append([float(data[3]), float(data[4]), float(data[5])])
-                        line = f.readline()
-                line = f.readline()
-        coords = np.array(coords, float)
-        numbers = np.array(numbers, int)
-        if len(numbers) != 0 and len(coords) != 0:
-            return xyz_from_data(coords=coords, numbers=numbers)
+        for header in ['Standard orientation:', 'Input orientation:']:
+            for i in range(len(lines) - 1, -1, -1):
+                if header in lines[i]:
+                    xyz = _read_irc_geometry_table(lines, i, x_column=3)[0]
+                    if xyz is not None:
+                        return xyz
         return None
 
     def parse_frequencies(self) -> np.ndarray | None:
@@ -950,7 +933,6 @@ class GaussianParser(ESSAdapter, ABC):
         """
         lines = _get_lines_from_file(self.log_file_path)
         number = r"[-+]?\d*\.?\d+(?:[EDed][-+]?\d+)?"
-        energy_re = re.compile(r"SCF Done:\s+E\([^)]*\)\s*=\s*(" + number + r")")
         forces_re = re.compile(
             r"Cartesian Forces:\s+Max\s+(" + number + r")\s+RMS\s+(" + number + r")"
         )
@@ -976,14 +958,9 @@ class GaussianParser(ESSAdapter, ABC):
         i = 0
         while i < len(lines):
             line = lines[i]
-            match = energy_re.search(line)
-            if match:
-                energy = to_float(match.group(1))
-                i += 1
-                continue
-            post_scf_energy = extract_post_scf_energy(line)
-            if post_scf_energy is not None:
-                energy = post_scf_energy
+            line_energy = extract_irc_energy(line)
+            if line_energy is not None:
+                energy = line_energy
                 i += 1
                 continue
             match = forces_re.search(line)
@@ -1041,6 +1018,26 @@ class GaussianParser(ESSAdapter, ABC):
             })
             i = p + 1 if p < coordinate_end else k
         return points or None
+
+    def parse_irc_ts_energy(self) -> float | None:
+        """
+        Parse the electronic energy of the TS an IRC started from.
+
+        Reads the total electronic energy most recently reported before the ``Point Number: 0`` block,
+        by the rules ``parse_irc_path()`` applies to the energy of an IRC point.
+
+        Returns:
+            float | None: The energy in Hartree, or ``None`` if the log reports none before point 0
+                          or holds no point 0.
+        """
+        energy = None
+        for line in _get_lines_from_file(self.log_file_path):
+            if 'Point Number:' in line and 'Path Number:' in line:
+                return energy
+            line_energy = extract_irc_energy(line)
+            if line_energy is not None:
+                energy = line_energy
+        return None
 
     def parse_scan_conformers(self) -> pd.DataFrame | None:
         """
@@ -1420,6 +1417,23 @@ def extract_float_at_index(line: str, idx: int) -> float | None:
     if len(parts) > idx and is_float(parts[idx]):
         return float(parts[idx].replace('D', 'E'))
     return None
+
+
+def extract_irc_energy(line: str) -> float | None:
+    """
+    Extract the total electronic energy in Hartree that one line of a Gaussian IRC log reports.
+
+    Args:
+        line (str): The line.
+
+    Returns:
+        float | None: The ``SCF Done`` energy, or a correlated total ``extract_post_scf_energy()`` recognises,
+                      or ``None`` for any other line.
+    """
+    match = SCF_DONE_ENERGY_PATTERN.search(line)
+    if match:
+        return float(match.group(1).replace('D', 'E').replace('d', 'e'))
+    return extract_post_scf_energy(line)
 
 
 def extract_post_scf_energy(line: str) -> float | None:
