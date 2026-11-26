@@ -27,6 +27,8 @@ _OVERRIDDEN_DEPENDENTS = (
     ('RITS_REPO_PATH', 'RITS_CKPT_PATH', find_rits_ckpt),
 )
 
+SETTINGS_MERGED_ONTO_DEFAULTS = ('default_job_types', 'default_levels_of_theory', 'preserve_params_in_scan')
+
 
 def resolve_overridden_dependents(settings: dict, local_settings_dict: dict) -> None:
     """
@@ -116,6 +118,9 @@ if os.path.isfile(local_arc_settings_path):
     if local_settings:
         local_settings_dict = {key: val for key, val in vars(local_settings).items() if '__' not in key}
         settings.update(local_settings_dict)
+        for key in SETTINGS_MERGED_ONTO_DEFAULTS:
+            if isinstance(local_settings_dict.get(key), dict):
+                settings[key] = {**getattr(arc_settings, key), **local_settings_dict[key]}
         resolve_overridden_dependents(settings, local_settings_dict)
         # Set global_ess_settings to None if using a local settings file (ARC's defaults are dummies)
         settings['global_ess_settings'] = local_settings_dict['global_ess_settings'] \

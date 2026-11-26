@@ -2,12 +2,17 @@
 This module contains unit tests for the arc.imports module.
 """
 
+import copy
+import importlib
 import logging
 import os
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
+import arc.settings.settings as arc_settings
+from arc import imports as arc_imports
 from arc.imports import _report_unusable_overlay, resolve_overridden_dependents
 from arc.settings import external_paths
 
@@ -188,6 +193,104 @@ class TestReportUnusableOverlay(unittest.TestCase):
         self.assertEqual([record.levelno for record in records], [logging.DEBUG])
         self.assertIn('submit_scripts', records[0].getMessage())
         self.queued.assert_not_called()
+
+
+MERGED_DICTS = ('default_job_types', 'default_levels_of_theory', 'preserve_params_in_scan')
+REPLACED_DICTS = ('orca_default_options_dict', 'pipe_settings', 'ob_default_settings')
+
+
+class TestLocalSettingsMergedOntoDefaults(unittest.TestCase):
+    """Load a local ~/.arc/settings.py and check how its fixed-key settings dicts combine with ARC's defaults."""
+
+    def setUp(self):
+        """Record the arc_imports namespace, sys.path and the sys.modules entries that a reload replaces."""
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.original_namespace = dict(vars(arc_imports))
+        self.original_sys_path = list(sys.path)
+        self.original_modules = {name: sys.modules.get(name) for name in ('settings', 'submit', 'inputs')}
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        """Put back the arc_imports namespace, sys.path and sys.modules entries recorded in setUp."""
+        namespace = vars(arc_imports)
+        namespace.clear()
+        namespace.update(self.original_namespace)
+        sys.path[:] = self.original_sys_path
+        for name, module in self.original_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+    def _load(self, local_settings: dict) -> dict:
+        """Load arc.imports with a scratch HOME holding a .arc/settings.py.
+
+        Args:
+            local_settings (dict): The top-level names and values the local settings.py defines.
+
+        Returns:
+            dict: A shallow copy of the resulting ``arc_imports.settings``.
+        """
+        arc_dir = os.path.join(self.tmpdir.name, '.arc')
+        os.makedirs(arc_dir, exist_ok=True)
+        with open(os.path.join(arc_dir, 'settings.py'), 'w') as f:
+            for name, value in local_settings.items():
+                f.write(f'{name} = {value!r}\n')
+        for name in self.original_modules:
+            sys.modules.pop(name, None)
+        with patch.dict(os.environ, {'HOME': self.tmpdir.name}):
+            importlib.reload(arc_imports)
+        return dict(arc_imports.settings)
+
+    def test_a_missing_key_takes_the_default(self):
+        """A key the local dict leaves out takes ARC's default value, and ARC's default dict is unchanged."""
+        for name in MERGED_DICTS:
+            with self.subTest(name=name):
+                default = getattr(arc_settings, name)
+                before = copy.deepcopy(default)
+                missing = next(iter(default))
+                local = {key: val for key, val in default.items() if key != missing}
+                local['a_user_key'] = 1
+                settings = self._load({name: local})
+                self.assertEqual(settings[name], {**before, 'a_user_key': 1})
+                self.assertEqual(getattr(arc_settings, name), before)
+
+    def test_a_set_key_keeps_the_users_value(self):
+        """A key the local dict sets keeps the user's value whole, with no merge inside it."""
+        user_values = {'default_job_types': ('conf_opt', False),
+                       'default_levels_of_theory': ('opt', {'method': 'user-method', 'basis': 'user-basis'}),
+                       'preserve_params_in_scan': ('bond', 0.5)}
+        for name in MERGED_DICTS:
+            with self.subTest(name=name):
+                key, value = user_values[name]
+                settings = self._load({name: {key: value}})
+                self.assertEqual(settings[name][key], value)
+                self.assertEqual(set(settings[name]), set(getattr(arc_settings, name)) | {key})
+
+    def test_job_types_without_stability_loads(self):
+        """An older default_job_types without 'stability' loads, and 'stability' is ARC's default."""
+        local = {key: val for key, val in arc_settings.default_job_types.items() if key != 'stability'}
+        settings = self._load({'default_job_types': local})
+        self.assertIs(settings['default_job_types']['stability'], False)
+
+    def test_only_the_merged_dicts_are_merged(self):
+        """In one local file, a merged dict gains ARC's defaults and every other dict is exactly the local one."""
+        job_types = {key: val for key, val in arc_settings.default_job_types.items() if key != 'stability'}
+        others = {name: dict(list(getattr(arc_settings, name).items())[1:]) for name in REPLACED_DICTS}
+        others['servers'] = {'local': {'cluster_soft': 'Slurm', 'un': 'user'}}
+        settings = self._load({'default_job_types': job_types, **others})
+        self.assertEqual(settings['default_job_types'], arc_settings.default_job_types)
+        for name, local in others.items():
+            with self.subTest(name=name):
+                self.assertEqual(settings[name], local)
+
+    def test_a_non_dict_value_replaces_the_default(self):
+        """A local value that is not a dict replaces ARC's default, next to a merged dict in the same file."""
+        job_types = {key: val for key, val in arc_settings.default_job_types.items() if key != 'stability'}
+        settings = self._load({'default_job_types': job_types, 'preserve_params_in_scan': None})
+        self.assertIs(settings['default_job_types']['stability'], False)
+        self.assertIsNone(settings['preserve_params_in_scan'])
 
 
 if __name__ == '__main__':
