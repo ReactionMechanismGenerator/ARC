@@ -2,12 +2,19 @@
 # The parent image is the base image that the Dockerfile builds upon.
 # The RMG installation instructions suggest Anaconda for installation by source, however, we use micromamba for the Docker image due to its smaller size and less overhead.
 # Installation of ARC will also be done in this stage.
-FROM --platform=linux/amd64 mambaorg/micromamba:2.2-ubuntu24.04 AS builder
+# The base image. The default is a floating tag; the release workflow passes it pinned by digest.
+ARG BASE_IMAGE=mambaorg/micromamba:2.2-ubuntu24.04
+FROM --platform=linux/amd64 ${BASE_IMAGE} AS builder
 
 # Set ARGS
 ARG RMG_PY_BRANCH=main
 ARG RMG_DATABASE_BRANCH=main
 ARG ARC_BRANCH=main
+# Optional exact commits for the three clones (full SHAs). Empty, the default, keeps each clone at the
+# head of its *_BRANCH. The release workflow sets all three, because a branch or tag alone does not pin.
+ARG RMG_PY_SHA=
+ARG RMG_DATABASE_SHA=
+ARG ARC_SHA=
 
 # Set Global ENV
 ENV MAMBA_ROOT_PREFIX=/opt/conda
@@ -49,6 +56,14 @@ WORKDIR /home/mambauser/Code
 RUN git clone --depth 1 --branch ${RMG_PY_BRANCH} https://github.com/ReactionMechanismGenerator/RMG-Py.git && \
     git clone --depth 1 --branch ${RMG_DATABASE_BRANCH} https://github.com/ReactionMechanismGenerator/RMG-database.git && \
     git clone --depth 1 --branch ${ARC_BRANCH} https://github.com/ReactionMechanismGenerator/ARC.git
+
+RUN for pair in "RMG-Py:${RMG_PY_SHA}" "RMG-database:${RMG_DATABASE_SHA}" "ARC:${ARC_SHA}"; do \
+      repo="${pair%%:*}"; sha="${pair#*:}"; \
+      [ -z "${sha}" ] && continue; \
+      git -C "${repo}" fetch --depth 1 origin "${sha}" && \
+      git -C "${repo}" checkout --detach "${sha}" && \
+      [ "$(git -C "${repo}" rev-parse HEAD)" = "${sha}" ] || exit 1; \
+    done
 
 # Record the resolved commit SHAs of the three clones. A pulled image is otherwise
 # only identifiable by branch name; this file states exactly which revisions are
@@ -111,7 +126,7 @@ RUN micromamba run -n arc_env bash -euxo pipefail -c \
 # Stage 2: Final image
 # The final image is based on the same micromamba image, but we copy over the installed RMG and ARC from the builder stage.
 # This keeps the final image size smaller and avoids unnecessary layers.
-FROM --platform=linux/amd64 mambaorg/micromamba:2.2-ubuntu24.04
+FROM --platform=linux/amd64 ${BASE_IMAGE}
 
 # --- OCI image metadata -----------------------------------------------------
 # ARGs do not cross stages, so ARC_BRANCH is re-declared here.
