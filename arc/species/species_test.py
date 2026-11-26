@@ -10,7 +10,7 @@ import os
 import shutil
 import tempfile
 import unittest
-from unittest import mock
+from unittest.mock import patch
 
 from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
@@ -1637,10 +1637,10 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         spc = ARCSpecies(label='isoxazole', smiles='c1ccno1')
         spc.final_xyz = str_to_xyz(isoxazole_xyz)
         self.assertEqual(spc.mol.copy(deep=True).to_smiles(), 'c1ccno1')
-        with mock.patch('arc.species.species.perceive_molecule_from_xyz',
-                        side_effect=lambda *args, **kwargs: Molecule().from_adjacency_list(
-                            zwitterion_adjlist, raise_atomtype_exception=False,
-                            raise_charge_exception=False)) as perceive:
+        with patch('arc.species.species.perceive_molecule_from_xyz',
+                   side_effect=lambda *args, **kwargs: Molecule().from_adjacency_list(
+                       zwitterion_adjlist, raise_atomtype_exception=False,
+                       raise_charge_exception=False)) as perceive:
             spc_copy = spc.copy()
         perceive.assert_not_called()
         self.assertEqual(spc_copy.mol.copy(deep=True).to_smiles(), 'c1ccno1')
@@ -1678,10 +1678,10 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         spc = ARCSpecies(label='butadiene', smiles='C=CC=C')
         spc.final_xyz = str_to_xyz(butadiene_xyz)
         self.assertEqual(len(spc.mol.get_all_edges()), 9)
-        with mock.patch('arc.species.species.perceive_molecule_from_xyz',
-                        side_effect=lambda *args, **kwargs: Molecule().from_adjacency_list(
-                            cyclobutene_adjlist, raise_atomtype_exception=False,
-                            raise_charge_exception=False)) as perceive:
+        with patch('arc.species.species.perceive_molecule_from_xyz',
+                   side_effect=lambda *args, **kwargs: Molecule().from_adjacency_list(
+                       cyclobutene_adjlist, raise_atomtype_exception=False,
+                       raise_charge_exception=False)) as perceive:
             spc_copy = spc.copy()
         perceive.assert_not_called()
         self.assertEqual(len(spc_copy.mol.get_all_edges()), 9)
@@ -3890,6 +3890,7 @@ class TestTSGuess(unittest.TestCase):
         ts_dict = self.tsg1.as_dict()
         tsg = TSGuess(ts_dict=ts_dict)
         self.assertEqual(tsg.method, 'autotst')
+        self.assertEqual(tsg.method_sources, ['autotst'])
         ts_dict_for_report = self.tsg1.as_dict(for_report=True)
         self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_sources', 'method_index', 'success', 'index',
                                                            'conformer_index', 'initial_xyz', 'opt_xyz'])
