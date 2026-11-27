@@ -145,6 +145,7 @@ class TestARC(unittest.TestCase):
                                               'multiplicity': 1,
                                               'props': {}},
                                       'multiplicity': 1,
+                                      'charge': 0,
                                       'number_of_rotors': 0}],
                          'ts_adapters': ['heuristics', 'linear', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']}
         # import pprint  # left intentionally for debugging

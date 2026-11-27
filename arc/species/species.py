@@ -762,8 +762,7 @@ class ARCSpecies(object):
         species_dict['multiplicity'] = self.multiplicity
         if self.multi_species is not None:
             species_dict['multi_species'] = self.multi_species
-        if self.charge != 0:
-            species_dict['charge'] = self.charge
+        species_dict['charge'] = self.charge
         if not self.compute_thermo and not self.is_ts:
             species_dict['compute_thermo'] = self.compute_thermo
         if self.thermo_at_own_level:
@@ -924,6 +923,12 @@ class ARCSpecies(object):
 
         The 2D graph is taken from the dictionary as-is whenever it was serialized by ``as_dict()``
         (see ``dict_repr_is_authoritative()``), and is otherwise perceived from the coordinates.
+
+        A missing multiplicity is read off the structure the dictionary gives (``mol``, ``adjlist``,
+        ``inchi`` or ``smiles``) before any graph is perceived from the coordinates, and off the
+        perceived graph when the dictionary gives no structure. A missing charge is read off a given
+        ``adjlist``, ``inchi`` or ``smiles`` when the dictionary has no ``mol`` key, and is 0 for any
+        other dictionary.
         """
         species_dict = lift_legacy_extension_keys(species_dict)
         try:
@@ -985,7 +990,12 @@ class ARCSpecies(object):
             self.process_xyz(species_dict['xyz'])
         self.multiplicity = species_dict['multiplicity'] if 'multiplicity' in species_dict else None
         self.multi_species = species_dict['multi_species'] if 'multi_species' in species_dict else None
-        self.charge = species_dict['charge'] if 'charge' in species_dict else 0
+        if 'charge' in species_dict:
+            self.charge = species_dict['charge']
+        elif 'mol' not in species_dict and any(key in species_dict for key in ('smiles', 'inchi', 'adjlist')):
+            self.charge = None
+        else:
+            self.charge = 0
         self.compute_thermo = species_dict['compute_thermo'] if 'compute_thermo' in species_dict else not self.is_ts
         self.thermo_at_own_level = species_dict['thermo_at_own_level'] if 'thermo_at_own_level' in species_dict else False
         self.adaptive_lot_n_heavy = species_dict['adaptive_lot_n_heavy'] if 'adaptive_lot_n_heavy' in species_dict else None
@@ -1032,6 +1042,13 @@ class ARCSpecies(object):
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
                 self.mol = Molecule(smiles=smiles)
+        structure_multiplicity = self.mol.multiplicity if self.mol is not None else None
+        structure_charge = self.mol.get_net_charge() if self.mol is not None else None
+        if not self.is_ts:
+            if self.multiplicity is None and structure_multiplicity is not None:
+                self.multiplicity = structure_multiplicity
+            if self.charge is None and structure_charge is not None:
+                self.charge = structure_charge
         if not dict_repr_is_authoritative(species_dict, mol=self.mol) \
                 and (self.final_xyz or self.initial_xyz or self.most_stable_conformer
                      or self.conformers or self.ts_guesses):
@@ -1047,9 +1064,10 @@ class ARCSpecies(object):
                     logger.debug(f'TS species {self.label}: using xyz-based multiplicity '
                                  f'{self.multiplicity} (ignored mol.multiplicity)')
                 else:
-                    self.multiplicity = self.mol.multiplicity
+                    self.multiplicity = structure_multiplicity if structure_multiplicity is not None \
+                        else self.mol.multiplicity
             if self.charge is None:
-                self.charge = self.mol.get_net_charge()
+                self.charge = structure_charge if structure_charge is not None else self.mol.get_net_charge()
         if 'conformers' in species_dict:
             self.conformers = [str_to_xyz(conf) for conf in species_dict['conformers']]
             self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict \

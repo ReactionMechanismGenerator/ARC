@@ -29,6 +29,10 @@ default_job_settings, global_ess_settings, rotor_scan_resolution = \
 
 REFERENCE_AGNOSTIC_METHOD_TYPES = ['force_field', 'composite', 'semiempirical']
 
+PREFIX_FREE_METHOD_TYPES = ['force_field', 'semiempirical']
+
+U_PREFIXED_COMPOSITE_METHODS = []
+
 BROKEN_SYMMETRY_METHOD_TYPES = ['dft']
 BROKEN_SYMMETRY_METHODS = ['hf', 'hf3c', 'rhf', 'uhf', 'rohf']
 DOUBLE_HYBRID_METHODS = ['b2plyp', 'b2plypd', 'b2plypd3', 'b2plypd3bj', 'b2gpplyp', 'b2kplyp', 'b2tplyp',
@@ -369,9 +373,11 @@ def job_scf_reference_is_restricted(obj: JobAdapter) -> bool | None:
     writes while the input is being composed, so it is the reference that job actually ran with
     rather than the one the species would be given today. ``None`` is returned for a job carrying
     no memo, a pipe task among them, for a multi-species job, whose memo is a decision per species
-    rather than a single one, and for the force field, composite and semiempirical method types,
-    for which ARC writes no reference prefix and whose flag is therefore not a reference choice
-    ARC made.
+    rather than a single one, and for the force field and semiempirical method types, for which
+    ARC writes no reference prefix and whose flag is therefore not a reference choice ARC made. A
+    composite job reports ``False`` when ARC wrote the ``u`` prefix (a bi-rad singlet at a method in
+    ``U_PREFIXED_COMPOSITE_METHODS``) and ``None`` otherwise, since a composite written bare
+    declares no reference.
 
     Args:
         obj: The job adapter object.
@@ -383,6 +389,8 @@ def job_scf_reference_is_restricted(obj: JobAdapter) -> bool | None:
     if not isinstance(restricted, bool):
         return None
     level = getattr(obj, 'level', None)
+    if level is not None and level.method_type == 'composite' and restricted is False:
+        return False
     if level is None or level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
         return None
     return restricted
@@ -652,6 +660,14 @@ def is_species_restricted(obj: JobAdapter,
     open-shell species runs unrestricted at a correlated level as it always has; what the level
     decides is only whether a MEASURED verdict is what breaks the symmetry.
 
+    A declared ``number_of_radicals`` greater than one makes a species of multiplicity 1 unrestricted
+    at every method type except those in ``PREFIX_FREE_METHOD_TYPES`` (force fields and semiempirical
+    methods, ``amber`` included), which ARC writes without an r/u prefix, and the composite methods.
+    A composite is written with the ``u`` prefix only if it is in ``U_PREFIXED_COMPOSITE_METHODS``,
+    which is empty until Gaussian is shown to accept such a route (ARC #1137), so every composite is
+    written bare, as before. Above multiplicity 1, a method type in
+    ``REFERENCE_AGNOSTIC_METHOD_TYPES`` returns restricted and is written without a prefix.
+
     Args:
         obj: The job adapter object.
         species (ARCSpecies, optional): The species to check.
@@ -660,21 +676,23 @@ def is_species_restricted(obj: JobAdapter,
         bool: Whether to run as restricted (``True``) or not (``False``).
     """
 
-    if obj.level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
-        return True
-
     multiplicity = obj.multiplicity if species is None else species.multiplicity
     species_obj = obj.species[0] if species is None else species
     number_of_radicals = species_obj.number_of_radicals
     species_label = species_obj.label
-    if multiplicity > 1 or (number_of_radicals is not None and number_of_radicals > 1):
-        # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one,
-        # or if it is one but the number of radicals is greater than one (e.g., bi-rad singlet)
-        # don't run unrestricted for composite methods such as CBS-QB3, it'll be done automatically if the
-        # multiplicity is greater than one, but do specify uCBS-QB3 for example for bi-rad singlets.
-        if number_of_radicals is not None and number_of_radicals > 1:
-            logger.info(f'Using an unrestricted method for species {species_label} which has '
-                        f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
+
+    if number_of_radicals is not None and number_of_radicals > 1 \
+            and obj.level.method_type not in PREFIX_FREE_METHOD_TYPES \
+            and (obj.level.method_type != 'composite' or obj.level.method in U_PREFIXED_COMPOSITE_METHODS) \
+            and (multiplicity == 1 or obj.level.method_type not in REFERENCE_AGNOSTIC_METHOD_TYPES):
+        logger.info(f'Using an unrestricted method for species {species_label} which has '
+                    f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
+        return False
+
+    if obj.level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
+        return True
+
+    if multiplicity > 1:
         return False
     if adopted_reference_is_unrestricted(species_obj):
         if not level_admits_a_broken_symmetry_reference(obj.level):

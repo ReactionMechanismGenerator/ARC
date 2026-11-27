@@ -207,6 +207,7 @@ class TestARCReaction(unittest.TestCase):
                                                   'multiplicity': 2,
                                                   'props': {}},
                                           'multiplicity': 2,
+                                          'charge': 0,
                                           'number_of_rotors': 0},
                                          {'bond_corrections': {'H-O': 2},
                                           'cheap_conformer': 'O      -0.00032832    0.39781490    0.00000000\n'
@@ -219,6 +220,7 @@ class TestARCReaction(unittest.TestCase):
                                                   'multiplicity': 1,
                                                   'props': {}},
                                           'multiplicity': 1,
+                                          'charge': 0,
                                           'number_of_rotors': 0}],
                            'products': ['CH3', 'H2O'],
                            'r_species': [{'bond_corrections': {'C-H': 4},
@@ -234,6 +236,7 @@ class TestARCReaction(unittest.TestCase):
                                                   'multiplicity': 1,
                                                   'props': {}},
                                           'multiplicity': 1,
+                                          'charge': 0,
                                           'number_of_rotors': 0},
                                          {'bond_corrections': {'H-O': 1},
                                           'cheap_conformer': 'O       0.00000000    0.00000000    0.61310000\n'
@@ -245,6 +248,7 @@ class TestARCReaction(unittest.TestCase):
                                                   'multiplicity': 2,
                                                   'props': {}},
                                           'multiplicity': 2,
+                                          'charge': 0,
                                           'number_of_rotors': 0}],
                            'reactants': ['CH4', 'OH'],
                            }
@@ -270,6 +274,7 @@ class TestARCReaction(unittest.TestCase):
                                                   'multiplicity': 1,
                                                   'props': {}},
                                           'multiplicity': 1,
+                                          'charge': 0,
                                           'number_of_rotors': 0},
                                          {'adjlist': """multiplicity 1
 1 N u0 p0 c+1 {2,D} {3,S} {4,S}
@@ -288,6 +293,7 @@ class TestARCReaction(unittest.TestCase):
                                                   'multiplicity': 1,
                                                   'props': {}},
                                           'multiplicity': 1,
+                                          'charge': 0,
                                           'number_of_rotors': 0,
                                           'original_label': 'H2NN(S)'}],
                            'products': ['H2NN[S]', 'NH3'],
@@ -302,6 +308,7 @@ class TestARCReaction(unittest.TestCase):
                                                   'multiplicity': 2,
                                                   'props': {}},
                                           'multiplicity': 2,
+                                          'charge': 0,
                                           'number_of_rotors': 0},
                                          {'bond_corrections': {'H-N': 3, 'N-N': 1},
                                           'cheap_conformer': 'N      -0.46751749    0.03795671    0.31180026\n'
@@ -317,6 +324,7 @@ class TestARCReaction(unittest.TestCase):
                                                   'props': {}},
                                           'multiplicity': 2,
                                           'mol_list': ['[NH]N', '[NH-][NH2+]'],
+                                          'charge': 0,
                                           'number_of_rotors': 0}],
                            'reactants': ['N2H3', 'NH2'],
                            }

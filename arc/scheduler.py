@@ -2550,10 +2550,12 @@ class Scheduler(object):
         The value is read off the job adapter's own memo of the decision it made while writing
         that input, not recomputed, so a species whose reference decision changed after the job
         ran still reports what the job did. Jobs whose level carries no reference prefix, the
-        force field, composite and semiempirical methods, are not recorded: their 'restricted'
-        flag is not a reference choice ARC made, and comparing it against a DFT job's would
-        report a mismatch that does not exist. Anything that is not a submitted ESS job, pipe
-        tasks among them, carries no memo and is skipped.
+        force field and semiempirical methods and a composite method written bare, are not
+        recorded: their 'restricted' flag is not a reference choice ARC made, and comparing it
+        against a DFT job's would report a mismatch that does not exist. A composite job written
+        with the 'u' prefix (a bi-rad singlet at a method in U_PREFIXED_COMPOSITE_METHODS) is
+        recorded as unrestricted. Anything that is not a submitted ESS job, pipe tasks among them,
+        carries no memo and is skipped.
 
         Args:
             label (str): The species label.
