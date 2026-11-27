@@ -7,7 +7,7 @@ from abc import ABC
 import numpy as np
 import pandas as pd
 from arc.common import get_element_mass, is_str_float, logger, read_yaml_file
-from arc.constants import E_h_kJmol, bohr_to_angstrom
+from arc.constants import E_h_kJmol, Na, bohr_to_angstrom, c, h
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
 from arc.species.converter import str_to_xyz
@@ -213,11 +213,21 @@ class YAMLParser(ESSAdapter, ABC):
         """
         Determine the calculated ZPE correction (E0 - e_elect) from a frequency output file.
 
+        A stored ``zpe`` is returned as is. Otherwise, as for the output of ARC's ASE adapter, which stores
+        the frequencies but no ZPE, the harmonic ZPE is computed from the frequencies, ``sum(h * c * nu) / 2``
+        over the real ones. Imaginary frequencies (negative, by ARC's convention) are excluded, as an ESS does.
+
         Returns: float | None
             The calculated zero point energy in kJ/mol.
         """
         zpe = self.data.get('zpe')
-        return zpe
+        if zpe is not None:
+            return zpe
+        freqs = self.parse_frequencies()
+        if freqs is None or not len(freqs):
+            return None
+        wavenumbers = freqs[freqs > 0] * 100.0  # cm^-1 to m^-1
+        return float(0.5 * h * c * Na * wavenumbers.sum() / 1000.0)
 
     def parse_1d_scan_energies(self) -> tuple[list[float] | None, list[float] | None]:
         """
