@@ -202,9 +202,8 @@ def uma_hessian(atoms: Atoms, settings: dict, cache: dict | None = None) -> np.n
     Compute a UMA model's Hessian by automatic differentiation, with the Hessian predictor of
     ``load_uma_predictor(..., hessian=True)``, separate from the predictor that computes energies and forces.
 
-    On a GPU, ``hessian_vmap`` is much faster (0.15 s instead of 2.4 s for a 13-atom TS with UMA-S on a V100), but
-    its memory grows steeply with the number of atoms. If it runs out of GPU memory, the Hessian is computed
-    without it instead, and with ``cache``, so is every later Hessian of as many atoms or more.
+    If a Hessian with ``hessian_vmap`` runs out of GPU memory, it is computed without vmap instead, and with
+    ``cache``, so is every later Hessian of as many atoms or more.
 
     Args:
         atoms (Atoms): The structure, with its charge and spin in ``atoms.info``.
@@ -479,11 +478,8 @@ def rotor_top(atoms: Atoms, pivot_1: int, pivot_2: int, mult: float = 1.2,
     Because connectivity here is geometric rather than a real bond graph, a bond stretched well past
     its equilibrium length - the forming or breaking bond of a TS being the case that matters - can
     fall outside the default cutoff and look non-bonded. Only the pivot pair is given the looser
-    ``pivot_mult`` allowance; the rest of the graph stays at ``mult``. Loosening the whole graph
-    instead would let the substituents on the two pivots reach each other across the widened gap and
-    fuse into a spurious ring, which the ring check below would then report. A TS's partial bonds are
-    therefore given explicitly as ``extra_bonds`` (ARC knows them from the reaction): with them, a torsion
-    inside a cyclic TS (e.g., of an intramolecular H shift) is part of a ring and no rotor.
+    ``pivot_mult`` allowance; the rest of the graph stays at ``mult``. ``extra_bonds`` (e.g., a TS's forming
+    and breaking bonds) are added to the graph, so a torsion inside a cyclic TS is part of a ring.
 
     Args:
         atoms (Atoms): The molecule.
@@ -574,9 +570,8 @@ def is_out_of_gpu_memory(exc: BaseException) -> bool:
 
 def is_transient_gpu_error(exc: BaseException) -> bool:
     """
-    Whether an error is a cuBLAS failure that the same call may not hit again. With eight processes sharing a V100,
-    two of some 30,000 batched UMA calls failed with CUBLAS_STATUS_EXECUTION_FAILED, and the next calls ran normally.
-    A failed cuBLAS allocation is an out-of-memory error instead (see ``is_out_of_gpu_memory()``).
+    Whether an error is a cuBLAS failure (``CUBLAS_STATUS_...``) other than a failed allocation, which is an
+    out-of-memory error instead (see ``is_out_of_gpu_memory()``).
     """
     return 'cublas_status' in str(exc).lower() and not is_out_of_gpu_memory(exc)
 
@@ -647,10 +642,10 @@ class BatchedEvaluator:
     A walk registers with ``join()`` before it starts, and it must call ``leave()`` when it ends, also after an
     error; the other walks would otherwise wait for it forever.
 
-    A batch that runs out of GPU memory is evaluated in halves, and ``max_batch`` stays at the size that fit
-    (all 98 walks of the CC//UMA-M TS scans, about 15 atoms each, did not fit on a 32 GB V100 at once). A batch or
+    A batch that runs out of GPU memory is evaluated in halves, and ``max_batch`` stays at the size that fit. A batch or
     Hessian that fails with a transient cuBLAS error (``is_transient_gpu_error()``) is evaluated again, up to
-    ``max_retries`` times; only then do its walks get the error.
+    ``max_retries`` times; only then do its walks get the error. Any other error raised while a round is evaluated
+    is delivered to every walk of the round that has no result yet.
 
     Args:
         evaluate (Callable): Evaluates a list of structures (see ``batch_evaluation_function()``).
@@ -707,6 +702,16 @@ class BatchedEvaluator:
         if not self._pending or len(self._pending) < self._clients:
             return
         pending, self._pending = self._pending, dict()
+        try:
+            self._evaluate(pending)
+        except BaseException as exc:
+            for key in pending:
+                self._results.setdefault(key, exc)
+        finally:
+            self._condition.notify_all()
+
+    def _evaluate(self, pending: dict) -> None:
+        """Evaluate pending requests into ``self._results``. Called with the lock held."""
         forces = [key for key, (kind, _) in pending.items() if kind == 'forces']
         start, retries = 0, 0
         while start < len(forces):
@@ -732,7 +737,6 @@ class BatchedEvaluator:
                 self._results[key] = self._hessian_with_retries(structure)
         self.n_rounds += 1
         self.n_structures += len(forces)
-        self._condition.notify_all()
 
     def _hessian_with_retries(self, structure: Atoms):
         """The Hessian of a structure, or the error that remained after ``max_retries`` retries of a transient one."""
@@ -771,9 +775,7 @@ def _scan_walk(atoms: Atoms, torsion: list, step_deg: float, nsteps: int, top: l
     why a full scan runs this in both directions and keeps the lower branch at each point.
 
     A TS walk (``saddle``) searches each point for a first-order saddle point with the dihedral fixed (Sella,
-    order 1), as Gaussian's TS scans do (opt=(ts, modredundant)). Minimizing each point instead, as for a
-    minimum, slides the structure off the saddle: in UMA scans of n-C4H9 -> C2H4 + C2H5, the breaking C-C
-    bond of 2.26 A opened to 3.7-4.0 A.
+    order 1), as Gaussian's TS scans do (opt=(ts, modredundant)).
 
     Args:
         atoms (Atoms): The molecule with a calculator attached (not modified; a copy is walked).
@@ -821,7 +823,7 @@ def _scan_walk(atoms: Atoms, torsion: list, step_deg: float, nsteps: int, top: l
 
 
 def merge_scan_branches(e_f: list, e_b: list, nsteps: int, coords_f: list = None,
-                        coords_b: list = None) -> tuple:
+                        coords_b: list = None, converged_f: list | None = None, converged_b: list | None = None) -> tuple:
     """
     Fold a forward and a backward torsional walk onto a common grid and keep the lower branch.
 
@@ -829,7 +831,10 @@ def merge_scan_branches(e_f: list, e_b: list, nsteps: int, coords_f: list = None
     of the backward walk lands on grid point ``(-n) % nsteps``. Both walks also revisit their
     starting point at index ``nsteps``, which folds back onto grid point 0. At each grid point the
     lower of the two energies wins, which is what recovers the lowest torsional path when one walk
-    has been carried into a different conformer by a coupled coordinate.
+    has been carried into a different conformer by a coupled coordinate. Given which points converged
+    (``converged_f``, ``converged_b``, as for a TS walk, whose unconverged point can lie below its constrained
+    saddle), a converged point wins over an unconverged one, and the lower energy only decides between two
+    points that both converged or both did not.
 
     Args:
         e_f (list): The forward walk energies, of length ``nsteps`` + 1.
@@ -837,29 +842,35 @@ def merge_scan_branches(e_f: list, e_b: list, nsteps: int, coords_f: list = None
         nsteps (int): The number of increments; there are ``nsteps`` unique grid points.
         coords_f (list, optional): The forward walk Cartesian coordinates, aligned with ``e_f``.
         coords_b (list, optional): The backward walk Cartesian coordinates, aligned with ``e_b``.
+        converged_f (list, optional): Whether each forward point converged, aligned with ``e_f``.
+        converged_b (list, optional): Whether each backward point converged, aligned with ``e_b``.
 
     Returns:
         tuple: (the merged per-grid-point energies as a numpy array of length ``nsteps``, the
         forward grid, the backward grid, and the winning coordinates per grid point - the last
         being None if either coordinate list was not supplied).
     """
+    converged_f = converged_f if converged_f is not None else [True] * len(e_f)
+    converged_b = converged_b if converged_b is not None else [True] * len(e_b)
     grid_f, grid_b = np.full(nsteps, np.inf), np.full(nsteps, np.inf)
+    ok_f, ok_b = [False] * nsteps, [False] * nsteps
     xyz_f, xyz_b = [None] * nsteps, [None] * nsteps
     for n in range(nsteps + 1):
-        p = n % nsteps  # forward:  phi = +n*step
-        if e_f[n] < grid_f[p]:
-            grid_f[p] = e_f[n]
+        p = n % nsteps
+        if (converged_f[n], -e_f[n]) > (ok_f[p], -grid_f[p]):
+            grid_f[p], ok_f[p] = e_f[n], converged_f[n]
             if coords_f is not None:
                 xyz_f[p] = coords_f[n]
-        q = (-n) % nsteps  # backward: phi = -n*step
-        if e_b[n] < grid_b[q]:
-            grid_b[q] = e_b[n]
+        q = (-n) % nsteps
+        if (converged_b[n], -e_b[n]) > (ok_b[q], -grid_b[q]):
+            grid_b[q], ok_b[q] = e_b[n], converged_b[n]
             if coords_b is not None:
                 xyz_b[q] = coords_b[n]
-    merged = np.minimum(grid_f, grid_b)
+    forward_wins = [(ok_f[p], -grid_f[p]) >= (ok_b[p], -grid_b[p]) for p in range(nsteps)]
+    merged = np.where(forward_wins, grid_f, grid_b)
     coords = None
     if coords_f is not None and coords_b is not None:
-        coords = [xyz_f[p] if grid_f[p] <= grid_b[p] else xyz_b[p] for p in range(nsteps)]
+        coords = [xyz_f[p] if forward_wins[p] else xyz_b[p] for p in range(nsteps)]
     return merged, grid_f, grid_b, coords
 
 
@@ -935,13 +946,22 @@ def relaxed_torsion_scan(atoms: Atoms, torsion: list, step_deg: float, nsteps: i
         finally:
             evaluator.leave()
 
-    evaluator.join(2)  # before either walk starts, so that the first force call already waits for both
+    evaluator.join(2)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        forward, backward = pool.submit(walk, +1), pool.submit(walk, -1)
-        e_f, r_f, c_f = forward.result()
-        e_b, r_b, c_b = backward.result()
+        futures = list()
+        try:
+            for direction in (+1, -1):
+                futures.append(pool.submit(walk, direction))
+        except BaseException:
+            for _ in range(2 - len(futures)):
+                evaluator.leave()
+            raise
+        e_f, r_f, c_f = futures[0].result()
+        e_b, r_b, c_b = futures[1].result()
 
-    merged, grid_f, grid_b, coords = merge_scan_branches(e_f, e_b, nsteps, c_f, c_b)
+    converged_f, converged_b = ([r <= fmax for r in r_f], [r <= fmax for r in r_b]) if saddle else (None, None)
+    merged, grid_f, grid_b, coords = merge_scan_branches(e_f, e_b, nsteps, c_f, c_b,
+                                                         converged_f=converged_f, converged_b=converged_b)
     energies = merged.tolist()
     energies.append(energies[0])  # duplicate endpoint: 46-point protocol
     scan_coords = list(coords)
@@ -972,11 +992,7 @@ def run_torsion_scan(atoms: Atoms, input_dict: dict, settings: dict, evaluator: 
                            ``partial_bonds`` (a TS's 0-indexed forming and breaking bonds) and ``top`` (ARC's
                            0-indexed rotating group, on either side of the pivots) are read here. The rotating group
                            is rebuilt from distances plus ``partial_bonds`` if given, else ``top`` is used, else
-                           distances alone (see ``rotor_top()``). Distances alone miss a TS's partial bonds: in
-                           n-C4H9 -> C2H4 + C2H5, the group of the C0-C1 rotor then stopped at the breaking
-                           C1...C2 bond, the dihedral never turned, and Sella relaxed each point back to the TS.
-                           ARC's ``top`` comes from a graph without the partial bonds too, so in C2H6 + OH it
-                           leaves the OH out of the methyl group whose H the OH abstracts.
+                           distances alone (see ``rotor_top()``).
         settings (dict): ASE run settings; optional ``fmax``, ``steps``, ``optimizer`` override the
                          relaxed-scan defaults (LBFGS, fmax 0.005 eV/Angstrom, 500 steps per point).
         evaluator (BatchedEvaluator, optional): An evaluator shared with other scans (see ``run_scan_group()``).
@@ -1014,7 +1030,6 @@ def run_torsion_scan(atoms: Atoms, input_dict: dict, settings: dict, evaluator: 
         top = rotor_top(atoms, *well_defined_torsion(atoms, torsion)[1:3],
                         extra_bonds=[tuple(bond) for bond in input_dict['partial_bonds']])
     if top is not None and torsion[1] in top and torsion[2] not in top:
-        # ARC's group is on the first pivot's side; the two sides of a pivot bond outside a ring are complements.
         top = sorted(set(range(len(atoms))) - set(top))
     if top is not None and (torsion[2] not in top or torsion[1] in top):
         print(f'Ignoring the rotating group {top}, which does not separate the pivots {torsion[1:3]}.')
@@ -1958,8 +1973,7 @@ def run_ticket(spool_dir: str, ticket: str, content: dict, worker_id: str, cache
     """
     Run a claimed ticket's job in its own directory and mark the ticket as finished.
     Any failure, including a ``sys.exit()`` in the job, is recorded in the ticket instead of ending the worker.
-    A scan run with a shared ``evaluator`` runs in a thread, and leaves the working directory alone: the working
-    directory is per process, and a scan writes only its output.yml, by its full path.
+    A job run with a shared ``evaluator`` (a scan of a group, in a thread) does not change the working directory.
 
     Returns:
         dict: The ticket's final content.
@@ -1985,8 +1999,7 @@ def scan_group_key(input_path: str) -> str | None:
     """
     The key under which a worker runs a scan job together with other scans, or ``None`` for a job it runs alone.
 
-    Only UMA scans of the same model and settings are grouped. UMA reads each structure's charge and spin from the
-    structure, so one model serves every species; other calculators (e.g., xTB) are built for one charge and spin.
+    Only UMA scans of the same model and settings are grouped.
 
     Args:
         input_path (str): The path to the job's input.yml.
@@ -2034,7 +2047,6 @@ def run_scan_group(spool_dir: str, group: list, worker_id: str, cache: dict) -> 
     try:
         evaluator = scan_group_evaluator([content['input_path'] for _, content in group], cache)
     except (Exception, SystemExit):
-        # Without a shared evaluator, run the jobs one at a time, each with its own error handling.
         return [run_ticket(spool_dir, ticket, content, worker_id, cache) for ticket, content in group]
     with ThreadPoolExecutor(max_workers=len(group)) as pool:
         futures = [pool.submit(run_ticket, spool_dir, ticket, content, worker_id, cache, evaluator)
