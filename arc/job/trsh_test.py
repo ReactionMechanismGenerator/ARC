@@ -10,7 +10,7 @@ import os
 import shutil
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import arc.job.trsh as trsh
 from arc.common import ARC_TESTING_PATH, save_yaml_file
@@ -1070,32 +1070,42 @@ class TestTrsh(unittest.TestCase):
                           (-2.692729, 1.430409, -0.273456), (3.12969, 0.581231, -0.659714))}
         self.assertEqual(actions, {'change conformer': xyz})
 
-        # Case 3: a TS scan that breaks a preserved (reactive) bond is invalidated before any troubleshooting.
+    def test_scan_quality_check_of_a_ts_scan(self):
+        """A TS scan that slides off its saddle (a reactive bond changed beyond 'ts_bond') is invalidated before any
+        troubleshooting, and the preserved distances of a TS are checked at 'ts_bond', those of other species at
+        'bond'"""
+        case = {'label': 'TS0', 'pivots': [1, 2], 'energies': [0.0, 1.0, 2.0, 1.0, 0.0], 'scan_res': 90.0}
+        ts = MagicMock(is_ts=True)
         ts_xyz = {'symbols': ('C', 'H', 'O'), 'isotopes': (12, 1, 16),
                   'coords': ((0.0, 0.0, 0.0), (1.2, 0.0, 0.0), (2.5, 0.0, 0.0))}
         slid = {'symbols': ts_xyz['symbols'], 'isotopes': ts_xyz['isotopes'],
-                'coords': ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.5, 0.0, 0.0))}
+                'coords': ((0.0, 0.0, 0.0), (0.85, 0.0, 0.0), (2.5, 0.0, 0.0))}
         invalidate, invalidation_reason, message, actions = trsh.scan_quality_check(
-            **case1, preserve_params=[[1, 2], [2, 3]], trajectory=[ts_xyz, slid], original_xyz=ts_xyz)
+            **case, species=ts, preserve_params=[[1, 2], [2, 3]], trajectory=[ts_xyz, slid], original_xyz=ts_xyz)
         self.assertTrue(invalidate)
         self.assertTrue(invalidation_reason.startswith('The rotor breaks the TS around atoms [1, 2]'))
-        self.assertEqual(actions, dict())  # not case 1's 'freeze'
+        self.assertEqual(actions, dict())
+        for species, tolerance in ((ts, 0.2), (MagicMock(is_ts=False), 0.1), (None, 0.1)):
+            with self.subTest(species=species), \
+                    patch('arc.job.trsh.check_preserved_distances', return_value='broken') as check:
+                trsh.scan_quality_check(**case, species=species, preserve_params=[[1, 2]], trajectory=[ts_xyz],
+                                        original_xyz=ts_xyz)
+                self.assertEqual(check.call_args.kwargs['tolerance'], tolerance)
 
     def test_check_preserved_distances(self):
-        """Test that only a change of a preserved distance beyond the tolerance breaks the TS"""
+        """Only a change of a preserved distance beyond the tolerance breaks the TS: a 15% shorter H-O breaks it at the
+        default 10%, and not at 20%"""
         ts_xyz = {'symbols': ('C', 'H', 'O'), 'isotopes': (12, 1, 16),
                   'coords': ((0.0, 0.0, 0.0), (1.2, 0.0, 0.0), (2.5, 0.0, 0.0))}
-        # A scan point that moves the H by 0.05 A keeps both distances within 10%.
         nearby = {'symbols': ts_xyz['symbols'], 'isotopes': ts_xyz['isotopes'],
                   'coords': ((0.0, 0.0, 0.0), (1.25, 0.05, 0.0), (2.5, 0.0, 0.0))}
-        # One that moves it toward the O, as a minimizing scan slides to the product, shortens H-O by 15%.
-        slid = {'symbols': ts_xyz['symbols'], 'isotopes': ts_xyz['isotopes'],
-                'coords': ((0.0, 0.0, 0.0), (1.4, 0.0, 0.0), (2.5, 0.0, 0.0))}
+        shifted = {'symbols': ts_xyz['symbols'], 'isotopes': ts_xyz['isotopes'],
+                   'coords': ((0.0, 0.0, 0.0), (1.4, 0.0, 0.0), (2.5, 0.0, 0.0))}
         self.assertIsNone(trsh.check_preserved_distances([[1, 2], [2, 3]], [ts_xyz, nearby], ts_xyz))
-        message = trsh.check_preserved_distances([[2, 3]], [ts_xyz, nearby, slid], ts_xyz)
+        message = trsh.check_preserved_distances([[2, 3]], [ts_xyz, nearby, shifted], ts_xyz)
         self.assertEqual(message, 'The rotor breaks the TS around atoms [2, 3]: at scan point 2, their distance is '
                                   '1.10 Angstrom, 0.85 times the 1.30 Angstrom of the original geometry.')
-        self.assertIsNone(trsh.check_preserved_distances([[2, 3]], [ts_xyz, slid], ts_xyz, tolerance=0.2))
+        self.assertIsNone(trsh.check_preserved_distances([[2, 3]], [ts_xyz, shifted], ts_xyz, tolerance=0.2))
 
     def test_trsh_scan_job(self):
         """Test troubleshooting problematic 1D rotor scan"""

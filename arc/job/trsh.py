@@ -1605,7 +1605,6 @@ def scan_quality_check(label: str,
         return invalidate, invalidation_reason, message, actions
 
     if preserve_params and trajectory and original_xyz is not None:
-        # First: a scan that broke the TS has no torsional potential to check, nor a conformer to change to.
         tolerance = preserve_params_in_scan.get('ts_bond', 0.2) if species is not None and species.is_ts \
             else preserve_params_in_scan['bond']
         message = check_preserved_distances(preserve_params, trajectory, original_xyz, tolerance=tolerance)

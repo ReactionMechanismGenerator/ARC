@@ -5354,7 +5354,7 @@ class TestTSRotorScanChecks(unittest.TestCase):
         p_species = [ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')]
         rxn = ARCReaction(r_species=r_species, p_species=p_species)
         project = 'test_ts_reactive_bonds'
-        project_directory = os.path.join(ARC_PATH, 'Projects', f'{project}_delete')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project=project,
                           ess_settings={'gaussian': ['server1']},
@@ -5370,18 +5370,75 @@ class TestTSRotorScanChecks(unittest.TestCase):
         self.assertTrue(formed_bonds and broken_bonds)
         expected = sorted([bond[0] + 1, bond[1] + 1] for bond in list(formed_bonds) + list(broken_bonds))
         self.assertEqual(sorted(sched.get_ts_reactive_bonds(rxn.ts_label)), expected)
-        # With a geometry, a mapped pair too far apart to be a partial bond (here, an atom moved 10 A away) is left out.
         xyz = r_species[0].get_xyz()
         far_atom = expected[0][1] - 1
         coords = [list(coord) for coord in xyz['coords']]
         coords[far_atom][0] += 10.0
         sched.species_dict[rxn.ts_label].final_xyz = dict(xyz, coords=tuple(tuple(coord) for coord in coords))
-        bonds = sched.get_ts_reactive_bonds(rxn.ts_label) or list()
+        bonds = sched.get_ts_reactive_bonds(rxn.ts_label)
+        self.assertIsNotNone(bonds)
         self.assertFalse(any(far_atom + 1 in bond for bond in bonds))
         self.assertTrue(all(bond in expected for bond in bonds))
-        # A TS whose reaction is unknown has no reactive bonds to check.
         sched.species_dict[rxn.ts_label].rxn_index = 99
         self.assertIsNone(sched.get_ts_reactive_bonds(rxn.ts_label))
+
+    @staticmethod
+    def reactive_bonds_of(reactants: list, formed: list, broken: list, coords: list) -> list:
+        """The reactive bonds Scheduler.get_ts_reactive_bonds() finds for a TS at ``coords``, given the atom map's."""
+        from arc.scheduler import Scheduler
+        rxn = MagicMock()
+        rxn.get_formed_and_broken_bonds.return_value = (formed, broken)
+        rxn.get_reactants_and_products.return_value = (reactants, list())
+        symbols = tuple(symbol for spc in reactants for symbol in spc.get_xyz()['symbols'])
+        ts = MagicMock(rxn_index=0, final_xyz={'symbols': symbols, 'isotopes': (None,) * len(symbols),
+                                                'coords': tuple(tuple(float(x) for x in c) for c in coords)})
+        sched = MagicMock(rxn_dict={0: rxn}, species_dict={'TS0': ts})
+        return Scheduler.get_ts_reactive_bonds(sched, 'TS0')
+
+    def test_get_ts_reactive_bonds_with_many_automorphisms(self):
+        """The H a neopentane + OH TS transfers is found among neopentane's 31,104 automorphisms"""
+        neopentane, oh = ARCSpecies(label='neopentane', smiles='CC(C)(C)C'), ARCSpecies(label='OH', smiles='[OH]')
+        mol = neopentane.mol
+        methyls = [i for i, atom in enumerate(mol.atoms)
+                   if atom.is_carbon() and sum(n.is_hydrogen() for n in atom.edges) == 3]
+        hydrogens = {c: [mol.atoms.index(n) for n in mol.atoms[c].edges if n.is_hydrogen()] for c in methyls}
+        mapped_c, other_c = methyls[0], methyls[-1]
+        mapped_h, transferred_h = hydrogens[mapped_c][0], hydrogens[other_c][1]
+        coords = np.array(neopentane.get_xyz()['coords'])
+        direction = (coords[transferred_h] - coords[other_c]) / np.linalg.norm(coords[transferred_h] - coords[other_c])
+        coords[transferred_h] = coords[other_c] + 1.25 * direction
+        o = coords[other_c] + 2.55 * direction
+        coords = np.vstack([coords, o, o + 0.97 * np.cross(direction, [0.0, 0.0, 1.0])])
+        o_index = len(mol.atoms)
+        bonds = self.reactive_bonds_of([neopentane, oh], formed=[(mapped_h, o_index)], broken=[(mapped_c, mapped_h)],
+                                       coords=coords)
+        self.assertIsNotNone(bonds)
+        self.assertEqual(sorted(bonds), sorted([sorted([other_c + 1, transferred_h + 1]),
+                                                sorted([transferred_h + 1, o_index + 1])]))
+
+    def test_get_ts_reactive_bonds_exchanges_identical_reactants(self):
+        """In HO2 + HO2, the TS's H may come from the reactant the atom map does not name as the donor"""
+        ho2_xyz = {'symbols': ('O', 'O', 'H'), 'isotopes': (16, 16, 1),
+                   'coords': ((0.0, 0.0, 0.0), (1.33, 0.0, 0.0), (1.6, 0.93, 0.0))}
+        reactants = [ARCSpecies(label='HO2', smiles='[O]O', xyz=ho2_xyz), ARCSpecies(label='HO2', smiles='[O]O',
+                                                                                     xyz=ho2_xyz)]
+        coords = [(0.0, 0.0, 0.0), (1.33, 0.0, 0.0), (1.6, 0.93, 0.0),
+                  (-2.9, 1.15, 0.0), (-2.3, 0.0, 0.0), (-1.2, 0.0, 0.0)]
+        bonds = self.reactive_bonds_of(reactants, formed=[(2, 3)], broken=[(1, 2)], coords=coords)
+        self.assertEqual(sorted(bonds), [[1, 6], [5, 6]])
+
+    def test_get_ts_reactive_bonds_takes_the_closer_equivalent_atom(self):
+        """An H adding to C2H4 forms its bond to the carbon it is closer to in the TS, whichever the atom map names"""
+        ethylene = ARCSpecies(label='C2H4', smiles='C=C', xyz="""C 0.0 0.0 0.0
+C 1.33 0.0 0.0
+H -0.56 0.93 0.0
+H -0.56 -0.93 0.0
+H 1.89 0.93 0.0
+H 1.89 -0.93 0.0""")
+        coords = list(ethylene.get_xyz()['coords']) + [(1.33, 0.0, 1.9)]
+        bonds = self.reactive_bonds_of([ethylene, ARCSpecies(label='H', smiles='[H]')], formed=[(0, 6)], broken=[],
+                                       coords=coords)
+        self.assertEqual(bonds, [[2, 7]])
 
     def test_get_ts_reactive_bonds_follows_the_transferred_atom(self):
         """Test that the reactive bonds follow the H a TS transfers, not an equivalent H the atom map names"""
@@ -5393,7 +5450,7 @@ class TestTSRotorScanChecks(unittest.TestCase):
         p_species = [ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
         rxn = ARCReaction(r_species=r_species, p_species=p_species)
         project = 'test_ts_reactive_bonds_equivalent'
-        project_directory = os.path.join(ARC_PATH, 'Projects', f'{project}_delete')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project=project,
                           ess_settings={'gaussian': ['server1']},
@@ -5408,7 +5465,6 @@ class TestTSRotorScanChecks(unittest.TestCase):
         formed_bonds, broken_bonds = rxn.get_formed_and_broken_bonds()
         mapped_h = [atom for bond in broken_bonds for atom in bond if atom != 0][0]
         transferred_h = next(h for h in range(1, 5) if h != mapped_h)
-        # A TS that abstracts another H than the mapped one: C-H stretched to 1.25 A, the O 1.30 A beyond that H.
         direction = np.array(ch4_xyz['coords'][transferred_h]) / np.linalg.norm(ch4_xyz['coords'][transferred_h])
         coords = [list(coord) for coord in ch4_xyz['coords']]
         coords[transferred_h] = list(1.25 * direction)
@@ -5429,9 +5485,9 @@ class TestTSRotorScanChecks(unittest.TestCase):
         p_species = [ARCSpecies(label='C2H4', smiles='C=C'), ARCSpecies(label='H', smiles='[H]')]
         rxn = ARCReaction(r_species=r_species, p_species=p_species)
         project = 'test_ts_reactive_bonds_leaving'
-        project_directory = os.path.join(ARC_PATH, 'Projects', f'{project}_delete')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
-        with patch.object(Scheduler, 'run_sp_job'):  # the H atom's single point would query 'server1'
+        with patch.object(Scheduler, 'run_sp_job'):
             sched = Scheduler(project=project,
                               ess_settings={'gaussian': ['server1']},
                               species_list=r_species + p_species,
@@ -5448,7 +5504,6 @@ class TestTSRotorScanChecks(unittest.TestCase):
         methyl_hs = [h for h in range(2, 7) if np.linalg.norm(np.subtract(ethyl_xyz['coords'][h],
                                                                            ethyl_xyz['coords'][carbon])) < 1.2]
         leaving_h = next(h for h in methyl_hs if h != mapped_h)
-        # A TS that releases another methyl H than the mapped one, 1.8 A from its C.
         coords = [list(coord) for coord in ethyl_xyz['coords']]
         bond = np.subtract(coords[leaving_h], coords[carbon])
         coords[leaving_h] = list(np.array(coords[carbon]) + 1.8 * bond / np.linalg.norm(bond))

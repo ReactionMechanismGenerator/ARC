@@ -188,8 +188,9 @@ class ARCSpecies(object):
                                                      considered, otherwise the chirality specified by the given
                                                      coordinates will be preserved.
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
-                                                 between which distances and dihedrals of these pivots must be
-                                                 preserved. Used for identification of rotors which break a TS.
+                                                 whose distance must be preserved throughout a rotor scan, to the
+                                                 tolerance of ``preserve_params_in_scan`` in settings.py. Used for
+                                                 identification of rotors which break a TS.
         fragments (list[list[int]] | None):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
