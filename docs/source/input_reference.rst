@@ -258,16 +258,20 @@ Example:
      freq: true
      sp: true
      rotors: false
-     stability: false
+     stability: true
 
-``conf_opt``, ``opt``, ``fine``, ``freq``, ``sp``, ``rotors`` and ``irc`` default to
-``true`` when omitted; ``conf_sp``, ``orbitals``, ``stability``, ``onedmin`` and ``bde``
+``conf_opt``, ``opt``, ``fine``, ``freq``, ``sp``, ``rotors``, ``irc`` and ``stability``
+default to ``true`` when omitted; ``conf_sp``, ``orbitals``, ``onedmin`` and ``bde``
 default to ``false``.
 
 Wavefunction Stability Analysis
 -------------------------------
 
-``stability`` is off by default and is opt-in through ``job_types``. ARC has implemented
+``stability`` is on by default; set ``stability: false`` in ``job_types`` to turn it off.
+Gaussian support recommends a stability test for any new system, and in particular for
+open-shell singlets and systems with low-lying excited states, so with it off ARC warns
+once in the log, and once more for every TS and every declared singlet biradical
+(multiplicity 1 with ``number_of_radicals`` above 1). ARC has implemented
 the analysis for Gaussian and for ORCA so far; other ESSs are not wired up yet, and a run
 whose optimization jobs go to another ESS is told so once per ESS in the log rather than
 silently producing nothing. The two ESSs test the same space and agree on the verdict; in
@@ -277,12 +281,12 @@ off the solution it relaxes into.
 
 It runs once per species, as soon as that species' optimization converges and before the
 frequency job, the single point, the IRC and the rotor scans, so that those jobs inherit
-the reference and the geometry the verdict settles on. It runs only for a transition state
-or for a species whose optimization actually ran with a restricted reference - a restricted
-reference is the only one the analysis can inform, since a restricted solution gives the
-same energy as an unrestricted one if and only if it is stable. It is further limited to
-DFT and Hartree-Fock optimization levels, and needs the checkfile the optimization job
-wrote, so that the SCF under test is the converged one the later jobs build on.
+the reference and the geometry the verdict settles on. It runs for every species, restricted
+or not: a restricted reference can have a lower unrestricted solution, and any reference can
+have a lower solution of its own kind. It is limited to DFT and Hartree-Fock optimization
+levels, and needs the checkfile the optimization job wrote, so that the SCF under test is the
+converged one the later jobs build on. A species found unstable is re-optimized from the
+lower solution and tested again, up to three times, and flagged if it is still unstable.
 
 What it buys you: a verdict recorded in the log and in ``output.yml`` saying whether the
 converged wavefunction is a genuine minimum in the space of orbital rotations, together
@@ -297,7 +301,7 @@ wholesale with a dictionary in which only the named job type is ``true``, so
 ``specific_job_type: stability`` switches off the ``opt``, ``freq`` and ``sp`` jobs the
 analysis is spawned from and nothing runs at all (``bde`` is special-cased to re-enable
 them; ``stability`` is not). Any other value of ``specific_job_type`` likewise sets
-``stability`` to ``false``. Request it through ``job_types``.
+``stability`` to ``false``. Leave it on through ``job_types``.
 
 ESS Settings
 ------------

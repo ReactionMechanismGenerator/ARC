@@ -44,6 +44,7 @@ from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       default_incore_adapters,
                                       derived_reference_is_unrestricted,
                                       job_scf_reference_is_restricted,
+                                      latest_stability_verdict,
                                       level_admits_a_broken_symmetry_reference,
                                       REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family,
@@ -133,6 +134,8 @@ UNREACHABLE_REFERENCE_MESSAGE = 'the restricted reference is not the ground stat
                                 'reference followed by MRCI or CASPT2) is what this species calls for; '
 
 MAX_S_SQUARED_DEVIATION = 0.1
+STILL_UNSTABLE_MESSAGE = 'the wavefunction was still unstable after the maximum number of re-optimizations; '
+MAX_STABILITY_REOPTIMIZATIONS = 3
 
 STABILITY_ANALYSIS_ADAPTERS = {'gaussian', 'orca'}
 SYMMETRY_BREAKING_ADAPTERS = {'gaussian', 'orca'}
@@ -465,6 +468,11 @@ class Scheduler(object):
         self.orbitals_level = orbitals_level
         self.unique_species_labels = list()
         self.stability_unimplemented_ess = set()
+        self.stability_off_warned = set()
+        if not self.job_types.get('stability', False):
+            logger.warning('The wavefunction stability analysis is turned off. Gaussian support recommends a stability '
+                           'test for any new system, and especially for open-shell singlets and systems with low-lying '
+                           'excited states. Set "stability: true" in job_types to run it.')
         self.unbreakable_reference_ess = set()
         self.save_restart = False
 
@@ -1969,22 +1977,21 @@ class Scheduler(object):
                           opt_job: JobAdapter,
                           ) -> bool:
         """
-        Spawn a wavefunction stability analysis job for a TS or for a species that optimized restricted.
+        Spawn a wavefunction stability analysis job for a species.
 
         The analysis is spawned from the optimization, before the frequency job, the single point
         and the IRC of that species, so the reference every one of them would be computed on is
         measured while it can still be changed. Its level comes from the optimization job, its
         geometry is the one that optimization converged to, and its orbitals are the ones that
         optimization wrote, so its SCF reproduces the wavefunction under test rather than whichever
-        solution a fresh SCF reaches: without them Gaussian falls back to ``guess=mix``, whose
-        deliberately symmetry-broken SCF is a different wavefunction, and ORCA converges from its
-        own initial guess.
+        solution a fresh SCF reaches.
 
-        It is spawned at most once per species, recorded on the species as
-        ``stability_analysis_ran`` so a restart does not spawn a second one, and only where every
-        one of the following holds: the species is a TS or its optimization declared a restricted
-        reference, which is the only reference the analysis can inform, since a restricted solution
-        gives the same energy as an unrestricted one if and only if it is stable; the optimization
+        It is spawned at most once per optimization, recorded on the species as
+        ``stability_analysis_ran`` so a restart does not spawn a second one (a re-optimization the
+        verdict asks for clears the flag, so its result is tested again). It runs for every species,
+        restricted or not, as Gaussian support recommends a stability test for any new system: an
+        unrestricted reference can still have a lower solution (an internal instability). It runs
+        only where every one of the following holds: the optimization
         is a submitted ESS job, which a pipe task is not; that job's ESS is in
         ``STABILITY_ANALYSIS_ADAPTERS``; its level is DFT or Hartree-Fock, the only ones either of those
         ESSs offers the analysis for; and the species still holds the checkfile that optimization
@@ -2013,7 +2020,10 @@ class Scheduler(object):
             Whether a stability analysis job was spawned.
         """
         species = self.species_dict[label]
-        if not self.job_types.get('stability', False) or species.stability_analysis_ran:
+        if not self.job_types.get('stability', False):
+            self.warn_stability_off(label=label)
+            return False
+        if species.stability_analysis_ran:
             return False
         job_adapter = getattr(opt_job, 'job_adapter', None)
         level = getattr(opt_job, 'level', None)
@@ -2022,11 +2032,6 @@ class Scheduler(object):
         if job_adapter is None or xyz is None:
             logger.info(f'Not running a wavefunction stability analysis for {label}: its optimization job is '
                         f'not a submitted ESS job, so the wavefunction under test is not reachable.')
-            return False
-        if not species.is_ts and job_scf_reference_is_restricted(opt_job) is not True:
-            logger.info(f'Not running a wavefunction stability analysis for {label}: it is not a transition '
-                        f'state and its optimization did not declare a restricted reference, which is the '
-                        f'only reference the analysis can inform.')
             return False
         if job_adapter not in STABILITY_ANALYSIS_ADAPTERS:
             if job_adapter not in self.stability_unimplemented_ess:
@@ -2081,20 +2086,19 @@ class Scheduler(object):
         second analysis and releases the frequency, single point and IRC onto the geometry and the
         reference they belong with.
 
-        AT MOST ONE RE-OPTIMIZATION per species, recorded on the species as
-        ``stability_reoptimized`` and written to the restart file, so a run resumed between the
-        analysis and the re-optimization cannot spawn a second one.
+        An internal instability, on any species, also re-optimizes it, on the same reference, from the
+        lower solution the ESS followed into. Every re-optimization is tested again when it converges,
+        as Gaussian support recommends, and a species still unstable after
+        ``MAX_STABILITY_REOPTIMIZATIONS`` rounds, or whose ESS reached no stable solution to start
+        from, is flagged and released. The adoption runs once per species (``stability_reoptimized``)
+        and the rounds are counted (``stability_reoptimizations``); both are written to the restart
+        file, so a resumed run does not repeat them.
 
         THE ORBITALS THE RE-OPTIMIZATION STARTS FROM are the analysis' own where the ESS relaxed
         into the lower solution, which its verdict reports as ``followed_to_stable``, and none
-        otherwise. ORCA follows an instability it finds and writes the relaxed orbitals to the
-        analysis job's ``input.gbw``, which is the broken-symmetry solution the re-optimization is
-        meant to sit on. Gaussian's ``stable=(rext,noopt)`` reports an instability without
-        following it, so its checkfile still holds the restricted orbitals; handing those to an
-        unrestricted SCF returns it to the very solution the analysis rejected, since a restricted
-        solution is a stationary point of the unrestricted equations too. Dropping the checkfile
-        sends the job to ``guess=mix``, whose deliberately symmetry-broken guess is what finds the
-        lower solution.
+        otherwise. Gaussian (``stable=opt``) and ORCA both follow an instability they find and write
+        the relaxed orbitals to the analysis job's orbitals file. Without them, an adopted
+        unrestricted singlet gets ``guess=mix``, whose symmetry-broken guess finds the lower solution.
 
         Args:
             label (str): The species label.
@@ -2104,22 +2108,69 @@ class Scheduler(object):
         if job_name is None:
             return
         species.stability_pending_opt_job = None
+        latest = latest_stability_verdict(species)
         if adopted_reference_is_unrestricted(species) and not species.stability_reoptimized:
             species.stability_reoptimized = True
-            self.adopt_stability_orbitals(label=label)
-            opt_job = self.job_dict.get(label, dict()).get('opt', dict()).get(job_name)
-            xyz = species.final_xyz or species.initial_xyz
-            species.initial_xyz = xyz
             logger.info(f'Re-optimizing {label} with an unrestricted reference, which its wavefunction stability '
                         f'analysis found lower than the restricted one its geometry was optimized on.')
-            self.run_job(label=label,
-                         xyz=xyz,
-                         level_of_theory=self.opt_level,
-                         job_type='opt',
-                         fine=getattr(opt_job, 'fine', self.job_types['fine']),
-                         )
+            self.reoptimize_on_stability_orbitals(label=label, job_name=job_name)
             return
+        if latest is not None and latest.get('verdict') == 'internal_instability':
+            if latest.get('followed_to_stable') and species.stability_reoptimizations < MAX_STABILITY_REOPTIMIZATIONS:
+                logger.info(f'Re-optimizing {label} from the lower solution its wavefunction stability analysis '
+                            f'found (round {species.stability_reoptimizations + 1} of {MAX_STABILITY_REOPTIMIZATIONS}).')
+                self.reoptimize_on_stability_orbitals(label=label, job_name=job_name)
+                return
+            logger.warning(f'The wavefunction of {label} is still unstable after {species.stability_reoptimizations} '
+                           f're-optimization(s), and ARC will not re-optimize it again. Its frequencies and energy '
+                           f'are computed on this wavefunction.')
+            if STILL_UNSTABLE_MESSAGE not in self.output[label]['warnings']:
+                self.output[label]['warnings'] += STILL_UNSTABLE_MESSAGE
         self.spawn_post_opt_jobs(label=label, job_name=job_name)
+
+    def reoptimize_on_stability_orbitals(self, label: str, job_name: str):
+        """
+        Re-run the optimization of a species from the orbitals its stability analysis relaxed into.
+
+        The re-optimization starts from the geometry the last optimization reached, at the same level
+        and with the same ``fine`` setting. Its result is tested again for stability.
+
+        Args:
+            label (str): The species label.
+            job_name (str): The name of the optimization job the analysis tested.
+        """
+        species = self.species_dict[label]
+        species.stability_reoptimizations += 1
+        species.stability_analysis_ran = False
+        self.adopt_stability_orbitals(label=label)
+        opt_job = self.job_dict.get(label, dict()).get('opt', dict()).get(job_name)
+        xyz = species.final_xyz or species.initial_xyz
+        species.initial_xyz = xyz
+        self.run_job(label=label,
+                     xyz=xyz,
+                     level_of_theory=self.opt_level,
+                     job_type='opt',
+                     fine=getattr(opt_job, 'fine', self.job_types['fine']),
+                     )
+
+    def warn_stability_off(self, label: str):
+        """
+        Warn once for a TS or a declared singlet biradical that runs without a stability analysis.
+
+        These are the species Gaussian support says need the test most.
+
+        Args:
+            label (str): The species label.
+        """
+        species = self.species_dict[label]
+        if label in self.stability_off_warned:
+            return
+        biradical = species.multiplicity == 1 and (species.number_of_radicals or 0) > 1
+        if species.is_ts or biradical:
+            self.stability_off_warned.add(label)
+            kind = 'a transition state' if species.is_ts else 'a declared singlet biradical'
+            logger.warning(f'{label} is {kind}, but the wavefunction stability analysis is turned off, so ARC '
+                           f'does not check whether its wavefunction is the lowest solution.')
 
     def release_held_stability_work(self, label: str | None = None):
         """
@@ -2162,14 +2213,17 @@ class Scheduler(object):
             label (str): The species label.
         """
         species = self.species_dict[label]
-        verdict = species.derived_stability_verdict
+        verdict = latest_stability_verdict(species)
         checkfile = None
-        if isinstance(verdict, dict) and verdict.get('followed_to_stable'):
+        if verdict is not None and verdict.get('followed_to_stable'):
             stability_jobs = self.job_dict.get(label, dict()).get('stability', dict())
             for job in stability_jobs.values():
                 path = getattr(job, 'local_path_to_check_file', None)
-                if path is not None and os.path.isfile(path):
-                    checkfile = path
+                if path is None or not os.path.isfile(path):
+                    continue
+                checkfile = path
+                if verdict.get('log') is not None and getattr(job, 'local_path_to_output_file', None) == verdict['log']:
+                    break
         species.checkfile = checkfile
 
     def stability_verdict_can_be_honoured(self, label: str) -> bool:
@@ -2412,7 +2466,16 @@ class Scheduler(object):
                         f'{job.local_path_to_output_file}.')
             return
         verdict, restricted = result['verdict'], result['restricted']
-        self.species_dict[label].derived_stability_verdict = dict(result, log=job.local_path_to_output_file)
+        species = self.species_dict[label]
+        retest = bool(species.stability_reoptimizations)
+        if retest and INVALID_ANALYTIC_FREQ_MESSAGE in self.output[label]['warnings']:
+            # The warning described the wavefunction before the re-optimization; this verdict decides it anew.
+            self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(INVALID_ANALYTIC_FREQ_MESSAGE))
+        if retest and adopted_reference_is_unrestricted(species):
+            # The adopted verdict decides the species' reference, so the re-test is kept beside it.
+            species.derived_stability_verdict['retest'] = dict(result, log=job.local_path_to_output_file)
+        else:
+            species.derived_stability_verdict = dict(result, log=job.local_path_to_output_file)
         if derived_reference_is_unrestricted(self.species_dict[label]) \
                 and not self.stability_verdict_can_be_honoured(label=label):
             self.species_dict[label].derived_stability_verdict[REFERENCE_CHANGE_AVAILABLE_KEY] = False
@@ -2453,9 +2516,15 @@ class Scheduler(object):
         if result['invalidates_analytic_freq'] \
                 and INVALID_ANALYTIC_FREQ_MESSAGE not in self.output[label]['warnings']:
             self.output[label]['warnings'] += INVALID_ANALYTIC_FREQ_MESSAGE
+        previous = self.output[label].get('wavefunction_stability')
+        if retest and previous:
+            # A re-test replaces the summary of the wavefunction before the re-optimization.
+            fragment = f'Wavefunction stability: {previous}; '
+            self.output[label]['info'] = ''.join(self.output[label]['info'].split(fragment))
         self.output[label]['wavefunction_stability'] = summary
         self.output[label]['info'] += f'Wavefunction stability: {summary}; '
-        self.log_open_shell_character_sources(label=label, verdict=verdict, restricted=restricted)
+        if not retest:
+            self.log_open_shell_character_sources(label=label, verdict=verdict, restricted=restricted)
         if not self.testing:
             self.save_restart_dict()
 
@@ -4142,7 +4211,7 @@ class Scheduler(object):
         species.scf_references = dict()
         species.stability_pending_opt_job = None
         for message in [MIXED_SCF_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, SPIN_CONTAMINATION_MESSAGE,
-                        COLLAPSED_REFERENCE_MESSAGE, UNREACHABLE_REFERENCE_MESSAGE]:
+                        COLLAPSED_REFERENCE_MESSAGE, UNREACHABLE_REFERENCE_MESSAGE, STILL_UNSTABLE_MESSAGE]:
             if message in self.output[label]['warnings']:
                 self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(message))
         summary = self.output[label].get('wavefunction_stability')
@@ -4160,7 +4229,10 @@ class Scheduler(object):
                         f'guess is measured in its turn.')
             species.derived_stability_verdict = None
             species.stability_analysis_ran = False
+            species.stability_reoptimizations = 0
             return
+        species.stability_analysis_ran = True
+        species.stability_reoptimizations = 0
         species.derived_stability_verdict = {'verdict': verdict['verdict'],
                                              'restricted': verdict['restricted'],
                                              'relaxations': verdict.get('relaxations') or list(),

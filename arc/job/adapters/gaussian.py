@@ -47,7 +47,9 @@ default_job_settings, gaussian_memory_headroom_fractions, global_ess_settings, i
 # reservation constant.
 GAUSSIAN_MEMORY_HEADROOM_FRACTION = gaussian_memory_headroom_fractions[0]
 
-STABILITY_KEYWORD = 'stable=(rext,noopt)'
+# Tests for every instability (RExt is Gaussian's default) and, if one is found, reoptimizes the wavefunction
+# with the matching constraints lifted, so it may become unrestricted.
+STABILITY_KEYWORD = 'stable=opt'
 
 
 # job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',

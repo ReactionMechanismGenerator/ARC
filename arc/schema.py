@@ -205,6 +205,7 @@ class Species(BaseModel):
     stability_analysis_ran: Flag = False
     stability_pending_opt_job: str | None = None
     stability_reoptimized: Flag = False
+    stability_reoptimizations: StrictInt = 0
     successful_methods: list | None = None
     t1: Number | None = None
     thermo_at_own_level: Flag = False

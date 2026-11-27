@@ -242,6 +242,8 @@ class ARCSpecies(object):
                                       species on an unrestricted reference. Defaults to False. At most one such
                                       re-optimization is run per species, and this attribute is what holds that
                                       across a restart.
+        stability_reoptimizations (int): How many times a wavefunction stability verdict has re-optimized this
+                                         species. Defaults to 0. Capped by ``MAX_STABILITY_REOPTIMIZATIONS``.
         e_elect (float): The total electronic energy (without ZPE) at the chosen sp level, in kJ/mol.
         e0 (float): The 0 Kelvin energy (total electronic energy plus ZPE) at the chosen sp level, in kJ/mol.
         is_ts (bool):  Whether the species represents a transition state. `True` if it does.
@@ -428,6 +430,7 @@ class ARCSpecies(object):
         self.stability_analysis_ran = False
         self.stability_pending_opt_job = None
         self.stability_reoptimized = False
+        self.stability_reoptimizations = 0
         self.project_directory = project_directory
         self.label = label
         self.symmetry_number = None
@@ -853,6 +856,8 @@ class ARCSpecies(object):
             species_dict['stability_pending_opt_job'] = self.stability_pending_opt_job
         if self.stability_reoptimized:
             species_dict['stability_reoptimized'] = self.stability_reoptimized
+        if self.stability_reoptimizations:
+            species_dict['stability_reoptimizations'] = self.stability_reoptimizations
         if self.opt_level is not None:
             species_dict['opt_level'] = self.opt_level
         if self.directed_rotors:
@@ -1001,6 +1006,7 @@ class ARCSpecies(object):
             if 'stability_pending_opt_job' in species_dict else None
         self.stability_reoptimized = species_dict['stability_reoptimized'] \
             if 'stability_reoptimized' in species_dict else False
+        self.stability_reoptimizations = species_dict.get('stability_reoptimizations', 0)
         self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else None
         self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
         self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else None

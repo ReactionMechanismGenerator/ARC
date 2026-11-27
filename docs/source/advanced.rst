@@ -48,10 +48,13 @@ ARC recognizes these current job type keys:
 * ``rotors`` - rotor scans;
 * ``irc`` - intrinsic reaction coordinate;
 * ``orbitals`` - molecular orbitals;
-* ``stability`` - wavefunction stability analysis (Gaussian and ORCA, off by default). It runs for
-  a TS and for any other species whose optimization ran with a restricted reference, which is
-  the only reference it can inform: a restricted solution gives the same energy as an
-  unrestricted one if and only if it is stable.
+* ``stability`` - wavefunction stability analysis (Gaussian and ORCA, on by default). It runs for
+  every species, as Gaussian support recommends a stability test for any new system, and in
+  particular for open-shell singlets and systems with low-lying excited states. A restricted
+  reference can have a lower unrestricted solution (an external instability), and any reference
+  can have a lower solution of its own kind (an internal instability). Set ``stability: false``
+  in ``job_types`` to turn it off; ARC then warns once in the log, and once more for every TS and
+  every declared singlet biradical.
 
   IT RUNS FROM THE OPTIMIZATION, before the frequency job, the single point, the IRC and the rotor
   scans of that species, all of which inherit the SCF reference and the geometry the optimization
@@ -62,11 +65,14 @@ ARC recognizes these current job type keys:
   ``number_of_radicals`` was declared for it, which always wins. Re-optimizing is what makes the
   change correct: the restricted geometry is a stationary point of the restricted surface only, and
   a Hessian computed there on the broken-symmetry reference can report imaginary modes belonging to
-  the mismatch rather than to the molecule. At most one re-optimization is run per species, and ARC
-  records it in the restart file so a resumed run does not spawn another. For any other species the
-  verdict is reported in the log and in ``output.yml`` and nothing acts on it; declare
-  ``number_of_radicals = 2`` to run such a species unrestricted throughout, since ARC reads a
-  declaration as open-shell character only above one.
+  the mismatch rather than to the molecule. An internal instability, on any species, also
+  re-optimizes it, on the same reference, from the lower solution the ESS followed into. Every
+  re-optimization is tested again, and a species that is still unstable after three rounds, or
+  whose ESS reached no stable solution, is flagged in ``output.yml`` and continues. ARC records
+  the rounds in the restart file, so a resumed run does not repeat them. An external instability
+  of a species that is not a TS is reported in the log and in ``output.yml`` and nothing acts on
+  it; declare ``number_of_radicals = 2`` to run such a species unrestricted throughout, since ARC
+  reads a declaration as open-shell character only above one.
 
   WHICH LEVELS THE VERDICT DECIDES: density functional theory and Hartree-Fock, and no other. The
   energy of those levels IS the energy of their SCF determinant, so relaxing its spin symmetry onto
@@ -112,14 +118,19 @@ ARC recognizes these current job type keys:
   reports a guess that was never measured as one measured stable.
 
   THE ORBITALS THE RE-OPTIMIZATION STARTS FROM are the analysis' own where the ESS relaxed into the
-  lower solution, and none otherwise. ORCA follows an instability it finds and writes the relaxed
-  orbitals to the analysis job's ``input.gbw``, which is the broken-symmetry solution the
-  re-optimization is meant to sit on. Gaussian's ``stable=(rext,noopt)`` reports an instability
-  without following it, so its checkfile still holds the restricted orbitals; handing those to an
-  unrestricted SCF returns it to the very solution the analysis rejected, since a restricted
-  solution is a stationary point of the unrestricted equations too. ARC therefore drops the
-  checkfile in that case and the job runs ``guess=mix``, whose deliberately symmetry-broken guess
-  is what finds the lower solution.
+  lower solution, and none otherwise. Both ESSs follow an instability they find and write the
+  relaxed orbitals to the analysis job's orbitals file: ORCA to its ``input.gbw``, and Gaussian,
+  which runs ``stable=opt``, to its checkfile. The re-optimization then starts with ``guess=read``
+  from that file. A restricted checkfile is never handed to an unrestricted SCF, because a
+  restricted solution is a stationary point of the unrestricted equations too and the SCF would
+  return to it. Where no relaxed orbitals exist, an adopted unrestricted singlet runs
+  ``guess=mix``, whose symmetry-broken guess finds the lower solution.
+
+  THE INITIAL GUESS IN GAUSSIAN is ``guess=read`` when a checkfile is available and Gaussian's
+  default otherwise. ``guess=mix`` is added only for a job that runs a singlet unrestricted: a
+  declared singlet biradical, or a TS whose adopted verdict made it unrestricted. Gaussian ignores
+  ``guess=mix`` in a restricted run, and in a doublet or a triplet the alpha and beta orbitals
+  differ anyway.
 
   On a species that is not a TS the analysis is expected to report ``stable`` nearly every time:
   well under a few per cent of closed-shell equilibrium geometries are RHF -> UHF unstable. That
@@ -170,7 +181,7 @@ ARC recognizes these current job type keys:
   same or any ORCA job reading a guess will abort on a missing guess file.
 
   THE TWO CODES TEST THE SAME SPACE. ORCA analyses an RHF/RKS reference in UHF/UKS space and a
-  UHF/UKS reference in UHF/UKS space, both Ms-conserving, and Gaussian's ``stable=(rext,noopt)``
+  UHF/UKS reference in UHF/UKS space, both Ms-conserving, and Gaussian's ``Stable`` analysis
   uses the same Ms-conserving ``<AA,BB:AA,BB>`` singles matrix for both references. Neither code
   reaches the spin-flip (GHF) sector, so neither verdict is the weaker one. Measured on four
   systems the two agreed on every verdict, and at matched functional - ORCA's ``B3LYP/G`` is
@@ -853,7 +864,7 @@ input::
                                'rotors': True,
                                'conf_sp': False,
                                'orbitals': False,
-                               'stability': False,
+                               'stability': True,
                                'lennard_jones': False,
                               }
 
@@ -901,7 +912,7 @@ The above code generates the following input file::
       lennard_jones: false
       opt: true
       orbitals: false
-      stability: false
+      stability: true
       sp: true
 
     species:

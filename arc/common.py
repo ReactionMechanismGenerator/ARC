@@ -91,8 +91,8 @@ def initialize_job_types(job_types: dict | None = None,
         if 'fine_grid' in job_types:
             del job_types['fine_grid']
 
-    defaults_to_true = ['conf_opt', 'fine', 'freq', 'irc', 'opt', 'rotors', 'sp']
-    defaults_to_false = ['conf_sp', 'bde', 'onedmin', 'orbitals', 'stability']
+    defaults_to_true = ['conf_opt', 'fine', 'freq', 'irc', 'opt', 'rotors', 'sp', 'stability']
+    defaults_to_false = ['conf_sp', 'bde', 'onedmin', 'orbitals']
     if job_types is None:
         job_types = default_job_types.copy()
         logger.info("Job types were not specified, using ARC's defaults")

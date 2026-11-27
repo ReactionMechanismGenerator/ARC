@@ -1247,23 +1247,19 @@ H       0.04768200    1.19305700   -0.88359100
     def test_stability_keyword_in_route(self):
         """Test that the wavefunction stability keyword is written for a stability job only"""
         stability_route = self._route_for_job_type('stability')
-        self.assertIn('stable=(rext,noopt)', stability_route)
+        self.assertIn('stable=opt', stability_route)
         for job_type in ['opt', 'freq', 'sp', 'composite']:
             self.assertNotIn('stable', self._route_for_job_type(job_type))
 
-    def test_stability_keyword_never_reoptimizes(self):
-        """Test that the stability route asks for no reoptimization and no complex orbitals"""
+    def test_stability_keyword_reoptimizes_the_wavefunction(self):
+        """Test that the stability route reoptimizes an unstable wavefunction over real orbitals only"""
+        self.assertEqual(STABILITY_KEYWORD, 'stable=opt')
         route = self._route_for_job_type('stability').lower()
-        options = re.search(r'stable=\(([^)]*)\)', route)
-        self.assertIsNotNone(options, msg=f'no stable=(...) group in route {route!r}')
-        options = [option.strip() for option in options.group(1).split(',')]
-        self.assertIn('noopt', options)
-        self.assertIn('rext', options)
-        for option in options:
-            self.assertNotIn(option, ['opt', 'repopt', '1opt', 'crhf', 'cuhf', 'int'],
+        self.assertEqual(re.findall(r'stable=\S+', route), ['stable=opt'])
+        for option in ['noopt', 'rext', 'crhf', 'cuhf', 'int', 'repopt', '1opt']:
+            self.assertNotIn(option, re.findall(r'stable=\S+', route)[0],
                              msg=f'route {route!r} carries the {option!r} stability option')
-        self.assertNotIn('stable=opt', route)
-        self.assertEqual(STABILITY_KEYWORD.lower(), f"stable=({','.join(options)})")
+        self.assertNotIn('opt=(', route, msg=f'the stability option was merged into a geometry opt in {route!r}')
 
     def test_a_checkfile_written_by_another_ess_is_refused(self):
         """Test that an ORCA input.gbw offered to Gaussian is not read as a checkpoint file"""

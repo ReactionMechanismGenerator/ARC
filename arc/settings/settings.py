@@ -131,7 +131,7 @@ default_job_types = {'conf_opt': True,        # defaults to True if not specifie
                      'rotors': True,          # defaults to True if not specified
                      'irc': True,             # defaults to True if not specified
                      'orbitals': False,       # defaults to False if not specified
-                     'stability': False,
+                     'stability': True,  # True if not specified
                      'lennard_jones': False,  # defaults to False if not specified
                      'bde': False,            # defaults to False if not specified
                      }
