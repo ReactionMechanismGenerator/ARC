@@ -330,6 +330,39 @@ class ESSAdapter(ABC):
         """
         return None
 
+    def parse_bond_orders(self) -> np.ndarray | None:
+        """
+        Parse the Mayer bond order matrix from the log file.
+
+        The Mayer bond order (I. Mayer, Chem. Phys. Lett. 1983, 97, 270) is a bond index computed from the
+        density matrix and the overlap matrix of the basis functions. It is near 1 for a single bond, near 2
+        for a double bond, between 0 and 1 for a bond partially formed or broken at a TS, and near 0 for atoms
+        that are not bonded. That makes it useful for perceiving connectivity without relying on interatomic
+        distances. Two caveats on what the numbers mean:
+
+        - They depend on the basis set, as Mulliken charges do, and diffuse functions can make them erratic.
+          Compare bond orders computed at the same level of theory only.
+        - They are computed from the density the ESS analyzed, by default the SCF (HF or KS) density.
+          This holds for a correlated single point as well: the bond orders of a CCSD(T) single point are
+          those of its HF reference. Some methods analyze their own density too, e.g., Orca's MRCI,
+          and the last analysis in the log file is the one used.
+        - For an open shell, Gaussian (``IOp(6/80=1)``) computes them from the total density only, while Orca
+          adds the contribution of the spin density, as Mayer's open-shell definition does. For the same
+          UHF/def2-SVP density of triplet O2, Gaussian prints an O-O bond order of 1.38 and Orca 1.83.
+          Compare open-shell bond orders from the same program only.
+
+        Returns: np.ndarray | None
+            A symmetric NxN matrix in the log file's atom order, NxN matching the geometry.
+            An off-diagonal entry is the Mayer bond order of an atom pair.
+            A diagonal entry is the Mayer bonded valence of an atom, which leaves out an open-shell atom's
+            free valence: from Gaussian, the sum of the atom's bond orders; from Orca, its BVA, which also
+            counts the pairs below Orca's print threshold that are returned as zero, so it can exceed that sum.
+            ``None`` if the log file does not contain a complete Mayer bond order section, or if a geometry
+            printed after its last one differs from the geometry it was computed at, e.g., in an optimization
+            that did not finish, so the matrix always belongs to the last geometry of the log file.
+        """
+        return None
+
     def check_logfile_exists(self,
                              counter: int = 5,
                              sleep_time: int = 5,

@@ -951,6 +951,80 @@ class OrcaParser(ESSAdapter, ABC):
                     return f'ORCA {m.group(1)}'
         return None
 
+    def parse_bond_orders(self) -> np.ndarray | None:
+        """
+        Parse the Mayer bond order matrix from an Orca log file.
+
+        Orca prints a "MAYER POPULATION ANALYSIS" section by default. It consists of a per-atom
+        table with the columns ``NA ZA QA VA BVA FA``, followed by a sparse list of atom pairs,
+        e.g., ``B(  0-O ,  1-C ) :   1.0172``. The last such section in the file is used.
+        The diagonal is the ``BVA`` column, the bonded valence. ``VA`` is the total valence,
+        which for an open-shell atom also includes its free valence ``FA``.
+        Orca only prints pairs above a threshold, 0.1 by default, so the bond orders below it
+        are returned as exactly zero, while ``BVA`` counts them: a diagonal entry can exceed the sum
+        of its row. This bounds how low a threshold is meaningful downstream.
+
+        The matrix is returned only if the per-atom table lists every atom of the geometry,
+        and if both the table and the pair list end before the file does.
+
+        See ``ESSAdapter.parse_bond_orders()`` for what the numbers mean.
+
+        Returns: np.ndarray | None
+            The Mayer bond order matrix, with bonded valences on the diagonal.
+        """
+        lines = _get_lines_from_file(self.log_file_path)
+        start = next((i for i in range(len(lines) - 1, -1, -1) if 'MAYER POPULATION ANALYSIS' in lines[i]), None)
+        if start is None:
+            return None
+        if any('CARTESIAN COORDINATES (ANGSTROEM)' in line or 'CARTESIAN COORDINATES (A.U.)' in line
+               for line in lines[start:]):
+            # The bond orders belong to an earlier geometry than the one parse_geometry() returns.
+            return None
+        xyz = self.parse_geometry()
+        if xyz is None:
+            return None
+        n = len(xyz['symbols'])
+        k = next((i for i in range(start, min(start + 20, len(lines)))
+                  if lines[i].split()[:7] == ['ATOM', 'NA', 'ZA', 'QA', 'VA', 'BVA', 'FA']), None)
+        if k is None:
+            return None
+        bonded_valences = list()
+        k += 1
+        while k < len(lines) and lines[k].strip():
+            # E.g., "  0 O      8.5069     8.0000    -0.5069     1.8834     1.4917     0.3917".
+            splits = lines[k].split()
+            if len(splits) != 8 or splits[0] != str(len(bonded_valences)):
+                return None
+            try:
+                bonded_valences.append(float(splits[6]))
+            except ValueError:
+                return None
+            k += 1
+        if k == len(lines) or len(bonded_valences) != n:
+            return None
+        while k < len(lines) and not lines[k].strip():
+            k += 1
+        if k == len(lines) or 'Mayer bond orders larger than' not in lines[k]:
+            return None
+        bond_orders = np.zeros((n, n), np.float64)
+        bond_pattern = re.compile(r'B\(\s*(\d+)-\w+\s*,\s*(\d+)-\w+\s*\)\s*:\s*(-?\d+\.\d+)')
+        k += 1
+        while k < len(lines) and lines[k].strip():
+            pairs = bond_pattern.findall(lines[k])
+            if not pairs:
+                return None
+            for i, j, value in pairs:
+                i, j = int(i), int(j)
+                if i >= n or j >= n or i == j:
+                    return None
+                bond_orders[i, j] = bond_orders[j, i] = float(value)
+            k += 1
+        if k == len(lines):
+            # The pair list is cut off, e.g., in a log of a job that was killed.
+            return None
+        np.fill_diagonal(bond_orders, bonded_valences)
+        return bond_orders
+
 
 _ORCA_CONSTRAINT_UNITS: dict[str, str] = {
     'cartesian': 'angstrom',
