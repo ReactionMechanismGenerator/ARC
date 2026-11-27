@@ -402,108 +402,91 @@ class GaussianParser(ESSAdapter, ABC):
         """
         Parse the verdict of a Gaussian ``Stable`` wavefunction stability analysis.
 
-        Gaussian reports one verdict line per stability test it ran::
+        Each analysis opens with a ``Stability analysis using`` line and closes with a verdict line::
 
             The wavefunction is stable under the perturbations considered.
             The wavefunction has an internal instability.
             The wavefunction has an RHF -> UHF instability.
 
-        A ``Stable=RExt`` run emits one analysis with one verdict line, which names
-        the perturbation that broke first; the internal and external roots share a
-        single stability matrix. ``verdict`` is ``'stable'``,
-        ``'internal_instability'`` or ``'external_instability'``, with an internal
-        instability taking precedence should a log ever carry both. A log that ran
-        an analysis but whose verdict line none of these patterns matched yields
-        ``'unknown'`` rather than ``'stable'``, so an unread verdict cannot pass for
-        a clean one.
+        ``Stable=Opt`` re-optimizes an unstable wavefunction and tests it again until it is stable, so one log
+        can hold several analyses: the first tests the wavefunction ARC handed in, the last the solution Gaussian
+        followed into, whose orbitals it writes to the checkfile. Every field except ``n_analyses`` and
+        ``followed_to_stable`` describes the FIRST analysis; ``restricted`` is read from the last
+        ``SCF Done:  E(RwB97XD)`` / ``E(UwB97XD)`` line before it, i.e. the reference under test.
 
-        WHICH SECTOR WAS TESTED. For a restricted reference the single matrix spans
-        both the spin-conserving (internal, ``Singlet-A``) and the spin-symmetry-breaking
-        (RHF -> UHF, external, ``Triplet-A``) sectors, so a ``'stable'`` verdict covers
-        both and ``external_instability`` is ``False``. For an unrestricted reference
-        Gaussian builds only the ``<AA,BB:AA,BB>`` singles matrix and no ``<AB,BA``
-        spin-flip block, so the external sector is not tested at all: ``'stable'`` there
-        means stable under spin-conserving rotations alone, and ``external_instability``
-        is ``None`` rather than ``False``, which is what the ORCA reader reports for the
-        same physical situation.
+        ``verdict`` is ``'stable'``, ``'internal_instability'`` (which takes precedence should one analysis
+        report both) or ``'external_instability'``, and ``'unknown'`` when an analysis ran but no verdict line
+        was recognized, so an unread verdict cannot pass for a clean one. A restricted reference's stability
+        matrix spans both the internal (``Singlet-A``) and the RHF -> UHF (``Triplet-A``) sectors, so a stable
+        verdict sets ``external_instability`` to ``False``. An unrestricted reference gets only the
+        spin-conserving ``<AA,BB:AA,BB>`` matrix, so its external sector is untested and ``None``, as the ORCA
+        reader reports it.
 
-        ``relaxations`` lists the relaxed constraint named by each external verdict
-        (e.g. ``'RHF -> UHF'``). ``negative_eigenvectors`` carries the label and
-        value of each negative stability-matrix eigenvalue. The label identifies
-        the perturbation the root came from and its format follows the reference:
-        a restricted log labels roots by spin (``Triplet-A``, ``Singlet-A``) while
-        an unrestricted one labels them by the root's own spin expectation value
-        (``2.012-A``). ``lowest_eigenvalue`` is the smallest eigenvalue reported in
-        the eigenvector block whether or not any is negative, so it also gives the
-        margin by which a stable wavefunction is stable.
-
-        ``restricted`` is read from the reference the log reports on its
-        ``SCF Done:  E(RwB97XD)`` / ``E(UwB97XD)`` line. ``invalidates_analytic_freq``
-        applies Gaussian's rule that a restricted wavefunction need only be free of
-        internal instabilities, while for an unrestricted one any instability makes
-        the analytic frequencies invalid; it is ``None`` when the verdict or the
-        reference could not be read.
+        ``relaxations`` lists the constraint each external verdict relaxed (e.g. ``'RHF -> UHF'``).
+        ``negative_eigenvectors`` holds the label and value of each negative root, labelled by spin
+        (``Triplet-A``) for a restricted reference and by the multiplicity its ``<S**2>`` implies (``2.012-A``)
+        for an unrestricted one. ``lowest_eigenvalue`` is the smallest root, negative or not, so it also gives
+        the margin of a stable wavefunction. ``invalidates_analytic_freq`` applies Gaussian's rule that a
+        restricted wavefunction need only be free of internal instabilities and an unrestricted one of any; it
+        is ``None`` when the verdict or the reference could not be read. ``n_analyses`` counts the analyses, and
+        ``followed_to_stable`` is ``True`` when there are several, the first found an instability and the last
+        is stable.
 
         Returns: dict | None
             ``{'verdict': str, 'internal_instability': bool | None,
                'external_instability': bool | None, 'relaxations': list[str],
                'negative_eigenvectors': list[dict], 'lowest_eigenvalue': float | None,
-               'restricted': bool | None, 'invalidates_analytic_freq': bool | None}``,
+               'restricted': bool | None, 'invalidates_analytic_freq': bool | None,
+               'n_analyses': int, 'followed_to_stable': bool}``,
             or ``None`` when the log holds no stability analysis.
         """
-        internal_instability, external_instability = None, None
-        relaxations, negative_eigenvectors = list(), list()
-        lowest_eigenvalue, analyzed, verdict_read, restricted = None, False, False, None
+        blocks, restricted, analyzed = list(), None, False
         for line in _get_lines_from_file(self.log_file_path):
             if 'SCF Done:' in line:
                 match = re.search(r'SCF Done:\s*E\((RO|R|U)\S*\)', line)
-                if match is not None:
+                if match is not None and not blocks:
                     restricted = match.group(1) != 'U'
                 continue
-            if 'Stability analysis using' in line:
-                analyzed = True
+            header = 'Stability analysis using' in line
+            if not header and 'wavefunction' not in line and 'Eigenvector' not in line:
                 continue
-            if 'wavefunction' not in line and 'Eigenvector' not in line:
+            stable = 'is stable under the perturbations considered' in line
+            internal = 'has an internal instability' in line
+            external = re.search(r'wavefunction has an?\s+(\S+\s*->\s*\S+)\s+instability', line)
+            eigenvector = re.search(r'Eigenvector\s+\d+:\s*(\S+)?\s*Eigenvalue=\s*'
+                                    r'([-+]?\d*\.?\d+(?:[DdEe][-+]?\d+)?)', line)
+            if not (header or stable or internal or external or eigenvector):
                 continue
-            if 'is stable under the perturbations considered' in line:
-                analyzed, verdict_read = True, True
-                if internal_instability is None:
-                    internal_instability = False
-                if external_instability is None:
-                    external_instability = False
-            elif 'has an internal instability' in line:
-                analyzed, verdict_read = True, True
-                internal_instability = True
-            else:
-                match = re.search(r'wavefunction has an?\s+(\S+\s*->\s*\S+)\s+instability', line)
-                if match is not None:
-                    analyzed, verdict_read = True, True
-                    external_instability = True
-                    relaxation = re.sub(r'\s*->\s*', ' -> ', match.group(1).strip())
-                    if relaxation not in relaxations:
-                        relaxations.append(relaxation)
-                    continue
-                match = re.search(r'Eigenvector\s+\d+:\s*(\S+)?\s*Eigenvalue=\s*'
-                                  r'([-+]?\d*\.?\d+(?:[DdEe][-+]?\d+)?)', line)
-                if match is not None:
-                    try:
-                        eigenvalue = float(re.sub(r'[Dd]', 'e', match.group(2)))
-                    except ValueError:
-                        continue
-                    if eigenvalue < 0:
-                        negative_eigenvectors.append({'label': match.group(1), 'eigenvalue': eigenvalue})
-                    if lowest_eigenvalue is None or eigenvalue < lowest_eigenvalue:
-                        lowest_eigenvalue = eigenvalue
+            if header or not blocks:
+                blocks.append({'internal': None, 'external': None, 'relaxations': list(), 'eigenvectors': list()})
+            block = blocks[-1]
+            if stable:
+                block['internal'], block['external'] = bool(block['internal']), bool(block['external'])
+            elif internal:
+                block['internal'] = True
+            elif external:
+                block['external'] = True
+                relaxation = re.sub(r'\s*->\s*', ' -> ', external.group(1).strip())
+                if relaxation not in block['relaxations']:
+                    block['relaxations'].append(relaxation)
+            elif eigenvector:
+                eigenvalue = float(re.sub(r'[Dd]', 'e', eigenvector.group(2)))
+                block['eigenvectors'].append({'label': eigenvector.group(1), 'eigenvalue': eigenvalue})
+                continue
+            analyzed = True  # a header or a verdict line; roots alone do not make a stability analysis
         if not analyzed:
             return None
-        if not verdict_read:
-            verdict = 'unknown'
-        elif internal_instability:
-            verdict = 'internal_instability'
-        elif external_instability:
-            verdict = 'external_instability'
-        else:
-            verdict = 'stable'
+        for block in blocks:
+            if block['internal'] is None and block['external'] is None:
+                block['verdict'] = 'unknown'
+            elif block['internal']:
+                block['verdict'] = 'internal_instability'
+            elif block['external']:
+                block['verdict'] = 'external_instability'
+            else:
+                block['verdict'] = 'stable'
+        first = blocks[0]
+        verdict, external_instability = first['verdict'], first['external']
         if verdict == 'stable' and restricted is not True:
             external_instability = None
         if verdict == 'internal_instability':
@@ -514,14 +497,19 @@ class GaussianParser(ESSAdapter, ABC):
             invalidates_analytic_freq = not restricted
         else:
             invalidates_analytic_freq = None
+        eigenvalues = [eigenvector['eigenvalue'] for eigenvector in first['eigenvectors']]
+        unstable = verdict in ('internal_instability', 'external_instability')
         return {'verdict': verdict,
-                'internal_instability': internal_instability,
+                'internal_instability': first['internal'],
                 'external_instability': external_instability,
-                'relaxations': relaxations,
-                'negative_eigenvectors': negative_eigenvectors,
-                'lowest_eigenvalue': lowest_eigenvalue,
+                'relaxations': first['relaxations'],
+                'negative_eigenvectors': [eigenvector for eigenvector in first['eigenvectors']
+                                          if eigenvector['eigenvalue'] < 0],
+                'lowest_eigenvalue': min(eigenvalues) if eigenvalues else None,
                 'restricted': restricted,
                 'invalidates_analytic_freq': invalidates_analytic_freq,
+                'n_analyses': len(blocks),
+                'followed_to_stable': len(blocks) > 1 and unstable and blocks[-1]['verdict'] == 'stable',
                 }
 
     def parse_s_squared(self) -> dict[str, float | None] | None:
