@@ -1596,8 +1596,6 @@ class Scheduler(object):
         Args:
             label (str): The TS species label.
         """
-        if any(job_name.startswith('conf_opt') for job_name in self.running_jobs.get(label, list())):
-            return
         self.species_dict[label].cluster_tsgs()
         plotter.save_conformers_file(
             project_directory=self.project_directory,
