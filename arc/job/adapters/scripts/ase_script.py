@@ -11,6 +11,7 @@ import contextlib
 import json
 import math
 import os
+import re
 import signal
 import socket
 import sys
@@ -21,6 +22,7 @@ import uuid
 import warnings
 import yaml
 import numpy as np
+from importlib.metadata import PackageNotFoundError, version as package_version
 
 from ase import Atoms
 from ase.constraints import FixInternals
@@ -91,42 +93,256 @@ def load_torchani_model(model_name: str, device, cache: dict | None = None, doub
     return model
 
 
-def load_uma_predictor(calc_config: dict, cache: dict | None = None):
+def package_release(name: str) -> tuple | None:
+    """
+    The (major, minor) release of an installed package, or ``None`` if it is not installed.
+    """
+    try:
+        return tuple(int(part) for part in re.findall(r'\d+', package_version(name))[:2])
+    except PackageNotFoundError:
+        return None
+
+
+def fairchem_hessian_support(calc_config: dict) -> str | None:
+    """
+    Why the installed fairchem-core cannot give a UMA job its autograd Hessian, or ``None`` if it can.
+    Autograd Hessians need fairchem-core 2.17 or newer. fairchem-core 2.18 to 2.21 vectorize the Hessian's
+    backward passes (vmap) whatever ``InferenceSettings.hessian_vmap`` says, so there the Hessian is used
+    only if the job sets ``hessian_vmap: True``.
+
+    Args:
+        calc_config (dict): The run settings.
+
+    Returns:
+        str | None: The reason, or ``None``.
+    """
+    release = package_release('fairchem-core')
+    if release is None or release < (2, 17):
+        return f'fairchem-core {".".join(map(str, release)) if release else "(not found)"} computes no autograd ' \
+               f'Hessians (2.17 or newer does)'
+    if (2, 18) <= release <= (2, 21) and not calc_config.get('hessian_vmap', False):
+        return f'fairchem-core {release[0]}.{release[1]} computes autograd Hessians only with vmap; ' \
+               f'set hessian_vmap: True to use it'
+    return None
+
+
+def uma_inference_settings(calc_config: dict, hessian: bool = False) -> tuple:
+    """
+    Resolve the fairchem inference settings of a UMA job.
+
+    ``inference_settings`` is a fairchem preset name or a dict of ``InferenceSettings`` fields.
+
+    A Hessian predictor runs without TF32, merging, compilation or activation checkpointing, at the
+    ``base_precision_dtype`` of ``inference_settings`` (FP32 by default), and with ``hessian_vmap`` as the job
+    sets it (False by default), predicting the Hessian for the job's task.
+
+    Args:
+        calc_config (dict): The run settings.
+        hessian (bool): Whether to resolve the settings of the Hessian predictor.
+
+    Returns:
+        tuple: The settings (a preset name, a dict of ``InferenceSettings`` fields, or ``None`` for fairchem's
+               default) and a hashable key for the model cache.
+    """
+    spec = calc_config.get('inference_settings')
+    if hessian:
+        dtype = spec.get('base_precision_dtype', 'float32') if isinstance(spec, dict) else 'float32'
+        vmap = bool(calc_config.get('hessian_vmap', False))
+        task = calc_config.get('task', 'omol')
+        settings = {'tf32': False, 'activation_checkpointing': False, 'merge_mole': False, 'compile': False,
+                    'base_precision_dtype': dtype, 'hessian_vmap': vmap, 'predict_untrained_hessian': [task]}
+        return settings, ('hessian', dtype, vmap, task)
+    if isinstance(spec, dict):
+        return dict(spec), json.dumps(spec, sort_keys=True)
+    return spec, spec
+
+
+def load_uma_predictor(calc_config: dict, cache: dict | None = None, hessian: bool = False):
     """
     Load a UMA predictor, reusing it from ``cache`` if given (the persistent worker's model cache).
-
-    ``inference_settings`` optionally names a fairchem inference preset.
 
     Args:
         calc_config (dict): The run settings.
         cache (dict, optional): Loaded models, kept across jobs by a persistent worker.
+        hessian (bool): Whether to load a predictor that also computes the Hessian (see ``uma_hessian()``).
+
+    Raises:
+        NotImplementedError: If a Hessian is requested and ``fairchem_hessian_support()`` gives a reason it cannot be.
     """
     from fairchem.core import pretrained_mlip
     model = calc_config.get('model', 'uma-s-1p2')
     device = calc_config.get('device', 'cpu')
-    preset = calc_config.get('inference_settings')
-    key = ('uma', model, device, preset)
+    settings, settings_key = uma_inference_settings(calc_config, hessian=hessian)
+    key = ('uma', model, device, settings_key)
     predictor = cache.get(key) if cache is not None else None
     if predictor is None:
         predict_kwargs = {'device': device}
-        if preset:
-            predict_kwargs['inference_settings'] = preset
+        if hessian:
+            reason = fairchem_hessian_support(calc_config)
+            if reason is not None:
+                raise NotImplementedError(reason)
+        if isinstance(settings, dict):
+            from fairchem.core.units.mlip_unit.api.inference import InferenceSettings
+            settings = InferenceSettings(**{k: set(v) if k.startswith('predict_untrained_') else v
+                                            for k, v in settings.items()})
+        if settings:
+            predict_kwargs['inference_settings'] = settings
         predictor = pretrained_mlip.get_predict_unit(model, **predict_kwargs)
         if cache is not None:
             cache[key] = predictor
     return predictor
 
 
-def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1, cache: dict | None = None):
+def uma_hessian(atoms: Atoms, settings: dict, cache: dict | None = None) -> np.ndarray | None:
+    """
+    Compute a UMA model's Hessian by automatic differentiation, with the Hessian predictor of
+    ``load_uma_predictor(..., hessian=True)``, separate from the predictor that computes energies and forces.
+
+    Args:
+        atoms (Atoms): The structure, with its charge and spin in ``atoms.info``.
+        settings (dict): The run settings.
+        cache (dict, optional): Loaded models, kept across jobs by a persistent worker.
+
+    Returns:
+        np.ndarray | None: The (3N, 3N) Hessian in eV/A^2, or ``None`` if the installed fairchem cannot
+                           compute one.
+    """
+    from fairchem.core import FAIRChemCalculator
+    try:
+        predictor = load_uma_predictor(settings, cache=cache, hessian=True)
+    except NotImplementedError as exc:
+        print(f'{exc}; using finite differences instead.')
+        return None
+    hessian_atoms = atoms.copy()
+    hessian_atoms.calc = FAIRChemCalculator(predictor, task_name=settings.get('task', 'omol'))
+    n_coords = 3 * len(atoms)
+    return np.asarray(hessian_atoms.calc.get_property('hessian', hessian_atoms), dtype=float).reshape(n_coords, n_coords)
+
+
+def sella_hessian_function(settings: dict, cache: dict | None = None):
+    """
+    The exact Hessian for a Sella saddle-point search: UMA's autograd Hessian (see ``uma_hessian()``), unless the
+    job sets ``hessian`` to something other than ``'autograd'`` or the installed fairchem cannot compute it.
+
+    Args:
+        settings (dict): The run settings.
+        cache (dict, optional): Loaded models, kept across jobs by a persistent worker.
+
+    Returns:
+        Callable | None: A function of the atoms returning the (3N, 3N) Hessian in eV/A^2, or ``None`` if the
+                         calculator has no autograd Hessian (Sella then estimates the Hessian as before).
+    """
+    if settings.get('calculator', '').lower() not in ('uma', 'fairchem') \
+            or settings.get('hessian', 'autograd') != 'autograd':
+        return None
+    try:
+        load_uma_predictor(settings, cache=cache, hessian=True)
+    except NotImplementedError:
+        return None
+
+    def hessian_function(atoms: Atoms) -> np.ndarray:
+        return uma_hessian(atoms, settings, cache)
+
+    return hessian_function
+
+
+MACE_OFF_SIZES = ('small', 'medium', 'large')
+
+
+def require_neutral_singlet(model: str, charge: int, multiplicity: int) -> None:
+    """
+    Raise ``ValueError`` if a species is charged or open-shell, for a model that reads neither.
+    """
+    if charge != 0 or multiplicity != 1:
+        raise ValueError(f'{model} takes neither charge nor multiplicity, so it cannot compute a species '
+                         f'of charge {charge} and multiplicity {multiplicity}.')
+
+
+def mace_model(calc_config: dict) -> tuple:
+    """
+    The MACE model family ('omol' or 'off') and the model passed to it. ``model`` is ``omol`` (the default),
+    ``omol-<size>``, ``off-<size>`` or a MACE-OFF size (small, medium, large), or a checkpoint file, whose family
+    is given by ``family``.
+
+    Raises:
+        ValueError: If the model is not recognized, or a checkpoint is given without its family.
+    """
+    model = str(calc_config.get('model', 'omol'))
+    family = calc_config.get('family')
+    if os.path.isfile(model):
+        if family not in ('omol', 'off'):
+            raise ValueError(f"Set 'family' to 'omol' or 'off' for the MACE checkpoint {model}.")
+        return family, model
+    if model == 'omol':
+        return 'omol', None
+    if model.startswith('omol-'):
+        return 'omol', model[len('omol-'):]
+    size = model[len('off-'):] if model.startswith('off-') else model
+    if size in MACE_OFF_SIZES:
+        return 'off', size
+    raise ValueError(f"Unknown MACE model '{model}': use omol, omol-<size>, off-<size> ({', '.join(MACE_OFF_SIZES)}), "
+                     f"or a checkpoint file with 'family'.")
+
+
+def build_mace_calculator(family: str, model: str | None, device: str, dtype: str):
+    """
+    Build a MACE-OMol or MACE-OFF calculator (mace-torch 0.3.14 or newer for MACE-OMol).
+    """
+    if family == 'omol':
+        try:
+            from mace.calculators import mace_omol
+        except ImportError as exc:
+            raise ImportError('MACE-OMol needs mace-torch 0.3.14 or newer.') from exc
+        return mace_omol(model=model, device=device, default_dtype=dtype)
+    from mace.calculators import mace_off
+    return mace_off(model=model, device=device, default_dtype=dtype)
+
+
+def build_orb_calculator(model: str, device: str, precision: str):
+    """
+    Build an Orb calculator for a pretrained model of orb-models 0.6.0 or newer.
+    """
+    try:
+        from orb_models.forcefield import pretrained
+        from orb_models.forcefield.inference.calculator import ORBCalculator
+    except ImportError as exc:
+        raise ImportError('The Orb calculator needs orb-models 0.6.0 or newer.') from exc
+    orbff, adapter = getattr(pretrained, model.replace('-', '_'))(device=device, precision=precision)
+    return ORBCalculator(orbff, atoms_adapter=adapter, device=device)
+
+
+def cached_calculator(cache: dict | None, key: tuple, build):
+    """
+    A calculator from ``cache`` under ``key``, reset so that it keeps no results, or a new one from ``build()``,
+    which is cached if a cache is given.
+    """
+    if cache is None:
+        return build()
+    if key not in cache:
+        cache[key] = build()
+    calc = cache[key]
+    calc.reset()
+    return calc
+
+
+def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1, cache: dict | None = None,
+                   hessian: bool = False):
     """
     Initialize the ASE calculator based on settings.
+
+    UMA, MACE-OMol (``mace`` with an ``omol`` model), the Orb ``omol`` models and the AIMNet2 NSE models are given
+    the charge and multiplicity; the other AIMNet2 models take the charge only, and MACE-OFF and the other Orb
+    models take neither, so a charged or open-shell species raises ``ValueError`` on them, as one does on MOPAC.
+    Minimum versions: mace-torch 0.3.14, orb-models 0.6.0, aimnet 0.1.
 
     Args:
         calc_config (dict): The run settings.
         charge (int): The total charge.
         multiplicity (int): The spin multiplicity.
-        cache (dict, optional): Loaded models, kept across jobs by a persistent worker. A new calculator
-                                is still built for every job, so no results are carried over between jobs.
+        cache (dict, optional): Loaded models and calculators, kept across jobs by a persistent worker. A cached
+                                calculator is reset before it is returned, so no results carry over between jobs.
+        hessian (bool): Whether the calculator only serves an autograd Hessian. UMA then loads its Hessian
+                        predictor (see uma_hessian()) instead of the ordinary one, if fairchem supports it.
     """
     name = calc_config.get('calculator', '').lower()
     kwargs = calc_config.get('calculator_kwargs', {})
@@ -157,9 +373,43 @@ def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1, ca
         # UMA (Meta FAIR fairchem-core). Total charge and spin (= multiplicity) are conditioned on
         # the ase.Atoms via atoms.info in main(); they are not calculator kwargs.
         from fairchem.core import FAIRChemCalculator
-        predictor = load_uma_predictor(calc_config, cache=cache)
+        try:
+            predictor = load_uma_predictor(calc_config, cache=cache, hessian=hessian)
+        except NotImplementedError:
+            predictor = load_uma_predictor(calc_config, cache=cache)
         return FAIRChemCalculator(predictor, task_name=calc_config.get('task', 'omol'))
 
+    elif name == 'mace':
+        family, model = mace_model(calc_config)
+        if family == 'off':
+            require_neutral_singlet(f'MACE-OFF model {model}', charge, multiplicity)
+        device, dtype = calc_config.get('device', 'cpu'), calc_config.get('default_dtype', 'float64')
+        return cached_calculator(cache, ('mace', family, model, device, dtype),
+                                 lambda: build_mace_calculator(family, model, device, dtype))
+
+    elif name == 'orb':
+        model = calc_config.get('model', 'orb-v3-conservative-omol')
+        if 'omol' not in model:
+            require_neutral_singlet(f'Orb model {model}', charge, multiplicity)
+        device, precision = calc_config.get('device', 'cpu'), calc_config.get('precision', 'float64')
+        return cached_calculator(cache, ('orb', model, device, precision),
+                                 lambda: build_orb_calculator(model, device, precision))
+
+    elif name == 'aimnet2':
+        model = calc_config.get('model', 'aimnet2nse')
+        if 'nse' not in model.lower() and multiplicity != 1:
+            raise ValueError(f'AIMNet2 model {model} does not take the multiplicity ({multiplicity}); '
+                             f'use an NSE model (e.g., aimnet2nse).')
+        from aimnet.calculators.aimnet2ase import AIMNet2ASE
+        device = calc_config.get('device', 'cpu')
+        key = ('aimnet2', model, device)
+        base = cache.get(key) if cache is not None else None
+        if base is None:
+            from aimnet.calculators import AIMNet2Calculator
+            base = AIMNet2Calculator(model, device=device)
+            if cache is not None:
+                cache[key] = base
+        return AIMNet2ASE(base, charge=charge, mult=multiplicity)
 
     from ase.calculators.calculator import get_calculator_class
     try:
@@ -519,16 +769,50 @@ def is_linear(atoms: Atoms) -> bool:
     return True
 
 
-def numpy_vibrational_analysis(masses: np.ndarray, hessian: np.ndarray, is_linear: bool = False):
+def internal_basis(masses: np.ndarray, positions: np.ndarray, is_linear: bool = False) -> np.ndarray:
+    """
+    An orthonormal basis of the internal coordinates, in mass-weighted Cartesian coordinates: the complement
+    of the translations and the (Eckart) rotations about the center of mass.
+
+    Args:
+        masses: (n_atoms,) array of atomic masses in AMU.
+        positions: (n_atoms, 3) array of Cartesian coordinates in Angstrom.
+        is_linear: Whether the molecule is linear (it then has two rotations, not three).
+
+    Returns:
+        np.ndarray: A (3*n_atoms, 3*n_atoms - k) array, with k = 3 for an atom, 5 for a linear molecule,
+                    and 6 otherwise. The k rigid motions removed are the first k left singular vectors of
+                    the rigid-motion vectors, with k taken from ``is_linear``.
+    """
+    n_atoms = len(masses)
+    n_rigid = 3 if n_atoms == 1 else 5 if is_linear or n_atoms == 2 else 6
+    sqrt_mass = np.sqrt(masses)[:, np.newaxis]
+    centered = positions - (masses[:, np.newaxis] * positions).sum(axis=0) / masses.sum()
+    rigid = []
+    for axis in np.eye(3):
+        rigid.append((np.tile(axis, (n_atoms, 1)) * sqrt_mass).ravel())
+        rigid.append((np.cross(axis, centered) * sqrt_mass).ravel())
+    u, _, _ = np.linalg.svd(np.array(rigid).T, full_matrices=True)
+    return u[:, n_rigid:]
+
+
+def numpy_vibrational_analysis(masses: np.ndarray, hessian: np.ndarray, is_linear: bool = False,
+                               positions: np.ndarray | None = None):
     """
     Computing vibrational wavenumbers, modes, reduced masses, and force constants from Hessian.
     NumPy implementation following physical constants and ASE units.
     Logic follows TorchANI and ASE VibrationsData standards.
-    
+
     Args:
         masses: (n_atoms,) array of atomic masses in AMU.
         hessian: (3*n_atoms, 3*n_atoms) array in eV/A^2.
-        
+        is_linear: Whether the molecule is linear.
+        positions: (n_atoms, 3) array of Cartesian coordinates in Angstrom. If given, translations and
+                   rotations are projected out exactly, and exactly 3N-6 (3N-5) modes are returned.
+                   Otherwise, the up to 6 (5) smallest modes are dropped if they are below 50 cm^-1, which
+                   keeps a spurious rotation above 50 cm^-1, such as a 2-point finite-difference Hessian
+                   gives, as a vibration.
+
     Returns:
         dict: Containing freqs, modes, force_constants, reduced_masses.
     """
@@ -537,9 +821,14 @@ def numpy_vibrational_analysis(masses: np.ndarray, hessian: np.ndarray, is_linea
     inv_sqrt_mass = (1.0 / np.sqrt(masses)).repeat(3)
     # H_mw = M^-1/2 * H * M^-1/2
     mass_scaled_hessian = hessian * inv_sqrt_mass[:, np.newaxis] * inv_sqrt_mass[np.newaxis, :]
-    
-    # 2. Diagonalize
-    eigenvalues, eigenvectors = np.linalg.eigh(mass_scaled_hessian)
+
+    # 2. Diagonalize, within the internal coordinates if the geometry is known
+    if positions is None:
+        eigenvalues, eigenvectors = np.linalg.eigh(mass_scaled_hessian)
+    else:
+        basis = internal_basis(np.asarray(masses, dtype=float), np.asarray(positions, dtype=float), is_linear)
+        eigenvalues, internal_vectors = np.linalg.eigh(basis.T @ mass_scaled_hessian @ basis)
+        eigenvectors = basis @ internal_vectors
     
     # 3. Frequencies (cm^-1)
     # Factor to convert sqrt(eV / (A^2 * AMU)) to cm^-1
@@ -580,27 +869,30 @@ def numpy_vibrational_analysis(masses: np.ndarray, hessian: np.ndarray, is_linea
     norm_factors = 1.0 / np.sqrt(norm_sq)
     md_normalized = md_unnormalized * norm_factors[:, np.newaxis]
     
-    # Filter out translations and rotations (first 6 modes for non-linear, 5 for linear)
-    # Most ESS only report 3N-6 / 3N-5 modes.
-    # We'll filter modes with very small magnitude if they are in the first 6.
-    # Sorting by magnitude ensures we catch the smallest ones.
-    indices = np.argsort(np.abs(freqs))
-    
-    # Threshold for considering a mode as a translation/rotation (cm^-1)
-    rot_trans_threshold = 50.0
-    
-    if len(masses) == 1:
-        num_to_filter = 3
-    elif len(masses) == 2:
-        num_to_filter = 5
+    if positions is not None:
+        filtered_indices = list(range(len(freqs)))
     else:
-        num_to_filter = 5 if is_linear else 6
-    filtered_indices = []
-    for i in range(len(freqs)):
-        if i < num_to_filter and abs(freqs[indices[i]]) < rot_trans_threshold:
-            continue
-        filtered_indices.append(indices[i])
-    
+        # Filter out translations and rotations (first 6 modes for non-linear, 5 for linear)
+        # Most ESS only report 3N-6 / 3N-5 modes.
+        # We'll filter modes with very small magnitude if they are in the first 6.
+        # Sorting by magnitude ensures we catch the smallest ones.
+        indices = np.argsort(np.abs(freqs))
+
+        # Threshold for considering a mode as a translation/rotation (cm^-1)
+        rot_trans_threshold = 50.0
+
+        if len(masses) == 1:
+            num_to_filter = 3
+        elif len(masses) == 2:
+            num_to_filter = 5
+        else:
+            num_to_filter = 5 if is_linear else 6
+        filtered_indices = []
+        for i in range(len(freqs)):
+            if i < num_to_filter and abs(freqs[indices[i]]) < rot_trans_threshold:
+                continue
+            filtered_indices.append(indices[i])
+
     # Sort back the remaining indices by their original order (which is by eigenvalue)
     # but we'll return them sorted by frequency value (imaginary first, then increasing real)
     final_indices = sorted(filtered_indices, key=lambda i: freqs[i])
@@ -608,7 +900,7 @@ def numpy_vibrational_analysis(masses: np.ndarray, hessian: np.ndarray, is_linea
     return {
         'schema_version': SCHEMA_VERSION,
         'freqs': [freqs[i] for i in final_indices],
-        'modes': md_normalized[final_indices].reshape(len(final_indices), -1, 3).tolist(),
+        'modes': md_normalized[final_indices].reshape(len(final_indices), len(masses), 3).tolist(),
         'force_constants': [fconstants[i].tolist() for i in final_indices],
         'reduced_masses': [rmasses[i].tolist() for i in final_indices],
         'hessian': hessian.tolist()
@@ -619,6 +911,10 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict, work_dir: str | None 
     """
     Perform vibrational analysis and return frequencies, modes, and other properties.
 
+    TorchANI and UMA Hessians are computed by automatic differentiation, and all others by finite differences
+    of the forces. For UMA, ``settings['hessian']`` can be ``'autograd'`` (the default) or
+    ``'finite_difference'``. An older fairchem without autograd Hessians falls back to finite differences.
+
     Args:
         atoms (Atoms): The structure, with its calculator attached.
         settings (dict): The run settings.
@@ -626,6 +922,18 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict, work_dir: str | None 
                                   cleared before and after the run. Defaults to the current working directory.
         cache (dict, optional): Loaded models, kept across jobs by a persistent worker.
     """
+    hessian_choice = settings.get('hessian', 'autograd')
+    if hessian_choice not in ('autograd', 'finite_difference'):
+        raise ValueError(f"settings['hessian'] must be 'autograd' or 'finite_difference', got {hessian_choice!r}")
+    atom_masses, positions, is_lin = atoms.get_masses(), atoms.get_positions(), is_linear(atoms)
+
+    if settings.get('calculator', '').lower() in ('uma', 'fairchem') and hessian_choice == 'autograd':
+        hessian = uma_hessian(atoms, settings, cache)
+        if hessian is not None:
+            results = numpy_vibrational_analysis(atom_masses, hessian, is_linear=is_lin, positions=positions)
+            results['hessian_method'] = 'analytic'
+            return results
+
     if settings.get('calculator', '').lower() == 'torchani':
         try:
             import torch
@@ -647,7 +955,8 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict, work_dir: str | None 
                 'hessian': hessian.cpu().numpy().tolist() if hasattr(hessian, 'cpu') else hessian.tolist(),
                 'modes': modes.cpu().numpy().tolist() if hasattr(modes, 'cpu') else modes.tolist(),
                 'force_constants': force_constants.cpu().numpy().tolist() if hasattr(force_constants, 'cpu') else force_constants.tolist(),
-                'reduced_masses': reduced_masses.cpu().numpy().tolist() if hasattr(reduced_masses, 'cpu') else reduced_masses.tolist()
+                'reduced_masses': reduced_masses.cpu().numpy().tolist() if hasattr(reduced_masses, 'cpu') else reduced_masses.tolist(),
+                'hessian_method': 'analytic',
             }
         except Exception as exc:
             print(f'TorchANI vibrational analysis failed, falling back to ASE: {exc}')
@@ -666,7 +975,9 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict, work_dir: str | None 
         if len(hessian.shape) == 4:
             n_atoms = hessian.shape[0]
             hessian = hessian.reshape(3 * n_atoms, 3 * n_atoms)
-    return numpy_vibrational_analysis(atoms.get_masses(), hessian, is_linear=is_linear(atoms))
+    results = numpy_vibrational_analysis(atom_masses, hessian, is_linear=is_lin, positions=positions)
+    results['hessian_method'] = 'finite_difference_gradient'
+    return results
 
 
 def read_trajectory(path: str) -> list:
@@ -711,8 +1022,14 @@ def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None 
     is_ts = input_dict.get('is_ts', False)
 
     atoms = Atoms(symbols=xyz['symbols'], positions=xyz['coords'])
+    if input_dict.get('masses'):
+        atoms.set_masses(input_dict['masses'])
     atoms.info.update({'charge': charge, 'spin': multiplicity})  # UMA (omol) conditions on these
-    calc = get_calculator(settings, charge, multiplicity, cache=cache)
+    if cache is None:
+        cache = dict()
+    hessian_only = job_type == 'freq' and settings.get('calculator', '').lower() in ('uma', 'fairchem') \
+        and settings.get('hessian', 'autograd') == 'autograd'
+    calc = get_calculator(settings, charge, multiplicity, cache=cache, hessian=hessian_only)
     atoms.calc = calc
     
     apply_constraints(atoms, input_dict.get('constraints'))
@@ -757,7 +1074,9 @@ def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None 
             # A TS search needs a saddle-point optimizer; UMA ships none, so use Sella.
             from sella import Sella
             opt_class = Sella
-            opt = opt_class(atoms, order=1 if is_ts else 0, logfile=logfile)
+            hessian_function = sella_hessian_function(settings, cache) if is_ts else None
+            opt = opt_class(atoms, order=1 if is_ts else 0, logfile=logfile,
+                            **({'hessian_function': hessian_function} if hessian_function else dict()))
         else:
             opt_class = engine_dict.get(engine_name, BFGS)
             opt = opt_class(atoms, logfile=logfile)

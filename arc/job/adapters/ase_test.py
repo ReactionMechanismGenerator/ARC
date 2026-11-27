@@ -14,7 +14,7 @@ import tempfile
 import time
 import unittest
 import warnings
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import numpy as np
 
 from ase import Atoms
@@ -39,12 +39,30 @@ from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  run_torsion_scan,
                                                  run_vibrational_analysis,
                                                  scan_convergence_warning,
+                                                 sella_hessian_function,
                                                  serve,
                                                  spool_dirs,
                                                  submit_ticket,
                                                  to_kJmol,
+                                                 uma_inference_settings,
                                                  withdraw_ticket,
                                                  write_json_atomic)
+
+FREQ_FACTOR = 1.0 / (2.0 * np.pi * 299792458.0 * 100.0) * np.sqrt(1.602176565e-19 * 1.0e20 / 1.660538921e-27)
+
+
+def spring_hessian(positions: np.ndarray, springs: list) -> np.ndarray:
+    """
+    The Hessian (eV/A^2) of harmonic springs at their rest lengths, which is exactly free of translations
+    and rotations. ``springs`` holds (atom i, atom j, force constant in eV/A^2).
+    """
+    hessian = np.zeros((3 * len(positions), 3 * len(positions)))
+    for i, j, k in springs:
+        bond = positions[j] - positions[i]
+        block = k * np.outer(bond, bond) / np.dot(bond, bond)
+        for a, b, sign in ((i, i, 1), (j, j, 1), (i, j, -1), (j, i, -1)):
+            hessian[3 * a:3 * a + 3, 3 * b:3 * b + 3] += sign * block
+    return hessian
 
 ETHANE_XYZ = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
               'isotopes': (12, 12, 1, 1, 1, 1, 1, 1),
@@ -445,6 +463,126 @@ class TestASEAdapter(unittest.TestCase):
         self.assertEqual(len(results['freqs']), 4)
         for i, val in enumerate(freqs[5:]):
             self.assertAlmostEqual(results['freqs'][i], val, delta=1e-3)
+
+    def test_numpy_vibrational_analysis_projects_out_a_spurious_rotation(self):
+        """Test that, given the geometry, a spurious rotation is projected out instead of reported as a vibration"""
+        water = Atoms('OH2', positions=[(0.0, 0.0, 0.0), (0.757, 0.586, 0.0), (-0.757, 0.586, 0.0)])
+        masses, positions = water.get_masses(), water.get_positions()
+        hessian = spring_hessian(positions, [(0, 1, 50.0), (0, 2, 50.0), (1, 2, 5.0)])
+        clean = numpy_vibrational_analysis(masses, hessian)['freqs']
+        self.assertEqual(len(clean), 3)
+
+        sqrt_mass = np.sqrt(masses)[:, np.newaxis]
+        rotation = (np.cross([0.0, 0.0, 1.0], positions - water.get_center_of_mass()) * sqrt_mass).ravel()
+        rotation /= np.linalg.norm(rotation)
+        weighted = rotation * np.repeat(np.sqrt(masses), 3)
+        contaminated = hessian - (60.0 / FREQ_FACTOR) ** 2 * np.outer(weighted, weighted)
+
+        unprojected = numpy_vibrational_analysis(masses, contaminated)['freqs']
+        self.assertEqual(len(unprojected), 4)
+        self.assertAlmostEqual(unprojected[0], -60.0, places=6)
+
+        projected = numpy_vibrational_analysis(masses, contaminated, positions=positions)
+        np.testing.assert_allclose(projected['freqs'], clean, atol=1e-6)
+        self.assertEqual(np.array(projected['modes']).shape, (3, 3, 3))
+
+    def test_numpy_vibrational_analysis_projects_a_linear_molecule(self):
+        """For a linear molecule, the two rotations are projected out and both bends are kept"""
+        r = 1.16
+        co2 = Atoms('OCO', positions=[(0, 0, -r), (0, 0, 0), (0, 0, r)])
+        masses, positions = co2.get_masses(), co2.get_positions()
+        hessian = spring_hessian(positions, [(0, 1, 100.0), (1, 2, 100.0)])
+        for axis in (0, 1):
+            bend = np.zeros(9)
+            bend[[axis, 3 + axis, 6 + axis]] = 1.0 / r, -2.0 / r, 1.0 / r
+            hessian += 5.0 * np.outer(bend, bend)
+        inv_sqrt_mass = np.repeat(1.0 / np.sqrt(masses), 3)
+        eigenvalues = np.linalg.eigvalsh(hessian * np.outer(inv_sqrt_mass, inv_sqrt_mass))
+        expected = FREQ_FACTOR * np.sqrt(np.sort(eigenvalues)[5:])
+
+        freqs = numpy_vibrational_analysis(masses, hessian, is_linear=True, positions=positions)['freqs']
+        np.testing.assert_allclose(freqs, expected, rtol=1e-8)
+        self.assertGreater(min(freqs), 100.0)
+        self.assertAlmostEqual(freqs[0], freqs[1], places=6)
+
+    def test_numpy_vibrational_analysis_returns_3n_minus_5_or_6_modes_given_positions(self):
+        """Test the number of modes for an atom, a diatomic, a linear and a nonlinear molecule"""
+        cases = [(Atoms('He', positions=[(0, 0, 0)]), [], 0),
+                 (Atoms('OH', positions=[(0, 0, 0), (0, 0, 0.97)]), [(0, 1, 50.0)], 1),
+                 (Atoms('OCO', positions=[(0, 0, -1.16), (0, 0, 0), (0, 0, 1.16)]), [(0, 1, 100.0), (1, 2, 100.0)], 4),
+                 (Atoms(ETHANE_XYZ['symbols'], positions=ETHANE_XYZ['coords']),
+                  [(i, j, 30.0) for i in range(8) for j in range(i + 1, 8)], 18)]
+        for atoms, springs, n_modes in cases:
+            positions = atoms.get_positions()
+            results = numpy_vibrational_analysis(atoms.get_masses(), spring_hessian(positions, springs),
+                                                 is_linear=is_linear(atoms), positions=positions)
+            self.assertEqual(len(results['freqs']), n_modes, atoms.get_chemical_formula())
+            self.assertEqual(len(results['modes']), n_modes)
+
+    def test_uma_inference_settings(self):
+        """Test that a Hessian predictor runs at full precision whatever the job's preset, and is cached apart"""
+        self.assertEqual(uma_inference_settings({}), (None, None))
+        self.assertEqual(uma_inference_settings({'inference_settings': 'traineval'}), ('traineval', 'traineval'))
+        custom = {'tf32': False, 'activation_checkpointing': False}
+        settings, key = uma_inference_settings({'inference_settings': custom})
+        self.assertEqual(settings, custom)
+        self.assertEqual(key, uma_inference_settings({'inference_settings': dict(reversed(custom.items()))})[1])
+        hash(key)
+
+        settings, key = uma_inference_settings({'inference_settings': 'default'}, hessian=True)
+        self.assertEqual(settings, {'tf32': False, 'activation_checkpointing': False, 'merge_mole': False,
+                                    'compile': False, 'base_precision_dtype': 'float32', 'hessian_vmap': False,
+                                    'predict_untrained_hessian': ['omol']})
+        self.assertNotEqual(key, uma_inference_settings({'inference_settings': 'default'})[1])
+        hash(key)
+
+        settings, _ = uma_inference_settings({'inference_settings': {'base_precision_dtype': 'float64', 'tf32': True},
+                                              'hessian_vmap': True, 'task': 'omat'}, hessian=True)
+        self.assertEqual(settings['base_precision_dtype'], 'float64')
+        self.assertFalse(settings['tf32'])
+        self.assertTrue(settings['hessian_vmap'])
+        self.assertEqual(settings['predict_untrained_hessian'], ['omat'])
+
+    def test_sella_hessian_function(self):
+        """A UMA TS search gets the exact autograd Hessian; other calculators, and a fairchem without one, do not"""
+        self.assertIsNone(sella_hessian_function({'calculator': 'emt'}))
+        self.assertIsNone(sella_hessian_function({'calculator': 'uma', 'hessian': 'finite_difference'}))
+        with patch('arc.job.adapters.scripts.ase_script.load_uma_predictor', side_effect=NotImplementedError):
+            self.assertIsNone(sella_hessian_function({'calculator': 'uma'}))
+        with patch('arc.job.adapters.scripts.ase_script.load_uma_predictor'), \
+                patch('arc.job.adapters.scripts.ase_script.uma_hessian', return_value=np.eye(3)) as uma_hessian:
+            hessian_function = sella_hessian_function({'calculator': 'uma'}, cache=dict())
+            np.testing.assert_array_equal(hessian_function(Atoms('H')), np.eye(3))
+            uma_hessian.assert_called_once()
+
+    def test_run_vibrational_analysis_chooses_the_hessian(self):
+        """Test that UMA uses its autograd Hessian unless told otherwise or unable, and other calculators use finite differences"""
+        water = Atoms('OH2', positions=[(0.0, 0.0, 0.0), (0.757, 0.586, 0.0), (-0.757, 0.586, 0.0)])
+        water.calc = EMT()
+        springs = spring_hessian(water.get_positions(), [(0, 1, 50.0), (0, 2, 50.0), (1, 2, 5.0)])
+        with tempfile.TemporaryDirectory() as work_dir:
+            with patch('arc.job.adapters.scripts.ase_script.uma_hessian', return_value=springs) as uma_hessian:
+                results = run_vibrational_analysis(water, {'calculator': 'uma'}, work_dir=work_dir)
+                self.assertEqual(results['hessian_method'], 'analytic')
+                np.testing.assert_allclose(results['hessian'], springs)
+                self.assertEqual(uma_hessian.call_count, 1)
+
+                results = run_vibrational_analysis(water, {'calculator': 'uma', 'hessian': 'finite_difference'},
+                                                   work_dir=work_dir)
+                self.assertEqual(results['hessian_method'], 'finite_difference_gradient')
+                self.assertEqual(uma_hessian.call_count, 1)
+
+                results = run_vibrational_analysis(water, {'calculator': 'emt'}, work_dir=work_dir)
+                self.assertEqual(results['hessian_method'], 'finite_difference_gradient')
+                self.assertEqual(len(results['freqs']), 3)
+                self.assertEqual(uma_hessian.call_count, 1)
+
+            with patch('arc.job.adapters.scripts.ase_script.uma_hessian', return_value=None):
+                results = run_vibrational_analysis(water, {'calculator': 'uma'}, work_dir=work_dir)
+                self.assertEqual(results['hessian_method'], 'finite_difference_gradient')
+
+            with self.assertRaises(ValueError):
+                run_vibrational_analysis(water, {'calculator': 'uma', 'hessian': 'numerical'}, work_dir=work_dir)
 
     def test_write_input_file_scan(self):
         """Test that a scan job writes torsions and scan resolution into the input file"""
@@ -993,6 +1131,221 @@ class TestASEWorker(unittest.TestCase):
         save_yaml_file(job.local_path_to_output_file, {'sp': 1.0})
         job.execute_queue()
         self.assertFalse(os.path.isfile(job.local_path_to_output_file))
+
+
+class TestASECalculators(unittest.TestCase):
+    """
+    Contains unit tests for the MLIP calculators of the ASE script, run on stand-ins for their packages.
+    """
+
+    @staticmethod
+    def modules(**modules) -> dict:
+        """Stand-in modules by dotted name, with their parent packages, for patching sys.modules."""
+        result = dict()
+        for name, attributes in modules.items():
+            parts = name.split('.')
+            for i in range(1, len(parts)):
+                result.setdefault('.'.join(parts[:i]), type(sys)('.'.join(parts[:i])))
+            module = type(sys)(name)
+            for key, value in attributes.items():
+                setattr(module, key, value)
+            result[name] = module
+        return result
+
+    def test_mace_model(self):
+        """MACE models are named by family and size, and a checkpoint needs its family"""
+        from arc.job.adapters.scripts.ase_script import mace_model
+        self.assertEqual(mace_model({}), ('omol', None))
+        self.assertEqual(mace_model({'model': 'omol-extra_large'}), ('omol', 'extra_large'))
+        self.assertEqual(mace_model({'model': 'off-medium'}), ('off', 'medium'))
+        self.assertEqual(mace_model({'model': 'small'}), ('off', 'small'))
+        with tempfile.NamedTemporaryFile(suffix='.model') as checkpoint:
+            self.assertEqual(mace_model({'model': checkpoint.name, 'family': 'omol'}), ('omol', checkpoint.name))
+            with self.assertRaises(ValueError):
+                mace_model({'model': checkpoint.name})
+        with self.assertRaises(ValueError):
+            mace_model({'model': 'off-huge'})
+
+    def test_mace_calculators(self):
+        """MACE-OFF refuses charged and open-shell species, and a cached calculator is reset and kept per device"""
+        from arc.job.adapters.scripts.ase_script import get_calculator
+        mace_off, mace_omol = MagicMock(name='mace_off'), MagicMock(name='mace_omol')
+        mace_omol.side_effect = lambda **kwargs: MagicMock(name='MACE-OMol')
+        with patch.dict(sys.modules, self.modules(**{'mace.calculators': {'mace_off': mace_off,
+                                                                          'mace_omol': mace_omol}})):
+            with self.assertRaises(ValueError):
+                get_calculator({'calculator': 'mace', 'model': 'off-small'}, charge=0, multiplicity=2)
+            mace_off.assert_not_called()
+            get_calculator({'calculator': 'mace', 'model': 'off-small'})
+            mace_off.assert_called_once_with(model='small', device='cpu', default_dtype='float64')
+
+            cache = dict()
+            first = get_calculator({'calculator': 'mace'}, charge=1, multiplicity=2, cache=cache)
+            again = get_calculator({'calculator': 'mace'}, charge=0, multiplicity=1, cache=cache)
+            self.assertIs(first, again)
+            self.assertEqual(again.reset.call_count, 2)
+            on_gpu = get_calculator({'calculator': 'mace', 'device': 'cuda'}, cache=cache)
+            self.assertIsNot(on_gpu, first)
+            self.assertEqual(mace_omol.call_args.kwargs, {'model': None, 'device': 'cuda', 'default_dtype': 'float64'})
+        with patch.dict(sys.modules, self.modules(**{'mace.calculators': {'mace_off': mace_off}})):
+            with self.assertRaisesRegex(ImportError, '0.3.14'):
+                get_calculator({'calculator': 'mace'})
+
+    def test_orb_calculators(self):
+        """Only the Orb omol models take charge and spin, and orb-models before 0.6.0 is named in the error"""
+        from arc.job.adapters.scripts.ase_script import get_calculator
+        model, adapter = MagicMock(name='orbff'), MagicMock(name='adapter')
+        pretrained = {'orb_v3_conservative_omol': MagicMock(return_value=(model, adapter)),
+                      'orb_v3_conservative_inf_mpa': MagicMock(return_value=(model, adapter))}
+        orb_calculator = MagicMock(name='ORBCalculator')
+        with patch.dict(sys.modules, self.modules(**{'orb_models.forcefield.pretrained': pretrained,
+                                                     'orb_models.forcefield.inference.calculator':
+                                                         {'ORBCalculator': orb_calculator}})):
+            sys.modules['orb_models.forcefield'].pretrained = sys.modules['orb_models.forcefield.pretrained']
+            get_calculator({'calculator': 'orb'}, charge=-1, multiplicity=2)
+            orb_calculator.assert_called_once_with(model, atoms_adapter=adapter, device='cpu')
+            pretrained['orb_v3_conservative_omol'].assert_called_once_with(device='cpu', precision='float64')
+            with self.assertRaises(ValueError):
+                get_calculator({'calculator': 'orb', 'model': 'orb-v3-conservative-inf-mpa'}, charge=1)
+        with patch.dict(sys.modules, self.modules(**{'orb_models.forcefield.pretrained': pretrained})):
+            with self.assertRaisesRegex(ImportError, '0.6.0'):
+                get_calculator({'calculator': 'orb'})
+
+    def test_aimnet2_calculators(self):
+        """AIMNet2 runs on the job's device, and only an NSE model takes a multiplicity"""
+        from arc.job.adapters.scripts.ase_script import get_calculator
+        base, ase_calculator = MagicMock(name='AIMNet2Calculator'), MagicMock(name='AIMNet2ASE')
+        with patch.dict(sys.modules, self.modules(**{'aimnet.calculators': {'AIMNet2Calculator': base},
+                                                     'aimnet.calculators.aimnet2ase': {'AIMNet2ASE': ase_calculator}})):
+            with self.assertRaises(ValueError):
+                get_calculator({'calculator': 'aimnet2', 'model': 'aimnet2'}, charge=0, multiplicity=2)
+            get_calculator({'calculator': 'aimnet2', 'model': 'aimnet2'}, charge=1, multiplicity=1)
+            base.assert_called_once_with('aimnet2', device='cpu')
+            cache = dict()
+            get_calculator({'calculator': 'aimnet2'}, charge=0, multiplicity=2, cache=cache)
+            get_calculator({'calculator': 'aimnet2', 'device': 'cuda'}, cache=cache)
+            get_calculator({'calculator': 'aimnet2'}, cache=cache)
+            self.assertEqual([c.kwargs['device'] for c in base.call_args_list[1:]], ['cpu', 'cuda'])
+            self.assertEqual(ase_calculator.call_args_list[1].kwargs, {'charge': 0, 'mult': 2})
+
+    def test_fairchem_hessian_support(self):
+        """Autograd Hessians need fairchem-core 2.17, and 2.18 to 2.21 give them only with vmap"""
+        from importlib.metadata import PackageNotFoundError
+        from arc.job.adapters.scripts.ase_script import fairchem_hessian_support
+        for release, settings, supported in (('2.14.0', {}, False), ('2.16.0', {}, False), ('2.17.0', {}, True),
+                                             ('2.19.1', {}, False), ('2.21.0', {'hessian_vmap': True}, True),
+                                             ('2.22.0', {}, True), ('2.25.0', {}, True)):
+            with self.subTest(release=release, settings=settings), \
+                    patch('arc.job.adapters.scripts.ase_script.package_version', return_value=release):
+                self.assertEqual(fairchem_hessian_support(settings) is None, supported)
+        with patch('arc.job.adapters.scripts.ase_script.package_version', side_effect=PackageNotFoundError):
+            self.assertIsNotNone(fairchem_hessian_support({}))
+
+    def fake_fairchem(self, hessian: np.ndarray) -> tuple:
+        """Stand-in fairchem modules whose calculator returns ``hessian``, and their get_predict_unit mock."""
+        from dataclasses import dataclass, field
+
+        @dataclass
+        class InferenceSettings:
+            tf32: bool = True
+            activation_checkpointing: bool = True
+            merge_mole: bool = True
+            compile: bool = True
+            base_precision_dtype: str = 'float32'
+            hessian_vmap: bool = True
+            predict_untrained_hessian: set = field(default_factory=set)
+
+        class FAIRChemCalculator:
+            def __init__(self, predictor, task_name):
+                self.predictor, self.task_name = predictor, task_name
+
+            def get_property(self, name, atoms):
+                return hessian.ravel()
+
+        get_predict_unit = MagicMock(side_effect=lambda model, **kwargs: MagicMock(name=model))
+        modules = self.modules(**{'fairchem.core': {'pretrained_mlip': MagicMock(get_predict_unit=get_predict_unit),
+                                                    'FAIRChemCalculator': FAIRChemCalculator},
+                                  'fairchem.core.units.mlip_unit.api.inference':
+                                      {'InferenceSettings': InferenceSettings}})
+        return modules, get_predict_unit
+
+    def test_uma_hessian(self):
+        """The UMA Hessian predictor is loaded with the Hessian task, cached, and its Hessian reshaped to (3N, 3N)"""
+        from arc.job.adapters.scripts.ase_script import get_calculator, uma_hessian
+        water = Atoms('OH2', positions=[(0.0, 0.0, 0.0), (0.757, 0.586, 0.0), (-0.757, 0.586, 0.0)])
+        modules, get_predict_unit = self.fake_fairchem(np.arange(81.0))
+        settings, cache = {'calculator': 'uma', 'model': 'uma-s-1p2'}, dict()
+        with patch.dict(sys.modules, modules), \
+                patch('arc.job.adapters.scripts.ase_script.package_version', return_value='2.25.0'):
+            hessian = uma_hessian(water, settings, cache)
+            np.testing.assert_array_equal(hessian, np.arange(81.0).reshape(9, 9))
+            uma_hessian(water, settings, cache)
+            get_predict_unit.assert_called_once()
+            inference_settings = get_predict_unit.call_args.kwargs['inference_settings']
+            self.assertEqual(inference_settings.predict_untrained_hessian, {'omol'})
+            self.assertFalse(inference_settings.hessian_vmap)
+            self.assertFalse(inference_settings.tf32)
+        with patch.dict(sys.modules, modules), \
+                patch('arc.job.adapters.scripts.ase_script.package_version', return_value='2.14.0'):
+            self.assertIsNone(uma_hessian(water, settings, dict()))
+            get_predict_unit.reset_mock()
+            calc = get_calculator(settings, cache=dict(), hessian=True)
+            get_predict_unit.assert_called_once_with('uma-s-1p2', device='cpu')
+            self.assertEqual(calc.task_name, 'omol')
+
+    def test_a_uma_ts_search_gives_sella_the_hessian(self):
+        """A TS optimization passes the UMA Hessian function to Sella, and a minimization does not"""
+        from arc.job.adapters.scripts import ase_script
+        calls = list()
+
+        class FakeSella:
+            def __init__(self, atoms, **kwargs):
+                calls.append(kwargs)
+
+            def run(self, fmax, steps):
+                pass
+
+        def hessian_function(atoms):
+            return np.eye(3 * len(atoms))
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.dict(sys.modules, {'sella': self.modules(sella={'Sella': FakeSella})['sella']}), \
+                patch('arc.job.adapters.scripts.ase_script.sella_hessian_function',
+                      return_value=hessian_function) as sella_hessian:
+            for is_ts in (True, False):
+                input_path = os.path.join(tmp, 'input.yml')
+                save_yaml_file(input_path, {'job_type': 'opt', 'xyz': ETHANE_XYZ, 'charge': 0, 'multiplicity': 1,
+                                            'is_ts': is_ts, 'settings': {'calculator': 'emt', 'optimizer': 'sella'}})
+                ase_script.run_job(input_path)
+        self.assertIs(calls[0]['hessian_function'], hessian_function)
+        self.assertEqual(calls[0]['order'], 1)
+        self.assertNotIn('hessian_function', calls[1])
+        sella_hessian.assert_called_once()
+
+    def test_isotope_masses(self):
+        """A job on a labelled species passes its isotope masses, which the script sets on the atoms"""
+        from arc.job.adapters.scripts.ase_script import run_job
+        cd4_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 2, 2, 2, 2),
+                   'coords': ((0.0, 0.0, 0.0), (0.629, 0.629, 0.629), (-0.629, -0.629, 0.629),
+                              (-0.629, 0.629, -0.629), (0.629, -0.629, -0.629))}
+        ch4_xyz = dict(cd4_xyz, isotopes=(12, 1, 1, 1, 1))
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs = [ASEAdapter(execution_type='incore', job_type='freq', project='test_isotopes',
+                               project_directory=os.path.join(tmp, label), species=[ARCSpecies(label=label, xyz=xyz)],
+                               args={'keyword': {'calculator': 'emt'}}, testing=True)
+                    for label, xyz in (('CD4', cd4_xyz), ('CH4', ch4_xyz))]
+            self.assertIsNone(jobs[1].isotope_masses())
+            masses = jobs[0].isotope_masses()
+            self.assertAlmostEqual(masses[1], 2.014, places=3)
+            with patch('arc.job.adapters.scripts.ase_script.run_vibrational_analysis',
+                       return_value={'freqs': []}) as vibrations:
+                for job in jobs:
+                    os.makedirs(job.local_path, exist_ok=True)
+                    job.write_input_file()
+                    run_job(os.path.join(job.local_path, 'input.yml'))
+            deuterated, plain = (call.args[0] for call in vibrations.call_args_list)
+            np.testing.assert_allclose(deuterated.get_masses(), masses)
+            self.assertAlmostEqual(plain.get_masses()[1], 1.008, places=3)
 
 
 if __name__ == '__main__':
