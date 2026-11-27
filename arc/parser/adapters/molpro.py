@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import re
 
-from arc.common import NUMBER_BY_SYMBOL, SYMBOL_BY_NUMBER
+from arc.common import NUMBER_BY_SYMBOL, SYMBOL_BY_NUMBER, is_str_float
 from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.species.converter import xyz_from_data
 from arc.parser.adapter import ESSAdapter
@@ -145,18 +145,26 @@ class MolproParser(ESSAdapter, ABC):
 
     def parse_t1(self) -> float | None:
         """
-        Parse the T1 parameter from a CC calculation.
+        Parse the T1 diagnostic of the coupled cluster calculation.
+
+        Open-shell Molpro output prints a T1 diagnostic for the RMP2 step that precedes UCCSD/RCCSD.
+        Lines between a line starting an MP2 step and the next "Starting ... CCSD" header are skipped,
+        so the value returned is the first one printed by the CCSD step itself.
 
         Returns: float | None
-            The T1 parameter.
+            The T1 diagnostic.
         """
+        in_mp2 = False
         with open(self.log_file_path, 'r') as f:
             for line in f:
-                if 'T1 diagnostic' in line:
-                    try:
-                        return float(line.split()[-1])
-                    except (ValueError, IndexError):
-                        continue
+                if 'Starting' in line and 'MP2' in line:
+                    in_mp2 = True
+                elif 'Starting' in line and 'CCSD' in line:
+                    in_mp2 = False
+                elif 'T1 diagnostic' in line and not in_mp2:
+                    value = line.split()[-1]
+                    if is_str_float(value):
+                        return float(value)
         return None
 
     def parse_e_elect(self) -> float | None:
