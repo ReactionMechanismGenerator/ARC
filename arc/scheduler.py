@@ -4848,7 +4848,6 @@ class Scheduler(object):
                 else:
                     self.server_job_ids.extend(check_running_jobs_ids())
         if specific_server in (None, 'local'):
-            # Jobs handed to a persistent ASE worker run on this machine, tracked by their ticket IDs.
             self.server_job_ids.extend(active_worker_tickets())
 
     def get_completed_incore_jobs(self):

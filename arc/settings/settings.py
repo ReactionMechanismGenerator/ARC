@@ -322,8 +322,9 @@ ASE_CALCULATORS_ENV = {'torchani': 'TANI_PYTHON',
 # A worker loads its model once and runs ASE jobs from its spool, instead of a new process (and a
 # model reload) for every job. Start it in the calculator's environment, on the machine running ARC:
 #     <uma_env python> ARC/arc/job/adapters/scripts/ase_script.py --serve /home/user/uma_spool
-# While a worker is alive, ARC runs that calculator's jobs through it (incore, one at a time);
-# otherwise the jobs run as usual. Set 'device': 'cuda' in the level's args to run on a GPU.
+# While a worker is alive, ARC submits that calculator's jobs to its spool as local queue jobs, which run in parallel
+# when several workers share the spool; otherwise the jobs run as usual. Set 'device': 'cuda' in the level's args to
+# run on a GPU.
 ASE_WORKERS = dict()
 
 # UMA (Universal Models for Atoms, Meta FAIR fairchem-core). The bare 'uma' calculator/level resolves

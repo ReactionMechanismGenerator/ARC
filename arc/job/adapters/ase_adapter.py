@@ -13,6 +13,7 @@ from arc.common import get_logger, read_yaml_file, save_yaml_file, torsions_to_s
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
+from arc.level import Level
 from arc.imports import ase_submit, settings
 from arc.settings.settings import ARC_PYTHON, UMA_LATEST_MODEL, find_executable
 
@@ -21,7 +22,6 @@ submit_filenames = settings['submit_filenames']
 t_max_format = settings['t_max_format']
 
 if TYPE_CHECKING:
-    from arc.level import Level
     from arc.species.species import ARCSpecies
     from arc.reaction import ARCReaction
 
@@ -44,28 +44,22 @@ UMA_METHODS = ('uma', 'uma-s-1', 'uma-s-1p1', 'uma-s-1p2', 'uma-m-1p1')
 # name a file that the submission then fails to invoke.
 QUEUE_CLUSTER_SOFT = ('PBS', 'Slurm')
 
-# Worker spools already reported to have no live worker, so the warning is logged once per spool.
 _spools_reported_dead = set()
 
 
 def active_worker_tickets() -> List[str]:
     """
-    The IDs of the tickets queued or running on the persistent ASE workers' spools (``ASE_WORKERS``).
-    These are the job IDs of the ASE jobs still in flight, as the queue's job IDs are for queue jobs.
-
-    The queue is listed before the running tickets: a ticket only moves from one to the other, so one that
-    moves while they are listed is still found. Missing a running job would make the Scheduler end it early.
+    The IDs of the live tickets on the persistent ASE workers' spools (``ASE_WORKERS``): queued or running
+    tickets that a live worker can still finish before their deadline (see ``ticket_is_live()`` in ase_script.py).
+    The job of a ticket missing from this list is checked by ``ASEAdapter._check_job_server_status()``.
 
     Returns:
         List[str]: The ticket IDs.
     """
+    from arc.job.adapters.scripts.ase_script import live_tickets
     tickets = list()
     for spool in sorted(set(filter(None, (settings.get('ASE_WORKERS') or dict()).values()))):
-        for state in ('queue', 'running'):
-            path = os.path.join(spool, state)
-            if os.path.isdir(path):
-                tickets.extend(file_name[:-len('.json')] for file_name in os.listdir(path)
-                               if file_name.endswith('.json'))
+        tickets.extend(live_tickets(spool))
     return tickets
 
 
@@ -124,12 +118,10 @@ class ASEAdapter(JobAdapter):
         self.freqs = None
 
         self.args = args or dict()
-        self.level = level  # also set by _initialize_adapter; needed early by get_python_executable
+        self.level = Level(repr=level) if level is not None and not isinstance(level, Level) else level
         self.python_executable = self.get_python_executable()
         self.script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'ase_script.py')
-        # A live persistent worker runs this calculator's jobs on this machine. They are handed to it as
-        # local queue jobs: submitted without waiting, and tracked by their ticket IDs (see execute_queue()).
-        self.worker_spool = self.determine_worker_spool()
+        self.worker_spool = self.resolve_worker_spool(execution_type=execution_type, job_id=job_id, job_name=job_name)
         self.execution_type = 'queue' if self.worker_spool else execution_type or 'incore'
 
         _initialize_adapter(obj=self,
@@ -157,7 +149,7 @@ class ASEAdapter(JobAdapter):
                             job_num=job_num,
                             job_server_name=job_server_name,
                             job_status=job_status,
-                            level=level,
+                            level=self.level,
                             max_job_time=max_job_time,
                             run_multi_species=run_multi_species,
                             reactions=reactions,
@@ -212,13 +204,38 @@ class ASEAdapter(JobAdapter):
             settings_dict.setdefault('device', 'cpu')
         return settings_dict
 
+    def resolve_worker_spool(self,
+                             execution_type: Optional[str] = None,
+                             job_id: Optional[Union[int, str]] = None,
+                             job_name: Optional[str] = None,
+                             ) -> Optional[str]:
+        """
+        Determine the worker spool a job runs through. A job requested as ``'incore'`` runs without a worker.
+        A restored job (one with a ``job_id``) keeps the spool configured for its calculator if its ID is a
+        ticket of this job (named ``<job_name>_<hex>``, see ``submit_ticket()``), whether or not a worker is
+        live, and otherwise runs without one. A new job runs through a live worker (``determine_worker_spool()``).
+
+        Args:
+            execution_type (str, optional): The requested execution type.
+            job_id (Union[int, str], optional): The job ID of a restored job.
+            job_name (str, optional): The job name of a restored job.
+
+        Returns:
+            Optional[str]: The spool directory, or ``None`` to run without a worker.
+        """
+        if execution_type == 'incore':
+            return None
+        if job_id is not None:
+            if isinstance(job_id, str) and job_name and job_id.startswith(f'{job_name}_'):
+                return (settings.get('ASE_WORKERS') or dict()).get(self.determine_calculator_name()) or None
+            return None
+        return self.determine_worker_spool()
+
     def determine_worker_spool(self) -> Optional[str]:
         """
         Determine the spool directory of a live persistent ASE worker for this job's calculator.
-        Workers are set per calculator in the ``ASE_WORKERS`` setting, since each one runs in its
-        calculator's environment (see ``serve()`` in ase_script.py).
-
-        Worker jobs are tracked as jobs of the ``local`` server, so a worker is only used if that server is defined.
+        Workers are set per calculator in the ``ASE_WORKERS`` setting. A worker is only used if the ``local``
+        server, which worker jobs run on, is defined.
 
         Returns:
             Optional[str]: The spool directory, or ``None`` if no worker is configured or alive.
@@ -370,10 +387,7 @@ class ASEAdapter(JobAdapter):
 
     def execute_queue(self) -> None:
         """
-        Submit the job to the persistent worker if one is live, otherwise to the server's queue.
-
-        ``set_files()`` wrote a queue job's files and ``JobAdapter.execute()`` uploaded them, so all that
-        is left for one is the submission itself, through the same path every other adapter uses.
+        Submit the job to its persistent worker's spool if it has one, otherwise to the server's queue.
         """
         if self.worker_spool:
             self.submit_to_worker()
@@ -390,31 +404,34 @@ class ASEAdapter(JobAdapter):
         """
         from arc.job.adapters.scripts.ase_script import submit_ticket
         self.warn_if_unreliable_uma_sp()
+        if os.path.isfile(self.local_path_to_output_file):
+            os.remove(self.local_path_to_output_file)
         self.write_input_file()
         self._log_job_execution()
         self.job_id = submit_ticket(self.worker_spool, os.path.abspath(os.path.join(self.local_path, 'input.yml')),
-                                    label=self.job_name)
+                                    label=self.job_name, max_run_time=self.max_job_time * 3600)
         self.job_status[0] = 'running'
 
     def is_worker_ticket(self) -> bool:
         """
-        Whether the job ID is a ticket of this job on the worker spool, rather than a queue job ID.
-        Tickets are named after the job (see ``submit_ticket()``), which also holds for a restarted job.
+        Whether the job ID is a ticket of this job on the worker spool, named ``<job_name>_<hex>``
+        (see ``submit_ticket()``), rather than a queue job ID.
         """
         return bool(self.worker_spool) and isinstance(self.job_id, str) and self.job_id.startswith(f'{self.job_name}_')
 
     def _check_job_server_status(self) -> str:
         """
-        Possible statuses: ``initializing``, ``running``, ``errored on node xx``, ``done``.
+        Possible statuses: ``initializing``, ``running``, ``errored on node xx``, ``done``, ``errored``.
 
-        A job submitted to a persistent worker is checked through its ticket. If the job cannot finish there,
-        because no worker is left to take it, its worker died, or its ticket vanished, it is run directly
-        here instead, as it would be without a worker.
+        A job submitted to a persistent worker is checked through its ticket. A job whose ticket cannot finish
+        on the spool, because no live worker is left to claim it, its worker is no longer live, or the ticket
+        is missing, is run directly here and its ticket marked done. A ticket past its deadline is withdrawn if
+        still queued, and the job is ``errored``.
         """
         if not self.is_worker_ticket():
             return super()._check_job_server_status()
         from arc.job.adapters.scripts.ase_script import (finish_ticket, get_ticket_status, live_workers,
-                                                         withdraw_ticket)
+                                                         ticket_is_live, withdraw_ticket)
         spool, ticket = self.worker_spool, self.job_id
         state, content = get_ticket_status(spool, ticket)
         if state in ('done', 'errored'):
@@ -427,37 +444,63 @@ class ASEAdapter(JobAdapter):
         if state == 'missing':
             logger.warning(f'The ticket of {self.job_name} vanished from {spool}; running it directly.')
             return self.run_instead_of_worker()
-        if state == 'queued' and not live_workers(spool) and withdraw_ticket(spool, ticket):
+        workers = live_workers(spool)
+        if content.get('deadline') is not None and time.time() > content['deadline']:
+            withdraw_ticket(spool, ticket)
+            finish_ticket(spool, ticket, {**content, 'status': 'errored', 'error': 'The deadline passed.'})
+            logger.error(f'ASE job {self.job_name} did not finish in the worker within {self.max_job_time} hours.')
+            return 'errored'
+        if ticket_is_live(state, content, workers):
+            return 'running'
+        if state == 'queued':
+            if not withdraw_ticket(spool, ticket):
+                return 'running'
             logger.warning(f'No live ASE worker on {spool}; running {self.job_name} directly.')
-            return self.run_instead_of_worker()
-        if state == 'running' and content.get('worker') not in live_workers(spool):
+        else:
             finish_ticket(spool, ticket, {**content, 'status': 'errored', 'error': 'The worker died.'})
             logger.warning(f"ASE worker {content.get('worker')} died while running {self.job_name}; "
                            f"running it directly.")
-            return self.run_instead_of_worker()
-        if time.time() - content.get('submitted', time.time()) > self.max_job_time * 3600:
-            withdraw_ticket(spool, ticket)  # only possible while no worker has claimed it
-            logger.error(f'ASE job {self.job_name} did not finish in the worker within {self.max_job_time} hours.')
-            return 'errored'
-        return 'running'
+        return self.run_instead_of_worker()
 
     def run_instead_of_worker(self) -> str:
         """
-        Run a job directly that was submitted to a worker but cannot finish there.
+        Run a job directly that was submitted to a worker but cannot finish there, and mark its ticket as done,
+        so that a later status check does not run it again.
 
         Returns:
             str: The job's server status, ``done``.
         """
+        from arc.job.adapters.scripts.ase_script import finish_ticket
         self.initial_time = datetime.datetime.now()
         self.run_directly()
         self.final_time = datetime.datetime.now()
+        finish_ticket(self.worker_spool, self.job_id,
+                      {'status': 'done', 'ran_directly': True,
+                       'started': self.initial_time.timestamp(), 'finished': self.final_time.timestamp()})
         return 'done'
+
+    def delete(self) -> None:
+        """
+        Delete the job. A queued worker ticket is withdrawn; a ticket a worker is running is left to finish there,
+        and is no longer tracked. A job without a worker ticket is deleted from its server's queue.
+        """
+        if not self.is_worker_ticket():
+            super().delete()
+            return
+        from arc.job.adapters.scripts.ase_script import get_ticket_status, withdraw_ticket
+        if withdraw_ticket(self.worker_spool, self.job_id):
+            logger.debug(f'Withdrew the worker ticket of {self.job_name}.')
+            return
+        state, content = get_ticket_status(self.worker_spool, self.job_id)
+        if state == 'running':
+            logger.warning(f"ASE job {self.job_name} is running in worker {content.get('worker')} and cannot be "
+                           f"deleted; it will finish there.")
 
     def set_files(self) -> None:
         """
         Set files to be uploaded and downloaded. Writes the files if needed.
         """
-        # 1. Upload (a worker job runs on this machine and needs only its input, which submit_to_worker() writes)
+        # 1. Upload
         if self.execution_type != 'incore' and not self.worker_spool:
             # ``JobAdapter.execute()`` calls ``upload_files()`` *before* ``execute_queue()``, and
             # ``_initialize_adapter()`` calls this method while the job is being constructed, so a

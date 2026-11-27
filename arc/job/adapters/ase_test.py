@@ -29,6 +29,7 @@ from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  claim_ticket,
                                                  get_ticket_status,
                                                  is_linear,
+                                                 live_tickets,
                                                  live_workers,
                                                  merge_scan_branches,
                                                  numpy_vibrational_analysis,
@@ -42,7 +43,8 @@ from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  spool_dirs,
                                                  submit_ticket,
                                                  to_kJmol,
-                                                 withdraw_ticket)
+                                                 withdraw_ticket,
+                                                 write_json_atomic)
 
 ETHANE_XYZ = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
               'isotopes': (12, 12, 1, 1, 1, 1, 1, 1),
@@ -725,16 +727,18 @@ class TestASEWorker(unittest.TestCase):
         then = time.time() - age
         os.utime(path, (then, then))
 
-    def make_job(self, execution_type: str = 'incore') -> ASEAdapter:
-        """Make an EMT single-point job with a worker spool configured for EMT."""
-        with patch.dict('arc.job.adapters.ase_adapter.settings', {'ASE_WORKERS': {'emt': self.spool}}):
+    def make_job(self, execution_type: str = 'queue', calculator: str = 'emt', **kwargs) -> ASEAdapter:
+        """Make an ethane single-point job with a worker spool configured for its calculator (EMT by default)."""
+        if 'level' not in kwargs:
+            kwargs['args'] = {'keyword': {'calculator': calculator}}
+        with patch.dict('arc.job.adapters.ase_adapter.settings', {'ASE_WORKERS': {calculator: self.spool}}):
             job = ASEAdapter(execution_type=execution_type,
                              job_type='sp',
                              project='test_worker',
                              project_directory=os.path.join(self.tmp.name, 'project'),
                              species=[ARCSpecies(label='ethane', xyz=ETHANE_XYZ)],
-                             args={'keyword': {'calculator': 'emt'}},
-                             testing=True)
+                             testing=True,
+                             **kwargs)
         job.local_path = os.path.join(self.tmp.name, 'job')
         os.makedirs(job.local_path, exist_ok=True)
         return job
@@ -753,7 +757,7 @@ class TestASEWorker(unittest.TestCase):
             water.calc = EMT()
             results.append(run_vibrational_analysis(water, {'calculator': 'emt'}, work_dir=work_dir))
         np.testing.assert_allclose(results[1]['freqs'], results[0]['freqs'])
-        self.assertEqual(os.listdir(os.path.join(stale_dir, 'vib_tmp')), list())  # cleared after the run
+        self.assertEqual(os.listdir(os.path.join(stale_dir, 'vib_tmp')), list())
         self.assertFalse(os.path.exists(os.path.join(os.getcwd(), 'vib_tmp')))
 
     def test_a_claimed_ticket_cannot_be_claimed_or_withdrawn(self):
@@ -821,7 +825,7 @@ class TestASEWorker(unittest.TestCase):
         self.assertEqual(state, 'errored')
         self.assertIn('FileNotFoundError', content['error'])
         self.assertEqual(os.listdir(os.path.join(self.spool, 'running')), list())
-        self.assertEqual(live_workers(self.spool), list())  # the heartbeat is removed on exit
+        self.assertEqual(live_workers(self.spool), list())
 
     def test_no_live_worker_leaves_the_execution_type_alone(self):
         """Without a live worker, a job runs as the scheduler asked"""
@@ -832,12 +836,12 @@ class TestASEWorker(unittest.TestCase):
     def test_a_live_worker_takes_jobs_without_blocking(self):
         """With a live worker, a job is submitted as a local queue job and stays in flight until its ticket ends"""
         self.beat('w1')
-        jobs = [self.make_job(execution_type='incore') for _ in range(3)]
+        jobs = [self.make_job() for _ in range(3)]
         for job in jobs:
             self.assertEqual(job.worker_spool, self.spool)
             self.assertEqual(job.execution_type, 'queue')
             self.assertEqual(job.server, 'local')
-            job.execute_queue()  # returns at once: nothing takes the tickets in this test
+            job.execute_queue()
             self.assertTrue(job.is_worker_ticket())
             self.assertEqual(job.job_status[0], 'running')
         with patch.dict('arc.job.adapters.ase_adapter.settings', {'ASE_WORKERS': {'emt': self.spool}}):
@@ -885,11 +889,13 @@ class TestASEWorker(unittest.TestCase):
         self.beat('w1')
         job = self.make_job()
         job.execute_queue()
-        claim_ticket(self.spool, 'w2')  # w2 has no heartbeat
+        claim_ticket(self.spool, 'w2')
         with patch.object(ASEAdapter, 'run_directly') as run_directly, self.assertLogs('arc', level='WARNING'):
             self.assertEqual(job._check_job_server_status(), 'done')
         run_directly.assert_called_once()
-        self.assertEqual(get_ticket_status(self.spool, job.job_id)[0], 'errored')
+        state, content = get_ticket_status(self.spool, job.job_id)
+        self.assertEqual(state, 'done')
+        self.assertTrue(content['ran_directly'])
 
     def test_a_queue_job_id_is_not_a_ticket(self):
         """A job ID from a cluster queue is checked with the queue, not the spool"""
@@ -899,6 +905,95 @@ class TestASEWorker(unittest.TestCase):
         self.assertFalse(job.is_worker_ticket())
         job.job_id = f'{job.job_name}_0123456789ab'
         self.assertTrue(job.is_worker_ticket())
+
+    def write_ticket(self, directory: str, ticket: str, **content) -> None:
+        """Write a ticket file into a spool directory ('queue' or 'running')."""
+        write_json_atomic(os.path.join(self.spool, directory, f'{ticket}.json'),
+                          {'input_path': '/path/to/input.yml', 'submitted': time.time(), **content},
+                          os.path.join(self.spool, 'tmp'))
+
+    def test_live_tickets(self):
+        """A ticket is live while a live worker can claim or runs it, and only until its deadline"""
+        self.beat('w1')
+        self.write_ticket('queue', 'queued')
+        self.write_ticket('queue', 'queued_past_deadline', deadline=time.time() - 1)
+        self.write_ticket('running', 'running_on_w1', worker='w1')
+        self.write_ticket('running', 'running_on_dead_w2', worker='w2')
+        self.write_ticket('running', 'being_claimed')
+        self.write_ticket('running', 'running_past_deadline', worker='w1', deadline=time.time() - 1)
+        self.assertEqual(sorted(live_tickets(self.spool)), ['being_claimed', 'queued', 'running_on_w1'])
+        self.beat('w1', age=600)
+        self.assertEqual(live_tickets(self.spool), list())
+
+    def test_an_incore_job_runs_without_the_worker(self):
+        """A job requested to run incore runs incore, even with a live worker"""
+        self.beat('w1')
+        job = self.make_job(execution_type='incore')
+        self.assertIsNone(job.worker_spool)
+        self.assertEqual(job.execution_type, 'incore')
+
+    def test_a_restored_worker_job_keeps_its_spool(self):
+        """A restored job whose ID is its worker ticket keeps the spool with no live worker, also for a level dict"""
+        job = self.make_job(calculator='uma', level={'method': 'uma'}, job_name='sp_a7', job_id='sp_a7_0123456789ab',
+                            server='local')
+        self.assertEqual(job.worker_spool, self.spool)
+        self.assertTrue(job.is_worker_ticket())
+        self.assertEqual(job.execution_type, 'queue')
+
+    def test_a_restored_queue_job_keeps_its_server(self):
+        """A restored job with a cluster queue ID stays on its server, even with a live worker"""
+        self.beat('w1')
+        job = self.make_job(job_name='sp_a7', job_id=123456, server='server1')
+        self.assertIsNone(job.worker_spool)
+        self.assertEqual(job.server, 'server1')
+
+    def test_delete_withdraws_a_queued_ticket(self):
+        """Deleting a worker job withdraws its queued ticket, and leaves a running one to its worker"""
+        self.beat('w1')
+        job = self.make_job()
+        job.execute_queue()
+        with patch('arc.job.adapter.delete_job') as delete_job:
+            job.delete()
+        delete_job.assert_not_called()
+        self.assertEqual(get_ticket_status(self.spool, job.job_id)[0], 'missing')
+        job.execute_queue()
+        claim_ticket(self.spool, 'w1')
+        with patch('arc.job.adapter.delete_job') as delete_job, self.assertLogs('arc', level='WARNING'):
+            job.delete()
+        delete_job.assert_not_called()
+        self.assertEqual(get_ticket_status(self.spool, job.job_id)[0], 'running')
+
+    def test_a_job_run_directly_is_not_run_again(self):
+        """A job run directly after its ticket vanished is marked done, so a second status check does not rerun it"""
+        self.beat('w1')
+        job = self.make_job()
+        job.execute_queue()
+        withdraw_ticket(self.spool, job.job_id)
+        with patch.object(ASEAdapter, 'run_directly') as run_directly, self.assertLogs('arc', level='WARNING'):
+            self.assertEqual(job._check_job_server_status(), 'done')
+        self.assertEqual(job._check_job_server_status(), 'done')
+        run_directly.assert_called_once()
+
+    def test_a_ticket_past_its_deadline_errors(self):
+        """A ticket that did not finish within the job's max_job_time is withdrawn and the job errors"""
+        self.beat('w1')
+        job = self.make_job()
+        job.max_job_time = -1.0
+        job.execute_queue()
+        with patch.dict('arc.job.adapters.ase_adapter.settings', {'ASE_WORKERS': {'emt': self.spool}}):
+            self.assertEqual(active_worker_tickets(), list())
+        with self.assertLogs('arc', level='ERROR'):
+            self.assertEqual(job._check_job_server_status(), 'errored')
+        self.assertEqual(os.listdir(os.path.join(self.spool, 'queue')), list())
+
+    def test_submitting_to_a_worker_removes_an_earlier_output(self):
+        """An output.yml left in the job directory by an earlier run is removed when the job is submitted"""
+        self.beat('w1')
+        job = self.make_job()
+        save_yaml_file(job.local_path_to_output_file, {'sp': 1.0})
+        job.execute_queue()
+        self.assertFalse(os.path.isfile(job.local_path_to_output_file))
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
