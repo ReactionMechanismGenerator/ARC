@@ -467,7 +467,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             )
         
         # Gaussian MaxOptCycles error - Part 2
-        # Intend to troubleshoot a MaxOptCycles error by adding opt=(RFO) to the input file
+        # Intend to troubleshoot a MaxOptCycles error by adding nosymm to the input file, keeping opt=(maxcycle=200)
         job_status = {'keywords': ['MaxOptCycles']}
         ess_trsh_methods = ['opt=(maxcycle=200)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
@@ -490,9 +490,10 @@ class TestGaussianAdapter(unittest.TestCase):
                                             )
         
         # Gaussian MaxOptCycles error - Part 3
-        # Intend to troubleshoot a MaxOptCycles error by adding opt=(GDIIS) and removing opt=(RFO) to the input file
+        # Intend to troubleshoot a MaxOptCycles error by adding opt=(GDIIS) and removing opt=(RFO) from the input file,
+        # keeping nosymm
         job_status = {'keywords': ['MaxOptCycles']}
-        ess_trsh_methods = ['opt=(maxcycle=200)', 'opt=(RFO)']
+        ess_trsh_methods = ['opt=(maxcycle=200)', 'NoSymm', 'opt=(RFO)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                             job_type, software, fine, memory_gb,
@@ -1156,7 +1157,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(RFO,calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    nosymm   scf=(direct,tight)
 
 ethanol
 
@@ -1183,7 +1184,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    nosymm   scf=(direct,tight)
 
 ethanol
 
