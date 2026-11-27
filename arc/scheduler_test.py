@@ -3021,7 +3021,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'top': [1, 3], 'scan': [3, 1, 2, 4], 'torsion': [2, 0, 1, 3],
                                   'success': None, 'invalidation_reason': '', 'dimensions': 1, 'trsh_methods': list(),
                                   'trsh_counter': 0, 'times_dihedral_set': 0, 'scan_path': ''}}
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_trsh_scan')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='project_test_trsh_scan', ess_settings=self.ess_settings,
                           species_list=[ts_spc],
@@ -3941,7 +3941,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                                   'times_dihedral_set': 1, 'trsh_methods': [{'change conformer': new_xyz}],
                                   'trsh_counter': 1}}
 
-        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_ts_rep_trsh')
+        project_directory = tempfile.mkdtemp(prefix='arc_test_')
         self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
         sched = Scheduler(project='test_ts_rep_trsh', ess_settings=self.ess_settings,
                           species_list=[ts_spc],
@@ -3972,7 +3972,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         mock_run_opt.assert_not_called()
         self.assertIsNone(sched.output['TS_trsh_rep']['convergence'])
         self.assertNotIn('Not calculating this species', sched.output['TS_trsh_rep']['errors'])
-        self.assertIsNone(sched.species_dict['TS_trsh_rep'].final_xyz)  # not moved to the scan point
+        self.assertIsNone(sched.species_dict['TS_trsh_rep'].final_xyz)
 
     @patch('arc.scheduler.Scheduler.run_job')
     def test_troubleshoot_scan_job_skips_isomorphism_for_ts_non_conformer(self, mock_run_job):

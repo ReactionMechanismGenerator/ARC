@@ -5061,9 +5061,6 @@ class Scheduler(object):
                     'change conformer' in used_trsh_method
                     and compare_confs(methods['change conformer'], used_trsh_method['change conformer'])
                     for used_trsh_method in used_trsh_methods):
-                # The TS was already re-optimized from this point and came back to a saddle whose scan leads here
-                # again: the torsion leaves the saddle point when scanned (e.g., it is part of a cyclic TS), so it is
-                # not a rotor of this TS. Keep the TS; the caller invalidates this rotor, which becomes a vibration.
                 logger.warning(f'Rotor {self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} of TS '
                                f'{label} leads again to a point the TS was already re-optimized from. Treating this '
                                f'torsion as a vibration.')
@@ -5368,17 +5365,18 @@ class Scheduler(object):
                          cpu_cores=cpu_cores,
                          shift=shift,
                          )
-        elif job.job_type in ('scan', 'directed_scan') and job.rotor_index is not None \
+        elif job.job_type == 'scan' and job.rotor_index is not None \
                 and job.rotor_index in self.species_dict[label].rotors_dict:
-            # A rotor scan that cannot be troubleshot costs only that rotor, which is then treated as a vibration.
-            # Switching a TS's guess here would discard a TS that already passed its frequency and IRC checks
-            # (e.g., an ASE scan, which has no troubleshooting methods, of a torsion at an MLIP TS).
             rotor = self.species_dict[label].rotors_dict[job.rotor_index]
             rotor['success'] = False
             rotor['invalidation_reason'] = (rotor.get('invalidation_reason') or '') + \
                 'The scan job failed and could not be troubleshot; '
             logger.warning(f'Could not troubleshoot the scan of rotor {job.rotor_index} of {label}; '
                            f'treating that torsion as a vibration.')
+        elif job.job_type == 'directed_scan' and job.rotor_index is not None \
+                and job.rotor_index in self.species_dict[label].rotors_dict:
+            logger.warning(f'Could not troubleshoot the point {job.dihedrals} of the directed scan of rotor '
+                           f'{job.rotor_index} of {label}; the directed scan is processed without it.')
         elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted \
                 and conformer is None:
             # Only switch TS guess when a full optimization fails, not when a single
