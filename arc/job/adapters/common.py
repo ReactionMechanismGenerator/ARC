@@ -373,9 +373,11 @@ def job_scf_reference_is_restricted(obj: JobAdapter) -> bool | None:
     writes while the input is being composed, so it is the reference that job actually ran with
     rather than the one the species would be given today. ``None`` is returned for a job carrying
     no memo, a pipe task among them, for a multi-species job, whose memo is a decision per species
-    rather than a single one, and for the force field, composite and semiempirical method types,
-    for which ARC writes no reference prefix and whose flag is therefore not a reference choice
-    ARC made.
+    rather than a single one, and for the force field and semiempirical method types, for which
+    ARC writes no reference prefix and whose flag is therefore not a reference choice ARC made. A
+    composite job reports ``False`` when ARC wrote the ``u`` prefix (a bi-rad singlet at a method in
+    ``U_PREFIXED_COMPOSITE_METHODS``) and ``None`` otherwise, since a composite written bare
+    declares no reference.
 
     Args:
         obj: The job adapter object.
@@ -387,6 +389,8 @@ def job_scf_reference_is_restricted(obj: JobAdapter) -> bool | None:
     if not isinstance(restricted, bool):
         return None
     level = getattr(obj, 'level', None)
+    if level is not None and level.method_type == 'composite' and restricted is False:
+        return False
     if level is None or level.method_type in REFERENCE_AGNOSTIC_METHOD_TYPES:
         return None
     return restricted

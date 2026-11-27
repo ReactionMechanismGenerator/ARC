@@ -12,6 +12,7 @@ import tempfile
 import unittest
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import arc.job.adapters.common as common
 from arc.job.adapters.gaussian import GaussianAdapter
@@ -479,6 +480,18 @@ H      0.00000000   -0.76336400   -0.47261500"""
             self.assertIn(job.level.method_type, ['force_field', 'composite', 'semiempirical'])
             self.assertIsNone(common.job_scf_reference_is_restricted(job),
                               msg=f'{method} reported a reference')
+
+    def test_job_scf_reference_is_restricted_reports_a_bi_rad_singlet_composite_as_unrestricted(self):
+        """Test that a composite job written with the u prefix reports its unrestricted reference, a bare one none"""
+        for method in ['cbs-qb3', 'g4']:
+            job = self._singlet_job(method=method, number_of_radicals=2)
+            self.assertTrue(common.is_restricted(job))
+            self.assertIsNone(common.job_scf_reference_is_restricted(job))
+            with patch.object(common, 'U_PREFIXED_COMPOSITE_METHODS', [method]):
+                job = self._singlet_job(method=method, number_of_radicals=2)
+                self.assertFalse(common.is_restricted(job))
+            self.assertIs(common.job_scf_reference_is_restricted(job), False,
+                          msg=f'a bi-rad singlet u{method} job did not report its unrestricted reference')
 
     def test_job_scf_reference_is_restricted_declines_a_multi_species_memo(self):
         """Test that a per-species memo is not read as a single decision"""
