@@ -170,8 +170,7 @@ def delete_job(job_id: int | str):
         running_jobs = check_running_jobs_ids()
         if job_id in running_jobs:
             logger.error(f'Job {job_id} was scheduled for deletion, but the deletion command has appeared to errored. '
-                         f'The job is still running.')
-            raise RuntimeError(f'Could not delete job {job_id}')
+                         f'The job is still running; leaving it to finish on its own.')
         else:
             logger.info(f'Job {job_id} is no longer running.')
 

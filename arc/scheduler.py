@@ -39,6 +39,7 @@ from arc.exceptions import (DependencyError,
                             TrshError,
                             )
 from arc.imports import settings
+from arc.job.adapters.ase_adapter import active_worker_tickets
 from arc.job.adapters.common import (adopted_reference_is_unrestricted,
                                       all_families_ts_adapters,
                                       default_incore_adapters,
@@ -1279,6 +1280,7 @@ class Scheduler(object):
             if job_type not in self.job_dict[label].keys():
                 # Jobs of this type haven't been spawned for label
                 self.job_dict[label][job_type] = dict()
+            self.job_dict[label][job_type].pop(job.job_name, None)
             self.job_dict[label][job_type][job.job_name] = job
         elif conformer is not None:
             # Running a conformer DFT job. Append differently to job_dict.
@@ -4846,6 +4848,8 @@ class Scheduler(object):
                         self.server_job_ids.extend(ssh.check_running_jobs_ids())
                 else:
                     self.server_job_ids.extend(check_running_jobs_ids())
+        if specific_server in (None, 'local'):
+            self.server_job_ids.extend(active_worker_tickets())
 
     def get_completed_incore_jobs(self):
         """
@@ -5073,14 +5077,9 @@ class Scheduler(object):
                            f'"trsh_ess_jobs" to "True".')
             return None
 
-        previous_job_num, latest_job_num = -1, -1
-        job = None
-        for job_name in self.job_dict[label]['opt'].keys():  # get the latest Job object for the species / TS
-            job_name_int = int(job_name[5:])
-            if job_name_int > latest_job_num:
-                previous_job_num = latest_job_num
-                latest_job_num = job_name_int
-                job = self.job_dict[label]['opt'][job_name]
+        opt_jobs = list(self.job_dict[label]['opt'].values())
+        job = opt_jobs[-1] if opt_jobs else None
+        previous_job = opt_jobs[-2] if len(opt_jobs) > 1 else None
         if job.job_status[0] == 'done':
             if job.job_status[1]['status'] == 'done':
                 if job.fine:
@@ -5101,8 +5100,7 @@ class Scheduler(object):
             else:
                 trsh_opt = True
                 # job passed on the server, but failed in ESS calculation
-                if previous_job_num >= 0 and job.fine:
-                    previous_job = self.job_dict[label]['opt']['opt_a' + str(previous_job_num)]
+                if previous_job is not None and job.fine:
                     if not previous_job.fine and previous_job.job_status[0] == 'done' \
                             and previous_job.job_status[1]['status'] == 'done' \
                                 and 'all_attempted' in job.ess_trsh_methods:

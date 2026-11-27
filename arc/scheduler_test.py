@@ -5105,6 +5105,19 @@ class TestScanSoftwareStamp(unittest.TestCase):
         sched.determine_most_stable_conformer.assert_not_called()
         sched.run_opt_job.assert_not_called()
 
+    def test_troubleshoot_opt_jobs_takes_the_jobs_in_spawn_order(self):
+        """The latest opt job is the last one spawned, also when the job numbers restarted in between"""
+        from arc.scheduler import Scheduler
+
+        coarse, fine = MagicMock(fine=False), MagicMock(fine=True, ess_trsh_methods=['all_attempted'])
+        coarse.job_status = ['done', {'status': 'done'}]
+        fine.job_status = ['done', {'status': 'errored'}]
+        sched = MagicMock(trsh_ess_jobs=True)
+        sched.job_dict = {'spc': {'opt': {'opt_a9999': coarse, 'opt_a1': fine}}}
+        Scheduler.troubleshoot_opt_jobs(sched, label='spc')
+        sched.parse_opt_geo.assert_called_once_with(label='spc', job=coarse)
+        sched.troubleshoot_ess.assert_not_called()
+
 
 class TestSchedulerIRCSpecies(unittest.TestCase):
     """

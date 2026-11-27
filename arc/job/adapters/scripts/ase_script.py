@@ -7,9 +7,17 @@ Standardizes interaction with various calculators.
 """
 
 import argparse
+import contextlib
+import json
 import math
 import os
+import signal
+import socket
 import sys
+import threading
+import time
+import traceback
+import uuid
 import warnings
 import yaml
 import numpy as np
@@ -35,9 +43,9 @@ N_A = 6.02214179e23
 
 def to_kJmol(energy_ev: float) -> float:
     """
-    Convert ASE default (eV) to kJ/mol.
+    Convert ASE default (eV) to kJ/mol, as a plain Python float.
     """
-    return energy_ev * e * N_A / 1000.0
+    return float(energy_ev * e * N_A / 1000.0)
 
 
 def read_yaml_file(path: str):
@@ -61,25 +69,73 @@ def save_yaml_file(path: str, content: dict):
         f.write(yaml.dump(data=content))
 
 
-def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1):
+def load_torchani_model(model_name: str, device, cache: dict | None = None, double: bool = False):
+    """
+    Load a TorchANI model, reusing it from ``cache`` if given (the persistent worker's model cache).
+    Single- and double-precision models are cached under separate keys.
+    """
+    key = ('torchani', model_name.lower(), str(device), double)
+    if cache is not None and key in cache:
+        return cache[key]
+    import torchani
+    if model_name.lower() == 'ani1ccx':
+        model = torchani.models.ANI1ccx(periodic_table_index=True).to(device)
+    elif model_name.lower() == 'ani1x':
+        model = torchani.models.ANI1x(periodic_table_index=True).to(device)
+    else:
+        model = torchani.models.ANI2x(periodic_table_index=True).to(device)
+    if double:
+        model = model.double()
+    if cache is not None:
+        cache[key] = model
+    return model
+
+
+def load_uma_predictor(calc_config: dict, cache: dict | None = None):
+    """
+    Load a UMA predictor, reusing it from ``cache`` if given (the persistent worker's model cache).
+
+    ``inference_settings`` optionally names a fairchem inference preset.
+
+    Args:
+        calc_config (dict): The run settings.
+        cache (dict, optional): Loaded models, kept across jobs by a persistent worker.
+    """
+    from fairchem.core import pretrained_mlip
+    model = calc_config.get('model', 'uma-s-1p2')
+    device = calc_config.get('device', 'cpu')
+    preset = calc_config.get('inference_settings')
+    key = ('uma', model, device, preset)
+    predictor = cache.get(key) if cache is not None else None
+    if predictor is None:
+        predict_kwargs = {'device': device}
+        if preset:
+            predict_kwargs['inference_settings'] = preset
+        predictor = pretrained_mlip.get_predict_unit(model, **predict_kwargs)
+        if cache is not None:
+            cache[key] = predictor
+    return predictor
+
+
+def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1, cache: dict | None = None):
     """
     Initialize the ASE calculator based on settings.
+
+    Args:
+        calc_config (dict): The run settings.
+        charge (int): The total charge.
+        multiplicity (int): The spin multiplicity.
+        cache (dict, optional): Loaded models, kept across jobs by a persistent worker. A new calculator
+                                is still built for every job, so no results are carried over between jobs.
     """
     name = calc_config.get('calculator', '').lower()
     kwargs = calc_config.get('calculator_kwargs', {})
     
     if name == 'torchani':
         import torch
-        import torchani
         model_name = calc_config.get('model', 'ANI2x')
         device = torch.device(calc_config.get('device', 'cpu'))
-        if model_name.lower() == 'ani1ccx':
-            model = torchani.models.ANI1ccx(periodic_table_index=True).to(device)
-        elif model_name.lower() == 'ani1x':
-            model = torchani.models.ANI1x(periodic_table_index=True).to(device)
-        else:
-            model = torchani.models.ANI2x(periodic_table_index=True).to(device)
-        return model.ase()
+        return load_torchani_model(model_name, device, cache).ase()
     
     elif name == 'xtb':
         from xtb.ase.calculator import XTB
@@ -100,12 +156,9 @@ def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1):
     elif name in ('uma', 'fairchem'):
         # UMA (Meta FAIR fairchem-core). Total charge and spin (= multiplicity) are conditioned on
         # the ase.Atoms via atoms.info in main(); they are not calculator kwargs.
-        from fairchem.core import FAIRChemCalculator, pretrained_mlip
-        model = calc_config.get('model', 'uma-s-1p2')
-        device = calc_config.get('device', 'cpu')
-        task = calc_config.get('task', 'omol')
-        predictor = pretrained_mlip.get_predict_unit(model, device=device)
-        return FAIRChemCalculator(predictor, task_name=task)
+        from fairchem.core import FAIRChemCalculator
+        predictor = load_uma_predictor(calc_config, cache=cache)
+        return FAIRChemCalculator(predictor, task_name=calc_config.get('task', 'omol'))
 
 
     from ase.calculators.calculator import get_calculator_class
@@ -562,9 +615,16 @@ def numpy_vibrational_analysis(masses: np.ndarray, hessian: np.ndarray, is_linea
     }
 
 
-def run_vibrational_analysis(atoms: Atoms, settings: dict):
+def run_vibrational_analysis(atoms: Atoms, settings: dict, work_dir: str | None = None, cache: dict | None = None):
     """
     Perform vibrational analysis and return frequencies, modes, and other properties.
+
+    Args:
+        atoms (Atoms): The structure, with its calculator attached.
+        settings (dict): The run settings.
+        work_dir (str, optional): The job's directory, which holds the finite-difference cache (``vib_tmp``),
+                                  cleared before and after the run. Defaults to the current working directory.
+        cache (dict, optional): Loaded models, kept across jobs by a persistent worker.
     """
     if settings.get('calculator', '').lower() == 'torchani':
         try:
@@ -572,17 +632,12 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict):
             import torchani
             device = torch.device(settings.get('device', 'cpu'))
             model_name = settings.get('model', 'ANI2x')
-            if model_name.lower() == 'ani1ccx':
-                model = torchani.models.ANI1ccx(periodic_table_index=True).to(device)
-            elif model_name.lower() == 'ani1x':
-                model = torchani.models.ANI1x(periodic_table_index=True).to(device)
-            else:
-                model = torchani.models.ANI2x(periodic_table_index=True).to(device)
+            model = load_torchani_model(model_name, device, cache, double=True)
             
             species = torch.tensor(atoms.get_atomic_numbers(), device=device, dtype=torch.long).unsqueeze(0)
             coordinates = torch.from_numpy(atoms.get_positions()).unsqueeze(0).requires_grad_(True)
             masses = torchani.utils.get_atomic_masses(species)
-            energies = model.double()((species, coordinates)).energies
+            energies = model((species, coordinates)).energies
             hessian = torchani.utils.hessian(coordinates, energies=energies)
             freqs, modes, force_constants, reduced_masses = torchani.utils.vibrational_analysis(masses, hessian, mode_type='MDN')
             
@@ -597,9 +652,13 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict):
         except Exception as exc:
             print(f'TorchANI vibrational analysis failed, falling back to ASE: {exc}')
 
-    vib = Vibrations(atoms, name='vib_tmp', nfree=4)
-    vib.run()
-    vib_data = vib.get_vibrations()
+    vib = Vibrations(atoms, name=os.path.join(work_dir or os.getcwd(), 'vib_tmp'), nfree=4)
+    vib.clean()
+    try:
+        vib.run()
+        vib_data = vib.get_vibrations()
+    finally:
+        vib.clean()
     try:
         hessian = vib_data.get_hessian_2d()
     except AttributeError:
@@ -607,10 +666,7 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict):
         if len(hessian.shape) == 4:
             n_atoms = hessian.shape[0]
             hessian = hessian.reshape(3 * n_atoms, 3 * n_atoms)
-    masses = atoms.get_masses()
-    vib.clean()
-    is_lin = is_linear(atoms)
-    return numpy_vibrational_analysis(masses, hessian, is_linear=is_lin)
+    return numpy_vibrational_analysis(atoms.get_masses(), hessian, is_linear=is_linear(atoms))
 
 
 def read_trajectory(path: str) -> list:
@@ -621,23 +677,31 @@ def read_trajectory(path: str) -> list:
     return read(path, index=':') if os.path.isfile(path) else list()
 
 
-def main():
+def resolve_input_path(yml_path: str) -> str:
     """
-    Main execution logic.
+    Resolve the path of a job's input.yml, given it or its directory.
     """
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--yml_path', type=str, default='input.yml')
-    args = parser.parse_args()
-    
-    input_path = os.path.abspath(args.yml_path)
+    input_path = os.path.abspath(yml_path)
     if os.path.isdir(input_path):
         input_path = os.path.join(input_path, 'input.yml')
-    
-    try:
+    return input_path
+
+
+def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None = None) -> dict:
+    """
+    Run one ASE job and write its output.yml next to its input.yml.
+
+    Args:
+        input_path (str): The path to the job's input.yml.
+        input_dict (dict, optional): The parsed input.yml. Read from ``input_path`` if not given.
+        cache (dict, optional): Loaded models, kept across jobs by a persistent worker.
+
+    Returns:
+        dict: The output, as written to output.yml.
+    """
+    if input_dict is None:
         input_dict = read_yaml_file(input_path)
-    except Exception as exc:
-        print(f"Error reading input file: {exc}")
-        return
+    job_dir = os.path.dirname(input_path)
 
     job_type = input_dict.get('job_type')
     xyz = input_dict.get('xyz')
@@ -648,7 +712,7 @@ def main():
 
     atoms = Atoms(symbols=xyz['symbols'], positions=xyz['coords'])
     atoms.info.update({'charge': charge, 'spin': multiplicity})  # UMA (omol) conditions on these
-    calc = get_calculator(settings, charge, multiplicity)
+    calc = get_calculator(settings, charge, multiplicity, cache=cache)
     atoms.calc = calc
     
     apply_constraints(atoms, input_dict.get('constraints'))
@@ -751,13 +815,335 @@ def main():
 
     if job_type in ['freq', 'optfreq']:
         try:
-            freq_results = run_vibrational_analysis(atoms, settings)
+            freq_results = run_vibrational_analysis(atoms, settings, work_dir=job_dir, cache=cache)
             output.update(freq_results)
         except Exception as exc:
             output['error'] = output.get('error', '') + f" Frequency calculation failed: {exc}"
 
-    output_path = os.path.join(os.path.dirname(input_path), 'output.yml')
+    output_path = os.path.join(job_dir, 'output.yml')
     save_yaml_file(output_path, output)
+    return output
+
+
+SPOOL_SUBDIRS = ('queue', 'running', 'done', 'workers', 'tmp')
+HEARTBEAT_INTERVAL = 5.0
+HEARTBEAT_STALE = 30.0
+
+
+def spool_dirs(spool_dir: str) -> dict:
+    """
+    Return the subdirectories of a persistent worker's spool by name, creating any that are missing.
+
+    A ticket is a JSON file naming a job's input.yml. It is submitted to ``queue/``, moved to ``running/``
+    by the worker that claims it (an atomic rename, so several workers can share a spool), and finished
+    as ``done/<ticket>.json`` with ``'status'`` ``'done'`` or ``'errored'``. A worker keeps the mtime of
+    ``workers/<worker>.json`` fresh every ``HEARTBEAT_INTERVAL`` seconds while it lives, and is presumed
+    dead after ``HEARTBEAT_STALE`` seconds without a heartbeat. Files are written in ``tmp/`` and renamed
+    into place.
+    """
+    dirs = {name: os.path.join(spool_dir, name) for name in SPOOL_SUBDIRS}
+    for path in dirs.values():
+        os.makedirs(path, exist_ok=True)
+    return dirs
+
+
+def write_json_atomic(path: str, content: dict, tmp_dir: str) -> None:
+    """
+    Write a JSON file so that readers never see it partially written.
+    """
+    tmp_path = os.path.join(tmp_dir, f'{uuid.uuid4().hex}.json')
+    with open(tmp_path, 'w') as f:
+        json.dump(content, f)
+    os.replace(tmp_path, path)
+
+
+def read_json(path: str) -> dict | None:
+    """
+    Read a JSON file, returning ``None`` if it does not exist (any more).
+    """
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+
+
+def live_workers(spool_dir: str, stale_after: float = HEARTBEAT_STALE) -> list:
+    """
+    Return the IDs of the workers on a spool whose heartbeat is recent.
+    """
+    workers_dir = os.path.join(spool_dir, 'workers')
+    if not os.path.isdir(workers_dir):
+        return list()
+    now, alive = time.time(), list()
+    for file_name in os.listdir(workers_dir):
+        try:
+            if now - os.path.getmtime(os.path.join(workers_dir, file_name)) < stale_after:
+                alive.append(file_name[:-len('.json')])
+        except FileNotFoundError:
+            continue
+    return alive
+
+
+def submit_ticket(spool_dir: str, input_path: str, label: str = '', max_run_time: float | None = None) -> str:
+    """
+    Submit a job to a spool.
+
+    Args:
+        spool_dir (str): The spool directory.
+        input_path (str): The absolute path to the job's input.yml.
+        label (str, optional): A readable label (e.g., the job name), used in the ticket ID.
+        max_run_time (float, optional): Seconds after submission at which the ticket's ``deadline`` passes.
+
+    Returns:
+        str: The ticket ID.
+    """
+    dirs = spool_dirs(spool_dir)
+    ticket = f'{label}_{uuid.uuid4().hex[:12]}' if label else uuid.uuid4().hex
+    submitted = time.time()
+    content = {'input_path': input_path, 'submitted': submitted}
+    if max_run_time is not None:
+        content['deadline'] = submitted + max_run_time
+    write_json_atomic(os.path.join(dirs['queue'], f'{ticket}.json'), content, dirs['tmp'])
+    return ticket
+
+
+def withdraw_ticket(spool_dir: str, ticket: str) -> bool:
+    """
+    Withdraw a ticket that no worker has claimed yet.
+
+    Returns:
+        bool: Whether the ticket was withdrawn (``False`` if a worker had already claimed it).
+    """
+    try:
+        os.remove(os.path.join(spool_dir, 'queue', f'{ticket}.json'))
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def get_ticket_status(spool_dir: str, ticket: str) -> tuple:
+    """
+    Get the state of a ticket: 'queued', 'running', 'done', 'errored', or 'missing'.
+    The directories are read in the order a ticket moves through them: queue, running, done.
+
+    Returns:
+        tuple: The state, and the ticket's content (``None`` if missing).
+    """
+    for state in ('queue', 'running', 'done'):
+        content = read_json(os.path.join(spool_dir, state, f'{ticket}.json'))
+        if content is not None:
+            if state == 'done':
+                return content.get('status', 'done'), content
+            return {'queue': 'queued', 'running': 'running'}[state], content
+    return 'missing', None
+
+
+def finish_ticket(spool_dir: str, ticket: str, content: dict) -> None:
+    """
+    Mark a ticket as finished. The ``done`` marker is written before the ``running`` one is removed.
+    """
+    dirs = spool_dirs(spool_dir)
+    write_json_atomic(os.path.join(dirs['done'], f'{ticket}.json'), content, dirs['tmp'])
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(os.path.join(dirs['running'], f'{ticket}.json'))
+
+
+def ticket_is_live(state: str, content: dict | None, workers: list, now: float | None = None) -> bool:
+    """
+    Whether a queued or running ticket can still finish on its spool: its deadline has not passed, and a worker
+    can claim it (queued: any live worker) or runs it (running: its worker is live; any live worker while the
+    claiming worker has not yet recorded itself in the ticket). A ticket whose content is ``None`` is live.
+
+    Args:
+        state (str): The ticket's state, 'queued' or 'running'.
+        content (dict): The ticket's content.
+        workers (list): The IDs of the spool's live workers.
+        now (float, optional): The current time.
+
+    Returns:
+        bool: Whether the ticket is live.
+    """
+    if content is None:
+        return True
+    if content.get('deadline') is not None and (now or time.time()) > content['deadline']:
+        return False
+    if state == 'queued' or content.get('worker') is None:
+        return bool(workers)
+    return content['worker'] in workers
+
+
+def live_tickets(spool_dir: str) -> list:
+    """
+    The IDs of a spool's queued and running tickets that are live (see ``ticket_is_live()``).
+    A ticket that leaves its directory while the spool is read is included.
+    """
+    workers, now, tickets = live_workers(spool_dir), time.time(), list()
+    for directory, state in (('queue', 'queued'), ('running', 'running')):
+        path = os.path.join(spool_dir, directory)
+        if not os.path.isdir(path):
+            continue
+        for file_name in os.listdir(path):
+            if file_name.endswith('.json') \
+                    and ticket_is_live(state, read_json(os.path.join(path, file_name)), workers, now):
+                tickets.append(file_name[:-len('.json')])
+    return tickets
+
+
+def claim_ticket(spool_dir: str, worker_id: str) -> tuple | None:
+    """
+    Claim the oldest queued ticket for a worker.
+
+    Returns:
+        tuple: The ticket ID and its content, or ``None`` if nothing is queued.
+    """
+    dirs = spool_dirs(spool_dir)
+    queued = list()
+    for file_name in os.listdir(dirs['queue']):
+        try:
+            queued.append((os.path.getmtime(os.path.join(dirs['queue'], file_name)), file_name))
+        except FileNotFoundError:
+            continue
+    for _, file_name in sorted(queued):
+        running_path = os.path.join(dirs['running'], file_name)
+        try:
+            os.rename(os.path.join(dirs['queue'], file_name), running_path)
+        except FileNotFoundError:
+            continue
+        content = read_json(running_path) or dict()
+        content.update({'worker': worker_id, 'started': time.time()})
+        write_json_atomic(running_path, content, dirs['tmp'])
+        return file_name[:-len('.json')], content
+    return None
+
+
+def start_heartbeat(path: str, info: dict, interval: float = HEARTBEAT_INTERVAL) -> threading.Event:
+    """
+    Keep a worker's heartbeat file fresh from a background thread, also while a job runs.
+
+    Returns:
+        threading.Event: Set it to stop the heartbeat.
+    """
+    stop = threading.Event()
+    tmp_dir = os.path.join(os.path.dirname(os.path.dirname(path)), 'tmp')
+
+    def beat():
+        while True:
+            try:
+                os.utime(path)
+            except FileNotFoundError:
+                write_json_atomic(path, info, tmp_dir)
+            if stop.wait(interval):
+                break
+
+    write_json_atomic(path, info, tmp_dir)
+    threading.Thread(target=beat, daemon=True).start()
+    return stop
+
+
+def run_ticket(spool_dir: str, ticket: str, content: dict, worker_id: str, cache: dict) -> dict:
+    """
+    Run a claimed ticket's job in its own directory and mark the ticket as finished.
+    Any failure, including a ``sys.exit()`` in the job, is recorded in the ticket instead of ending the worker.
+
+    Returns:
+        dict: The ticket's final content.
+    """
+    t0, cwd = time.time(), os.getcwd()
+    result = {'input_path': content.get('input_path'), 'worker': worker_id, 'status': 'done'}
+    try:
+        os.chdir(os.path.dirname(content['input_path']))
+        run_job(content['input_path'], cache=cache)
+    except (Exception, SystemExit):
+        result.update({'status': 'errored', 'error': traceback.format_exc()})
+    finally:
+        os.chdir(cwd)
+    finished = time.time()
+    result.update({'started': t0, 'finished': finished, 'run_time': finished - t0})
+    finish_ticket(spool_dir, ticket, result)
+    return result
+
+
+def serve(spool_dir: str, max_jobs: int | None = None, idle_timeout: float | None = None,
+          poll_interval: float = 0.5) -> int:
+    """
+    Run as a persistent worker: claim and run the spool's tickets one at a time, keeping loaded models.
+    SIGTERM or SIGINT stops the worker after its current job; a second signal acts as usual.
+
+    Args:
+        spool_dir (str): The spool directory.
+        max_jobs (int, optional): Stop after this many jobs.
+        idle_timeout (float, optional): Stop after this many seconds without a ticket.
+        poll_interval (float, optional): Seconds between checks of an empty queue.
+
+    Returns:
+        int: The number of jobs run.
+    """
+    dirs = spool_dirs(os.path.abspath(spool_dir))
+    spool_dir = os.path.dirname(dirs['queue'])
+    worker_id = f'{socket.gethostname()}_{os.getpid()}'
+    heartbeat_path = os.path.join(dirs['workers'], f'{worker_id}.json')
+    stop_heartbeat = start_heartbeat(heartbeat_path, {'pid': os.getpid(), 'host': socket.gethostname(),
+                                                      'started': time.time()})
+    stopping = threading.Event()
+    previous_handlers = dict()
+
+    def request_stop(signum, frame):
+        stopping.set()
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
+
+    if threading.current_thread() is threading.main_thread():
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            previous_handlers[sig] = signal.signal(sig, request_stop)
+    print(f'ASE worker {worker_id} serving {spool_dir}', flush=True)
+
+    cache, n_jobs, idle_since = dict(), 0, time.time()
+    try:
+        while not stopping.is_set() and (max_jobs is None or n_jobs < max_jobs):
+            claimed = claim_ticket(spool_dir, worker_id)
+            if claimed is None:
+                if idle_timeout is not None and time.time() - idle_since > idle_timeout:
+                    break
+                stopping.wait(poll_interval)
+                continue
+            ticket, content = claimed
+            result = run_ticket(spool_dir, ticket, content, worker_id, cache)
+            print(f'{ticket}: {result["status"]} in {result["run_time"]:.1f} s', flush=True)
+            n_jobs, idle_since = n_jobs + 1, time.time()
+    finally:
+        stop_heartbeat.set()
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(heartbeat_path)
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
+    return n_jobs
+
+
+def main():
+    """
+    Main execution logic.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--yml_path', type=str, default='input.yml')
+    parser.add_argument('--serve', type=str, default=None, metavar='SPOOL_DIR',
+                        help='Run as a persistent worker on this spool directory instead of running one job.')
+    parser.add_argument('--max_jobs', type=int, default=None, help='Worker: stop after this many jobs.')
+    parser.add_argument('--idle_timeout', type=float, default=None,
+                        help='Worker: stop after this many seconds without a job.')
+    args = parser.parse_args()
+
+    if args.serve:
+        serve(args.serve, max_jobs=args.max_jobs, idle_timeout=args.idle_timeout)
+        return
+
+    input_path = resolve_input_path(args.yml_path)
+    try:
+        input_dict = read_yaml_file(input_path)
+    except Exception as exc:
+        print(f"Error reading input file: {exc}")
+        return
+    run_job(input_path, input_dict)
 
 
 if __name__ == '__main__':
