@@ -4060,6 +4060,26 @@ H       2.06762600   -0.87038800    0.00054900
 H       1.54537900    0.66246700    0.93334000"""
 
 
+BUTANOL_C3_HO2_TS = """C    -1.36752930   -0.89536926    0.02583360
+C    -0.69029807    0.22775237    0.79974377
+O    -1.09409042    1.48432199    0.26312102
+C     0.83895616    0.12750132    0.82387050
+C     1.50591319    0.17681012   -0.54475879
+H    -2.45613499   -0.80922296    0.11486749
+H    -1.14334801   -0.84150068   -1.04445063
+H    -1.06545698   -1.87688729    0.40308725
+H    -1.04867557    0.19976677    1.83500239
+H    -0.91422222    1.47882045   -0.69202877
+H     1.13537238   -0.79854081    1.33038369
+H     1.32580815    1.15393065    1.55319758
+H     1.26651496    1.10317554   -1.07511971
+H     2.59397839    0.13145224   -0.43012231
+H     1.20443523   -0.66968536   -1.16841926
+O     1.75856547    2.06631227    2.20148831
+O     3.04343650    1.77748249    2.38745555
+H     3.20385700    2.11569679    1.49259447"""
+
+
 def reorder_xyz(xyz: str, order: list[int]) -> dict:
     """
     Return an xyz dict whose atom ``i`` is atom ``order[i]`` of ``xyz``.
@@ -4210,6 +4230,41 @@ class TestTSGuessPermutedFold(unittest.TestCase):
         ts_b = make_opt_tsg(1, 'rits', mirror, 0.0)
         self.assertFalse(ts_a.almost_equal_tsgs(ts_b))
 
+    def test_cluster_tsgs_never_folds_a_converged_guess_into_an_unconverged_renumbered_copy(self):
+        """A renumbered copy folds only when both guesses carry an optimized geometry, in either order."""
+        swapped = reorder_xyz(TS0_CONF_0, [0, 1, 2, 3, 5, 4, 6])
+        for unconverged_first in (True, False):
+            unconverged = TSGuess(index=0, method='goflow', success=True, xyz=TS0_CONF_0)
+            converged = make_opt_tsg(1, 'linear', swapped, -5.0)
+            ts = self.cluster([unconverged, converged] if unconverged_first else [converged, unconverged])
+            self.assertEqual(len(ts.ts_guesses), 2)
+            survivor = next(tsg for tsg in ts.ts_guesses if tsg.index == 1)
+            self.assertEqual(survivor.energy, -5.0)
+            self.assertIsNotNone(survivor.opt_xyz)
+            self.assertEqual(survivor.method_sources, ['linear'])
+
+    def test_cluster_tsgs_keeps_the_map_order_guess_when_an_earlier_guess_swaps_the_migrating_h(self):
+        """An earlier iC3H7 <=> nC3H7 guess with the migrating H (6) and a spectator H (3) swapped does not absorb
+        the later guess in the reaction's atom order (swapping them in the normal modes too fails the NMD check)."""
+        xyz = check_xyz_dict(os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS3.log'))
+        order = [0, 1, 2, 6, 4, 5, 3, 7, 8, 9]
+        swapped = xyz_from_data(coords=[xyz['coords'][i] for i in order], symbols=[xyz['symbols'][i] for i in order])
+        ts = self.cluster([make_opt_tsg(0, 'goflow', swapped, 0.0),
+                           make_opt_tsg(1, 'heuristics', xyz, 0.0)])
+        map_order = [tsg for tsg in ts.ts_guesses if tsg.index == 1]
+        self.assertEqual(len(map_order), 1)
+        self.assertEqual(map_order[0].opt_xyz, xyz)
+        self.assertEqual(map_order[0].method_sources, ['heuristics'])
+
+    def test_cluster_tsgs_keeps_a_renumbered_mirror_image_apart(self):
+        """The C3 H abstraction TS of (S)-2-butanol + HO2 does not fold into its renumbered mirror listed first."""
+        xyz = str_to_xyz(BUTANOL_C3_HO2_TS)
+        order = [0, 1, 2, 3, 4, 7, 6, 5, 8, 9, 11, 10, 14, 13, 12, 15, 16, 17]
+        mirror = reflect_xyz(reorder_xyz(BUTANOL_C3_HO2_TS, order))
+        ts = self.cluster([make_opt_tsg(0, 'rits', mirror, 0.0),
+                           make_opt_tsg(1, 'heuristics', xyz, 0.0)])
+        self.assertEqual([tsg.index for tsg in ts.ts_guesses], [0, 1])
+        self.assertEqual([tsg.method_sources for tsg in ts.ts_guesses], [['rits'], ['heuristics']])
 
 
 class TestTsAdapterFailuresPersistence(unittest.TestCase):
