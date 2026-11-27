@@ -7206,6 +7206,64 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                     sched.settle_nmd_deferrals()
                 mock_switch_ts.assert_not_called()
 
+    def change_ts_conformer(self, sched: Scheduler, ts_label: str):
+        """
+        Give a TS one rotor, and run troubleshoot_scan_job with a 'change conformer' action for it.
+
+        Args:
+            sched (Scheduler): The Scheduler instance.
+            ts_label (str): The TS species label.
+        """
+        ts_spc = sched.species_dict[ts_label]
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'scan': [3, 1, 2, 4], 'torsion': [2, 0, 1, 3], 'scan_path': '',
+                                  'invalidation_reason': '', 'success': None, 'symmetry': None,
+                                  'times_dihedral_set': 0, 'trsh_methods': [], 'trsh_counter': 0}}
+        xyz = ts_spc.final_xyz or ts_spc.get_xyz()
+        new_xyz = dict(xyz, coords=tuple((x + 0.1, y, z) if i == 0 else (x, y, z)
+                                         for i, (x, y, z) in enumerate(xyz['coords'])))
+        sched.trsh_ess_jobs, sched.trsh_rotors = True, True
+        scan_job = SimpleNamespace(species_label=ts_label, rotor_index=0, torsions=[[2, 0, 1, 3]],
+                                   job_name='scan_a300')
+        success, _ = sched.troubleshoot_scan_job(job=scan_job, methods={'change conformer': new_xyz,
+                                                                        'energy_gap': 3.2})
+        self.assertTrue(success)
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_a_conformer_change_of_a_deferred_ts_keeps_its_replacement_opt(self, mock_run_opt):
+        """Test that a deferred TS re-optimized from a lower conformer found by a rotor scan is not switched to
+        its next guess by the deferral of its previous geometry before the new geometry is checked."""
+        ts_label = 'TS_defer_cc'
+        sched = self.make_deferred_scheduler(
+            ts_label=ts_label, project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_cc')
+        self.change_ts_conformer(sched, ts_label)
+        mock_run_opt.assert_called_once_with(ts_label)
+        with patch.object(sched, 'switch_ts') as mock_switch_ts:
+            sched.settle_nmd_deferrals()
+        mock_switch_ts.assert_not_called()
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_an_irc_accepted_ts_with_a_new_conformer_is_not_accepted_on_the_previous_irc_verdict(self, mock_run_opt):
+        """Test that an IRC-accepted near-miss TS re-optimized from a lower conformer, whose new freq is again a
+        near miss while no IRC work of the new geometry is left, is not accepted on the previous geometry's IRC."""
+        sched, ts_label, job, _ = self.make_near_miss_freq_scheduler(
+            project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_cc_irc', irc=True)
+        ts_spc = sched.species_dict[ts_label]
+        for job_type in sched.output[ts_label]['job_types']:
+            sched.output[ts_label]['job_types'][job_type] = True
+        sched.check_freq_job(label=ts_label, job=job)
+        ts_spc.ts_checks['IRC'] = True
+        sched.process_irc_verdict(ts_label=ts_label, rxn=None)
+        self.assertIs(sched.output[ts_label]['convergence'], True)
+        self.change_ts_conformer(sched, ts_label)
+        self.assertNotIn(NMD_ACCEPTED_ON_IRC_WARNING, ts_spc.ts_checks['warnings'])
+        self.assertNotIn(NMD_ACCEPTED_ON_IRC_WARNING, sched.output[ts_label]['warnings'])
+        self.assertFalse(sched.is_irc_pending(ts_label))
+        sched.check_freq_job(label=ts_label, job=job)
+        sched.settle_nmd_deferrals()
+        self.assertFalse(sched.has_current_nmd_acceptance(ts_label))
+        self.assertIsNot(ts_spc.ts_checks['IRC'], True)
+        self.assertIsNot(sched.output[ts_label]['convergence'], True)
+
     def test_a_deferred_ts_whose_irc_jobs_ended_without_output_is_switched_once_nothing_is_pending(self):
         """Test that a deferred TS waits while IRC work is pending, and is switched once none is left."""
         ts_label = 'TS_defer_crash'

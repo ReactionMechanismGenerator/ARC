@@ -6718,6 +6718,8 @@ class Scheduler(object):
             self.delete_all_species_jobs(label)
             if self.species_dict[label].is_ts:
                 is_isomorphic = True
+                self.species_dict[label].populate_ts_checks()
+                self.output[label]['warnings'] = remove_nmd_accepted_on_irc_warning(self.output[label]['warnings'])
             else:
                 is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
                     allow_nonisomorphic_2d=self.allow_nonisomorphic_2d,
