@@ -11,6 +11,7 @@ import contextlib
 import json
 import math
 import os
+import re
 import signal
 import socket
 import sys
@@ -21,6 +22,7 @@ import uuid
 import warnings
 import yaml
 import numpy as np
+from importlib.metadata import PackageNotFoundError, version as package_version
 
 from ase import Atoms
 from ase.constraints import FixInternals
@@ -91,19 +93,48 @@ def load_torchani_model(model_name: str, device, cache: dict | None = None, doub
     return model
 
 
+def package_release(name: str) -> tuple | None:
+    """
+    The (major, minor) release of an installed package, or ``None`` if it is not installed.
+    """
+    try:
+        return tuple(int(part) for part in re.findall(r'\d+', package_version(name))[:2])
+    except PackageNotFoundError:
+        return None
+
+
+def fairchem_hessian_support(calc_config: dict) -> str | None:
+    """
+    Why the installed fairchem-core cannot give a UMA job its autograd Hessian, or ``None`` if it can.
+    Autograd Hessians need fairchem-core 2.17 or newer. fairchem-core 2.18 to 2.21 vectorize the Hessian's
+    backward passes (vmap) whatever ``InferenceSettings.hessian_vmap`` says, so there the Hessian is used
+    only if the job sets ``hessian_vmap: True``.
+
+    Args:
+        calc_config (dict): The run settings.
+
+    Returns:
+        str | None: The reason, or ``None``.
+    """
+    release = package_release('fairchem-core')
+    if release is None or release < (2, 17):
+        return f'fairchem-core {".".join(map(str, release)) if release else "(not found)"} computes no autograd ' \
+               f'Hessians (2.17 or newer does)'
+    if (2, 18) <= release <= (2, 21) and not calc_config.get('hessian_vmap', False):
+        return f'fairchem-core {release[0]}.{release[1]} computes autograd Hessians only with vmap; ' \
+               f'set hessian_vmap: True to use it'
+    return None
+
+
 def uma_inference_settings(calc_config: dict, hessian: bool = False) -> tuple:
     """
     Resolve the fairchem inference settings of a UMA job.
 
-    ``inference_settings`` is a fairchem preset name or a dict of ``InferenceSettings`` fields. fairchem's
-    default preset differs between versions, and some presets are reduced precision on a GPU.
+    ``inference_settings`` is a fairchem preset name or a dict of ``InferenceSettings`` fields.
 
-    A Hessian predictor always runs at full precision: no TF32, unmerged, uncompiled and without activation
-    checkpointing. Of ``inference_settings`` it keeps only ``base_precision_dtype``. fairchem warns that
-    reduced precision degrades second derivatives, and a merged or compiled model would be rebuilt for every
-    new species anyway. FP32 is enough: its frequencies match FP64 to within 0.01 cm^-1.
-    ``hessian_vmap`` (default False) vectorizes the backward passes. That is faster for small molecules on
-    a CPU, but its memory grows steeply (about 13 GB in FP32 for 32 atoms).
+    A Hessian predictor runs without TF32, merging, compilation or activation checkpointing, at the
+    ``base_precision_dtype`` of ``inference_settings`` (FP32 by default), and with ``hessian_vmap`` as the job
+    sets it (False by default), predicting the Hessian for the job's task.
 
     Args:
         calc_config (dict): The run settings.
@@ -136,7 +167,7 @@ def load_uma_predictor(calc_config: dict, cache: dict | None = None, hessian: bo
         hessian (bool): Whether to load a predictor that also computes the Hessian (see ``uma_hessian()``).
 
     Raises:
-        NotImplementedError: If a Hessian is requested from a fairchem without autograd Hessians (before 2.15).
+        NotImplementedError: If a Hessian is requested and ``fairchem_hessian_support()`` gives a reason it cannot be.
     """
     from fairchem.core import pretrained_mlip
     model = calc_config.get('model', 'uma-s-1p2')
@@ -146,10 +177,12 @@ def load_uma_predictor(calc_config: dict, cache: dict | None = None, hessian: bo
     predictor = cache.get(key) if cache is not None else None
     if predictor is None:
         predict_kwargs = {'device': device}
+        if hessian:
+            reason = fairchem_hessian_support(calc_config)
+            if reason is not None:
+                raise NotImplementedError(reason)
         if isinstance(settings, dict):
             from fairchem.core.units.mlip_unit.api.inference import InferenceSettings
-            if hessian and 'predict_untrained_hessian' not in getattr(InferenceSettings, '__dataclass_fields__', {}):
-                raise NotImplementedError('The installed fairchem cannot compute autograd Hessians')
             settings = InferenceSettings(**{k: set(v) if k.startswith('predict_untrained_') else v
                                             for k, v in settings.items()})
         if settings:
@@ -162,10 +195,8 @@ def load_uma_predictor(calc_config: dict, cache: dict | None = None, hessian: bo
 
 def uma_hessian(atoms: Atoms, settings: dict, cache: dict | None = None) -> np.ndarray | None:
     """
-    Compute a UMA model's Hessian by automatic differentiation.
-
-    It uses a predictor of its own. With the Hessian enabled, fairchem computes it on every call, and
-    builds the double-backward graph for every force call too, which would slow optimizations and scans.
+    Compute a UMA model's Hessian by automatic differentiation, with the Hessian predictor of
+    ``load_uma_predictor(..., hessian=True)``, separate from the predictor that computes energies and forces.
 
     Args:
         atoms (Atoms): The structure, with its charge and spin in ``atoms.info``.
@@ -681,7 +712,8 @@ def internal_basis(masses: np.ndarray, positions: np.ndarray, is_linear: bool = 
 
     Returns:
         np.ndarray: A (3*n_atoms, 3*n_atoms - k) array, with k = 3 for an atom, 5 for a linear molecule,
-                    and 6 otherwise.
+                    and 6 otherwise. The k rigid motions removed are the first k left singular vectors of
+                    the rigid-motion vectors, with k taken from ``is_linear``.
     """
     n_atoms = len(masses)
     n_rigid = 3 if n_atoms == 1 else 5 if is_linear or n_atoms == 2 else 6
@@ -691,9 +723,6 @@ def internal_basis(masses: np.ndarray, positions: np.ndarray, is_linear: bool = 
     for axis in np.eye(3):
         rigid.append((np.tile(axis, (n_atoms, 1)) * sqrt_mass).ravel())
         rigid.append((np.cross(axis, centered) * sqrt_mass).ravel())
-    # The first n_rigid left singular vectors span the rigid motions, so the rest span their complement.
-    # Taking n_rigid from is_linear rather than from the singular values keeps a nearly linear molecule
-    # (within is_linear()'s tolerance) from losing a real bend to a near-zero rotation.
     u, _, _ = np.linalg.svd(np.array(rigid).T, full_matrices=True)
     return u[:, n_rigid:]
 
@@ -772,7 +801,6 @@ def numpy_vibrational_analysis(masses: np.ndarray, hessian: np.ndarray, is_linea
     md_normalized = md_unnormalized * norm_factors[:, np.newaxis]
     
     if positions is not None:
-        # Translations and rotations were projected out, so every mode left is a vibration.
         filtered_indices = list(range(len(freqs)))
     else:
         # Filter out translations and rotations (first 6 modes for non-linear, 5 for linear)
@@ -926,8 +954,6 @@ def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None 
 
     atoms = Atoms(symbols=xyz['symbols'], positions=xyz['coords'])
     atoms.info.update({'charge': charge, 'spin': multiplicity})  # UMA (omol) conditions on these
-    # A UMA freq job needs only the Hessian predictor (see uma_hessian()). Loading the ordinary one too would
-    # double a one-shot run's model loading, so load just that one, which uma_hessian() then takes from the cache.
     if cache is None:
         cache = dict()
     hessian_only = job_type == 'freq' and settings.get('calculator', '').lower() in ('uma', 'fairchem') \
@@ -994,6 +1020,8 @@ def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None 
     else:
         # For non-optimization jobs, still save the geometry
         save_current_geometry(output, atoms, xyz)
+    if input_dict.get('masses'):
+        atoms.set_masses(input_dict['masses'])
 
     if job_type == 'irc':
         from sella import IRC

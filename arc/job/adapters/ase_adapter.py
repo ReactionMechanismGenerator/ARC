@@ -16,6 +16,7 @@ from arc.job.factory import register_job_adapter
 from arc.level import Level
 from arc.imports import ase_submit, settings
 from arc.settings.settings import ARC_PYTHON, UMA_LATEST_MODEL, find_executable
+from arc.species.converter import get_element_mass_from_xyz, get_most_common_isotope_for_element
 
 servers = settings['servers']
 submit_filenames = settings['submit_filenames']
@@ -319,6 +320,19 @@ class ASEAdapter(JobAdapter):
         return [([index + 1 for index in torsion], dihedral)
                 for torsion, dihedral in zip(self.torsions, self.dihedrals)]
 
+    def isotope_masses(self) -> Optional[List[float]]:
+        """
+        The atomic masses (amu) of the job's isotopes, if an atom is not its element's most common isotope.
+
+        Returns:
+            Optional[List[float]]: The masses, or ``None`` if every atom is its element's most common isotope.
+        """
+        isotopes = (self.xyz or dict()).get('isotopes')
+        if not isotopes or all(isotope is None or isotope == get_most_common_isotope_for_element(symbol)
+                               for symbol, isotope in zip(self.xyz['symbols'], isotopes)):
+            return None
+        return [float(mass) for mass in get_element_mass_from_xyz(self.xyz)]
+
     def write_input_file(self) -> None:
         """
         Write the input file for ase_script.py.
@@ -333,6 +347,9 @@ class ASEAdapter(JobAdapter):
             'irc_direction': self.irc_direction,
             'settings': self.determine_settings(),
         }
+        masses = self.isotope_masses()
+        if masses:
+            input_dict['masses'] = masses
         if self.job_type == 'scan':
             # A 'scan' job sweeps a whole rotor in one process: pass the torsion(s) and the
             # scan resolution so ase_script.py can run the relaxed torsional scan itself.

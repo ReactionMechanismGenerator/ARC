@@ -14,7 +14,7 @@ import tempfile
 import time
 import unittest
 import warnings
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import numpy as np
 
 from ase import Atoms
@@ -48,7 +48,6 @@ from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  withdraw_ticket,
                                                  write_json_atomic)
 
-# Converts sqrt(eV / (A^2 * amu)) to cm^-1, as numpy_vibrational_analysis() does.
 FREQ_FACTOR = 1.0 / (2.0 * np.pi * 299792458.0 * 100.0) * np.sqrt(1.602176565e-19 * 1.0e20 / 1.660538921e-27)
 
 
@@ -473,7 +472,6 @@ class TestASEAdapter(unittest.TestCase):
         clean = numpy_vibrational_analysis(masses, hessian)['freqs']
         self.assertEqual(len(clean), 3)
 
-        # Curvature along the in-plane rotation, as a 2-point finite-difference Hessian gives: about 60i cm^-1.
         sqrt_mass = np.sqrt(masses)[:, np.newaxis]
         rotation = (np.cross([0.0, 0.0, 1.0], positions - water.get_center_of_mass()) * sqrt_mass).ravel()
         rotation /= np.linalg.norm(rotation)
@@ -487,6 +485,25 @@ class TestASEAdapter(unittest.TestCase):
         projected = numpy_vibrational_analysis(masses, contaminated, positions=positions)
         np.testing.assert_allclose(projected['freqs'], clean, atol=1e-6)
         self.assertEqual(np.array(projected['modes']).shape, (3, 3, 3))
+
+    def test_numpy_vibrational_analysis_projects_a_linear_molecule(self):
+        """For a linear molecule, the two rotations are projected out and both bends are kept"""
+        r = 1.16
+        co2 = Atoms('OCO', positions=[(0, 0, -r), (0, 0, 0), (0, 0, r)])
+        masses, positions = co2.get_masses(), co2.get_positions()
+        hessian = spring_hessian(positions, [(0, 1, 100.0), (1, 2, 100.0)])
+        for axis in (0, 1):
+            bend = np.zeros(9)
+            bend[[axis, 3 + axis, 6 + axis]] = 1.0 / r, -2.0 / r, 1.0 / r
+            hessian += 5.0 * np.outer(bend, bend)
+        inv_sqrt_mass = np.repeat(1.0 / np.sqrt(masses), 3)
+        eigenvalues = np.linalg.eigvalsh(hessian * np.outer(inv_sqrt_mass, inv_sqrt_mass))
+        expected = FREQ_FACTOR * np.sqrt(np.sort(eigenvalues)[5:])
+
+        freqs = numpy_vibrational_analysis(masses, hessian, is_linear=True, positions=positions)['freqs']
+        np.testing.assert_allclose(freqs, expected, rtol=1e-8)
+        self.assertGreater(min(freqs), 100.0)
+        self.assertAlmostEqual(freqs[0], freqs[1], places=6)
 
     def test_numpy_vibrational_analysis_returns_3n_minus_5_or_6_modes_given_positions(self):
         """Test the number of modes for an atom, a diatomic, a linear and a nonlinear molecule"""
@@ -1114,6 +1131,116 @@ class TestASEWorker(unittest.TestCase):
         save_yaml_file(job.local_path_to_output_file, {'sp': 1.0})
         job.execute_queue()
         self.assertFalse(os.path.isfile(job.local_path_to_output_file))
+
+
+class TestASECalculators(unittest.TestCase):
+    """
+    Contains unit tests for the MLIP calculators of the ASE script, run on stand-ins for their packages.
+    """
+
+    @staticmethod
+    def modules(**modules) -> dict:
+        """Stand-in modules by dotted name, with their parent packages, for patching sys.modules."""
+        result = dict()
+        for name, attributes in modules.items():
+            parts = name.split('.')
+            for i in range(1, len(parts)):
+                result.setdefault('.'.join(parts[:i]), type(sys)('.'.join(parts[:i])))
+            module = type(sys)(name)
+            for key, value in attributes.items():
+                setattr(module, key, value)
+            result[name] = module
+        return result
+
+    def test_fairchem_hessian_support(self):
+        """Autograd Hessians need fairchem-core 2.17, and 2.18 to 2.21 give them only with vmap"""
+        from importlib.metadata import PackageNotFoundError
+        from arc.job.adapters.scripts.ase_script import fairchem_hessian_support
+        for release, settings, supported in (('2.14.0', {}, False), ('2.16.0', {}, False), ('2.17.0', {}, True),
+                                             ('2.19.1', {}, False), ('2.21.0', {'hessian_vmap': True}, True),
+                                             ('2.22.0', {}, True), ('2.25.0', {}, True)):
+            with self.subTest(release=release, settings=settings), \
+                    patch('arc.job.adapters.scripts.ase_script.package_version', return_value=release):
+                self.assertEqual(fairchem_hessian_support(settings) is None, supported)
+        with patch('arc.job.adapters.scripts.ase_script.package_version', side_effect=PackageNotFoundError):
+            self.assertIsNotNone(fairchem_hessian_support({}))
+
+    def fake_fairchem(self, hessian: np.ndarray) -> tuple:
+        """Stand-in fairchem modules whose calculator returns ``hessian``, and their get_predict_unit mock."""
+        from dataclasses import dataclass, field
+
+        @dataclass
+        class InferenceSettings:
+            tf32: bool = True
+            activation_checkpointing: bool = True
+            merge_mole: bool = True
+            compile: bool = True
+            base_precision_dtype: str = 'float32'
+            hessian_vmap: bool = True
+            predict_untrained_hessian: set = field(default_factory=set)
+
+        class FAIRChemCalculator:
+            def __init__(self, predictor, task_name):
+                self.predictor, self.task_name = predictor, task_name
+
+            def get_property(self, name, atoms):
+                return hessian.ravel()
+
+        get_predict_unit = MagicMock(side_effect=lambda model, **kwargs: MagicMock(name=model))
+        modules = self.modules(**{'fairchem.core': {'pretrained_mlip': MagicMock(get_predict_unit=get_predict_unit),
+                                                    'FAIRChemCalculator': FAIRChemCalculator},
+                                  'fairchem.core.units.mlip_unit.api.inference':
+                                      {'InferenceSettings': InferenceSettings}})
+        return modules, get_predict_unit
+
+    def test_uma_hessian(self):
+        """The UMA Hessian predictor is loaded with the Hessian task, cached, and its Hessian reshaped to (3N, 3N)"""
+        from arc.job.adapters.scripts.ase_script import get_calculator, uma_hessian
+        water = Atoms('OH2', positions=[(0.0, 0.0, 0.0), (0.757, 0.586, 0.0), (-0.757, 0.586, 0.0)])
+        modules, get_predict_unit = self.fake_fairchem(np.arange(81.0))
+        settings, cache = {'calculator': 'uma', 'model': 'uma-s-1p2'}, dict()
+        with patch.dict(sys.modules, modules), \
+                patch('arc.job.adapters.scripts.ase_script.package_version', return_value='2.25.0'):
+            hessian = uma_hessian(water, settings, cache)
+            np.testing.assert_array_equal(hessian, np.arange(81.0).reshape(9, 9))
+            uma_hessian(water, settings, cache)
+            get_predict_unit.assert_called_once()
+            inference_settings = get_predict_unit.call_args.kwargs['inference_settings']
+            self.assertEqual(inference_settings.predict_untrained_hessian, {'omol'})
+            self.assertFalse(inference_settings.hessian_vmap)
+            self.assertFalse(inference_settings.tf32)
+        with patch.dict(sys.modules, modules), \
+                patch('arc.job.adapters.scripts.ase_script.package_version', return_value='2.14.0'):
+            self.assertIsNone(uma_hessian(water, settings, dict()))
+            get_predict_unit.reset_mock()
+            calc = get_calculator(settings, cache=dict(), hessian=True)
+            get_predict_unit.assert_called_once_with('uma-s-1p2', device='cpu')
+            self.assertEqual(calc.task_name, 'omol')
+
+    def test_isotope_masses(self):
+        """A job on a labelled species passes its isotope masses, which the script sets on the atoms"""
+        from arc.job.adapters.scripts.ase_script import run_job
+        cd4_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 2, 2, 2, 2),
+                   'coords': ((0.0, 0.0, 0.0), (0.629, 0.629, 0.629), (-0.629, -0.629, 0.629),
+                              (-0.629, 0.629, -0.629), (0.629, -0.629, -0.629))}
+        ch4_xyz = dict(cd4_xyz, isotopes=(12, 1, 1, 1, 1))
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs = [ASEAdapter(execution_type='incore', job_type='freq', project='test_isotopes',
+                               project_directory=os.path.join(tmp, label), species=[ARCSpecies(label=label, xyz=xyz)],
+                               args={'keyword': {'calculator': 'emt'}}, testing=True)
+                    for label, xyz in (('CD4', cd4_xyz), ('CH4', ch4_xyz))]
+            self.assertIsNone(jobs[1].isotope_masses())
+            masses = jobs[0].isotope_masses()
+            self.assertAlmostEqual(masses[1], 2.014, places=3)
+            with patch('arc.job.adapters.scripts.ase_script.run_vibrational_analysis',
+                       return_value={'freqs': []}) as vibrations:
+                for job in jobs:
+                    os.makedirs(job.local_path, exist_ok=True)
+                    job.write_input_file()
+                    run_job(os.path.join(job.local_path, 'input.yml'))
+            deuterated, plain = (call.args[0] for call in vibrations.call_args_list)
+            np.testing.assert_allclose(deuterated.get_masses(), masses)
+            self.assertAlmostEqual(plain.get_masses()[1], 1.008, places=3)
 
 
 if __name__ == '__main__':
