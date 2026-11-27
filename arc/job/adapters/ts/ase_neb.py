@@ -6,6 +6,12 @@ the reaction's TS-guess level (or of ``ase_neb_settings['level']``), and the hig
 then optimizes and verifies like any other. The band runs in ``ase_script.py`` (job type 'neb'), through the ASE
 adapter's submission, so it uses the level's environment, queue and persistent worker.
 
+``ase_neb_settings`` in settings.py: ``level`` runs the band when the TS-guess level is not an ASE level (``None``
+skips the adapter then), and ``keyword`` holds the band settings of ``run_band()`` in ase_script.py: ``neb_method``
+('autoneb', 'neb' or 'dyneb'), ``neb_images`` (interior images; for AutoNEB, the most it adds), ``neb_fmax`` (eV/A,
+with the climbing image), ``neb_fmax_pre`` (eV/A, before it), ``neb_steps`` (per stage), and ``neb_bands`` (bands
+from different atom maps, each giving a TS guess).
+
 ASE NEB: https://ase-lib.org/ase/neb.html
 """
 
@@ -14,15 +20,15 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from arc.common import get_element_mass, get_logger, save_yaml_file
+from arc.common import calc_rmsd, get_element_mass, get_logger, get_single_bond_length, save_yaml_file
 from arc.exceptions import DependencyError
 from arc.imports import settings
 from arc.job.adapters.ase_adapter import ASEAdapter
-from arc.job.adapters.common import has_one_molecule_side
 from arc.job.factory import register_job_adapter
 from arc.level import Level
 from arc.species import ARCSpecies
 from arc.species.converter import sort_xyz_using_indices
+from arc.species.vectors import calculate_angle, get_angle, unit_vector
 
 if TYPE_CHECKING:
     from arc.reaction import ARCReaction
@@ -31,14 +37,12 @@ logger = get_logger()
 
 ase_neb_settings = settings.get('ase_neb_settings', dict())
 
-# The smallest distance (Angstrom) between the fragments of a bimolecular endpoint.
 FRAGMENT_SEPARATION = 3.0
 
 
-def molecule_count(reaction: 'ARCReaction', well: int) -> int:
-    """The number of molecules in a well (0: reactants, 1: products), counting a species once per occurrence."""
-    side = reaction.r_species if well == 0 else reaction.p_species
-    return sum(reaction.get_species_count(species=spc, well=well) for spc in side)
+def side_species(reaction: 'ARCReaction', well: int) -> list[ARCSpecies]:
+    """The species of a well (0: reactants, 1: products), each listed once per molecule."""
+    return reaction.get_reactants_and_products(return_copies=False)[well]
 
 
 def kabsch_transform(mobile: np.ndarray, target: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -74,10 +78,8 @@ def side_fragments(reaction: 'ARCReaction', well: int) -> list[list[int]]:
     The reactants are listed molecule by molecule, so their fragments are contiguous. The products are put into the
     reactants' order by the atom map, so product atom ``atom_map[i]`` is reactant atom ``i``.
     """
-    side = reaction.r_species if well == 0 else reaction.p_species
-    molecules = [spc for spc in side for _ in range(reaction.get_species_count(species=spc, well=well))]
     bounds, start = list(), 0
-    for spc in molecules:
+    for spc in side_species(reaction, well):
         bounds.append((start, start + spc.number_of_atoms))
         start += spc.number_of_atoms
     if well == 0:
@@ -87,9 +89,8 @@ def side_fragments(reaction: 'ARCReaction', well: int) -> list[list[int]]:
 
 def fit_atoms(fragment: list[int], symbols: tuple, reactive: set[int]) -> list[int]:
     """
-    The atoms of ``fragment`` to align it by: those whose bonds do not change (spectators), else its heavy atoms, else
-    all of it. Fitting a migrating atom would drag the rest of the fragment toward where that atom sits on the other
-    side, e.g. HO2 onto the O-O and a methyl H of C2H5O2.
+    The atoms of ``fragment`` to align it by: at least three (or all of a smaller fragment) of those whose bonds do not
+    change (spectators), else of its heavy atoms, else all of it.
     """
     for atoms in ([i for i in fragment if i not in reactive], [i for i in fragment if symbols[i] != 'H']):
         if len(atoms) >= min(3, len(fragment)):
@@ -102,10 +103,9 @@ def place_fragments(joined: np.ndarray, separated: np.ndarray, fragments: list[l
     """
     A bimolecular endpoint built around the unimolecular one: each fragment's own geometry (from ``separated``) is
     aligned onto its atoms in ``joined`` (by the atoms :func:`fit_atoms` picks), and the fragments are then moved
-    apart, keeping their center of mass fixed, until no two atoms of different fragments are closer than
-    ``min_distance``. The NEB therefore starts from the orientation of the reactive site, not from fragments ARC
-    placed side by side along x, and a leaving atom or small group does the moving while a heavy fragment stays where
-    it is in the unimolecular well.
+    apart along the lines from their common center of mass to their own, in steps of 0.05 A split between them by
+    their masses (a fragment of mass m_k of M in all moves 1 - m_k / M of each step), until no two atoms of different
+    fragments are closer than ``min_distance`` (``FRAGMENT_SEPARATION``, 3.0 A, by default).
     """
     coords = np.array(separated, dtype=float)
     for fragment in fragments:
@@ -119,8 +119,7 @@ def place_fragments(joined: np.ndarray, separated: np.ndarray, fragments: list[l
     directions = list()
     for fragment_center in centers:
         d = fragment_center - center
-        directions.append(d / np.linalg.norm(d) if np.linalg.norm(d) > 1e-8 else np.array([1.0, 0.0, 0.0]))
-    # Each step moves the fragments 0.05 A further apart, each by its share (1 - m_k / M) of it.
+        directions.append(np.array(unit_vector(d)) if np.linalg.norm(d) > 1e-8 else np.array([1.0, 0.0, 0.0]))
     steps = [0.05 * (1.0 - m / fragment_masses.sum()) * d for m, d in zip(fragment_masses, directions)]
 
     def closest():
@@ -138,10 +137,8 @@ def place_fragments(joined: np.ndarray, separated: np.ndarray, fragments: list[l
 def fold_is_sound(xyz: dict, folded: dict, species: ARCSpecies) -> bool:
     """
     Whether a folded geometry is still the same molecule at sensible distances: every bond of ``species`` keeps its
-    length to 0.05 A (a fold only turns dihedrals), and no two atoms it does not bond, at least three bonds apart, are
-    closer than 1.6 A (either is H) or 2.2 A (two heavy atoms). The near-attack helper can fail both ways: it can move
-    a terminal group's atoms off their bonds (seen for n-C4H9O2, C-H 0.83-1.54 A), and it can turn a migrating H
-    almost onto its acceptor, a TS-like shape rather than an endpoint.
+    length to 0.05 A and every bond angle to 2 degrees, and no two atoms it does not bond, at least three bonds apart,
+    are closer than 1.6 A (either is H) or 2.2 A (two heavy atoms).
     """
     before, after = np.array(xyz['coords'], dtype=float), np.array(folded['coords'], dtype=float)
     symbols = xyz['symbols']
@@ -150,6 +147,11 @@ def fold_is_sound(xyz: dict, folded: dict, species: ARCSpecies) -> bool:
         for j in neighbors:
             if abs(np.linalg.norm(after[i] - after[j]) - np.linalg.norm(before[i] - before[j])) > 0.05:
                 return False
+        for j in neighbors:
+            for k in neighbors:
+                if j < k and abs(calculate_angle(before.tolist(), [j, i, k])
+                                 - calculate_angle(after.tolist(), [j, i, k])) > 2.0:
+                    return False
     for i in range(len(symbols)):
         near = set(adjacency[i]) | {k for j in adjacency[i] for k in adjacency[j]}
         for j in range(i + 1, len(symbols)):
@@ -162,22 +164,17 @@ def near_attack(xyz: dict, species: ARCSpecies, forming: list[tuple[int, int]]) 
     """
     ``xyz`` of a one-molecule well folded into its near-attack conformation for the bonds it forms (the ring-like
     shape of a cyclic TS; the helper of ARC's linear adapter), or unchanged if there is nothing to fold, the fold fails,
-    or the folded geometry is not sound (see :func:`fold_is_sound`). Folding the wells of an intramolecular reaction keeps the
-    band from also carrying a conformational change.
+    or the folded geometry is not sound (see :func:`fold_is_sound`).
     """
     if not forming or species.mol is None:
         return xyz
     from arc.job.adapters.ts.linear_utils.isomerization import get_near_attack_xyz
     try:
         folded = get_near_attack_xyz(xyz=xyz, mol=species.mol, bonds=forming)
-    except Exception as e:  # a fold that fails leaves a usable, unfolded endpoint
+    except Exception as e:
         logger.debug(f'No near-attack conformation for {species.label}: {e}')
         return xyz
     return folded if fold_is_sound(xyz, folded, species) else xyz
-
-
-# X-H bond lengths (A) for a hydrogen moved onto its acceptor, by acceptor element.
-XH_BOND = {'C': 1.09, 'N': 1.01, 'O': 0.97, 'S': 1.34}
 
 
 def h_transfers(reaction: 'ARCReaction', formed: list[tuple[int, int]], broken: list[tuple[int, int]],
@@ -200,30 +197,25 @@ def h_transfers(reaction: 'ARCReaction', formed: list[tuple[int, int]], broken: 
 def moved_h_product(r_xyz: dict, transfers: list[tuple[int, int]], neighbors: dict[int, set[int]]) -> dict | None:
     """
     A product endpoint for a hydrogen transfer built from the (folded) reactant: every atom stays where it is in the
-    reactant, except that each migrating H moves onto its acceptor at the X-H bond length. It points from the acceptor
-    toward where it came from, tilted away from the acceptor's other neighbors (``neighbors``, the reactant's bonds)
-    until every neighbor-acceptor-H angle is at least 100 degrees; straight along that line, n-C4H9O2's 1,5-H shift
-    put the H at 69 degrees to the O-O bond, 1.3 A from the other O. The band then carries the transfer and nothing
-    else, where the product's own minimum can sit in another conformation altogether. None if a moved H lands within
+    reactant, except that each migrating H moves onto its acceptor, at ARC's single-bond length for the X-H pair
+    (``get_single_bond_length()``). The H points from the acceptor toward where it came from, tilted away from the
+    acceptor's other neighbors (``neighbors``, the reactant's bonds) in steps of 0.1 (in units of the unit vector away
+    from them, up to 5) until every neighbor-acceptor-H angle is at least 100 degrees. None if a moved H lands within
     1.0 A of another atom.
     """
     coords = np.array(r_xyz['coords'], dtype=float)
     for h, acceptor in transfers:
-        toward = coords[h] - coords[acceptor]
-        toward /= np.linalg.norm(toward)
+        toward = np.array(unit_vector(coords[h] - coords[acceptor]))
         others = [n for n in neighbors.get(acceptor, set()) if n != h]
-        away = sum((coords[acceptor] - coords[n]) / np.linalg.norm(coords[acceptor] - coords[n]) for n in others) \
-            if others else np.zeros(3)
+        away = sum(np.array(unit_vector(coords[acceptor] - coords[n])) for n in others) if others else np.zeros(3)
         direction = toward
         if np.linalg.norm(away) > 1e-8:
-            away /= np.linalg.norm(away)
+            away = np.array(unit_vector(away))
             for weight in np.arange(0.0, 5.01, 0.1):
-                direction = (toward + weight * away) / np.linalg.norm(toward + weight * away)
-                if all(np.degrees(np.arccos(np.clip(np.dot(direction, (coords[n] - coords[acceptor])
-                                                           / np.linalg.norm(coords[n] - coords[acceptor])), -1, 1)))
-                       >= 100.0 for n in others):
+                direction = np.array(unit_vector(toward + weight * away))
+                if all(get_angle(direction, coords[n] - coords[acceptor], units='degs') >= 100.0 for n in others):
                     break
-        coords[h] = coords[acceptor] + XH_BOND.get(r_xyz['symbols'][acceptor], 1.0) * direction
+        coords[h] = coords[acceptor] + get_single_bond_length(r_xyz['symbols'][acceptor], 'H') * direction
     for h, acceptor in transfers:
         rest = [i for i in range(len(coords)) if i not in (h, acceptor)]
         if np.min(np.linalg.norm(coords[rest] - coords[h], axis=1)) < 1.0:
@@ -237,8 +229,9 @@ def neb_endpoints(reaction: 'ARCReaction') -> tuple[dict, dict]:
     The reactant and product endpoints of a NEB for ``reaction``, both in the reactants' atom order.
 
     One side must be a single molecule; it is folded into its near-attack conformation for the bonds it forms
-    (:func:`near_attack`). A one-molecule product is folded the same way for the bonds it forms in the reverse
-    reaction, and aligned onto the reactant by the atoms whose bonds do not change. A bimolecular side is built from
+    (:func:`near_attack`). A one-molecule product is folded the same way in its own atom order, for the bonds it forms
+    in the reverse reaction (the broken ones), then put into the reactants' order and aligned onto the reactant by the
+    atoms whose bonds do not change. A bimolecular side is built from
     the one-molecule side with :func:`place_fragments`.
 
     Raises:
@@ -247,17 +240,16 @@ def neb_endpoints(reaction: 'ARCReaction') -> tuple[dict, dict]:
     atom_map = reaction.atom_map
     if atom_map is None:
         raise DependencyError(f'ase_neb needs an atom map for reaction {reaction.label}.')
-    if not has_one_molecule_side(reaction):
+    if not reaction.is_unimolecular():
         raise DependencyError(f'ase_neb builds its endpoints from a one-molecule side, and neither side of '
                               f'{reaction.label} is one molecule.')
-    formed, broken = reaction.get_formed_and_broken_bonds()  # reactant atom indices
+    formed, broken = reaction.get_formed_and_broken_bonds()
     reactive = {i for bond in formed + broken for i in bond}
-    n_r, n_p = molecule_count(reaction, 0), molecule_count(reaction, 1)
+    n_r, n_p = len(side_species(reaction, 0)), len(side_species(reaction, 1))
     r_xyz = reaction.get_reactants_xyz(return_format=dict)
     if n_r == 1:
         r_xyz = near_attack(r_xyz, reaction.r_species[0], formed)
     if n_p == 1:
-        # Fold the product in its own atom order (its bonds to form in reverse are the broken ones), then reorder.
         product = reaction.p_species[0]
         p_own = near_attack(product.get_xyz(), product, [(atom_map[i], atom_map[j]) for i, j in broken])
         p_xyz = sort_xyz_using_indices(xyz_dict=p_own, indices=atom_map)
@@ -278,36 +270,59 @@ def neb_endpoints(reaction: 'ARCReaction') -> tuple[dict, dict]:
     return as_xyz(r), as_xyz(p)
 
 
+def endpoint_structure(reaction: 'ARCReaction', well: int, bonds: list[tuple[int, int]] | None = None) -> dict:
+    """
+    What ``relax_endpoint()`` in ase_script.py needs of a NEB endpoint, in the reactants' atom order: the ``bonds`` of
+    a one-molecule well (given, or the species' own), or the ``fragments`` of a multi-molecule well (each its
+    ``atoms``, ``charge`` and ``multiplicity``).
+
+    Args:
+        reaction (ARCReaction): The reaction.
+        well (int): 0 for the reactants, 1 for the products.
+        bonds (list, optional): The bonds of a one-molecule endpoint, in the reactants' atom order.
+
+    Returns:
+        dict: ``{'bonds': [...]}`` or ``{'fragments': [...]}``.
+    """
+    species = side_species(reaction, well)
+    if len(species) > 1:
+        return {'fragments': [{'atoms': atoms, 'charge': spc.charge, 'multiplicity': spc.multiplicity}
+                              for atoms, spc in zip(side_fragments(reaction, well), species)]}
+    if bonds is None:
+        mol = species[0].mol
+        own = {(i, mol.atoms.index(n)) for i, atom in enumerate(mol.atoms) for n in atom.edges if i < mol.atoms.index(n)}
+        to_reactant = list(range(len(mol.atoms))) if well == 0 \
+            else {j: i for i, j in enumerate(reaction.atom_map)}
+        bonds = [(to_reactant[a], to_reactant[b]) for a, b in own]
+    return {'bonds': sorted((min(a, b), max(a, b)) for a, b in bonds)}
+
+
 def rmsd(coords_1, coords_2) -> float:
     """The root-mean-square distance between two N x 3 coordinate arrays (no alignment)."""
-    return float(np.sqrt(((np.asarray(coords_1) - np.asarray(coords_2)) ** 2).sum(axis=1).mean()))
+    return float(calc_rmsd(np.asarray(coords_1, dtype=float), np.asarray(coords_2, dtype=float)))
 
 
 def candidate_endpoints(reaction: 'ARCReaction', n_bands: int = 3, distinct: float = 0.1) -> list[dict]:
     """
     Endpoints for up to ``n_bands`` bands, from different atom maps of ``reaction``.
 
-    ARC's atom map is one of several equivalent ones (which methyl H migrates or leaves, which of two equivalent atoms
-    goes where), and an unlucky one gives a band that crosses the wrong saddle or none, so that its guess optimizes to
-    another saddle or slides into a well. Every map ARC can enumerate (:func:`arc.mapping.cluster.enumerate_atom_maps`,
+    Every map ARC can enumerate (:func:`arc.mapping.cluster.enumerate_atom_maps`,
     plus the reaction's own) is turned into endpoints with :func:`neb_endpoints`; for a hydrogen transfer, a second
     product endpoint is built from the reactant with :func:`moved_h_product`. The candidates are ranked by the
-    distance between their two endpoints, a proxy for the length of the band. Candidates whose endpoints are within
-    ``distinct`` A RMSD of a better one are dropped. Each band's guess is a separate TS guess, so ARC moves on to the
-    next one if a guess fails its frequency or IRC check.
+    distance between their two endpoints. Candidates whose endpoints are within ``distinct`` A RMSD of a better one are
+    dropped, as is any moved-H candidate after the first. Each band's guess is a separate TS guess.
 
     Returns:
-        list[dict]: Entries with 'xyz' (reactant), 'product_xyz', 'atom_map', 'moved_h' (whether the product endpoint
-                    was built by :func:`moved_h_product`; at most one such band is kept, and it carries 'keep_bonds',
-                    the (H, acceptor) pairs, for ase_script.py to relax that endpoint first) and 'path_rmsd', best
-                    first.
+        list[dict]: Entries with 'xyz' (reactant), 'product_xyz', 'atom_map', 'reactant_structure' and
+                    'product_structure' (see :func:`endpoint_structure`), 'moved_h' (whether the product endpoint was
+                    built by :func:`moved_h_product`; at most one such band is kept) and 'path_rmsd', best first.
     """
     original = reaction.atom_map
     maps = list()
     try:
         from arc.mapping.cluster import enumerate_atom_maps
         maps = [list(m) for m in enumerate_atom_maps(reaction) or list()]
-    except Exception as e:  # enumeration is a bonus; the reaction's own map still makes a band
+    except Exception as e:
         logger.debug(f'Could not enumerate atom maps for {reaction.label}: {e}')
     if original is not None and list(original) not in maps:
         maps.insert(0, list(original))
@@ -320,21 +335,23 @@ def candidate_endpoints(reaction: 'ARCReaction', n_bands: int = 3, distinct: flo
             except Exception as e:
                 logger.debug(f'No NEB endpoints for {reaction.label} with atom map {atom_map}: {e}')
                 continue
-            variants = [(p_xyz, None)]
-            if molecule_count(reaction, 0) == 1 and molecule_count(reaction, 1) == 1:
+            reactant_structure = endpoint_structure(reaction, 0)
+            variants = [(p_xyz, endpoint_structure(reaction, 1), False)]
+            if len(side_species(reaction, 0)) == 1 and len(side_species(reaction, 1)) == 1:
                 formed, broken = reaction.get_formed_and_broken_bonds()
                 transfers = h_transfers(reaction, formed, broken, tuple(r_xyz['symbols']))
                 mol = reaction.r_species[0].mol
                 neighbors = {i: {mol.atoms.index(n) for n in atom.edges} for i, atom in enumerate(mol.atoms)}
                 moved = moved_h_product(r_xyz, transfers, neighbors) if transfers else None
                 if moved is not None:
-                    variants.append((moved, transfers))
-            for variant, transfers in variants:
-                candidate = {'xyz': r_xyz, 'product_xyz': variant, 'atom_map': list(atom_map),
-                             'moved_h': transfers is not None, 'path_rmsd': rmsd(r_xyz['coords'], variant['coords'])}
-                if transfers is not None:
-                    candidate['keep_bonds'] = [list(pair) for pair in transfers]  # ase_script.py relaxes it first
-                scored.append(candidate)
+                    removed = {tuple(sorted(bond)) for bond in broken}
+                    moved_bonds = [bond for bond in reactant_structure['bonds'] if bond not in removed] \
+                        + [tuple(sorted(bond)) for bond in formed]
+                    variants.append((moved, endpoint_structure(reaction, 1, bonds=moved_bonds), True))
+            for variant, product_structure, moved_h in variants:
+                scored.append({'xyz': r_xyz, 'product_xyz': variant, 'atom_map': list(atom_map),
+                               'reactant_structure': reactant_structure, 'product_structure': product_structure,
+                               'moved_h': moved_h, 'path_rmsd': rmsd(r_xyz['coords'], variant['coords'])})
     finally:
         reaction.atom_map = original
     if not scored:
@@ -342,7 +359,7 @@ def candidate_endpoints(reaction: 'ARCReaction', n_bands: int = 3, distinct: flo
     kept = list()
     for candidate in sorted(scored, key=lambda c: c['path_rmsd']):
         if candidate['moved_h'] and any(k['moved_h'] for k in kept):
-            continue  # one band ending at a moved-H product; the others end at the product's own minimum
+            continue
         if all(rmsd(candidate['xyz']['coords'], k['xyz']['coords']) > distinct
                or rmsd(candidate['product_xyz']['coords'], k['product_xyz']['coords']) > distinct for k in kept):
             kept.append(candidate)
@@ -353,13 +370,15 @@ def candidate_endpoints(reaction: 'ARCReaction', n_bands: int = 3, distinct: flo
 
 def resolve_level(level: Level | None) -> Level:
     """
-    The level the band runs at: ``level`` (the TS-guess level the scheduler passes) if an ASE calculator runs it,
-    else ``ase_neb_settings['level']``.
+    The level the band runs at: ``level`` (the TS-guess level the scheduler passes, or its dict on a restart) if an
+    ASE calculator runs it, else ``ase_neb_settings['level']``.
 
     Raises:
         DependencyError: If neither is an ASE level, so this run has nothing to relax a band on.
     """
-    if level is not None and getattr(level, 'software', None) == 'ase':
+    if level is not None and not isinstance(level, Level):
+        level = Level(repr=level)
+    if level is not None and level.software == 'ase':
         return level
     fallback = ase_neb_settings.get('level')
     if fallback:
@@ -373,7 +392,8 @@ def resolve_level(level: Level | None) -> Level:
 class ASENEBAdapter(ASEAdapter):
     """
     A class for TS guesses from an ASE nudged elastic band. Takes the same arguments as :class:`ASEAdapter`, and needs
-    ``reactions`` (one reaction).
+    ``reactions`` (one reaction). A reaction without a TS species gets a placeholder one, which the job runs for and
+    which receives its guesses. The level's args are merged under those given explicitly.
     """
 
     def __init__(self,
@@ -390,17 +410,13 @@ class ASENEBAdapter(ASEAdapter):
             raise ValueError('Cannot run an ASE NEB without an ARCReaction object.')
         level = resolve_level(level)
         reaction = reactions[0]
-        if not has_one_molecule_side(reaction):
+        if not reaction.is_unimolecular():
             raise DependencyError(f'ase_neb builds its endpoints from a one-molecule side, and neither side of '
                                   f'{reaction.label} is one molecule.')
         if reaction.ts_species is None:
-            # A placeholder TS species, as the Orca NEB adapter makes: the job needs a species, and its guesses go to
-            # reaction.ts_species.
             reaction.ts_species = ARCSpecies(label=reaction.ts_label or f'{reaction.label}_TS', is_ts=True,
                                              charge=reaction.charge, multiplicity=reaction.multiplicity,
                                              xyz=reaction.r_species[0].get_xyz())
-        # The level's args (e.g., the calculator's python and queue), under any given explicitly. The scheduler
-        # already merges them for the level it passes, but not for a level from ase_neb_settings.
         args = dict(args or dict())
         for key, value in (level.get_args() if level.args else dict()).items():
             args[key] = {**value, **(args.get(key) or dict())} if isinstance(value, dict) else args.get(key, value)

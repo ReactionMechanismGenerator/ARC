@@ -12,9 +12,8 @@ import unittest
 
 import numpy as np
 
-from arc.common import read_yaml_file
+from arc.common import get_single_bond_length, read_yaml_file
 from arc.exceptions import DependencyError
-from arc.job.adapters.common import has_one_molecule_side
 from arc.job.adapters.ts.ase_neb import (ASENEBAdapter,
                                          FRAGMENT_SEPARATION,
                                          candidate_endpoints,
@@ -84,15 +83,11 @@ class TestASENEB(unittest.TestCase):
         rotation = np.array([[np.cos(angle), -np.sin(angle), 0], [np.sin(angle), np.cos(angle), 0], [0, 0, 1]])
         mobile = target @ rotation.T + np.array([3.0, -2.0, 1.0])
         np.testing.assert_allclose(kabsch_align(mobile, target), target, atol=1e-10)
-        # A single atom only moves.
         np.testing.assert_allclose(kabsch_align(np.array([[5.0, 5.0, 5.0]]), np.array([[1.0, 2.0, 3.0]])),
                                    [[1.0, 2.0, 3.0]])
 
-    def test_has_one_molecule_side(self):
+    def test_an_abstraction_has_no_endpoints(self):
         """NEB endpoints are built from a one-molecule side, which an abstraction lacks."""
-        self.assertTrue(has_one_molecule_side(self.dissociation))
-        self.assertTrue(has_one_molecule_side(self.isomerization))
-        self.assertFalse(has_one_molecule_side(self.abstraction))
         with self.assertRaises(DependencyError):
             neb_endpoints(self.abstraction)
 
@@ -102,20 +97,17 @@ class TestASENEB(unittest.TestCase):
         self.assertEqual(r_xyz['symbols'], p_xyz['symbols'])
         r, p = np.array(r_xyz['coords']), np.array(p_xyz['coords'])
         np.testing.assert_allclose(distances(r), distances(np.array(self.dissociation.get_reactants_xyz(
-            return_format=dict)['coords'])), atol=1e-8)  # the reactant is unchanged
+            return_format=dict)['coords'])), atol=1e-8)
         fragments = side_fragments(self.dissociation, well=1)
         self.assertEqual(sorted(len(f) for f in fragments), [1, 6])
         ethylene, hydrogen = sorted(fragments, key=len, reverse=True)
         self.assertEqual({r_xyz['symbols'][i] for i in hydrogen}, {'H'})
-        # Ethylene keeps its own geometry.
         np.testing.assert_allclose(np.sort(distances(p[ethylene]).ravel()),
                                    np.sort(distances(np.array(ETHYLENE_COORDS)).ravel()), atol=1e-6)
-        # It sits where those atoms are in ethyl.
         self.assertLess(np.sqrt(((p[ethylene] - r[ethylene]) ** 2).sum(axis=1).mean()), 0.6)
         closest = np.min(np.linalg.norm(p[ethylene] - p[hydrogen][0], axis=1))
         self.assertGreaterEqual(closest, FRAGMENT_SEPARATION)
         self.assertLess(closest, FRAGMENT_SEPARATION + 0.2)
-        # The H leaves from the CH3 group of ethyl (a beta C-H): its carbon carries three H atoms, it included.
         carbons = [i for i, s in enumerate(r_xyz['symbols']) if s == 'C']
         nearest_carbon = min(carbons, key=lambda c: np.linalg.norm(r[c] - r[hydrogen[0]]))
         self.assertEqual(len([j for j in range(len(r)) if r_xyz['symbols'][j] == 'H'
@@ -129,7 +121,7 @@ class TestASENEB(unittest.TestCase):
         unaligned = np.array(self.isomerization.get_products_xyz(return_format=dict)['coords'])
         rmsd = lambda a, b: np.sqrt(((a - b) ** 2).sum(axis=1).mean())
         self.assertLessEqual(rmsd(p, r), rmsd(unaligned, r) + 1e-8)
-        np.testing.assert_allclose(distances(p), distances(unaligned), atol=1e-8)  # a rigid motion only
+        np.testing.assert_allclose(distances(p), distances(unaligned), atol=1e-8)
 
     def test_ho2_elimination_endpoints(self):
         """C2H5O2 -> C2H4 + HO2: HO2, whose three atoms all change bonds, keeps its own geometry and leaves C2H4."""
@@ -140,7 +132,7 @@ class TestASENEB(unittest.TestCase):
         ethylene = next(f for f in fragments if len(f) == 6)
         self.assertEqual(sorted(p_xyz['symbols'][i] for i in ho2), ['H', 'O', 'O'])
         h = next(i for i in ho2 if p_xyz['symbols'][i] == 'H')
-        self.assertLess(min(np.linalg.norm(p[h] - p[i]) for i in ho2 if i != h), 1.05)  # an O-H bond
+        self.assertLess(min(np.linalg.norm(p[h] - p[i]) for i in ho2 if i != h), 1.05)
         self.assertGreaterEqual(np.min(np.linalg.norm(p[ho2][:, None] - p[ethylene][None], axis=2)),
                                 FRAGMENT_SEPARATION)
 
@@ -160,7 +152,7 @@ class TestASENEB(unittest.TestCase):
         """Several atom maps give distinct bands, shortest first, and the reaction keeps its own map."""
         original = list(self.dissociation.atom_map)
         bands = candidate_endpoints(self.dissociation, n_bands=3)
-        self.assertGreaterEqual(len(bands), 2)  # which of the three methyl H atoms leaves
+        self.assertGreaterEqual(len(bands), 2)
         self.assertLessEqual(len(bands), 3)
         self.assertEqual([b['path_rmsd'] for b in bands], sorted(b['path_rmsd'] for b in bands))
         self.assertEqual(len({tuple(b['atom_map']) for b in bands}), len(bands))
@@ -181,24 +173,32 @@ class TestASENEB(unittest.TestCase):
         neighbors = {i: {mol.atoms.index(n) for n in atom.edges} for i, atom in enumerate(mol.atoms)}
         moved = moved_h_product(r_xyz, transfers, neighbors)
         r, p = np.array(r_xyz['coords']), np.array(moved['coords'])
-        self.assertAlmostEqual(float(np.linalg.norm(p[h] - p[acceptor])), 0.97, places=6)
-        for n in neighbors[acceptor] - {h}:  # a sensible angle at the acceptor
-            cosine = np.dot(p[h] - p[acceptor], p[n] - p[acceptor]) / 0.97 / np.linalg.norm(p[n] - p[acceptor])
+        oh_bond = get_single_bond_length('O', 'H')
+        self.assertAlmostEqual(float(np.linalg.norm(p[h] - p[acceptor])), oh_bond, places=6)
+        for n in neighbors[acceptor] - {h}:
+            cosine = np.dot(p[h] - p[acceptor], p[n] - p[acceptor]) / oh_bond / np.linalg.norm(p[n] - p[acceptor])
             self.assertGreaterEqual(np.degrees(np.arccos(cosine)), 99.9)
         others = [i for i in range(len(r)) if i != h]
         np.testing.assert_allclose(p[others], r[others])
-        # Not a hydrogen transfer.
         formed, broken = self.dissociation.get_formed_and_broken_bonds()
         self.assertIsNone(h_transfers(self.dissociation, formed, broken, tuple(r_xyz['symbols'])))
-        # The candidates include one moved-H band at most.
         bands = candidate_endpoints(self.h_shift, n_bands=3)
         self.assertLessEqual(sum(b['moved_h'] for b in bands), 1)
+        original = self.h_shift.atom_map
         for band in bands:
-            self.assertEqual('keep_bonds' in band, band['moved_h'])
+            self.h_shift.atom_map = band['atom_map']
+            formed, broken = self.h_shift.get_formed_and_broken_bonds()
+            self.h_shift.atom_map = original
+            product_bonds = band['product_structure']['bonds']
+            self.assertTrue(all(tuple(sorted(bond)) in product_bonds for bond in formed))
+            self.assertFalse(any(tuple(sorted(bond)) in product_bonds for bond in broken))
+            self.assertTrue(all(tuple(sorted(bond)) in band['reactant_structure']['bonds'] for bond in broken))
 
     def test_resolve_level(self):
-        """The band runs at an ASE level; a DFT TS-guess level is not one."""
+        """The band runs at an ASE level, also given as the dict a restarted job restores; a DFT TS-guess level is not
+        one."""
         self.assertEqual(resolve_level(self.uma).method, 'uma-s-1p2')
+        self.assertEqual(resolve_level(self.uma.as_dict()).method, 'uma-s-1p2')
         with self.assertRaises(DependencyError):
             resolve_level(Level(method='wb97xd', basis='def2svp'))
         with self.assertRaises(DependencyError):
@@ -225,7 +225,7 @@ class TestASENEB(unittest.TestCase):
         self.assertEqual(content['settings']['calculator'], 'uma')
         self.assertEqual(content['settings']['model'], 'uma-s-1p2')
         self.assertIn('neb_images', content['settings'])
-        self.assertNotIn('neb_bands', content['settings'])  # the adapter's, not ase_script's
+        self.assertNotIn('neb_bands', content['settings'])
         self.assertGreaterEqual(len(content['bands']), 1)
         self.assertEqual(content['bands'][0]['xyz']['coords'], content['xyz']['coords'])
         with self.assertRaises(DependencyError):

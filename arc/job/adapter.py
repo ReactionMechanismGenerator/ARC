@@ -120,7 +120,7 @@ class JobEnum(str, Enum):
     user = 'user'  # user guesses
     xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
     orca_neb = 'orca_neb'
-    ase_neb = 'ase_neb'  # NEB, DyNEB or AutoNEB in ASE (ase.mep) on an ASE calculator, e.g. an MLIP
+    ase_neb = 'ase_neb'
 
 
 class JobTypeEnum(str, Enum):

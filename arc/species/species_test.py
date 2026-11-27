@@ -3080,7 +3080,7 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(len(indices), len(set(indices)))
 
     def test_process_completed_tsg_queue_jobs_from_an_ase_output(self):
-        """An ASE job's output.yml (e.g., 'ase_neb') is a dict that carries its TS guesses under 'ts_guesses'."""
+        """An ASE job's output.yml (e.g., 'ase_neb') is a dict that carries its TS guesses under 'ts_guesses'"""
         xyz = str_to_xyz("""C      -0.79286713    0.00021434   -0.00488532
                             C       0.69009402   -0.00048893    0.01264458
                             H      -1.19389316    0.88538716    0.50369548
@@ -3103,6 +3103,11 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(spc.ts_guesses[0].method, 'ase_neb')
         self.assertTrue(spc.ts_guesses[0].success)
         self.assertEqual(spc.ts_guesses[0].initial_xyz['symbols'], xyz['symbols'])
+        self.assertEqual(spc.ts_guesses[0].log_path, yml_path)
+        from arc.output import _ts_guess_log_field_for_method
+        from arc.scheduler import _ts_guess_path_provenance
+        self.assertEqual(_ts_guess_path_provenance(spc.ts_guesses[0]), ('neb', yml_path))
+        self.assertEqual(_ts_guess_log_field_for_method('ase_neb'), 'neb_log')
 
     def test_renumber_ambiguous_ts_guesses_on_restart(self):
         """A restart file holding duplicated TSGuess indices is repaired, and an ambiguous chosen_ts is reset."""

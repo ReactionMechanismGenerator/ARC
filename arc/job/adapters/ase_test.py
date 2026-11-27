@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from ase import Atoms
+from ase.calculators.calculator import Calculator, all_changes
 from ase.calculators.emt import EMT
 from ase.vibrations import Vibrations
 
@@ -26,7 +27,8 @@ from arc.job.adapters.ase_adapter import ASEAdapter, active_worker_tickets, serv
 from arc.parser.parser import parse_1d_scan_coords, parse_1d_scan_energies
 from arc.species.species import ARCSpecies
 from arc.job.adapters.scripts import ase_script
-from arc.job.adapters.scripts.ase_script import (apply_constraints,
+from arc.job.adapters.scripts.ase_script import (ImageCalculator,
+                                                 apply_constraints,
                                                  claim_ticket,
                                                  get_ticket_status,
                                                  is_linear,
@@ -35,7 +37,9 @@ from arc.job.adapters.scripts.ase_script import (apply_constraints,
                                                  merge_scan_branches,
                                                  numpy_vibrational_analysis,
                                                  relaxed_torsion_scan,
+                                                 relax_endpoint,
                                                  rotor_top,
+                                                 run_band,
                                                  run_job,
                                                  run_torsion_scan,
                                                  run_vibrational_analysis,
@@ -1139,14 +1143,14 @@ class TestASEWorker(unittest.TestCase):
                'coords': ((-1.07, 0.0, 0.0), (0.0, 0.0, 0.0), (1.16, 0.0, 0.0))}
         product_xyz = {'symbols': ('H', 'C', 'N'), 'isotopes': (1, 12, 14),
                        'coords': ((2.15, 0.3, 0.0), (0.0, 0.0, 0.0), (1.17, 0.0, 0.0))}
-        for method in ('neb', 'dyneb', 'autoneb'):  # EMT's path trips AutoNEB, which then falls back to a NEB
+        for method in ('neb', 'dyneb'):
             job_dir = tempfile.mkdtemp(prefix=f'test_run_neb_{method}_')
             self.addCleanup(shutil.rmtree, job_dir, ignore_errors=True)
             input_dict = {'job_type': 'neb', 'xyz': xyz, 'product_xyz': product_xyz, 'charge': 0, 'multiplicity': 1,
                           'settings': {'calculator': 'emt', 'neb_method': method, 'neb_images': 3, 'neb_steps': 20}}
             input_path = os.path.join(job_dir, 'input.yml')
-            ase_script.save_yaml_file(input_path, input_dict)
-            output = ase_script.run_job(input_path, input_dict=input_dict)
+            save_yaml_file(input_path, input_dict)
+            output = run_job(input_path, input_dict=input_dict)
             self.assertNotIn('error', output)
             self.assertEqual(len(output['neb_energies']), 5)
             self.assertEqual(output['neb_energies'][0], 0.0)
@@ -1156,24 +1160,135 @@ class TestASEWorker(unittest.TestCase):
             self.assertEqual(tuple(guess['initial_xyz']['symbols']), xyz['symbols'])
             self.assertEqual(output['opt_xyz']['coords'], guess['initial_xyz']['coords'])
             self.assertGreater(output['neb_force_calls'], 0)
-        # Two bands give two guesses, each with its band's index.
         job_dir = tempfile.mkdtemp(prefix='test_run_neb_bands_')
         self.addCleanup(shutil.rmtree, job_dir, ignore_errors=True)
         flipped = {'symbols': xyz['symbols'], 'isotopes': xyz['isotopes'],
                    'coords': ((-2.15, 0.3, 0.0), (0.0, 0.0, 0.0), (1.17, 0.0, 0.0))}
         two = dict(input_dict, settings=dict(input_dict['settings'], neb_method='neb'),
                    bands=[{'xyz': xyz, 'product_xyz': product_xyz}, {'xyz': xyz, 'product_xyz': flipped}])
-        output = ase_script.run_job(os.path.join(job_dir, 'input.yml'), input_dict=two)
+        output = run_job(os.path.join(job_dir, 'input.yml'), input_dict=two)
         self.assertEqual(sorted(g['method_index'] for g in output['ts_guesses']), [0, 1])
         self.assertEqual(len(output['neb_bands']), 2)
         self.assertIn(output['neb_best_band'], (0, 1))
         self.assertTrue(os.path.isfile(os.path.join(job_dir, 'band_1', 'neb.log')))
-        # Mismatched endpoints are refused.
         bad = dict(input_dict, product_xyz={'symbols': ('H', 'N', 'C'), 'coords': product_xyz['coords']})
         job_dir = tempfile.mkdtemp(prefix='test_run_neb_bad_')
         self.addCleanup(shutil.rmtree, job_dir, ignore_errors=True)
-        output = ase_script.run_job(os.path.join(job_dir, 'input.yml'), input_dict=bad)
+        output = run_job(os.path.join(job_dir, 'input.yml'), input_dict=bad)
         self.assertIn('error', output)
+
+    @staticmethod
+    def band_job(well: str = 'double', start: float = 1.0, end: float = 3.0) -> tuple:
+        """A diatomic on a bond potential with a 1 eV barrier at 2.2 A between wells at 1.0 and 3.4 A ('double'), or
+        with a single well at 2.2 A ('single'), and the band's endpoints at bond lengths ``start`` and ``end``."""
+        atoms = Atoms('H2', positions=[(0.0, 0.0, 0.0), (start, 0.0, 0.0)])
+        atoms.calc = PairCalculator({(0, 1): ('double_well', 2.2, 1.2, 1.0 if well == 'double' else -1.0)})
+        endpoint = lambda r: {'symbols': ('H', 'H'), 'isotopes': (1, 1), 'coords': ((0.0, 0.0, 0.0), (r, 0.0, 0.0))}
+        return atoms, endpoint(start), endpoint(end)
+
+    def test_run_band_with_autoneb(self):
+        """AutoNEB climbs to the saddle of a barrier, and its convergence is checked at its end"""
+        atoms, xyz, product_xyz = self.band_job()
+        settings = {'neb_method': 'autoneb', 'neb_images': 5, 'neb_steps': 300, 'neb_relax_endpoints': False}
+        with tempfile.TemporaryDirectory() as job_dir:
+            output = run_band(atoms, xyz, product_xyz, settings, job_dir)
+        self.assertFalse(any('AutoNEB stopped' in w for w in output.get('warnings', list())), output.get('warnings'))
+        self.assertTrue(output['neb_converged'])
+        self.assertTrue(output['ts_guesses'][0]['success'])
+        highest = np.array(output['neb_path'][output['neb_highest_image']]['coords'])
+        self.assertAlmostEqual(float(np.linalg.norm(highest[1] - highest[0])), 2.2, delta=0.05)
+        self.assertAlmostEqual(output['neb_energies'][output['neb_highest_image']], to_kJmol(1.0), delta=2.0)
+
+        with tempfile.TemporaryDirectory() as job_dir:
+            output = run_band(atoms, xyz, product_xyz, dict(settings, neb_steps=2), job_dir)
+        self.assertFalse(output['neb_converged'])
+        self.assertTrue(any('above fmax' in w for w in output['warnings']))
+
+    def test_a_band_without_a_barrier_gives_no_successful_guess(self):
+        """A band whose interior is below both endpoints reports its highest interior image as unsuccessful"""
+        atoms, xyz, product_xyz = self.band_job(well='single')
+        with tempfile.TemporaryDirectory() as job_dir:
+            output = run_band(atoms, xyz, product_xyz, {'neb_images': 3, 'neb_steps': 100,
+                                                        'neb_relax_endpoints': False}, job_dir)
+        self.assertFalse(output['ts_guesses'][0]['success'])
+        self.assertTrue(any('no interior maximum' in w for w in output['warnings']))
+
+    def test_run_band_relaxes_its_endpoints(self):
+        """A band starts from its endpoints relaxed onto the wells of its potential"""
+        atoms, xyz, product_xyz = self.band_job(start=1.2, end=2.8)
+        structure = {'bonds': [(0, 1)]}
+        with tempfile.TemporaryDirectory() as job_dir:
+            output = run_band(atoms, xyz, product_xyz, {'neb_images': 3, 'neb_steps': 200}, job_dir,
+                              reactant_structure=structure, product_structure=structure)
+        for index, length in ((0, 1.0), (-1, 3.4)):
+            coords = np.array(output['neb_path'][index]['coords'])
+            self.assertAlmostEqual(float(np.linalg.norm(coords[1] - coords[0])), length, delta=0.02)
+
+    def test_relax_endpoint(self):
+        """A one-molecule endpoint keeps its bonds or stays unrelaxed; a two-molecule one is relaxed fragment by
+        fragment and keeps its contact"""
+        image = Atoms('H4', positions=[(0.0, 0.0, 0.0), (1.3, 0.0, 0.0), (4.3, 0.0, 0.0), (5.6, 0.0, 0.0)],
+                      tags=[1, 2, 3, 4])
+        calc = PairCalculator({(1, 2): ('harmonic', 1.0, 10.0), (3, 4): ('harmonic', 1.0, 10.0),
+                               (2, 3): ('harmonic', 1.0, 10.0)})
+
+        def attach(images):
+            for each in images:
+                each.calc = ImageCalculator(calc, dict())
+
+        with tempfile.TemporaryDirectory() as job_dir:
+            log = os.path.join(job_dir, 'relax.log')
+            fragments = [{'atoms': [0, 1], 'charge': 0, 'multiplicity': 1},
+                         {'atoms': [2, 3], 'charge': 0, 'multiplicity': 1}]
+            relaxed, warning = relax_endpoint(image, attach, log, fragments=fragments)
+            self.assertIsNone(warning)
+            self.assertAlmostEqual(relaxed.get_distance(0, 1), 1.0, delta=0.02)
+            self.assertAlmostEqual(relaxed.get_distance(2, 3), 1.0, delta=0.02)
+            self.assertAlmostEqual(relaxed.get_distance(1, 2), 3.3, delta=0.05)
+
+            relaxed, warning = relax_endpoint(image, attach, log, bonds=[(0, 1), (2, 3)])
+            self.assertIsNone(warning)
+            self.assertAlmostEqual(relaxed.get_distance(1, 2), 1.0, delta=0.05)
+            stretched = PairCalculator({(1, 2): ('harmonic', 4.0, 10.0)})
+            attach_stretched = lambda images: [setattr(each, 'calc', ImageCalculator(stretched, dict())) for each in images]
+            kept, warning = relax_endpoint(image, attach_stretched, log, bonds=[(0, 1)])
+            self.assertIn('broke', warning)
+            np.testing.assert_allclose(kept.get_positions(), image.get_positions())
+
+
+class PairCalculator(Calculator):
+    """
+    A test calculator summing pair potentials over pairs of atoms, keyed by their tags (by their indices if every tag
+    is 0): ``('harmonic', r0, k)``, or ``('double_well', c, w, h)``, h((r - c)^2 / w^2 - 1)^2.
+    """
+    implemented_properties = ['energy', 'forces']
+
+    def __init__(self, pairs: dict, **kwargs):
+        super().__init__(**kwargs)
+        self.pairs = pairs
+
+    def calculate(self, atoms=None, properties=('energy',), system_changes=all_changes):
+        super().calculate(atoms, properties, system_changes)
+        positions, tags = self.atoms.get_positions(), self.atoms.get_tags()
+        keys = list(tags) if any(tags) else list(range(len(self.atoms)))
+        energy, forces = 0.0, np.zeros_like(positions)
+        for (key_i, key_j), (kind, *params) in self.pairs.items():
+            if key_i not in keys or key_j not in keys:
+                continue
+            i, j = keys.index(key_i), keys.index(key_j)
+            vector = positions[i] - positions[j]
+            r = float(np.linalg.norm(vector))
+            if kind == 'harmonic':
+                r0, k = params
+                energy, slope = energy + 0.5 * k * (r - r0) ** 2, k * (r - r0)
+            else:
+                c, w, h = params
+                u = (r - c) / w
+                energy, slope = energy + h * (u ** 2 - 1) ** 2, 4.0 * h * u * (u ** 2 - 1) / w
+            forces[i] -= slope * vector / r
+            forces[j] += slope * vector / r
+        self.results = {'energy': energy, 'forces': forces}
+
 
 class TestASECalculators(unittest.TestCase):
     """

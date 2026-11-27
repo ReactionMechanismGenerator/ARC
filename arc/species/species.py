@@ -1879,7 +1879,8 @@ class ARCSpecies(object):
 
     def process_completed_tsg_queue_jobs(self, path: str):
         """
-        Process YAML files which are the output of running a TS guess job in the queue.
+        Process YAML files which are the output of running a TS guess job in the queue. The guesses of an ASE job's
+        output.yml (a dict whose ``ts_guesses`` they are) take that file as their ``log_path``.
 
         Args:
             path (str): The path to the output file.
@@ -1905,12 +1906,12 @@ class ARCSpecies(object):
         elif path.endswith('.yml') or path.endswith('.yaml'):
             yml_path = path
             tsg_list = read_yaml_file(yml_path)
+            source = {'log_path': path} if isinstance(tsg_list, dict) else dict()
             if isinstance(tsg_list, dict):
-                # An ASE job's output.yml (e.g., 'ase_neb') carries its guesses under 'ts_guesses'.
                 tsg_list = tsg_list.get('ts_guesses')
             if not isinstance(tsg_list, list) or not all(isinstance(tsg, dict) for tsg in tsg_list):
                 return None
-            tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]
+            tsgs = [TSGuess(ts_dict={**source, **tsg_dict}) for tsg_dict in tsg_list]
             for tsg in tsgs:
                 if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                     self.append_ts_guess(tsg)
