@@ -12,6 +12,7 @@ import numpy as np
 
 from arc.molecule.molecule import Molecule
 from arc.species import ARCSpecies
+from arc.species.vectors import calculate_angle
 from arc.job.adapters.ts.linear_utils.addition_test import MASS_NUMBER
 from arc.job.adapters.ts.linear_utils.isomerization import (
     backbone_atom_map,
@@ -199,7 +200,7 @@ class TestGetNearAttackXyz(unittest.TestCase):
     def test_get_near_attack_xyz_keeps_substituents_on_the_donor(self):
         """
         Turning the donor toward the acceptor of an H shift carries the donor's heavy substituents with all their
-        atoms: n-C4H9O2's 1,5-H shift turns C1, whose methyl group used to stay behind (C-H 0.83-1.54 A).
+        atoms: n-C4H9O2's 1,5-H shift turns C1 with its methyl group, keeping every bond length.
         """
         spc = ARCSpecies(label='nC4H9O2', smiles='CCCCO[O]', xyz="""C      -2.93927000   -0.37633600    0.02451300
 C      -1.47658300   -0.37344700   -0.22160400
@@ -227,6 +228,25 @@ H       3.25604700   -0.18579200    0.57307000""")
                 self.assertAlmostEqual(np.linalg.norm(after[i] - after[j]), np.linalg.norm(before[i] - before[j]),
                                        delta=0.01, msg=f'bond {i}-{j}')
         self.assertLess(np.linalg.norm(after[5] - after[h_atom]), np.linalg.norm(before[5] - before[h_atom]))
+
+    def test_get_near_attack_xyz_does_not_turn_the_donor_about_a_ring_bond(self):
+        """An H shift whose donor and next backbone atom are ring atoms does not turn the ring about their bond"""
+        for smiles in ('[CH2]CC1CCCCC1', '[O]OC1CCCCC1'):
+            with self.subTest(smiles=smiles):
+                spc = ARCSpecies(label='ring', smiles=smiles)
+                mol, xyz = spc.mol, spc.get_xyz()
+                index = {atom: i for i, atom in enumerate(mol.atoms)}
+                radical = next(i for i, atom in enumerate(mol.atoms) if atom.radical_electrons)
+                attachment = next(i for i, atom in enumerate(mol.atoms) if atom.is_carbon() and mol.is_atom_in_cycle(atom)
+                                  and any(not mol.is_atom_in_cycle(n) for n in atom.edges if not n.is_hydrogen()))
+                donor = next(index[n] for n in mol.atoms[attachment].edges if n.is_carbon() and mol.is_atom_in_cycle(n))
+                h_atom = next(index[n] for n in mol.atoms[donor].edges if n.is_hydrogen())
+                folded = get_near_attack_xyz(xyz, mol, [(radical, h_atom)])
+                before, after = np.array(xyz['coords']).tolist(), np.array(folded['coords']).tolist()
+                changes = [abs(calculate_angle(before, [i, center, j]) - calculate_angle(after, [i, center, j]))
+                           for center, atom in enumerate(mol.atoms)
+                           for i in (index[n] for n in atom.edges) for j in (index[n] for n in atom.edges) if i < j]
+                self.assertLess(max(changes), 15.0)
 
     def test_get_near_attack_xyz_preserves_atom_count(self):
         """Near-attack conformer preserves atom count and symbols."""
