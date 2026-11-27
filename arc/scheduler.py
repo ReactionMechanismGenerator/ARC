@@ -5765,18 +5765,24 @@ class Scheduler(object):
         Switch a TS that waited for its IRC after a near-miss NMD failure, and was not accepted, to its next guess.
 
         Once every guess was tried, the TS is marked unconverged and its NMD verdict of ``False`` is restored.
-        Its near-miss record is not restored, and the TS is not deferred again.
+        Its near-miss record is not restored, and the TS is not deferred again. The ``ts_checks`` warnings of the
+        last guess are kept, followed by its sub-gate bonds, to explain the rejection.
 
         Args:
             label (str): The TS species label.
         """
-        self.switch_ts(label)
         species = self.species_dict[label]
+        record = get_nmd_near_miss(species.ts_checks)
+        warnings = species.ts_checks.get('warnings') or ''
+        self.switch_ts(label)
         if species.ts_guesses_exhausted or species.chosen_ts is None:
             logger.error(f'Could not find a TS conformer for {label} that passes the normal mode displacement '
                          f'check. Marking as unconverged.')
             self.output[label]['convergence'] = False
             species.ts_checks['NMD'] = False
+            if record is not None:
+                warnings += f'NMD below the 5% gate, no IRC verdict: {get_nmd_near_miss_summary(record)}; '
+            species.ts_checks['warnings'] = warnings
 
     def accept_nmd_near_miss_on_irc(self, label: str):
         """

@@ -7264,6 +7264,22 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.assertIsNot(ts_spc.ts_checks['IRC'], True)
         self.assertIsNot(sched.output[ts_label]['convergence'], True)
 
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_a_deferred_ts_on_its_last_guess_keeps_its_near_miss_evidence(self, mock_run_opt):
+        """Test that a deferred TS whose guesses run out with no IRC verdict keeps, in its warnings, the near-miss
+        bonds and the TS-check warnings that explain its rejection."""
+        ts_label = 'TS_defer_last_evidence'
+        sched = self.make_deferred_scheduler(
+            ts_label=ts_label, irc_jobs_running=False, num_guesses=1,
+            project_directory_name='arc_project_for_testing_delete_after_usage_nmd_defer_last_evidence')
+        ts_spc = sched.species_dict[ts_label]
+        ts_spc.ts_checks['warnings'] = 'Earlier TS check warning; '
+        sched.resolve_nmd_deferral(ts_label)
+        self.assertIs(sched.output[ts_label]['convergence'], False)
+        warnings = f"{ts_spc.ts_checks.get('warnings') or ''} {sched.output[ts_label]['warnings']}"
+        self.assertIn('Earlier TS check warning', warnings)
+        self.assertIn('C-Cl (1, 2) 4.55%', warnings)
+
     def test_a_deferred_ts_whose_irc_jobs_ended_without_output_is_switched_once_nothing_is_pending(self):
         """Test that a deferred TS waits while IRC work is pending, and is switched once none is left."""
         ts_label = 'TS_defer_crash'
