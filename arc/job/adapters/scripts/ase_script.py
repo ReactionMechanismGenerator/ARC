@@ -221,13 +221,8 @@ def uma_hessian(atoms: Atoms, settings: dict, cache: dict | None = None) -> np.n
 
 def sella_hessian_function(settings: dict, cache: dict | None = None):
     """
-    The exact Hessian for a Sella saddle-point search, if the calculator gives one cheaply (UMA's autograd Hessian).
-
-    Without it, Sella estimates the lowest-curvature mode iteratively from a random start. At a TS guess with a
-    second negative mode (e.g., a torsion), the estimate can lock onto the wrong one, and Sella then climbs to the
-    wrong saddle. From ARC's heuristic guess for OH + C3H8, plain Sella reached a saddle of the OH...propane complex
-    (one 33i cm^-1 torsion) in both of ARC's attempts and in 1 of 10 seeded runs; with the exact Hessian, all 10
-    runs reached the H-abstraction TS.
+    The exact Hessian for a Sella saddle-point search: UMA's autograd Hessian (see ``uma_hessian()``), unless the
+    job sets ``hessian`` to something other than ``'autograd'`` or the installed fairchem cannot compute it.
 
     Args:
         settings (dict): The run settings.

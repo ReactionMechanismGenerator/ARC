@@ -1217,6 +1217,35 @@ class TestASECalculators(unittest.TestCase):
             get_predict_unit.assert_called_once_with('uma-s-1p2', device='cpu')
             self.assertEqual(calc.task_name, 'omol')
 
+    def test_a_uma_ts_search_gives_sella_the_hessian(self):
+        """A TS optimization passes the UMA Hessian function to Sella, and a minimization does not"""
+        from arc.job.adapters.scripts import ase_script
+        calls = list()
+
+        class FakeSella:
+            def __init__(self, atoms, **kwargs):
+                calls.append(kwargs)
+
+            def run(self, fmax, steps):
+                pass
+
+        def hessian_function(atoms):
+            return np.eye(3 * len(atoms))
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.dict(sys.modules, {'sella': self.modules(sella={'Sella': FakeSella})['sella']}), \
+                patch('arc.job.adapters.scripts.ase_script.sella_hessian_function',
+                      return_value=hessian_function) as sella_hessian:
+            for is_ts in (True, False):
+                input_path = os.path.join(tmp, 'input.yml')
+                save_yaml_file(input_path, {'job_type': 'opt', 'xyz': ETHANE_XYZ, 'charge': 0, 'multiplicity': 1,
+                                            'is_ts': is_ts, 'settings': {'calculator': 'emt', 'optimizer': 'sella'}})
+                ase_script.run_job(input_path)
+        self.assertIs(calls[0]['hessian_function'], hessian_function)
+        self.assertEqual(calls[0]['order'], 1)
+        self.assertNotIn('hessian_function', calls[1])
+        sella_hessian.assert_called_once()
+
     def test_isotope_masses(self):
         """A job on a labelled species passes its isotope masses, which the script sets on the atoms"""
         from arc.job.adapters.scripts.ase_script import run_job
