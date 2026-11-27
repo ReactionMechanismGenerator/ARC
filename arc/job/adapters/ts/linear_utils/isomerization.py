@@ -517,8 +517,9 @@ def get_near_attack_xyz(xyz: dict,
         if t_axis_norm < 1e-8:
             continue
         t_axis = t_axis_raw / t_axis_norm
-        t_group = {nbr for nbr in adj[pivot_a] if nbr != pivot_b}
-        if h_atom not in t_group:
+        t_group = downstream(adj, pivot_b, pivot_a) - {pivot_a}
+        in_ring = any(neighbor in t_group for neighbor in adj[pivot_b] if neighbor != pivot_a)
+        if h_atom not in t_group or in_ring or acceptor in t_group:
             continue
         best_dist = float(np.linalg.norm(coords[h_atom] - coords[acceptor]))
         best_delta = 0.0

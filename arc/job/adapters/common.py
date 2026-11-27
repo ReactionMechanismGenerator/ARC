@@ -107,7 +107,10 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot', 'goflow', 'rits', '
                              'nitrile_hydrolysis': ['heuristics']
                              }
 
-all_families_ts_adapters = []
+all_families_ts_adapters = ['ase_neb']
+
+ts_adapters_at_ts_guess_level = ['ase_neb']
+ts_adapters_needing_one_molecule_side = ['ase_neb']
 
 # Adapters that may run on any unimolecular reaction when RMG fails to assign a
 # family. These adapters must tolerate rxn.family being None or unknown.

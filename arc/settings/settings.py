@@ -192,6 +192,7 @@ t_max_format = {'OGE': 'hours',
                 }
 
 input_filenames = {'ase': 'input.yml',
+                   'ase_neb': 'input.yml',
                    'cfour': 'ZMAT',
                    'gaussian': 'input.gjf',
                    'mockter': 'input.yml',
@@ -206,6 +207,7 @@ input_filenames = {'ase': 'input.yml',
                    }
 
 output_filenames = {'ase': 'output.yml',
+                    'ase_neb': 'output.yml',
                     'cfour': 'output.out',
                     'gaussian': 'input.log',
                     'gcn': 'output.yml',
@@ -306,6 +308,17 @@ orca_neb_settings = {'keyword': {
                         'preopt': 'true',
                     },
                     'level': 'wb97xd/def2tzvp',
+                    }
+
+ase_neb_settings = {'keyword': {
+                        'neb_method': 'autoneb',
+                        'neb_images': 10,
+                        'neb_bands': 3,
+                        'neb_fmax': 0.05,
+                        'neb_fmax_pre': 0.1,
+                        'neb_steps': 500,
+                    },
+                    'level': None,
                     }
 
 ase_default_options_dict = {'optimizer': 'BFGS',

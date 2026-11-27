@@ -463,7 +463,7 @@ def _path_search_method(record: Mapping[str, Any]) -> str | None:
     method sources of the chosen TS guess. ``None`` when the record does not
     identify a path-search method, which gates GSM evidence off entirely.
     """
-    aliases = {"xtb_gsm": "gsm", "xtb-gsm": "gsm", "gsm": "gsm", "orca_neb": "neb", "orca-neb": "neb"}
+    aliases = {"xtb_gsm": "gsm", "xtb-gsm": "gsm", "gsm": "gsm", "orca_neb": "neb", "orca-neb": "neb", "ase_neb": "neb"}
     method = record.get("chosen_ts_method")
     if isinstance(method, str) and method.strip().lower() in aliases:
         return aliases[method.strip().lower()]

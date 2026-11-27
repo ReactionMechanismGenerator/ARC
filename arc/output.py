@@ -542,6 +542,7 @@ def _make_rel_path(path: str | None, project_directory: str) -> str | None:
 # local to avoid an output→scheduler import dependency.
 _TS_GUESS_METHOD_TO_LOG_FIELD: dict[str, str] = {
     'orca_neb': 'neb_log',
+    'ase_neb': 'neb_log',
     'xtb_gsm': 'gsm_log',
     'xtb-gsm': 'gsm_log',
 }
