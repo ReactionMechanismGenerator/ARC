@@ -627,9 +627,17 @@ importance of the DFT grid.
 
 __ DFTGridStudy_
 
-In Gaussian, ``fine`` adds the following directive::
+In Gaussian, ``fine`` adds the following keywords::
 
-    scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)
+    opt=(tight, maxstep=5) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)
+
+Note that ``scf=tight``, ``grid=ultrafine`` and ``Acc2E=12`` are the defaults in
+Gaussian 16, so there the fine optimization differs from the regular one only by
+its tighter convergence criteria (``opt=tight``) and smaller maximum step
+(``maxstep=5``). In Gaussian 09, the defaults were ``FineGrid`` and ``Acc2E=10``,
+so the fine optimization also uses a finer grid and more accurate integrals.
+ARC writes these keywords explicitly so that results are consistent across both
+versions.
 
 In QChem, it adds the following directives::
 
