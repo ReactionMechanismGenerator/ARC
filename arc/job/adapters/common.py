@@ -31,6 +31,8 @@ REFERENCE_AGNOSTIC_METHOD_TYPES = ['force_field', 'composite', 'semiempirical']
 
 PREFIX_FREE_METHOD_TYPES = ['force_field', 'semiempirical']
 
+U_PREFIXED_COMPOSITE_METHODS = []
+
 BROKEN_SYMMETRY_METHOD_TYPES = ['dft']
 BROKEN_SYMMETRY_METHODS = ['hf', 'hf3c', 'rhf', 'uhf', 'rohf']
 DOUBLE_HYBRID_METHODS = ['b2plyp', 'b2plypd', 'b2plypd3', 'b2plypd3bj', 'b2gpplyp', 'b2kplyp', 'b2tplyp',
@@ -656,8 +658,10 @@ def is_species_restricted(obj: JobAdapter,
 
     A declared ``number_of_radicals`` greater than one makes a species of multiplicity 1 unrestricted
     at every method type except those in ``PREFIX_FREE_METHOD_TYPES`` (force fields and semiempirical
-    methods, ``amber`` included), which ARC writes without an r/u prefix. At a composite method this
-    writes the ``u`` prefix (``ug4``, ``ucbs-qb3``). Above multiplicity 1, a method type in
+    methods, ``amber`` included), which ARC writes without an r/u prefix, and the composite methods.
+    A composite is written with the ``u`` prefix only if it is in ``U_PREFIXED_COMPOSITE_METHODS``,
+    which is empty until Gaussian is shown to accept such a route (ARC #1137), so every composite is
+    written bare, as before. Above multiplicity 1, a method type in
     ``REFERENCE_AGNOSTIC_METHOD_TYPES`` returns restricted and is written without a prefix.
 
     Args:
@@ -675,6 +679,7 @@ def is_species_restricted(obj: JobAdapter,
 
     if number_of_radicals is not None and number_of_radicals > 1 \
             and obj.level.method_type not in PREFIX_FREE_METHOD_TYPES \
+            and (obj.level.method_type != 'composite' or obj.level.method in U_PREFIXED_COMPOSITE_METHODS) \
             and (multiplicity == 1 or obj.level.method_type not in REFERENCE_AGNOSTIC_METHOD_TYPES):
         logger.info(f'Using an unrestricted method for species {species_label} which has '
                     f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
