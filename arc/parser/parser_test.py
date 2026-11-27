@@ -1880,8 +1880,17 @@ H      -1.69381305    0.40788834    0.90078104"""
             self.assertIsNone(parse('g_cut_first_page.out', gaussian_lines[:871]))
             # A log cut inside the last page.
             self.assertIsNone(parse('g_cut_last_page.out', gaussian_lines[:950]))
-            # A later geometry, e.g., an optimization that did not finish.
-            self.assertIsNone(parse('g_later_geometry.out', gaussian_lines[:964] + orientation + gaussian_lines[964:]))
+            moved = list(orientation)
+            x = moved[5].split()[3]
+            moved[5] = moved[5].replace(x, f'{float(x) + 0.1:.6f}', 1)
+            self.assertIsNone(parse('g_later_geometry.out', gaussian_lines[:964] + moved + gaussian_lines[964:]))
+            input_moved = [line.replace('Standard orientation:', '   Input orientation:') for line in moved]
+            self.assertIsNone(parse('g_later_input_orientation.out', gaussian_lines[:964] + input_moved
+                                    + gaussian_lines[964:]))
+            full = parse('g_full.out', gaussian_lines)
+            same = parse('g_later_step_same_geometry.out', gaussian_lines[:964] + orientation
+                         + [' Population analysis using the SCF Density.\n'] + gaussian_lines[964:])
+            np.testing.assert_array_equal(same, full)
             # An asymmetric matrix.
             lines = list(gaussian_lines)
             lines[870] = lines[870].replace('0.822247', '0.832247')
@@ -1905,6 +1914,10 @@ H      -1.69381305    0.40788834    0.90078104"""
             self.assertAlmostEqual(bond_orders[4, 4], 1.861909 - 0.022247, places=5)
             self.assertAlmostEqual(bond_orders[4, 4], np.sum(bond_orders[4]) - bond_orders[4, 4], places=10)
             self.assertAlmostEqual(bond_orders[0, 0], 3.931186, places=6)
+            lines = list(gaussian_lines)
+            self.assertIn('1.861909', lines[869])
+            lines[869] = lines[869].replace('1.861909', '1.866909')
+            self.assertAlmostEqual(parse('g_diagonal_off_by_5e-3.out', lines)[4, 4], 1.861909, places=4)
 
             # Orca: an optimization that did not finish, whose only section is at the initial geometry.
             self.assertIsNone(parse('o_unfinished_opt.out', orca_lines[:3797]))
@@ -1912,7 +1925,19 @@ H      -1.69381305    0.40788834    0.90078104"""
             self.assertIsNone(parse('o_cut_atoms.out', orca_lines[:4525]))
             # A log cut inside the pair list.
             self.assertIsNone(parse('o_cut_pairs.out', orca_lines[:4536]))
-            # The full log.
+            self.assertIsNone(parse('o_atom_missing.out', orca_lines[:4530] + orca_lines[4531:]))
+            lines = list(orca_lines)
+            lines[4522] = lines[4522].replace('  3 N', '  4 N', 1)
+            self.assertIsNone(parse('o_row_index.out', lines))
+            lines = list(orca_lines)
+            lines[4532] = '  Mayer bond orders\n'
+            self.assertIsNone(parse('o_no_pair_header.out', lines))
+            lines = list(orca_lines)
+            lines[4534] = 'B(  2-C ,  3-N ) :   n/a\n'
+            self.assertIsNone(parse('o_malformed_pair.out', lines))
+            lines = list(orca_lines)
+            lines[4537] = lines[4537].replace('11-H', '12-H')
+            self.assertIsNone(parse('o_pair_out_of_range.out', lines))
             self.assertEqual(parse('o_full.out', orca_lines).shape, (12, 12))
 
     def test_yaml_parser(self):

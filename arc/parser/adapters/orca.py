@@ -961,7 +961,8 @@ class OrcaParser(ESSAdapter, ABC):
         The diagonal is the ``BVA`` column, the bonded valence. ``VA`` is the total valence,
         which for an open-shell atom also includes its free valence ``FA``.
         Orca only prints pairs above a threshold, 0.1 by default, so the bond orders below it
-        are returned as exactly zero. This bounds how low a threshold is meaningful downstream.
+        are returned as exactly zero, while ``BVA`` counts them: a diagonal entry can exceed the sum
+        of its row. This bounds how low a threshold is meaningful downstream.
 
         The matrix is returned only if the per-atom table lists every atom of the geometry,
         and if both the table and the pair list end before the file does.

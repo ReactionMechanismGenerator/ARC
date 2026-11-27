@@ -346,15 +346,20 @@ class ESSAdapter(ABC):
           This holds for a correlated single point as well: the bond orders of a CCSD(T) single point are
           those of its HF reference. Some methods analyze their own density too, e.g., Orca's MRCI,
           and the last analysis in the log file is the one used.
+        - For an open shell, Gaussian (``IOp(6/80=1)``) computes them from the total density only, while Orca
+          adds the contribution of the spin density, as Mayer's open-shell definition does. For the same
+          UHF/def2-SVP density of triplet O2, Gaussian prints an O-O bond order of 1.38 and Orca 1.83.
+          Compare open-shell bond orders from the same program only.
 
         Returns: np.ndarray | None
             A symmetric NxN matrix in the log file's atom order, NxN matching the geometry.
             An off-diagonal entry is the Mayer bond order of an atom pair.
-            A diagonal entry is the Mayer bonded valence of an atom, the sum of its bond orders.
-            For an open-shell atom this leaves out its free valence.
-            ``None`` if the log file does not contain a complete Mayer bond order section,
-            or if a later geometry follows its last one, e.g., in an optimization that did not finish,
-            so the matrix always belongs to the geometry ``parse_geometry()`` returns.
+            A diagonal entry is the Mayer bonded valence of an atom, which leaves out an open-shell atom's
+            free valence: from Gaussian, the sum of the atom's bond orders; from Orca, its BVA, which also
+            counts the pairs below Orca's print threshold that are returned as zero, so it can exceed that sum.
+            ``None`` if the log file does not contain a complete Mayer bond order section, or if a geometry
+            printed after its last one differs from the geometry it was computed at, e.g., in an optimization
+            that did not finish, so the matrix always belongs to the last geometry of the log file.
         """
         return None
 

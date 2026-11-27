@@ -86,6 +86,48 @@ def _read_gaussian_paged_matrix(lines: list[str],
     return matrix
 
 
+ORIENTATION_HEADERS = ('Input orientation:', 'Standard orientation:', 'Z-Matrix orientation:')
+
+
+def _read_orientation(lines: list[str], header: int) -> tuple[tuple[int, ...], np.ndarray] | None:
+    """
+    Read a Gaussian orientation table (e.g., "Standard orientation:").
+
+    Args:
+        lines (list[str]): The log file lines.
+        header (int): The index of the table's header line.
+
+    Returns: tuple[tuple[int, ...], np.ndarray] | None
+        The atomic numbers and the coordinates (Angstrom), or ``None`` if the table could not be read.
+    """
+    numbers, coords = list(), list()
+    for line in lines[header + 5:]:
+        splits = line.split()
+        if not splits or line.startswith(' ---'):
+            break
+        try:
+            numbers.append(int(splits[1]))
+            coords.append([float(value) for value in splits[3:6]])
+        except (ValueError, IndexError):
+            return None
+    return (tuple(numbers), np.array(coords, np.float64)) if numbers else None
+
+
+def _same_geometry(geometry_1: tuple[tuple[int, ...], np.ndarray],
+                   geometry_2: tuple[tuple[int, ...], np.ndarray],
+                   tolerance: float = 1e-4,
+                   ) -> bool:
+    """
+    Whether two orientation tables hold the same molecular geometry: the same atomic numbers in the same order, and
+    interatomic distances equal to ``tolerance`` (Angstrom), whatever their orientations.
+    """
+    (numbers_1, coords_1), (numbers_2, coords_2) = geometry_1, geometry_2
+    if numbers_1 != numbers_2:
+        return False
+    distances = lambda coords: np.linalg.norm(coords[:, None, :] - coords[None, :, :], axis=-1)
+    return bool(np.allclose(distances(coords_1), distances(coords_2), rtol=0, atol=tolerance))
+
+
 def _read_irc_geometry_table(lines: list[str], start: int) -> tuple[dict | None, int]:
     """
     Read one Gaussian IRC Cartesian geometry table.
@@ -1364,7 +1406,9 @@ class GaussianParser(ESSAdapter, ABC):
         single matrix of the total density as well, under the same header. Only a header that reads
         exactly so counts, not one with a spin prefix such as "Alpha", and if the population analysis
         prints that header more than once, ``None`` is returned rather than a guess at which matrix
-        is the total one.
+        is the total one. A later step of the job at the same geometry, e.g., the frequency step of an
+        ``opt freq`` job, whose route Gaussian writes without the IOp, keeps the matrix; any other
+        geometry printed after it, e.g., a later step of an optimization, makes the result ``None``.
 
         The matrix is returned only if every cell of an NxN matrix was read, N being the number of
         atoms in the geometry, and if it is symmetric to print precision. The diagonal Gaussian prints
@@ -1385,10 +1429,13 @@ class GaussianParser(ESSAdapter, ABC):
         analysis_start = next((i for i in range(start, -1, -1) if 'Population analysis using' in lines[i]), 0)
         if sum(i >= analysis_start for i in headers) > 1:
             return None
-        if any(header in line for line in lines[start:]
-               for header in ('Input orientation:', 'Standard orientation:', 'Z-Matrix orientation:')):
-            # The bond orders belong to an earlier geometry than the one parse_geometry() returns.
-            return None
+        later = [i for i in range(start, len(lines)) if any(header in lines[i] for header in ORIENTATION_HEADERS)]
+        if later:
+            analysed = next((_read_orientation(lines, i) for i in range(start, -1, -1)
+                             if any(header in lines[i] for header in ORIENTATION_HEADERS)), None)
+            if analysed is None or not all(_same_geometry(analysed, geometry) if geometry is not None else False
+                                           for geometry in (_read_orientation(lines, i) for i in later)):
+                return None
         xyz = self.parse_geometry()
         if xyz is None:
             return None
