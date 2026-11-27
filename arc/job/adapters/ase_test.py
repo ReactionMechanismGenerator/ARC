@@ -8,8 +8,10 @@ These tests verify IO and logic without executing the external ASE script in CI.
 
 import os
 import shutil
+import sys
 import tempfile
 import unittest
+import warnings
 from unittest.mock import patch
 import numpy as np
 
@@ -278,6 +280,20 @@ class TestASEAdapter(unittest.TestCase):
                                         config=job.determine_submit_config(),
                                         cluster_soft='htcondor')
 
+    def test_set_files_puts_the_script_in_a_local_queue_job_directory(self):
+        """A queue job on this machine is not uploaded, so its directory needs the ASE script its submit script runs"""
+        with tempfile.TemporaryDirectory() as tmp:
+            job = ASEAdapter(execution_type='queue',
+                             job_type='sp',
+                             project='test_local_queue',
+                             project_directory=os.path.join(tmp, 'project'),
+                             species=[ARCSpecies(label='ethane', xyz=ETHANE_XYZ)],
+                             args={'keyword': {'calculator': 'emt'}},
+                             server='local',
+                             testing=True)
+            self.assertTrue(os.path.isfile(os.path.join(job.local_path, 'ase_script.py')))
+            self.assertTrue(os.path.isfile(os.path.join(job.local_path, 'input.yml')))
+
     def test_set_files_does_not_write_for_an_incore_job(self):
         """Test that an incore job writes no submit script (it writes its input when it executes)"""
         # Assert against the directory set_files() actually wrote to, not the scratch directory
@@ -459,6 +475,112 @@ class TestASEAdapter(unittest.TestCase):
         # Pulled far enough apart, they are no longer a bond at all.
         with self.assertRaises(ValueError):
             rotor_top(ts_like, 0, 1, pivot_mult=1.0)
+
+    def test_an_irc_job_ends_at_the_end_of_its_path(self):
+        """An IRC job's final geometry is the last point of its path, from which ARC builds the IRC species"""
+        from ase.io.trajectory import Trajectory
+        from arc.job.adapters.scripts import ase_script
+        calls = dict()
+
+        class FakeIRC:
+            def __init__(self, atoms, logfile=None, trajectory=None, **kwargs):
+                self.atoms, self.trajectory = atoms, trajectory
+                calls['kwargs'] = kwargs
+
+            def run(self, fmax, steps, direction):
+                calls['fmax'] = fmax
+                with Trajectory(self.trajectory, 'w') as traj:
+                    for shift in (0.0, 0.1, 0.2):
+                        image = Atoms(self.atoms.get_chemical_symbols(), positions=self.atoms.get_positions())
+                        image.positions[0, 0] += shift
+                        traj.write(image)
+
+        fake_sella = type(sys)('sella')
+        fake_sella.IRC = FakeIRC
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, 'input.yml')
+            save_yaml_file(input_path, {'job_type': 'irc', 'xyz': ETHANE_XYZ, 'charge': 0, 'multiplicity': 1,
+                                        'settings': {'calculator': 'emt'}})
+            with patch.dict(sys.modules, {'sella': fake_sella}), \
+                    patch.object(sys, 'argv', ['ase_script.py', '--yml_path', input_path]):
+                ase_script.main()
+            output = read_yaml_file(os.path.join(tmp, 'output.yml'))
+        self.assertEqual(len(output['irc_traj']), 3)
+        self.assertAlmostEqual(output['opt_xyz']['coords'][0][0], ETHANE_XYZ['coords'][0][0] + 0.2)
+        self.assertEqual(output['opt_xyz'], output['irc_traj'][-1])
+        self.assertEqual(calls['fmax'], 0.01)
+        self.assertTrue(calls['kwargs']['keep_going'])
+        self.assertNotIn('irc_complete', output)
+        self.assertNotIn('warnings', output)
+
+    @staticmethod
+    def _run_fake_irc_job(run) -> dict:
+        """Run ase_script.main() on an IRC job whose Sella IRC.run is ``run(irc)``, and return its output.yml"""
+        from arc.job.adapters.scripts import ase_script
+
+        class FakeIRC:
+            def __init__(self, atoms, logfile=None, trajectory=None, **kwargs):
+                self.atoms, self.trajectory = atoms, trajectory
+
+            def run(self, fmax, steps, direction):
+                run(self)
+
+        fake_sella = type(sys)('sella')
+        fake_sella.IRC = FakeIRC
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = os.path.join(tmp, 'input.yml')
+            save_yaml_file(input_path, {'job_type': 'irc', 'xyz': ETHANE_XYZ, 'charge': 0, 'multiplicity': 1,
+                                        'settings': {'calculator': 'emt'}})
+            with patch.dict(sys.modules, {'sella': fake_sella}), \
+                    patch.object(sys, 'argv', ['ase_script.py', '--yml_path', input_path]):
+                ase_script.main()
+            return read_yaml_file(os.path.join(tmp, 'output.yml'))
+
+    @staticmethod
+    def _write_irc_points(irc, n_points: int):
+        """Write ``n_points`` geometries, each shifted further along x, to the fake IRC's trajectory"""
+        from ase.io.trajectory import Trajectory
+        with Trajectory(irc.trajectory, 'w') as traj:
+            for n in range(n_points):
+                image = Atoms(irc.atoms.get_chemical_symbols(), positions=irc.atoms.get_positions())
+                image.positions[0, 0] += 0.1 * n
+                traj.write(image)
+
+    def test_an_irc_job_reports_an_untrustworthy_path(self):
+        """An IRC whose inner loop failed to converge reports its path as incomplete, and still returns it"""
+        def run(irc):
+            self._write_irc_points(irc, 4)
+            for _ in range(2):
+                warnings.warn('IRC inner loop failed to converge! The trajectory is no longer a trustworthy IRC.')
+
+        output = self._run_fake_irc_job(run)
+        self.assertIs(output['irc_complete'], False)
+        self.assertEqual(len(output['warnings']), 1)
+        self.assertIn('2 step(s)', output['warnings'][0])
+        self.assertEqual(len(output['irc_traj']), 4)
+        self.assertNotIn('error', output)
+
+    def test_an_irc_job_that_stops_partway_reports_it(self):
+        """An IRC that raised after walking part of its path keeps that part and reports the path as incomplete"""
+        def run(irc):
+            self._write_irc_points(irc, 3)
+            raise RuntimeError('inner loop diverged')
+
+        output = self._run_fake_irc_job(run)
+        self.assertIs(output['irc_complete'], False)
+        self.assertIn('stopped after 3 points: RuntimeError: inner loop diverged', output['warnings'][0])
+        self.assertEqual(len(output['irc_traj']), 3)
+        self.assertNotIn('error', output)
+
+    def test_an_irc_job_with_an_unreadable_trajectory_errors(self):
+        """An IRC trajectory that cannot be read is an error, not an empty path"""
+        def run(irc):
+            with open(irc.trajectory, 'wb') as f:
+                f.write(b'not a trajectory')
+
+        output = self._run_fake_irc_job(run)
+        self.assertIn('could not be read', output['error'])
+        self.assertNotIn('irc_traj', output)
 
     def test_relaxed_torsion_scan(self):
         """Test a full 1D relaxed torsional scan on the machinery (EMT keeps it hermetic)"""

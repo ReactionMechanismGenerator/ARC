@@ -53,7 +53,7 @@ from arc.job.local import check_running_jobs_ids
 from arc.job.pipe.pipe_coordinator import PipeCoordinator
 from arc.job.pipe.pipe_planner import PipePlanner
 from arc.job.pipe.pipe_run import rotor_scan_1d_task_id
-from arc.job.pipe.pipe_state import ROTOR_SCAN_1D_TASK_FAMILY, TaskState, read_task_state
+from arc.job.pipe.pipe_state import PipeRunState, ROTOR_SCAN_1D_TASK_FAMILY, TaskState, read_task_state
 from arc.job.ssh_pool import borrow_ssh_client
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
@@ -750,6 +750,24 @@ class Scheduler(object):
                 or any(label in {t.owner_key for t in p.tasks}
                        for p in self.active_pipes.values()))
 
+    def has_pending_conformer_sp(self, label: str) -> bool:
+        """
+        Whether a conformer single point (``conf_sp``) of a species is queued for a pipe batch or runs in a pipe
+        run that has not terminated.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: ``True`` if a conformer single point of the species has not reported yet.
+        """
+        if self._pending_pipe_conf_sp.get(label):
+            return True
+        terminal = (PipeRunState.COMPLETED, PipeRunState.COMPLETED_PARTIAL, PipeRunState.FAILED)
+        return any(pipe.status not in terminal
+                   and any(task.task_family == 'conf_sp' and task.owner_key == label for task in pipe.tasks)
+                   for pipe in self.active_pipes.values())
+
     def flush_pending_pipe_batches(self) -> None:
         """
         Attempt to submit accumulated deferred pipe batches for SP, freq, IRC, and conf_sp.
@@ -826,12 +844,9 @@ class Scheduler(object):
             if species.initial_xyz is None and species.final_xyz is None and species.conformers \
                     and any([e is not None for e in species.conformer_energies]):
                 # The species has no xyz, but has conformers and at least one of the conformers has energy.
-                self.determine_most_stable_conformer(species.label)
-                if species.initial_xyz is not None:
-                    if self.composite_method:
-                        self.run_composite_job(species.label)
-                    else:
-                        self.run_opt_job(species.label, fine=self.fine_only)
+                self.optimize_most_stable_conformer(species.label)
+            elif self.irc_species_awaiting_opt(species.label):
+                self.run_irc_species_opt(species.label)
         self.run_conformer_jobs()
         self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
         while self.running_jobs != {} or self.active_pipes \
@@ -884,16 +899,7 @@ class Scheduler(object):
                                 # All conformer jobs terminated.
                                 # Check isomorphism and run opt on most stable conformer geometry.
                                 logger.info(f'\nConformer jobs for {label} successfully terminated.\n')
-                                if self.species_dict[label].is_ts:
-                                    self.determine_most_likely_ts_conformer(label)
-                                else:
-                                    self.determine_most_stable_conformer(label, sp_flag=True if self.job_types['conf_sp'] else False)  # also checks isomorphism
-                                if self.species_dict[label].initial_xyz is not None:
-                                    # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
-                                    if not self.composite_method:
-                                        self.run_opt_job(label, fine=self.fine_only)
-                                    else:
-                                        self.run_composite_job(label)
+                                self.optimize_most_stable_conformer(label, sp_flag=bool(self.job_types['conf_sp']))
                             self.timer = False
                             break
                     if 'tsg' in job_name:
@@ -1530,7 +1536,8 @@ class Scheduler(object):
         labels_to_consider = labels if labels is not None else [spc.label for spc in self.species_list]
         log_info_printed = False
         for label in labels_to_consider:
-            if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
+            if not self.species_dict[label].is_ts and self.species_dict[label].irc_label is None \
+                    and not self.output[label]['job_types']['opt'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
                     and self.species_dict[label].number_of_atoms > 1 and not self.output[label]['paths']['geo'] \
@@ -1651,6 +1658,37 @@ class Scheduler(object):
                 paths_key, log_path = _ts_guess_path_provenance(chosen_tsg)
                 if paths_key and log_path:
                     self.output[label]['paths'][paths_key] = log_path
+
+    def optimize_most_stable_conformer(self, label: str, sp_flag: bool = False):
+        """
+        Determine the species' most stable conformer (the most likely one for a TS) and spawn its geometry
+        optimization, or its composite job.
+
+        Nothing is spawned while any conformer job of the species is running, while any of its conformer single
+        points (``conf_sp``) is queued or running in a pipe run, or once the species has an optimization or a
+        composite job running or converged.
+
+        Args:
+            label (str): The species label.
+            sp_flag (bool): Whether the conformer energies come from single points (``conf_sp`` jobs).
+        """
+        running = self.running_jobs.get(label, list())
+        if any(is_conformer_job(job_name) for job_name in running) or self.has_pending_conformer_sp(label):
+            return
+        job_types = self.output[label]['job_types']
+        if job_types['opt'] or job_types['composite'] \
+                or any('opt' in job_name or 'composite' in job_name for job_name in running):
+            logger.info(f'Not optimizing a conformer of {label}: it already has a geometry optimization.')
+            return
+        if self.species_dict[label].is_ts:
+            self.determine_most_likely_ts_conformer(label)
+        else:
+            self.determine_most_stable_conformer(label, sp_flag=sp_flag)
+        if self.species_dict[label].initial_xyz is not None:
+            if not self.composite_method:
+                self.run_opt_job(label, fine=self.fine_only)
+            else:
+                self.run_composite_job(label)
 
     def run_opt_job(self, label: str, fine: bool = False):
         """
@@ -4321,6 +4359,7 @@ class Scheduler(object):
         self.output[label]['paths'].setdefault('irc_directions', list()).append(
             getattr(job, 'irc_direction', None)
         )
+        self.flag_incomplete_ase_irc(label=label, job=job)
         index = 1
         if len(self.output[label]['paths']['irc']) == 2:
             index = 2
@@ -4344,12 +4383,61 @@ class Scheduler(object):
         self.species_list.append(irc_spc)
         self.species_dict[irc_spc.label] = irc_spc
         self.initialize_output_dict(label=irc_spc.label)
-        self.run_job(label=irc_spc.label,
-                     xyz=self.species_dict[irc_spc.label].get_xyz(),
+        self.run_irc_species_opt(irc_spc.label)
+
+    def flag_incomplete_ase_irc(self, label: str, job: JobAdapter):
+        """
+        Add a warning to the TS's output if its ASE IRC job reports a path that is incomplete or not a
+        trustworthy IRC (``irc_complete: False`` in the job's output.yml).
+
+        Args:
+            label (str): The TS label.
+            job (JobAdapter): The IRC job.
+        """
+        if job.job_adapter != 'ase' or not os.path.isfile(job.local_path_to_output_file):
+            return
+        results = read_yaml_file(job.local_path_to_output_file) or dict()
+        if results.get('irc_complete', True):
+            return
+        direction = getattr(job, 'irc_direction', None)
+        issues = '; '.join(results.get('warnings') or list()) or 'no details reported'
+        message = f'the {direction + " " if direction else ""}ASE IRC path is incomplete or untrustworthy ({issues}); '
+        logger.warning(f'TS {label}: {message}')
+        if message not in self.output[label]['warnings']:
+            self.output[label]['warnings'] += message
+
+    def run_irc_species_opt(self, label: str):
+        """
+        Spawn the geometry optimization of an IRC endpoint species, starting from the end of its IRC path.
+
+        Args:
+            label (str): The IRC species label.
+        """
+        self.run_job(label=label,
+                     xyz=self.species_dict[label].get_xyz(),
                      level_of_theory=self.opt_level if not self.composite_method else self.freq_level,
                      job_type='opt',
                      fine=False,
                      )
+
+    def irc_species_awaiting_opt(self, label: str) -> bool:
+        """
+        Whether an IRC endpoint species has no optimization running or converged, the state a restarted run leaves
+        it in when its optimization had not been spawned or had not been restored.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: ``True`` if the species is an IRC endpoint species that still needs its optimization.
+        """
+        species = self.species_dict[label]
+        if species.is_ts or species.irc_label is None or species.final_xyz is not None:
+            return False
+        output = self.output.get(label, dict())
+        if output.get('job_types', dict()).get('opt') or output.get('paths', dict()).get('geo'):
+            return False
+        return not any(job_type in self.job_dict.get(label, dict()) for job_type in ('opt', 'composite'))
 
     def add_label_to_unique_species_labels(self, label: str) -> str:
         """
@@ -4478,10 +4566,14 @@ class Scheduler(object):
                           f'{self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} could not ' \
                           f'be read. Invalidating rotor.'
                 logger.error(message)
+            elif len(energies) > 5 and max(energies) - min(energies) < 1e-6:
+                invalidate = True
+                invalidation_reason += 'The scan energy is flat (nothing rotated); '
             elif len(energies) > 5:
+                stopped_partway = invalidate
                 trajectory = parser.parse_1d_scan_coords(log_file_path=job.local_path_to_output_file) \
                     if self.species_dict[label].is_ts else None
-                invalidate, invalidation_reason, message, actions = scan_quality_check(
+                check_invalidate, check_reason, message, actions = scan_quality_check(
                     label=label,
                     pivots=self.species_dict[label].rotors_dict[job.rotor_index]['pivots'],
                     energies=energies,
@@ -4492,6 +4584,10 @@ class Scheduler(object):
                     trajectory=trajectory,
                     original_xyz=self.species_dict[label].final_xyz,
                 )
+                if stopped_partway:
+                    actions = {key: value for key, value in actions.items() if key == 'change conformer'}
+                else:
+                    invalidate, invalidation_reason = check_invalidate, check_reason
 
                 if len(list(actions.keys())) \
                         and 'pivTS' not in self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] \

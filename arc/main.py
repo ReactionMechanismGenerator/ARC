@@ -643,6 +643,7 @@ class ARC(object):
                                    )
 
         self.output = self.scheduler.output
+        self.species = [spc for spc in self.species if spc.label in self.output]
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.output)
 
         self.clean_check_files(remote_project_paths=self.scheduler.remote_project_paths)

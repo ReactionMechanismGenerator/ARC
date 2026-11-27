@@ -4,6 +4,7 @@ An adapter for executing ASE (Atomic Simulation Environment) jobs
 
 import datetime
 import os
+import shutil
 import subprocess
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
@@ -163,6 +164,9 @@ class ASEAdapter(JobAdapter):
         Build the ``settings`` block passed to ase_script.py: the user's ``args['keyword']`` plus
         a resolved ``calculator`` and, for UMA, default ``model`` (the level method, with 'uma'
         resolving to the latest model), ``task``, and ``device``.
+
+        Run keys a level can set in its ``keyword`` block include ``fmax`` (the force criterion in eV/Angstrom),
+        ``steps`` and ``optimizer``. IRC jobs read ``irc_fmax`` (eV/Angstrom, 0.01 by default) in place of ``fmax``.
 
         Returns:
             dict: The resolved ASE run settings.
@@ -326,6 +330,8 @@ class ASEAdapter(JobAdapter):
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='input.yml'))
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='ase_script.py',
                                                                          local=self.script_path))
+            if self.server == 'local':
+                shutil.copyfile(self.script_path, os.path.join(self.local_path, 'ase_script.py'))
         # 2. Download
         self.files_to_download.append(self.get_file_property_dictionary(file_name='output.yml'))
 

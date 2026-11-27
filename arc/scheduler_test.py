@@ -4927,6 +4927,277 @@ class TestScanSoftwareStamp(unittest.TestCase):
         self.assertEqual(rotor['scan_path'], '/fake/scan.out')
         self.assertFalse(rotor['success'])
 
+    def _scan_stopped_on_internal_coordinate_error(self):
+        """A Scheduler mock, its species' rotor, and a scan job that stopped on an internal coordinate error"""
+        rotor = self._rotor()
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+        spc.get_xyz.return_value = {'coords': (), 'symbols': ()}
+        spc.final_xyz = None
+        spc.preserve_param_in_scan = None
+        spc.is_ts = False
+
+        sched = MagicMock()
+        sched.species_dict = {'spc': spc}
+        sched.project_directory = '/fake/project'
+        sched.trsh_ess_jobs = True
+        sched.trsh_rotors = True
+
+        job = MagicMock()
+        job.job_status = [None, {'status': 'errored', 'error': 'Internal coordinate error'}]
+        job.rotor_index = 0
+        job.local_path_to_output_file = '/fake/scan.out'
+        job.job_adapter = 'gaussian'
+        job.torsions = [[0, 1, 2, 3]]
+        job.xyz = {'coords': (), 'symbols': ()}
+        job.is_ts = False
+        job.species_label = 'spc'
+        return sched, rotor, job
+
+    def _check_scan_with_quality_check_result(self, sched, job, quality_check_result):
+        """Run check_scan_job on 12 smooth scan points, with scan_quality_check returning the given result"""
+        from arc.scheduler import Scheduler
+
+        energies = [0.0, 0.5, 2.0, 4.0, 5.5, 6.0, 5.5, 4.0, 2.0, 0.5, 0.0, 0.5]
+        with patch('arc.scheduler.parser.parse_1d_scan_energies_from_specific_angle',
+                   return_value=(energies, [8.0 * i for i in range(12)])), \
+             patch('arc.scheduler.calculate_dihedral_angle', return_value=0.0), \
+             patch('arc.scheduler.scan_quality_check', return_value=quality_check_result) as quality_check, \
+             patch('arc.scheduler.plotter.plot_1d_rotor_scan'):
+            Scheduler.check_scan_job(sched, label='spc', job=job)
+        return quality_check
+
+    def test_check_scan_job_keeps_an_internal_coordinate_error_invalid(self):
+        """A scan that stopped on an internal coordinate error stays invalid, however smooth the points it reached"""
+        sched, rotor, job = self._scan_stopped_on_internal_coordinate_error()
+        quality_check = self._check_scan_with_quality_check_result(sched, job, (False, '', '', dict()))
+
+        quality_check.assert_called_once()
+        sched.troubleshoot_scan_job.assert_not_called()
+        self.assertFalse(rotor['success'])
+        self.assertIn('Internal coordinate error', rotor['invalidation_reason'])
+
+    def test_check_scan_job_changes_conformer_from_a_scan_stopped_partway(self):
+        """A lower conformer found by a scan that stopped on an internal coordinate error replaces the species' one"""
+        sched, rotor, job = self._scan_stopped_on_internal_coordinate_error()
+        lower_xyz = {'symbols': ('C',), 'coords': ((0.0, 0.0, 0.0),)}
+        actions = {'change conformer': lower_xyz, 'freeze': [[1, 2]]}
+        sched.troubleshoot_scan_job.return_value = (True, {'change conformer': lower_xyz})
+        self._check_scan_with_quality_check_result(sched, job, (True, 'lower conformer; ', '', actions))
+
+        sched.troubleshoot_scan_job.assert_called_once_with(job=job, methods={'change conformer': lower_xyz})
+        self.assertFalse(rotor['success'])
+        self.assertIn('Internal coordinate error', rotor['invalidation_reason'])
+        self.assertNotIn('lower conformer', rotor['invalidation_reason'])
+
+    def test_check_scan_job_invalidates_a_flat_scan(self):
+        """A scan along which nothing turned (one energy at every point) is not a rotor, and has no symmetry to find"""
+        from arc.scheduler import Scheduler
+
+        rotor = self._rotor()
+        spc = MagicMock()
+        spc.rotors_dict = {0: rotor}
+        spc.get_xyz.return_value = {'coords': (), 'symbols': ()}
+        spc.is_ts = True
+        sched = MagicMock()
+        sched.species_dict = {'TS0': spc}
+        sched.project_directory = '/fake/project'
+        job = MagicMock()
+        job.job_status = [None, {'status': 'done', 'error': None}]
+        job.rotor_index = 0
+        job.local_path_to_output_file = '/fake/output.yml'
+        job.job_adapter = 'ase'
+        job.torsions = [[0, 1, 2, 3]]
+        job.xyz = {'coords': (), 'symbols': ()}
+        job.is_ts = True
+        job.species_label = 'TS0'
+
+        with patch('arc.scheduler.parser.parse_1d_scan_energies_from_specific_angle',
+                   return_value=([0.0] * 46, [8.0 * i for i in range(46)])), \
+             patch('arc.scheduler.calculate_dihedral_angle', return_value=0.0), \
+             patch('arc.scheduler.determine_rotor_symmetry') as symmetry, \
+             patch('arc.scheduler.plotter.plot_1d_rotor_scan'):
+            Scheduler.check_scan_job(sched, label='TS0', job=job)
+
+        symmetry.assert_not_called()
+        self.assertFalse(rotor['success'])
+        self.assertIn('flat', rotor['invalidation_reason'])
+
+    def test_run_conformer_jobs_skips_irc_species(self):
+        """An IRC endpoint species gets no conformers (its geometry is the IRC's), unlike a species in the same state"""
+        from arc.scheduler import Scheduler
+
+        for irc_label, expect_conformers in (('TS0', False), (None, True)):
+            with self.subTest(irc_label=irc_label):
+                spc = MagicMock()
+                spc.is_ts, spc.irc_label, spc.conformer_energies, spc.number_of_atoms = False, irc_label, [], 6
+                spc.yml_path, spc.multi_species = None, None
+                sched = MagicMock()
+                sched.species_dict = {'spc': spc}
+                sched.output = {'spc': {'job_types': {'opt': False}, 'paths': {'geo': ''}, 'convergence': None}}
+                sched.job_dict = {'spc': dict()}
+                sched.job_types = {'conf_opt': True}
+                sched.dont_gen_confs = list()
+                sched.project_directory = '/fake/project'
+                Scheduler.run_conformer_jobs(sched, labels=['spc'])
+                self.assertEqual(spc.generate_conformers.called, expect_conformers)
+
+    def test_optimize_most_stable_conformer_once(self):
+        """A species is optimized from its conformers once, not while they run nor again after a restart"""
+        from arc.scheduler import Scheduler
+
+        for running, opt_done, sp_pending, expect_opt in (
+                ([], False, False, True),
+                ([], False, True, False),
+                (['conf_opt_7', 'conf_opt_8'], False, False, False),
+                (['conf_sp_7'], False, False, False),
+                (['opt_a402'], False, False, False),
+                (['scan_a3211', 'freq_a3658'], True, False, False),
+                (['composite_a12'], False, False, False),
+        ):
+            with self.subTest(running=running, opt_done=opt_done, sp_pending=sp_pending):
+                spc = MagicMock()
+                spc.is_ts, spc.initial_xyz = False, {'symbols': ('H', 'H')}
+                sched = MagicMock()
+                sched.has_pending_conformer_sp.return_value = sp_pending
+                sched.species_dict = {'spc': spc}
+                sched.running_jobs = {'spc': running}
+                sched.output = {'spc': {'job_types': {'opt': opt_done, 'composite': False}}}
+                sched.composite_method = None
+                Scheduler.optimize_most_stable_conformer(sched, 'spc', sp_flag=True)
+                self.assertEqual(sched.determine_most_stable_conformer.called, expect_opt)
+                self.assertEqual(sched.run_opt_job.called, expect_opt)
+                if expect_opt:
+                    sched.determine_most_stable_conformer.assert_called_once_with('spc', sp_flag=True)
+
+    def test_has_pending_conformer_sp(self):
+        """A conformer single point is pending while queued for a pipe batch or in a pipe run that has not ended"""
+        from arc.job.pipe.pipe_state import PipeRunState
+        from arc.scheduler import Scheduler
+
+        def pipe(status, task_family, owner_key):
+            return SimpleNamespace(status=status, tasks=[SimpleNamespace(task_family=task_family, owner_key=owner_key)])
+
+        for pending, pipes, expected in (
+                (dict(), dict(), False),
+                ({'spc': {3}}, dict(), True),
+                ({'other': {3}}, dict(), False),
+                (dict(), {'p': pipe(PipeRunState.SUBMITTED, 'conf_sp', 'spc')}, True),
+                (dict(), {'p': pipe(PipeRunState.ACTIVE, 'conf_sp', 'spc')}, True),
+                (dict(), {'p': pipe(PipeRunState.COMPLETED, 'conf_sp', 'spc')}, False),
+                (dict(), {'p': pipe(PipeRunState.FAILED, 'conf_sp', 'spc')}, False),
+                (dict(), {'p': pipe(PipeRunState.ACTIVE, 'conf_opt', 'spc')}, False),
+                (dict(), {'p': pipe(PipeRunState.ACTIVE, 'conf_sp', 'other')}, False),
+        ):
+            with self.subTest(pending=pending, pipes=pipes):
+                sched = MagicMock()
+                sched._pending_pipe_conf_sp = pending
+                sched.active_pipes = pipes
+                self.assertEqual(Scheduler.has_pending_conformer_sp(sched, 'spc'), expected)
+
+    def test_pipe_conf_sp_ingestion_optimizes_through_the_scheduler(self):
+        """Ingesting a conformer single-point pipe run picks the conformer through the Scheduler's guarded path"""
+        from arc.job.pipe.pipe_coordinator import PipeCoordinator
+
+        sched = MagicMock()
+        PipeCoordinator(sched)._post_ingest_conf_sp('spc')
+        sched.optimize_most_stable_conformer.assert_called_once_with('spc', sp_flag=True)
+        sched.determine_most_stable_conformer.assert_not_called()
+        sched.run_opt_job.assert_not_called()
+
+
+class TestSchedulerIRCSpecies(unittest.TestCase):
+    """
+    Contains tests of the IRC endpoint species the Scheduler builds from IRC jobs.
+    """
+
+    label = 'IRC_TS0_1'
+
+    @classmethod
+    def restored_irc_species(cls) -> ARCSpecies:
+        """An IRC endpoint species as a restarted run restores it from its restart file"""
+        live = ARCSpecies(label=cls.label, xyz='O 0.0 0.0 0.0\nH 0.0 0.0 0.96\nH 0.93 0.0 -0.24',
+                          irc_label='TS0', compute_thermo=False)
+        return ARCSpecies(species_dict=live.as_dict())
+
+    def sched_with(self, species: ARCSpecies, job_dict: dict = None, opt_done: bool = False, geo: str = '') -> MagicMock:
+        """A Scheduler mock holding a single species"""
+        sched = MagicMock()
+        sched.species_dict = {species.label: species}
+        sched.output = {species.label: {'job_types': {'opt': opt_done}, 'paths': {'geo': geo}}}
+        sched.job_dict = {species.label: job_dict or dict()}
+        return sched
+
+    def test_irc_species_awaiting_opt(self):
+        """Only an IRC endpoint species with no optimization running or converged awaits one"""
+        from arc.scheduler import Scheduler
+
+        irc_spc = self.restored_irc_species()
+        self.assertIsNone(irc_spc.initial_xyz)
+        for job_dict, opt_done, geo, expected in (
+                (dict(), False, '', True),
+                ({'opt': {'opt_a3': None}}, False, '', False),
+                ({'composite': {'composite_a3': None}}, False, '', False),
+                (dict(), True, '', False),
+                (dict(), False, '/project/geo.log', False),
+        ):
+            with self.subTest(job_dict=job_dict, opt_done=opt_done, geo=geo):
+                sched = self.sched_with(irc_spc, job_dict=job_dict, opt_done=opt_done, geo=geo)
+                self.assertEqual(Scheduler.irc_species_awaiting_opt(sched, self.label), expected)
+
+        ts = ARCSpecies(label=self.label, is_ts=True, multiplicity=1, compute_thermo=False)
+        ts.irc_label = 'IRC_TS0_1 IRC_TS0_2'
+        self.assertFalse(Scheduler.irc_species_awaiting_opt(self.sched_with(ts), self.label))
+        spc = ARCSpecies(label=self.label, smiles='O')
+        self.assertFalse(Scheduler.irc_species_awaiting_opt(self.sched_with(spc), self.label))
+
+    def test_schedule_jobs_optimizes_a_restored_irc_species(self):
+        """A restarted run spawns the optimization of an IRC endpoint species that had none"""
+        from arc.scheduler import Scheduler
+
+        sched = self.sched_with(self.restored_irc_species())
+        sched.running_jobs, sched.active_pipes = dict(), dict()
+        sched._pending_pipe_sp, sched._pending_pipe_freq, sched._pending_pipe_irc = set(), set(), set()
+        sched._pending_pipe_conf_sp = dict()
+        sched.irc_species_awaiting_opt.side_effect = lambda label: Scheduler.irc_species_awaiting_opt(sched, label)
+        Scheduler.schedule_jobs(sched)
+        sched.run_irc_species_opt.assert_called_once_with(self.label)
+
+    def test_run_irc_species_opt(self):
+        """An IRC endpoint species is optimized from its IRC geometry at the opt level"""
+        from arc.scheduler import Scheduler
+
+        irc_spc = self.restored_irc_species()
+        sched = self.sched_with(irc_spc)
+        sched.composite_method = None
+        Scheduler.run_irc_species_opt(sched, self.label)
+        kwargs = sched.run_job.call_args.kwargs
+        self.assertEqual(kwargs['job_type'], 'opt')
+        self.assertEqual(kwargs['xyz'], irc_spc.get_xyz())
+        self.assertIs(kwargs['level_of_theory'], sched.opt_level)
+
+    def test_flag_incomplete_ase_irc(self):
+        """An ASE IRC job that reports an incomplete path adds a warning to the TS's output"""
+        from arc.common import save_yaml_file
+        from arc.scheduler import Scheduler
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'output.yml')
+            for adapter, results, expected in (
+                    ('ase', {'irc_complete': False, 'warnings': ['the IRC stopped after 3 points: X']},
+                     'the reverse ASE IRC path is incomplete or untrustworthy (the IRC stopped after 3 points: X); '),
+                    ('ase', {'irc_traj': []}, ''),
+                    ('gaussian', {'irc_complete': False}, ''),
+            ):
+                with self.subTest(adapter=adapter, results=results):
+                    save_yaml_file(path, results)
+                    job = SimpleNamespace(job_adapter=adapter, local_path_to_output_file=path, irc_direction='reverse')
+                    sched = MagicMock()
+                    sched.output = {'TS0': {'warnings': ''}}
+                    Scheduler.flag_incomplete_ase_irc(sched, 'TS0', job)
+                    Scheduler.flag_incomplete_ase_irc(sched, 'TS0', job)
+                    self.assertEqual(sched.output['TS0']['warnings'], expected)
+
 
 class TestSchedulerReactionChargeBalance(unittest.TestCase):
     """

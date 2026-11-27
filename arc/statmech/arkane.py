@@ -114,7 +114,7 @@ species_input_template = """#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 linear = ${linear}
-spinMultiplicity = ${spin_multiplicity}
+spin_multiplicity = ${spin_multiplicity}
 
 energy = Log('${sp_path}')
 geometry = Log('${freq_path}')

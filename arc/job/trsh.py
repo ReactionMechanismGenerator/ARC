@@ -785,7 +785,10 @@ def trsh_scan_job(label: str,
         # Convert to_freeze into an input block str
         to_freeze += already_frozen
         software = determine_ess(log_file_path=log_file)
-        scan_trsh = ics_to_scan_constraints(ics=to_freeze, software=software)
+        try:
+            scan_trsh = ics_to_scan_constraints(ics=to_freeze, software=software)
+        except NotImplementedError:
+            raise TrshError(f'Cannot freeze internal coordinates in a {software} scan of {label}.')
 
     else:
         # If 'freeze' is not included in the method

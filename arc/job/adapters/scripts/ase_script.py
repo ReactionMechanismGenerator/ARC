@@ -10,6 +10,7 @@ import argparse
 import math
 import os
 import sys
+import warnings
 import yaml
 import numpy as np
 
@@ -612,6 +613,14 @@ def run_vibrational_analysis(atoms: Atoms, settings: dict):
     return numpy_vibrational_analysis(masses, hessian, is_linear=is_lin)
 
 
+def read_trajectory(path: str) -> list:
+    """
+    The images of an ASE trajectory, or an empty list if the file does not exist.
+    """
+    from ase.io import read
+    return read(path, index=':') if os.path.isfile(path) else list()
+
+
 def main():
     """
     Main execution logic.
@@ -702,23 +711,43 @@ def main():
 
     if job_type == 'irc':
         from sella import IRC
-        from ase.io import read
-        fmax = float(settings.get('fmax', 0.001))
+        fmax = float(settings.get('irc_fmax', 0.01))
         steps = int(settings.get('steps', 1000))
         direction = input_dict.get('irc_direction', 'forward')
         traj_path = os.path.join(os.path.dirname(input_path), 'irc.traj')
+        irc_issues, run_error = list(), None
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            try:
+                irc = IRC(atoms, logfile=os.path.join(os.path.dirname(input_path), 'irc.log'),
+                          trajectory=traj_path, keep_going=True)
+                irc.run(fmax=fmax, steps=steps, direction=direction)
+            except Exception as exc:
+                run_error = f'{type(exc).__name__}: {exc}'
+        n_inner_failures = sum('trustworthy IRC' in str(warning.message) for warning in caught)
+        if n_inner_failures:
+            irc_issues.append(f'the IRC inner loop failed to converge on {n_inner_failures} step(s), '
+                              f'so the path past them is not a trustworthy IRC')
         try:
-            irc = IRC(atoms, logfile=os.path.join(os.path.dirname(input_path), 'irc.log'),
-                      trajectory=traj_path)
-            irc.run(fmax=fmax, steps=steps, direction=direction)
-            images = read(traj_path, index=':')
+            images = read_trajectory(traj_path)
+        except Exception as exc:
+            images = list()
+            output['error'] = f'IRC trajectory {traj_path} could not be read: {type(exc).__name__}: {exc}'
+        if run_error is not None:
+            if len(images) > 1:
+                irc_issues.append(f'the IRC stopped after {len(images)} points: {run_error}')
+            elif 'error' not in output:
+                output['error'] = f'IRC failed: {run_error}'
+        if irc_issues:
+            output['irc_complete'] = False
+            output.setdefault('warnings', list()).extend(irc_issues)
+        if len(images) > 1:
+            save_current_geometry(output, images[-1], xyz)
             output['irc_traj'] = [
                 {'coords': tuple(map(tuple, image.get_positions().tolist())),
                  'symbols': xyz['symbols'],
                  'isotopes': xyz.get('isotopes') or tuple([None] * len(xyz['symbols']))}
                 for image in images]
-        except Exception as exc:
-            output['error'] = f"IRC failed: {exc}"
 
     if job_type in ['freq', 'optfreq']:
         try:
