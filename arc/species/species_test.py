@@ -12,6 +12,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+import numpy as np
+
 from arc.common import (ARC_PATH,
                         ARC_TESTING_PATH,
                         almost_equal_coords,
@@ -27,6 +29,7 @@ from arc.parser.parser import parse_e_elect
 from arc.plotter import save_conformers_file
 from arc.species.converter import (check_isomorphism,
                                    str_to_xyz,
+                                   xyz_from_data,
                                    xyz_to_str,
                                    xyz_to_x_y_z,
                                    )
@@ -4001,6 +4004,267 @@ class TestTSGuess(unittest.TestCase):
         self.assertTrue(self.tsg2.almost_equal_tsgs(self.tsg2))
         self.assertFalse(self.tsg3.almost_equal_tsgs(self.tsg2))
         self.assertFalse(self.tsg2.almost_equal_tsgs(self.tsg3))
+
+
+    def test_add_method_source(self):
+        """Test adding a method to a TS guess's method_sources"""
+        tsg = TSGuess(method='KinBot', success=True)
+        self.assertEqual(tsg.method_sources, ['kinbot'])
+        tsg.add_method_source('GoFlow')
+        tsg.add_method_source('goflow')
+        tsg.add_method_source('Linear (w=0.35, 1)')
+        self.assertEqual(tsg.method_sources, ['kinbot', 'goflow', 'linear (w=0.35, 1)'])
+
+TS0_CONF_0 = """O       1.29503100   -0.10783400    0.00000100
+H       1.38087500    0.85868300   -0.00000100
+C      -1.20395400    0.00755100    0.00000100
+H       0.00766600   -0.17858500   -0.00002000
+H      -1.38410100    1.08884500    0.00008300
+H      -1.57048400   -0.47571900   -0.91306300
+H      -1.57047900   -0.47585800    0.91299300"""
+
+TS0_CONF_2 = """O       0.04727500   -1.29949900   -0.00000000
+H      -0.92221100   -1.34391100   -0.00000000
+C       0.04727500    1.20415500    0.00000000
+H       0.17043600   -0.01444300    0.00000000
+H       1.07908100    1.57540000    0.00000000
+H      -0.49458100    1.47700600   -0.91276900
+H      -0.49458100    1.47700600    0.91276900"""
+
+TS3_CONF_1 = """C      -1.55999800   -0.09499500   -0.00000100
+H      -1.54613600   -0.66021400    0.93471600
+H      -2.06781400    0.87031300   -0.00215700
+H      -1.54504700   -0.66384100   -0.93249700
+C       0.61314700    0.56683700   -0.00001100
+O       1.35501300   -0.29716400    0.00000100"""
+
+TS3_CONF_6 = """C      -1.56062600   -0.09547100    0.00022300
+H      -2.03058500    0.77263400    0.46453100
+H      -1.68070900   -0.21615000   -1.07863000
+H      -1.45219600   -1.00137300    0.60075100
+C       0.61294200    0.56570100    0.00255200
+O       1.35619900   -0.29706200   -0.00041300"""
+
+TS3_CONF_12 = """C       1.56086400    0.09607300   -0.00000000
+C      -0.61060500   -0.56221500   -0.00000000
+O      -1.35978300    0.29565600    0.00000000
+H       1.41097300    1.17806700   -0.00019100
+H       1.88292100   -0.37339000   -0.93150200
+H       1.88282100   -0.37307200    0.93169600"""
+
+TS3_CONF_13 = """C       1.55995800    0.09499800    0.00000400
+C      -0.61314600   -0.56685900   -0.00000600
+O      -1.35496200    0.29718600   -0.00000200
+H       1.54581600    0.66160100   -0.93386600
+H       2.06762600   -0.87038800    0.00054900
+H       1.54537900    0.66246700    0.93334000"""
+
+
+BUTANOL_C3_HO2_TS = """C    -1.36752930   -0.89536926    0.02583360
+C    -0.69029807    0.22775237    0.79974377
+O    -1.09409042    1.48432199    0.26312102
+C     0.83895616    0.12750132    0.82387050
+C     1.50591319    0.17681012   -0.54475879
+H    -2.45613499   -0.80922296    0.11486749
+H    -1.14334801   -0.84150068   -1.04445063
+H    -1.06545698   -1.87688729    0.40308725
+H    -1.04867557    0.19976677    1.83500239
+H    -0.91422222    1.47882045   -0.69202877
+H     1.13537238   -0.79854081    1.33038369
+H     1.32580815    1.15393065    1.55319758
+H     1.26651496    1.10317554   -1.07511971
+H     2.59397839    0.13145224   -0.43012231
+H     1.20443523   -0.66968536   -1.16841926
+O     1.75856547    2.06631227    2.20148831
+O     3.04343650    1.77748249    2.38745555
+H     3.20385700    2.11569679    1.49259447"""
+
+
+def reorder_xyz(xyz: str, order: list[int]) -> dict:
+    """
+    Return an xyz dict whose atom ``i`` is atom ``order[i]`` of ``xyz``.
+
+    Args:
+        xyz (str): The geometry as a string.
+        order (list[int]): The new atom order, as indices into ``xyz``.
+
+    Returns:
+        dict: The re-ordered geometry.
+    """
+    xyz_dict = str_to_xyz(xyz)
+    return xyz_from_data(coords=[xyz_dict['coords'][i] for i in order],
+                         symbols=[xyz_dict['symbols'][i] for i in order])
+
+
+def reflect_xyz(xyz: dict) -> dict:
+    """
+    Return the mirror image of a geometry through the xy plane.
+
+    Args:
+        xyz (dict): The geometry.
+
+    Returns:
+        dict: The reflected geometry, in the same atom order.
+    """
+    return xyz_from_data(coords=[(x, y, -z) for x, y, z in xyz['coords']], symbols=xyz['symbols'])
+
+
+def move_atom_along_bond(xyz: str, anchor: int, atom: int, distance: float) -> dict:
+    """
+    Move ``atom`` along the ``anchor``-``atom`` axis to the given distance from ``anchor``.
+
+    Args:
+        xyz (str): The geometry as a string.
+        anchor (int): The index of the fixed atom.
+        atom (int): The index of the atom to move.
+        distance (float): The new ``anchor``-``atom`` distance in Angstrom.
+
+    Returns:
+        dict: The modified geometry.
+    """
+    xyz_dict = str_to_xyz(xyz)
+    coords = np.array(xyz_dict['coords'])
+    direction = (coords[atom] - coords[anchor]) / np.linalg.norm(coords[atom] - coords[anchor])
+    coords[atom] = coords[anchor] + direction * distance
+    return xyz_from_data(coords=coords, symbols=xyz_dict['symbols'])
+
+
+def make_opt_tsg(index: int, method: str, xyz: str | dict, energy: float | None) -> TSGuess:
+    """
+    Make a successful TS guess that carries an optimized geometry and an energy.
+
+    Args:
+        index (int): The guess index.
+        method (str): The guess method.
+        xyz (str | dict): The optimized geometry.
+        energy (float | None): The energy in kJ/mol.
+
+    Returns:
+        TSGuess: The guess.
+    """
+    tsg = TSGuess(index=index, method=method, success=True, xyz=xyz, energy=energy)
+    tsg.opt_xyz = xyz
+    return tsg
+
+
+class TestTSGuessPermutedFold(unittest.TestCase):
+    """
+    Contains unit tests showing that TS guesses with the same structure but different atom numbering stay apart.
+    """
+
+    def cluster(self, tsgs: list[TSGuess]) -> ARCSpecies:
+        """
+        Cluster the given guesses on a fresh TS species.
+
+        Args:
+            tsgs (list[TSGuess]): The guesses.
+
+        Returns:
+            ARCSpecies: The TS species after clustering.
+        """
+        ts = ARCSpecies(label='TS', is_ts=True)
+        ts.ts_guesses = tsgs
+        ts.cluster_tsgs()
+        return ts
+
+    def test_cluster_tsgs_keeps_swapped_methyl_h_apart(self):
+        """Two guesses that differ only by swapping two methyl H atoms do not fold."""
+        swapped = reorder_xyz(TS0_CONF_0, [0, 1, 2, 3, 5, 4, 6])
+        ts = self.cluster([make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0),
+                           make_opt_tsg(1, 'linear', swapped, 0.0)])
+        self.assertEqual([tsg.method_sources for tsg in ts.ts_guesses], [['goflow'], ['linear']])
+
+    def test_cluster_tsgs_keeps_heavy_atoms_first_apart(self):
+        """The same geometry listed with heavy atoms first does not fold."""
+        heavy_first = reorder_xyz(TS0_CONF_0, [0, 2, 1, 3, 4, 5, 6])
+        ts = self.cluster([make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0),
+                           make_opt_tsg(1, 'linear', heavy_first, 0.0)])
+        self.assertEqual([tsg.method_sources for tsg in ts.ts_guesses], [['goflow'], ['linear']])
+
+    def test_almost_equal_tsgs_keeps_pilot_heavy_atoms_first_pair_apart(self):
+        """A goflow opt and a linear opt (heavy atoms first) that ended on the same TS conformer do not fold."""
+        goflow = make_opt_tsg(0, 'goflow', TS3_CONF_1, 0.0)
+        linear = make_opt_tsg(1, 'linear (w=0.50, 0)', TS3_CONF_13, 0.0)
+        self.assertFalse(goflow.almost_equal_tsgs(linear))
+
+    def test_almost_equal_tsgs_keeps_distinct_pilot_conformers(self):
+        """Different TS conformers of one reaction within the energy window stay apart."""
+        ts0_a = make_opt_tsg(0, 'heuristics', TS0_CONF_0, 0.0)
+        ts0_b = make_opt_tsg(1, 'heuristics', TS0_CONF_2, 0.0409)
+        self.assertFalse(ts0_a.almost_equal_tsgs(ts0_b))
+        ts3_a = make_opt_tsg(0, 'goflow', TS3_CONF_1, 0.0)
+        ts3_b = make_opt_tsg(1, 'rits', TS3_CONF_6, 0.0672)
+        self.assertFalse(ts3_a.almost_equal_tsgs(ts3_b))
+        ts3_c = make_opt_tsg(0, 'goflow', TS3_CONF_1, None)
+        ts3_d = make_opt_tsg(1, 'linear (w=0.35, 0)', TS3_CONF_12, None)
+        self.assertFalse(ts3_c.almost_equal_tsgs(ts3_d))
+
+    def test_almost_equal_tsgs_migrating_h_vs_spectator_h(self):
+        """A migrating H put back in a spectator position on its carbon is a different structure."""
+        spectator_like = move_atom_along_bond(TS0_CONF_0, anchor=2, atom=3, distance=1.09)
+        relabeled_spectator_like = xyz_from_data(coords=[spectator_like['coords'][i] for i in [0, 1, 2, 4, 3, 5, 6]],
+                                                 symbols=[spectator_like['symbols'][i] for i in [0, 1, 2, 4, 3, 5, 6]])
+        ts_a = make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0)
+        self.assertFalse(ts_a.almost_equal_tsgs(make_opt_tsg(2, 'linear', spectator_like, 0.0)))
+        self.assertFalse(ts_a.almost_equal_tsgs(make_opt_tsg(3, 'linear', relabeled_spectator_like, 0.0)))
+
+    def test_almost_equal_tsgs_keeps_migrating_h_listed_as_spectator_apart(self):
+        """The same geometry listed with the migrating H in a spectator H's slot does not fold."""
+        relabeled = reorder_xyz(TS0_CONF_0, [0, 1, 2, 4, 3, 5, 6])
+        ts_a = make_opt_tsg(0, 'goflow', TS0_CONF_0, 0.0)
+        ts_b = make_opt_tsg(1, 'linear', relabeled, 0.0)
+        self.assertFalse(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_almost_equal_tsgs_folds_mirror_image_same_numbering(self):
+        """A TS conformer and its mirror image with the same atom numbering fold."""
+        xyz = str_to_xyz(TS3_CONF_6)
+        ts_a = make_opt_tsg(0, 'goflow', xyz, 0.0)
+        ts_b = make_opt_tsg(1, 'rits', reflect_xyz(xyz), 0.0)
+        self.assertTrue(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_almost_equal_tsgs_keeps_renumbered_mirror_image_apart(self):
+        """A TS conformer and its renumbered mirror image do not fold."""
+        xyz = str_to_xyz(TS3_CONF_6)
+        mirror = reflect_xyz(reorder_xyz(TS3_CONF_6, [0, 4, 5, 2, 1, 3]))
+        ts_a = make_opt_tsg(0, 'goflow', xyz, 0.0)
+        ts_b = make_opt_tsg(1, 'rits', mirror, 0.0)
+        self.assertFalse(ts_a.almost_equal_tsgs(ts_b))
+
+    def test_cluster_tsgs_never_folds_a_converged_guess_into_an_unconverged_renumbered_copy(self):
+        """A renumbered copy folds only when both guesses carry an optimized geometry, in either order."""
+        swapped = reorder_xyz(TS0_CONF_0, [0, 1, 2, 3, 5, 4, 6])
+        for unconverged_first in (True, False):
+            unconverged = TSGuess(index=0, method='goflow', success=True, xyz=TS0_CONF_0)
+            converged = make_opt_tsg(1, 'linear', swapped, -5.0)
+            ts = self.cluster([unconverged, converged] if unconverged_first else [converged, unconverged])
+            self.assertEqual(len(ts.ts_guesses), 2)
+            survivor = next(tsg for tsg in ts.ts_guesses if tsg.index == 1)
+            self.assertEqual(survivor.energy, -5.0)
+            self.assertIsNotNone(survivor.opt_xyz)
+            self.assertEqual(survivor.method_sources, ['linear'])
+
+    def test_cluster_tsgs_keeps_the_map_order_guess_when_an_earlier_guess_swaps_the_migrating_h(self):
+        """An earlier iC3H7 <=> nC3H7 guess with the migrating H (6) and a spectator H (3) swapped does not absorb
+        the later guess in the reaction's atom order (swapping them in the normal modes too fails the NMD check)."""
+        xyz = check_xyz_dict(os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS3.log'))
+        order = [0, 1, 2, 6, 4, 5, 3, 7, 8, 9]
+        swapped = xyz_from_data(coords=[xyz['coords'][i] for i in order], symbols=[xyz['symbols'][i] for i in order])
+        ts = self.cluster([make_opt_tsg(0, 'goflow', swapped, 0.0),
+                           make_opt_tsg(1, 'heuristics', xyz, 0.0)])
+        map_order = [tsg for tsg in ts.ts_guesses if tsg.index == 1]
+        self.assertEqual(len(map_order), 1)
+        self.assertEqual(map_order[0].opt_xyz, xyz)
+        self.assertEqual(map_order[0].method_sources, ['heuristics'])
+
+    def test_cluster_tsgs_keeps_a_renumbered_mirror_image_apart(self):
+        """The C3 H abstraction TS of (S)-2-butanol + HO2 does not fold into its renumbered mirror listed first."""
+        xyz = str_to_xyz(BUTANOL_C3_HO2_TS)
+        order = [0, 1, 2, 3, 4, 7, 6, 5, 8, 9, 11, 10, 14, 13, 12, 15, 16, 17]
+        mirror = reflect_xyz(reorder_xyz(BUTANOL_C3_HO2_TS, order))
+        ts = self.cluster([make_opt_tsg(0, 'rits', mirror, 0.0),
+                           make_opt_tsg(1, 'heuristics', xyz, 0.0)])
+        self.assertEqual([tsg.index for tsg in ts.ts_guesses], [0, 1])
+        self.assertEqual([tsg.method_sources for tsg in ts.ts_guesses], [['rits'], ['heuristics']])
 
 
 class TestTsAdapterFailuresPersistence(unittest.TestCase):

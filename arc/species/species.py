@@ -2717,6 +2717,18 @@ class TSGuess(object):
                 normalized.append(method)
         return normalized
 
+    def add_method_source(self, method: str) -> None:
+        """
+        Record that another method produced this guess's geometry.
+
+        The method is added to ``method_sources`` in the normalized form (lowercase, unique, in order
+        of addition) that ``ARCSpecies.cluster_tsgs`` uses when it folds two guesses.
+
+        Args:
+            method (str): The name of the method, e.g., ``'GoFlow'`` or ``'Linear (w=0.35, 1)'``.
+        """
+        self.method_sources = self._normalize_method_sources((self.method_sources or []) + [method])
+
     def as_dict(self, for_report: bool = False) -> dict:
         """
         A helper function for dumping this object as a dictionary.
