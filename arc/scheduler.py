@@ -4624,8 +4624,10 @@ class Scheduler(object):
 
     def get_latest_geo_job_e_elect(self, label: str) -> tuple[float | None, str | None]:
         """
-        Get the electronic energy of the latest successful opt (or composite) job of a species, and its level.
-        After a restart, which restores no completed job, the values stored by ``record_geo_job_e_elect`` are used.
+        Get the electronic energy of the opt (or composite) job whose geometry is the species ``final_xyz``, and its
+        level. The values stored by ``record_geo_job_e_elect`` are used, an explicit ``None`` included. Without them
+        (output written before they existed), only the latest successful job is read; an older job's energy is never
+        used, since it belongs to an older geometry.
 
         Args:
             label (str): The species label.
@@ -4634,15 +4636,14 @@ class Scheduler(object):
             tuple[float | None, str | None]: The electronic energy in kJ/mol and the job's level signature
                 (see ``job_level_signature``), both ``None`` if no such job output is available.
         """
-        job_type = 'composite' if self.composite_method else 'opt'
-        energies = [(parse_job_e_elect(job), job_level_signature(job))
-                    for job in self.job_dict.get(label, dict()).get(job_type, dict()).values()
-                    if job.job_status[1]['status'] == 'done']
-        energies = [energy for energy in energies if energy[0] is not None]
-        if energies:
-            return energies[-1]
         entry = self.output.get(label) or dict()
-        return entry.get('geo_e_elect'), entry.get('geo_level')
+        if 'geo_e_elect' in entry:
+            return entry['geo_e_elect'], entry.get('geo_level')
+        job_type = 'composite' if self.composite_method else 'opt'
+        done_jobs = [job for job in self.job_dict.get(label, dict()).get(job_type, dict()).values()
+                     if job.job_status[1]['status'] == 'done']
+        e_elect = parse_job_e_elect(done_jobs[-1]) if done_jobs else None
+        return (e_elect, job_level_signature(done_jobs[-1])) if e_elect is not None else (None, None)
 
     def pending_conformer_changes(self, label: str) -> list[dict]:
         """

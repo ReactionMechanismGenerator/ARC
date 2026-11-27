@@ -10726,6 +10726,26 @@ class TestChangeConformerReopt(unittest.TestCase):
         self.assertIsNotNone(record['pre_e_elect'])
         self.assertEqual(sched.get_latest_geo_job_e_elect(label), (None, None))
 
+    def test_latest_geo_job_without_energy_does_not_fall_back_to_an_older_job(self):
+        """A latest opt with no parseable energy gives no baseline, not the energy of an older geometry."""
+        label = 'cc_stale_e'
+        sched = self.make_sched(label)
+        level = Level(repr=default_levels_of_theory['opt'])
+        old_job = self.geo_job('opt', 'opt_a1', level)
+        old_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        latest_job = self.geo_job('opt', 'opt_a2', level)
+        latest_job.local_path_to_output_file = os.path.join(sched.project_directory, 'no_energy.out')
+        sched.job_dict[label]['opt'] = {'opt_a1': old_job, 'opt_a2': latest_job}
+        sched.record_geo_job_e_elect(label=label, job=latest_job)
+        self.assertEqual(sched.get_latest_geo_job_e_elect(label), (None, None))
+
+        pre_xyz = sched.species_dict[label].final_xyz
+        self.change_conformer(sched, label, self.new_xyz(sched, label))
+        record = sched.species_dict[label].rotors_dict[0]['trsh_methods'][-1]
+        sched.species_dict[label].final_xyz = pre_xyz
+        sched.check_change_conformer_reopt(label=label, job=self.geo_job('opt', 'opt_a3', level))
+        self.assertIsNot(record['verified'], True, 'a re-opt back to the same geometry was verified')
+
     def test_check_change_conformer_reopt_waits_for_the_baseline_job_type(self):
         """An opt that troubleshoots a composite run (or the reverse) is not compared with the other level's energy."""
         log = self.nc3h7_log
