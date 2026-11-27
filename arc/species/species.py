@@ -263,6 +263,8 @@ class ARCSpecies(object):
         mol (Molecule): An ``RMG Molecule`` object used for BAC determination.
                         Atom order corresponds to the order in .initial_xyz
         mol_list (list): A list of localized structures generated from 'mol', if possible.
+        stereo_smiles (str): The input SMILES if it specifies stereochemistry (``@``, ``/`` or ``\\`` marks), which
+                             the 2D graph in ``mol`` does not keep, otherwise ``None``.
         bond_corrections (dict): The bond additivity corrections (BAC) to be used. Determined from the structure
                                  if not directly given.
         run_time (timedelta): Overall species execution time.
@@ -433,6 +435,7 @@ class ARCSpecies(object):
         self.symmetry_number = None
         self.index = None
         check_smiles(smiles=smiles, label=label)
+        self.stereo_smiles = get_stereo_smiles(smiles)
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -863,6 +866,8 @@ class ARCSpecies(object):
             species_dict['bond_corrections'] = self.bond_corrections
         if self.mol is not None:
             species_dict['mol'] = rmg_mol_to_dict_repr(self.mol, reset_atom_ids=reset_atom_ids)
+        if self.stereo_smiles is not None:
+            species_dict['smiles'] = self.stereo_smiles
         if self.mol_list is not None and len(self.mol_list) > 1:
             species_dict['mol_list'] = [m.copy(deep=True).to_smiles() for m in self.mol_list]
         if self.initial_xyz is not None:
@@ -1022,6 +1027,7 @@ class ARCSpecies(object):
             self.mol = None
         smiles = species_dict['smiles'] if 'smiles' in species_dict else None
         check_smiles(smiles=smiles, label=self.label)
+        self.stereo_smiles = get_stereo_smiles(smiles)
         inchi = species_dict['inchi'] if 'inchi' in species_dict else None
         adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
         if self.mol is None:
@@ -3368,6 +3374,8 @@ def are_coords_compliant_with_graph(xyz: dict,
 def colliding_atoms(xyz: dict,
                     mol: Molecule | None = None,
                     threshold: float = 0.60,
+                    multiple_bond_pairs: set[tuple[int, int]] | None = None,
+                    multiple_bond_threshold: float = 0.60,
                     ) -> bool:
     """
     Check whether atoms are too close to each other.
@@ -3383,6 +3391,11 @@ def colliding_atoms(xyz: dict,
         xyz (dict): The Cartesian coordinates.
         mol (Molecule, optional): The corresponding Molecule object instance with formal charge information.
         threshold (float, optional): The collision threshold to use.
+        multiple_bond_pairs (set[tuple[int, int]], optional): Sorted (i, j) atom index pairs bonded with an order
+                                                              above single (e.g., C#C), which are shorter than the
+                                                              single-bond reference length.
+        multiple_bond_threshold (float, optional): The collision threshold for ``multiple_bond_pairs``,
+                                                   never stricter than ``threshold``.
 
     Returns:
         bool: ``True`` if they are colliding, ``False`` otherwise.
@@ -3396,9 +3409,26 @@ def colliding_atoms(xyz: dict,
             charge_1 = mol.atoms[i].charge if mol is not None else 0
             charge_2 = mol.atoms[j].charge if mol is not None else 0
             single_bond_r = get_single_bond_length(xyz['symbols'][i], xyz['symbols'][j], charge_1, charge_2)
-            if actual_r < single_bond_r * threshold:
+            pair_threshold = min(threshold, multiple_bond_threshold) \
+                if multiple_bond_pairs and (i, j) in multiple_bond_pairs else threshold
+            if actual_r < single_bond_r * pair_threshold:
                 return True
     return False
+
+
+def get_stereo_smiles(smiles: str | None) -> str | None:
+    """
+    Get a SMILES descriptor if it specifies stereochemistry.
+
+    Args:
+        smiles (str | None): The SMILES descriptor.
+
+    Returns:
+        str | None: ``smiles`` if it has stereo marks (``@``, ``/`` or ``\\``), otherwise ``None``.
+    """
+    if isinstance(smiles, str) and any(mark in smiles for mark in '@/\\'):
+        return smiles
+    return None
 
 
 def check_smiles(smiles: Any,

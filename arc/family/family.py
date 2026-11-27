@@ -8,6 +8,7 @@ import functools
 import os
 import re
 import warnings
+from itertools import combinations
 
 from arc.common import clean_text, get_logger
 from arc.exceptions import InvalidAdjacencyListError, RecipeError
@@ -192,6 +193,8 @@ class ReactionFamily(object):
         self.groups_as_lines = read_groups_file_lines(label, consider_arc_families)
         self.reversible = is_reversible(self.groups_as_lines)
         self.own_reverse = is_own_reverse(self.groups_as_lines)
+        self.non_ring_bonds = get_labeled_bonds(self.groups_as_lines, 'non_ring_bonds')
+        self.ring_bonds = get_labeled_bonds(self.groups_as_lines, 'ring_bonds')
         
         reactant_labels = get_initial_reactant_labels_from_template(self.groups_as_lines)
         all_necessary_entries = get_entries(self.groups_as_lines, entry_labels=reactant_labels, recursive=True)
@@ -214,6 +217,7 @@ class ReactionFamily(object):
             for label, adjlist in self.entries.items()
         }
         self.actions = get_recipe_actions(self.groups_as_lines, self.label)
+        self.has_a_disconnected_reactant = self.get_has_a_disconnected_reactant()
 
     def __str__(self):
         """
@@ -334,15 +338,16 @@ class ReactionFamily(object):
         products_by_group = dict()
         for isomorphic_subgraph_dict in isomorphic_subgraph_dicts:
             try:
-                product_list = self.apply_recipe(mols=isomorphic_subgraph_dict['mols'],
-                                                 isomorphic_subgraph=isomorphic_subgraph_dict['isomorphic_subgraph'])
+                product_lists = self.apply_recipe(mols=isomorphic_subgraph_dict['mols'],
+                                                  isomorphic_subgraph=isomorphic_subgraph_dict['isomorphic_subgraph'])
             except ValueError:
                 continue
-            if product_list is not None:
+            if product_lists is not None:
                 if isomorphic_subgraph_dict['subgroup'] not in products_by_group:
                     products_by_group[isomorphic_subgraph_dict['subgroup']] = list()
-                products_by_group[isomorphic_subgraph_dict['subgroup']].append((product_list,
-                                                                                isomorphic_subgraph_dict['isomorphic_subgraph']))
+                for product_list in product_lists:
+                    products_by_group[isomorphic_subgraph_dict['subgroup']].append((product_list,
+                                                                                    isomorphic_subgraph_dict['isomorphic_subgraph']))
         return products_by_group
 
     def generate_bimolecular_products(self,
@@ -376,7 +381,10 @@ class ReactionFamily(object):
         for mol_1 in reactants[0].mol_list or [reactants[0].mol]:
             for mol_2 in reactants[1].mol_list or [reactants[1].mol]:
                 splits = self.groups_by_label[reactant_to_group_maps[0][0]['subgroup']].split()
-                if len(splits) > 1:
+                # A template with a single (disconnected) group spanning both reactants is matched piecewise.
+                # A template with a group per reactant is matched group by group below, even if a reactant's
+                # own group is disconnected (e.g., a hydroxide-water cluster species).
+                if len(self.reactants) == 1 and len(splits) > 1:
                     for i in [0, 1]:
                         isomorphic_subgraphs_1 = mol_1.find_subgraph_isomorphisms(other=splits[i], save_order=True)
                         isomorphic_subgraphs_2 = mol_2.find_subgraph_isomorphisms(other=splits[not i], save_order=True)
@@ -417,39 +425,52 @@ class ReactionFamily(object):
         products_by_group = dict()
         for isomorphic_subgraph_dict in isomorphic_subgraph_dicts:
             try:
-                product_list = self.apply_recipe(mols=isomorphic_subgraph_dict['mols'],
-                                                 isomorphic_subgraph=isomorphic_subgraph_dict['isomorphic_subgraph'])
+                product_lists = self.apply_recipe(mols=isomorphic_subgraph_dict['mols'],
+                                                  isomorphic_subgraph=isomorphic_subgraph_dict['isomorphic_subgraph'])
             except ValueError:
                 continue
-            if product_list is not None:
+            if product_lists is not None:
                 if isomorphic_subgraph_dict['subgroups'] not in products_by_group:
                     products_by_group[isomorphic_subgraph_dict['subgroups']] = list()
-                products_by_group[isomorphic_subgraph_dict['subgroups']].append((product_list,
-                                                                                isomorphic_subgraph_dict['isomorphic_subgraph']))
+                for product_list in product_lists:
+                    products_by_group[isomorphic_subgraph_dict['subgroups']].append((product_list,
+                                                                                     isomorphic_subgraph_dict['isomorphic_subgraph']))
         return products_by_group
 
     def apply_recipe(self,
                      mols: list[Molecule],
                      isomorphic_subgraph: dict[int, str],
-                     ) -> list[Molecule] | None:
+                     ) -> list[list[Molecule]] | None:
         """
-        Generate a reaction product of this family from a reactant mol and the isomorphic subgraph
-        using the family's recipe.
+        Apply the family recipe to the given reactant molecules and return all possible product sets.
+
+        Merges the reactant molecules into a single structure, applies each action in the recipe,
+        then splits the result into disconnected fragments. If the number of fragments matches
+        ``product_num``, a single product set is returned. If more fragments are produced than
+        ``product_num`` and a reactant of the family is a disconnected species (e.g., a hydroxide-water
+        cluster, see ``has_a_disconnected_reactant``), all valid ways of grouping the fragments into
+        ``product_num`` products are returned so that the caller can select the set that is isomorphic
+        to the expected products. Otherwise, more fragments than ``product_num`` give no product set.
 
         Args:
-            mols (['Molecule']): The reactant molecule(s).
-            isomorphic_subgraph (dict[int, str]): A dictionary representing the isomorphic subgraph.
+            mols (list[Molecule]): The reactant molecule(s).
+            isomorphic_subgraph (dict[int, str]): Mapping of atom indices to group atom labels
+                                                  representing the matched subgraph.
 
         Raises:
             ValueError: If an invalid action is encountered.
 
         Returns:
-            list[Molecule] | None: The generated reaction product(s).
+            list[list[Molecule]] | None: A list of candidate product sets, where each set is a
+                                         list of ``product_num`` molecules. Returns ``None`` if
+                                         the recipe cannot produce the expected number of products.
         """
         structure = Molecule()
         for mol in mols:
             structure = structure.merge(mol.copy(deep=True))
         structure = add_labels_to_molecule(structure, isomorphic_subgraph)
+        if not self._meets_ring_constraints(structure):
+            return None
         for action in self.actions:
             if action[0] in ['CHANGE_BOND', 'FORM_BOND', 'BREAK_BOND']:
                 structure.reset_connectivity_values()
@@ -504,13 +525,105 @@ class ReactionFamily(object):
         for atom in structure.atoms:
             atom.update_charge()
         structures = structure.split()
-        if self.product_num != len(structures):
+        if len(structures) < self.product_num:
             return None
         updated_structures = list()
-        for structure in structures:
-            structure.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
-            updated_structures.append(structure)
-        return updated_structures
+        for s in structures:
+            s.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
+            updated_structures.append(s)
+        if len(updated_structures) == self.product_num:
+            return [updated_structures]
+        if not self.has_a_disconnected_reactant:
+            return None
+        return self._get_merged_product_sets(updated_structures)
+
+    def _get_merged_product_sets(self, structures: list[Molecule]) -> list[list[Molecule]] | None:
+        """
+        Generate all candidate product sets by partitioning disconnected fragments into groups.
+
+        Called when the number of fragments produced after applying the recipe exceeds
+        ``product_num``. Enumerates all ways to assign the fragments into ``product_num``
+        non-empty groups, merging the fragments within each group into a single
+        (potentially disconnected) molecule. The caller is responsible for selecting
+        the candidate set that is isomorphic to the expected reaction products.
+
+        Args:
+            structures (list[Molecule]): The disconnected molecular fragments produced after
+                                         splitting the post-recipe structure.
+
+        Returns:
+            list[list[Molecule]] | None: A list of candidate product sets, each containing
+                                         ``product_num`` molecules. Returns ``None`` if no
+                                         valid partitioning can be generated.
+        """
+        n = len(structures)
+        k = self.product_num
+        result = []
+
+        def partition(remaining, num_groups):
+            if num_groups == 1:
+                yield [remaining]
+                return
+            for size in range(1, len(remaining) - num_groups + 2):
+                for combo in combinations(remaining, size):
+                    if combo[0] != remaining[0]:
+                        continue
+                    rest = [i for i in remaining if i not in combo]
+                    for tail in partition(rest, num_groups - 1):
+                        yield [list(combo)] + tail
+
+        for groups in partition(list(range(n)), k):
+            product_set = []
+            for indices in groups:
+                frags = [structures[i] for i in indices]
+                if len(frags) == 1:
+                    product_set.append(frags[0])
+                else:
+                    merged = frags[0].copy(deep=True)
+                    for frag in frags[1:]:
+                        merged = merged.merge(frag.copy(deep=True))
+                    merged.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
+                    product_set.append(merged)
+            result.append(product_set)
+
+        return result if result else None
+
+    def _meets_ring_constraints(self, structure: Molecule) -> bool:
+        """
+        Check whether the labeled reactant structure meets the ring constraints of the family: none of its
+        ``non_ring_bonds`` is in a ring, and all of its ``ring_bonds`` are.
+
+        Args:
+            structure (Molecule): The labeled reactant structure.
+
+        Returns:
+            bool: Whether the ring constraints are met.
+        """
+        def is_ring_bond(label_1: str, label_2: str) -> bool:
+            atoms_1, atoms_2 = structure.get_labeled_atoms(label_1), structure.get_labeled_atoms(label_2)
+            return bool(atoms_1 and atoms_2 and structure.has_bond(atoms_1[0], atoms_2[0])
+                        and structure.is_bond_in_cycle(structure.get_bond(atoms_1[0], atoms_2[0])))
+
+        return not any(is_ring_bond(*bond) for bond in self.non_ring_bonds) \
+            and all(is_ring_bond(*bond) for bond in self.ring_bonds)
+
+    def get_has_a_disconnected_reactant(self) -> bool:
+        """
+        Determine whether a reactant of this family is a disconnected species (e.g., a hydroxide-water cluster),
+        i.e., whether the template of a multi-reactant family has a group per reactant and one of them is disconnected.
+        A disconnected group of a single-reactant family describes atoms of one molecule, not a cluster.
+        Only for such families may a recipe leave more fragments than ``product_num``, which are then merged.
+        Only ARC's own families are considered, so RMG families keep rejecting recipes that leave extra fragments.
+
+        Returns:
+            bool: Whether a reactant of this family is a disconnected species.
+        """
+        if not os.path.isfile(os.path.join(ARC_FAMILIES_PATH, f'{self.label}.py')):
+            return False
+        if self.reactant_num < 2 or len(self.reactants) != self.reactant_num:
+            return False
+        return any(len(self.groups_by_label[label].split()) > 1
+                   for reactant_group in self.reactants for label in reactant_group if label in self.groups_by_label)
 
     def get_reactant_num(self) -> int:
         """
@@ -1320,6 +1433,26 @@ def is_own_reverse(groups_as_lines: list[str]) -> bool:
     if match:
         return match.group(1) == 'True'
     return False
+
+
+def get_labeled_bonds(groups_as_lines: list[str], key: str) -> list[tuple[str, str]]:
+    """
+    Get labeled bonds of the reaction family given in the groups file under ``key``, e.g.,
+    ``non_ring_bonds = [('*1', '*2')]`` (bonds that must not be in a ring) or ``ring_bonds = [('*1', '*2')]``
+    (bonds that must be in a ring). A site that violates such a constraint does not match the family.
+
+    Args:
+        groups_as_lines (list[str]): The template content string.
+        key (str): The variable name in the groups file, e.g., 'non_ring_bonds' or 'ring_bonds'.
+
+    Returns:
+        list[tuple[str, str]]: The pairs of atom labels, an empty list if none are given.
+    """
+    for line in groups_as_lines:
+        name, _, value = line.strip().partition('=')
+        if value and name.strip() == key:
+            return [tuple(pair) for pair in ast.literal_eval(value.strip())]
+    return list()
 
 
 def get_reactant_groups_from_template(groups_as_lines: list[str],

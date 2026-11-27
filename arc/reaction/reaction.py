@@ -7,7 +7,7 @@ import copy
 from rdkit import Chem
 
 from arc.common import get_element_mass, get_logger
-from arc.exceptions import ReactionError, InputError, RecipeError
+from arc.exceptions import ReactionError, InputError, RecipeError, SpeciesError
 from arc.family.family import (ReactionFamily, check_family_name, get_reaction_family, get_reaction_family_products,
                                get_undecided_family_ties)
 from arc.molecule.resonance import generate_resonance_structures_safely
@@ -195,7 +195,12 @@ class ARCReaction(object):
         """The reactants to products atom map"""
         if self._atom_map is None \
                 and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
-            _atom_map = map_reaction(rxn=self, backend='ARC')
+            try:
+                _atom_map = map_reaction(rxn=self, backend='ARC')
+            except SpeciesError as e:
+                # The mapping copies the species without their charge, so ionic species can fail to load.
+                logger.warning(f'Could not atom map reaction {self}: {e}')
+                _atom_map = None
             if _atom_map is not None:
                 self._atom_map = _atom_map
         if self._atom_map is None:

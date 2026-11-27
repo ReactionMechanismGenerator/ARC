@@ -26,6 +26,7 @@ from arc.common import (ARC_PATH, almost_equal_coords, get_angle_in_180_range, g
 from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
+from arc.job.adapters.ts.linear_utils.geom_utils import bond_order_map
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import (compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz,
@@ -235,6 +236,9 @@ class HeuristicsAdapter(JobAdapter):
         """
         Execute a job incore.
         """
+        # Imported here: heuristics_qa imports shared helpers from this module
+        from arc.job.adapters.ts.heuristics_qa import QA_TS_GUESS_FUNCTIONS
+
         self._log_job_execution()
         self.initial_time = self.initial_time if self.initial_time else datetime.datetime.now()
 
@@ -279,6 +283,20 @@ class HeuristicsAdapter(JobAdapter):
                     logger.warning(f'Heuristics TS search could not generate a hydrolysis TS guess for {rxn.label}: {e}')
                     continue
 
+            if rxn.family in QA_TS_GUESS_FUNCTIONS:
+                qa_ts_guess_function, family_description = QA_TS_GUESS_FUNCTIONS[rxn.family]
+                try:
+                    tsg = TSGuess(method='Heuristics')
+                    tsg.tic()
+                    xyzs, families = qa_ts_guess_function(reaction=rxn)
+                    tsg.tok()
+                    if not xyzs:
+                        logger.warning(f'Heuristics TS search failed to generate any valid TS guesses for {rxn.label}.')
+                        continue
+                except ValueError as e:
+                    logger.warning(f'Heuristics {family_description} TS search failed for {rxn.label}:\n{e}')
+                    continue
+
             for method_index, xyz in enumerate(xyzs):
                 unique = True
                 for other_tsg in rxn.ts_species.ts_guesses:
@@ -305,7 +323,8 @@ class HeuristicsAdapter(JobAdapter):
                              )
 
             if len(self.reactions) < 5:
-                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'heuristics' in tsg.method])
+                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success
+                                 and 'heuristics' in tsg.method.lower()])
                 if successes:
                     logger.info(f'Heuristics successfully found {successes} TS guesses for {rxn.label}.')
                 else:
@@ -975,7 +994,7 @@ def hydrolysis(reaction: ARCReaction) -> tuple[list[dict], list[dict], list[int]
     """
     xyz_guesses_total, zmats_total, reaction_families, guesses_indices = [], [], [], []
     product_dicts, carbonyl_based_and_ether_families = get_products_and_check_families(reaction)
-    hydrolysis_parameters = load_hydrolysis_parameters()
+    hydrolysis_parameters = load_family_parameters("hydrolysis_families_parameters.yml")
     dihedrals_to_change_num, max_dihedrals_found = 0, 0
     if reaction._family is not None:
         product_dicts = [pd for pd in product_dicts if pd.get("family") == reaction._family]
@@ -994,6 +1013,7 @@ def hydrolysis(reaction: ARCReaction) -> tuple[list[dict], list[dict], list[int]
             main_reactant, water, initial_xyz, xyz_indices = extract_reactant_and_indices(reaction,
                                                                                           product_dict,
                                                                                           is_set_1)
+            multiple_bond_pairs = get_multiple_bond_pairs(main_reactant)
             base_xyz_indices = {
                 "a": xyz_indices["a"],
                 "b": xyz_indices["b"],
@@ -1005,7 +1025,8 @@ def hydrolysis(reaction: ARCReaction) -> tuple[list[dict], list[dict], list[int]
             for adjust_dihedral in adjustments_to_try:
                 chosen_xyz_indices, xyz_guesses, zmats_total, n_dihedrals_found = process_chosen_d_indices(initial_xyz, base_xyz_indices, xyz_indices,
                                                                                      hydrolysis_parameters,reaction_family, water, zmats_total, is_set_1, is_set_2,
-                                                                                     dihedrals_to_change_num, should_adjust_dihedral=adjust_dihedral)
+                                                                                     dihedrals_to_change_num, should_adjust_dihedral=adjust_dihedral,
+                                                                                     multiple_bond_pairs=multiple_bond_pairs)
                 max_dihedrals_found = max(max_dihedrals_found, n_dihedrals_found)
                 if xyz_guesses:
                     xyz_guesses_total.extend(xyz_guesses)
@@ -1039,6 +1060,7 @@ def hydrolysis(reaction: ARCReaction) -> tuple[list[dict], list[dict], list[int]
             main_reactant, water, initial_xyz, xyz_indices = extract_reactant_and_indices(reaction,
                                                                                           product_dict,
                                                                                           is_set_1)
+            multiple_bond_pairs = get_multiple_bond_pairs(main_reactant)
             base_xyz_indices = {
                 "a": xyz_indices["a"],
                 "b": xyz_indices["b"],
@@ -1055,7 +1077,7 @@ def hydrolysis(reaction: ARCReaction) -> tuple[list[dict], list[dict], list[int]
                     initial_xyz, base_xyz_indices, xyz_indices,
                     hydrolysis_parameters, reaction_family, water, zmats_total, is_set_1, is_set_2,
                     dihedrals_to_change_num, should_adjust_dihedral=True,
-                    allow_nitrile_dihedrals=True
+                    allow_nitrile_dihedrals=True, multiple_bond_pairs=multiple_bond_pairs,
                 )
                 max_dihedrals_found = max(max_dihedrals_found, n_dihedrals_found)
 
@@ -1098,15 +1120,17 @@ def get_products_and_check_families(reaction: ARCReaction) -> tuple[list[dict], 
     return product_dicts, (carbonyl_based_present and ether_present)
 
 
-def load_hydrolysis_parameters() -> dict:
+def load_family_parameters(filename: str) -> dict:
     """
-    Load parameters for hydrolysis reactions from the YAML configuration file.
+    Load reaction family parameters from a YAML file in ARC's data directory.
+
+    Args:
+        filename (str): Name of the YAML file (e.g. 'hydrolysis_families_parameters.yml').
 
     Returns:
-        dict: Hydrolysis parameters loaded from the configuration file containing
-              family sets and specific parameters for different reaction types.
+        dict: Parameters loaded from the file.
     """
-    return read_yaml_file(os.path.join(ARC_PATH, "data", "hydrolysis_families_parameters.yml"))
+    return read_yaml_file(os.path.join(ARC_PATH, "data", filename))
 
 
 def has_carbonyl_based_hydrolysis(reaction_families: list[dict]) -> bool:
@@ -1199,7 +1223,8 @@ def process_chosen_d_indices(initial_xyz: dict,
                              is_set_2: bool,
                              dihedrals_to_change_num: int,
                              should_adjust_dihedral: bool,
-                             allow_nitrile_dihedrals: bool = False
+                             allow_nitrile_dihedrals: bool = False,
+                             multiple_bond_pairs: set[tuple[int, int]] | None = None,
                              ) -> tuple[dict[str, int], list[dict[str, Any]], list[dict[str, Any]], int]:
     """
     Iterates over the 'd' indices to process TS guess generation.
@@ -1217,6 +1242,7 @@ def process_chosen_d_indices(initial_xyz: dict,
         dihedrals_to_change_num (int): The current iteration for adjusting dihedrals.
         should_adjust_dihedral (bool): Whether to adjust dihedral angles.
         allow_nitrile_dihedrals (bool, optional): Force-enable dihedral adjustments for nitriles. Defaults to False.
+        multiple_bond_pairs (set[tuple[int, int]], optional): Reactant atom pairs bonded with an order above single.
 
     Returns:
         tuple[dict[str, int], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -1258,7 +1284,7 @@ def process_chosen_d_indices(initial_xyz: dict,
         for zmat_to_process in zmats_to_process:
             ts_guesses, updated_zmats = process_family_specific_adjustments(
                 is_set_1, is_set_2, reaction_family, hydrolysis_parameters,
-                zmat_to_process, water, chosen_xyz_indices, zmats_total)
+                zmat_to_process, water, chosen_xyz_indices, zmats_total, multiple_bond_pairs=multiple_bond_pairs)
             zmats_total = updated_zmats
             ts_guesses_list.extend(ts_guesses)
 
@@ -1273,7 +1299,7 @@ def process_chosen_d_indices(initial_xyz: dict,
             for zmat_to_process in flipped_zmats:
                 ts_guesses, updated_zmats = process_family_specific_adjustments(
                     is_set_1, is_set_2, reaction_family, hydrolysis_parameters,
-                    zmat_to_process, water, chosen_xyz_indices, zmats_total
+                    zmat_to_process, water, chosen_xyz_indices, zmats_total, multiple_bond_pairs=multiple_bond_pairs,
                 )
                 zmats_total = updated_zmats
                 ts_guesses_list.extend(ts_guesses)
@@ -1372,20 +1398,25 @@ def get_neighbors_by_electronegativity(spc: ARCSpecies,
 
 
 def setup_zmat_indices(initial_xyz: dict,
-                       xyz_indices: dict) -> tuple[dict, dict]:
+                       xyz_indices: dict,
+                       mol: Molecule | None = None,
+                       ) -> tuple[dict, dict]:
     """
     Convert XYZ coordinates to Z-matrix format and set up corresponding indices.
 
     Args:
         initial_xyz (dict): XYZ coordinates of the molecule.
         xyz_indices (dict): Dictionary mapping atom types to their XYZ indices.
+        mol (Molecule, optional): The molecule's connectivity, atom order matching ``initial_xyz``.
+                                  Without it, connectivity is perceived from the xyz assuming a neutral species,
+                                  which can break bonds in charged species (e.g., the Ca-N+ bond of a QA).
 
     Returns:
         tuple: A tuple containing:
             - dict: Z-matrix representation of the molecule
             - dict: Dictionary mapping atom types to their Z-matrix indices
     """
-    initial_zmat = zmat_from_xyz(initial_xyz, consolidate=False)
+    initial_zmat = zmat_from_xyz(initial_xyz, mol=mol, consolidate=False)
     zmat_indices = {
         'a': key_by_val(initial_zmat.get('map', {}), xyz_indices['a']),
         'b': key_by_val(initial_zmat.get('map', {}), xyz_indices['b']),
@@ -1529,7 +1560,9 @@ def process_family_specific_adjustments(is_set_1: bool,
                                         initial_zmat: dict,
                                         water: ARCSpecies,
                                         xyz_indices: dict,
-                                        zmats_total: list[dict]) -> tuple[list[dict], list[dict]]:
+                                        zmats_total: list[dict],
+                                        multiple_bond_pairs: set[tuple[int, int]] | None = None,
+                                        ) -> tuple[list[dict], list[dict]]:
     """
     Process specific adjustments for different hydrolysis reaction families if needed, then generate TS guesses .
 
@@ -1542,6 +1575,7 @@ def process_family_specific_adjustments(is_set_1: bool,
         water (ARCSpecies): Water molecule for the reaction.
         xyz_indices (dict): Dictionary of atom indices in XYZ coordinates.
         zmats_total (list[dict]): List of existing Z-matrices.
+        multiple_bond_pairs (set[tuple[int, int]], optional): Reactant atom pairs bonded with an order above single.
 
     Returns:
         tuple[list[dict], list[dict]]: Generated XYZ guesses and updated Z-matrices list.
@@ -1563,7 +1597,8 @@ def process_family_specific_adjustments(is_set_1: bool,
         initial_xyz = zmat_to_xyz(initial_zmat)
         return generate_hydrolysis_ts_guess(initial_xyz, xyz_indices.values(), water, r_atoms, a_atoms, d_atoms,
                                             r_value, a_value, d_values, zmats_total, is_set_1,
-                                            threshold=0.6 if reaction_family == 'nitrile_hydrolysis' else 0.8)
+                                            threshold=0.6 if reaction_family == 'nitrile_hydrolysis' else 0.8,
+                                            multiple_bond_pairs=multiple_bond_pairs)
     else:
         raise ValueError(f"Family {reaction_family} not supported for hydrolysis TS guess generation.")
 
@@ -1579,7 +1614,8 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
                                  d_values: list[list[float]],
                                  zmats_total: list[dict],
                                  is_set_1: bool,
-                                 threshold: float
+                                 threshold: float,
+                                 multiple_bond_pairs: set[tuple[int, int]] | None = None,
                                  ) -> tuple[list[dict], list[dict]]:
     """
     Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
@@ -1597,6 +1633,7 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
         zmats_total (list[dict]): Existing Z-matrices to avoid duplicates.
         is_set_1 (bool): Whether the reaction belongs to parameter set 1.
         threshold (float): Threshold for atom collision checking.
+        multiple_bond_pairs (set[tuple[int, int]], optional): Reactant atom pairs bonded with an order above single.
 
     Returns:
         tuple[list[dict], list[dict]]: Unique TS guesses (XYZ coords and Z-matrices).
@@ -1619,7 +1656,7 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
 
         a_xyz, b_xyz, e_xyz, o_xyz, h1_xyz, d_xyz= xyz_indices
         are_valid_bonds=check_ts_bonds(xyz_guess, [o_xyz, h1_xyz, h1_xyz+1,  a_xyz, b_xyz])
-        colliding=colliding_atoms(xyz_guess, threshold=threshold)
+        colliding=colliding_atoms(xyz_guess, threshold=threshold, multiple_bond_pairs=multiple_bond_pairs)
         duplicate = any(compare_zmats(existing, xyz_to_zmat(xyz_guess)) for existing in zmats_total)
         if is_set_1:
             dihedral_edao=[e_xyz, d_xyz, a_xyz, o_xyz]
@@ -1684,6 +1721,11 @@ def check_ts_bonds(transition_state_xyz: dict, tested_atom_indices: list) -> boo
     h1_has_valid_bonds = (h1_bonds[0][0] in {oxygen_index, b_index}and h1_bonds[1][0] in {oxygen_index, b_index})
     h2_has_valid_bonds = h2_bonds[0][0] == oxygen_index
     return oxygen_has_valid_bonds and h1_has_valid_bonds and h2_has_valid_bonds
+
+
+def get_multiple_bond_pairs(spc: 'ARCSpecies') -> set[tuple[int, int]]:
+    """Return the sorted (i, j) atom index pairs of all bonds with an order above single in the species."""
+    return {pair for pair, order in bond_order_map(spc.mol).items() if order > 1}
 
 
 register_job_adapter('heuristics', HeuristicsAdapter)

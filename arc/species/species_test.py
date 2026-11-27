@@ -43,6 +43,7 @@ from arc.species.species import (ARCSpecies,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
                                  dict_repr_is_authoritative,
+                                 get_stereo_smiles,
                                  lift_legacy_extension_keys,
                                  process_run_time,
                                  rmg_mol_from_dict_repr,
@@ -1583,6 +1584,28 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         spc_copy.label_atoms()
         for index, atom in enumerate(spc_copy.mol.atoms):
             self.assertEqual(str(index), atom.label)
+
+    def test_stereo_smiles(self):
+        """Test that a SMILES with stereo marks is kept through as_dict(), from_dict() and copy()."""
+        self.assertEqual(get_stereo_smiles('C[C@@H](O)CC'), 'C[C@@H](O)CC')
+        self.assertEqual(get_stereo_smiles('C/C=C/C'), 'C/C=C/C')
+        self.assertEqual(get_stereo_smiles('C\\C=C/C'), 'C\\C=C/C')
+        for smiles in ['CC(O)CC', '', None]:
+            self.assertIsNone(get_stereo_smiles(smiles))
+        smiles = 'C[C@@H]1CCCC[C@H]1[N+](C)(C)C'
+        spc = ARCSpecies(label='trans', smiles=smiles)
+        self.assertEqual(spc.stereo_smiles, smiles)
+        self.assertEqual(spc.as_dict()['smiles'], smiles)
+        for restored in [ARCSpecies(species_dict=spc.as_dict()), spc.copy()]:
+            self.assertEqual(restored.stereo_smiles, smiles)
+            self.assertTrue(restored.mol.is_isomorphic(spc.mol))
+        # A species from an input dictionary (e.g., ARC's input file)
+        self.assertEqual(ARCSpecies(species_dict={'label': 'trans', 'smiles': smiles, 'charge': 1}).stereo_smiles, smiles)
+        # No stereo marks: nothing is stored
+        plain = ARCSpecies(label='plain', smiles='CC1CCCCC1[N+](C)(C)C')
+        self.assertIsNone(plain.stereo_smiles)
+        self.assertNotIn('smiles', plain.as_dict())
+        self.assertIsNone(plain.copy().stereo_smiles)
 
     def test_copy(self):
         """Test the copy() method."""
@@ -3430,6 +3453,25 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         self.assertTrue(colliding_atoms(str_to_xyz(xyz_2)))
         self.assertTrue(colliding_atoms(str_to_xyz(xyz_3)))
         self.assertTrue(colliding_atoms(str_to_xyz(xyz_4)))
+
+    def test_colliding_atoms_with_multiple_bond_pairs(self):
+        """Test that only the listed multiple-bond pairs get the relaxed collision threshold"""
+        # Propyne: C1#C2 is 1.20 A, below 0.8 * 1.54 A (the C-C single-bond collision limit at threshold=0.8).
+        propyne = str_to_xyz("""C      -1.89300000    0.00000000    0.00000000
+        C      -0.43300000    0.00000000    0.00000000
+        C       0.76700000    0.00000000    0.00000000
+        H      -2.28000000    1.02700000    0.00000000
+        H      -2.28000000   -0.51300000    0.88900000
+        H      -2.28000000   -0.51300000   -0.88900000
+        H       1.83000000    0.00000000    0.00000000""")
+        self.assertTrue(colliding_atoms(propyne, threshold=0.8))
+        self.assertFalse(colliding_atoms(propyne, threshold=0.8, multiple_bond_pairs={(1, 2)}))
+        # Listing a different pair does not relax the triple bond.
+        self.assertTrue(colliding_atoms(propyne, threshold=0.8, multiple_bond_pairs={(0, 1)}))
+        # A real clash elsewhere is still caught when the triple bond is relaxed.
+        clash = {'symbols': propyne['symbols'] + ('O',), 'isotopes': propyne['isotopes'] + (16,),
+                 'coords': propyne['coords'] + ((0.767, 0.9, 0.0),)}
+        self.assertTrue(colliding_atoms(clash, threshold=0.8, multiple_bond_pairs={(1, 2)}))
 
     def test_correct_representation_of_o2_and_s2(self):
         """Test that ARC represents O2 and S2 correctly."""

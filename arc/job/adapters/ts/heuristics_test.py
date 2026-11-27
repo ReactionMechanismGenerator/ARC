@@ -34,6 +34,8 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             check_ts_bonds,
                                             h_abstraction,
                                             hydrolysis,
+                                            load_family_parameters,
+                                            get_multiple_bond_pairs,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
@@ -143,6 +145,32 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                                                      H      -1.02943316   -0.30449156    1.00193709
                                                                      H      -0.60052507   -0.86954495   -0.63086438
                                                                      H       0.30391344    2.59629139    0.17435159""")
+
+        # A quaternary ammonium with a terminal alkyne: the C#C bond is shorter than the
+        # collision threshold for a C-C single bond.
+        cls.butynyl_tma = ARCSpecies(label='butynyl_TMA', smiles='C[N+](C)(C)CCC#C',
+                                     xyz="""C       0.42402100    1.37019800    0.48046300
+        N       1.03981000    0.10247600    0.00061200
+        C       2.13767200    0.43422200   -0.95323700
+        C       1.62400700   -0.63237400    1.15769500
+        C       0.04952600   -0.75820900   -0.74360000
+        C      -1.22359700   -1.13795300    0.00605800
+        C      -2.27434900   -0.12482600    0.00117700
+        C      -3.14847700    0.69390200   -0.01540600
+        H      -0.04759300    1.87004800   -0.36065300
+        H       1.21380800    1.99063900    0.89447900
+        H      -0.30695300    1.14563400    1.25003200
+        H       2.88373500    1.02298000   -0.42783000
+        H       2.57498600   -0.49173900   -1.31604700
+        H       1.71990300    1.00420600   -1.77801400
+        H       0.84516500   -0.85532600    1.87932600
+        H       2.07875700   -1.54880100    0.79263000
+        H       2.37435400    0.00446700    1.61762400
+        H      -0.19525800   -0.22084100   -1.65686500
+        H       0.59275800   -1.66309000   -1.00401700
+        H      -1.01181300   -1.44360700    1.03049900
+        H      -1.60902200   -2.02632500   -0.49660400
+        H      -3.92472600    1.42476300   -0.02707800""")
 
         cls.water = ARCSpecies(label='H2O', smiles='O', xyz="""O      -0.00032700    0.39565700    0.00000000
         H      -0.75690800   -0.19845300    0.00000000
@@ -1269,6 +1297,27 @@ H      -0.00000000   -0.75477000   -0.47632400""")
             dihedral = calculate_dihedral_angle(coords=xyz['coords'], torsion=[3, 2, 1, 6])
             self.assertAlmostEqual(abs((dihedral + 180) % 360 - 180), 174, delta=0.5)
 
+    def test_load_family_parameters(self):
+        """
+        Test that load_family_parameters correctly loads QA SN2 and hydrolysis YAMLs.
+        """
+        sn2 = load_family_parameters("qa_sn2_parameters.yml")
+        self.assertIn('family_parameters', sn2)
+        self.assertIn('qa_sn2', sn2['family_parameters'])
+        qa = sn2['family_parameters']['qa_sn2']
+        self.assertEqual(len(qa['r_value']), 5)
+        self.assertEqual(len(qa['a_value']), 5)
+        self.assertEqual(len(qa['d_values']), 4)
+        for row in qa['d_values']:
+            self.assertEqual(len(row), 5)
+            self.assertEqual(row[1], 'scan')
+        self.assertEqual(qa['hr_dihedral_scan_values'], [-175.0, -128.0, -86.0, -18.0, 41.0, 99.0, 158.0])
+        self.assertIsInstance(qa['stretch'], float)
+
+        hydrolysis = load_family_parameters("hydrolysis_families_parameters.yml")
+        self.assertIn('family_parameters', hydrolysis)
+        self.assertIn('family_sets', hydrolysis)
+
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
         # reactant_reversed, products_reversed = False, False
@@ -2328,6 +2377,15 @@ H      -0.30139889    0.23142254    3.12085495"""
         initial_xyz = str_to_xyz(initial_xyz_str1)
         result = check_ts_bonds(initial_xyz, [7, 8, 9, 2, 4])
         self.assertTrue(result)
+
+    def test_get_multiple_bond_pairs(self):
+        """Test get_multiple_bond_pairs returns the xyz index pairs of bonds with order > 1."""
+        # A terminal alkyne: only the C#C pair.
+        self.assertEqual(get_multiple_bond_pairs(self.butynyl_tma), {(6, 7)})
+        # Saturated: no multiple bonds.
+        self.assertEqual(get_multiple_bond_pairs(ARCSpecies(label='TMA', smiles='CN(C)C')), set())
+        # Methyl acetate: only the C=O pair.
+        self.assertEqual(get_multiple_bond_pairs(ARCSpecies(label='MeOAc', smiles='CC(=O)OC')), {(1, 2)})
 
 
 if __name__ == '__main__':
