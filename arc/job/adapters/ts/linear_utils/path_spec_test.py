@@ -303,6 +303,17 @@ class TestGetTsTargetDistance(unittest.TestCase):
         sbl = get_single_bond_length('C', 'C')
         self.assertAlmostEqual(d, sbl + PAULING_DELTA, places=6)
 
+    def test_scorer_uses_the_general_elongation_for_every_bond(self):
+        """
+        Every breaking/forming target is the general elongation, hydrogen-carrying or not.
+
+        The scorer cannot see whether a hydrogen is bridging a donor and an acceptor, and
+        most reactive-core builders seed the general elongation, so it stays uniform here.
+        """
+        self.assertAlmostEqual(get_ts_target_distance((0, 1), 'breaking', ('C', 'C')), 1.96, places=6)
+        self.assertAlmostEqual(get_ts_target_distance((0, 1), 'breaking', ('C', 'H')), 1.51, places=6)
+        self.assertAlmostEqual(get_ts_target_distance((0, 1), 'forming', ('O', 'H')), 1.38, places=6)
+
     def test_changed_interpolates_when_both_distances_given(self):
         symbols = ('C', 'C')
         d = get_ts_target_distance(
@@ -492,7 +503,7 @@ class TestHasRecipeChannelMismatch(unittest.TestCase):
     def test_pauling_triangulated_h_passes(self):
         """A migrating H at the symmetric Pauling TS distance from both partners passes both gates."""
         sbl = get_single_bond_length('C', 'H')
-        d_ts = sbl + 0.42  # ≈ 1.51 Å — symmetric TS bond order n=0.5
+        d_ts = sbl + PAULING_DELTA
         spec = ReactionPathSpec(breaking_bonds=[(0, 1)], forming_bonds=[(0, 1)])
         xyz = self._two_atom_xyz('C', 'H', d_ts)
         mismatch, _ = has_recipe_channel_mismatch(spec, xyz)
