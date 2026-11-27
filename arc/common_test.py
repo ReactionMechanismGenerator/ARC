@@ -48,7 +48,7 @@ class TestCommon(unittest.TestCase):
                                  'irc': True,
                                  'conf_sp': False,
                                  'orbitals': False,
-                                 'stability': False,
+                                 'stability': True,
                                  'onedmin': False,
                                  'bde': False,
                                  }

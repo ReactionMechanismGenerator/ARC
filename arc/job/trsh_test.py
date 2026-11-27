@@ -468,6 +468,7 @@ class TestTrsh(unittest.TestCase):
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
         ess_trsh_methods = ['trsh_attempt',
                             'int=(Acc2E=14)', 'opt=(maxcycle=200)',
+                            'trsh_attempt', 'NoSymm',
                             'trsh_attempt', 'opt=(RFO)',
                             'trsh_attempt', 'opt=(GDIIS)',
                             'trsh_attempt', 'opt=(GEDIIS)',
@@ -478,9 +479,9 @@ class TestTrsh(unittest.TestCase):
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertTrue(couldnt_trsh)
         e = output_errors[-1]
-        self.assertIn('Tried troubleshooting 5 time(s)', e)
+        self.assertIn('Tried troubleshooting 6 time(s)', e)
         self.assertNotIn('trsh_attempt', e)
-        for opt in ("opt=(maxcycle=200)", "opt=(RFO)", "opt=(GDIIS)", "opt=(GEDIIS)"):
+        for opt in ("opt=(maxcycle=200)", "NoSymm", "opt=(RFO)", "opt=(GDIIS)", "opt=(GEDIIS)"):
             self.assertIn(opt, e)
         self.assertIn('all_attempted', e)
 
@@ -547,9 +548,27 @@ class TestTrsh(unittest.TestCase):
         
         # Gaussian: test 10 - part 2
         # 'MaxOptCycles', 'GL9999'
-        # Adding RFO to opt
+        # Adding nosymm, keeping maxcycle=200
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
         ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)']
+        with self.assertLogs('arc', level='INFO') as logs:
+            output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, \
+                trsh_keyword, memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(
+                    label, level_of_theory, server, job_status, job_type, software, fine, memory_gb,
+                    num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertFalse(couldnt_trsh)
+        self.assertIn('NoSymm', ess_trsh_methods)
+        self.assertNotIn('opt=(RFO)', ess_trsh_methods)
+        self.assertIn('nosymm', trsh_keyword)
+        self.assertIn('opt=(maxcycle=200)', trsh_keyword)
+        self.assertTrue(any('using nosymm' in line for line in logs.output))
+        self.assertTrue(any('has no symmetry, not even approximately' in line for line in logs.output))
+
+        # Gaussian: test 10 - part 2b
+        # 'MaxOptCycles', 'GL9999'
+        # Adding RFO to opt, keeping nosymm
+        job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'NoSymm']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                     job_type, software, fine, memory_gb,
@@ -558,13 +577,14 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('opt=(maxcycle=200)', ess_trsh_methods)
         self.assertIn('opt=(RFO)', ess_trsh_methods)
         self.assertIn('opt=(maxcycle=200,RFO)', trsh_keyword)
+        self.assertIn('nosymm', trsh_keyword)
         
         # Gaussian: test 10 - part 3
         # 'MaxOptCycles', 'GL9999'
         # Adding GDIIS to opt
         # Removing RFO from opt
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
-        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(RFO)']
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'NoSymm', 'opt=(RFO)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                     job_type, software, fine, memory_gb,
@@ -581,7 +601,7 @@ class TestTrsh(unittest.TestCase):
         # Removing RFO from opt
         # Removing GDIIS from opt
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
-        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(RFO)', 'opt=(GDIIS)']
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'NoSymm', 'opt=(RFO)', 'opt=(GDIIS)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                     job_type, software, fine, memory_gb,
@@ -597,7 +617,7 @@ class TestTrsh(unittest.TestCase):
         # 'MaxOptCycles', 'GL9999'
         # Final test to ensure that it cannot troubleshoot the job further
         job_status = {'keywords': ['MaxOptCycles', 'GL9999']}
-        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)']
+        ess_trsh_methods = ['int=(Acc2E=14)', 'opt=(maxcycle=200)', 'NoSymm', 'opt=(RFO)', 'opt=(GDIIS)', 'opt=(GEDIIS)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                     job_type, software, fine, memory_gb,

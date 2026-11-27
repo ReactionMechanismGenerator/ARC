@@ -468,6 +468,25 @@ def derived_reference_is_unrestricted(species: ARCSpecies | None) -> bool:
     return verdict.get('verdict') == DERIVED_UNRESTRICTED_VERDICT and verdict.get('restricted') is True
 
 
+def latest_stability_verdict(species: ARCSpecies | None) -> dict | None:
+    """
+    Get the most recent wavefunction stability verdict of a species.
+
+    A species whose adopted verdict made it unrestricted keeps that verdict, since it decides the
+    reference, and stores the re-test of its re-optimized wavefunction under ``'retest'``.
+
+    Args:
+        species (ARCSpecies, optional): The species to check.
+
+    Returns:
+        dict | None: The re-test verdict if there is one, else the species' verdict, or ``None``.
+    """
+    verdict = getattr(species, 'derived_stability_verdict', None)
+    if not isinstance(verdict, dict):
+        return None
+    return verdict.get('retest') or verdict
+
+
 def derived_instability_breaks_spin_symmetry(species: ARCSpecies | None) -> bool | None:
     """
     Report whether a measured instability relaxed the SPIN constraint, or ``None`` where it says nothing.

@@ -21,6 +21,7 @@ from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, in
 from arc.exceptions import DependencyError, ReactionError
 from arc.job.adapters.common import (adopted_reference_is_unrestricted, default_incore_adapters,
                                       derived_instability_breaks_spin_symmetry, is_restricted,
+                                      latest_stability_verdict,
                                       REFERENCE_AGNOSTIC_METHOD_TYPES, REFERENCE_CHANGE_AVAILABLE_KEY,
                                       ts_adapters_by_rmg_family, ts_adapters_for_unknown_unimolecular)
 from arc.job.factory import job_factory
@@ -30,8 +31,9 @@ from arc.job.pipe.pipe_state import TaskState, initialize_task, update_task_stat
 from arc.level import Level, get_freq_level_for_composite_method
 from arc.plotter import save_conformers_file
 from arc.scheduler import (COLLAPSED_REFERENCE_MESSAGE, INVALID_ANALYTIC_FREQ_MESSAGE, MAX_S_SQUARED_DEVIATION,
-                           MIXED_SCF_REFERENCE_MESSAGE, SPIN_CONTAMINATION_MESSAGE, STABILITY_ANALYSIS_ADAPTERS,
-                           SYMMETRY_BREAKING_ADAPTERS, UNREACHABLE_REFERENCE_MESSAGE,
+                           MAX_STABILITY_REOPTIMIZATIONS, MIXED_SCF_REFERENCE_MESSAGE, SPIN_CONTAMINATION_MESSAGE,
+                           STABILITY_ANALYSIS_ADAPTERS, STILL_UNSTABLE_MESSAGE, SYMMETRY_BREAKING_ADAPTERS,
+                           UNREACHABLE_REFERENCE_MESSAGE,
                            Scheduler, SchedulerError, exception_summary_line, species_has_freq, species_has_geo,
                            species_has_sp, species_has_sp_and_freq, tsg_method_matches_adapter)
 from arc.imports import settings
@@ -990,6 +992,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         self.addCleanup(setattr, species, 'stability_analysis_ran', False)
         self.addCleanup(setattr, species, 'stability_pending_opt_job', None)
         self.addCleanup(setattr, species, 'stability_reoptimized', False)
+        self.addCleanup(setattr, species, 'stability_reoptimizations', 0)
         self.addCleanup(setattr, species, 'derived_stability_verdict', None)
 
         def _restore_jobs():
@@ -1008,6 +1011,7 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         species.stability_analysis_ran = False
         species.stability_pending_opt_job = None
         species.stability_reoptimized = False
+        species.stability_reoptimizations = 0
         species.derived_stability_verdict = None
         species.final_xyz = {'symbols': ('O', 'H'), 'isotopes': (16, 1),
                              'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))}
@@ -1305,16 +1309,16 @@ H      -0.38158795    1.01273118   -0.02607927""")),
             self.assertTrue(self.sched1.run_stability_job(label=label, opt_job=job))
         self.assertEqual(run_job.call_args.kwargs['job_type'], 'stability')
 
-    def test_the_stability_gate_refuses_an_unrestricted_species_that_is_not_a_ts(self):
-        """Test that a well whose opt job already ran unrestricted is not tested"""
+    def test_the_stability_gate_admits_an_unrestricted_species_that_is_not_a_ts(self):
+        """Test that a well whose opt job ran unrestricted is tested too, for an internal instability"""
         with tempfile.NamedTemporaryFile(suffix='.chk', delete=False) as f:
             checkfile = f.name
         self.addCleanup(lambda: os.path.isfile(checkfile) and os.remove(checkfile))
         label = self._prepare_stability_ts(checkfile=checkfile, is_ts=False)
         job = self._stability_opt_job(checkfile=checkfile, restricted_used=False)
         with patch.object(self.sched1, 'run_job') as run_job:
-            self.assertFalse(self.sched1.run_stability_job(label=label, opt_job=job))
-        self.assertFalse(run_job.called)
+            self.assertTrue(self.sched1.run_stability_job(label=label, opt_job=job))
+        self.assertEqual(run_job.call_args.kwargs['job_type'], 'stability')
 
     def test_the_stability_gate_refuses_a_reference_agnostic_species_that_is_not_a_ts(self):
         """Test that a method ARC writes no r/u prefix for is not read as a restricted reference"""
@@ -1331,16 +1335,16 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                                  msg=f'{method} was admitted to the stability diagnostic')
             self.assertFalse(run_job.called)
 
-    def test_the_stability_gate_refuses_a_species_carrying_no_reference_memo(self):
-        """Test that a well whose opt job never wrote an ESS input is not tested"""
+    def test_the_stability_gate_admits_a_species_carrying_no_reference_memo(self):
+        """Test that a well is tested whatever reference its opt job declared"""
         with tempfile.NamedTemporaryFile(suffix='.chk', delete=False) as f:
             checkfile = f.name
         self.addCleanup(lambda: os.path.isfile(checkfile) and os.remove(checkfile))
         label = self._prepare_stability_ts(checkfile=checkfile, is_ts=False)
         job = self._stability_opt_job(checkfile=checkfile, restricted_used=None)
         with patch.object(self.sched1, 'run_job') as run_job:
-            self.assertFalse(self.sched1.run_stability_job(label=label, opt_job=job))
-        self.assertFalse(run_job.called)
+            self.assertTrue(self.sched1.run_stability_job(label=label, opt_job=job))
+        self.assertEqual(run_job.call_args.kwargs['job_type'], 'stability')
 
     def test_the_stability_gate_still_admits_a_ts_whatever_reference_it_ran(self):
         """Test that a TS does not depend on the reference its opt job declared"""
@@ -1396,10 +1400,21 @@ H      -0.38158795    1.01273118   -0.02607927""")),
             self.sched1.spawn_post_stability_jobs(label=label)
         self.assertEqual(run_job.call_args.kwargs['job_type'], 'opt')
         self.assertTrue(species.stability_reoptimized)
+        self.assertEqual(species.stability_reoptimizations, 1)
         self.assertNotIn((label, 'forward'), self.sched1._pending_pipe_irc)
 
+        # The re-optimization's own checkfile is adopted when it ends, and its wavefunction is tested again.
+        species.checkfile = checkfile
         run_job = self._spawn_post_opt(label=label, job=job, job_name='opt_a2')
+        self.assertEqual(run_job.call_args.kwargs['job_type'], 'stability')
+        self.assertNotIn((label, 'forward'), self.sched1._pending_pipe_irc)
+
+        species.derived_stability_verdict['retest'] = {'verdict': 'stable', 'restricted': False}
+        with patch.object(self.sched1, 'run_scan_jobs'), patch.object(self.sched1, 'spawn_ts_jobs'), \
+                patch.object(self.sched1, 'run_job') as run_job:
+            self.sched1.spawn_post_stability_jobs(label=label)
         self.assertFalse(run_job.called)
+        self.assertTrue(adopted_reference_is_unrestricted(species))
         self.assertIn((label, 'forward'), self.sched1._pending_pipe_irc)
         self.assertIn((label, 'reverse'), self.sched1._pending_pipe_irc)
         self.assertIn(label, self.sched1._pending_pipe_freq)
@@ -1542,10 +1557,13 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         species.stability_analysis_ran = True
         species.stability_pending_opt_job = 'opt_a3'
         species.stability_reoptimized = True
+        species.stability_reoptimizations = 2
         restored = ARCSpecies(species_dict=species.as_dict())
         self.assertTrue(restored.stability_analysis_ran)
         self.assertEqual(restored.stability_pending_opt_job, 'opt_a3')
         self.assertTrue(restored.stability_reoptimized)
+        self.assertEqual(restored.stability_reoptimizations, 2)
+        self.assertEqual(ARCSpecies(label='old', smiles='C', species_dict=None).stability_reoptimizations, 0)
 
         with tempfile.NamedTemporaryFile(suffix='.chk', delete=False) as f:
             checkfile = f.name
@@ -1564,6 +1582,106 @@ H      -0.38158795    1.01273118   -0.02607927""")),
                 patch.object(self.sched1, 'run_job') as run_job:
             self.sched1.spawn_post_stability_jobs(label=label)
         self.assertFalse(run_job.called)
+
+    def _held_well(self, verdict: dict, rounds: int = 0) -> str:
+        """Hold a well's post-opt work on a stability verdict, as spawn_post_opt_jobs leaves it."""
+        with tempfile.NamedTemporaryFile(suffix='.chk', delete=False) as f:
+            checkfile = f.name
+        self.addCleanup(lambda: os.path.isfile(checkfile) and os.remove(checkfile))
+        label = self._prepare_stability_ts(checkfile=checkfile, is_ts=False)
+        species = self.sched1.species_dict[label]
+        species.stability_analysis_ran = True
+        species.stability_pending_opt_job = 'opt_a1'
+        species.stability_reoptimizations = rounds
+        species.derived_stability_verdict = verdict
+        self.sched1.job_dict[label]['opt'] = {'opt_a1': self._stability_opt_job(checkfile=checkfile)}
+        warnings = self.sched1.output[label]['warnings']
+        self.addCleanup(self.sched1.output[label].__setitem__, 'warnings', warnings)
+        for pending in [self.sched1._pending_pipe_freq, self.sched1._pending_pipe_sp]:
+            self.addCleanup(pending.discard, label)
+        return label
+
+    def _release(self, label: str):
+        """Run spawn_post_stability_jobs for a label, returning the run_job stand-in."""
+        with patch.object(self.sched1, 'run_scan_jobs'), patch.object(self.sched1, 'spawn_ts_jobs'), \
+                patch.object(self.sched1, 'run_job') as run_job:
+            self.sched1.spawn_post_stability_jobs(label=label)
+        return run_job
+
+    def test_a_stable_well_is_released_without_a_re_optimization(self):
+        """Test that a stable verdict releases the held work"""
+        label = self._held_well({'verdict': 'stable', 'restricted': True})
+        run_job = self._release(label)
+        self.assertFalse(run_job.called)
+        self.assertIn(label, self.sched1._pending_pipe_freq)
+        self.assertEqual(self.sched1.species_dict[label].stability_reoptimizations, 0)
+
+    def test_an_internal_instability_re_optimizes_the_well_from_the_followed_solution(self):
+        """Test that an internal instability Gaussian followed into a stable solution re-optimizes the well"""
+        label = self._held_well({'verdict': 'internal_instability', 'restricted': False, 'followed_to_stable': True})
+        species = self.sched1.species_dict[label]
+        run_job = self._release(label)
+        self.assertEqual(run_job.call_args.kwargs['job_type'], 'opt')
+        self.assertEqual(species.stability_reoptimizations, 1)
+        self.assertFalse(species.stability_analysis_ran)
+        self.assertFalse(species.stability_reoptimized)
+        self.assertNotIn(label, self.sched1._pending_pipe_freq)
+
+    def test_an_internal_instability_that_was_not_followed_is_flagged_and_released(self):
+        """Test that ARC does not re-optimize from orbitals that hold the unstable wavefunction"""
+        label = self._held_well({'verdict': 'internal_instability', 'restricted': False, 'followed_to_stable': False})
+        run_job = self._release(label)
+        self.assertFalse(run_job.called)
+        self.assertIn(label, self.sched1._pending_pipe_freq)
+        self.assertIn(STILL_UNSTABLE_MESSAGE, self.sched1.output[label]['warnings'])
+
+    def test_the_re_optimization_rounds_are_capped(self):
+        """Test that a well still unstable after the last round is flagged and released"""
+        verdict = {'verdict': 'internal_instability', 'restricted': False, 'followed_to_stable': True}
+        label = self._held_well(verdict, rounds=MAX_STABILITY_REOPTIMIZATIONS - 1)
+        run_job = self._release(label)
+        self.assertEqual(run_job.call_args.kwargs['job_type'], 'opt')
+        self.assertEqual(self.sched1.species_dict[label].stability_reoptimizations, MAX_STABILITY_REOPTIMIZATIONS)
+
+        label = self._held_well(verdict, rounds=MAX_STABILITY_REOPTIMIZATIONS)
+        run_job = self._release(label)
+        self.assertFalse(run_job.called)
+        self.assertIn(label, self.sched1._pending_pipe_freq)
+        self.assertIn(STILL_UNSTABLE_MESSAGE, self.sched1.output[label]['warnings'])
+
+    def test_a_retest_is_stored_beside_the_adopted_verdict(self):
+        """Test that re-testing an adopted TS keeps the verdict that decides its reference"""
+        label = self._held_well({'verdict': 'external_instability', 'restricted': True}, rounds=1)
+        species = self.sched1.species_dict[label]
+        species.is_ts = True
+        species.stability_reoptimized = True
+        job = MagicMock()
+        job.job_status = ['done', {'status': 'done'}]
+        job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'stability', 'stable_unrestricted_doublet_ts.out')
+        self.addCleanup(self.sched1.output[label]['paths'].pop, 'stability', None)
+        self.addCleanup(self.sched1.output[label].pop, 'wavefunction_stability', None)
+        info = self.sched1.output[label]['info']
+        self.addCleanup(self.sched1.output[label].__setitem__, 'info', info)
+        self.sched1.check_stability_job(label=label, job=job)
+        self.assertEqual(species.derived_stability_verdict['verdict'], 'external_instability')
+        self.assertEqual(species.derived_stability_verdict['retest']['verdict'], 'stable')
+        self.assertTrue(adopted_reference_is_unrestricted(species))
+        self.assertEqual(latest_stability_verdict(species)['verdict'], 'stable')
+
+    def test_turning_stability_off_warns_once_for_a_ts(self):
+        """Test the per-species warning when the stability analysis is off"""
+        with tempfile.NamedTemporaryFile(suffix='.chk', delete=False) as f:
+            checkfile = f.name
+        self.addCleanup(lambda: os.path.isfile(checkfile) and os.remove(checkfile))
+        label = self._prepare_stability_ts(checkfile=checkfile, is_ts=True, enabled=False)
+        self.addCleanup(self.sched1.stability_off_warned.discard, label)
+        self.sched1.stability_off_warned.discard(label)
+        job = self._stability_opt_job(checkfile=checkfile)
+        with self.assertLogs('arc', level='WARNING') as logs:
+            self.assertFalse(self.sched1.run_stability_job(label=label, opt_job=job))
+        self.assertTrue(any('stability analysis is turned off' in line for line in logs.output))
+        with self.assertNoLogs('arc', level='WARNING'):
+            self.sched1.run_stability_job(label=label, opt_job=job)
 
     def test_a_restart_releases_work_held_by_an_analysis_that_is_no_longer_running(self):
         """Test that a resumed run does not leave a species holding its freq and sp forever"""

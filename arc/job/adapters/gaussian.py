@@ -47,10 +47,14 @@ default_job_settings, gaussian_memory_headroom_fractions, global_ess_settings, i
 # reservation constant.
 GAUSSIAN_MEMORY_HEADROOM_FRACTION = gaussian_memory_headroom_fractions[0]
 
-STABILITY_KEYWORD = 'stable=(rext,noopt)'
+# Tests for every instability (RExt is Gaussian's default) and, if one is found, reoptimizes the wavefunction
+# with the matching constraints lifted, so it may become unrestricted.
+STABILITY_KEYWORD = 'stable=opt'
 
 
 # job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
+#             followed by the initial guess, if any: 'guess=INDO' (trsh), 'guess=read' (a checkfile),
+#             'guess=mix' (an unrestricted singlet), or nothing (Gaussian's default)
 # job_type_2: '' or 'freq iop(7/33=1)' (cannot be combined with CBS-QB3)
 #             'scf=(tight,direct) int=finegrid irc=(rcfc,forward,maxpoints=100,stepsize=10) geom=check' for irc f
 #             'scf=(tight,direct) int=finegrid irc=(rcfc,reverse,maxpoints=100,stepsize=10) geom=check' for irc r
@@ -396,15 +400,18 @@ class GaussianAdapter(JobAdapter):
         if self.level.solvation_method is not None:
             input_dict['job_type_1'] += f' SCRF=({self.level.solvation_method}, Solvent={self.level.solvent})'
 
+        restricted_list_bool = is_restricted(self)
         if self.species[0].number_of_atoms > 1:
-            if input_dict['job_type_1']:
-                input_dict['job_type_1'] += ' '
+            guess = ''
             if 'guess=INDO' in input_dict['trsh']:
-                input_dict['job_type_1'] += 'guess=INDO'
+                guess = 'guess=INDO'
                 input_dict['trsh'] = input_dict['trsh'].replace('guess=INDO', '')
-            else:
-                input_dict['job_type_1'] += ' guess=read' if self.checkfile is not None and os.path.isfile(self.checkfile) \
-                    else ' guess=mix'
+            elif self.checkfile is not None and os.path.isfile(self.checkfile):
+                guess = 'guess=read'
+            elif self._runs_an_unrestricted_singlet(restricted_list_bool):
+                guess = 'guess=mix'
+            if guess:
+                input_dict['job_type_1'] += f' {guess}' if input_dict['job_type_1'] else guess
 
         # Fix OPT
         terms_opt = [r'opt=\((.*?)\)', r'opt=(\w+)']
@@ -434,7 +441,6 @@ class GaussianAdapter(JobAdapter):
         input_file = ''
         input_dict_origin = input_dict.copy()
 
-        restricted_list_bool = is_restricted(self)
         restricted_list = ["" if flag else 'u' for flag in ([restricted_list_bool]
                            if isinstance(restricted_list_bool, bool) else restricted_list_bool)]
 
@@ -453,6 +459,28 @@ class GaussianAdapter(JobAdapter):
                     if index < len(self.species) - 1:
                         input_file += '\n--link1--\n'
                 f.write(input_file)
+
+    def _runs_an_unrestricted_singlet(self, restricted: bool | list[bool]) -> bool:
+        """
+        Check whether this job runs a singlet on an unrestricted reference, the one case ``guess=mix`` serves.
+
+        ``guess=mix`` mixes the HOMO and LUMO of the initial guess so the alpha and beta orbitals start out
+        different. Gaussian ignores it in a restricted run, and in a doublet or a triplet those orbitals differ
+        anyway, so only an open-shell singlet gains from it: a declared singlet biradical, or a TS whose adopted
+        stability verdict made its reference unrestricted. The latter is what lets the re-optimization that
+        follows such a verdict, which holds no checkfile, find the lower solution. A multi-species job shares
+        one route section, so one such species is enough; the keyword does no harm to the others.
+
+        Args:
+            restricted (bool | list[bool]): What ``is_restricted()`` returned for this job, one entry per
+                                            species for a multi-species job.
+
+        Returns:
+            bool: Whether any species of this job is a singlet run unrestricted.
+        """
+        multiplicities = self.multiplicity if self.run_multi_species else [self.multiplicity]
+        restricted = restricted if isinstance(restricted, list) else [restricted]
+        return any(multiplicity == 1 and not flag for multiplicity, flag in zip(multiplicities, restricted))
 
     def set_files(self) -> None:
         """

@@ -125,7 +125,7 @@ class TestARC(unittest.TestCase):
                                        'orbitals': False,
                                        'rotors': False,
                                        'sp': True,
-                                       'stability': False},
+                                       'stability': True},
                          'max_job_time': 120,
                          'opt_level': {'basis': '6-311+g(3df,2p)',
                                        'method': 'b3lyp',

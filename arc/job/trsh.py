@@ -48,6 +48,10 @@ delete_command, gaussian_memory_headroom_fractions, inconsistency_ab, inconsiste
     settings['rotor_scan_resolution'], settings['servers'], settings['submit_filenames'], \
     settings['default_job_settings']
 
+NOSYMM_NOTE = ('Note: nosymm stops Gaussian from re-orienting {label} between optimization steps. It mainly helps '
+               'molecules that are symmetric or nearly symmetric. If {label} has no symmetry, not even approximately, '
+               'nosymm will most likely not change its convergence.')
+
 
 def determine_ess_status(output_path: str,
                          species_label: str,
@@ -994,6 +998,11 @@ def trsh_ess_job(label: str,
         # Troubleshoot by increasing opt max cycles
         #P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'NoSymm' in ess_trsh_methods and 'using nosymm' not in logger_info:
+            logger_info.append('using nosymm')
+        if 'MaxOptCycles' in job_status['keywords'] and 'NoSymm' in ess_trsh_methods \
+                and 'NoSymm' not in (attempted_ess_trsh_methods or list()):
+            logger.info(NOSYMM_NOTE.format(label=label))
         # print out any words that beging with 'opt='
         opt_list = [i for i in ess_trsh_methods if i.startswith('opt=')]
         if opt_list:
@@ -1973,12 +1982,21 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> tuple[list, list, bool]:
     """
-    Check if the job requires change of opt(maxcycle=200)
+    Troubleshoot a Gaussian optimization that ran out of steps.
+
+    The ladder is ``opt=(maxcycle=200)``, then ``nosymm``, then ``opt=(RFO)``, ``opt=(GDIIS)`` and
+    ``opt=(GEDIIS)``. Each rung keeps the ones before it.
     """
     opt_pattern = r"opt=\((.*?)\)"
     if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycle=200)' not in ess_trsh_methods:
         ess_trsh_methods.append('opt=(maxcycle=200)')
         trsh_keyword.append('opt=(maxcycle=200)')
+        couldnt_trsh = False
+    elif 'MaxOptCycles' in job_status['keywords'] and 'NoSymm' not in ess_trsh_methods:
+        # Gaussian re-orients the molecule at every step; for a (nearly) symmetric molecule the frame can turn
+        # by tens of degrees per step, and the grids are not rotationally invariant, so the optimization chases noise.
+        ess_trsh_methods.append('NoSymm')
+        trsh_keyword.append('nosymm')
         couldnt_trsh = False
     elif 'MaxOptCycles' in job_status['keywords'] and 'opt=(RFO)' not in ess_trsh_methods:
         ess_trsh_methods.append('opt=(RFO)')
@@ -2003,7 +2021,10 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
             new_opt_keyword = 'opt=(' + ','.join(filtered_methods) + ')'
 
             trsh_keyword = [kw if not kw.startswith('opt') else new_opt_keyword for kw in trsh_keyword]
-    
+            if 'MaxOptCycles' in job_status['keywords'] and not any(kw.startswith('opt') for kw in trsh_keyword):
+                # The nosymm rung adds no opt keyword of its own; keep the opt rungs tried before it.
+                trsh_keyword.append(new_opt_keyword)
+
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 

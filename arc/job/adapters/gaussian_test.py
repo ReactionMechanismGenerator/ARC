@@ -467,7 +467,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             )
         
         # Gaussian MaxOptCycles error - Part 2
-        # Intend to troubleshoot a MaxOptCycles error by adding opt=(RFO) to the input file
+        # Intend to troubleshoot a MaxOptCycles error by adding nosymm to the input file, keeping opt=(maxcycle=200)
         job_status = {'keywords': ['MaxOptCycles']}
         ess_trsh_methods = ['opt=(maxcycle=200)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
@@ -490,9 +490,10 @@ class TestGaussianAdapter(unittest.TestCase):
                                             )
         
         # Gaussian MaxOptCycles error - Part 3
-        # Intend to troubleshoot a MaxOptCycles error by adding opt=(GDIIS) and removing opt=(RFO) to the input file
+        # Intend to troubleshoot a MaxOptCycles error by adding opt=(GDIIS) and removing opt=(RFO) from the input file,
+        # keeping nosymm
         job_status = {'keywords': ['MaxOptCycles']}
-        ess_trsh_methods = ['opt=(maxcycle=200)', 'opt=(RFO)']
+        ess_trsh_methods = ['opt=(maxcycle=200)', 'NoSymm', 'opt=(RFO)']
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                             job_type, software, fine, memory_gb,
@@ -669,7 +670,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) wb97xd/def2tzvp   IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -799,7 +800,7 @@ O       0.00000000    0.00000000    1.00000000
     def test_trsh_write_input_file(self):
         """Test writing a trsh input file
         10. Create an input file for a job with int=(Acc2E=14) included
-        11. Create an input file for a job with guess=mix included (removal of Checkfile via ess_trsh_methods)
+        11. Create an input file for a job whose Checkfile was removed via ess_trsh_methods (a restricted singlet, so no guess keyword)
         12. Create an input file for a job with nosymm included, and also the first pass of SCF error troubleshooting
         13. Create an input file for a job with NDamp=30 included, and also the previous pass of SCF error troubleshooting
         14. Create an input file for a job with NoDIIS included, and also previous passes of SCF error troubleshooting
@@ -811,8 +812,8 @@ O       0.00000000    0.00000000    1.00000000
         20. Create an input file for a job with L502 error but had already been troubleshooted with L502 error and InaccurateQuadrature
         21. Create an input file for a job with L502 error but had already been troubleshooted with L502 error and InaccurateQuadrature
         22. Create an input file for a job with MaxOptCycles error - changes maxcycle to 200 from 100
-        23. Create an input file for a job with MaxOptCycles error - Add RFO to the input file
-        24. Create an input file for a job with MaxOptCycles error - Add GDIIS and remove RFO from the input file
+        23. Create an input file for a job with MaxOptCycles error - Add nosymm to the input file, keeping maxcycle=200
+        24. Create an input file for a job with MaxOptCycles error - Add GDIIS and remove RFO from the input file, keeping nosymm
         """
         self.job_10.write_input_file()
         with open(os.path.join(self.job_10.local_path, input_filenames[self.job_10.job_adapter]), 'r') as f:
@@ -839,7 +840,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -865,7 +866,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
 
 ethanol
 
@@ -891,7 +892,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
 
 ethanol
 
@@ -917,7 +918,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -943,7 +944,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,cartesian,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,cartesian,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -997,7 +998,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       scf=(direct,tight,xqc)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       scf=(direct,tight,xqc)
 
 ethanol
 
@@ -1023,7 +1024,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
 
 ethanol
 
@@ -1049,7 +1050,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
 
 ethanol
 
@@ -1075,7 +1076,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
@@ -1129,7 +1130,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
 
 ethanol
 
@@ -1156,7 +1157,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(RFO,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    nosymm   scf=(direct,tight)
 
 ethanol
 
@@ -1183,7 +1184,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14193mb
 %NProcShared=8
 
-#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    nosymm   scf=(direct,tight)
 
 ethanol
 
@@ -1246,23 +1247,19 @@ H       0.04768200    1.19305700   -0.88359100
     def test_stability_keyword_in_route(self):
         """Test that the wavefunction stability keyword is written for a stability job only"""
         stability_route = self._route_for_job_type('stability')
-        self.assertIn('stable=(rext,noopt)', stability_route)
+        self.assertIn('stable=opt', stability_route)
         for job_type in ['opt', 'freq', 'sp', 'composite']:
             self.assertNotIn('stable', self._route_for_job_type(job_type))
 
-    def test_stability_keyword_never_reoptimizes(self):
-        """Test that the stability route asks for no reoptimization and no complex orbitals"""
+    def test_stability_keyword_reoptimizes_the_wavefunction(self):
+        """Test that the stability route reoptimizes an unstable wavefunction over real orbitals only"""
+        self.assertEqual(STABILITY_KEYWORD, 'stable=opt')
         route = self._route_for_job_type('stability').lower()
-        options = re.search(r'stable=\(([^)]*)\)', route)
-        self.assertIsNotNone(options, msg=f'no stable=(...) group in route {route!r}')
-        options = [option.strip() for option in options.group(1).split(',')]
-        self.assertIn('noopt', options)
-        self.assertIn('rext', options)
-        for option in options:
-            self.assertNotIn(option, ['opt', 'repopt', '1opt', 'crhf', 'cuhf', 'int'],
+        self.assertEqual(re.findall(r'stable=\S+', route), ['stable=opt'])
+        for option in ['noopt', 'rext', 'crhf', 'cuhf', 'int', 'repopt', '1opt']:
+            self.assertNotIn(option, re.findall(r'stable=\S+', route)[0],
                              msg=f'route {route!r} carries the {option!r} stability option')
-        self.assertNotIn('stable=opt', route)
-        self.assertEqual(STABILITY_KEYWORD.lower(), f"stable=({','.join(options)})")
+        self.assertNotIn('opt=(', route, msg=f'the stability option was merged into a geometry opt in {route!r}')
 
     def test_a_checkfile_written_by_another_ess_is_refused(self):
         """Test that an ORCA input.gbw offered to Gaussian is not read as a checkpoint file"""
@@ -1293,11 +1290,12 @@ H       0.04768200    1.19305700   -0.88359100
                        scratch_dir: str,
                        checkfile: str | None = None,
                        species: ARCSpecies | None = None,
+                       job_type: str = 'sp',
                        **kwargs,
                        ) -> GaussianAdapter:
         """Build a testing Gaussian job under a scratch directory of its own."""
         return GaussianAdapter(execution_type='queue',
-                               job_type='sp',
+                               job_type=job_type,
                                level=Level(method='wb97xd', basis='def2-TZVP'),
                                project='test',
                                project_directory=os.path.join(scratch_dir, 'test_GaussianCheckfile'),
@@ -1352,6 +1350,110 @@ H       0.04768200    1.19305700   -0.88359100
             f.write('orbitals')
         second = self._checkfile_job(scratch_dir, job_name=first.job_name, job_num=first.job_num)
         self.assertEqual(second.checkfile, planted)
+
+    def _routes_of(self, job: GaussianAdapter) -> list[str]:
+        """Write the input file of ``job`` and return its route lines, one per species it runs."""
+        job.write_input_file()
+        with open(os.path.join(job.local_path, input_filenames[job.job_adapter]), 'r') as f:
+            return [line for line in f.read().splitlines() if line.startswith('#P')]
+
+    def _guess_scratch_dir(self) -> str:
+        """Make a scratch directory for a guess test, removed when the test ends."""
+        scratch_dir = tempfile.mkdtemp(prefix='arc_test_gaussian_guess_')
+        self.addCleanup(shutil.rmtree, scratch_dir, ignore_errors=True)
+        return scratch_dir
+
+    def _planted_checkfile(self, scratch_dir: str) -> str:
+        """Write a non-empty Gaussian checkfile under ``scratch_dir`` and return its path."""
+        checkfile = os.path.join(scratch_dir, 'check.chk')
+        with open(checkfile, 'w') as f:
+            f.write('orbitals')
+        return checkfile
+
+    def test_no_guess_for_a_restricted_closed_shell_singlet_ts(self):
+        """Test that a restricted closed-shell singlet TS gets Gaussian's default guess"""
+        spc = ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2\nH 0 0 3'], multiplicity=1)
+        route = self._routes_of(self._checkfile_job(self._guess_scratch_dir(), species=spc))[0]
+        self.assertNotIn('guess=', route)
+        self.assertIn(' wb97xd/def2tzvp', route)
+        self.assertNotIn('uwb97xd', route)
+
+    def test_no_guess_mix_for_doublets_and_triplets(self):
+        """Test that open-shell doublets and triplets run unrestricted without guess=mix"""
+        for spc in [ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2']),
+                    ARCSpecies(label='CH3', smiles='[CH3]'),
+                    ARCSpecies(label='CH2', smiles='[CH2]')]:
+            with self.subTest(label=spc.label, multiplicity=spc.multiplicity):
+                route = self._routes_of(self._checkfile_job(self._guess_scratch_dir(), species=spc))[0]
+                self.assertIn(spc.multiplicity, [2, 3])
+                self.assertIn('uwb97xd/def2tzvp', route)
+                self.assertNotIn('guess=', route)
+
+    def test_guess_mix_for_a_declared_singlet_biradical(self):
+        """Test that a singlet biradical runs unrestricted from a mixed guess"""
+        spc = ARCSpecies(label='birad_singlet', xyz=['O 0 0 0\nO 0 0 1.21'], multiplicity=1, number_of_radicals=2)
+        route = self._routes_of(self._checkfile_job(self._guess_scratch_dir(), species=spc))[0]
+        self.assertIn(' guess=mix uwb97xd/def2tzvp', route)
+        self.assertEqual(route.count('guess='), 1)
+
+    def test_guess_read_for_a_species_with_a_checkfile(self):
+        """Test that a checkfile is read in place of a mixed or a default guess"""
+        for spc in [ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2\nH 0 0 3'], multiplicity=1),
+                    ARCSpecies(label='birad_singlet', xyz=['O 0 0 0\nO 0 0 1.21'], multiplicity=1,
+                               number_of_radicals=2)]:
+            with self.subTest(label=spc.label):
+                scratch_dir = self._guess_scratch_dir()
+                job = self._checkfile_job(scratch_dir, checkfile=self._planted_checkfile(scratch_dir), species=spc)
+                route = self._routes_of(job)[0]
+                self.assertIn('guess=read', route)
+                self.assertEqual(route.count('guess='), 1)
+
+    def test_guess_indo_from_trsh_overrides_every_other_guess(self):
+        """Test that a guess=INDO troubleshooting keyword is the only guess written, even with a checkfile"""
+        spc = ARCSpecies(label='birad_singlet', xyz=['O 0 0 0\nO 0 0 1.21'], multiplicity=1, number_of_radicals=2)
+        scratch_dir = self._guess_scratch_dir()
+        job = self._checkfile_job(scratch_dir, checkfile=self._planted_checkfile(scratch_dir), species=spc,
+                                  args={'keyword': {}, 'block': {}, 'trsh': {'trsh': ['guess=INDO']}})
+        route = self._routes_of(job)[0]
+        self.assertIn(' guess=INDO uwb97xd/def2tzvp', route)
+        self.assertEqual(route.count('guess='), 1)
+
+    def test_guess_mix_for_a_ts_whose_adopted_verdict_made_it_unrestricted(self):
+        """Test that a TS adopting an external instability verdict, holding no checkfile, starts from a mixed guess"""
+        spc = ARCSpecies(label='TS0', is_ts=True, xyz=['O 0 0 1\nH 0 0 2\nH 0 0 3'], multiplicity=1)
+        spc.derived_stability_verdict = {'verdict': 'external_instability', 'restricted': True,
+                                         'relaxations': ['RHF -> UHF']}
+        for job_type in ['opt', 'freq', 'sp']:
+            with self.subTest(job_type=job_type):
+                job = self._checkfile_job(self._guess_scratch_dir(), species=spc, job_type=job_type)
+                self.assertIsNone(job.checkfile)
+                route = self._routes_of(job)[0]
+                self.assertIn('uwb97xd/def2tzvp', route)
+                self.assertIn('guess=mix', route)
+                self.assertNotIn('guess=read', route)
+
+    def test_one_unrestricted_singlet_gives_a_multi_species_job_guess_mix(self):
+        """Test that guess=mix reaches every route of a multi-species job that runs one unrestricted singlet"""
+        closed_shell = ARCSpecies(label='H2O', smiles='O', multi_species='mltspc_guess')
+        birad = ARCSpecies(label='birad_singlet', xyz=['O 0 0 0\nO 0 0 1.21'], multiplicity=1, number_of_radicals=2,
+                           multi_species='mltspc_guess')
+        doublet = ARCSpecies(label='CH3', smiles='[CH3]', multi_species='mltspc_guess')
+        for species, expect_mix in [([closed_shell, doublet], False), ([closed_shell, birad, doublet], True)]:
+            with self.subTest(labels=[spc.label for spc in species]):
+                job = GaussianAdapter(execution_type='incore',
+                                      job_type='opt',
+                                      level=Level(method='wb97xd', basis='def2-TZVP'),
+                                      project='test',
+                                      project_directory=os.path.join(self._guess_scratch_dir(), 'test_GaussianMulti'),
+                                      species=species,
+                                      run_multi_species=True,
+                                      testing=True,
+                                      )
+                routes = self._routes_of(job)
+                self.assertEqual(len(routes), len(species))
+                for route in routes:
+                    self.assertEqual('guess=mix' in route, expect_mix, msg=route)
+                    self.assertNotIn('guess=read', route)
 
     def test_stability_keyword_absent_from_other_job_types(self):
         """Test that no other job type emits any form of the stability keyword"""
