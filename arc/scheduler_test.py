@@ -6,6 +6,7 @@ This module contains unit tests for the arc.scheduler module
 """
 
 import logging
+import numpy as np
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -3013,6 +3014,39 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         # The GCN guess, not a position, carries the error.
         self.assertIn('gcn', ts_spc.ts_guesses[0].method.lower())
 
+    @patch('arc.scheduler.Scheduler.switch_ts')
+    def test_troubleshoot_ess_failed_ts_scan_keeps_the_ts(self, mock_switch_ts):
+        """A TS rotor scan that cannot be troubleshot invalidates that rotor; it must not switch the TS guess."""
+        ts_spc = ARCSpecies(label='TS_trsh_scan', is_ts=True, multiplicity=2, charge=0, compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'top': [1, 3], 'scan': [3, 1, 2, 4], 'torsion': [2, 0, 1, 3],
+                                  'success': None, 'invalidation_reason': '', 'dimensions': 1, 'trsh_methods': list(),
+                                  'trsh_counter': 0, 'times_dihedral_set': 0, 'scan_path': ''}}
+        project_directory = tempfile.mkdtemp(prefix='arc_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='project_test_trsh_scan', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.running_jobs['TS_trsh_scan'] = list()
+        job = MagicMock()
+        job.job_name, job.job_adapter, job.job_type, job.rotor_index = 'scan_a10', 'ase', 'scan', 0
+        job.job_status = ['done', {'status': 'errored', 'keywords': ['Unknown'], 'error': 'unknown', 'line': ''}]
+        job.ess_trsh_methods, job.fine, job.job_memory_gb, job.cpu_cores = ['change_node'], False, 8, 4
+        job.level = Level(repr={'method': 'uma', 'software': 'ase'})
+        job.args = {'keyword': dict(), 'block': dict(), 'trsh': dict()}
+        job.times_rerun, job.job_id, job.server, job.conformer = 0, 1, 'local', None
+        job.torsions, job.dihedrals, job.directed_scan_type = [[2, 0, 1, 3]], None, None
+        sched.troubleshoot_ess(label='TS_trsh_scan', job=job, level_of_theory=job.level)
+        mock_switch_ts.assert_not_called()
+        self.assertFalse(ts_spc.rotors_dict[0]['success'])
+        self.assertIn('could not be troubleshot', ts_spc.rotors_dict[0]['invalidation_reason'])
+
     @patch('arc.scheduler.Scheduler.run_opt_job')
     def test_run_ts_conformer_jobs_single_success_provenance(self, mock_run_opt):
         """The provenance of a lone successful guess must describe that guess, not ts_guesses[0]."""
@@ -3888,6 +3922,57 @@ H      -0.38158795    1.01273118   -0.02607927""")),
         mock_iso.assert_not_called()
         self.assertEqual(sched.species_dict['TS_trsh'].final_xyz, new_xyz)
         mock_run_opt.assert_called_once()
+
+    @patch('arc.scheduler.Scheduler.run_opt_job')
+    def test_troubleshoot_scan_job_repeated_ts_conformer_keeps_the_ts(self, mock_run_opt):
+        """A TS scan that leads again to a point the TS was re-optimized from invalidates only that rotor."""
+        ts_xyz = str_to_xyz("""N       0.91779059    0.51946178    0.00000000
+        H       1.81402049    1.03819414    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91779059    1.22790192    0.72426890""")
+        new_xyz = str_to_xyz("""N       0.91000000    0.52000000    0.00000000
+        H       1.81000000    1.04000000    0.00000000
+        H       0.00000000    0.00000000    0.00000000
+        H       0.91000000    1.23000000    0.72000000""")
+        ts_spc = ARCSpecies(label='TS_trsh_rep', is_ts=True, xyz=ts_xyz, multiplicity=1, charge=0,
+                            compute_thermo=False)
+        ts_spc.rotors_dict = {0: {'pivots': [1, 2], 'scan': [3, 1, 2, 4], 'scan_path': '',
+                                  'invalidation_reason': '', 'success': None, 'symmetry': None,
+                                  'times_dihedral_set': 1, 'trsh_methods': [{'change conformer': new_xyz}],
+                                  'trsh_counter': 1}}
+
+        project_directory = tempfile.mkdtemp(prefix='arc_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project='test_ts_rep_trsh', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          )
+        sched.trsh_ess_jobs = True
+        sched.trsh_rotors = True
+        sched.output['TS_trsh_rep']['convergence'] = None
+
+        job_mock = MagicMock()
+        job_mock.species_label = 'TS_trsh_rep'
+        job_mock.rotor_index = 0
+        job_mock.torsions = [[2, 0, 1, 3]]
+        job_mock.job_name = 'scan_a202'
+
+        with patch('arc.scheduler.Scheduler.delete_all_species_jobs') as mock_delete:
+            trsh_success, actions = sched.troubleshoot_scan_job(job=job_mock, methods={'change conformer': new_xyz})
+
+        self.assertFalse(trsh_success)
+        self.assertEqual(actions, dict())
+        mock_delete.assert_not_called()
+        mock_run_opt.assert_not_called()
+        self.assertIsNone(sched.output['TS_trsh_rep']['convergence'])
+        self.assertNotIn('Not calculating this species', sched.output['TS_trsh_rep']['errors'])
+        self.assertIsNone(sched.species_dict['TS_trsh_rep'].final_xyz)
 
     @patch('arc.scheduler.Scheduler.run_job')
     def test_troubleshoot_scan_job_skips_isomorphism_for_ts_non_conformer(self, mock_run_job):
@@ -5256,6 +5341,174 @@ class TestSchedulerReactionChargeBalance(unittest.TestCase):
         rxn = ARCReaction(label='HO- + CH3OH <=> H2O + CH3O-')
         self.build_scheduler(rxn, species)
         self.assertEqual(rxn.charge, -1)
+
+
+class TestTSRotorScanChecks(unittest.TestCase):
+    """
+    Contains unit tests for the checks of a TS's rotor scans.
+    """
+
+    def test_get_ts_reactive_bonds(self):
+        """Test that a TS's rotor scans must preserve the bonds its reaction forms and breaks, 1-indexed"""
+        r_species = [ARCSpecies(label='HOCHO', smiles='OC=O')]
+        p_species = [ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='CO', smiles='[C-]#[O+]')]
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        project = 'test_ts_reactive_bonds'
+        project_directory = tempfile.mkdtemp(prefix='arc_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=project,
+                          ess_settings={'gaussian': ['server1']},
+                          species_list=r_species + p_species,
+                          rxn_list=[rxn],
+                          project_directory=project_directory,
+                          job_types=initialize_job_types(),
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          testing=True,
+                          )
+        formed_bonds, broken_bonds = rxn.get_formed_and_broken_bonds()
+        self.assertTrue(formed_bonds and broken_bonds)
+        expected = sorted([bond[0] + 1, bond[1] + 1] for bond in list(formed_bonds) + list(broken_bonds))
+        self.assertEqual(sorted(sched.get_ts_reactive_bonds(rxn.ts_label)), expected)
+        xyz = r_species[0].get_xyz()
+        far_atom = expected[0][1] - 1
+        coords = [list(coord) for coord in xyz['coords']]
+        coords[far_atom][0] += 10.0
+        sched.species_dict[rxn.ts_label].final_xyz = dict(xyz, coords=tuple(tuple(coord) for coord in coords))
+        bonds = sched.get_ts_reactive_bonds(rxn.ts_label)
+        self.assertIsNotNone(bonds)
+        self.assertFalse(any(far_atom + 1 in bond for bond in bonds))
+        self.assertTrue(all(bond in expected for bond in bonds))
+        sched.species_dict[rxn.ts_label].rxn_index = 99
+        self.assertIsNone(sched.get_ts_reactive_bonds(rxn.ts_label))
+
+    @staticmethod
+    def reactive_bonds_of(reactants: list, formed: list, broken: list, coords: list) -> list:
+        """The reactive bonds Scheduler.get_ts_reactive_bonds() finds for a TS at ``coords``, given the atom map's."""
+        from arc.scheduler import Scheduler
+        rxn = MagicMock()
+        rxn.get_formed_and_broken_bonds.return_value = (formed, broken)
+        rxn.get_reactants_and_products.return_value = (reactants, list())
+        symbols = tuple(symbol for spc in reactants for symbol in spc.get_xyz()['symbols'])
+        ts = MagicMock(rxn_index=0, final_xyz={'symbols': symbols, 'isotopes': (None,) * len(symbols),
+                                                'coords': tuple(tuple(float(x) for x in c) for c in coords)})
+        sched = MagicMock(rxn_dict={0: rxn}, species_dict={'TS0': ts})
+        return Scheduler.get_ts_reactive_bonds(sched, 'TS0')
+
+    def test_get_ts_reactive_bonds_with_many_automorphisms(self):
+        """The H a neopentane + OH TS transfers is found among neopentane's 31,104 automorphisms"""
+        neopentane, oh = ARCSpecies(label='neopentane', smiles='CC(C)(C)C'), ARCSpecies(label='OH', smiles='[OH]')
+        mol = neopentane.mol
+        methyls = [i for i, atom in enumerate(mol.atoms)
+                   if atom.is_carbon() and sum(n.is_hydrogen() for n in atom.edges) == 3]
+        hydrogens = {c: [mol.atoms.index(n) for n in mol.atoms[c].edges if n.is_hydrogen()] for c in methyls}
+        mapped_c, other_c = methyls[0], methyls[-1]
+        mapped_h, transferred_h = hydrogens[mapped_c][0], hydrogens[other_c][1]
+        coords = np.array(neopentane.get_xyz()['coords'])
+        direction = (coords[transferred_h] - coords[other_c]) / np.linalg.norm(coords[transferred_h] - coords[other_c])
+        coords[transferred_h] = coords[other_c] + 1.25 * direction
+        o = coords[other_c] + 2.55 * direction
+        coords = np.vstack([coords, o, o + 0.97 * np.cross(direction, [0.0, 0.0, 1.0])])
+        o_index = len(mol.atoms)
+        bonds = self.reactive_bonds_of([neopentane, oh], formed=[(mapped_h, o_index)], broken=[(mapped_c, mapped_h)],
+                                       coords=coords)
+        self.assertIsNotNone(bonds)
+        self.assertEqual(sorted(bonds), sorted([sorted([other_c + 1, transferred_h + 1]),
+                                                sorted([transferred_h + 1, o_index + 1])]))
+
+    def test_get_ts_reactive_bonds_exchanges_identical_reactants(self):
+        """In HO2 + HO2, the TS's H may come from the reactant the atom map does not name as the donor"""
+        ho2_xyz = {'symbols': ('O', 'O', 'H'), 'isotopes': (16, 16, 1),
+                   'coords': ((0.0, 0.0, 0.0), (1.33, 0.0, 0.0), (1.6, 0.93, 0.0))}
+        reactants = [ARCSpecies(label='HO2', smiles='[O]O', xyz=ho2_xyz), ARCSpecies(label='HO2', smiles='[O]O',
+                                                                                     xyz=ho2_xyz)]
+        coords = [(0.0, 0.0, 0.0), (1.33, 0.0, 0.0), (1.6, 0.93, 0.0),
+                  (-2.9, 1.15, 0.0), (-2.3, 0.0, 0.0), (-1.2, 0.0, 0.0)]
+        bonds = self.reactive_bonds_of(reactants, formed=[(2, 3)], broken=[(1, 2)], coords=coords)
+        self.assertEqual(sorted(bonds), [[1, 6], [5, 6]])
+
+    def test_get_ts_reactive_bonds_takes_the_closer_equivalent_atom(self):
+        """An H adding to C2H4 forms its bond to the carbon it is closer to in the TS, whichever the atom map names"""
+        ethylene = ARCSpecies(label='C2H4', smiles='C=C', xyz="""C 0.0 0.0 0.0
+C 1.33 0.0 0.0
+H -0.56 0.93 0.0
+H -0.56 -0.93 0.0
+H 1.89 0.93 0.0
+H 1.89 -0.93 0.0""")
+        coords = list(ethylene.get_xyz()['coords']) + [(1.33, 0.0, 1.9)]
+        bonds = self.reactive_bonds_of([ethylene, ARCSpecies(label='H', smiles='[H]')], formed=[(0, 6)], broken=[],
+                                       coords=coords)
+        self.assertEqual(bonds, [[2, 7]])
+
+    def test_get_ts_reactive_bonds_follows_the_transferred_atom(self):
+        """Test that the reactive bonds follow the H a TS transfers, not an equivalent H the atom map names"""
+        ch4_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1),
+                   'coords': ((0.0, 0.0, 0.0), (0.629, 0.629, 0.629), (-0.629, -0.629, 0.629),
+                              (-0.629, 0.629, -0.629), (0.629, -0.629, -0.629))}
+        oh_xyz = {'symbols': ('O', 'H'), 'isotopes': (16, 1), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 0.97))}
+        r_species = [ARCSpecies(label='CH4', smiles='C', xyz=ch4_xyz), ARCSpecies(label='OH', smiles='[OH]', xyz=oh_xyz)]
+        p_species = [ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')]
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        project = 'test_ts_reactive_bonds_equivalent'
+        project_directory = tempfile.mkdtemp(prefix='arc_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        sched = Scheduler(project=project,
+                          ess_settings={'gaussian': ['server1']},
+                          species_list=r_species + p_species,
+                          rxn_list=[rxn],
+                          project_directory=project_directory,
+                          job_types=initialize_job_types(),
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          testing=True,
+                          )
+        formed_bonds, broken_bonds = rxn.get_formed_and_broken_bonds()
+        mapped_h = [atom for bond in broken_bonds for atom in bond if atom != 0][0]
+        transferred_h = next(h for h in range(1, 5) if h != mapped_h)
+        direction = np.array(ch4_xyz['coords'][transferred_h]) / np.linalg.norm(ch4_xyz['coords'][transferred_h])
+        coords = [list(coord) for coord in ch4_xyz['coords']]
+        coords[transferred_h] = list(1.25 * direction)
+        o, perpendicular = 2.55 * direction, np.cross(direction, [1.0, 0.0, 0.0])
+        coords += [list(o), list(o + 0.97 * perpendicular / np.linalg.norm(perpendicular))]
+        sched.species_dict[rxn.ts_label].final_xyz = {'symbols': ch4_xyz['symbols'] + oh_xyz['symbols'],
+                                                       'isotopes': ch4_xyz['isotopes'] + oh_xyz['isotopes'],
+                                                       'coords': tuple(tuple(coord) for coord in coords)}
+        self.assertEqual(sorted(sched.get_ts_reactive_bonds(rxn.ts_label)),
+                         sorted([[1, transferred_h + 1], [transferred_h + 1, 6]]))
+
+    def test_get_ts_reactive_bonds_follows_the_leaving_atom(self):
+        """Test that the broken bond of an H loss TS is the stretched one, not the normal bond of an equivalent H"""
+        ethyl_xyz = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (12, 12, 1, 1, 1, 1, 1),
+                     'coords': ((0.0, 0.0, 0.761), (0.0, 0.0, -0.761), (0.880, -0.508, 1.157), (-0.880, -0.508, 1.157),
+                                (0.880, 0.508, -1.157), (-0.880, 0.508, -1.157), (0.0, -1.017, -1.157))}
+        r_species = [ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=ethyl_xyz)]
+        p_species = [ARCSpecies(label='C2H4', smiles='C=C'), ARCSpecies(label='H', smiles='[H]')]
+        rxn = ARCReaction(r_species=r_species, p_species=p_species)
+        project = 'test_ts_reactive_bonds_leaving'
+        project_directory = tempfile.mkdtemp(prefix='arc_test_')
+        self.addCleanup(shutil.rmtree, project_directory, ignore_errors=True)
+        with patch.object(Scheduler, 'run_sp_job'):
+            sched = Scheduler(project=project,
+                              ess_settings={'gaussian': ['server1']},
+                              species_list=r_species + p_species,
+                              rxn_list=[rxn],
+                              project_directory=project_directory,
+                              job_types=initialize_job_types(),
+                              conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                              opt_level=Level(repr=default_levels_of_theory['opt']),
+                              testing=True,
+                              )
+        broken_bonds = rxn.get_formed_and_broken_bonds()[1]
+        self.assertEqual(len(broken_bonds), 1)
+        carbon, mapped_h = sorted(broken_bonds[0])
+        methyl_hs = [h for h in range(2, 7) if np.linalg.norm(np.subtract(ethyl_xyz['coords'][h],
+                                                                           ethyl_xyz['coords'][carbon])) < 1.2]
+        leaving_h = next(h for h in methyl_hs if h != mapped_h)
+        coords = [list(coord) for coord in ethyl_xyz['coords']]
+        bond = np.subtract(coords[leaving_h], coords[carbon])
+        coords[leaving_h] = list(np.array(coords[carbon]) + 1.8 * bond / np.linalg.norm(bond))
+        sched.species_dict[rxn.ts_label].final_xyz = dict(ethyl_xyz, coords=tuple(tuple(coord) for coord in coords))
+        self.assertEqual(sched.get_ts_reactive_bonds(rxn.ts_label), [[carbon + 1, leaving_h + 1]])
 
 
 if __name__ == '__main__':

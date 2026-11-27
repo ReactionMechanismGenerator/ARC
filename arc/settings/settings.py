@@ -364,9 +364,11 @@ max_rotor_trsh = 4      # maximum number of times to troubleshoot the same rotor
 max_ess_trsh = 25       # maximum number of times to troubleshoot the same ESS job (opt, sp, freq, etc.)
 
 # Thresholds for identifying significant changes in bond distance, bond angle,
-# or torsion angle during a rotor scan. For a TS, only 'bond' and 'torsion' are considered.
+# or torsion angle during a rotor scan. A TS's preserved distances (its forming and breaking bonds)
+# use 'ts_bond'; other species' use 'bond'.
 preserve_params_in_scan = {
     'bond': 0.1,  # Default: 10% of the original bond length
+    'ts_bond': 0.2,  # Default: 20% of the original distance
     'angle': 10,  # Default: 10 degrees
     'dihedral': 30,  # Default: 30 degrees
 }

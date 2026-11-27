@@ -55,8 +55,8 @@ class ARCReaction(object):
         species_list (list, optional): A list of ARCSpecies entries for matching reactants and products
                                        to existing species.
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
-                                                 between which distances and dihedrals of these pivots must be
-                                                 preserved. Used for identification of rotors which break a TS.
+                                                 whose distance must be preserved throughout a rotor scan. Used for
+                                                 identification of rotors which break a TS.
         kinetics (dict[str, float | tuple[float, str]], optional): The high pressure limit rate coefficient
                                                                          calculated by ARC. Keys are 'A' (value, unit),
                                                                          n (value), and Ea (value, unit).
@@ -103,8 +103,8 @@ class ARCReaction(object):
         index (int): An auto-generated index associating the ARCReaction object with the
                      corresponding TS :ref:`ARCSpecies <species>` object.
         ts_label (str): The :ref:`ARCSpecies <species>` label of the respective TS.
-        preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
-                                       distances and dihedrals of these pivots must be preserved.
+        preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) whose distance
+                                       must be preserved throughout a rotor scan.
         product_dicts (list[dict]): A list of dictionaries with the RMG reaction family products.
         atom_map (list[int]): An atom map, mapping the reactant atoms to the product atoms.
                               I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,

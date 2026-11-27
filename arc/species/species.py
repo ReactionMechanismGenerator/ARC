@@ -188,8 +188,9 @@ class ARCSpecies(object):
                                                      considered, otherwise the chirality specified by the given
                                                      coordinates will be preserved.
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
-                                                 between which distances and dihedrals of these pivots must be
-                                                 preserved. Used for identification of rotors which break a TS.
+                                                 whose distance must be preserved throughout a rotor scan, to the
+                                                 tolerance of ``preserve_params_in_scan`` in settings.py. Used for
+                                                 identification of rotors which break a TS.
         fragments (list[list[int]] | None):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
@@ -328,8 +329,10 @@ class ARCSpecies(object):
                                                      centers, nitrogen inversions, and cis/trans double bonds) when
                                                      generating conformers. ``True`` to consider all.
         zmat (dict): The species internal coordinates (Z Matrix).
-        preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
-                                       distances and dihedrals of these pivots must be preserved.
+        preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) whose distance
+                                       must be preserved throughout a rotor scan.
+        scan_partial_bonds (list): The forming and breaking bonds of a TS (1-indexed atom pairs), which its ASE rotor
+                                   scans treat as bonds when they build a rotating group.
         fragments (list[list[int]] | None):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
@@ -458,6 +461,7 @@ class ARCSpecies(object):
             self.consider_all_diastereomers = consider_all_diastereomers
             self.zmat = None
             self.preserve_param_in_scan = preserve_param_in_scan
+            self.scan_partial_bonds = None
             self.rxn_label = rxn_label
             self.rxn_index = rxn_index
             self.successful_methods = list()
@@ -892,6 +896,8 @@ class ARCSpecies(object):
             species_dict['bdes'] = self.bdes
         if self.preserve_param_in_scan is not None:
             species_dict['preserve_param_in_scan'] = self.preserve_param_in_scan
+        if self.scan_partial_bonds is not None:
+            species_dict['scan_partial_bonds'] = self.scan_partial_bonds
         if self.rotors_dict is not None and len(list(self.rotors_dict.keys())):
             rotors_dict = dict()
             for index, rotor_dict in self.rotors_dict.items():
@@ -1071,6 +1077,7 @@ class ARCSpecies(object):
             self.rotors_dict = None
         self.preserve_param_in_scan = species_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in species_dict else None
+        self.scan_partial_bonds = species_dict.get('scan_partial_bonds')
         if 'rotors_dict' in species_dict and self.rotors_dict is not None:
             for index, rotor_dict in species_dict['rotors_dict'].items():
                 self.rotors_dict[index] = dict()
