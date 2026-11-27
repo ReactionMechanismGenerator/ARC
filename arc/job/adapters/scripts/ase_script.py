@@ -246,17 +246,101 @@ def sella_hessian_function(settings: dict, cache: dict | None = None):
     return hessian_function
 
 
+MACE_OFF_SIZES = ('small', 'medium', 'large')
+
+
+def require_neutral_singlet(model: str, charge: int, multiplicity: int) -> None:
+    """
+    Raise ``ValueError`` if a species is charged or open-shell, for a model that reads neither.
+    """
+    if charge != 0 or multiplicity != 1:
+        raise ValueError(f'{model} takes neither charge nor multiplicity, so it cannot compute a species '
+                         f'of charge {charge} and multiplicity {multiplicity}.')
+
+
+def mace_model(calc_config: dict) -> tuple:
+    """
+    The MACE model family ('omol' or 'off') and the model passed to it. ``model`` is ``omol`` (the default),
+    ``omol-<size>``, ``off-<size>`` or a MACE-OFF size (small, medium, large), or a checkpoint file, whose family
+    is given by ``family``.
+
+    Raises:
+        ValueError: If the model is not recognized, or a checkpoint is given without its family.
+    """
+    model = str(calc_config.get('model', 'omol'))
+    family = calc_config.get('family')
+    if os.path.isfile(model):
+        if family not in ('omol', 'off'):
+            raise ValueError(f"Set 'family' to 'omol' or 'off' for the MACE checkpoint {model}.")
+        return family, model
+    if model == 'omol':
+        return 'omol', None
+    if model.startswith('omol-'):
+        return 'omol', model[len('omol-'):]
+    size = model[len('off-'):] if model.startswith('off-') else model
+    if size in MACE_OFF_SIZES:
+        return 'off', size
+    raise ValueError(f"Unknown MACE model '{model}': use omol, omol-<size>, off-<size> ({', '.join(MACE_OFF_SIZES)}), "
+                     f"or a checkpoint file with 'family'.")
+
+
+def build_mace_calculator(family: str, model: str | None, device: str, dtype: str):
+    """
+    Build a MACE-OMol or MACE-OFF calculator (mace-torch 0.3.14 or newer for MACE-OMol).
+    """
+    if family == 'omol':
+        try:
+            from mace.calculators import mace_omol
+        except ImportError as exc:
+            raise ImportError('MACE-OMol needs mace-torch 0.3.14 or newer.') from exc
+        return mace_omol(model=model, device=device, default_dtype=dtype)
+    from mace.calculators import mace_off
+    return mace_off(model=model, device=device, default_dtype=dtype)
+
+
+def build_orb_calculator(model: str, device: str, precision: str):
+    """
+    Build an Orb calculator for a pretrained model of orb-models 0.6.0 or newer.
+    """
+    try:
+        from orb_models.forcefield import pretrained
+        from orb_models.forcefield.inference.calculator import ORBCalculator
+    except ImportError as exc:
+        raise ImportError('The Orb calculator needs orb-models 0.6.0 or newer.') from exc
+    orbff, adapter = getattr(pretrained, model.replace('-', '_'))(device=device, precision=precision)
+    return ORBCalculator(orbff, atoms_adapter=adapter, device=device)
+
+
+def cached_calculator(cache: dict | None, key: tuple, build):
+    """
+    A calculator from ``cache`` under ``key``, reset so that it keeps no results, or a new one from ``build()``,
+    which is cached if a cache is given.
+    """
+    if cache is None:
+        return build()
+    if key not in cache:
+        cache[key] = build()
+    calc = cache[key]
+    calc.reset()
+    return calc
+
+
 def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1, cache: dict | None = None,
                    hessian: bool = False):
     """
     Initialize the ASE calculator based on settings.
 
+    UMA, MACE-OMol (``mace`` with an ``omol`` model), the Orb ``omol`` models and the AIMNet2 NSE models are given
+    the charge and multiplicity; the other AIMNet2 models take the charge only, and MACE-OFF and the other Orb
+    models take neither, so a charged or open-shell species raises ``ValueError`` on them, as one does on MOPAC.
+    Minimum versions: mace-torch 0.3.14, orb-models 0.6.0, aimnet 0.1.
+
     Args:
         calc_config (dict): The run settings.
         charge (int): The total charge.
         multiplicity (int): The spin multiplicity.
-        cache (dict, optional): Loaded models, kept across jobs by a persistent worker. A new calculator
-                                is still built for every job, so no results are carried over between jobs.
+        cache (dict, optional): Loaded models and calculators, kept across jobs by a persistent worker. A cached
+                                calculator is reset before it is returned, so no results carry over between jobs.
         hessian (bool): Whether the calculator only serves an autograd Hessian. UMA then loads its Hessian
                         predictor (see uma_hessian()) instead of the ordinary one, if fairchem supports it.
     """
@@ -296,46 +380,36 @@ def get_calculator(calc_config: dict, charge: int = 0, multiplicity: int = 1, ca
         return FAIRChemCalculator(predictor, task_name=calc_config.get('task', 'omol'))
 
     elif name == 'mace':
-        # MACE (mace-torch). The OMol25 model ('omol') conditions on charge and spin through atoms.info, as UMA does;
-        # the MACE-OFF models ('off-small', 'off-medium', 'off-large') are for neutral closed-shell organics.
-        model = calc_config.get('model', 'omol')
-        key = ('mace', model, calc_config.get('default_dtype', 'float64'))
-        if cache is None or key not in cache:
-            from mace.calculators import mace_off, mace_omol
-            kwargs = dict(device=calc_config.get('device', 'cpu'), default_dtype=key[2])
-            calc = mace_omol(**kwargs) if model == 'omol' else mace_off(model=model.split('-', 1)[1], **kwargs)
-            if cache is None:
-                return calc
-            cache[key] = calc
-        return cache[key]
+        family, model = mace_model(calc_config)
+        if family == 'off':
+            require_neutral_singlet(f'MACE-OFF model {model}', charge, multiplicity)
+        device, dtype = calc_config.get('device', 'cpu'), calc_config.get('default_dtype', 'float64')
+        return cached_calculator(cache, ('mace', family, model, device, dtype),
+                                 lambda: build_mace_calculator(family, model, device, dtype))
 
     elif name == 'orb':
-        # Orb-v3 (orb-models). The OMol25 models read the charge and spin from atoms.info.
-        from orb_models.forcefield import pretrained
-        from orb_models.forcefield.inference.calculator import ORBCalculator
         model = calc_config.get('model', 'orb-v3-conservative-omol')
-        key = ('orb', model, calc_config.get('precision', 'float64'))
-        if cache is None or key not in cache:
-            orbff, adapter = getattr(pretrained, model.replace('-', '_'))(device=calc_config.get('device', 'cpu'),
-                                                                           precision=key[2])
-            calc = ORBCalculator(orbff, atoms_adapter=adapter, device=calc_config.get('device', 'cpu'))
-            if cache is None:
-                return calc
-            cache[key] = calc
-        return cache[key]
+        if 'omol' not in model:
+            require_neutral_singlet(f'Orb model {model}', charge, multiplicity)
+        device, precision = calc_config.get('device', 'cpu'), calc_config.get('precision', 'float64')
+        return cached_calculator(cache, ('orb', model, device, precision),
+                                 lambda: build_orb_calculator(model, device, precision))
 
     elif name == 'aimnet2':
-        # AIMNet2 (aimnet). The NSE models ('aimnet2-nse') are trained for open shells and take the multiplicity.
-        from aimnet.calculators import AIMNet2Calculator
+        model = calc_config.get('model', 'aimnet2nse')
+        if 'nse' not in model.lower() and multiplicity != 1:
+            raise ValueError(f'AIMNet2 model {model} does not take the multiplicity ({multiplicity}); '
+                             f'use an NSE model (e.g., aimnet2nse).')
         from aimnet.calculators.aimnet2ase import AIMNet2ASE
-        model = calc_config.get('model', 'aimnet2-nse')
-        key = ('aimnet2', model)
-        if cache is None or key not in cache:
-            base = AIMNet2Calculator(model)
-            if cache is None:
-                return AIMNet2ASE(base, charge=charge, mult=multiplicity)
-            cache[key] = base
-        return AIMNet2ASE(cache[key], charge=charge, mult=multiplicity)
+        device = calc_config.get('device', 'cpu')
+        key = ('aimnet2', model, device)
+        base = cache.get(key) if cache is not None else None
+        if base is None:
+            from aimnet.calculators import AIMNet2Calculator
+            base = AIMNet2Calculator(model, device=device)
+            if cache is not None:
+                cache[key] = base
+        return AIMNet2ASE(base, charge=charge, mult=multiplicity)
 
     from ase.calculators.calculator import get_calculator_class
     try:
@@ -948,6 +1022,8 @@ def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None 
     is_ts = input_dict.get('is_ts', False)
 
     atoms = Atoms(symbols=xyz['symbols'], positions=xyz['coords'])
+    if input_dict.get('masses'):
+        atoms.set_masses(input_dict['masses'])
     atoms.info.update({'charge': charge, 'spin': multiplicity})  # UMA (omol) conditions on these
     if cache is None:
         cache = dict()
@@ -1015,8 +1091,6 @@ def run_job(input_path: str, input_dict: dict | None = None, cache: dict | None 
     else:
         # For non-optimization jobs, still save the geometry
         save_current_geometry(output, atoms, xyz)
-    if input_dict.get('masses'):
-        atoms.set_masses(input_dict['masses'])
 
     if job_type == 'irc':
         from sella import IRC

@@ -1152,6 +1152,82 @@ class TestASECalculators(unittest.TestCase):
             result[name] = module
         return result
 
+    def test_mace_model(self):
+        """MACE models are named by family and size, and a checkpoint needs its family"""
+        from arc.job.adapters.scripts.ase_script import mace_model
+        self.assertEqual(mace_model({}), ('omol', None))
+        self.assertEqual(mace_model({'model': 'omol-extra_large'}), ('omol', 'extra_large'))
+        self.assertEqual(mace_model({'model': 'off-medium'}), ('off', 'medium'))
+        self.assertEqual(mace_model({'model': 'small'}), ('off', 'small'))
+        with tempfile.NamedTemporaryFile(suffix='.model') as checkpoint:
+            self.assertEqual(mace_model({'model': checkpoint.name, 'family': 'omol'}), ('omol', checkpoint.name))
+            with self.assertRaises(ValueError):
+                mace_model({'model': checkpoint.name})
+        with self.assertRaises(ValueError):
+            mace_model({'model': 'off-huge'})
+
+    def test_mace_calculators(self):
+        """MACE-OFF refuses charged and open-shell species, and a cached calculator is reset and kept per device"""
+        from arc.job.adapters.scripts.ase_script import get_calculator
+        mace_off, mace_omol = MagicMock(name='mace_off'), MagicMock(name='mace_omol')
+        mace_omol.side_effect = lambda **kwargs: MagicMock(name='MACE-OMol')
+        with patch.dict(sys.modules, self.modules(**{'mace.calculators': {'mace_off': mace_off,
+                                                                          'mace_omol': mace_omol}})):
+            with self.assertRaises(ValueError):
+                get_calculator({'calculator': 'mace', 'model': 'off-small'}, charge=0, multiplicity=2)
+            mace_off.assert_not_called()
+            get_calculator({'calculator': 'mace', 'model': 'off-small'})
+            mace_off.assert_called_once_with(model='small', device='cpu', default_dtype='float64')
+
+            cache = dict()
+            first = get_calculator({'calculator': 'mace'}, charge=1, multiplicity=2, cache=cache)
+            again = get_calculator({'calculator': 'mace'}, charge=0, multiplicity=1, cache=cache)
+            self.assertIs(first, again)
+            self.assertEqual(again.reset.call_count, 2)
+            on_gpu = get_calculator({'calculator': 'mace', 'device': 'cuda'}, cache=cache)
+            self.assertIsNot(on_gpu, first)
+            self.assertEqual(mace_omol.call_args.kwargs, {'model': None, 'device': 'cuda', 'default_dtype': 'float64'})
+        with patch.dict(sys.modules, self.modules(**{'mace.calculators': {'mace_off': mace_off}})):
+            with self.assertRaisesRegex(ImportError, '0.3.14'):
+                get_calculator({'calculator': 'mace'})
+
+    def test_orb_calculators(self):
+        """Only the Orb omol models take charge and spin, and orb-models before 0.6.0 is named in the error"""
+        from arc.job.adapters.scripts.ase_script import get_calculator
+        model, adapter = MagicMock(name='orbff'), MagicMock(name='adapter')
+        pretrained = {'orb_v3_conservative_omol': MagicMock(return_value=(model, adapter)),
+                      'orb_v3_conservative_inf_mpa': MagicMock(return_value=(model, adapter))}
+        orb_calculator = MagicMock(name='ORBCalculator')
+        with patch.dict(sys.modules, self.modules(**{'orb_models.forcefield.pretrained': pretrained,
+                                                     'orb_models.forcefield.inference.calculator':
+                                                         {'ORBCalculator': orb_calculator}})):
+            sys.modules['orb_models.forcefield'].pretrained = sys.modules['orb_models.forcefield.pretrained']
+            get_calculator({'calculator': 'orb'}, charge=-1, multiplicity=2)
+            orb_calculator.assert_called_once_with(model, atoms_adapter=adapter, device='cpu')
+            pretrained['orb_v3_conservative_omol'].assert_called_once_with(device='cpu', precision='float64')
+            with self.assertRaises(ValueError):
+                get_calculator({'calculator': 'orb', 'model': 'orb-v3-conservative-inf-mpa'}, charge=1)
+        with patch.dict(sys.modules, self.modules(**{'orb_models.forcefield.pretrained': pretrained})):
+            with self.assertRaisesRegex(ImportError, '0.6.0'):
+                get_calculator({'calculator': 'orb'})
+
+    def test_aimnet2_calculators(self):
+        """AIMNet2 runs on the job's device, and only an NSE model takes a multiplicity"""
+        from arc.job.adapters.scripts.ase_script import get_calculator
+        base, ase_calculator = MagicMock(name='AIMNet2Calculator'), MagicMock(name='AIMNet2ASE')
+        with patch.dict(sys.modules, self.modules(**{'aimnet.calculators': {'AIMNet2Calculator': base},
+                                                     'aimnet.calculators.aimnet2ase': {'AIMNet2ASE': ase_calculator}})):
+            with self.assertRaises(ValueError):
+                get_calculator({'calculator': 'aimnet2', 'model': 'aimnet2'}, charge=0, multiplicity=2)
+            get_calculator({'calculator': 'aimnet2', 'model': 'aimnet2'}, charge=1, multiplicity=1)
+            base.assert_called_once_with('aimnet2', device='cpu')
+            cache = dict()
+            get_calculator({'calculator': 'aimnet2'}, charge=0, multiplicity=2, cache=cache)
+            get_calculator({'calculator': 'aimnet2', 'device': 'cuda'}, cache=cache)
+            get_calculator({'calculator': 'aimnet2'}, cache=cache)
+            self.assertEqual([c.kwargs['device'] for c in base.call_args_list[1:]], ['cpu', 'cuda'])
+            self.assertEqual(ase_calculator.call_args_list[1].kwargs, {'charge': 0, 'mult': 2})
+
     def test_fairchem_hessian_support(self):
         """Autograd Hessians need fairchem-core 2.17, and 2.18 to 2.21 give them only with vmap"""
         from importlib.metadata import PackageNotFoundError
