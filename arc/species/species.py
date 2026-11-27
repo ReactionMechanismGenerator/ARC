@@ -1044,6 +1044,11 @@ class ARCSpecies(object):
                 self.mol = Molecule(smiles=smiles)
         structure_multiplicity = self.mol.multiplicity if self.mol is not None else None
         structure_charge = self.mol.get_net_charge() if self.mol is not None else None
+        if not self.is_ts:
+            if self.multiplicity is None and structure_multiplicity is not None:
+                self.multiplicity = structure_multiplicity
+            if self.charge is None and structure_charge is not None:
+                self.charge = structure_charge
         if not dict_repr_is_authoritative(species_dict, mol=self.mol) \
                 and (self.final_xyz or self.initial_xyz or self.most_stable_conformer
                      or self.conformers or self.ts_guesses):

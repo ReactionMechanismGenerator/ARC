@@ -1052,6 +1052,9 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(kwargs_spc.multiplicity, 3)
         self.assertEqual(dict_spc.multiplicity, kwargs_spc.multiplicity)
         self.assertEqual(dict_spc.charge, kwargs_spc.charge)
+        self.assertEqual(kwargs_spc.mol.multiplicity, 3)
+        self.assertTrue(dict_spc.mol.is_isomorphic(kwargs_spc.mol))
+        self.assertEqual(dict_spc.bond_corrections, kwargs_spc.bond_corrections)
 
         explicit = ARCSpecies(species_dict={'label': 'CCCN_triplet', 'smiles': 'C[C]C#N',
                                             'xyz': xyz, 'multiplicity': 3})
@@ -1060,8 +1063,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
     def test_from_dict_reads_charge_from_the_given_structure(self):
         """Test that from_dict() reads a missing charge off a given SMILES, as the keyword constructor does.
 
-        A declared charge is kept. A dict with no structure, or with a charged 'mol' and no
-        'charge' key, gives charge 0.
+        A declared charge is kept. A dict whose only structure is a charged 'mol', as a round-trip
+        through as_dict() leaves it, and no 'charge' key gives charge 0.
         """
         xyz = """N      0.00000000    0.00000000    0.11476900
                  H      0.00000000    0.93800000   -0.26800000
@@ -1073,6 +1076,8 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(kwargs_spc.charge, 1)
         self.assertEqual(dict_spc.charge, kwargs_spc.charge)
         self.assertEqual(dict_spc.multiplicity, kwargs_spc.multiplicity)
+        self.assertEqual(kwargs_spc.mol.get_net_charge(), 1)
+        self.assertTrue(dict_spc.mol.is_isomorphic(kwargs_spc.mol))
 
         explicit = ARCSpecies(species_dict={'label': 'NH4+', 'smiles': '[NH4+]', 'xyz': xyz, 'charge': 1})
         self.assertEqual(explicit.charge, 1)
@@ -1081,7 +1086,46 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                                                  'mol': BIRAD_SINGLET_DOUBLY_CATIONIC_ADJLIST})
         self.assertEqual(round_tripped.mol.get_net_charge(), 2)
         self.assertEqual(round_tripped.charge, 0)
-        self.assertEqual(ARCSpecies(species_dict={'label': 'OH', 'smiles': '[OH]'}).charge, 0)
+        round_tripped_with_smiles = ARCSpecies(species_dict={'label': 'birad', 'multiplicity': 1,
+                                                             'smiles': 'C=C[CH+]CCC=C[CH2+]',
+                                                             'mol': BIRAD_SINGLET_DOUBLY_CATIONIC_ADJLIST})
+        self.assertEqual(round_tripped_with_smiles.charge, 0)
+
+    def test_from_dict_agrees_with_the_keyword_constructor_on_charge_multiplicity_and_graph(self):
+        """Test that a radical, a cation, an anion and a triplet agree across both constructors"""
+        cases = {'C[CH2]': (0, 2, """C      -0.62874193   -0.01764871   -0.01600551
+                                     C       0.85417016    0.02441594   -0.02309852
+                                     H      -1.03617140    0.86260672   -0.52099220
+                                     H      -1.00245202   -0.03830336    1.01113819
+                                     H      -0.98598689   -0.90948550   -0.53836862
+                                     H       1.37315707    0.97263085    0.05281568
+                                     H       1.42602501   -0.89421593    0.03451098"""),
+                 'C[NH3+]': (1, 1, """C       0.75102756    0.04139479    0.03822800
+                                      N      -0.72049753   -0.03971204   -0.03667399
+                                      H       1.15717100   -0.89545706   -0.34775701
+                                      H       1.07024309    0.88853996   -0.57175144
+                                      H       1.02462414    0.18616137    1.08504023
+                                      H      -1.08149928   -0.82412751    0.52208577
+                                      H      -1.03945651   -0.17681261   -1.00482222
+                                      H      -1.16161247    0.82001311    0.31565065"""),
+                 'C[O-]': (-1, 1, """C       0.03816358   -0.00216860   -0.00345282
+                                    O       1.35522551   -0.07700925   -0.12261303
+                                    H      -0.37787377   -0.00430208    1.01835989
+                                    H      -0.45759160    0.88923479   -0.42395209
+                                    H      -0.55792372   -0.80575486   -0.46834195"""),
+                 '[CH2]': (0, 3, """C      -0.00000000   -0.00000000    0.00000000
+                                   H      -1.06487480   -0.01632971    0.00000000
+                                   H       1.06487480    0.01632971    0.00000000"""),
+                 }
+        for smiles, (charge, multiplicity, xyz) in cases.items():
+            kwargs_spc = ARCSpecies(label='spc', smiles=smiles, xyz=xyz)
+            dict_spc = ARCSpecies(species_dict={'label': 'spc', 'smiles': smiles, 'xyz': xyz})
+            for spc in [kwargs_spc, dict_spc]:
+                self.assertEqual(spc.charge, charge, msg=smiles)
+                self.assertEqual(spc.multiplicity, multiplicity, msg=smiles)
+                self.assertEqual(spc.mol.get_net_charge(), charge, msg=smiles)
+                self.assertEqual(spc.mol.multiplicity, multiplicity, msg=smiles)
+            self.assertTrue(dict_spc.mol.is_isomorphic(kwargs_spc.mol), msg=smiles)
 
     def test_from_dict(self):
         """Test Species.from_dict()"""
