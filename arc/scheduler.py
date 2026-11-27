@@ -1280,6 +1280,7 @@ class Scheduler(object):
             if job_type not in self.job_dict[label].keys():
                 # Jobs of this type haven't been spawned for label
                 self.job_dict[label][job_type] = dict()
+            self.job_dict[label][job_type].pop(job.job_name, None)
             self.job_dict[label][job_type][job.job_name] = job
         elif conformer is not None:
             # Running a conformer DFT job. Append differently to job_dict.
@@ -5076,8 +5077,6 @@ class Scheduler(object):
                            f'"trsh_ess_jobs" to "True".')
             return None
 
-        # The latest and previous opt jobs of the species / TS, in the order they were spawned. Not by job number:
-        # numbers restart when ARC rotates initiated_jobs.csv, so a newer job can have a smaller number.
         opt_jobs = list(self.job_dict[label]['opt'].values())
         job = opt_jobs[-1] if opt_jobs else None
         previous_job = opt_jobs[-2] if len(opt_jobs) > 1 else None
