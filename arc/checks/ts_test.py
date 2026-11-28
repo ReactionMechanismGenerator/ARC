@@ -820,7 +820,10 @@ class TestTSChecks(unittest.TestCase):
         self.assertFalse(ts.ts_passed_checks(spc, exemptions=['warnings']))
 
     def test_invalidate_rotors_with_both_pivots_in_a_reactive_zone(self):
-        """Test the invalidate_rotors_with_both_pivots_in_a_reactive_zone() function."""
+        """
+        Test the invalidate_rotors_with_both_pivots_in_a_reactive_zone() function. In the 1,2 H-shift TS the
+        migrating H bridges the pivots of rotor [2, 3], so it lies in the reactive ring.
+        """
         ts_spc_1 = ARCSpecies(label='TS', is_ts=True, xyz=self.ts_xyz_1, multiplicity=2)
         ts_spc_1.mol_from_xyz()
         ts_spc_1.determine_rotors()
@@ -859,6 +862,7 @@ class TestTSChecks(unittest.TestCase):
         self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['pivots'], [2, 3])
         self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['scan'], [1, 2, 3, 9])
         self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['invalidation_reason'],
+                         'Torsion lies in the TS reactive ring (code: reactive ring). '
                          'Pivots participate in the TS reaction zone (code: pivTS). ')
         self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['success'], False)
 
