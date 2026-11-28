@@ -6891,15 +6891,13 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.ess_settings = {'gaussian': ['server1']}
-        cls.projects = [f'arc_project_for_testing_delete_after_usage_tsg_{i}' for i in range(1, 27)]
 
-    @classmethod
-    def tearDownClass(cls):
+    def setUp(self):
         """
-        A method that is run after all unit tests in this class, deleting the project directories.
+        A method that is run before each unit test, giving it its own temporary root for project directories.
         """
-        for project in cls.projects:
-            shutil.rmtree(os.path.join(ARC_PATH, 'Projects', project), ignore_errors=True)
+        self.projects_root = tempfile.mkdtemp(prefix='arc_tsg_admission_')
+        self.addCleanup(shutil.rmtree, self.projects_root, ignore_errors=True)
 
     def test_spawn_ts_jobs_unknown_family_admission_predicate(self):
         """Test the admission predicate for TS adapters of reactions with an unknown family."""
@@ -6983,7 +6981,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                           ess_settings=self.ess_settings,
                           species_list=r_species + p_species,
                           rxn_list=[rxn],
-                          project_directory=os.path.join(ARC_PATH, 'Projects', project),
+                          project_directory=os.path.join(self.projects_root, project),
                           ts_adapters=ts_adapters,
                           job_types=initialize_job_types(),
                           conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
@@ -7032,7 +7030,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         """Test that an identity reaction pinned to a family is warned about before its first TS search job,
         when no adapter reads its product dicts"""
         sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=['kinbot'],
-                                                         project='arc_project_for_testing_delete_after_usage_tsg_26',
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_13',
                                                          r_species=[ARCSpecies(label='R', smiles='[CH2]CCC')],
                                                          p_species=[ARCSpecies(label='P', smiles='[CH2]CCC')],
                                                          family='intra_H_migration')
@@ -7111,7 +7109,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
         gets the TS adapters of the [3,3] shift family it is assigned"""
         configured = ['gcn', 'xtb_gsm', 'orca_neb', 'goflow', 'rits', 'linear']
         sched, rxn, spawned = self.setup_hocho_scheduler(ts_adapters=configured,
-                                                         project='arc_project_for_testing_delete_after_usage_tsg_25',
+                                                         project='arc_project_for_testing_delete_after_usage_tsg_12',
                                                          r_species=[ARCSpecies(label='R', smiles='C=CCC(C)C=C')],
                                                          p_species=[ARCSpecies(label='P', smiles='CC=CCCC=C')])
         self.assertEqual(rxn.family, '6_membered_central_C-C_shift')
@@ -7158,7 +7156,7 @@ class TestSpawnTsJobsAdmission(unittest.TestCase):
                           ess_settings=self.ess_settings,
                           species_list=species,
                           rxn_list=[rxn_1, rxn_2],
-                          project_directory=os.path.join(ARC_PATH, 'Projects', project),
+                          project_directory=os.path.join(self.projects_root, project),
                           ts_adapters=ts_adapters or ['kinbot', 'linear'],
                           job_types=initialize_job_types(),
                           conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
